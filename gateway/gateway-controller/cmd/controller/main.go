@@ -363,6 +363,39 @@ func main() {
 	// Initialize SDS secret manager if custom certificates are configured
 	var sdsSecretManager *xds.SDSSecretManager
 	translator := snapshotManager.GetTranslator()
+
+	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion, and wire it
+	// into the Envoy xDS translator now — before the initial snapshot below is generated, not
+	// after. Every kind here (RestApi excepted) has no legacy StoredConfig->Envoy translation
+	// path at all, so building the initial snapshot before this wiring exists doesn't just lose
+	// header-matcher rendering the way it would for RestApi (see the comment at the
+	// SetTransformers call below): it fails outright with "configuration is not a RestAPI" for
+	// every already-deployed GraphQLApi/Mcp/LlmProvider/LlmProxy, dropping their routes from
+	// Envoy on every controller restart until some later event happens to redeploy them.
+	// policyVersionResolver was already built above, before the startup rehydration call.
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, graphqlTransformer)
+
+	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
+	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
+	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
+	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
+	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
+	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
+	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
+	// excluded so it keeps using the async-specific legacy translation path.
+	if translator != nil {
+		translator.SetTransformers(map[string]models.ConfigTransformer{
+			"RestApi":     transformerRegistry,
+			"Mcp":         transformerRegistry,
+			"LlmProvider": transformerRegistry,
+			"LlmProxy":    transformerRegistry,
+			"GraphQLApi":  transformerRegistry,
+		})
+	}
+
 	if translator != nil && translator.GetCertStore() != nil {
 		// Use the same cache and node ID as the main xDS to ensure Envoy can fetch secrets
 		sdsSecretManager = xds.NewSDSSecretManager(
@@ -439,29 +472,9 @@ func main() {
 	// Initialize policy manager
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
-
-	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
-	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, graphqlTransformer)
+	// transformerRegistry was built earlier, alongside wiring it into the Envoy xDS
+	// translator — before the initial xDS snapshot, not after (see the comment there).
 	policyManager.SetTransformers(transformerRegistry)
-
-	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
-	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
-	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
-	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
-	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
-	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
-	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
-	// excluded so it keeps using the async-specific legacy translation path.
-	translator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
-		"GraphQLApi":  transformerRegistry,
-	})
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;

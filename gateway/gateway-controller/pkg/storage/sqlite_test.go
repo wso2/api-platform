@@ -838,6 +838,37 @@ func TestSQLiteStorage_GetAPIKeysByAPI_Success(t *testing.T) {
 	assert.Assert(t, keyIDs["0000-key2-0000-000000000000"])
 }
 
+// TestSQLiteStorage_ListAPIKeysForArtifactsNotIn_ExcludesLocalKeys guards against
+// regressing the CP bulk-sync reconciliation into treating every locally-generated key as
+// stale. A source="local" key was generated on the gateway itself and was never reported
+// to the control plane, so its absence from a CP fetch (keyUUIDs) must never make it a
+// deletion candidate — only source="external" keys the control plane once knew about and
+// has since stopped reporting are genuinely stale.
+func TestSQLiteStorage_ListAPIKeysForArtifactsNotIn_ExcludesLocalKeys(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	localKey := createTestAPIKey()
+	localKey.ArtifactUUID = config.UUID
+	localKey.Source = "local"
+	assert.NilError(t, storage.SaveAPIKey(localKey))
+
+	externalKey := createTestAPIKey()
+	externalKey.ArtifactUUID = config.UUID
+	externalKey.Source = "external"
+	assert.NilError(t, storage.SaveAPIKey(externalKey))
+
+	// Simulate a CP bulk-sync round that reported zero keys for this artifact's kind.
+	stale, err := storage.ListAPIKeysForArtifactsNotIn([]string{config.UUID}, []string{})
+	assert.NilError(t, err)
+	assert.Equal(t, len(stale), 1, "only the control-plane-issued key should be reported stale")
+	assert.Equal(t, stale[0].UUID, externalKey.UUID)
+}
+
 func TestLoadAPIKeysFromDatabase_Success(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()

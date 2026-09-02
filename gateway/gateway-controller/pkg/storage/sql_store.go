@@ -3541,6 +3541,13 @@ func (s *sqlStore) SecretExists(handle string) (bool, error) {
 // ListAPIKeysForArtifactsNotIn returns uuid + artifact_uuid for keys that would be removed
 // by DeleteAPIKeysForArtifactsNotIn. Call this before the delete to collect identifiers
 // needed for publishing EventHub events.
+//
+// Only source='external' (control-plane-issued) keys are considered: this powers the CP
+// bulk-sync reconciliation, whose whole premise is "delete whatever the control plane no
+// longer reports for this artifact." A source='local' key was generated on the gateway
+// itself and was never reported to (or known by) the control plane in the first place, so
+// its absence from a CP fetch is expected, not a sign it was revoked — treating it as stale
+// deleted every locally-generated key on the very next reconnect/restart.
 func (s *sqlStore) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
 	if len(artifactUUIDs) == 0 {
 		return nil, nil
@@ -3555,7 +3562,7 @@ func (s *sqlStore) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs
 	var query string
 	if len(keyUUIDs) == 0 {
 		query = fmt.Sprintf(
-			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s)`,
+			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s) AND source = 'external'`,
 			strings.Join(artifactPlaceholders, ","),
 		)
 	} else {
@@ -3565,7 +3572,7 @@ func (s *sqlStore) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs
 			args = append(args, id)
 		}
 		query = fmt.Sprintf(
-			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s) AND uuid NOT IN (%s)`,
+			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s) AND uuid NOT IN (%s) AND source = 'external'`,
 			strings.Join(artifactPlaceholders, ","),
 			strings.Join(keyPlaceholders, ","),
 		)
