@@ -146,6 +146,43 @@ export ROUTER_DRAIN_TIME_SECONDS="${ROUTER_DRAIN_TIME_SECONDS:-15}"
 export XDS_SERVER_HOST="${GATEWAY_CONTROLLER_HOST}"
 export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
 
+# Mutual TLS for the Router's (Envoy's) connection to gateway-controller's main
+# xDS server, off by default (plaintext) so this stays interoperable with a
+# gateway-controller build/config where server.xds_tls.enabled=false. This
+# cert/key/CA material is entirely local to this container -- gateway-
+# controller never needs to know these paths. SDS/secret delivery rides the
+# same ADS stream this bootstrap xds_cluster already opens (see
+# pkg/xds/translator.go's createUpstreamTLSContext, which references the SDS
+# config source via ConfigSource_Ads rather than a second, TLS-duplicating
+# cluster), so there is no separate controller-side copy of this TLS
+# material to keep in sync.
+export XDS_TLS_ENABLED="${XDS_TLS_ENABLED:-false}"
+export XDS_CLIENT_CERT_PATH="${XDS_CLIENT_CERT_PATH:-}"
+export XDS_CLIENT_KEY_PATH="${XDS_CLIENT_KEY_PATH:-}"
+export XDS_CLIENT_CA_PATH="${XDS_CLIENT_CA_PATH:-}"
+
+# TLS parameters for the same xDS connection, kept in their own vars so the
+# PQC hybrid group can be opted into independently of turning TLS on at all.
+# Classical curves only by default -- prepend "X25519MLKEM768" (FIPS 203
+# ML-KEM-768 + X25519) once the deployed Envoy/BoringSSL build is confirmed
+# to support it.
+export XDS_CLIENT_TLS_MIN_VERSION="${XDS_CLIENT_TLS_MIN_VERSION:-TLS1_2}"
+export XDS_CLIENT_TLS_MAX_VERSION="${XDS_CLIENT_TLS_MAX_VERSION:-TLS1_3}"
+export XDS_CLIENT_TLS_CIPHERS="${XDS_CLIENT_TLS_CIPHERS:-}"
+export XDS_CLIENT_TLS_ECDH_CURVES="${XDS_CLIENT_TLS_ECDH_CURVES:-X25519,P-256}"
+
+# Expected identity of gateway-controller's xDS server certificate. Unlike the
+# policy-engine's Go xDS client (crypto/tls verifies the server cert's hostname
+# against the dialed address by default), Envoy's UpstreamTlsContext only
+# chains the peer cert to trusted_ca unless a SAN match is configured
+# explicitly -- without this, any cert signed by that CA would be accepted,
+# not just gateway-controller's. Defaults to XDS_SERVER_HOST (the same host
+# already used to dial) so out-of-the-box behavior matches the policy-engine
+# xDS client; override XDS_CLIENT_TLS_SAN when the controller's cert presents
+# a different DNS SAN, or a SPIFFE URI SAN (set XDS_CLIENT_TLS_SAN_TYPE=URI).
+export XDS_CLIENT_TLS_SAN_TYPE="${XDS_CLIENT_TLS_SAN_TYPE:-DNS}"
+export XDS_CLIENT_TLS_SAN="${XDS_CLIENT_TLS_SAN:-${XDS_SERVER_HOST}}"
+
 # Policy Engine xDS address
 PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
 
@@ -177,6 +214,87 @@ log "  Python Timeout: ${PYTHON_POLICY_TIMEOUT}s"
 # Cleanup stale sockets from previous runs
 rm -f "${POLICY_ENGINE_SOCKET}"
 rm -f "${PYTHON_EXECUTOR_SOCKET}"
+
+# csv_to_json_array converts "a,b,c" into a JSON array ["a","b","c"],
+# trimming whitespace around each element; empty/blank input yields [].
+# Used to render XDS_CLIENT_TLS_CIPHERS/ECDH_CURVES (this repo's comma-
+# separated convention) into Envoy's cipher_suites/ecdh_curves list fields.
+csv_to_json_array() {
+    local input="$1" out="[" first=true part
+    IFS=',' read -ra parts <<< "$input"
+    for part in "${parts[@]}"; do
+        part="$(echo "${part}" | xargs)"
+        [ -z "$part" ] && continue
+        if [ "$first" = true ]; then first=false; else out+=", "; fi
+        out+="\"${part}\""
+    done
+    out+="]"
+    echo "$out"
+}
+
+# envoy_tls_version maps this repo's internal TLS version vocabulary
+# ("TLS1_2", shared with gateway-controller's Go-side TLS config for
+# consistency) to Envoy's own enum names ("TLSv1_2").
+envoy_tls_version() {
+    case "$1" in
+        TLS1_0) echo "TLSv1_0" ;;
+        TLS1_1) echo "TLSv1_1" ;;
+        TLS1_2) echo "TLSv1_2" ;;
+        TLS1_3) echo "TLSv1_3" ;;
+        *)
+            log "FATAL: unrecognized TLS version '$1' (expected one of TLS1_0, TLS1_1, TLS1_2, TLS1_3)"
+            exit 1
+            ;;
+    esac
+}
+
+# Build the xds_cluster transport_socket value config-override.yaml
+# substitutes in. `null` (== field not present, once Envoy parses the YAML)
+# keeps xds_cluster plaintext by default; a flow-style (JSON-like)
+# UpstreamTlsContext mapping is used instead when XDS_TLS_ENABLED=true, kept
+# on one line so config-override.yaml stays valid YAML both before and after
+# envsubst. Cert/key/CA are referenced by filename, read directly from disk
+# by Envoy -- never embedded inline in this config. tls_params carries the
+# same PQC-capable ecdh_curves preference (X25519MLKEM768 opt-in) as
+# gateway-controller's Go-side xDS TLS config -- see XDS_CLIENT_TLS_ECDH_CURVES
+# above. cipher_suites is only emitted when XDS_CLIENT_TLS_CIPHERS is
+# non-empty; omitted, Envoy/BoringSSL's own default suite set/order applies
+# (and only affects TLS 1.2 and below -- TLS 1.3 suite selection is fixed).
+if [ "${XDS_TLS_ENABLED}" = "true" ]; then
+    if [ -z "${XDS_CLIENT_CERT_PATH}" ] || [ -z "${XDS_CLIENT_KEY_PATH}" ] || [ -z "${XDS_CLIENT_CA_PATH}" ]; then
+        log "FATAL: XDS_TLS_ENABLED=true requires XDS_CLIENT_CERT_PATH, XDS_CLIENT_KEY_PATH, and XDS_CLIENT_CA_PATH to all be set"
+        exit 1
+    fi
+    case "${XDS_CLIENT_TLS_SAN_TYPE}" in
+        DNS|URI) ;;
+        *)
+            log "FATAL: unrecognized XDS_CLIENT_TLS_SAN_TYPE '${XDS_CLIENT_TLS_SAN_TYPE}' (expected DNS or URI)"
+            exit 1
+            ;;
+    esac
+    if [ -z "${XDS_CLIENT_TLS_SAN}" ]; then
+        log "FATAL: XDS_TLS_ENABLED=true requires XDS_CLIENT_TLS_SAN (or XDS_SERVER_HOST) to identify the expected controller certificate"
+        exit 1
+    fi
+    XDS_TLS_PARAMS="tls_params: {tls_minimum_protocol_version: $(envoy_tls_version "${XDS_CLIENT_TLS_MIN_VERSION}"), tls_maximum_protocol_version: $(envoy_tls_version "${XDS_CLIENT_TLS_MAX_VERSION}"), ecdh_curves: $(csv_to_json_array "${XDS_CLIENT_TLS_ECDH_CURVES}")"
+    if [ -n "${XDS_CLIENT_TLS_CIPHERS}" ]; then
+        XDS_TLS_PARAMS="${XDS_TLS_PARAMS}, cipher_suites: $(csv_to_json_array "${XDS_CLIENT_TLS_CIPHERS}")"
+    fi
+    XDS_TLS_PARAMS="${XDS_TLS_PARAMS}}"
+
+    # match_typed_subject_alt_names enforces the connected peer is actually
+    # gateway-controller, not merely any cert signed by the same trusted_ca.
+    # sni is only meaningful (and only sent) for the DNS SAN case.
+    XDS_SAN_MATCHER="validation_context: {trusted_ca: {filename: \"${XDS_CLIENT_CA_PATH}\"}, match_typed_subject_alt_names: [{san_type: ${XDS_CLIENT_TLS_SAN_TYPE}, matcher: {exact: \"${XDS_CLIENT_TLS_SAN}\"}}]}"
+    XDS_SNI_FIELD=""
+    if [ "${XDS_CLIENT_TLS_SAN_TYPE}" = "DNS" ]; then
+        XDS_SNI_FIELD=", sni: \"${XDS_CLIENT_TLS_SAN}\""
+    fi
+
+    export XDS_CLUSTER_TRANSPORT_SOCKET="{name: envoy.transport_sockets.tls, typed_config: {\"@type\": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext, common_tls_context: {${XDS_TLS_PARAMS}, tls_certificates: [{certificate_chain: {filename: \"${XDS_CLIENT_CERT_PATH}\"}, private_key: {filename: \"${XDS_CLIENT_KEY_PATH}\"}}], ${XDS_SAN_MATCHER}}${XDS_SNI_FIELD}}}"
+else
+    export XDS_CLUSTER_TRANSPORT_SOCKET="null"
+fi
 
 # Generate Envoy config override by substituting environment variables
 CONFIG_OVERRIDE=$(envsubst < /etc/envoy/config-override.yaml)
