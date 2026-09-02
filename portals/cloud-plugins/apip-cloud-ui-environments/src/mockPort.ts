@@ -30,7 +30,15 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 /** Builds a fresh in-memory port, optionally seeded with environments. */
 export function createMockEnvironmentPort(seed?: CloudEnvironment[]): EnvironmentPort {
   let seq = 1;
-  const nextId = (prefix: string) => `${prefix}-${seq++}`;
+  // Skips any candidate already present in `environments` — guards against a
+  // caller-supplied `seed` that happens to contain an `env-<n>`-shaped id.
+  const nextId = (prefix: string) => {
+    let candidate: string;
+    do {
+      candidate = `${prefix}-${seq++}`;
+    } while (environments.some((e) => e.id === candidate));
+    return candidate;
+  };
   const nowIso = () => new Date().toISOString();
   const environments: CloudEnvironment[] =
     seed ?? [

@@ -46,6 +46,7 @@ export default function EnvironmentsList() {
   const [isProduction, setIsProduction] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CloudEnvironment | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -75,11 +76,13 @@ export default function EnvironmentsList() {
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
       await remove(deleteTarget.id);
     } catch {
       // error surfaced via host.notify in the hook
     } finally {
+      setIsDeleting(false);
       setDeleteTarget(null);
     }
   };
@@ -236,15 +239,14 @@ export default function EnvironmentsList() {
         <DialogTitle>Delete Environment</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete <strong>{deleteTarget?.displayName}</strong>? Any
-            gateway bindings to this environment will be removed.
+            Are you sure you want to delete <strong>{deleteTarget?.displayName}</strong>?
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button variant="outlined" color="secondary" onClick={() => setDeleteTarget(null)}>
             Cancel
           </Button>
-          <Button color="error" onClick={handleDeleteConfirm}>
+          <Button color="error" disabled={isDeleting} onClick={handleDeleteConfirm}>
             Delete
           </Button>
         </DialogActions>
