@@ -21,6 +21,7 @@ import {
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
+import { filterExtensionsForRuntime } from '../runtimeFlags';
 
 /**
  * Cloud features registered for the api-control-plane host. All live in this
@@ -98,7 +99,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
  * - `environments` is nested under Settings via the `settings.project.tabs`
  *   slot (`apip-cloud-ui-environments-new`, shared with ai-workspace).
  * - `insights` registers org/project sidebar Moesif embeds and hides the
- *   built-in Insights parent outside API scope when loaded.
+ *   built-in Insights parent outside API scope when loaded. Gated on
+ *   `cloudProxyEnabled` via `filterExtensionsForRuntime`.
  */
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] =
   [
@@ -171,5 +173,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
     }),
   ];
 
-export const cloudExtensions = getCloudExtensions(cloudPluginFeatures);
+export const cloudExtensions = filterExtensionsForRuntime(
+  getCloudExtensions(cloudPluginFeatures)
+);
 export type { ApiControlPlaneExtension };

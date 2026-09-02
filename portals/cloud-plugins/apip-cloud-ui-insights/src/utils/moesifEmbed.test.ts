@@ -155,4 +155,49 @@ describe('analyticsApi', () => {
       projectName: 'New Project',
     });
   });
+
+  it('resolveProjectScope matches project id when handler differs', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          id: 'proj-uuid',
+          handler: 'orders',
+          uuid: 'proj-uuid',
+          displayName: 'Orders',
+        }),
+      }))
+    );
+
+    const { resolveProjectScope } = await import('../api/analyticsApi');
+    await expect(resolveProjectScope('default', 'proj-uuid')).resolves.toEqual({
+      projectId: 'proj-uuid',
+      projectName: 'Orders',
+    });
+  });
+
+  it('resolveProjectScope sends Accept and X-Org-Id headers', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        id: 'proj-uuid',
+        displayName: 'Orders',
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { resolveProjectScope } = await import('../api/analyticsApi');
+    await resolveProjectScope('default', 'proj-uuid');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/projects/proj-uuid'),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          accept: 'application/json',
+          'X-Org-Id': 'default',
+        }),
+      })
+    );
+  });
 });

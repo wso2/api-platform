@@ -26,15 +26,29 @@ export const MOESIF_EMBEDDED_POST_MESSAGE_TYPES = {
   REFRESH_TOKEN: 'REFRESH_TOKEN',
 } as const;
 
-/** Serialized origin for postMessage targetOrigin and MessageEvent.origin checks. */
-export const resolveMoesifEmbeddingOrigin = (moesifAppUrl: string): string =>
-  new URL(moesifAppUrl).origin;
-
 /** Known Moesif wrap/basic hosts — reject misconfigured runtime URLs. */
 export const ALLOWED_MOESIF_ORIGINS = new Set([
   'https://www.moesif.com',
   'https://web-dev.moesif.com',
 ]);
+
+/** Serialized origin for postMessage targetOrigin and MessageEvent.origin checks. */
+export const resolveMoesifEmbeddingOrigin = (moesifAppUrl: string): string =>
+  new URL(moesifAppUrl).origin;
+
+/** Return configuredUrl when it is HTTPS and on the Moesif allowlist. */
+export const pickAllowlistedMoesifAppUrl = (
+  configuredUrl: string
+): string | undefined => {
+  try {
+    const parsed = new URL(configuredUrl);
+    if (parsed.protocol !== 'https:') return undefined;
+    if (!ALLOWED_MOESIF_ORIGINS.has(parsed.origin)) return undefined;
+    return parsed.origin;
+  } catch {
+    return undefined;
+  }
+};
 
 /**
  * Return a trusted Moesif app base URL (HTTPS + allowlisted origin).
@@ -43,20 +57,10 @@ export const ALLOWED_MOESIF_ORIGINS = new Set([
 export const resolveTrustedMoesifAppUrl = (
   configuredUrl: string,
   fallbackUrl: string
-): string => {
-  const pick = (candidate: string) => {
-    try {
-      const parsed = new URL(candidate);
-      if (parsed.protocol !== 'https:') return undefined;
-      if (!ALLOWED_MOESIF_ORIGINS.has(parsed.origin)) return undefined;
-      return parsed.origin;
-    } catch {
-      return undefined;
-    }
-  };
-
-  return pick(configuredUrl) ?? pick(fallbackUrl) ?? 'https://web-dev.moesif.com';
-};
+): string =>
+  pickAllowlistedMoesifAppUrl(configuredUrl) ??
+  pickAllowlistedMoesifAppUrl(fallbackUrl) ??
+  'https://web-dev.moesif.com';
 
 /**
  * Org-level wrap/basic iframe.

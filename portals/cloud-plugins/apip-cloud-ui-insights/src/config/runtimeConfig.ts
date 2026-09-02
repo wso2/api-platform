@@ -18,14 +18,14 @@
 
 /// <reference path="./vite-env.d.ts" />
 
-import { resolveTrustedMoesifAppUrl } from '../utils/moesifEmbed';
+import { pickAllowlistedMoesifAppUrl } from '../utils/moesifEmbed';
 
 export type InsightsRuntimeConfig = {
   /** Same-origin BFF proxy prefix, e.g. "/proxy". */
   platformApiBaseUrl: string;
   platformApiVersion: string;
-  /** Moesif wrap host (iframe postMessage origin). */
-  moesifAppUrl: string;
+  /** Moesif wrap host (iframe postMessage origin). Undefined when not configured. */
+  moesifAppUrl?: string;
 };
 
 type LegacyWindowConfig = Partial<{
@@ -37,7 +37,6 @@ type LegacyWindowConfig = Partial<{
   MOESIF_BASIC_INSIGHTS_URL: string;
   moesifAppUrl: string;
   moesifBasicInsightsUrl: string;
-  environmentName: string;
 }>;
 
 const fromWindow = (): LegacyWindowConfig => {
@@ -51,19 +50,6 @@ const fromWindow = (): LegacyWindowConfig => {
   };
 };
 
-const isProductionEnvironment = () => {
-  const env =
-    fromWindow().environmentName ??
-    import.meta.env.VITE_ENVIRONMENT_NAME ??
-    'local';
-  return env === 'production' || env === 'stage';
-};
-
-const defaultMoesifAppUrl = () =>
-  isProductionEnvironment()
-    ? 'https://www.moesif.com'
-    : 'https://web-dev.moesif.com';
-
 const configuredMoesifAppUrl = () =>
   fromWindow().MOESIF_APP_URL ||
   fromWindow().MOESIF_BASIC_INSIGHTS_URL ||
@@ -72,6 +58,12 @@ const configuredMoesifAppUrl = () =>
   import.meta.env.VITE_MOESIF_APP_URL ||
   import.meta.env.VITE_MOESIF_BASIC_INSIGHTS_URL ||
   '';
+
+const resolveInsightsMoesifAppUrl = (): string | undefined => {
+  const configured = configuredMoesifAppUrl().trim();
+  if (!configured) return undefined;
+  return pickAllowlistedMoesifAppUrl(configured);
+};
 
 export const insightsRuntimeConfig: InsightsRuntimeConfig = {
   platformApiBaseUrl:
@@ -84,10 +76,7 @@ export const insightsRuntimeConfig: InsightsRuntimeConfig = {
     fromWindow().platformApiVersion ||
     import.meta.env.VITE_PLATFORM_API_VERSION ||
     'v0.9',
-  moesifAppUrl: resolveTrustedMoesifAppUrl(
-    configuredMoesifAppUrl() || defaultMoesifAppUrl(),
-    defaultMoesifAppUrl()
-  ),
+  moesifAppUrl: resolveInsightsMoesifAppUrl(),
 };
 
 export const platformApiRoot = () => {

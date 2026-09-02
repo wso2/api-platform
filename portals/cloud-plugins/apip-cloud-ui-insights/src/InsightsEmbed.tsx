@@ -56,11 +56,12 @@ export type InsightsEmbedProps = {
  * Does not wrap in `PageContent` — API Control Plane's AppLayout already
  * provides that around the route outlet.
  */
-const InsightsEmbed: FC<InsightsEmbedProps> = ({ scope }) => {
+const InsightsEmbedConfigured: FC<
+  InsightsEmbedProps & { moesifAppUrl: string }
+> = ({ moesifAppUrl, scope }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tokenRef = useRef<string | null>(null);
 
-  const moesifAppUrl = insightsRuntimeConfig.moesifAppUrl;
   const embeddingOrigin = resolveMoesifEmbeddingOrigin(moesifAppUrl);
 
   const iframeSrc = useMemo(() => {
@@ -312,6 +313,36 @@ const InsightsEmbed: FC<InsightsEmbedProps> = ({ scope }) => {
       )}
     </Box>
   );
+};
+
+const InsightsEmbed: FC<InsightsEmbedProps> = (props) => {
+  const moesifAppUrl = insightsRuntimeConfig.moesifAppUrl;
+  if (!moesifAppUrl) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(100dvh - 13rem)',
+          minHeight: 480,
+          overflow: 'hidden',
+          width: '100%',
+        }}
+      >
+        <Box sx={{ flexShrink: 0 }}>
+          <PageTitle>
+            <PageTitle.Header>Insights</PageTitle.Header>
+          </PageTitle>
+        </Box>
+        <ErrorState
+          message="Insights is not configured for this deployment."
+          title="Unable to load Insights"
+        />
+      </Box>
+    );
+  }
+
+  return <InsightsEmbedConfigured {...props} moesifAppUrl={moesifAppUrl} />;
 };
 
 export default InsightsEmbed;

@@ -234,7 +234,8 @@ describe('host-injected sidebar extensions', () => {
       id: 'organization-insights',
       label: 'Insights',
       level: 'organization',
-      order: 900,
+      order: 60,
+      group: 'api',
       render: () => <div>Cloud Insights</div>,
       routePath: 'insights',
       slot: 'sidebar.organization',
@@ -284,7 +285,8 @@ describe('host-injected sidebar extensions', () => {
       id: 'organization-insights',
       label: 'Insights',
       level: 'organization',
-      order: 900,
+      order: 60,
+      group: 'api',
       render: () => <div>Cloud Insights</div>,
       routePath: 'insights',
       slot: 'sidebar.organization',
@@ -322,5 +324,13 @@ describe('host-injected sidebar extensions', () => {
 
     expect(items.find((entry) => entry.id === 'insights')).toBeDefined();
     expect(items.find((entry) => entry.id === 'organization-insights')).toBeUndefined();
+  });
+
+  it('keeps built-in Insights at org scope when no cloud Insights extensions are registered', () => {
+    const items = itemsAt(atOrg(), routes.organizationHome(ORG));
+
+    expect(items.find((entry) => entry.id === 'insights')).toBeDefined();
+    expect(items.find((entry) => entry.id === 'organization-insights')).toBeUndefined();
+    expect(items.find((entry) => entry.id === 'project-insights')).toBeUndefined();
   });
 });

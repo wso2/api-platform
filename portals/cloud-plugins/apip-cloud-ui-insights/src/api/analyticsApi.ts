@@ -60,12 +60,12 @@ const fetchJson = async <T>(
   init?: RequestInit
 ): Promise<T> => {
   const response = await fetch(url, {
+    ...init,
     credentials: 'include',
     headers: {
       accept: 'application/json',
       ...(init?.headers ?? {}),
     },
-    ...init,
   });
   return readJson<T>(response);
 };
@@ -94,9 +94,9 @@ const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 
 const pickProjectHandle = (project: ProjectRecord) =>
+  project.id?.trim() ||
   project.handler?.trim() ||
   project.handle?.trim() ||
-  project.id?.trim() ||
   '';
 
 const pickProjectId = (project: ProjectRecord) =>

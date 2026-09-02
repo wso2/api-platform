@@ -40,10 +40,18 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 	// false client-side) for every deployment that doesn't configure one —
 	// every standalone deployment today.
 	for _, u := range cfg.ControlPlane.Upstreams {
-		if u.Name == "billing" {
+		switch u.Name {
+		case "billing":
 			out["billingProxyEnabled"] = "true"
-			break
+		case "cloud":
+			out["cloudProxyEnabled"] = "true"
 		}
+	}
+
+	// Moesif wrap/basic iframe origin for cloud Insights embeds. Emitted
+	// explicitly so the SPA never guesses from environmentName.
+	if cfg.ControlPlane.MoesifAppURL != "" {
+		out["moesifAppUrl"] = cfg.ControlPlane.MoesifAppURL
 	}
 
 	return out

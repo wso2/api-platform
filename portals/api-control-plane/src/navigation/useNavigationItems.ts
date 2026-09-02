@@ -55,15 +55,10 @@ const isScopeSatisfied = (
   return true;
 };
 
-/** Cloud plugin ids that replace the built-in Insights parent outside API scope. */
 const CLOUD_INSIGHTS_SIDEBAR_IDS = new Set([
   'organization-insights',
   'project-insights',
 ]);
-
-const builtinInsightsDefinition = navigationRegistry.find(
-  (definition) => definition.id === 'insights'
-);
 
 const hasCloudInsightsSidebar = (extensions: readonly ApiControlPlaneExtension[]) =>
   extensions.some(
@@ -115,11 +110,7 @@ export const useNavigationItems = (): NavigationItem[] => {
             })
           : undefined;
         return {
-          group:
-            CLOUD_INSIGHTS_SIDEBAR_IDS.has(extension.id) &&
-            builtinInsightsDefinition?.group
-              ? builtinInsightsDefinition.group
-              : extension.group,
+          group: extension.group,
           icon: extension.icon,
           id: extension.id,
           isVisible: extension.isVisible,
@@ -131,11 +122,7 @@ export const useNavigationItems = (): NavigationItem[] => {
             // continuing below it — never a partial segment match.
             (pathname === destination ||
               (isDescendantRoute && pathname.startsWith(`${destination}/`))),
-          order:
-            CLOUD_INSIGHTS_SIDEBAR_IDS.has(extension.id) &&
-            builtinInsightsDefinition
-              ? builtinInsightsDefinition.order
-              : extension.order,
+          order: extension.order,
           // A missing project/API no longer makes the item unlinkable: the path
           // degrades to the extension page's scope-less alias, where its own
           // `ScopeGate` collects what's missing. Only a route with no
