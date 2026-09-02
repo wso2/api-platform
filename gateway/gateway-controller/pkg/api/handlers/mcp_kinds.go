@@ -26,8 +26,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -37,7 +39,7 @@ import (
 const mcpManifestContentType = "application/yaml"
 
 // listedResource is one row of a list result. Resource carries the full
-// k8s-shaped body; the flat fields let list_resources render a compact
+// k8s-shaped body; the flat fields let wso2_apip_gw_list_resources render a compact
 // cross-kind inventory without re-parsing it.
 type listedResource struct {
 	ID          string `json:"id"`
@@ -48,15 +50,16 @@ type listedResource struct {
 }
 
 // kindClass splits the registry along the one line the write tools care about:
-// routable kinds take traffic and belong to deploy_api / undeploy_api; config
-// kinds support them and belong to apply_config / delete_config. Read tools
-// accept both.
+// routable kinds take traffic and belong to wso2_apip_gw_deploy_api /
+// wso2_apip_gw_undeploy_api; config kinds support them and belong to
+// wso2_apip_gw_apply_config / wso2_apip_gw_delete_config. Read tools accept
+// both.
 type kindClass int
 
 const (
-	classAny      kindClass = iota // list_resources, get_resource
-	classRoutable                  // deploy_api, undeploy_api
-	classConfig                    // apply_config, delete_config
+	classAny      kindClass = iota // wso2_apip_gw_list_resources, wso2_apip_gw_get_resource
+	classRoutable                  // wso2_apip_gw_deploy_api, wso2_apip_gw_undeploy_api
+	classConfig                    // wso2_apip_gw_apply_config, wso2_apip_gw_delete_config
 )
 
 // kindOps adapts one artifact kind onto the verbs the six tools expose.
@@ -81,6 +84,158 @@ type kindOps struct {
 	// exact matches, which fail silently when a model guesses a value slightly
 	// wrong; returning the full summarised set degrades gracefully instead.
 	List func() ([]listedResource, error)
+
+	// Keys is non-nil only for kinds that bear API keys (RestApi, LlmProvider,
+	// LlmProxy). The four api-key tools refuse any kind whose block is nil,
+	// which is also what keeps a nil dereference impossible when the api-key
+	// service was never wired.
+	Keys *keyOps
+}
+
+// keyOps adapts one key-bearing kind onto the four api-key verbs. Every function
+// takes the verified caller explicitly rather than reading it from a context:
+// APIKeyService scopes each operation on caller.UserID, so making it a required
+// argument means no call site can silently omit it.
+type keyOps struct {
+	Issue  func(parentID string, req api.APIKeyCreationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
+	List   func(parentID string, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
+	Rotate func(parentID, keyName string, req api.APIKeyRegenerationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
+	// Update installs a caller-supplied key value under an existing name —
+	// the external-key-injection operation behind PUT .../{apiKeyName}. It is
+	// the second half of the rotate tool; see rotateIsInjection in mcp_tools.go
+	// for how a call is routed to it rather than to Rotate.
+	Update func(parentID, keyName string, req api.APIKeyCreationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
+	Revoke func(parentID, keyName string, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
+}
+
+// apiKeyOps builds the api-key adapter for one kind. APIKeyService takes Kind as
+// a plain string, so all three key-bearing kinds are this one parameterised
+// block — there is no per-kind api-key code.
+//
+// Kind is always passed explicitly. The REST handlers omit it on three of five
+// operations and lean on the service defaulting to RestApi; that implicit
+// contract is not inherited here, and it would be wrong for the other two kinds.
+func (h *McpHandler) apiKeyOps(kind string) *keyOps {
+	if h.apiKeyService == nil {
+		return nil
+	}
+	return &keyOps{
+		Issue: func(parentID string, req api.APIKeyCreationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error) {
+			result, err := h.apiKeyService.CreateAPIKey(utils.APIKeyCreationParams{
+				Kind:          kind,
+				Handle:        parentID,
+				Request:       req,
+				User:          caller,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return result.Response, nil
+		},
+
+		List: func(parentID string, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error) {
+			result, err := h.apiKeyService.ListAPIKeys(utils.ListAPIKeyParams{
+				Kind:          kind,
+				Handle:        parentID,
+				User:          caller,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			// Already masked by the service.
+			return result.Response, nil
+		},
+
+		Rotate: func(parentID, keyName string, req api.APIKeyRegenerationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error) {
+			result, err := h.apiKeyService.RegenerateAPIKey(utils.APIKeyRegenerationParams{
+				Kind:          kind,
+				Handle:        parentID,
+				APIKeyName:    keyName,
+				Request:       req,
+				User:          caller,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return result.Response, nil
+		},
+
+		Update: func(parentID, keyName string, req api.APIKeyCreationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error) {
+			result, err := h.apiKeyService.UpdateAPIKey(utils.APIKeyUpdateParams{
+				Kind:          kind,
+				Handle:        parentID,
+				APIKeyName:    keyName,
+				Request:       req,
+				User:          caller,
+				CorrelationID: correlationID,
+				Logger:        log,
+				// As on Revoke: explicit though it is the zero value, because
+				// this flag suppresses the creator check and only the
+				// platform-api event path is a pre-validated origin.
+				TrustedOrigin: false,
+			})
+			if err != nil {
+				return nil, err
+			}
+			// Masked, not plaintext — UpdateAPIKey returns the masked form.
+			return result.Response, nil
+		},
+
+		Revoke: func(parentID, keyName string, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error) {
+			result, err := h.apiKeyService.RevokeAPIKey(utils.APIKeyRevocationParams{
+				Kind:          kind,
+				Handle:        parentID,
+				APIKeyName:    keyName,
+				User:          caller,
+				CorrelationID: correlationID,
+				Logger:        log,
+				// Explicit though it is the zero value: this flag is what
+				// suppresses the creator check, and it must never be set on a
+				// caller-originated request. Only the platform-api event path
+				// (RevokeExternalAPIKeyFromEvent) is a pre-validated origin.
+				TrustedOrigin: false,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return result.Response, nil
+		},
+	}
+}
+
+// resolveKeyBearing resolves a kind and asserts it bears API keys, so the four
+// key tools reject Mcp, LlmProviderTemplate and Secret with a message naming the
+// kinds that would have worked.
+func (h *McpHandler) resolveKeyBearing(raw string) (*kindOps, error) {
+	ops, err := h.resolveKind(raw, classAny)
+	if err != nil {
+		return nil, err
+	}
+	if ops.Keys == nil {
+		return nil, fmt.Errorf(
+			"kind %q does not have API keys; the API key tools accept: %s",
+			ops.Kind, strings.Join(h.keyBearingKinds(), ", "))
+	}
+	return ops, nil
+}
+
+// keyBearingKinds lists the kinds with an api-key block, sorted, for error
+// messages.
+func (h *McpHandler) keyBearingKinds() []string {
+	out := make([]string, 0, len(h.kinds))
+	for kind, ops := range h.kinds {
+		if ops.Keys != nil {
+			out = append(out, kind)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // kindAliases maps a normalised (lowercased, separator-stripped) kind string to
@@ -95,6 +250,7 @@ var kindAliases = map[string]string{
 	"llmproxy":            models.KindLlmProxy,
 	"llmprovider":         models.KindLlmProvider,
 	"llmprovidertemplate": models.KindLlmProviderTemplate,
+	"secret":              models.KindSecret,
 }
 
 var kindSeparatorStripper = strings.NewReplacer("-", "", "_", "", " ", "")
@@ -157,6 +313,11 @@ func readManifestEnvelope(manifest []byte) (manifestEnvelope, error) {
 
 // buildKindRegistry wires every supported kind to its service calls. Called once
 // from newMcpHandler.
+//
+// A constructor returns nil when the service backing that kind was not wired
+// (secrets need an encryption provider, which not every deployment configures).
+// Skipping the entry means the kind is simply not advertised, rather than a nil
+// dereference the first time a cross-kind list touches it.
 func (h *McpHandler) buildKindRegistry() map[string]*kindOps {
 	registry := make(map[string]*kindOps)
 	for _, ops := range []*kindOps{
@@ -165,7 +326,11 @@ func (h *McpHandler) buildKindRegistry() map[string]*kindOps {
 		h.llmProxyOps(),
 		h.llmProviderOps(),
 		h.llmProviderTemplateOps(),
+		h.secretOps(),
 	} {
+		if ops == nil {
+			continue
+		}
 		registry[ops.Kind] = ops
 	}
 	return registry
@@ -186,11 +351,15 @@ func (h *McpHandler) resolveKind(raw string, class kindClass) (*kindOps, error) 
 	switch {
 	case class == classRoutable && !ops.Routable:
 		return nil, fmt.Errorf(
-			"kind %q is a supporting configuration, not a routable resource; use apply_config or delete_config for it. deploy_api and undeploy_api accept: %s",
+			"kind %q is a supporting configuration, not a routable resource; "+
+				"use wso2_apip_gw_apply_config or wso2_apip_gw_delete_config for it. "+
+				"wso2_apip_gw_deploy_api and wso2_apip_gw_undeploy_api accept: %s",
 			kind, strings.Join(h.kindsInClass(classRoutable), ", "))
 	case class == classConfig && ops.Routable:
 		return nil, fmt.Errorf(
-			"kind %q is a routable resource, not a supporting configuration; use deploy_api or undeploy_api for it. apply_config and delete_config accept: %s",
+			"kind %q is a routable resource, not a supporting configuration; "+
+				"use wso2_apip_gw_deploy_api or wso2_apip_gw_undeploy_api for it. "+
+				"wso2_apip_gw_apply_config and wso2_apip_gw_delete_config accept: %s",
 			kind, strings.Join(h.kindsInClass(classConfig), ", "))
 	}
 	return ops, nil
@@ -218,6 +387,7 @@ func (h *McpHandler) restAPIOps() *kindOps {
 		Kind:       models.KindRestApi,
 		Routable:   true,
 		Collection: "/rest-apis",
+		Keys:       h.apiKeyOps(models.KindRestApi),
 
 		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
 			result, err := h.restAPIService.Create(restapi.CreateParams{
@@ -358,6 +528,7 @@ func (h *McpHandler) llmProxyOps() *kindOps {
 		Kind:       models.KindLlmProxy,
 		Routable:   true,
 		Collection: "/llm-proxies",
+		Keys:       h.apiKeyOps(models.KindLlmProxy),
 
 		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
 			result, err := h.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
@@ -424,6 +595,7 @@ func (h *McpHandler) llmProviderOps() *kindOps {
 		Kind:       models.KindLlmProvider,
 		Routable:   true,
 		Collection: "/llm-providers",
+		Keys:       h.apiKeyOps(models.KindLlmProvider),
 
 		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
 			result, err := h.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
@@ -485,8 +657,9 @@ func (h *McpHandler) llmProviderOps() *kindOps {
 }
 
 // llmProviderTemplateOps is non-routable: templates are supporting config, so
-// deploy_api / undeploy_api reject them and apply_config / delete_config own
-// their write path instead.
+// wso2_apip_gw_deploy_api / wso2_apip_gw_undeploy_api reject them and
+// wso2_apip_gw_apply_config / wso2_apip_gw_delete_config own their write path
+// instead.
 func (h *McpHandler) llmProviderTemplateOps() *kindOps {
 	return &kindOps{
 		Kind:       models.KindLlmProviderTemplate,
@@ -542,6 +715,93 @@ func (h *McpHandler) llmProviderTemplateOps() *kindOps {
 					DisplayName: tmpl.Configuration.Spec.DisplayName,
 					Version:     derefString(tmpl.Configuration.Spec.Version),
 					Resource:    buildTemplateResourceResponse(tmpl),
+				})
+			}
+			return rows, nil
+		},
+	}
+}
+
+// secretOps is non-routable: a Secret is supporting config, so it belongs to
+// wso2_apip_gw_apply_config / wso2_apip_gw_delete_config alongside
+// LlmProviderTemplate.
+//
+// Returns nil when no secret service is wired (the gateway has no encryption
+// provider configured), which drops the kind from the registry entirely.
+func (h *McpHandler) secretOps() *kindOps {
+	if h.secretService == nil {
+		return nil
+	}
+	return &kindOps{
+		Kind:       models.KindSecret,
+		Routable:   false,
+		Collection: "/secrets",
+
+		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
+			// No handle argument: CreateSecret takes the handle from the
+			// manifest's metadata.name, the same way the REST handler does.
+			secret, err := h.secretService.CreateSecret(secrets.SecretParams{
+				Data:          manifest,
+				ContentType:   mcpManifestContentType,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return buildSecretResourceResponse(secret, false), nil
+		},
+
+		Update: func(handle string, manifest []byte, correlationID string, log *slog.Logger) (any, error) {
+			secret, err := h.secretService.UpdateSecret(handle, secrets.SecretParams{
+				Data:          manifest,
+				ContentType:   mcpManifestContentType,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return buildSecretResourceResponse(secret, false), nil
+		},
+
+		// SecretService.Delete takes no logger; the correlation ID is the only
+		// context it records.
+		Delete: func(handle, correlationID string, _ *slog.Logger) error {
+			return h.secretService.Delete(handle, correlationID)
+		},
+
+		Get: func(handle string) (any, error) {
+			// Empty correlation ID: it is only a log field on this method.
+			secret, err := h.secretService.Get(handle, "")
+			if err != nil {
+				return nil, err
+			}
+			// includeValue=true matches GET /secrets/{id}
+			// (secret_handler.go), which returns the plaintext so a caller can
+			// read back what it wrote. MCP mirrors the REST API rather than
+			// applying its own policy, so a secret read here carries the value
+			// too — treat an MCP transcript as credential-bearing.
+			//
+			// Create and Update pass false, and List returns SecretMeta which
+			// has no value field at all; both also match REST.
+			return buildSecretResourceResponse(secret, true), nil
+		},
+
+		List: func() ([]listedResource, error) {
+			metas, err := h.secretService.GetSecrets("")
+			if err != nil {
+				return nil, err
+			}
+			// Built by hand rather than via storedConfigRow: secrets are not
+			// StoredConfigs and carry no version or deployment state.
+			// SecretMeta structurally cannot hold a plaintext value.
+			rows := make([]listedResource, 0, len(metas))
+			for _, meta := range metas {
+				rows = append(rows, listedResource{
+					ID:          meta.Handle,
+					DisplayName: meta.DisplayName,
+					Resource:    buildSecretMetaResourceResponse(meta),
 				})
 			}
 			return rows, nil

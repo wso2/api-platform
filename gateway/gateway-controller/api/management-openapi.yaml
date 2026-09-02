@@ -21,7 +21,7 @@ paths:
       summary: Model Context Protocol endpoint
       description: Single MCP endpoint implementing the Streamable HTTP transport of the Model Context Protocol (2026-07-28).
       operationId: handleMcp
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin, developer, consumer]
       tags:
         - MCP
       requestBody:
