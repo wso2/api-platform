@@ -16,12 +16,19 @@
  * under the License.
  */
 
-import { Alert, Box, CodeBlock, FormControlLabel, Stack, Switch, Typography } from '@wso2/oxygen-ui';
+import {
+  Alert,
+  Box,
+  CodeBlock,
+  FormControlLabel,
+  Stack,
+  Switch,
+  Typography,
+} from '@wso2/oxygen-ui';
 import { useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import SwaggerUI from 'swagger-ui-react';
-import 'swagger-ui-react/swagger-ui.css';
 
+import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
 import { ResourcePreviewPlaceholder } from '../../components/ResourcePreviewPlaceholder';
 import { serializeSpec, type SpecDocument } from '../utils/specText';
 import type { SpecIssue } from '../utils/specValidation';
@@ -48,15 +55,6 @@ const messages = defineMessages({
  */
 const PANE_HEIGHT = 'clamp(420px, calc(100vh - 260px), 560px)';
 
-/** Hide Swagger UI chrome we don't use (top bar and info). */
-const HideTopBarPlugin = () => ({
-  components: { Topbar: () => null },
-});
-
-const HideInfoPlugin = () => ({
-  components: { info: () => null },
-});
-
 export type ApiResourcesPreviewProps = {
   /**
    * Adopts a definition edited in the Source view, alongside the warnings its
@@ -65,7 +63,7 @@ export type ApiResourcesPreviewProps = {
    */
   onSpecChange?: (spec: SpecDocument, warnings: SpecIssue[]) => void;
   /**
-   * The fetched definition, as a parsed object rather than a URL, so Swagger UI
+   * The fetched definition, as a parsed object rather than a URL, so the viewer
    * never re-downloads the document and the Source view prints the same object
    * the resources are drawn from. It is not a guarantee of no network activity:
    * swagger-client resolves `$ref`s while rendering, and `specValidation`
@@ -86,11 +84,7 @@ export type ApiResourcesPreviewProps = {
  * Right-hand pane of the contract step: the resources of the fetched
  * definition, or an empty state saying that is what will land here.
  */
-export const ApiResourcesPreview = ({
-  onSpecChange,
-  spec,
-  warnings,
-}: ApiResourcesPreviewProps) => {
+export const ApiResourcesPreview = ({ onSpecChange, spec, warnings }: ApiResourcesPreviewProps) => {
   const intl = useIntl();
   const [showSource, setShowSource] = useState(false);
   const hasContract = spec !== undefined;
@@ -98,10 +92,7 @@ export const ApiResourcesPreview = ({
 
   // Serialize once per spec; stringify is expensive and unchanged per view.
   // Use JSON since `CodeBlock` highlights it (this is parsed content, not upload bytes).
-  const sourceText = useMemo(
-    () => (spec === undefined ? '' : serializeSpec(spec, 'json')),
-    [spec],
-  );
+  const sourceText = useMemo(() => (spec === undefined ? '' : serializeSpec(spec, 'json')), [spec]);
 
   return (
     <Box
@@ -177,25 +168,25 @@ export const ApiResourcesPreview = ({
         {hasContract && !showSource ? (
           <Box
             sx={{
-              // Swagger UI ships its own canvas and gutters; keep both from
-              // fighting the pane's background and padding.
+              // Swagger UI ships its own canvas; keep it from fighting the
+              // pane's background.
               '& .swagger-ui': { bgcolor: 'transparent' },
-              '& .swagger-ui .wrapper': { px: 0 },
-              // The servers/authorize strip belongs to a try-it-out console,
-              // which this preview is not.
-              '& .swagger-ui .scheme-container': { display: 'none' },
             }}
           >
-            <SwaggerUI
-              defaultModelExpandDepth={0}
-              displayOperationId
-              displayRequestDuration
-              filter
-              plugins={[HideTopBarPlugin, HideInfoPlugin]}
-              requestSnippetsEnabled
+            {/* The shared viewer, in its read-only shape: the info block and
+                the servers/authorize strip belong to a try-it-out console,
+                which this preview is not, and the wizard has no backend to
+                call yet. Its own resource search replaces Swagger's tag
+                filter — a path/description match reads better in a pane this
+                narrow than a list of tags. */}
+            <SwaggerSpecViewer
+              disableTryOutBtn
+              displayRequestDuration={false}
+              enableResourceSearch
+              hideAuthorizeButton
+              hideInfoSection
+              hideServers
               spec={spec}
-              supportedSubmitMethods={['get']}
-              tryItOutEnabled={false}
             />
           </Box>
         ) : null}

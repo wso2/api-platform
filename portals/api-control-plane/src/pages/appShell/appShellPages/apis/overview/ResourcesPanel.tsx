@@ -16,12 +16,14 @@
  * under the License.
  */
 
-import { Box, Chip, Stack, Typography } from '@wso2/oxygen-ui';
+import { useMemo } from 'react';
+import { Box, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
+import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
 import { ResourcePreviewPlaceholder } from '../components/ResourcePreviewPlaceholder';
-import { methodColor } from '../utils/developEdit';
+import { restApiToOpenApiSpec } from '../utils/operationsToSpec';
 
 const messages = defineMessages({
   empty: {
@@ -44,14 +46,21 @@ const messages = defineMessages({
 });
 
 /**
- * Left panel of the Overview tab (ai-workspace "OpenAPI Resources"): the
- * API's operations in a scrollable bordered box, or — when the definition
- * exposes none — a placeholder showing the shape the list would take.
+ * Left panel of the Overview tab (ai-workspace "OpenAPI Resources"): the API's
+ * operations rendered by the shared spec viewer in a scrollable bordered box,
+ * or — when the definition exposes none — a placeholder showing the shape the
+ * list would take.
+ *
+ * The document the viewer draws is rebuilt from `api.operations`, not fetched:
+ * the platform never stores the definition an API was created from, so method,
+ * path and summary are the whole of what there is to show. See
+ * `utils/operationsToSpec`.
  */
 export function ResourcesPanel({ api }: { api: RestApi }) {
   const intl = useIntl();
   // `operations` is optional on the spec's `RESTAPI`.
   const operations = api.operations ?? [];
+  const spec = useMemo(() => restApiToOpenApiSpec(api), [api]);
 
   return (
     <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -78,39 +87,29 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
             overflowY: 'auto',
             px: 2,
             py: 1,
+            // Swagger UI ships its own canvas; keep it from fighting the
+            // panel's surface.
+            '& .swagger-ui': { bgcolor: 'transparent' },
           }}
         >
-          {operations.map((operation) => (
-            <Stack
-              alignItems="center"
-              direction="row"
-              key={`${operation.request.method}-${operation.request.path}`}
-              spacing={1.5}
-              sx={{
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                py: 1.5,
-                '&:last-child': { borderBottom: 'none' },
-              }}
-            >
-              <Chip
-                color={methodColor(operation.request.method)}
-                label={operation.request.method}
-                size="small"
-                sx={{ fontWeight: 600, minWidth: 68 }}
-              />
-              <Box sx={{ minWidth: 0 }}>
-                <Typography noWrap sx={{ fontFamily: 'monospace', fontSize: 13.5 }}>
-                  {operation.request.path}
-                </Typography>
-                {(operation.description || operation.name) && (
-                  <Typography color="text.secondary" noWrap variant="caption">
-                    {operation.description || operation.name}
-                  </Typography>
-                )}
-              </Box>
-            </Stack>
-          ))}
+          {/* Read-only, and stripped down to what a rebuilt document can
+              honestly show. The info block would repeat the page header; the
+              servers/authorize strip and try-it-out belong to a console, which
+              this panel is not; the responses section would be an empty table,
+              because the platform kept no responses to put in it. Operations
+              carry no tags either, so the lone "default" group header is
+              hidden and the operations read as one flat list. */}
+          <SwaggerSpecViewer
+            disableResponseSection
+            disableTryOutBtn
+            displayRequestDuration={false}
+            enableResourceSearch
+            hideAuthorizeButton
+            hideInfoSection
+            hideServers
+            hideTagHeaders
+            spec={spec}
+          />
         </Box>
       )}
     </Box>

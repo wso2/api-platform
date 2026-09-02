@@ -604,6 +604,24 @@
   "apiControlPlane.components.ErrorFallback.stale.title": {
     "defaultMessage": "A newer version of the console is available"
   },
+  "apiControlPlane.components.SwaggerSpecViewer.allMethods": {
+    "defaultMessage": "All methods",
+    "description": "Option that leaves the resource list unfiltered by HTTP method."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.noResources": {
+    "defaultMessage": "No resources match your search."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.notAllowedTooltip": {
+    "defaultMessage": "This resource is not allowed",
+    "description": "Tooltip on an operation the access-control settings exclude."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.requestUrl": {
+    "defaultMessage": "Request URL",
+    "description": "Heading above the URL a generated request would be sent to."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.searchPlaceholder": {
+    "defaultMessage": "Search resources by path or description"
+  },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
