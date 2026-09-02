@@ -237,6 +237,10 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 		return nil, err
 	}
 
+	// No default to resolve here: spec.a2a.agentCard.public and its mode are both
+	// required, and the validator rejects an empty one, so the raw comparison is
+	// the whole of it. Unlike the protected block, whose absence the transformer
+	// has to read as a mode — see protectedCardPolicyInstance.
 	passthroughCard := a2a.AgentCard.Public.Mode == api.A2APublicAgentCardModePassthrough
 
 	// Upstream credential injection. It rides in every chain whose requests
@@ -273,8 +277,9 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			t.policyDefinitions, t.latestVersions, a2a.OperationConfigs.Policies, policyv1alpha.LevelAPI)
 	}
 
-	// The internal instance an explicitly configured protected Agent Card adds to
-	// the canonical GetExtendedAgentCard chain, and to nothing else.
+	// The internal instance the protected Agent Card adds to the canonical
+	// GetExtendedAgentCard chain, and to nothing else. Always non-nil: an absent
+	// protected block is passthrough, so every Agent's extended card is guarded.
 	protectedCard, protectedCardManaged, err := t.protectedCardPolicyInstance(a2a.AgentCard.Protected)
 	if err != nil {
 		return nil, err
@@ -354,10 +359,11 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 				return nil, fmt.Errorf("policy chain %q for operation %q would be built twice", chainKey, operation)
 			}
 
-			// Exactly one operation's chain differs, and only when the Agent
-			// explicitly configures a protected card. Everything else — including
-			// GetExtendedAgentCard on an Agent that omits the block — is the plain
-			// concatenation above.
+			// Exactly one operation's chain differs, for every Agent: the extended
+			// card is guarded whether or not the block was written out. Everything
+			// else is the plain concatenation above. protectedCard is checked for nil
+			// even though it never is, so a future mode that declines to build an
+			// instance cannot silently dereference one.
 			protectedChain := protectedCard != nil && operation == agentproto.GetExtendedAgentCard
 
 			common := commonOperationPolicies
@@ -745,30 +751,44 @@ func (t *AgentTransformer) agentCardPolicyInstance(
 // proved that a policy bearing an approved name authenticated *this* request
 // anyway.
 //
-// The instance is returned for both modes and its check is unconditional. An
-// Agent that opts into a protected card gets a card that is protected; whether
-// the author also remembered to attach an authentication policy is not a
-// question the answer may depend on, because "no auth policy" would otherwise
-// mean "public extended card" — the exact failure the feature exists to prevent.
+// The instance is returned for every mode and its check is unconditional. An
+// Agent's extended card is protected; whether the author also remembered to
+// attach an authentication policy is not a question the answer may depend on,
+// because "no auth policy" would otherwise mean "public extended card" — the
+// exact failure the feature exists to prevent.
 //
-// A nil instance means the Agent has no explicit protected block at all. That is
-// deliberately not the same as passthrough: it is the behaviour that already
-// shipped, where GetExtendedAgentCard is an ordinary proxied operation with no
-// gateway-added guard.
+// An absent block is passthrough, not "unprotected". The extended card is the
+// more privileged of the two representations by A2A convention — it is where an
+// agent puts the skills it does not advertise publicly — so leaving it open is
+// never the safer reading of an author's silence. Requiring the block to be
+// written out before the guard applies would make protection depend on the
+// author knowing the field exists, which is public by omission: the same failure
+// as forgetting the auth policy, one level up. There is nothing to stay
+// compatible with — the Agent kind and this block landed in the same unreleased
+// line, so no deployed Agent relies on the operation being reachable
+// unauthenticated. An Agent that genuinely wants an open extended card exposes
+// it from the upstream under its own auth, not by omitting a field here.
 func (t *AgentTransformer) protectedCardPolicyInstance(
 	protected *api.A2AProtectedAgentCard,
 ) (*policyenginev1.PolicyInstance, bool, error) {
-	if protected == nil {
-		return nil, false, nil
+	// Resolved through the validator's own helper rather than compared here, so
+	// the two cannot disagree about what an absent block means. Reading it as a
+	// mode instead of returning early also makes the absent case and the explicit
+	// passthrough case build one identical instance rather than two that have to
+	// be kept in agreement.
+	managed := config.EffectiveProtectedCardMode(protected) == api.A2AProtectedAgentCardModeManaged
+
+	var content *api.A2AAgentCardDocument
+	if protected != nil {
+		content = protected.Content
 	}
 
 	// Passthrough carries no content: require an authenticated request, then
 	// forward the operation and let the upstream answer it.
 	parameters := map[string]any{}
-	managed := protected.Mode == api.A2AProtectedAgentCardModeManaged
 
 	if managed {
-		if protected.Content == nil || len(*protected.Content) == 0 {
+		if content == nil || len(*content) == 0 {
 			// Validation rejects a managed card with no content, so this is a
 			// defensive check on a path that should be unreachable. Failing here
 			// rather than degrading to passthrough matters: degrading would proxy
@@ -782,7 +802,7 @@ func (t *AgentTransformer) protectedCardPolicyInstance(
 		// authenticated and carries Cache-Control: no-store, and the JSON-RPC
 		// binding is a POST that cannot take part in the conditional-GET contract
 		// the public route has.
-		body, _, err := agentCardBody(*protected.Content)
+		body, _, err := agentCardBody(*content)
 		if err != nil {
 			return nil, false, err
 		}

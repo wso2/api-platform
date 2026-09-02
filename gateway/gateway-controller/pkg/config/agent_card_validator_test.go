@@ -648,11 +648,12 @@ func TestAgentCard_ContentIsNeverRewritten(t *testing.T) {
 // field rather than the public one. The rules that exist only for this
 // representation are the mode contract and the public card's capability promise.
 
-// An omitted protected block is not a protected card configured as passthrough:
-// it is the behaviour that shipped before protected cards existed, where
-// GetExtendedAgentCard is proxied upstream with no gateway-added guard. An Agent
-// written against that must keep working across a controller upgrade, so the
-// absence has to stay meaningful rather than being normalized into a mode.
+// An omitted protected block is accepted and means passthrough. There is
+// nothing for this function to validate in that case — no fields were written,
+// and passthrough has no requirements of its own — so the absence is not an
+// error. What the default *does* is the transformer's business and is asserted
+// there (TestAgentWithoutProtectedCardIsGuardedAsPassthrough): the extended
+// card is guarded either way.
 func TestProtectedCard_OmittedBlockIsAccepted(t *testing.T) {
 	cfg := validAgent()
 	require.Nil(t, cfg.Spec.A2a.AgentCard.Protected)
@@ -905,11 +906,12 @@ func TestProtectedCard_ManagedPublicCardMustDeclareTheCapability(t *testing.T) {
 		})
 	}
 
-	// The promise is only checked when there is a protected card to promise. An
-	// Agent with no protected block is free to leave the capability out — and a
-	// public card that declares it without a protected block is the author's own
-	// business, since the operation is proxied upstream and the upstream may well
-	// serve one.
+	// The promise is only checked when the author wrote a protected block. The
+	// runtime guard applies to every Agent, but this check must not: an Agent
+	// with no extended card to offer would otherwise be forced to advertise one
+	// just because the operation is guarded. A public card that declares the
+	// capability without a protected block is the author's own business, since
+	// the operation is proxied and the upstream may well serve one.
 	t.Run("not required without a protected block", func(t *testing.T) {
 		cfg := validAgent()
 		assert.Empty(t, NewAgentValidator().Validate(&cfg))

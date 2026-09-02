@@ -4862,17 +4862,22 @@ components:
         and it has no custom path or local policy list, because it is an A2A operation
         rather than a document at a location.
 
-        This block is optional, and omitting it is not the same as configuring
-        `passthrough`. When it is absent, GetExtendedAgentCard is exposed and proxied to
-        the upstream with no gateway-added authentication guard, which is the behaviour
-        Agents written before protected Agent Cards shipped already have.
+        This block is optional, and omitting it is the same as configuring
+        `passthrough`: the extended Agent Card is guarded for every Agent. Writing the
+        block out only chooses how the card is produced — whether the gateway serves a
+        document of its own (`managed`) or forwards the authenticated request
+        (`passthrough`).
 
-        When it is present, the gateway requires the request to have been authenticated by
-        a policy in the Agent's own chain before the card is returned or proxied, and
-        answers 401 otherwise. That applies in both modes and is not configurable: an
-        Agent that declares a protected card but attaches no authentication policy
-        therefore fails closed instead of publishing its extended card. Where
-        authentication sits among the configured policies is the Agent author's choice.
+        The gateway requires the request to have been authenticated by a policy in the
+        Agent's own chain before the card is returned or proxied, and answers 401
+        otherwise. That applies in every mode and is not configurable: an Agent that
+        attaches no authentication policy therefore fails closed instead of publishing its
+        extended card, whether or not it declared this block. Where authentication sits
+        among the configured policies is the Agent author's choice.
+
+        Unlike `public`, which is required and whose `mode` must be stated, this block
+        defaults, because the safe reading of an author's silence about the more
+        privileged of the two representations is to protect it.
 
         Mode-specific rules are enforced at deploy time, not by this schema: `managed`
         requires `content`; `passthrough` accepts neither `content` nor `signing`, because
