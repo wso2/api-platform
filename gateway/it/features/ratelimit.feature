@@ -812,6 +812,84 @@ Feature: Rate Limiting
     When I send 6 GET requests to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "internal-app-1"
     Then the response status code should be 200
 
+  Scenario: authproperty keyExtraction with match restricts a quota to requests with a matching JWT claim
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: ratelimit-authproperty-api
+      spec:
+        displayName: RateLimit AuthProperty API
+        version: v1.0
+        context: /ratelimit-authproperty/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /checkout
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+              - name: advanced-ratelimit
+                version: v1
+                params:
+                  quotas:
+                    - name: guest-and-partner-checkout
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: authproperty
+                          key: app_id
+                          match:
+                            type: regex
+                            value: "^(guest-.*|channel-partner)$"
+      """
+    Then the response should be successful
+
+    # A JWT with a matching app_id claim is counted and enforced
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=guest-42"
+    And I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+    # A different matching app_id claim (exact match) gets its own separate bucket
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=channel-partner"
+    And I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+    # A non-matching app_id claim bypasses the quota entirely - never throttled, no matter how many requests
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=internal-app-1"
+    And I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+
   Scenario: Multiple limits per quota - enforces most restrictive limit
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
