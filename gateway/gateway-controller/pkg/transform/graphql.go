@@ -119,8 +119,17 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 
 	mainRouteKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, "", mainVhost)
 	rdc.Routes[mainRouteKey] = &models.Route{
-		Method:          "POST",
-		Path:            fullPath,
+		Method: "POST",
+		Path:   fullPath,
+		// A GraphQLApi has no operations to derive a per-route path from (see the
+		// package doc above), but leaving this "" makes every request look
+		// operation-less to a request-scoped policy. Some policies — api-key-auth
+		// v1.2.1 among them — treat an empty OperationPath as "missing API details"
+		// and fail closed, instead of "not applicable" as SharedContext.OperationPath's
+		// own doc comment (sdk/core/policy/v1alpha2/context.go) says an empty value
+		// must be read. "/" is not a fake sub-path: it is this API's one and only
+		// operation, at its own root.
+		OperationPath:   "/",
 		PathMatchType:   "Exact",
 		Vhost:           mainVhost,
 		AutoHostRewrite: mainAutoHostRewrite,
@@ -155,8 +164,10 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 
 		sandboxRouteKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, "", sandboxVhost)
 		rdc.Routes[sandboxRouteKey] = &models.Route{
-			Method:          "POST",
-			Path:            fullPath,
+			Method: "POST",
+			Path:   fullPath,
+			// See the main route's OperationPath comment above.
+			OperationPath:   "/",
 			PathMatchType:   "Exact",
 			Vhost:           sandboxVhost,
 			AutoHostRewrite: sbAutoHostRewrite,
