@@ -7,9 +7,13 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Layers } from '@wso2/oxygen-ui-icons-react';
+import { Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
+import {
+  PipelinesFeature,
+  ProjectPipelinesFeature,
+} from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
   settingsTabSlot,
   type ApiControlPlaneExtension,
@@ -17,7 +21,7 @@ import {
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 
 /**
- * Cloud features registered for the api-control-plane host. Both live in this
+ * Cloud features registered for the api-control-plane host. All live in this
  * same repo now (this package is copied into the cloned portal tree at
  * Docker-build time — see `services/apip-api-control-plane/Dockerfile` in
  * apim-saas — never patched into it), so `ApiControlPlaneExtension` is
@@ -32,6 +36,14 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * internally by `EnvironmentsFeature`) until a real backend exists — swap
  * that in without touching `EnvironmentsList`/`EnvironmentForm`, which only
  * ever see the `EnvironmentPort` interface.
+ *
+ * `pipelines` ships one plugin with two extensions from the same feature
+ * package: an organization-level list/create/edit view, and a project-level
+ * view that binds the project to a single pipeline. Both present as one
+ * "Pipelines" nav item that adapts to scope — the sidebar shows items at every
+ * scope, so each is gated by `isVisible` on whether a project is in scope, and
+ * exactly one is shown at a time. Data flows through the host port's `apiFetch`
+ * to the platform-api REST endpoints.
  */
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
   defineCloudPlugin({
@@ -47,6 +59,36 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         level: 'project',
         slot: settingsTabSlot('project'),
         order: 10,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'pipelines',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'pipelines',
+        slot: 'sidebar.organization',
+        order: 50,
+        routePath: 'pipelines',
+        render: (port) => <PipelinesFeature port={port} />,
+        label: 'Pipelines',
+        icon: <Workflow size={20} />,
+        level: 'organization',
+        // Only when no project is in scope — otherwise the project view below
+        // takes the same "Pipelines" slot, so exactly one is ever shown.
+        isVisible: (scope) => !scope.isProjectScope,
+      },
+      {
+        id: 'project-pipeline',
+        slot: 'sidebar.project',
+        order: 50,
+        routePath: 'pipelines',
+        render: (port) => <ProjectPipelinesFeature port={port} />,
+        label: 'Pipelines',
+        icon: <Workflow size={20} />,
+        level: 'project',
+        isVisible: (scope) => scope.isProjectScope,
       },
     ],
   }),

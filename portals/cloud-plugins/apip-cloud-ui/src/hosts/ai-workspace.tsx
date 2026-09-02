@@ -12,7 +12,7 @@ import { Boxes, Rocket, Workflow } from '@wso2/oxygen-ui-icons-react';
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
-import { PipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
+import { PipelinesFeature, ProjectPipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
   AI_WORKSPACE_GATEWAYS_SLOT,
   type AIWorkspaceCloudEntry,
@@ -59,7 +59,14 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         path: 'pipelines',
         label: 'Pipelines',
         icon: <Workflow size={20} />,
-        render: (port) => <PipelinesFeature port={port} />,
+        // One scope-adaptive "Pipelines" item: the project binding view when a
+        // project is selected, the organization list/create/edit view otherwise.
+        render: (port) =>
+          port.projectHandle ? (
+            <ProjectPipelinesFeature port={port} />
+          ) : (
+            <PipelinesFeature port={port} />
+          ),
       },
     ],
   }),
