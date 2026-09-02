@@ -16,67 +16,23 @@
  * under the License.
  */
 
-import {
-  Box,
-  Card,
-  CardContent,
-  Chip,
-  Grid,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { Boxes, Rocket } from '@wso2/oxygen-ui-icons-react';
-import { useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Divider, Grid } from '@wso2/oxygen-ui';
+import { Layers } from '@wso2/oxygen-ui-icons-react';
+import { useParams } from 'react-router-dom';
 
-import { useApis, useProject } from '../../../../api/hooks/useMvpQueries';
-import { groupApisByKind } from '../../../../components/cards/apiDisplay';
-import { QuickStartBanner } from '../../../../components/cards/QuickStartBanner';
-import {
-  SummaryCardSection,
-  type SummaryRow,
-} from '../../../../components/cards/SummaryCardSection';
-import { ErrorState, LoadingState } from '../../../../components/StateViews';
-import { routes } from '../../../../routes/paths';
-import type { Api } from '../../../../types/domain';
-import { relativeTime } from '../../../../utils/relativeTime';
-import { FormattedMessage } from 'react-intl';
+import { useProject } from '@/api/resources/projects';
+import { QuickStartBanner } from '@/components/common/QuickStartBanner';
+import { ErrorState, LoadingState } from '@/components/StateViews';
+import { ApiList } from '@/pages/appShell/appShellPages/apis/listing';
 
-// No `ScopeGate`: this page is the project tier of the sidebar's Overview item,
-// which degrades to the organization tier rather than linking here without a
-// project — so it is never reached out of scope.
+// No `ScopeGate`: Overview falls back to the org tier without a project.
 export function ProjectHomePage() {
-  const { orgHandle = '', projectHandler = '' } = useParams();
-  const navigate = useNavigate();
-  const projectQuery = useProject();
-  const apisQuery = useApis();
-  const components = apisQuery.data || [];
-  const groups = groupApisByKind(components);
-
-  const toRows = (list: Api[]): SummaryRow[] =>
-    list.map((component) => ({
-      id: component.handler,
-      title: component.displayName,
-      description: component.version
-        ? `Version ${component.version}`
-        : component.description,
-      meta: component.createdAt
-        ? relativeTime(component.createdAt)
-        : component.updatedAt
-          ? relativeTime(component.updatedAt)
-          : undefined,
-    }));
-
-  const apiProxyRows = useMemo(() => toRows(groups.apiProxies), [groups.apiProxies]);
-
-  const openApi = (handler: string) =>
-    navigate(routes.api(orgHandle, projectHandler, handler));
-  const onCreateApi = () =>
-    navigate(routes.newApi(orgHandle, projectHandler));
+  const { projectHandler = '' } = useParams();
+  const projectQuery = useProject(projectHandler);
 
   if (projectQuery.isLoading) return <LoadingState label="Loading project" />;
   if (projectQuery.error || !projectQuery.data) {
-    return <ErrorState title="Project not found" />;
+    return <ErrorState message={projectQuery.error?.message} title="Project not found" />;
   }
   const project = projectQuery.data;
 
@@ -85,98 +41,16 @@ export function ProjectHomePage() {
       <Grid container spacing={3} sx={{ m: 0, width: '100%' }}>
         <Grid size={{ xs: 12 }}>
           <QuickStartBanner
-            actionLabel="Create API"
-            description={
-              project.description ||
-              'Add an API to this project.'
-            }
-            icon={<Boxes size={22} />}
-            onAction={onCreateApi}
-            title={project.name}
+            description={project.description || 'Add an API to this project.'}
+            icon={<Layers size={32} />}
+            title={project.displayName}
           />
         </Grid>
 
-        <Grid size={{ xs: 12 }}>
-          <SummaryCardSection
-            addLabel="New"
-            emptyActionLabel="Create API Proxy"
-            emptyDescription="Expose and govern an API by creating an API Proxy."
-            emptyTitle="Create your first API Proxy"
-            error={apisQuery.error}
-            icon={<Rocket size={24} />}
-            isLoading={apisQuery.isLoading}
-            items={apiProxyRows}
-            onAdd={onCreateApi}
-            onEmptyAction={onCreateApi}
-            onItemClick={openApi}
-            onSeeMore={() => navigate(routes.apis(orgHandle, projectHandler))}
-            title="API Proxies"
-            totalCount={groups.apiProxies.length}
-          />
-        </Grid>
+        <Divider sx={{ width: '100%' }} />
 
         <Grid size={{ xs: 12 }}>
-          <Card sx={{ width: '100%' }}>
-            <CardContent>
-              <Typography sx={{ fontWeight: 700 }} variant="h6">
-                <FormattedMessage
-                  id="appShell.projectHomePage.projectDetails"
-                  defaultMessage="Project details"
-                />
-              </Typography>
-              <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 2 }}>
-                <Chip label={`@${project.handler}`} size="small" variant="outlined" />
-                {project.region && <Chip label={project.region} size="small" />}
-                {project.version && (
-                  <Chip label={`v${project.version}`} size="small" variant="outlined" />
-                )}
-                {project.type && (
-                  <Chip
-                    label={project.type === 'MONO_REPO' ? 'Mono repo' : 'Multi repo'}
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-                {project.repository && (
-                  <Chip label={project.repository} size="small" variant="outlined" />
-                )}
-                {project.createdDate && (
-                  <Chip
-                    label={`Created ${relativeTime(project.createdDate)}`}
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-              </Stack>
-              {!project.region &&
-                !project.version &&
-                !project.repository &&
-                !project.createdDate && (
-                  <Typography color="text.secondary" sx={{ mt: 1 }} variant="body2">
-                    <FormattedMessage
-                      id="appShell.projectHomePage.noAdditionalMetadata"
-                      defaultMessage="No additional project metadata available."
-                    />
-                  </Typography>
-                )}
-              <Box sx={{ mt: 2 }}>
-                <Typography
-                  color="primary"
-                  onClick={() =>
-                    navigate(routes.apis(orgHandle, projectHandler))
-                  }
-                  sx={{ cursor: 'pointer', display: 'inline-block', fontWeight: 600 }}
-                  variant="body2"
-                >
-                  <FormattedMessage
-                    id="appShell.projectHomePage.viewAllAPIs"
-                    defaultMessage="View all APIs ({count})"
-                    values={{ count: components.length }}
-                  />
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
+          <ApiList />
         </Grid>
       </Grid>
     </>

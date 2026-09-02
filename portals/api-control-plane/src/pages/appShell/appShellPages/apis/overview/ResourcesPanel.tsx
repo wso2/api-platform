@@ -16,89 +16,102 @@
  * under the License.
  */
 
-import { Box, Chip, Stack, Typography } from '@wso2/oxygen-ui';
-import { PackageSearch } from '@wso2/oxygen-ui-icons-react';
+import { useMemo } from 'react';
+import { Box, Typography } from '@wso2/oxygen-ui';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { ApiDetail } from '../../../../../types/domain';
-import { methodColor } from '../develop/developEdit';
+import type { RestApi } from '@/api/resources/restApis';
+import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
+import { ResourcePreviewPlaceholder } from '../components/ResourcePreviewPlaceholder';
+import { restApiToOpenApiSpec } from '../utils/operationsToSpec';
 
-function EmptyResources({ label }: { label: string }) {
-  return (
-    <Stack
-      alignItems="center"
-      justifyContent="center"
-      spacing={1}
-      sx={{ color: 'text.secondary', py: 4, textAlign: 'center' }}
-    >
-      <PackageSearch size={40} strokeWidth={1.25} />
-      <Typography color="text.secondary" variant="body2">
-        {label}
-      </Typography>
-    </Stack>
-  );
-}
+const messages = defineMessages({
+  empty: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty',
+    defaultMessage: 'No available resources.',
+    description: 'Shown in place of the operation list when the API definition exposes none.',
+  },
+  emptyDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.emptyDescription',
+    defaultMessage: 'This API’s definition does not expose any operations yet.',
+    description:
+      'Sits under “No available resources.” and explains why the list is empty — the definition itself has no operations, as opposed to anything having failed.',
+  },
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.title',
+    defaultMessage: 'Resources',
+    description:
+      "Heading of the panel listing the API's operations (its OpenAPI paths). A noun, not a command.",
+  },
+});
 
 /**
- * Left panel of the Overview tab (ai-workspace "OpenAPI Resources"): the
- * API's operations in a scrollable bordered box.
+ * Left panel of the Overview tab (ai-workspace "OpenAPI Resources"): the API's
+ * operations rendered by the shared spec viewer in a scrollable bordered box,
+ * or — when the definition exposes none — a placeholder showing the shape the
+ * list would take.
+ *
+ * The document the viewer draws is rebuilt from `api.operations`, not fetched:
+ * the platform never stores the definition an API was created from, so method,
+ * path and summary are the whole of what there is to show. See
+ * `utils/operationsToSpec`.
  */
-export function ResourcesPanel({ detail }: { detail: ApiDetail }) {
+export function ResourcesPanel({ api }: { api: RestApi }) {
+  const intl = useIntl();
+  // `operations` is optional on the spec's `RESTAPI`.
+  const operations = api.operations ?? [];
+  const spec = useMemo(() => restApiToOpenApiSpec(api), [api]);
+
   return (
     <Box sx={{ flex: 1, minWidth: 0 }}>
       <Typography sx={{ fontWeight: 600, mb: 0.5 }} variant="h6">
-        Resources
+        <FormattedMessage {...messages.title} />
       </Typography>
-      <Box
-        sx={{
-          bgcolor: 'background.paper',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 1,
-          maxHeight: { md: 520, xs: 320 },
-          overflowY: 'auto',
-          px: 2,
-          py: 1,
-        }}
-      >
-        {detail.operations.length === 0 ? (
-          <EmptyResources label="No available resources." />
-        ) : (
-          detail.operations.map((operation) => (
-            <Stack
-              alignItems="center"
-              direction="row"
-              key={`${operation.method}-${operation.path}`}
-              spacing={1.5}
-              sx={{
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                py: 1.5,
-                '&:last-child': { borderBottom: 'none' },
-              }}
-            >
-              <Chip
-                color={methodColor(operation.method)}
-                label={operation.method}
-                size="small"
-                sx={{ fontWeight: 600, minWidth: 68 }}
-              />
-              <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  noWrap
-                  sx={{ fontFamily: 'monospace', fontSize: 13.5 }}
-                >
-                  {operation.path}
-                </Typography>
-                {(operation.description || operation.name) && (
-                  <Typography color="text.secondary" noWrap variant="caption">
-                    {operation.description || operation.name}
-                  </Typography>
-                )}
-              </Box>
-            </Stack>
-          ))
-        )}
-      </Box>
+      {operations.length === 0 ? (
+        // The placeholder brings its own bordered surface, so it stands in for
+        // the scroll box rather than sitting inside it — a hairline drawn
+        // inside a hairline reads as a mistake rather than a frame.
+        <ResourcePreviewPlaceholder
+          description={intl.formatMessage(messages.emptyDescription)}
+          testId="resources-panel-empty"
+          title={intl.formatMessage(messages.empty)}
+        />
+      ) : (
+        <Box
+          sx={{
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+            maxHeight: { md: 520, xs: 320 },
+            overflowY: 'auto',
+            px: 2,
+            py: 1,
+            // Swagger UI ships its own canvas; keep it from fighting the
+            // panel's surface.
+            '& .swagger-ui': { bgcolor: 'transparent' },
+          }}
+        >
+          {/* Read-only, and stripped down to what a rebuilt document can
+              honestly show. The info block would repeat the page header; the
+              servers/authorize strip and try-it-out belong to a console, which
+              this panel is not; the responses section would be an empty table,
+              because the platform kept no responses to put in it. Operations
+              carry no tags either, so the lone "default" group header is
+              hidden and the operations read as one flat list. */}
+          <SwaggerSpecViewer
+            disableResponseSection
+            disableTryOutBtn
+            displayRequestDuration={false}
+            enableResourceSearch
+            hideAuthorizeButton
+            hideInfoSection
+            hideServers
+            hideTagHeaders
+            spec={spec}
+          />
+        </Box>
+      )}
     </Box>
   );
 }

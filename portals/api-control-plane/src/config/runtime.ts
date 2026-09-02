@@ -63,6 +63,12 @@ export type RuntimeConfig = {
   /** Policy Hub API (catalog of mediation policies) + its web UI link. */
   policyHubBaseUrl: string;
   policyHubWebUrl: string;
+  /**
+   * Moesif analytics console. The Insights pages link out to it rather than
+   * rendering charts here, so the deployment's own workspace URL is config,
+   * not a hardcoded link.
+   */
+  moesifWebUrl: string;
   privacyPolicyLink: string;
   projectApiBaseUrl: string;
   termsOfUseLink: string;
@@ -86,6 +92,7 @@ type LegacyWindowConfig = Partial<{
   GATEWAY_CONTROL_PLANE_HOST: string;
   POLICY_HUB_BASE_URL: string;
   POLICY_HUB_WEB_URL: string;
+  MOESIF_WEB_URL: string;
   PRIVACY_POLICY_LINK: string;
   PROJECT_API_BASE_URL: string;
   TERMS_OF_USE_LINK: string;
@@ -118,11 +125,9 @@ const fromWindow = (): LegacyWindowConfig => ({
   ...(window.config ?? {}),
 });
 
-const splitCommaConfigList = (value?: string) =>
-  value?.split(',').filter(Boolean) ?? [];
+const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
-const readBoolean = (value: boolean | string | undefined) =>
-  value === true || value === 'true';
+const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
 
 const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
   value === 'oidc' ? 'oidc' : 'basic';
@@ -153,7 +158,7 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().appBasePath ||
       import.meta.env.VITE_APP_BASE_PATH ||
       import.meta.env.BASE_URL ||
-      ''
+      '',
   ),
   apiBaseUrl:
     fromWindow().apiBaseUrl ||
@@ -162,21 +167,16 @@ export const runtimeConfig: RuntimeConfig = {
     import.meta.env.VITE_API_BASE_URL ||
     '',
   authMode: readAuthMode(
-    fromWindow().authMode ||
-      fromWindow().AUTH_MODE ||
-      import.meta.env.VITE_AUTH_MODE
+    fromWindow().authMode || fromWindow().AUTH_MODE || import.meta.env.VITE_AUTH_MODE,
   ),
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
     fromWindow().defaultLocale ||
     import.meta.env.VITE_DEFAULT_LOCALE ||
     '',
-  environmentName:
-    fromWindow().environmentName ||
-    import.meta.env.VITE_ENVIRONMENT_NAME ||
-    'local',
+  environmentName: fromWindow().environmentName || import.meta.env.VITE_ENVIRONMENT_NAME || 'local',
   featureFlags: splitCommaConfigList(
-    fromWindow().FEATURE_FLAGS || import.meta.env.VITE_FEATURE_FLAGS
+    fromWindow().FEATURE_FLAGS || import.meta.env.VITE_FEATURE_FLAGS,
   ),
   apiPlatformHomePage:
     fromWindow().API_PLATFORM_HOME_PAGE ||
@@ -191,7 +191,7 @@ export const runtimeConfig: RuntimeConfig = {
   billingProxyEnabled: readBoolean(
     fromWindow().BILLING_PROXY_ENABLED ||
       fromWindow().billingProxyEnabled ||
-      import.meta.env.VITE_BILLING_PROXY_ENABLED
+      import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
   platformApiBaseUrl: resolvedPlatformApiBaseUrl,
   platformApiVersion:
@@ -205,13 +205,15 @@ export const runtimeConfig: RuntimeConfig = {
     hostFromUrl(resolvedPlatformApiBaseUrl) ||
     'localhost:9243',
   policyHubBaseUrl:
-    fromWindow().POLICY_HUB_BASE_URL ||
-    import.meta.env.VITE_POLICY_HUB_BASE_URL ||
-    '',
+    fromWindow().POLICY_HUB_BASE_URL || import.meta.env.VITE_POLICY_HUB_BASE_URL || '',
   policyHubWebUrl:
     fromWindow().POLICY_HUB_WEB_URL ||
     import.meta.env.VITE_POLICY_HUB_WEB_URL ||
     'https://wso2.com/api-platform/policy-hub/',
+  moesifWebUrl:
+    fromWindow().MOESIF_WEB_URL ||
+    import.meta.env.VITE_MOESIF_WEB_URL ||
+    'https://www.moesif.com/wrap/basic',
   privacyPolicyLink:
     fromWindow().PRIVACY_POLICY_LINK ||
     fromWindow().privacyPolicyLink ||

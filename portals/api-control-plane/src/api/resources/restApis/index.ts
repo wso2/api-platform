@@ -27,9 +27,13 @@
 export type {
   CreateRestApiBody,
   ListRestApisQuery,
+  Operation,
+  Policy,
   RestApi,
   RestApiListResponse,
   UpdateRestApiBody,
+  Upstream,
+  UpstreamDefinition,
 } from './restApis.endpoints';
 
 export type { RestApiListFilters } from './restApis.hooks';
@@ -40,6 +44,7 @@ export {
   useCreateRestApi,
   useDeleteRestApi,
   useRestApi,
+  useRestApiIdAvailability,
   useRestApiOptions,
   useRestApis,
   useUpdateRestApi,

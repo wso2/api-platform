@@ -19,25 +19,25 @@
 import { lazy, type ReactNode } from 'react';
 import { Route, Routes } from 'react-router-dom';
 
-import { AuthCallbackPage } from '../pages/auth/AuthCallbackPage';
-import { LoginPage } from '../pages/auth/LoginPage';
+import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
+import { LoginPage } from '@/pages/auth/LoginPage';
 import {
   NotFoundPage,
   OrganizationRedirectPage,
   ServerErrorPage,
   SessionExpiredPage,
   UnauthorizedPage,
-} from '../pages/appShell/appShellPages/system/SystemPages';
-import { ConsoleScopeProvider } from '../scope/ConsoleScopeProvider';
-import AppLayout from '../pages/appShell/AppLayout';
+} from '@/pages/appShell/appShellPages/system/SystemPages';
+import { ConsoleScopeProvider } from '@/scope/ConsoleScopeProvider';
+import AppLayout from '@/pages/appShell/AppLayout';
 import {
   extensionScopedPaths,
   isSidebarExtension,
   settingsTabExtensions,
   type ApiControlPlaneExtension,
-} from '../extensions';
-import type { NavigationLevel } from '../navigation/navigationTypes';
-import { usePort } from '../hostPort';
+} from '@/extensions';
+import type { NavigationLevel } from '@/navigation/navigationTypes';
+import { usePort } from '@/hostPort';
 import { ProtectedRoute } from './ProtectedRoute';
 import { apiScopedPaths, projectScopedPaths, routes } from './paths';
 
@@ -46,128 +46,131 @@ import { apiScopedPaths, projectScopedPaths, routes } from './paths';
 const OrganizationHomePage = lazy(() =>
   import('../pages/appShell/appShellPages/organizations/OrganizationHomePage').then((m) => ({
     default: m.OrganizationHomePage,
-  }))
+  })),
 );
 const ProjectListPage = lazy(() =>
-  import('../pages/appShell/appShellPages/projects/ProjectListPage').then((m) => ({
+  import('../pages/appShell/appShellPages/projects').then((m) => ({
     default: m.ProjectListPage,
-  }))
+  })),
 );
 const GatewaysPage = lazy(() =>
   import('../pages/appShell/appShellPages/gateways/GatewaysPage').then((m) => ({
     default: m.GatewaysPage,
-  }))
+  })),
 );
 const GatewayCreatePage = lazy(() =>
   import('../pages/appShell/appShellPages/gateways/GatewayCreatePage').then((m) => ({
     default: m.GatewayCreatePage,
-  }))
+  })),
 );
 const GatewayDetailPage = lazy(() =>
   import('../pages/appShell/appShellPages/gateways/GatewayDetailPage').then((m) => ({
     default: m.GatewayDetailPage,
-  }))
+  })),
 );
 const ProjectHomePage = lazy(() =>
-  import('../pages/appShell/appShellPages/projects/ProjectHomePage').then((m) => ({
+  import('../pages/appShell/appShellPages/projects').then((m) => ({
     default: m.ProjectHomePage,
-  }))
+  })),
 );
 const ApiListPage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/ApiListPage').then((m) => ({
+  import('../pages/appShell/appShellPages/apis/listing').then((m) => ({
     default: m.ApiListPage,
-  }))
+  })),
 );
 const ApiCreatePage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/ApiCreatePage').then((m) => ({
-    default: m.ApiCreatePage,
-  }))
+  import('../pages/appShell/appShellPages/apis/create/ApiCreationWizard').then((m) => ({
+    default: m.ApiCreationWizard,
+  })),
+
 );
 const ApiDetailPage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/ApiDetailPage').then((m) => ({
+  import('../pages/appShell/appShellPages/apis/overview').then((m) => ({
     default: m.ApiDetailPage,
-  }))
+  })),
 );
 const DeployPage = lazy(() =>
-  import('../pages/appShell/appShellPages/deploy/DeployPage').then((m) => ({ default: m.DeployPage }))
+  import('../pages/appShell/appShellPages/deploy/DeployPage').then((m) => ({
+    default: m.DeployPage,
+  })),
 );
 const TestPage = lazy(() =>
-  import('../pages/appShell/appShellPages/test/TestPage').then((m) => ({ default: m.TestPage }))
+  import('../pages/appShell/appShellPages/test/TestPage').then((m) => ({ default: m.TestPage })),
 );
 const PoliciesPage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/develop/PoliciesPage').then((m) => ({
+  import('../pages/appShell/appShellPages/develop/policies/PoliciesPage').then((m) => ({
     default: m.PoliciesPage,
-  }))
+  })),
 );
 const RoutingPage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/develop/RoutingPage').then((m) => ({
+  import('../pages/appShell/appShellPages/develop/routings/RoutingPage').then((m) => ({
     default: m.RoutingPage,
-  }))
+  })),
 );
 const DocumentsPage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/develop/DocumentsPage').then((m) => ({
+  import('../pages/appShell/appShellPages/develop/documents/DocumentsPage').then((m) => ({
     default: m.DocumentsPage,
-  }))
+  })),
 );
 const ApiConsolePage = lazy(() =>
   import('../pages/appShell/appShellPages/test/ApiConsolePage').then((m) => ({
     default: m.ApiConsolePage,
-  }))
+  })),
 );
 const ApiChatPage = lazy(() =>
   import('../pages/appShell/appShellPages/test/ApiChatPage').then((m) => ({
     default: m.ApiChatPage,
-  }))
+  })),
 );
 const AlertsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/AlertsPage').then((m) => ({
     default: m.AlertsPage,
-  }))
+  })),
 );
 const MetricsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/MetricsPage').then((m) => ({
     default: m.MetricsPage,
-  }))
+  })),
 );
 const MonetizePage = lazy(() =>
   import('../pages/appShell/appShellPages/manage/MonetizePage').then((m) => ({
     default: m.MonetizePage,
-  }))
+  })),
 );
 const LifeCyclePage = lazy(() =>
   import('../pages/appShell/appShellPages/manage/LifeCyclePage').then((m) => ({
     default: m.LifeCyclePage,
-  }))
+  })),
 );
 const InsightsPage = lazy(() =>
   import('../pages/appShell/appShellPages/insights/InsightsPage').then((m) => ({
     default: m.InsightsPage,
-  }))
+  })),
 );
 const CompliancePage = lazy(() =>
   import('../pages/appShell/appShellPages/insights/CompliancePage').then((m) => ({
     default: m.CompliancePage,
-  }))
+  })),
 );
 const AdminPage = lazy(() =>
   import('../pages/appShell/appShellPages/admin/AdminPage').then((m) => ({
     default: m.AdminPage,
-  }))
+  })),
 );
 const RuntimeLogsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/RuntimeLogsPage').then((m) => ({
     default: m.RuntimeLogsPage,
-  }))
+  })),
 );
 const SettingsLayout = lazy(() =>
   import('../pages/appShell/appShellPages/settings/SettingsLayout').then((m) => ({
     default: m.SettingsLayout,
-  }))
+  })),
 );
 const GeneralSettingsPage = lazy(() =>
-  import('../pages/appShell/appShellPages/settings/GeneralSettingsPage').then(
-    (m) => ({ default: m.GeneralSettingsPage })
-  )
+  import('../pages/appShell/appShellPages/settings/GeneralSettingsPage').then((m) => ({
+    default: m.GeneralSettingsPage,
+  })),
 );
 
 export type AppRoutesProps = {
@@ -219,7 +222,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           path={path}
           element={<ExtensionRoute extension={extension} />}
         />
-      ))
+      )),
     );
 
   return (
@@ -261,63 +264,30 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             links to its first child's alias, so `.../test` and friends are never
             produced and are not registered.
           */}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiDevelopPolicies),
-            <PoliciesPage />
-          )}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiDevelopRouting),
-            <RoutingPage />
-          )}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiDevelopDocuments),
-            <DocumentsPage />
-          )}
+          {scopedRoutes(apiScopedPaths(routes.apiDevelopPolicies), <PoliciesPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDevelopRouting), <RoutingPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestCurl), <TestPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestChat), <ApiChatPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiDeploy), <DeployPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiInsightsCompliance),
-            <CompliancePage />
-          )}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiObservabilityAlerts),
-            <AlertsPage />
-          )}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiObservabilityMetrics),
-            <MetricsPage />
-          )}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiObservabilityLogs),
-            <RuntimeLogsPage />
-          )}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiManageMonetize),
-            <MonetizePage />
-          )}
-          {scopedRoutes(
-            apiScopedPaths(routes.apiManageLifecycle),
-            <LifeCyclePage />
-          )}
+          {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiObservabilityMetrics), <MetricsPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiObservabilityLogs), <RuntimeLogsPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}
           {/* Two entry points, one page, no scope requirement either way. The
               index route renders the same content as `general`, so `/settings`
               is never a blank pane. */}
-          <Route
-            path={routes.settings()}
-            element={<SettingsLayout level="organization" />}
-          >
+          <Route path={routes.settings()} element={<SettingsLayout level="organization" />}>
             <Route index element={<GeneralSettingsPage />} />
             <Route path="general" element={<GeneralSettingsPage />} />
             {settingsTabRoutes('organization')}
           </Route>
-          <Route
-            path={routes.projectSettings()}
-            element={<SettingsLayout level="project" />}
-          >
+          <Route path={routes.projectSettings()} element={<SettingsLayout level="project" />}>
             <Route index element={<GeneralSettingsPage />} />
             <Route path="general" element={<GeneralSettingsPage />} />
             {settingsTabRoutes('project')}

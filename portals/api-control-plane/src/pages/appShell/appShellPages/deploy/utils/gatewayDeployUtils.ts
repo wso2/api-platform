@@ -16,31 +16,27 @@
  * under the License.
  */
 
-import type { Gateway, GatewayDeployment } from '../../../../../types/domain';
+import type { Gateway } from '@/api/resources/gateways';
+import type { Deployment } from '@/api/resources/restApis/deployments';
 
 /** Newest-first by createdAt (platform stamps it on every deployment). */
-export const byNewestFirst = (a: GatewayDeployment, b: GatewayDeployment) => {
+export const byNewestFirst = (a: Deployment, b: Deployment) => {
   const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
   const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
   return timeB - timeA;
 };
 
-export const deploymentsForGateway = (
-  deployments: GatewayDeployment[],
-  gatewayId: string
-): GatewayDeployment[] =>
-  deployments
-    .filter((item) => item.gatewayId === gatewayId)
-    .sort(byNewestFirst);
+export const deploymentsForGateway = (deployments: Deployment[], gatewayId: string): Deployment[] =>
+  deployments.filter((item) => item.gatewayId === gatewayId).sort(byNewestFirst);
 
 /**
  * The deployment that represents the gateway's current state: the active
  * (DEPLOYED) one if any, otherwise the newest — mirrors ai-workspace.
  */
 export const currentDeploymentFor = (
-  deployments: GatewayDeployment[],
-  gatewayId: string
-): GatewayDeployment | undefined => {
+  deployments: Deployment[],
+  gatewayId: string,
+): Deployment | undefined => {
   const list = deploymentsForGateway(deployments, gatewayId);
   return list.find((item) => item.status === 'DEPLOYED') ?? list[0];
 };
@@ -58,14 +54,11 @@ const deploymentNumber = (name: string | undefined): number | null => {
  * Auto-generated deployment name, ai-workspace convention:
  * `{gateway-name}_{YYYY-MM-DD}_{n}` where n increments per gateway per day.
  */
-export const nextDeploymentName = (
-  gateway: Gateway,
-  deployments: GatewayDeployment[]
-): string => {
-  const prefix = normalizeGatewayName(gateway.name);
+export const nextDeploymentName = (gateway: Gateway, deployments: Deployment[]): string => {
+  const prefix = normalizeGatewayName(gateway.displayName);
   const dateStr = new Date().toISOString().slice(0, 10);
-  const todays = deploymentsForGateway(deployments, gateway.id).filter(
-    (item) => item.name.includes(`_${dateStr}_`) && /_\d+$/.test(item.name)
+  const todays = deploymentsForGateway(deployments, gateway.id ?? '').filter(
+    (item) => item.name.includes(`_${dateStr}_`) && /_\d+$/.test(item.name),
   );
   const maxNumber = todays.reduce((max, item) => {
     const num = deploymentNumber(item.name);

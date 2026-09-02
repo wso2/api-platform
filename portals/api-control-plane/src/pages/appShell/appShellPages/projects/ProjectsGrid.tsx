@@ -18,8 +18,8 @@
 
 import { Box } from '@wso2/oxygen-ui';
 
-import type { Project } from '../../../../api/resources/projects';
-import { ProjectCard } from '../../../../components/cards/ProjectCard';
+import type { Project } from '@/api/resources/projects';
+import { ProjectCard } from './components/ProjectCard';
 
 type ProjectsGridProps = {
   projects: Project[];
@@ -28,16 +28,8 @@ type ProjectsGridProps = {
   onDelete?: (project: Project) => void;
 };
 
-/**
- * Renders exactly the projects it is given. Paging lives on the page, which
- * owns the request — slicing here as well would page an already-paged response.
- */
-export function ProjectsGrid({
-  projects,
-  orgHandle,
-  onOpen,
-  onDelete,
-}: ProjectsGridProps) {
+/** Renders only the projects provided; paging is handled by the page. */
+export function ProjectsGrid({ projects, orgHandle, onOpen, onDelete }: ProjectsGridProps) {
   return (
     <Box
       sx={{

@@ -1,4 +1,45 @@
 {
+  "api.create.ApiCreationProgress.action.back": {
+    "defaultMessage": "Back to configuration",
+    "description": "Returns the user to the form they submitted, after creation failed."
+  },
+  "api.create.ApiCreationProgress.action.retry": {
+    "defaultMessage": "Try again"
+  },
+  "api.create.ApiCreationProgress.failed.body": {
+    "defaultMessage": "Nothing was created. Check the details you entered and try again."
+  },
+  "api.create.ApiCreationProgress.failed.title": {
+    "defaultMessage": "We could not create this API proxy"
+  },
+  "api.create.ApiCreationProgress.progress.label": {
+    "defaultMessage": "API proxy creation progress",
+    "description": "Accessible name for the circular progress indicator."
+  },
+  "api.create.ApiCreationProgress.progress.value": {
+    "defaultMessage": "{value}%",
+    "description": "Share of the creation flow completed so far."
+  },
+  "api.create.ApiCreationProgress.stage.creating": {
+    "defaultMessage": "Creating API Proxy",
+    "description": "Status shown while the platform is creating the API proxy."
+  },
+  "api.create.ApiCreationProgress.stage.done": {
+    "defaultMessage": "API Proxy created. Taking you there…"
+  },
+  "api.create.ApiCreationProgress.stage.finalizing": {
+    "defaultMessage": "Finalizing setup"
+  },
+  "api.create.ApiCreationProgress.stage.validating": {
+    "defaultMessage": "Validating configuration"
+  },
+  "api.create.ApiCreationProgress.subtitle": {
+    "defaultMessage": "“{name}” will be ready in a moment.",
+    "description": "{name} is the display name the user gave the API. Never translated."
+  },
+  "api.create.ApiCreationProgress.title": {
+    "defaultMessage": "We are in the process of creating your API Proxy"
+  },
   "api.create.ApiCreationSteps.step.apiType": {
     "defaultMessage": "API type",
     "description": "Progress step where the user picks REST, GraphQL and so on. Noun, not a command."
@@ -10,6 +51,29 @@
   "api.create.ApiCreationSteps.step.source": {
     "defaultMessage": "Source",
     "description": "Progress step where the user supplies a contract or a backend endpoint."
+  },
+  "api.create.ApiCreationWizard.apiType.generic": {
+    "defaultMessage": "API",
+    "description": "Stands in for the chosen API type when the wizard is opened straight at a later step."
+  },
+  "api.create.ApiCreationWizard.apiType.subtitle": {
+    "defaultMessage": "This decides how the gateway exposes your backend. Only REST is available today."
+  },
+  "api.create.ApiCreationWizard.apiType.title": {
+    "defaultMessage": "What kind of API are you exposing?"
+  },
+  "api.create.ApiCreationWizard.configure.subtitle": {
+    "defaultMessage": "Name it, set where it routes, and create it."
+  },
+  "api.create.ApiCreationWizard.configure.title": {
+    "defaultMessage": "Configure and create"
+  },
+  "api.create.ApiCreationWizard.source.subtitle": {
+    "defaultMessage": "Bring an existing contract, or start from a blank slate and fill in the details yourself."
+  },
+  "api.create.ApiCreationWizard.source.title": {
+    "defaultMessage": "How do you want to define your {apiType}?",
+    "description": "{apiType} is the type picked in the first step, e.g. \"REST API\". Reads as one sentence."
   },
   "api.create.ApiTypeSelector.badge.comingSoon": {
     "defaultMessage": "Coming soon",
@@ -78,82 +142,16 @@
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
   },
-  "api.create.approach.contract.description": {
-    "defaultMessage": "Upload or link an OpenAPI, GraphQL or gRPC definition."
-  },
-  "api.create.approach.contract.title": {
-    "defaultMessage": "Import API Contract"
-  },
-  "api.create.approach.endpoint.description": {
-    "defaultMessage": "Point the gateway at a backend URL and refine later."
-  },
-  "api.create.approach.endpoint.title": {
-    "defaultMessage": "Start with Endpoint"
-  },
-  "api.create.approach.genAi.description": {
-    "defaultMessage": "Describe the API in plain language and let AI draft it."
-  },
-  "api.create.approach.genAi.title": {
-    "defaultMessage": "Generate with AI"
-  },
-  "api.create.approach.scratch.description": {
-    "defaultMessage": "Create an empty API and add resources by hand."
-  },
-  "api.create.approach.scratch.title": {
-    "defaultMessage": "Start from Scratch"
-  },
-  "api.create.approachSelector.apiTypeSection.description": {
-    "defaultMessage": "Types that {proxyType} does not carry stay listed, greyed out.",
-    "description": "Explains why unavailable API types are still visible on the cards below."
-  },
-  "api.create.approachSelector.apiTypeSection.title": {
-    "defaultMessage": "Pick an API type"
-  },
-  "api.create.approachSelector.approach.continue": {
-    "defaultMessage": "Continue"
-  },
-  "api.create.approachSelector.approachSection.description": {
-    "defaultMessage": "Choosing one of these opens the next step."
-  },
-  "api.create.approachSelector.approachSection.title": {
-    "defaultMessage": "How do you want to start?"
-  },
-  "api.create.approachSelector.badge.comingSoon": {
-    "defaultMessage": "Coming soon",
-    "description": "Badge on an option that is planned but not released yet."
-  },
-  "api.create.approachSelector.badge.selected": {
-    "defaultMessage": "Selected",
-    "description": "Accessible label for the check mark on the chosen card."
-  },
-  "api.create.approachSelector.badge.unavailable": {
-    "defaultMessage": "Unavailable",
-    "description": "Badge on an option the currently selected proxy type does not offer."
-  },
-  "api.create.approachSelector.proxyTypeSection.description": {
-    "defaultMessage": "This decides which API types and starting points are available below."
-  },
-  "api.create.approachSelector.proxyTypeSection.title": {
-    "defaultMessage": "Pick a proxy type"
-  },
-  "api.create.approachSelector.subtitle": {
-    "defaultMessage": "Choose what you are exposing and how you want to start. Everything here can be changed after the API is created."
-  },
-  "api.create.approachSelector.title": {
-    "defaultMessage": "Create New"
-  },
-  "api.create.approachSelector.tooltip.comingSoon": {
-    "defaultMessage": "Not available yet."
-  },
-  "api.create.approachSelector.tooltip.unsupportedForProxyType": {
-    "defaultMessage": "Not available for {proxyType}."
-  },
   "api.create.defineApi.action.back": {
     "defaultMessage": "Back",
     "description": "Returns to the previous step of the API creation wizard."
   },
   "api.create.defineApi.action.next": {
     "defaultMessage": "Next"
+  },
+  "api.create.defineApi.approach.label": {
+    "defaultMessage": "How do you want to define this API?",
+    "description": "Accessible name for the pair of approach tabs at the top of the step."
   },
   "api.create.defineApi.contract.description": {
     "defaultMessage": "Import from a URL, file, or SwaggerHub."
@@ -187,14 +185,27 @@
   "api.create.fromContract.gitHub.authorize": {
     "defaultMessage": "Authorize With GitHub"
   },
+  "api.create.fromContract.gitHub.branchLabel": {
+    "defaultMessage": "Branch"
+  },
   "api.create.fromContract.gitHub.connectTitle": {
     "defaultMessage": "Connect Your Repository"
+  },
+  "api.create.fromContract.gitHub.directoryEdit": {
+    "defaultMessage": "Choose the API directory",
+    "description": "Accessible name for the button that opens the directory browser."
+  },
+  "api.create.fromContract.gitHub.directoryLabel": {
+    "defaultMessage": "API directory"
   },
   "api.create.fromContract.gitHub.invalid": {
     "defaultMessage": "Enter a valid GitHub repository URL."
   },
   "api.create.fromContract.gitHub.label": {
     "defaultMessage": "Public Repository URL"
+  },
+  "api.create.fromContract.gitHub.noContract": {
+    "defaultMessage": "No YAML or JSON contract in this directory. Choose another one."
   },
   "api.create.fromContract.gitHub.or": {
     "defaultMessage": "OR",
@@ -203,8 +214,23 @@
   "api.create.fromContract.gitHub.placeholder": {
     "defaultMessage": "https://github.com/org/repo"
   },
+  "api.create.fromContract.gitHub.rateLimited": {
+    "defaultMessage": "GitHub is rate limiting anonymous requests. Try again in a little while."
+  },
+  "api.create.fromContract.gitHub.repoNotFound": {
+    "defaultMessage": "No public repository at that URL."
+  },
+  "api.create.fromContract.gitHub.repoUnreachable": {
+    "defaultMessage": "GitHub could not be reached. Try again."
+  },
   "api.create.fromContract.gitHub.required": {
     "defaultMessage": "The repository URL cannot be empty"
+  },
+  "api.create.fromContract.gitHub.searching": {
+    "defaultMessage": "Looking up repository…"
+  },
+  "api.create.fromContract.gitHub.selectedFile": {
+    "defaultMessage": "Importing {file}"
   },
   "api.create.fromContract.source.file": {
     "defaultMessage": "Upload"
@@ -320,85 +346,20 @@
   "api.create.fromContract.url.required": {
     "defaultMessage": "The URL for the API contract cannot be empty"
   },
-  "api.create.fromEndpoint.action.back": {
-    "defaultMessage": "Back",
-    "description": "Returns to the previous step of the API creation wizard."
-  },
-  "api.create.fromEndpoint.action.clear": {
-    "defaultMessage": "Clear {label}",
-    "description": "Accessible name for the button that empties a URL field. {label} is that field’s own label."
-  },
-  "api.create.fromEndpoint.action.next": {
-    "defaultMessage": "Next"
-  },
-  "api.create.fromEndpoint.apiType.label": {
-    "defaultMessage": "Select API Type"
-  },
-  "api.create.fromEndpoint.error.invalidUrl": {
-    "defaultMessage": "Enter a valid HTTP or HTTPS URL."
-  },
-  "api.create.fromEndpoint.error.productionEmpty": {
-    "defaultMessage": "The Production Backend URL cannot be empty"
-  },
-  "api.create.fromEndpoint.production.helper": {
-    "defaultMessage": "The backend the gateway routes production traffic to."
-  },
-  "api.create.fromEndpoint.production.label": {
-    "defaultMessage": "Production Backend URL"
-  },
-  "api.create.fromEndpoint.production.placeholder": {
-    "defaultMessage": "Enter the production backend URL"
-  },
-  "api.create.fromEndpoint.sandbox.helper": {
-    "defaultMessage": "A non-production backend used for testing this API."
-  },
-  "api.create.fromEndpoint.sandbox.label": {
-    "defaultMessage": "Sandbox Backend URL (optional)"
-  },
-  "api.create.fromEndpoint.sandbox.placeholder": {
-    "defaultMessage": "Enter the sandbox backend URL"
-  },
-  "api.create.fromEndpoint.status.validMark": {
-    "defaultMessage": "Valid URL",
-    "description": "Accessible label for the check mark shown inside a URL field that passed validation."
-  },
-  "api.create.fromEndpoint.subtitle": {
-    "defaultMessage": "Point the gateway at your backend. Everything else is filled in on the next step."
-  },
-  "api.create.fromEndpoint.title": {
-    "defaultMessage": "Create API Proxy from Endpoint"
-  },
   "api.create.generalForm.action.back": {
     "defaultMessage": "Back"
   },
   "api.create.generalForm.action.create": {
     "defaultMessage": "Create"
   },
-  "api.create.generalForm.advanced": {
-    "defaultMessage": "Advanced",
-    "description": "Label on the disclosure holding the optional settings."
+  "api.create.generalForm.basePath.error.pattern": {
+    "defaultMessage": "Start with / and use only letters, numbers, hyphens, dots and slashes."
   },
-  "api.create.generalForm.backendAuth.description": {
-    "defaultMessage": "Credentials the gateway uses to call the backend."
-  },
-  "api.create.generalForm.backendAuth.label": {
-    "defaultMessage": "Backend authentication"
-  },
-  "api.create.generalForm.backendAuth.option.apiKey": {
-    "defaultMessage": "API key"
-  },
-  "api.create.generalForm.backendAuth.option.basic": {
-    "defaultMessage": "Basic authentication"
-  },
-  "api.create.generalForm.backendAuth.option.bearer": {
-    "defaultMessage": "Bearer token"
-  },
-  "api.create.generalForm.backendAuth.option.none": {
-    "defaultMessage": "None",
-    "description": "Backend authentication option meaning no credentials are sent."
+  "api.create.generalForm.basePath.error.required": {
+    "defaultMessage": "Enter a base path."
   },
   "api.create.generalForm.basePath.helper": {
-    "defaultMessage": "Routing base path for this API. Defaults from the identifier and version."
+    "defaultMessage": "Built from the project, identifier and version. Edit it to route this API somewhere else."
   },
   "api.create.generalForm.basePath.label": {
     "defaultMessage": "Base Path"
@@ -406,23 +367,39 @@
   "api.create.generalForm.description.label": {
     "defaultMessage": "Description"
   },
+  "api.create.generalForm.displayName.error.required": {
+    "defaultMessage": "Enter a display name."
+  },
   "api.create.generalForm.displayName.label": {
     "defaultMessage": "Display name"
   },
+  "api.create.generalForm.identifier.error.pattern": {
+    "defaultMessage": "Use lowercase letters and numbers, separated by single hyphens."
+  },
+  "api.create.generalForm.identifier.error.required": {
+    "defaultMessage": "Enter an identifier."
+  },
+  "api.create.generalForm.identifier.error.taken": {
+    "defaultMessage": "This project already has an API with that identifier."
+  },
+  "api.create.generalForm.identifier.error.tooLong": {
+    "defaultMessage": "Use {max} characters or fewer."
+  },
   "api.create.generalForm.identifier.helper": {
-    "defaultMessage": "URL-friendly. Auto-generated from the display name."
+    "defaultMessage": "URL-friendly. Generated from the display name until you change it."
   },
   "api.create.generalForm.identifier.label": {
     "defaultMessage": "Identifier"
   },
-  "api.create.generalForm.proxyType.description": {
-    "defaultMessage": "Expose your service as an HTTP API proxy."
+  "api.create.generalForm.identifier.status.available": {
+    "defaultMessage": "Available. this identifier is free to use."
   },
-  "api.create.generalForm.proxyType.title": {
-    "defaultMessage": "HTTP"
+  "api.create.generalForm.identifier.status.availableIcon": {
+    "defaultMessage": "Identifier is available",
+    "description": "Accessible label for the tick shown beside a free identifier."
   },
-  "api.create.generalForm.sandboxUrl.label": {
-    "defaultMessage": "Sandbox URL (optional)"
+  "api.create.generalForm.identifier.status.checking": {
+    "defaultMessage": "Checking whether this identifier is free…"
   },
   "api.create.generalForm.section.backendEndpoint": {
     "defaultMessage": "Backend endpoint"
@@ -433,6 +410,12 @@
   "api.create.generalForm.subtitle": {
     "defaultMessage": "Provide the details to configure and expose your API proxy."
   },
+  "api.create.generalForm.targetUrl.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com."
+  },
+  "api.create.generalForm.targetUrl.error.required": {
+    "defaultMessage": "Enter a target URL."
+  },
   "api.create.generalForm.targetUrl.helper": {
     "defaultMessage": "The backend the gateway routes to."
   },
@@ -442,14 +425,11 @@
   "api.create.generalForm.title": {
     "defaultMessage": "Create an API Proxy"
   },
-  "api.create.generalForm.transport.http": {
-    "defaultMessage": "HTTP"
+  "api.create.generalForm.version.error.pattern": {
+    "defaultMessage": "Use letters, numbers, dots, hyphens and underscores — no spaces or slashes."
   },
-  "api.create.generalForm.transport.https": {
-    "defaultMessage": "HTTPS"
-  },
-  "api.create.generalForm.transport.label": {
-    "defaultMessage": "Transport"
+  "api.create.generalForm.version.error.required": {
+    "defaultMessage": "Enter a version."
   },
   "api.create.generalForm.version.helper": {
     "defaultMessage": "e.g. 1.0.0"
@@ -457,31 +437,190 @@
   "api.create.generalForm.version.label": {
     "defaultMessage": "Version"
   },
-  "api.create.proxyType.apiProxy.description": {
-    "defaultMessage": "Expose an existing HTTP backend through the gateway."
+  "api.create.gitHubDirectory.action.cancel": {
+    "defaultMessage": "Cancel"
   },
-  "api.create.proxyType.apiProxy.title": {
-    "defaultMessage": "API Proxy"
+  "api.create.gitHubDirectory.action.close": {
+    "defaultMessage": "Close"
   },
-  "api.create.proxyType.eventProxy.description": {
-    "defaultMessage": "Publish and subscribe to event streams over WebSub."
+  "api.create.gitHubDirectory.action.collapse": {
+    "defaultMessage": "Collapse {name}",
+    "description": "Accessible name for the chevron that folds a directory shut."
   },
-  "api.create.proxyType.eventProxy.title": {
-    "defaultMessage": "Event Proxy"
+  "api.create.gitHubDirectory.action.confirm": {
+    "defaultMessage": "Continue"
   },
-  "api.create.proxyType.mcpProxy.description": {
-    "defaultMessage": "Proxy an existing MCP server, or generate one from an API."
+  "api.create.gitHubDirectory.action.expand": {
+    "defaultMessage": "Expand {name}",
+    "description": "Accessible name for the chevron that opens a directory."
   },
-  "api.create.proxyType.mcpProxy.title": {
-    "defaultMessage": "MCP Proxy"
+  "api.create.gitHubDirectory.files.heading": {
+    "defaultMessage": "API contract in this directory"
+  },
+  "api.create.gitHubDirectory.files.none": {
+    "defaultMessage": "No YAML or JSON file here. Pick a directory that holds the API contract."
+  },
+  "api.create.gitHubDirectory.loading": {
+    "defaultMessage": "Reading the repository…"
+  },
+  "api.create.gitHubDirectory.noDirectories": {
+    "defaultMessage": "No directory matches that search."
+  },
+  "api.create.gitHubDirectory.search.placeholder": {
+    "defaultMessage": "Search directories"
+  },
+  "api.create.gitHubDirectory.title": {
+    "defaultMessage": "API directory"
+  },
+  "api.create.gitHubDirectory.truncated": {
+    "defaultMessage": "This repository is too large to list in full, so some directories are missing."
+  },
+  "api.create.specIssue.badPathKeys": {
+    "defaultMessage": "Some entries under paths are not paths and were skipped: {detail}"
+  },
+  "api.create.specIssue.externalRefs": {
+    "defaultMessage": "This definition references files outside itself, which are not read: {detail}"
+  },
+  "api.create.specIssue.missingTitle": {
+    "defaultMessage": "No title in this definition — name the API on the next step."
+  },
+  "api.create.specIssue.missingVersion": {
+    "defaultMessage": "No version in this definition — set one on the next step."
+  },
+  "api.create.specIssue.noOperations": {
+    "defaultMessage": "This definition declares no GET, POST, PUT, PATCH or DELETE operation."
+  },
+  "api.create.specIssue.noPaths": {
+    "defaultMessage": "This definition has no paths section."
+  },
+  "api.create.specIssue.noServers": {
+    "defaultMessage": "No server URL in this definition — set the backend on the next step."
+  },
+  "api.create.specIssue.notASpec": {
+    "defaultMessage": "That file is not an OpenAPI definition: it names neither an openapi nor a swagger version."
+  },
+  "api.create.specIssue.unsupportedDialect": {
+    "defaultMessage": "OpenAPI {detail} is not supported. Import a Swagger 2.0 or OpenAPI 3 definition."
+  },
+  "api.create.specSourceEditor.action.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Leaves the editor and discards the edits made in it."
+  },
+  "api.create.specSourceEditor.action.collapse": {
+    "defaultMessage": "Collapse editor",
+    "description": "Closes the expanded side panel and returns the editor to the preview pane."
+  },
+  "api.create.specSourceEditor.action.edit": {
+    "defaultMessage": "Edit",
+    "description": "Opens the definition’s own text for editing."
+  },
+  "api.create.specSourceEditor.action.expand": {
+    "defaultMessage": "Expand editor",
+    "description": "Opens the definition in a full-height side panel with more room."
+  },
+  "api.create.specSourceEditor.action.save": {
+    "defaultMessage": "Save",
+    "description": "Checks the edited definition and, if it holds up, adopts it."
+  },
+  "api.create.specSourceEditor.editorLoading": {
+    "defaultMessage": "Loading editor",
+    "description": "Shown for the moment the code editor is being fetched."
+  },
+  "api.create.specSourceEditor.expandedTitle": {
+    "defaultMessage": "API definition",
+    "description": "Heading of the expanded side panel holding the definition."
+  },
+  "api.create.specSourceEditor.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the pair of buttons choosing JSON or YAML."
+  },
+  "api.create.specSourceEditor.inExpandedView": {
+    "defaultMessage": "This definition is open in the expanded editor.",
+    "description": "Stands in for the editor in the pane while the side panel has it."
+  },
+  "api.create.specSourceEditor.malformed": {
+    "defaultMessage": "This could not be read as {format}: {detail}",
+    "description": "Shown when edited text is not valid JSON/YAML. {format} is the format name, {detail} the parser’s own message naming the line."
+  },
+  "api.create.specSourceEditor.notAnObject": {
+    "defaultMessage": "A definition has to be an object at the top level, not a list or a value."
   },
   "apiCard.delete": {
     "defaultMessage": "Delete {apiName}",
     "description": "Accessible label for deleting an API from API card"
   },
+  "apiCard.deleteTooltip": {
+    "defaultMessage": "Delete",
+    "description": "Tooltip on the delete button of an API card or list row."
+  },
+  "apiCard.gatewayManaged.label": {
+    "defaultMessage": "Gateway-managed",
+    "description": "Chip marking an API the console discovered from a gateway and cannot edit."
+  },
+  "apiCard.gatewayManaged.tooltip": {
+    "defaultMessage": "Discovered from a data-plane gateway — read-only here",
+    "description": "Explains why a gateway-managed API cannot be edited here."
+  },
   "apiCard.updated": {
     "defaultMessage": "Updated {relative}",
     "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
+  },
+  "apiControlPlane.components.ErrorFallback.action.goHome": {
+    "defaultMessage": "Go to console home",
+    "description": "Leaves the failing page for the console landing page. Escapes a page that fails every time it is opened."
+  },
+  "apiControlPlane.components.ErrorFallback.action.reload": {
+    "defaultMessage": "Reload",
+    "description": "Reloads the browser tab. Verb, not a noun."
+  },
+  "apiControlPlane.components.ErrorFallback.action.tryAgain": {
+    "defaultMessage": "Try again",
+    "description": "re-renders the failed area without reloading the browser tab."
+  },
+  "apiControlPlane.components.ErrorFallback.app.body": {
+    "defaultMessage": "The console ran into an unexpected problem and could not continue."
+  },
+  "apiControlPlane.components.ErrorFallback.app.title": {
+    "defaultMessage": "Something went wrong"
+  },
+  "apiControlPlane.components.ErrorFallback.chrome.navigationUnavailable": {
+    "defaultMessage": "Navigation is unavailable. Reload the page to restore it.",
+    "description": "Tooltip on the marker left in place of the sidebar when it fails to render."
+  },
+  "apiControlPlane.components.ErrorFallback.chrome.switchersUnavailable": {
+    "defaultMessage": "Organization, project and API switchers are unavailable. Reload the page to restore them.",
+    "description": "Tooltip on the marker left in place of the header switchers when they fail to render."
+  },
+  "apiControlPlane.components.ErrorFallback.page.body": {
+    "defaultMessage": "Something went wrong while displaying this page. The rest of the console is still available."
+  },
+  "apiControlPlane.components.ErrorFallback.page.title": {
+    "defaultMessage": "This page could not be displayed"
+  },
+  "apiControlPlane.components.ErrorFallback.stale.body": {
+    "defaultMessage": "This page could not be loaded because the console has been updated since you opened it. Reload to get the latest version.",
+    "description": "Shown when a code-split chunk 404s, which happens to an open tab after a deployment."
+  },
+  "apiControlPlane.components.ErrorFallback.stale.title": {
+    "defaultMessage": "A newer version of the console is available"
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.allMethods": {
+    "defaultMessage": "All methods",
+    "description": "Option that leaves the resource list unfiltered by HTTP method."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.noResources": {
+    "defaultMessage": "No resources match your search."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.notAllowedTooltip": {
+    "defaultMessage": "This resource is not allowed",
+    "description": "Tooltip on an operation the access-control settings exclude."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.requestUrl": {
+    "defaultMessage": "Request URL",
+    "description": "Heading above the URL a generated request would be sent to."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.searchPlaceholder": {
+    "defaultMessage": "Search resources by path or description"
   },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
@@ -518,6 +657,30 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway": {
     "defaultMessage": "Deploy to Gateway",
     "description": "Button on the API overview header that opens the API's deployment page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Discards an unsaved edit to the API description."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.edit": {
+    "defaultMessage": "Edit description",
+    "description": "Accessible label and tooltip for the pencil button that opens the description for editing."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.fieldLabel": {
+    "defaultMessage": "Description",
+    "description": "Label of the text box used to edit the API description."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.placeholder": {
+    "defaultMessage": "No description",
+    "description": "Shown in place of the API description when the API has none. Rendered in italics as an absence, not as a value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.save": {
+    "defaultMessage": "Save",
+    "description": "Commits an edit to the API description."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.saved": {
+    "defaultMessage": "Description updated.",
+    "description": "Confirmation shown after the API description is saved."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged": {
     "defaultMessage": "Gateway-managed",
@@ -556,8 +719,886 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.title": {
     "defaultMessage": "Routing"
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more": {
-    "defaultMessage": "Explore More"
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.add": {
+    "defaultMessage": "Add",
+    "description": "Commits the new API key in the add dialog."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addButton": {
+    "defaultMessage": "Add API Key",
+    "description": "Opens the dialog for issuing a new API key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addDialogTitle": {
+    "defaultMessage": "Add API Key",
+    "description": "Title of the dialog for issuing a new API key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addFailed": {
+    "defaultMessage": "Failed to add API key",
+    "description": "Fallback toast when the server gives no reason for the failure."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addSucceeded": {
+    "defaultMessage": "API key \"{name}\" added.",
+    "description": "Toast confirming a new key; {name} is the name the user typed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.adding": {
+    "defaultMessage": "Adding...",
+    "description": "Label of the add button while the key is being issued."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Closes a dialog without applying it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.column.actions": {
+    "defaultMessage": "Actions",
+    "description": "Header of the column holding the per-key buttons."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.column.expiresAt": {
+    "defaultMessage": "Expires At",
+    "description": "Header of the column holding each key's expiry date."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.column.key": {
+    "defaultMessage": "API Key",
+    "description": "Header of the column holding the masked key value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.column.name": {
+    "defaultMessage": "Name",
+    "description": "Header of the column holding each key's name. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.description": {
+    "defaultMessage": "Add an API key to authenticate requests through the deployed gateways.",
+    "description": "Explains what an API key is for, above the button that adds one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyNameLabel": {
+    "defaultMessage": "Key Name",
+    "description": "Label of the field naming the new key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyNamePlaceholder": {
+    "defaultMessage": "Ex: Production Key",
+    "description": "Example name shown in the empty key-name field."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyValueHelper": {
+    "defaultMessage": "Stored hashed and pushed to deployed gateways; you cannot read it back later.",
+    "description": "Warns that the key value is write-only once submitted."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyValueLabel": {
+    "defaultMessage": "API Key Value",
+    "description": "Label of the field holding the secret the gateways will accept."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revoke": {
+    "defaultMessage": "Revoke",
+    "description": "Confirms the irreversible revocation of a key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeDialogMessage": {
+    "defaultMessage": "Are you sure you want to revoke this API key? Requests using it will be rejected by the gateways.",
+    "description": "Body of the revoke confirmation dialog."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeDialogTitle": {
+    "defaultMessage": "Revoke API Key",
+    "description": "Title of the revoke confirmation dialog."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeFailed": {
+    "defaultMessage": "Failed to revoke key",
+    "description": "Fallback toast when the server gives no reason for the failure."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeSucceeded": {
+    "defaultMessage": "API key \"{name}\" revoked.",
+    "description": "Toast confirming a revocation; {name} is the key that was revoked."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeTooltip": {
+    "defaultMessage": "Revoke API key",
+    "description": "Tooltip on the button that revokes one key from the table."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revoking": {
+    "defaultMessage": "Revoking...",
+    "description": "Label of the revoke button while the request is in flight."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.title": {
+    "defaultMessage": "API Keys",
+    "description": "Heading of the section listing the keys accepted for this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.copy": {
+    "defaultMessage": "Copy URL",
+    "description": "Tooltip and accessible label of the button that copies the invoke URL to the clipboard."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.copyFailed": {
+    "defaultMessage": "Failed to copy URL.",
+    "description": "Toast shown when the browser refuses the clipboard write."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.copySucceeded": {
+    "defaultMessage": "URL copied to clipboard.",
+    "description": "Toast confirming the invoke URL was copied."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.description": {
+    "defaultMessage": "Change the gateway to generate the gateway specific invoke URL.",
+    "description": "Explains that the URL below is per-gateway, so picking another gateway rewrites it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.gatewaysLabel": {
+    "defaultMessage": "Gateways",
+    "description": "Label of the picker choosing which deployed gateway the invoke URL is built for."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.title": {
+    "defaultMessage": "Invoke URL",
+    "description": "Heading of the section giving the address clients call to reach this API. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.urlLabel": {
+    "defaultMessage": "URL",
+    "description": "Label of the read-only field holding the generated invoke URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.progress": {
+    "defaultMessage": "{completed} of {total} completed",
+    "description": "Counter beside the progress bar, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create": {
+    "defaultMessage": "Create",
+    "description": "First step of the API progress stepper — the API record exists. A stage name, not a button command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.deploy": {
+    "defaultMessage": "Deploy",
+    "description": "Second step of the API progress stepper — the API runs on a gateway. A stage name, not a button command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
+    "defaultMessage": "Publish to Devportal",
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name \"Devportal\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
+    "defaultMessage": "Test",
+    "description": "Third step of the API progress stepper — the API has been called from the test console. A stage name, not a button command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.title": {
+    "defaultMessage": "Track your progress here",
+    "description": "Heading of the banner that walks the user through creating, deploying, testing and publishing an API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty": {
+    "defaultMessage": "No available resources.",
+    "description": "Shown in place of the operation list when the API definition exposes none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.emptyDescription": {
+    "defaultMessage": "This API’s definition does not expose any operations yet.",
+    "description": "Sits under “No available resources.” and explains why the list is empty — the definition itself has no operations, as opposed to anything having failed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.title": {
+    "defaultMessage": "Resources",
+    "description": "Heading of the panel listing the API's operations (its OpenAPI paths). A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.addGateway": {
+    "defaultMessage": "Add Gateway",
+    "description": "Empty-state action opening the gateway creation page. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.apiNotFound": {
+    "defaultMessage": "API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyDescription": {
+    "defaultMessage": "Add a gateway to get started with deployment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle": {
+    "defaultMessage": "No gateway added yet",
+    "description": "Empty state when the organization has no gateways to deploy to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading": {
+    "defaultMessage": "Loading deploy state",
+    "description": "Shown while the API, its gateways and its deployments are being fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.noGatewaysMatchSearch": {
+    "defaultMessage": "No gateways match your search"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.searchPlaceholder": {
+    "defaultMessage": "Search gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.subtitle": {
+    "defaultMessage": "Deploy the current working copy to a gateway, and manage existing deployments."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.title": {
+    "defaultMessage": "Deploy {apiName}",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.deleted": {
+    "defaultMessage": "Deleted \"{deploymentName}\".",
+    "description": "Toast confirming a deployment record was removed. {deploymentName} is user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.refreshLabel": {
+    "defaultMessage": "Refresh deployment history",
+    "description": "Accessible label for the icon button that refetches the deployment list."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.title": {
+    "defaultMessage": "API Deployment History",
+    "description": "Heading over the list of past deployments of this API on one gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.viewMore": {
+    "defaultMessage": "View More",
+    "description": "Opens a drawer listing every deployment, beyond the three shown inline."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.active": {
+    "defaultMessage": "Active",
+    "description": "Gateway connection state: the control plane can reach this gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.currentDeployment": {
+    "defaultMessage": "Current Deployment:",
+    "description": "Label before the name of the deployment currently on this gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploy": {
+    "defaultMessage": "Deploy",
+    "description": "Button that deploys the API's working copy to this gateway. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployStarted": {
+    "defaultMessage": "Deployment \"{deploymentName}\" started.",
+    "description": "Toast confirming a deploy was requested. {deploymentName} is server-generated; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploying": {
+    "defaultMessage": "Deploying...",
+    "description": "Label on the Deploy button while the request is in flight."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.notActive": {
+    "defaultMessage": "Not Active",
+    "description": "Gateway connection state: the control plane cannot reach this gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.changeDeploymentLabel": {
+    "defaultMessage": "Change deployment on {gatewayName}",
+    "description": "Accessible label for the button opening the restore drawer. {gatewayName} is user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deployedAt": {
+    "defaultMessage": "Deployed",
+    "description": "Label before the timestamp while the deployment is live. Past tense."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deployedRelative": {
+    "defaultMessage": "Deployed ⏱ {relative}",
+    "description": "Deployment age, e.g. \"Deployed ⏱ 3 hours ago\". {relative} is an already-formatted relative time."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentHeading": {
+    "defaultMessage": "Deployment",
+    "description": "Heading over the box naming which deployment is on the gateway. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentId": {
+    "defaultMessage": "ID {shortId}",
+    "description": "Shortened deployment identifier. {shortId} is a server-generated id; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentStatus": {
+    "defaultMessage": "Deployment Status",
+    "description": "Label on the bar summarising the current deployment state."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.lastDeployedAt": {
+    "defaultMessage": "Last deployed",
+    "description": "Label before the timestamp once the deployment is no longer live."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.notDeployed": {
+    "defaultMessage": "Not yet deployed",
+    "description": "Placeholder shown when this API has never been deployed to this gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.reasonDeploymentTimeout": {
+    "defaultMessage": "Deployment timed out. Gateway did not respond."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.reasonGatewayProcessingError": {
+    "defaultMessage": "Failed to process deployment. Please check gateway logs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeploy": {
+    "defaultMessage": "Redeploy",
+    "description": "Button that returns a stopped or failed deployment to service. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeployStarted": {
+    "defaultMessage": "Redeploying \"{deploymentName}\".",
+    "description": "Toast confirming a redeploy was requested. {deploymentName} is user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeploying": {
+    "defaultMessage": "Redeploying...",
+    "description": "Label on the Redeploy button while the request is in flight."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.relative": {
+    "defaultMessage": "⏱ {relative}",
+    "description": "Timestamp next to the Deployed/Last deployed label. {relative} is an already-formatted relative time."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusActive": {
+    "defaultMessage": "Active",
+    "description": "The deployment is live on the gateway and serving traffic."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusArchived": {
+    "defaultMessage": "Archived",
+    "description": "The deployment was superseded by a newer one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusDeploying": {
+    "defaultMessage": "Deploying"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusFailed": {
+    "defaultMessage": "Failed"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusNotActive": {
+    "defaultMessage": "Not Active",
+    "description": "The gateway is offline, so the deployment state cannot be determined."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusSuspended": {
+    "defaultMessage": "Suspended",
+    "description": "The deployment was stopped, but can be redeployed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusUndeploying": {
+    "defaultMessage": "Undeploying"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stop": {
+    "defaultMessage": "Stop",
+    "description": "Button that takes the live deployment out of service. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stopStarted": {
+    "defaultMessage": "Stopping \"{deploymentName}\".",
+    "description": "Toast confirming an undeploy was requested. {deploymentName} is user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stopping": {
+    "defaultMessage": "Stopping...",
+    "description": "Label on the Stop button while the request is in flight."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.deleteLabel": {
+    "defaultMessage": "Delete {deploymentName}",
+    "description": "Accessible label for the delete button on one deployment row. {deploymentName} is user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.latest": {
+    "defaultMessage": "Latest",
+    "description": "Badge marking the most recent deployment on a gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusArchived": {
+    "defaultMessage": "Archived",
+    "description": "Deployment state: superseded by a newer deployment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusDeployed": {
+    "defaultMessage": "Deployed",
+    "description": "Deployment state: live on the gateway and serving traffic."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusDeploying": {
+    "defaultMessage": "Deploying",
+    "description": "Deployment state: in progress, awaiting the gateway acknowledgement."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusFailed": {
+    "defaultMessage": "Failed",
+    "description": "Deployment state: the gateway rejected it or could not complete it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusUndeployed": {
+    "defaultMessage": "Undeployed",
+    "description": "Deployment state: out of service, but its record is kept."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusUndeploying": {
+    "defaultMessage": "Undeploying",
+    "description": "Deployment state: being taken out of service."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.closeLabel": {
+    "defaultMessage": "Close",
+    "description": "Accessible label for the icon button that dismisses the drawer."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.empty": {
+    "defaultMessage": "No deployments available",
+    "description": "Shown when the gateway has no deployment history to restore from."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restore": {
+    "defaultMessage": "Restore",
+    "description": "Button that puts the selected earlier deployment back in service. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restoreStarted": {
+    "defaultMessage": "Restoring \"{deploymentName}\".",
+    "description": "Toast confirming a restore was requested. {deploymentName} is user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restoring": {
+    "defaultMessage": "Restoring...",
+    "description": "Label on the Restore button while the request is in flight."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.title": {
+    "defaultMessage": "Select Deployment to Restore",
+    "description": "Heading of the drawer for picking an earlier deployment to put back in service."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.DevelopPageShell.loading": {
+    "defaultMessage": "Loading API",
+    "description": "Shown while the API being edited is fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.DevelopPageShell.notFound": {
+    "defaultMessage": "API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.detail": {
+    "defaultMessage": "You will be able to publish guides, references, and release notes alongside the API so consumers can read them in the Developer Portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.feature": {
+    "defaultMessage": "Documents for this API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.save": {
+    "defaultMessage": "Save changes",
+    "description": "Default label on the save bar button. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.saving": {
+    "defaultMessage": "Saving…",
+    "description": "Label on the save button while the request is in flight."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.addPolicy": {
+    "defaultMessage": "Add Policy",
+    "description": "Button that attaches a policy from the catalog. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.edit": {
+    "defaultMessage": "Edit",
+    "description": "Tooltip on the button that reconfigures an attached policy. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.editLabel": {
+    "defaultMessage": "Edit policy",
+    "description": "Accessible label for the edit button on one attached policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.empty": {
+    "defaultMessage": "No policies attached.",
+    "description": "Default placeholder when nothing is attached at this scope."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.heading": {
+    "defaultMessage": "Policies",
+    "description": "Heading over the list of policies attached at this scope. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.remove": {
+    "defaultMessage": "Remove",
+    "description": "Tooltip on the button that detaches a policy. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.removeLabel": {
+    "defaultMessage": "Remove policy",
+    "description": "Accessible label for the remove button on one attached policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.allCategories": {
+    "defaultMessage": "All",
+    "description": "Filter chip clearing the category selection so every policy is listed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription": {
+    "defaultMessage": "No policies match the filter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyTitle": {
+    "defaultMessage": "No policies"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.heading": {
+    "defaultMessage": "Available policies",
+    "description": "Heading over the Policy Hub catalog that policies are dragged from."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.loadError": {
+    "defaultMessage": "Unable to load policies from the Policy Hub."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.next": {
+    "defaultMessage": "Next",
+    "description": "Pagination button for the next page of the catalog."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.policyHub": {
+    "defaultMessage": "Policy Hub",
+    "description": "Link opening the Policy Hub website. Product name — leave untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.previous": {
+    "defaultMessage": "Previous",
+    "description": "Pagination button for the previous page of the catalog."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.searchPlaceholder": {
+    "defaultMessage": "Search policies"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.version": {
+    "defaultMessage": "v{version}",
+    "description": "Version chip on a catalog entry. {version} is backend data; keep the \"v\" prefix if it reads naturally."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.scopePrompt": {
+    "defaultMessage": "Policies are attached to a single API.",
+    "description": "Explains why an API must be picked before this page can render."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy": {
+    "defaultMessage": "Attach policy",
+    "description": "Attaches the configured policy to the selected scope. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.back": {
+    "defaultMessage": "Back",
+    "description": "Footer button returning to the previous step. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.backLabel": {
+    "defaultMessage": "Back",
+    "description": "Accessible label for the icon button returning to the previous step."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.closeLabel": {
+    "defaultMessage": "Close",
+    "description": "Accessible label for the icon button dismissing the drawer."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.loadError": {
+    "defaultMessage": "Unable to load the policy definition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.noParameters": {
+    "defaultMessage": "This policy has no configurable parameters."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.savePolicy": {
+    "defaultMessage": "Save policy",
+    "description": "Confirms edits to an already-attached policy. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.title": {
+    "defaultMessage": "Configure {policyName}",
+    "description": "Drawer heading. {policyName} is the policy’s catalog name, backend data; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalEmpty": {
+    "defaultMessage": "Drag and drop policies here to apply at the global level."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalPolicies": {
+    "defaultMessage": "Global policies (API level)",
+    "description": "Section for policies applying to every resource of the API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.heading": {
+    "defaultMessage": "Policies",
+    "description": "Heading over the panel where policies are attached. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.hint": {
+    "defaultMessage": "Drag policies from the right onto the API or a resource.",
+    "description": "Instruction shown when a Policy Hub is configured."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.hubUnavailable": {
+    "defaultMessage": "Policy Hub is not configured; policies cannot be added.",
+    "description": "Shown instead of the instruction when no Policy Hub URL is set."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noResources": {
+    "defaultMessage": "No resources. Add them in the Routing tab.",
+    "description": "\"Routing\" is the name of a sibling page in this console."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyAttached": {
+    "defaultMessage": "Policy attached. Save to apply.",
+    "description": "Toast after attaching a policy; the change is not persisted until Save."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyUpdated": {
+    "defaultMessage": "Policy updated. Save to apply.",
+    "description": "Toast after editing an attached policy; the change is not persisted until Save."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty": {
+    "defaultMessage": "Drag and drop policies here, or use Add Policy.",
+    "description": "\"Add Policy\" is the label of a button in this same list."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resources": {
+    "defaultMessage": "Resources",
+    "description": "Section listing the API's operations, each with its own policies. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved": {
+    "defaultMessage": "Policies saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
+    "defaultMessage": "Add entry",
+    "description": "Adds another key/value pair to a map parameter. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addItem": {
+    "defaultMessage": "Add item",
+    "description": "Adds another entry to a list parameter. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.advancedSettings": {
+    "defaultMessage": "Advanced Settings",
+    "description": "Toggle revealing the parameters the policy marks as advanced."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.keyPlaceholder": {
+    "defaultMessage": "Key",
+    "description": "Placeholder for the name side of a key/value parameter pair. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeEntryLabel": {
+    "defaultMessage": "Remove entry",
+    "description": "Accessible label for the button deleting one key/value pair."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeItemLabel": {
+    "defaultMessage": "Remove item",
+    "description": "Accessible label for the button deleting one entry of a list parameter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.requiredMarker": {
+    "defaultMessage": "*",
+    "description": "Marker appended to a required field’s label. Includes its leading space; adjust or drop the space to suit the locale’s typography."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.selectPlaceholder": {
+    "defaultMessage": "Select…",
+    "description": "Empty option shown before a value is chosen from a dropdown."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.valuePlaceholder": {
+    "defaultMessage": "Value",
+    "description": "Placeholder for the value side of a key/value parameter pair. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.scopePrompt": {
+    "defaultMessage": "Routing is configured per API.",
+    "description": "Explains why an API must be picked before this page can render."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.addResource": {
+    "defaultMessage": "Add resource",
+    "description": "Adds another proxy resource row. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.apiProxyResourceCaption": {
+    "defaultMessage": "API PROXY RESOURCE",
+    "description": "Upper-case caption over the proxy side of the mapping summary."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendEndpoint": {
+    "defaultMessage": "Backend endpoint",
+    "description": "Heading of the editor pane for the upstream URLs. Noun phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendResourceCaption": {
+    "defaultMessage": "BACKEND RESOURCE",
+    "description": "Upper-case caption over the backend side of the mapping summary."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendResourcesColumn": {
+    "defaultMessage": "Backend resources",
+    "description": "Caption over the right column of the mapping canvas."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendResourcesHeading": {
+    "defaultMessage": "Backend resources",
+    "description": "Sub-heading in the editor pane, over the discovery controls."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendUrlLabel": {
+    "defaultMessage": "Backend URL",
+    "description": "Accessible label for the inline backend URL field on the canvas."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendUrlPlaceholder": {
+    "defaultMessage": "Set backend URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDefault": {
+    "defaultMessage": "Confirm",
+    "description": "Fallback label on the confirmation dialog button. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDisconnectAction": {
+    "defaultMessage": "Remove connection",
+    "description": "Confirms severing a proxy-to-backend mapping. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDisconnectMessage": {
+    "defaultMessage": "Remove the connection for {method} {path}? Both resources stay — only the link is removed.",
+    "description": "{method} is an HTTP verb and {path} a URL path — both are data, not translatable."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDisconnectTitle": {
+    "defaultMessage": "Remove connection"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmRemoveAction": {
+    "defaultMessage": "Remove",
+    "description": "Confirms deleting a proxy resource. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmRemoveMessage": {
+    "defaultMessage": "Remove the {method} {path} proxy resource? This can't be undone.",
+    "description": "{method} is an HTTP verb and {path} a URL path — both are data, not translatable."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmRemoveTitle": {
+    "defaultMessage": "Remove resource"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectHelperText": {
+    "defaultMessage": "Route this proxy resource to any backend resource of the same method."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectHint": {
+    "defaultMessage": "Click to connect this backend resource",
+    "description": "Tooltip on a backend row while a connection is being drawn from a proxy row."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectPortLabel": {
+    "defaultMessage": "Connect to a backend resource",
+    "description": "Label on the handle that starts drawing a connection from a proxy row."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectToBackendLabel": {
+    "defaultMessage": "Connect to backend resource"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectingBanner": {
+    "defaultMessage": "Connecting <selected>{method} {path}</selected> — pick a matching backend resource (same method), or close to cancel.",
+    "description": "Banner while a connection is being drawn. <selected> emphasises the row; {method}/{path} are data."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discover": {
+    "defaultMessage": "Discover",
+    "description": "Button that re-reads the backend contract. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoverLabel": {
+    "defaultMessage": "Discover backend resources",
+    "description": "Accessible label for the refresh button that re-reads the backend contract."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoverTooltip": {
+    "defaultMessage": "Discover backend resources from its OpenAPI/Swagger contract"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryDone": {
+    "defaultMessage": "Found {count, plural, one {# backend resource} other {# backend resources}}. Matching proxy resources were auto-mapped; the rest are left unmapped."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryFetchFailed": {
+    "defaultMessage": "Could not fetch the backend contract (CORS or unreachable) — map resources manually."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryIdle": {
+    "defaultMessage": "Resources are discovered from the backend’s OpenAPI/Swagger contract when the URL changes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryLoading": {
+    "defaultMessage": "Fetching the backend contract…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryNoContract": {
+    "defaultMessage": "No OpenAPI/Swagger contract found at the backend URL — map resources manually."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.heading": {
+    "defaultMessage": "Routing",
+    "description": "Heading of the panel mapping proxy resources to backend resources. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.methodLabel": {
+    "defaultMessage": "Method",
+    "description": "Field label for the HTTP method of a proxy resource. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.nameLabel": {
+    "defaultMessage": "Name (optional)",
+    "description": "Field label for a human-readable name on a proxy resource. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.noResourcesYet": {
+    "defaultMessage": "No resources yet. Add one to route to the backend."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.notConnectedHint": {
+    "defaultMessage": "Not connected — use the port handle or the editor to map a backend resource"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.passthroughNote": {
+    "defaultMessage": "Passthrough — same path as the proxy resource."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.passthroughOption": {
+    "defaultMessage": "Passthrough (same path)",
+    "description": "Dropdown option meaning the backend path equals the proxy path."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.productionUrl": {
+    "defaultMessage": "Production URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.proxyPathLabel": {
+    "defaultMessage": "Proxy path"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.proxyResourcesColumn": {
+    "defaultMessage": "API proxy resources",
+    "description": "Caption over the left column of the mapping canvas."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.removeConnectionLabel": {
+    "defaultMessage": "Remove connection",
+    "description": "Accessible label for the button severing one proxy-to-backend link."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.removeResourceButton": {
+    "defaultMessage": "Remove resource",
+    "description": "Deletes the proxy resource being edited. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.removeResourceLabel": {
+    "defaultMessage": "Remove resource",
+    "description": "Accessible label for the button deleting one proxy resource row."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.resourceMapping": {
+    "defaultMessage": "Resource mapping",
+    "description": "Heading of the editor pane for one proxy resource. Noun phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.rewriteNote": {
+    "defaultMessage": "Requests are rewritten to this backend path."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.sandboxUrl": {
+    "defaultMessage": "Sandbox URL (optional)"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.saved": {
+    "defaultMessage": "Routing saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.selectPrompt": {
+    "defaultMessage": "Select a resource or the backend to edit it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.subheading": {
+    "defaultMessage": "Map API proxy resources to backend resources. An unmapped resource passes through unchanged."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.action": {
+    "defaultMessage": "Open Moesif Insights",
+    "description": "Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelDescription": {
+    "defaultMessage": "Track usage trends, request activity, latency, and customer behavior from your Moesif analytics workspace."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelTitle": {
+    "defaultMessage": "Your API insights live in Moesif"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.subHeader": {
+    "defaultMessage": "Usage analytics and traffic insights."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.title": {
+    "defaultMessage": "Insights"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies": {
+    "defaultMessage": "Attach and Manage Policies"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designCustomize": {
+    "defaultMessage": "Design and Customize API Proxies"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designSelfHostedGateway": {
+    "defaultMessage": "Getting Started with a Self-Hosted Gateway"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designTitle": {
+    "defaultMessage": "Design and Deploy",
+    "description": "Section heading. Refers to building an API proxy and putting it on a gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.exploreMore": {
+    "defaultMessage": "Explore More",
+    "description": "Heading above a card of links into the product documentation."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedCreateProxy": {
+    "defaultMessage": "Create an API Proxy"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedGuide": {
+    "defaultMessage": "Get Started with the WSO2 API Platform"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedRestFromScratch": {
+    "defaultMessage": "Create a REST API Proxy from Scratch"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.getStartedTitle": {
+    "defaultMessage": "Get Started",
+    "description": "Section heading for introductory documentation."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governGovernance": {
+    "defaultMessage": "API Governance Overview"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governInsights": {
+    "defaultMessage": "Insights and Analytics"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.governTitle": {
+    "defaultMessage": "Govern and Monitor",
+    "description": "Section heading. \"Govern\" means applying organization-wide rules to APIs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerAction": {
+    "defaultMessage": "View projects",
+    "description": "Button on the welcome banner that opens the project listing."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerDescription": {
+    "defaultMessage": "Projects organize the APIs you build."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle": {
+    "defaultMessage": "Welcome to {organizationName}",
+    "description": "{organizationName} is the display name of the organization. Never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading": {
+    "defaultMessage": "Loading organization"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd": {
+    "defaultMessage": "New project",
+    "description": "Action that opens the create-project dialog from the section header."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmptyAction": {
+    "defaultMessage": "Create project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmptyDescription": {
+    "defaultMessage": "Create a project to organize and manage your APIs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmptyTitle": {
+    "defaultMessage": "Get started with a project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsTitle": {
+    "defaultMessage": "Projects",
+    "description": "Heading of the projects summary section. Noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.unresolvedOrganization": {
+    "defaultMessage": "Unable to resolve organization context. The organization API returned no usable organizations for this session."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.create": {
+    "defaultMessage": "Create"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.creating": {
+    "defaultMessage": "Creating…",
+    "description": "Label on the submit button while the project is being created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.description.label": {
+    "defaultMessage": "Description",
+    "description": "Label for the project description field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.description.placeholder": {
+    "defaultMessage": "What this project is for (optional)"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.error.tooLong": {
+    "defaultMessage": "Name must be {max} characters or fewer."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.helper": {
+    "defaultMessage": "A unique name for the project within this organization."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.label": {
+    "defaultMessage": "Name",
+    "description": "Label for the project name field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.placeholder": {
+    "defaultMessage": "e.g. Retail APIs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.notification.createFailed": {
+    "defaultMessage": "Failed to create project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.notification.created": {
+    "defaultMessage": "Project created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.title": {
+    "defaultMessage": "Create project"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.mvpScope": {
     "defaultMessage": "Advanced organization admin settings, governance, marketplace, and developer portal configuration are intentionally excluded from the MVP replacement app.",
@@ -571,17 +1612,172 @@
     "defaultMessage": "Settings",
     "description": "Heading of the Settings page."
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.body": {
+    "defaultMessage": "Legacy routes that are outside the MVP are intentionally not exposed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.goHome": {
+    "defaultMessage": "Go to console home",
+    "description": "Button returning to the root of the console. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.subtitle": {
+    "defaultMessage": "This route is not part of the API Platform MVP.",
+    "description": "\"API Platform\" is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.title": {
+    "defaultMessage": "Page not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyDescription": {
+    "defaultMessage": "Your account is authenticated, but it is not associated with an organization."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyTitle": {
+    "defaultMessage": "No organizations found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.errorMessage": {
+    "defaultMessage": "Refresh the page or contact support if this continues."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.errorTitle": {
+    "defaultMessage": "Unable to load organizations"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.loading": {
+    "defaultMessage": "Loading organization",
+    "description": "Shown while the signed-in user's organizations are being fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.ServerErrorPage.message": {
+    "defaultMessage": "The console could not complete the request. Try again shortly."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.ServerErrorPage.title": {
+    "defaultMessage": "Server error"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.SessionExpiredPage.signIn": {
+    "defaultMessage": "Sign in",
+    "description": "Button that logs out and returns to the login page. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.SessionExpiredPage.subtitle": {
+    "defaultMessage": "Your session has expired. Sign in again to continue."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.SessionExpiredPage.title": {
+    "defaultMessage": "Session expired"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.UnauthorizedPage.clearSession": {
+    "defaultMessage": "Clear session",
+    "description": "Button that logs the user out, discarding the current session. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.UnauthorizedPage.signInAgain": {
+    "defaultMessage": "Sign in again",
+    "description": "Button returning to the login page. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.UnauthorizedPage.subtitle": {
+    "defaultMessage": "You do not have permission to access this console."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.UnauthorizedPage.title": {
+    "defaultMessage": "Unauthorized",
+    "description": "Page heading shown when the signed-in account may not use this console."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.apiNotFound": {
+    "defaultMessage": "API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading": {
+    "defaultMessage": "Loading test console",
+    "description": "Shown while the API the curl command is built from is being fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.scopePrompt": {
+    "defaultMessage": "The curl console runs against a single API.",
+    "description": "Explains why an API must be picked before this page can render."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle": {
+    "defaultMessage": "Use the following curl command to test the API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.title": {
+    "defaultMessage": "Test {apiName}",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
+  "apiListPage.count": {
+    "defaultMessage": "{count, plural, one {# API} other {# APIs}}",
+    "description": "Heading above the listing, counting every match, not the page."
+  },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",
     "description": "Button label for creating a new API"
   },
-  "apiListPage.subHeader": {
-    "defaultMessage": "REST APIs in this project.",
-    "description": "Sub header for the API list page"
+  "apiListPage.delete.confirmInputLabel": {
+    "defaultMessage": "Type \"{name}\" to confirm",
+    "description": "Label for the type-to-confirm field guarding an irreversible delete."
+  },
+  "apiListPage.delete.confirmLabel": {
+    "defaultMessage": "Delete"
+  },
+  "apiListPage.delete.failed": {
+    "defaultMessage": "Delete failed",
+    "description": "Fallback toast when the server gives no reason for a failure."
+  },
+  "apiListPage.delete.message": {
+    "defaultMessage": "This permanently deletes the API \"{name}\" and all related details. This action is irreversible."
+  },
+  "apiListPage.delete.succeeded": {
+    "defaultMessage": "Deleted \"{name}\"."
+  },
+  "apiListPage.delete.title": {
+    "defaultMessage": "Delete API"
+  },
+  "apiListPage.empty.action": {
+    "defaultMessage": "Create API"
+  },
+  "apiListPage.empty.description": {
+    "defaultMessage": "Set up an API to expose your backend and manage access across your applications.",
+    "description": "Body of the first-run prompt shown to a project with no APIs."
+  },
+  "apiListPage.empty.title": {
+    "defaultMessage": "Create your first API"
+  },
+  "apiListPage.error.message": {
+    "defaultMessage": "Unable to load APIs"
+  },
+  "apiListPage.loading": {
+    "defaultMessage": "Loading APIs"
+  },
+  "apiListPage.noMatches.description": {
+    "defaultMessage": "Try a different API name or clear the search."
+  },
+  "apiListPage.noMatches.title": {
+    "defaultMessage": "No matching APIs"
+  },
+  "apiListPage.rowsPerPage": {
+    "defaultMessage": "APIs per page"
+  },
+  "apiListPage.searchPlaceholder": {
+    "defaultMessage": "Search APIs"
+  },
+  "apiListPage.sort.nameAscending": {
+    "defaultMessage": "Name (A–Z)",
+    "description": "Sort option: alphabetical by API name, ascending."
+  },
+  "apiListPage.sort.nameDescending": {
+    "defaultMessage": "Name (Z–A)",
+    "description": "Sort option: alphabetical by API name, descending."
+  },
+  "apiListPage.sort.newest": {
+    "defaultMessage": "Newest first",
+    "description": "Sort option: by creation date, most recent API first."
+  },
+  "apiListPage.sort.oldest": {
+    "defaultMessage": "Oldest first",
+    "description": "Sort option: by creation date, earliest API first."
+  },
+  "apiListPage.sortLabel": {
+    "defaultMessage": "Sort by",
+    "description": "Label for the control choosing the API list order."
   },
   "apiListPage.title": {
     "defaultMessage": "APIs",
     "description": "Page title for the API list page"
+  },
+  "apiListPage.view.grid": {
+    "defaultMessage": "Grid view",
+    "description": "Accessible label for the button switching to the card grid."
+  },
+  "apiListPage.view.list": {
+    "defaultMessage": "List view",
+    "description": "Accessible label for the button switching to compact rows."
   },
   "appLayout.footer.privacyPolicy": {
     "defaultMessage": "Privacy Policy",
@@ -609,15 +1805,6 @@
   },
   "appShell.compliancePage.feature": {
     "defaultMessage": "Compliance reporting for this API"
-  },
-  "appShell.deployPage.header": {
-    "defaultMessage": "Deploy {apiName}"
-  },
-  "appShell.deployPage.noGatewaysMatchSearch": {
-    "defaultMessage": "No gateways match your search"
-  },
-  "appShell.deployPage.subHeader": {
-    "defaultMessage": "Deploy the current working copy to a gateway, and manage existing deployments."
   },
   "appShell.header.api.aria": {
     "defaultMessage": "APIs"
@@ -685,9 +1872,6 @@
   "appShell.header.title": {
     "defaultMessage": "API Platform"
   },
-  "appShell.insightsPage.feature": {
-    "defaultMessage": "API insights"
-  },
   "appShell.lifeCyclePage.feature": {
     "defaultMessage": "Lifecycle management for this API"
   },
@@ -697,26 +1881,11 @@
   "appShell.monetizePage.feature": {
     "defaultMessage": "Monetization for this API"
   },
-  "appShell.projectHomePage.noAdditionalMetadata": {
-    "defaultMessage": "No additional project metadata available."
-  },
-  "appShell.projectHomePage.projectDetails": {
-    "defaultMessage": "Project details"
-  },
-  "appShell.projectHomePage.viewAllAPIs": {
-    "defaultMessage": "View all APIs ({count})"
-  },
   "appShell.runtimeLogsPage.header": {
     "defaultMessage": "Observability"
   },
   "appShell.runtimeLogsPage.subHeader": {
     "defaultMessage": "Runtime logs for {apiHandler}."
-  },
-  "appShell.testPage.header": {
-    "defaultMessage": "Test {apiName}"
-  },
-  "appShell.testPage.subHeader": {
-    "defaultMessage": "Use the following curl command to test the API."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."
@@ -727,6 +1896,398 @@
   "components.common.searchableComplexSelect.dropdownClickAriaLabel": {
     "defaultMessage": "Open {label}"
   },
+  "gatewayCard.connected": {
+    "defaultMessage": "Connected",
+    "description": "Status shown when the gateway is talking to the platform."
+  },
+  "gatewayCard.disconnected": {
+    "defaultMessage": "Not connected",
+    "description": "Status shown when the gateway is not reachable."
+  },
+  "gatewayCard.functionality.ai": {
+    "defaultMessage": "AI",
+    "description": "Chip for a gateway provisioned to serve AI traffic."
+  },
+  "gatewayCard.functionality.event": {
+    "defaultMessage": "Event",
+    "description": "Chip for a gateway provisioned to serve event traffic."
+  },
+  "gatewayCard.functionality.regular": {
+    "defaultMessage": "Regular",
+    "description": "Chip for a gateway serving ordinary HTTP API traffic."
+  },
+  "gatewayCard.mode.managed": {
+    "defaultMessage": "WSO2-managed",
+    "description": "Chip for a gateway WSO2 runs on the customer’s behalf."
+  },
+  "gatewayCard.mode.selfHosted": {
+    "defaultMessage": "Self-hosted",
+    "description": "Chip for a gateway the customer runs on their own infra."
+  },
+  "gatewayCard.updated": {
+    "defaultMessage": "Updated {relative}",
+    "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
+  },
+  "gateways.CopyableCommand.copied": {
+    "defaultMessage": "Copied",
+    "description": "Tooltip confirming the command was copied to the clipboard."
+  },
+  "gateways.CopyableCommand.copy": {
+    "defaultMessage": "Copy command",
+    "description": "Accessible label and tooltip for the button that copies a terminal command."
+  },
+  "gateways.count": {
+    "defaultMessage": "{count, plural, one {# gateway} other {# gateways}}",
+    "description": "Heading above the listing, counting every match."
+  },
+  "gateways.create.action.back": {
+    "defaultMessage": "Back to gateways"
+  },
+  "gateways.create.action.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "gateways.create.action.submit": {
+    "defaultMessage": "Provision gateway"
+  },
+  "gateways.create.action.submitting": {
+    "defaultMessage": "Provisioning…"
+  },
+  "gateways.create.description.label": {
+    "defaultMessage": "Description (Optional)"
+  },
+  "gateways.create.endpoint.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://localhost:8443."
+  },
+  "gateways.create.endpoint.error.required": {
+    "defaultMessage": "Enter a URL."
+  },
+  "gateways.create.endpoint.label": {
+    "defaultMessage": "URL"
+  },
+  "gateways.create.endpoint.placeholder": {
+    "defaultMessage": "https://localhost:8443",
+    "description": "Example gateway address shown in the empty URL field."
+  },
+  "gateways.create.environment.label": {
+    "defaultMessage": "Associated Environment"
+  },
+  "gateways.create.name.error.required": {
+    "defaultMessage": "Enter a gateway name."
+  },
+  "gateways.create.name.label": {
+    "defaultMessage": "Name"
+  },
+  "gateways.create.notification.created": {
+    "defaultMessage": "Gateway “{name}” provisioned.",
+    "description": "{name} is the gateway display name the user just entered."
+  },
+  "gateways.create.section.configurations": {
+    "defaultMessage": "Configurations"
+  },
+  "gateways.create.section.general": {
+    "defaultMessage": "General Details"
+  },
+  "gateways.create.subtitle": {
+    "defaultMessage": "Register a self-hosted gateway, then connect it to the platform."
+  },
+  "gateways.create.title": {
+    "defaultMessage": "Provision a gateway"
+  },
+  "gateways.create.type.ai.title": {
+    "defaultMessage": "AI Gateway"
+  },
+  "gateways.create.type.badge.beta": {
+    "defaultMessage": "Beta",
+    "description": "Badge on a gateway type that is released but not yet generally available."
+  },
+  "gateways.create.type.event.title": {
+    "defaultMessage": "Event Gateway"
+  },
+  "gateways.create.type.groupLabel": {
+    "defaultMessage": "Gateway type",
+    "description": "Accessible name for the row of gateway type cards. Noun, not a command."
+  },
+  "gateways.create.type.label": {
+    "defaultMessage": "Type"
+  },
+  "gateways.create.type.regular.title": {
+    "defaultMessage": "API Gateway"
+  },
+  "gateways.create.version.badge.lts": {
+    "defaultMessage": "LTS",
+    "description": "Badge marking a long-term-support gateway build."
+  },
+  "gateways.create.version.error.required": {
+    "defaultMessage": "Choose a gateway version."
+  },
+  "gateways.create.version.label": {
+    "defaultMessage": "Gateway Version"
+  },
+  "gateways.create.version.option": {
+    "defaultMessage": "api-gateway v{version}",
+    "description": "One entry in the gateway version list; {version} is a number such as 1.0."
+  },
+  "gateways.detail.GetStarted.download.intro": {
+    "defaultMessage": "Run this command in your terminal to download the gateway:"
+  },
+  "gateways.detail.GetStarted.environment.label": {
+    "defaultMessage": "Associated Environment"
+  },
+  "gateways.detail.GetStarted.k8s.chartHeading": {
+    "defaultMessage": "Installing the Chart",
+    "description": "Heading above the Helm command that installs the gateway into a cluster."
+  },
+  "gateways.detail.GetStarted.k8s.chartIntro": {
+    "defaultMessage": "Run this command to install the gateway chart with control plane configurations:"
+  },
+  "gateways.detail.GetStarted.prerequisite.curl": {
+    "defaultMessage": "cURL installed"
+  },
+  "gateways.detail.GetStarted.prerequisite.docker": {
+    "defaultMessage": "Docker installed and running"
+  },
+  "gateways.detail.GetStarted.prerequisite.helm": {
+    "defaultMessage": "Helm 3.18+"
+  },
+  "gateways.detail.GetStarted.prerequisite.kubernetes": {
+    "defaultMessage": "Kubernetes 1.32+"
+  },
+  "gateways.detail.GetStarted.prerequisite.unzip": {
+    "defaultMessage": "unzip installed"
+  },
+  "gateways.detail.GetStarted.prerequisites": {
+    "defaultMessage": "Prerequisites"
+  },
+  "gateways.detail.GetStarted.reconfigure": {
+    "defaultMessage": "Reconfigure",
+    "description": "Generates a fresh registration token, revoking the gateway’s previous one."
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.body": {
+    "defaultMessage": "This revokes the current registration token and disconnects any gateway still using it. You will need to apply the new token to bring it back online."
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.button": {
+    "defaultMessage": "Generate new token"
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.title": {
+    "defaultMessage": "Generate a new registration token?"
+  },
+  "gateways.detail.GetStarted.reconfiguring": {
+    "defaultMessage": "Generating…"
+  },
+  "gateways.detail.GetStarted.start.enter": {
+    "defaultMessage": "1. Navigate to the gateway folder."
+  },
+  "gateways.detail.GetStarted.start.run": {
+    "defaultMessage": "2. Run this command to start the gateway using the configs/keys.env file created in Step 2:",
+    "description": "configs/keys.env is a file path — keep it exactly as written."
+  },
+  "gateways.detail.GetStarted.step.configure": {
+    "defaultMessage": "Step 2: Configure the Gateway"
+  },
+  "gateways.detail.GetStarted.step.download": {
+    "defaultMessage": "Step 1: Download the Gateway"
+  },
+  "gateways.detail.GetStarted.step.start": {
+    "defaultMessage": "Step 3: Start the Gateway"
+  },
+  "gateways.detail.GetStarted.tab.docker": {
+    "defaultMessage": "Docker",
+    "description": "Product name — do not translate."
+  },
+  "gateways.detail.GetStarted.tab.kubernetes": {
+    "defaultMessage": "Kubernetes",
+    "description": "Product name — do not translate."
+  },
+  "gateways.detail.GetStarted.tab.quickStart": {
+    "defaultMessage": "Quick Start"
+  },
+  "gateways.detail.GetStarted.tab.virtualMachine": {
+    "defaultMessage": "Virtual Machine"
+  },
+  "gateways.detail.GetStarted.title": {
+    "defaultMessage": "Get Started"
+  },
+  "gateways.detail.GetStarted.token.notice.compose": {
+    "defaultMessage": "The registration token is single-use. If you need to reconfigure the gateway, generate a new token — this will revoke the old token and disconnect the gateway from the control plane."
+  },
+  "gateways.detail.GetStarted.token.notice.helm": {
+    "defaultMessage": "The registration token is a one-time generated token for this gateway. If you need to install or update the gateway chart again, first reconfigure this gateway to generate a new registration token. Reconfiguring will revoke the previous token."
+  },
+  "gateways.detail.GetStarted.token.once": {
+    "defaultMessage": "Copy this now. The token is shown only once and cannot be retrieved again."
+  },
+  "gateways.detail.GetStarted.url.label": {
+    "defaultMessage": "URL"
+  },
+  "gateways.detail.GetStarted.vm.runtime.colima": {
+    "defaultMessage": "Colima (macOS)",
+    "description": "A container runtime option. Product name — do not translate “Colima”."
+  },
+  "gateways.detail.GetStarted.vm.runtime.dockerDesktop": {
+    "defaultMessage": "Docker Desktop (Windows / macOS)",
+    "description": "A container runtime option. Product name — do not translate “Docker Desktop”."
+  },
+  "gateways.detail.GetStarted.vm.runtime.dockerEngine": {
+    "defaultMessage": "Docker Engine + Compose plugin (Linux)",
+    "description": "A container runtime option. Product names — do not translate."
+  },
+  "gateways.detail.GetStarted.vm.runtime.rancher": {
+    "defaultMessage": "Rancher Desktop (Windows / macOS)",
+    "description": "A container runtime option. Product name — do not translate “Rancher Desktop”."
+  },
+  "gateways.detail.GetStarted.vm.runtimeIntro": {
+    "defaultMessage": "Ensure docker and docker compose commands are available."
+  },
+  "gateways.detail.GetStarted.vm.runtimesIntro": {
+    "defaultMessage": "A Docker-compatible container runtime such as:"
+  },
+  "gateways.detail.Header.created": {
+    "defaultMessage": "Created",
+    "description": "Label before the relative time a gateway was registered, e.g. \"Created 1 month ago\"."
+  },
+  "gateways.detail.Header.description.label": {
+    "defaultMessage": "Description",
+    "description": "Label of the box used to edit the gateway description."
+  },
+  "gateways.detail.Header.description.placeholder": {
+    "defaultMessage": "No description",
+    "description": "Stands in for the gateway description when it has none. Rendered in italics as an absence, not a value."
+  },
+  "gateways.detail.Header.edit": {
+    "defaultMessage": "Edit name and description",
+    "description": "Accessible label and tooltip for the pencil that opens the gateway name and description for editing."
+  },
+  "gateways.detail.Header.edit.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Discards unsaved edits to the gateway name and description."
+  },
+  "gateways.detail.Header.edit.save": {
+    "defaultMessage": "Save",
+    "description": "Commits edits to the gateway name and description."
+  },
+  "gateways.detail.Header.edit.saved": {
+    "defaultMessage": "Gateway details updated.",
+    "description": "Confirmation shown after the gateway name or description is saved."
+  },
+  "gateways.detail.Header.name.label": {
+    "defaultMessage": "Name",
+    "description": "Label of the box used to edit the gateway name."
+  },
+  "gateways.detail.Header.name.required": {
+    "defaultMessage": "Enter a gateway name."
+  },
+  "gateways.detail.Policies.column.description": {
+    "defaultMessage": "Description"
+  },
+  "gateways.detail.Policies.column.name": {
+    "defaultMessage": "Name"
+  },
+  "gateways.detail.Policies.column.type": {
+    "defaultMessage": "Policy Type",
+    "description": "Column stating where a policy came from — the Policy Hub, or a custom upload."
+  },
+  "gateways.detail.Policies.column.version": {
+    "defaultMessage": "Version"
+  },
+  "gateways.detail.Policies.empty.description": {
+    "defaultMessage": "This gateway has not reported a manifest yet. Once it connects and syncs, the policies it is running appear here."
+  },
+  "gateways.detail.Policies.empty.title": {
+    "defaultMessage": "No gateway manifest found"
+  },
+  "gateways.detail.Policies.error": {
+    "defaultMessage": "Unable to load the policies on this gateway."
+  },
+  "gateways.detail.Policies.loading": {
+    "defaultMessage": "Loading policies"
+  },
+  "gateways.detail.Policies.noDescription": {
+    "defaultMessage": "No description",
+    "description": "Stands in for a policy description when the manifest carries none. Rendered as an absence, not a value."
+  },
+  "gateways.detail.Policies.subtitle": {
+    "defaultMessage": "Mediation policies installed on this gateway, as reported by its last manifest sync."
+  },
+  "gateways.detail.Policies.title": {
+    "defaultMessage": "Policies"
+  },
+  "gateways.detail.Policies.type.custom": {
+    "defaultMessage": "Custom",
+    "description": "Policy Type value for a policy the organization installed itself."
+  },
+  "gateways.detail.Policies.type.policyHub": {
+    "defaultMessage": "Policy Hub",
+    "description": "Policy Type value for a policy shipped by the platform’s own catalog. Product name — do not translate “Policy Hub”."
+  },
+  "gateways.detail.SetupBanner.connected.next": {
+    "defaultMessage": "Every setup step is complete.",
+    "description": "Sub-line of the setup banner once the gateway agent has connected."
+  },
+  "gateways.detail.SetupBanner.connected.title": {
+    "defaultMessage": "Your {name} gateway is connected",
+    "description": "Setup banner headline once the gateway is online. {name} is the gateway name the user chose — never translated."
+  },
+  "gateways.detail.SetupBanner.created.next": {
+    "defaultMessage": "Next: Configure your {name} gateway",
+    "description": "Sub-line of the setup banner telling the user which step follows. {name} is the gateway name — never translated."
+  },
+  "gateways.detail.SetupBanner.created.title": {
+    "defaultMessage": "You successfully created your {name} gateway",
+    "description": "Setup banner headline after a gateway is registered. {name} is the gateway name — never translated."
+  },
+  "gateways.detail.SetupBanner.dismiss": {
+    "defaultMessage": "Dismiss setup progress",
+    "description": "Accessible label for the button that closes the setup progress banner."
+  },
+  "gateways.detail.SetupBanner.progress.label": {
+    "defaultMessage": "Gateway setup progress",
+    "description": "Accessible name for the ring showing how many setup steps are done."
+  },
+  "gateways.detail.SetupBanner.progress.ratio": {
+    "defaultMessage": "{done}/{total}",
+    "description": "Completed setup steps out of the total, e.g. \"1/2\"."
+  },
+  "gateways.detail.SetupBanner.progress.steps": {
+    "defaultMessage": "Steps",
+    "description": "Word under the \"1/2\" count inside the setup progress ring. Plural noun, kept very short."
+  },
+  "gateways.detail.action.back": {
+    "defaultMessage": "Back to list",
+    "description": "Returns to the gateway listing from a gateway’s own page."
+  },
+  "gateways.detail.error.message": {
+    "defaultMessage": "Unable to load this gateway."
+  },
+  "gateways.detail.loading": {
+    "defaultMessage": "Loading gateway"
+  },
+  "gateways.detail.notFound": {
+    "defaultMessage": "Gateway not found"
+  },
+  "gateways.detail.tab.configurations": {
+    "defaultMessage": "Configurations",
+    "description": "Tab holding the setup walkthrough that brings a gateway online."
+  },
+  "gateways.detail.tab.policies": {
+    "defaultMessage": "Policies",
+    "description": "Tab listing the mediation policies installed on a gateway."
+  },
+  "gateways.empty.action": {
+    "defaultMessage": "Provision gateway"
+  },
+  "gateways.empty.description": {
+    "defaultMessage": "Provision a self-hosted gateway to start exposing APIs to clients."
+  },
+  "gateways.empty.title": {
+    "defaultMessage": "Provision your first gateway",
+    "description": "First-run prompt shown to an organization with no gateways."
+  },
+  "gateways.error.message": {
+    "defaultMessage": "Unable to load gateways"
+  },
   "gateways.filter.all": {
     "defaultMessage": "All"
   },
@@ -736,14 +2297,46 @@
   "gateways.filter.self": {
     "defaultMessage": "Self-hosted"
   },
+  "gateways.loading": {
+    "defaultMessage": "Loading gateways"
+  },
+  "gateways.noMatches.description": {
+    "defaultMessage": "Try a different search term or filter."
+  },
+  "gateways.noMatches.title": {
+    "defaultMessage": "No matching gateways"
+  },
   "gateways.provisionButton": {
     "defaultMessage": "Provision gateway"
+  },
+  "gateways.searchPlaceholder": {
+    "defaultMessage": "Search gateways"
+  },
+  "gateways.stat.connected": {
+    "defaultMessage": "Connected"
+  },
+  "gateways.stat.disconnected": {
+    "defaultMessage": "Not connected"
+  },
+  "gateways.stat.environments": {
+    "defaultMessage": "Environments"
+  },
+  "gateways.stat.total": {
+    "defaultMessage": "Total gateways"
   },
   "gateways.subtitle": {
     "defaultMessage": "Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients."
   },
   "gateways.title": {
     "defaultMessage": "Gateways"
+  },
+  "gateways.view.grid": {
+    "defaultMessage": "Grid view",
+    "description": "Accessible label for the button switching to the card grid."
+  },
+  "gateways.view.list": {
+    "defaultMessage": "List view",
+    "description": "Accessible label for the button switching to compact rows."
   },
   "project.card.actionsLabel": {
     "defaultMessage": "Project actions",
@@ -771,7 +2364,7 @@
     "description": "Placeholder shown while the deployed count is still loading."
   },
   "project.card.fallbackDescription": {
-    "defaultMessage": "Project workspace",
+    "defaultMessage": "No decsription",
     "description": "Shown in place of a description when the project has none."
   },
   "project.card.neverUpdated": {
@@ -817,7 +2410,7 @@
     "defaultMessage": "Create a project to organize and manage your APIs."
   },
   "project.list.empty.title": {
-    "defaultMessage": "No projects found"
+    "defaultMessage": "Create your first Project"
   },
   "project.list.error.message": {
     "defaultMessage": "Unable to load projects. {reason}"

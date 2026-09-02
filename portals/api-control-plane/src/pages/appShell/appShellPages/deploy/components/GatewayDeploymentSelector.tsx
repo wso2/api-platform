@@ -29,17 +29,56 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useRestoreGatewayDeployment } from '../../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../../components/Notifications';
-import type { Api, GatewayDeployment } from '../../../../../types/domain';
-import { relativeTime } from '../../../../../utils/relativeTime';
+import { useRestoreDeployment, type Deployment } from '@/api/resources/restApis/deployments';
+import { useNotifications } from '@/components/Notifications';
+import { useFormatters } from '@/i18n/useFormatters';
 import { DeploymentStatusChip } from './GatewayDeploymentRow';
 
+const messages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.title',
+    defaultMessage: 'Select Deployment to Restore',
+    description: 'Heading of the drawer for picking an earlier deployment to put back in service.',
+  },
+  closeLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.closeLabel',
+    defaultMessage: 'Close',
+    description: 'Accessible label for the icon button that dismisses the drawer.',
+  },
+  empty: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.empty',
+    defaultMessage: 'No deployments available',
+    description: 'Shown when the gateway has no deployment history to restore from.',
+  },
+  cancel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.cancel',
+    defaultMessage: 'Cancel',
+  },
+  restore: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restore',
+    defaultMessage: 'Restore',
+    description: 'Button that puts the selected earlier deployment back in service. Verb.',
+  },
+  restoring: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restoring',
+    defaultMessage: 'Restoring...',
+    description: 'Label on the Restore button while the request is in flight.',
+  },
+  restoreStarted: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restoreStarted',
+    defaultMessage: 'Restoring "{deploymentName}".',
+    description:
+      'Toast confirming a restore was requested. {deploymentName} is user-supplied; do not translate it.',
+  },
+});
+
 type GatewayDeploymentSelectorProps = {
-  api: Api;
+  /** Handle of the API these deployments belong to. */
+  restApiId: string;
   /** Deployments on this gateway, newest first. */
-  deployments: GatewayDeployment[];
+  deployments: Deployment[];
   open: boolean;
   onClose: () => void;
 };
@@ -49,42 +88,45 @@ type GatewayDeploymentSelectorProps = {
  * gateway (ai-workspace "Select Deployment to Restore").
  */
 export function GatewayDeploymentSelector({
-  api,
+  restApiId,
   deployments,
   open,
   onClose,
 }: GatewayDeploymentSelectorProps) {
+  const intl = useIntl();
+  // `useFormatters`, not the module-scope `Intl.*` in `utils/relativeTime`:
+  // that one freezes its locale at import, so it never follows a locale switch.
+  const { dateTime, relativeTime } = useFormatters();
   const { notify } = useNotifications();
-  const restoreMutation = useRestoreGatewayDeployment();
+  const restoreMutation = useRestoreDeployment();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const currentDeployedId =
-    deployments.find((item) => item.status === 'DEPLOYED')?.id ?? null;
+    deployments.find((item) => item.status === 'DEPLOYED')?.deploymentId ?? null;
 
   const handleRestore = () => {
-    const deployment = deployments.find((item) => item.id === selectedId);
+    const deployment = deployments.find((item) => item.deploymentId === selectedId);
     if (!deployment) return;
     restoreMutation.mutate(
-      { api, deployment },
+      { restApiId, deploymentId: deployment.deploymentId },
+      // No `onError`: the query client's `onMutationError` already notifies.
       {
         onSuccess: () => {
-          notify(`Restoring "${deployment.name}".`, 'success');
+          notify(
+            intl.formatMessage(messages.restoreStarted, {
+              deploymentName: deployment.name,
+            }),
+            'success',
+          );
           setSelectedId(null);
           onClose();
         },
-        onError: (error) =>
-          notify(
-            error instanceof Error ? error.message : 'Restore failed',
-            'error'
-          ),
-      }
+      },
     );
   };
 
   const canRestore =
-    selectedId !== null &&
-    selectedId !== currentDeployedId &&
-    !restoreMutation.isPending;
+    selectedId !== null && selectedId !== currentDeployedId && !restoreMutation.isPending;
 
   return (
     <Drawer
@@ -104,11 +146,15 @@ export function GatewayDeploymentSelector({
             p: 2,
           }}
         >
-          <IconButton aria-label="Close" onClick={onClose} size="small">
+          <IconButton
+            aria-label={intl.formatMessage(messages.closeLabel)}
+            onClick={onClose}
+            size="small"
+          >
             <ChevronLeft size={20} />
           </IconButton>
           <Typography sx={{ flexGrow: 1 }} variant="h6">
-            Select Deployment to Restore
+            <FormattedMessage {...messages.title} />
           </Typography>
         </Box>
 
@@ -116,7 +162,7 @@ export function GatewayDeploymentSelector({
           {deployments.length === 0 ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <Typography color="text.secondary">
-                No deployments available
+                <FormattedMessage {...messages.empty} />
               </Typography>
             </Box>
           ) : (
@@ -126,7 +172,7 @@ export function GatewayDeploymentSelector({
             >
               {deployments.map((deployment) => (
                 <Box
-                  key={deployment.id}
+                  key={deployment.deploymentId}
                   sx={{
                     borderBottom: '1px solid',
                     borderColor: 'divider',
@@ -154,16 +200,11 @@ export function GatewayDeploymentSelector({
                               gap: 1,
                             }}
                           >
-                            <Typography
-                              sx={{ fontSize: '0.875rem', fontWeight: 500 }}
-                            >
+                            <Typography sx={{ fontSize: '0.875rem', fontWeight: 500 }}>
                               {deployment.name}
                             </Typography>
                             {deployment.createdAt && (
-                              <Typography
-                                color="text.secondary"
-                                variant="caption"
-                              >
+                              <Typography color="text.secondary" variant="caption">
                                 {relativeTime(deployment.createdAt)}
                               </Typography>
                             )}
@@ -174,7 +215,7 @@ export function GatewayDeploymentSelector({
                               sx={{ display: 'block', mt: 0.25 }}
                               variant="caption"
                             >
-                              {new Date(deployment.createdAt).toLocaleString()}
+                              {dateTime(deployment.createdAt)}
                             </Typography>
                           )}
                         </Box>
@@ -191,7 +232,7 @@ export function GatewayDeploymentSelector({
                       width: '100%',
                       '& .MuiFormControlLabel-label': { flex: 1 },
                     }}
-                    value={deployment.id}
+                    value={deployment.deploymentId}
                   />
                 </Box>
               ))}
@@ -215,19 +256,19 @@ export function GatewayDeploymentSelector({
             onClick={onClose}
             variant="outlined"
           >
-            Cancel
+            <FormattedMessage {...messages.cancel} />
           </Button>
           <Button
             disabled={!canRestore}
             onClick={handleRestore}
             startIcon={
-              restoreMutation.isPending ? (
-                <CircularProgress color="inherit" size={16} />
-              ) : undefined
+              restoreMutation.isPending ? <CircularProgress color="inherit" size={16} /> : undefined
             }
             variant="contained"
           >
-            {restoreMutation.isPending ? 'Restoring...' : 'Restore'}
+            <FormattedMessage
+              {...(restoreMutation.isPending ? messages.restoring : messages.restore)}
+            />
           </Button>
         </Box>
       </Box>
