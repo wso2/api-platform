@@ -680,7 +680,13 @@ func TestAgentEmitsEveryOperationChainRegardlessOfConfiguration(t *testing.T) {
 	for _, operation := range operations {
 		chain := rdc.PolicyChains[chainkey.For(testAgentUUID, "main.local", string(operation))]
 		require.NotNil(t, chain, "operation %s has no chain", operation)
-		assert.Equal(t, []string{"common-policy"}, policyNames(chain), "operation %s", operation)
+		want := []string{"common-policy"}
+		if operation == agentproto.GetExtendedAgentCard {
+			// The one operation whose chain differs, on every Agent: the extended
+			// card's guard is appended after the author's own policies.
+			want = append(want, constants.A2A_SYSTEM_POLICY_NAME)
+		}
+		assert.Equal(t, want, policyNames(chain), "operation %s", operation)
 	}
 }
 
@@ -877,10 +883,13 @@ func TestAgentCardPolicyIsAttachedToTheCardRouteOnly(t *testing.T) {
 	// The preflight this is really about must exist, or the assertion is vacuous.
 	require.Contains(t, rdc.Routes, "OPTIONS|/weather/.well-known/agent-card.json|main.local")
 
+	// Asserted on the card-serving param block, not the policy name: the same
+	// policy also carries the extended card's guard, which every chain for
+	// GetExtendedAgentCard has and which is not the card body this test is about.
 	for key, chain := range rdc.PolicyChains {
-		carries := slices.Contains(policyNames(chain), constants.A2A_SYSTEM_POLICY_NAME)
+		_, carries := publicCardParams(chain)
 		assert.Equal(t, key == testCardRouteKey, carries,
-			"chain %q carries the card policy: %v", key, carries)
+			"chain %q carries the card-serving block: %v", key, carries)
 	}
 }
 
@@ -890,9 +899,13 @@ func TestAgentPassthroughCardHasNoCardPolicy(t *testing.T) {
 	rdc, err := agentTransformer().Transform(testAgent(withPassthroughCard()))
 	require.NoError(t, err)
 
+	// The card-serving block, not the policy name. A passthrough public card
+	// means the gateway holds no document to serve; it does not mean the Agent's
+	// extended card stops being guarded, and that guard is the same policy.
 	for key, chain := range rdc.PolicyChains {
-		assert.NotContains(t, policyNames(chain), constants.A2A_SYSTEM_POLICY_NAME,
-			"chain %q carries the card policy in passthrough mode", key)
+		_, carries := publicCardParams(chain)
+		assert.False(t, carries,
+			"chain %q carries the card-serving block in passthrough mode", key)
 	}
 }
 
@@ -905,9 +918,14 @@ func TestAgentManagedCardRequiresTheCardPolicy(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), constants.A2A_SYSTEM_POLICY_NAME)
 
-	// A passthrough card needs nothing from the catalogue.
+	// A passthrough public card needs no document from the gateway — but the
+	// extended card's guard is the same policy, and every Agent gets that, so a
+	// gateway missing it cannot deploy any Agent at all. Failing closed is the
+	// only correct answer: emitting the chain without the guard would serve the
+	// extended card unauthenticated, which is exactly what the default prevents.
 	_, err = agentTransformerWithoutCardPolicy().Transform(testAgent(withPassthroughCard()))
-	assert.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), constants.A2A_SYSTEM_POLICY_NAME)
 }
 
 // A custom card path replaces the default route rather than adding an alias.
@@ -1456,6 +1474,22 @@ func protectedCardDocument() api.A2AAgentCardDocument {
 // in a chain, or reports that the chain carries no such instance. Both answers
 // are load-bearing: most chains must not carry one.
 func protectedCardParams(chain *models.PolicyChain) (map[string]interface{}, bool) {
+	return a2aParamBlock(chain, constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD)
+}
+
+// publicCardParams is the same lookup for the public card-serving block.
+//
+// The two are separate assertions on purpose. One policy name does both jobs —
+// serving the public card and guarding the protected one — and the param block
+// is the only thing that says which. Since every Agent now carries the guard,
+// asserting on the *name* can no longer tell "this chain serves the card" from
+// "this chain is guarded", and a test that conflated them would pass while the
+// card body was attached to the wrong chain.
+func publicCardParams(chain *models.PolicyChain) (map[string]interface{}, bool) {
+	return a2aParamBlock(chain, constants.A2A_POLICY_PARAM_AGENT_CARD)
+}
+
+func a2aParamBlock(chain *models.PolicyChain, param string) (map[string]interface{}, bool) {
 	if chain == nil {
 		return nil, false
 	}
@@ -1463,28 +1497,50 @@ func protectedCardParams(chain *models.PolicyChain) (map[string]interface{}, boo
 		if policy.Name != constants.A2A_SYSTEM_POLICY_NAME {
 			continue
 		}
-		if block, ok := policy.Params[constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD].(map[string]interface{}); ok {
+		if block, ok := policy.Params[param].(map[string]interface{}); ok {
 			return block, true
 		}
 	}
 	return nil, false
 }
 
-// An Agent that does not configure a protected card must be transformed exactly
-// as before. This is the compatibility promise: upgrading the controller cannot
-// change what an already-deployed Agent does, and GetExtendedAgentCard stays an
-// ordinary proxied operation with no gateway-added guard.
-func TestAgentWithoutProtectedCardIsUnchanged(t *testing.T) {
+// An Agent that writes no protected block still gets a guarded extended card:
+// an absent block is passthrough. This is the whole of the default, and it is
+// the one assertion that keeps the extended card from being public by omission —
+// if the instance stops being attached here, every Agent that never named the
+// field starts serving its extended card to anyone.
+func TestAgentWithoutProtectedCardIsGuardedAsPassthrough(t *testing.T) {
 	rdc, err := agentTransformer().Transform(testAgent())
 	require.NoError(t, err)
 
 	chain := rdc.PolicyChains[extendedCardChainKey]
 	require.NotNil(t, chain)
-	assert.Empty(t, policyNames(chain),
-		"GetExtendedAgentCard must carry nothing the other operations do not")
 
-	if _, present := protectedCardParams(chain); present {
-		t.Error("an Agent with no protected block was given a protected-card instance")
+	block, present := protectedCardParams(chain)
+	require.True(t, present,
+		"an Agent with no protected block must still be given a protected-card instance")
+	// Passthrough, not managed: the gateway requires authentication and then
+	// forwards. Content here would mean the gateway had invented a document to
+	// serve for an Agent that never supplied one.
+	assert.NotContains(t, block, constants.A2A_POLICY_PARAM_CONTENT,
+		"an absent protected block is passthrough, so it carries no card content")
+}
+
+// The guard lands on GetExtendedAgentCard and nowhere else, for the default just
+// as much as for an explicit block. Asserted separately from the explicit-mode
+// case below because this is the configuration nobody writes down, so a leak
+// into the other ten chains would not show up in any Agent's own YAML.
+func TestAgentWithoutProtectedCardTouchesOnlyTheExtendedCardChain(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent())
+	require.NoError(t, err)
+
+	for key, chain := range rdc.PolicyChains {
+		if key == extendedCardChainKey {
+			continue
+		}
+		if _, present := protectedCardParams(chain); present {
+			t.Errorf("chain %q carries a protected-card instance", key)
+		}
 	}
 }
 
@@ -1635,11 +1691,16 @@ func TestAgentProtectedCardOmitsUpstreamAuthOnlyWhenManaged(t *testing.T) {
 		policyNames(passthrough.PolicyChains[extendedCardChainKey]),
 		"a proxied protected card is fetched from the upstream, which may require the credential")
 
-	// An Agent with no protected block keeps the credential too: omitting the
-	// block is the already-shipped proxying behaviour, not a mode.
-	compatible, err := transformer.Transform(testAgent(withAuth))
+	// An Agent with no protected block is the passthrough case above, reached by
+	// omission rather than by writing the mode out — so it keeps the credential
+	// and gets the same guard, in the same order.
+	defaulted, err := transformer.Transform(testAgent(withAuth))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"set-headers"}, policyNames(compatible.PolicyChains[extendedCardChainKey]))
+	assert.Equal(t, []string{"set-headers", constants.A2A_SYSTEM_POLICY_NAME},
+		policyNames(defaulted.PolicyChains[extendedCardChainKey]))
+	assert.Equal(t, policyNames(passthrough.PolicyChains[extendedCardChainKey]),
+		policyNames(defaulted.PolicyChains[extendedCardChainKey]),
+		"an omitted block and an explicit passthrough must build the same chain")
 }
 
 // Only the transformer's own upstream credential is dropped from a managed
