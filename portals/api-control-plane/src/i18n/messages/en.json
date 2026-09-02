@@ -502,6 +502,49 @@
   "api.create.specIssue.unsupportedDialect": {
     "defaultMessage": "OpenAPI {detail} is not supported. Import a Swagger 2.0 or OpenAPI 3 definition."
   },
+  "api.create.specSourceEditor.action.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Leaves the editor and discards the edits made in it."
+  },
+  "api.create.specSourceEditor.action.collapse": {
+    "defaultMessage": "Collapse editor",
+    "description": "Closes the expanded side panel and returns the editor to the preview pane."
+  },
+  "api.create.specSourceEditor.action.edit": {
+    "defaultMessage": "Edit",
+    "description": "Opens the definition’s own text for editing."
+  },
+  "api.create.specSourceEditor.action.expand": {
+    "defaultMessage": "Expand editor",
+    "description": "Opens the definition in a full-height side panel with more room."
+  },
+  "api.create.specSourceEditor.action.save": {
+    "defaultMessage": "Save",
+    "description": "Checks the edited definition and, if it holds up, adopts it."
+  },
+  "api.create.specSourceEditor.editorLoading": {
+    "defaultMessage": "Loading editor",
+    "description": "Shown for the moment the code editor is being fetched."
+  },
+  "api.create.specSourceEditor.expandedTitle": {
+    "defaultMessage": "API definition",
+    "description": "Heading of the expanded side panel holding the definition."
+  },
+  "api.create.specSourceEditor.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the pair of buttons choosing JSON or YAML."
+  },
+  "api.create.specSourceEditor.inExpandedView": {
+    "defaultMessage": "This definition is open in the expanded editor.",
+    "description": "Stands in for the editor in the pane while the side panel has it."
+  },
+  "api.create.specSourceEditor.malformed": {
+    "defaultMessage": "This could not be read as {format}: {detail}",
+    "description": "Shown when edited text is not valid JSON/YAML. {format} is the format name, {detail} the parser’s own message naming the line."
+  },
+  "api.create.specSourceEditor.notAnObject": {
+    "defaultMessage": "A definition has to be an object at the top level, not a list or a value."
+  },
   "apiCard.delete": {
     "defaultMessage": "Delete {apiName}",
     "description": "Accessible label for deleting an API from API card"

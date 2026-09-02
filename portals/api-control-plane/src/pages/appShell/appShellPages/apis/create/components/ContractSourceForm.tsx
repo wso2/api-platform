@@ -109,6 +109,11 @@ export type ContractValues = {
 export type ContractSourceFormProps = {
   /** Types offered in the first tier. Defaults to the three that carry a contract. */
   apiTypes?: ApiType[];
+  /**
+   * Whether the definition was edited in the preview source view. If so,
+   * warnings from this form are cleared because they no longer match.
+   */
+  definitionEdited?: boolean;
   /** Type selected on first render. Defaults to the first entry in `apiTypes`. */
   initialApiTypeKey?: string;
   /** Starts the GitHub OAuth flow. The button renders either way, inert until wired. */
@@ -889,6 +894,7 @@ const extensionsFor = (apiTypeKey: string): string[] =>
 
 export const ContractSourceForm = ({
   apiTypes = CONTRACT_API_TYPES,
+  definitionEdited = false,
   initialApiTypeKey = CONTRACT_API_TYPES[0]?.key,
   onAuthorizeGitHub,
   onContractChange,
@@ -1721,8 +1727,9 @@ export const ContractSourceForm = ({
       {/* Fetch errors appear under the active source panel. */}
       {fetchErrorText === null ? null : <Alert severity="error">{fetchErrorText}</Alert>}
 
-      {/* Definition warnings; cleared with the contract. */}
-      {fetchedIsCurrent && (fetched?.warnings.length ?? 0) > 0 ? (
+      {/* Definition warnings; cleared with the contract, and withdrawn once
+          the definition has been edited past the one they were raised on. */}
+      {fetchedIsCurrent && !definitionEdited && (fetched?.warnings.length ?? 0) > 0 ? (
         <Alert severity="warning">
           <SpecIssueList issues={fetched?.warnings ?? []} />
         </Alert>

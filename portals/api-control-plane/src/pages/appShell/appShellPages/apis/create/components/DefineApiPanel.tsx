@@ -27,7 +27,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Download, Sparkles } from '@wso2/oxygen-ui-icons-react';
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { hairline } from '@/theme/receipes';
@@ -37,9 +37,23 @@ import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
 import { DesignWithAiPanel } from './DesignWithAiPanel';
 import { extractApiDetails } from '../utils/specDetails';
+import type { SpecDocument } from '../utils/specText';
+import type { SpecIssue } from '../utils/specValidation';
 
 /** The two ways this step can produce a definition. */
 type ApproachKey = 'contract' | 'scratch';
+
+/**
+ * A definition after it has been edited in the preview pane, with what its
+ * re-check said about it. Held separately from what was imported so that
+ * re-fetching a contract restores the fetched document rather than the edit,
+ * and so the import's own warnings can stop being reported once they describe
+ * a document that has since been changed.
+ */
+type EditedSpec = {
+  spec: SpecDocument;
+  warnings: SpecIssue[];
+};
 
 const messages = defineMessages({
   approachLabel: {
@@ -130,10 +144,38 @@ export const DefineApiPanel = ({
   const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('contract');
   const [contract, setContract] = useState<FetchedContract | null>(null);
+  // One edit per approach, so switching tabs to look at the other one and back
+  // doesn't throw away what was typed.
+  const [contractEdit, setContractEdit] = useState<EditedSpec | null>(null);
+  const [scratchEdit, setScratchEdit] = useState<EditedSpec | null>(null);
+
+  /**
+   * A different contract underneath - fetched, or cleared because the form's
+   * inputs moved on from it; retires the edit built on the previous one.
+   *
+   * Stable identity matters: the form reports the current contract from an
+   * effect keyed on this callback, so a fresh function each render would fire
+   * that effect every render and wipe the edit as fast as it was made.
+   */
+  const handleContractChange = useCallback((next: FetchedContract | null) => {
+    setContract(next);
+    setContractEdit(null);
+  }, []);
+
+  const handleSpecChange = (next: SpecDocument, warnings: SpecIssue[]) => {
+    const edit: EditedSpec = { spec: next, warnings };
+    if (approach === 'scratch') {
+      setScratchEdit(edit);
+      return;
+    }
+    setContractEdit(edit);
+  };
 
   // Scratch always has something to show and carry forward; a contract has to
-  // be fetched first.
-  const spec = approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec;
+  // be fetched first. Either way an edit made here supersedes what it started
+  // from.
+  const edit = approach === 'scratch' ? scratchEdit : contractEdit;
+  const spec = edit?.spec ?? (approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec);
 
   const handleProceed = () => {
     // The draft the wizard collects — display name, version, context — is read
@@ -242,9 +284,12 @@ export const DefineApiPanel = ({
             {approach === 'contract' ? (
               <ContractSourceForm
                 apiTypes={apiTypes}
+                // Fetched warnings describe the import; after edits they no
+                // longer match and the pane shows new warnings.
+                definitionEdited={contractEdit !== null}
                 initialApiTypeKey={initialApiTypeKey}
                 onAuthorizeGitHub={onAuthorizeGitHub}
-                onContractChange={setContract}
+                onContractChange={handleContractChange}
                 onRefreshSwaggerHubOrganizations={onRefreshSwaggerHubOrganizations}
               />
             ) : (
@@ -253,7 +298,11 @@ export const DefineApiPanel = ({
           </Box>
 
           <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-            <ApiResourcesPreview spec={spec} />
+            <ApiResourcesPreview
+              onSpecChange={handleSpecChange}
+              spec={spec}
+              warnings={edit?.warnings}
+            />
           </Box>
         </Stack>
       </Card>

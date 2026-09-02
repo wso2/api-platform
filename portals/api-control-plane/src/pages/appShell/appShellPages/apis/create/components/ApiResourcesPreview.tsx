@@ -16,13 +16,17 @@
  * under the License.
  */
 
-import { Box, CodeBlock, FormControlLabel, Stack, Switch, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, CodeBlock, FormControlLabel, Stack, Switch, Typography } from '@wso2/oxygen-ui';
 import { useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import SwaggerUI from 'swagger-ui-react';
 import 'swagger-ui-react/swagger-ui.css';
 
 import { ResourcePreviewPlaceholder } from '../../components/ResourcePreviewPlaceholder';
+import { serializeSpec, type SpecDocument } from '../utils/specText';
+import type { SpecIssue } from '../utils/specValidation';
+import { SpecIssueList } from './SpecIssueList';
+import { SpecSourceEditor } from './SpecSourceEditor';
 
 const messages = defineMessages({
   source: {
@@ -55,30 +59,47 @@ const HideInfoPlugin = () => ({
 
 export type ApiResourcesPreviewProps = {
   /**
+   * Adopts a definition edited in the Source view, alongside the warnings its
+   * re-check raised. Supplying it is what makes the Source view editable at
+   * all; without it the pane stays a read-only print of `spec`.
+   */
+  onSpecChange?: (spec: SpecDocument, warnings: SpecIssue[]) => void;
+  /**
    * The fetched definition, as a parsed object rather than a URL, so Swagger UI
    * never re-downloads the document and the Source view prints the same object
    * the resources are drawn from. It is not a guarantee of no network activity:
    * swagger-client resolves `$ref`s while rendering, and `specValidation`
    * reports an external `$ref` as a warning rather than rejecting it, so a
    * document naming remote refs can have the preview fetch from whatever host
-   * they point at. Nothing else here issues a request - try-it-out is off.
+   * they point at. Nothing else here issues a request. try-it-out is off.
    */
-  spec?: Record<string, unknown>;
+  spec?: SpecDocument;
+  /**
+   * What the current definition's own check says about it. Only passed once the
+   * document has been edited here; an unedited contract's warnings belong to
+   * the import, and are reported beside the source it was imported from.
+   */
+  warnings?: SpecIssue[];
 };
 
 /**
  * Right-hand pane of the contract step: the resources of the fetched
  * definition, or an empty state saying that is what will land here.
  */
-export const ApiResourcesPreview = ({ spec }: ApiResourcesPreviewProps) => {
+export const ApiResourcesPreview = ({
+  onSpecChange,
+  spec,
+  warnings,
+}: ApiResourcesPreviewProps) => {
   const intl = useIntl();
   const [showSource, setShowSource] = useState(false);
   const hasContract = spec !== undefined;
+  const editable = hasContract && onSpecChange !== undefined;
 
   // Serialize once per spec; stringify is expensive and unchanged per view.
   // Use JSON since `CodeBlock` highlights it (this is parsed content, not upload bytes).
   const sourceText = useMemo(
-    () => (spec === undefined ? '' : JSON.stringify(spec, null, 2)),
+    () => (spec === undefined ? '' : serializeSpec(spec, 'json')),
     [spec],
   );
 
@@ -127,15 +148,29 @@ export const ApiResourcesPreview = ({ spec }: ApiResourcesPreviewProps) => {
         />
       </Stack>
 
+      {/* The edited definition's own verdict, above both views because it
+          describes the document rather than either way of looking at it. */}
+      {hasContract && (warnings?.length ?? 0) > 0 ? (
+        <Alert severity="warning" sx={{ flexShrink: 0, mt: 1 }}>
+          <SpecIssueList issues={warnings ?? []} />
+        </Alert>
+      ) : null}
+
       <Box
         sx={{
           flex: 1,
           minHeight: 0,
           mt: 1,
-          overflow: 'auto',
+          // The editor manages its own scrolling so its toolbar stays put; the
+          // read-only views are blocks this box has to scroll for.
+          overflow: editable && showSource ? 'hidden' : 'auto',
         }}
       >
-        {hasContract && showSource ? (
+        {hasContract && showSource && editable ? (
+          <SpecSourceEditor onSave={onSpecChange} spec={spec} />
+        ) : null}
+
+        {hasContract && showSource && !editable ? (
           <CodeBlock code={sourceText} language="json" showLineNumbers />
         ) : null}
 
