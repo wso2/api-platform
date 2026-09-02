@@ -7,38 +7,50 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import type { ReactNode } from 'react';
+import { Layers } from '@wso2/oxygen-ui-icons-react';
 
-import { getCloudExtensions, type CloudPluginFeature } from '../plugin';
-
-/**
- * Mirrors `ApiControlPlaneExtension` from api-platform's
- * `portals/api-control-plane/src/extensions.tsx`. Duplicated, not imported —
- * api-platform and apim-saas are separate git repos; this file is only ever
- * glued to that source at Docker-build time (this package's `src/` is copied
- * into the cloned portal tree as `src/cloud`, see
- * `services/apip-api-control-plane/Dockerfile`), never at typecheck time
- * here. Keep this in sync by hand if that type's shape changes upstream.
- */
-export type ApiControlPlaneExtension = {
-  id: string;
-  routePath: string;
-  element: ReactNode;
-  label: string;
-  icon?: ReactNode;
-  level: 'organization' | 'project' | 'api';
-  group?: string;
-  order: number;
-  isVisible?: (scope: unknown) => boolean;
-};
+import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
+import {
+  settingsTabSlot,
+  type ApiControlPlaneExtension,
+} from '../../../../api-control-plane/src/extensions';
+import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 
 /**
- * No cloud feature has been built for the console yet — this starts empty on
- * purpose. Add a `defineCloudPlugin<ApiControlPlaneExtension>({...})` entry
- * here per feature once one exists; `services/apip-api-control-plane/VERSION`
- * gets a matching `CLOUD_UI_<FEATURE>_VERSION` key at that point.
+ * Cloud features registered for the api-control-plane host. Both live in this
+ * same repo now (this package is copied into the cloned portal tree at
+ * Docker-build time — see `services/apip-api-control-plane/Dockerfile` in
+ * apim-saas — never patched into it), so `ApiControlPlaneExtension` is
+ * imported directly from core rather than hand-mirrored.
+ *
+ * `environments` is nested under Settings via the `settings.project.tabs`
+ * slot. It shares the same `apip-cloud-ui-environments-new` package the
+ * ai-workspace host uses (`hosts/ai-workspace.tsx`) rather than a
+ * control-plane-specific package, but ships in the same branch/release as the
+ * rest of this repo — no independent version tag, no separate fetch stage.
+ * Backed by an in-memory mock port (`createMockEnvironmentPort`, constructed
+ * internally by `EnvironmentsFeature`) until a real backend exists — swap
+ * that in without touching `EnvironmentsList`/`EnvironmentForm`, which only
+ * ever see the `EnvironmentPort` interface.
  */
-export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] =
-  [];
+export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
+  defineCloudPlugin({
+    id: 'environments',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'environments',
+        routePath: 'settings/environments',
+        render: (port) => <EnvironmentsFeature port={port} />,
+        label: 'Environments',
+        icon: <Layers />,
+        level: 'project',
+        slot: settingsTabSlot('project'),
+        order: 10,
+      },
+    ],
+  }),
+];
 
 export const cloudExtensions = getCloudExtensions(cloudPluginFeatures);
+export type { ApiControlPlaneExtension };

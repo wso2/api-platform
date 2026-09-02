@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMemo, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import {
   Alert,
   Avatar,
@@ -42,11 +42,11 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock3, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
-import { deleteEnvironment, listEnvironments } from './mocks/environmentsStore';
 import type { NotifySeverity } from './hostPort';
-import type { Environment } from './types';
+import type { Environment, EnvironmentPort } from './types';
 
 export type EnvironmentsListProps = {
+  port: EnvironmentPort;
   readOnly: boolean;
   onCreateClick: () => void;
   notify?: (message: string, severity?: NotifySeverity) => void;
@@ -65,21 +65,60 @@ function relativeTime(value: string): string {
   return `${years} year${years === 1 ? '' : 's'} ago`;
 }
 
-const EnvironmentsList: FC<EnvironmentsListProps> = ({ readOnly, onCreateClick, notify }) => {
-  const [environments, setEnvironments] = useState(() => listEnvironments());
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateClick, notify }) => {
+  const [environments, setEnvironments] = useState<Environment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped on every refetch so a slower, superseded request's completion
+  // (e.g. the initial load racing a Retry click) can recognize it's stale
+  // and skip applying its result instead of clobbering a newer one.
+  const requestIdRef = useRef(0);
+
+  const refetch = useCallback(() => {
+    const requestId = ++requestIdRef.current;
+    setLoadError(null);
+    void port.list().then(
+      (result) => {
+        if (requestIdRef.current !== requestId) return; // superseded by a later refetch
+        setEnvironments(result);
+      },
+      (err: unknown) => {
+        if (requestIdRef.current !== requestId) return; // superseded by a later refetch
+        // Deliberately leaves `environments` at its last-known value rather
+        // than clearing it — a failed refetch shouldn't blank out a list the
+        // user was already looking at.
+        const message = errorMessage(err, 'Failed to load environments.');
+        setLoadError(message);
+        notify?.(message, 'error');
+      }
+    );
+  }, [port, notify]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
   const rows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return query ? environments.filter((environment) => environment.name.toLowerCase().includes(query)) : environments;
   }, [environments, searchQuery]);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    deleteEnvironment(deleteTarget.id);
-    setEnvironments(listEnvironments());
-    notify?.(`Environment "${deleteTarget.name}" deleted.`, 'success');
-    setDeleteTarget(null);
+    try {
+      await port.remove(deleteTarget.id);
+      refetch();
+      notify?.(`Environment "${deleteTarget.name}" deleted.`, 'success');
+    } catch (err) {
+      notify?.(errorMessage(err, `Failed to delete environment "${deleteTarget.name}".`), 'error');
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -93,6 +132,16 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ readOnly, onCreateClick, 
       </Box>
 
       {readOnly ? <Alert severity="info" sx={{ mb: 3 }}>Environments can be managed only at Organization level.</Alert> : null}
+
+      {loadError ? (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={<Button color="inherit" size="small" onClick={refetch}>Retry</Button>}
+        >
+          {loadError}
+        </Alert>
+      ) : null}
 
       <TextField
         fullWidth

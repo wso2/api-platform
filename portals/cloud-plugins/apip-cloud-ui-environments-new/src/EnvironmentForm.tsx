@@ -32,21 +32,22 @@ import {
   Typography,
 } from "@wso2/oxygen-ui";
 import { ChevronLeft } from "@wso2/oxygen-ui-icons-react";
-import { createEnvironment } from "./mocks/environmentsStore";
 import type { NotifySeverity } from "./hostPort";
+import type { EnvironmentPort } from "./types";
 
 export type EnvironmentFormProps = {
+  port: EnvironmentPort;
   onBack: () => void;
   notify?: (message: string, severity?: NotifySeverity) => void;
 };
 
-const EnvironmentForm: FC<EnvironmentFormProps> = ({ onBack, notify }) => {
+const EnvironmentForm: FC<EnvironmentFormProps> = ({ port, onBack, notify }) => {
   const [name, setName] = useState("");
   const [critical, setCritical] = useState(false);
   const canSubmit = name.trim().length > 0;
 
-  const handleSubmit = () => {
-    const created = createEnvironment({ name: name.trim(), critical });
+  const handleSubmit = async () => {
+    const created = await port.create({ name: name.trim(), critical });
     notify?.(`Environment "${created.name}" created.`, "success");
     onBack();
   };
