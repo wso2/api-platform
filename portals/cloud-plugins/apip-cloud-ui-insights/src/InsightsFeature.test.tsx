@@ -21,7 +21,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InsightsEmbedScope } from './types';
 
-const mockResolveProjectScope = vi.fn();
+const { mockResolveProjectScope, embedScopes } = vi.hoisted(() => ({
+  mockResolveProjectScope: vi.fn(),
+  embedScopes: [] as InsightsEmbedScope[],
+}));
 
 vi.mock('./api/analyticsApi', () => ({
   resolveProjectScope: (...args: unknown[]) => mockResolveProjectScope(...args),
@@ -37,8 +40,6 @@ vi.mock('./components/StateViews', () => ({
     </div>
   ),
 }));
-
-const embedScopes: InsightsEmbedScope[] = [];
 
 vi.mock('./InsightsEmbed', () => ({
   default: ({ scope }: { scope: InsightsEmbedScope }) => {

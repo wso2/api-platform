@@ -217,10 +217,13 @@ const InsightsEmbed: FC<InsightsEmbedProps> = ({ scope }) => {
       !isEmbedReady &&
       Boolean(viewerToken && iframeSrc));
 
+  // Hide the iframe until Moesif finishes its handshake so wrap/basic pre-auth UI
+  // (cookie banners, login shell) never flashes through the loader — same pattern
+  // as choreo-console Insights.tsx (display: none until SCHEMA_GEN_FINISHED).
   const iframeStyle: CSSProperties = {
     backgroundColor: 'transparent',
     border: 'none',
-    display: 'block',
+    display: isEmbedReady ? 'block' : 'none',
     height: '100%',
     width: '100%',
   };
@@ -270,6 +273,7 @@ const InsightsEmbed: FC<InsightsEmbedProps> = ({ scope }) => {
             <Box
               sx={{
                 alignItems: 'center',
+                bgcolor: 'background.paper',
                 display: 'flex',
                 inset: 0,
                 justifyContent: 'center',
