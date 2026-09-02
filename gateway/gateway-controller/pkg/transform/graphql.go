@@ -127,9 +127,18 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 		// v1.2.1 among them — treat an empty OperationPath as "missing API details"
 		// and fail closed, instead of "not applicable" as SharedContext.OperationPath's
 		// own doc comment (sdk/core/policy/v1alpha2/context.go) says an empty value
-		// must be read. "/" is not a fake sub-path: it is this API's one and only
-		// operation, at its own root.
-		OperationPath:   "/",
+		// must be read.
+		//
+		// This must NOT be "/": xds/translator.go's createRouteFromRDC/setMatchPathSpecifier
+		// special-case operationPath=="/" as a literal REST root-path operation (matching both
+		// "/ctx" and "/ctx/", rewriting the upstream to end in a trailing "/") — semantics that
+		// don't apply here and that broke the sandbox-upstream IT scenario by appending an
+		// unwanted "/" to the upstream path. Any value that isn't "/", doesn't end in "/*", and
+		// doesn't contain "{" falls through those translators' plain default case instead,
+		// which is a byte-for-byte pass-through of the configured upstream path — exactly what
+		// "" used to produce before this field started being read. "graphql" is never rendered
+		// into a route or a rewritten path; it only has to be non-empty and non-special.
+		OperationPath:   "graphql",
 		PathMatchType:   "Exact",
 		Vhost:           mainVhost,
 		AutoHostRewrite: mainAutoHostRewrite,
@@ -167,7 +176,7 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 			Method: "POST",
 			Path:   fullPath,
 			// See the main route's OperationPath comment above.
-			OperationPath:   "/",
+			OperationPath:   "graphql",
 			PathMatchType:   "Exact",
 			Vhost:           sandboxVhost,
 			AutoHostRewrite: sbAutoHostRewrite,
