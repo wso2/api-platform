@@ -20,6 +20,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: GraphQLApi
 metadata:
   name: countries-graphql-v1
+  annotations:
+    gateway.api-platform.wso2.com/project-id: default-project
 spec:
   displayName: Countries
   version: v1

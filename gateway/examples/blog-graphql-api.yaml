@@ -36,6 +36,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: GraphQLApi
 metadata:
   name: blog-graphql-v1
+  annotations:
+    gateway.api-platform.wso2.com/project-id: default
 spec:
   displayName: Blog
   version: v1
