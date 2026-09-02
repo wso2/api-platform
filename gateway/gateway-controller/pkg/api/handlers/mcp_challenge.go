@@ -26,13 +26,6 @@ import (
 
 // MCPChallengeMiddleware attaches the WWW-Authenticate challenge MCP clients
 // need in order to start an OAuth flow.
-//
-// scopes is the endpoint's entry scope set — the operator-advertised
-// `scopes_supported` from the RFC 9728 metadata document. It is what a client
-// with no token (401), or a token holding nothing this endpoint recognises
-// (403), is told to go and obtain. It is deliberately NOT the union of every
-// scope any tool might need: a caller steps up from here, one operation at a
-// time, driven by the per-tool gate.
 func MCPChallengeMiddleware(resourceMetadataURL string, scopes []string) func(http.Handler) http.Handler {
 	build := func(errCode string, scopes []string) string {
 		var params []string
