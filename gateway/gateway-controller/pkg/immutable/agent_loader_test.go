@@ -114,7 +114,7 @@ func newAgentOnlyGW(t *testing.T, artifactsDir string) (*ImmutableGW, storage.St
 		Controller: config.Controller{Server: config.ServerConfig{GatewayID: "test-gateway"}},
 	}
 	deploymentService := utils.NewAPIDeploymentService(
-		nil, db, nil, config.NewAPIValidator(), routerCfg, discardEventHub{}, "test-gateway", nil)
+		nil, db, nil, config.NewAPIValidator(), routerCfg, discardEventHub{}, "test-gateway", nil, nil)
 	restService := restapi.NewRestAPIService(
 		nil, db, nil, nil, deploymentService, nil, nil,
 		routerCfg, systemCfg, nil, config.NewParser(), config.NewAPIValidator(),

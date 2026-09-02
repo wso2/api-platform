@@ -42,6 +42,45 @@ const DefaultAgentCardPath = "/.well-known/agent-card.json"
 // detection as a GET and cannot collide with a POST-only operation route.
 const agentCardRouteMethod = "GET"
 
+// EffectiveProtectedCardMode resolves the protected Agent Card's mode,
+// defaulting an unwritten one to passthrough.
+//
+// The default exists because the protected block is optional and its absence
+// decides whether the extended card is guarded at all. Passthrough is the only
+// mode that can be a default — managed requires a document the author has to
+// supply — and it is the safe reading of silence here: the request is
+// authenticated and then forwarded, so an author who never named the field does
+// not end up publishing their extended card to anyone.
+//
+// This has no counterpart for the public card, and deliberately so. That block
+// is required, as is its mode: the public card is the discovery document every
+// A2A client fetches first, so which of the two ways the gateway produces it is
+// a decision the author has to make rather than one inferred from an omission.
+// An empty public mode stays a validation error.
+//
+// Used by the validator *and* the transformer, so the two cannot disagree about
+// what an omitted block means. That disagreement is the failure worth designing
+// against: a validator reading passthrough and a transformer reading
+// "unprotected" would accept a deployment and then serve the card unguarded,
+// with nothing reporting it.
+//
+// An absent block is what actually defaults. A block that was written but left
+// its mode empty is a validation error — validateProtectedAgentCard switches on
+// the raw value and rejects it, the same way an empty public mode is rejected —
+// so the empty case here is only ever reached defensively, and it resolves in
+// the guarded direction rather than leaving `managed` to be inferred.
+//
+// An unrecognised non-empty mode — a typo like "mangaed" — is returned unchanged
+// so that switch rejects it too. Folding a typo into passthrough would proxy the
+// upstream's own extended card for an Agent whose author believed they had
+// configured a managed one.
+func EffectiveProtectedCardMode(protected *api.A2AProtectedAgentCard) api.A2AProtectedAgentCardMode {
+	if protected == nil || protected.Mode == "" {
+		return api.A2AProtectedAgentCardModePassthrough
+	}
+	return protected.Mode
+}
+
 // maxAgentContextLength matches the ceiling the other kinds' validators apply to
 // spec.context.
 const maxAgentContextLength = 200
@@ -332,7 +371,8 @@ func (v *AgentValidator) validateA2A(context string, contextUsable bool, a2a *ap
 		errors = append(errors, validateManagedCardConsistency(
 			protectedCardField, a2a.ProtocolVersion, versionUsable,
 			transports, transportsUsable,
-			managedCardContent(protected.Mode == api.A2AProtectedAgentCardModeManaged, protected.Content))...)
+			managedCardContent(EffectiveProtectedCardMode(protected) == api.A2AProtectedAgentCardModeManaged,
+				protected.Content))...)
 		errors = append(errors, validateExtendedCardCapability(&a2a.AgentCard)...)
 	}
 
@@ -563,22 +603,24 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 // validateProtectedAgentCard enforces the mode-specific rules of the
 // authenticated extended Agent Card.
 //
-// The block is optional, and omitting it is *not* the same as configuring
-// passthrough. An Agent written before protected cards existed keeps the
-// behaviour it shipped with: GetExtendedAgentCard is exposed and proxied to the
-// upstream with the ordinary operation chain, and the gateway adds no
-// card-specific guard of its own. Normalising an absent block into an explicit
-// mode would change what an already-deployed Agent does merely because the
-// controller was upgraded — an unauthenticated caller that used to reach the
-// upstream would start receiving 401s, or vice versa.
+// The block is optional, and omitting it means passthrough: the extended card
+// is guarded for every Agent, and writing the block out only chooses between
+// having the gateway serve a document of its own (managed) and forwarding the
+// operation (passthrough). Leaving the guard off until the author names the
+// field would be public by omission — the same failure as forgetting the auth
+// policy, one level up — and there is no deployed Agent to stay compatible with,
+// since the Agent kind and this block landed in the same unreleased line.
 //
-// An explicit block is the opposite: it opts into protected-card semantics, and
-// both modes then require an authenticated request at runtime. That requirement
-// is not configured here, and is not configurable at all — it holds for any
-// explicit block, because a protected card whose protection depended on the
-// author remembering to attach an auth policy would be public by omission.
-// Which of the author's policies authenticates, and where in the chain it sits,
-// is theirs to decide; the runtime only asks whether one of them did.
+// The authentication requirement is not configured here, and is not
+// configurable at all: it holds for every mode. Which of the author's policies
+// authenticates, and where in the chain it sits, is theirs to decide; the
+// runtime only asks whether one of them did.
+//
+// What this function validates is therefore only the mode contract of a block
+// that *was* written, which is why an absent one returns no errors: there are no
+// fields to check, and the mode it defaults to has no requirements of its own.
+// Note the asymmetry with the capability promise in validateExtendedCardCapability
+// — that one stays gated on an explicit block on purpose. See its comment.
 //
 // There is deliberately no path and no policies field. The protected card is an
 // A2A operation, not a document at a location: it is reachable only on the
@@ -636,6 +678,16 @@ func validateProtectedAgentCard(protected *api.A2AProtectedAgentCard) []Validati
 // GetExtendedAgentCard. Configuring a protected card while the public card says
 // the agent has none produces an operation nothing discovers — the gateway
 // serves it, and no conformant client ever asks.
+//
+// Called only for an *explicitly* written protected block, unlike the runtime
+// guard, which applies to every Agent. The two ask different questions. The
+// guard asks whether the extended card is protected, and the safe answer to an
+// author's silence is yes. This asks whether the author promised clients an
+// extended card exists, and the safe answer to their silence is no — an Agent
+// with no extended card to offer must not be forced to advertise one just
+// because the operation is guarded. Extending this check to an absent block
+// would reject every Agent whose managed public card leaves the capability out,
+// which is most of them.
 //
 // It is checked only when the gateway can see the public document. A passthrough
 // public card is fetched from the upstream and proxied unparsed, so the promise
