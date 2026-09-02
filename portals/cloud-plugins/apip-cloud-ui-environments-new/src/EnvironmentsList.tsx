@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import {
   Alert,
   Avatar,
@@ -74,17 +74,29 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped on every refetch so a slower, superseded request's completion
+  // (e.g. the initial load racing a Retry click) can recognize it's stale
+  // and skip applying its result instead of clobbering a newer one.
+  const requestIdRef = useRef(0);
 
   const refetch = useCallback(() => {
+    const requestId = ++requestIdRef.current;
     setLoadError(null);
-    void port.list().then(setEnvironments, (err: unknown) => {
-      // Deliberately leaves `environments` at its last-known value rather
-      // than clearing it — a failed refetch shouldn't blank out a list the
-      // user was already looking at.
-      const message = errorMessage(err, 'Failed to load environments.');
-      setLoadError(message);
-      notify?.(message, 'error');
-    });
+    void port.list().then(
+      (result) => {
+        if (requestIdRef.current !== requestId) return; // superseded by a later refetch
+        setEnvironments(result);
+      },
+      (err: unknown) => {
+        if (requestIdRef.current !== requestId) return; // superseded by a later refetch
+        // Deliberately leaves `environments` at its last-known value rather
+        // than clearing it — a failed refetch shouldn't blank out a list the
+        // user was already looking at.
+        const message = errorMessage(err, 'Failed to load environments.');
+        setLoadError(message);
+        notify?.(message, 'error');
+      }
+    );
   }, [port, notify]);
 
   useEffect(() => {
