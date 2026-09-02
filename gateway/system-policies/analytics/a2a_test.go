@@ -3,6 +3,8 @@ package analytics
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"sort"
 	"testing"
 	"time"
 
@@ -276,13 +278,13 @@ func TestOnResponseBody_AgentWithNoResolvedOperationEmitsNothing(t *testing.T) {
 // An A2A stream is a sequence of task updates that can end in an error after any
 // number of successful events. Stopping at the first event carrying a result — which
 // is what the MCP helper does — would report every late failure as a success.
-func TestExtractA2APayload_ErrorLateInAStreamWinsOverEarlierResults(t *testing.T) {
+func TestObserveA2AResponse_ErrorLateInAStreamWinsOverEarlierResults(t *testing.T) {
 	sse := []byte("data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"state\":\"working\"}}\n\n" +
 		"data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"state\":\"working\"}}\n\n" +
 		"data: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"agent gave up\"}}\n\n")
 	headers := policy.NewHeaders(map[string][]string{"content-type": {"text/event-stream"}})
 
-	payload := extractA2APayload(sse, headers)
+	payload := observeA2AResponse(sse, headers).outcomeEnvelope
 	if payload == nil {
 		t.Fatal("expected a payload from the SSE stream")
 	}
@@ -291,13 +293,13 @@ func TestExtractA2APayload_ErrorLateInAStreamWinsOverEarlierResults(t *testing.T
 	}
 }
 
-func TestExtractA2APayload_AllSuccessfulStreamUsesTheLastResult(t *testing.T) {
+func TestObserveA2AResponse_AllSuccessfulStreamUsesTheLastResult(t *testing.T) {
 	sse := []byte("data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"state\":\"working\"}}\n\n" +
 		"data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"state\":\"completed\"}}\n\n" +
 		"data: [DONE]\n\n")
 	headers := policy.NewHeaders(map[string][]string{"content-type": {"text/event-stream"}})
 
-	payload := extractA2APayload(sse, headers)
+	payload := observeA2AResponse(sse, headers).outcomeEnvelope
 	if payload == nil {
 		t.Fatal("expected a payload from the SSE stream")
 	}
@@ -408,8 +410,12 @@ func TestOnResponseBodyChunk_FirstEventMarkIsAgentOnly(t *testing.T) {
 
 // ─── Request body phase ─────────────────────────────────────────────────────
 
-// Agent has an explicit (empty) case in the OnRequestBody switch. Without it every
-// Agent request with a body would fall to the default and log an error per request.
+// Agent has an explicit case in the OnRequestBody switch. Without it every Agent
+// request with a body would fall to the default and log an error per request.
+//
+// A request whose body carries none of the three summaries still re-emits the block:
+// the write is keyed, so the phase either writes the whole set or leaves the header
+// phase's alone. What it must never do is write a partial one.
 func TestOnRequestBody_AgentIsAKnownKind(t *testing.T) {
 	ctx := &policy.RequestContext{
 		SharedContext: agentSharedContext("SendMessage", map[string]string{
@@ -419,12 +425,19 @@ func TestOnRequestBody_AgentIsAKnownKind(t *testing.T) {
 		Body:    &policy.Body{Content: []byte(`{"jsonrpc":"2.0","method":"SendMessage"}`)},
 	}
 
-	// Nothing is emitted from this phase; the assertion is that it does not panic and
-	// contributes no A2A metadata (the request dimensions come from the header phase).
 	action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), ctx, nil)
-	if mods, ok := action.(policy.UpstreamRequestModifications); ok {
-		if _, present := mods.AnalyticsMetadata[A2ARequestPropertiesKey]; present {
-			t.Error("the body phase must not duplicate the header phase's dimensions")
+	mods, ok := action.(policy.UpstreamRequestModifications)
+	if !ok {
+		t.Fatalf("expected UpstreamRequestModifications, got %T", action)
+	}
+	props := decodeProps(t, mods.AnalyticsMetadata, A2ARequestPropertiesKey)
+	if props["transport"] != "JSONRPC" {
+		t.Errorf("transport = %v, want JSONRPC — the body phase must re-emit the whole block",
+			props["transport"])
+	}
+	for _, key := range []string{"inputPartCount", "returnImmediately", "historyLength"} {
+		if _, present := props[key]; present {
+			t.Errorf("%s must be absent for an envelope that carries no params", key)
 		}
 	}
 }
@@ -450,5 +463,70 @@ func TestA2AKeySpellingsMatchThePolicyEngine(t *testing.T) {
 		if tc.got != tc.want {
 			t.Errorf("got %q, want %q", tc.got, tc.want)
 		}
+	}
+}
+
+// The field names inside the two blocks are just as much of a wire contract as the
+// keys that carry them: the policy engine unmarshals these documents into typed DTOs
+// (dto.A2ARequestAnalytics and dto.A2AResponseAnalytics), and a field renamed on one
+// side alone unmarshals into nothing at all — the dimension disappears with no error
+// anywhere. Pinning the whole key set rather than individual names also catches a
+// field *added* here and never picked up on the other side.
+//
+// The matching assertion is TestAgentAnalyticsWireFieldNamesArePinned in
+// internal/analytics, which decodes these same documents into the DTOs.
+func TestA2ABlockFieldNamesArePinned(t *testing.T) {
+	partCount, historyLength := 2, 5
+	returnImmediately, isError, isStreaming := false, false, true
+	errorCode := -32601
+	var ttfe, duration int64 = 120, 850
+
+	for name, tc := range map[string]struct {
+		value any
+		want  []string
+	}{
+		A2ARequestPropertiesKey: {
+			value: A2ARequestAnalyticsProperties{
+				Transport: "JSONRPC", ProtocolVersion: "1.0",
+				MessageID: "m-1", ContextID: "ctx-1", TaskID: "task-1",
+				InputPartCount: &partCount, ReturnImmediately: &returnImmediately,
+				HistoryLength: &historyLength,
+			},
+			want: []string{
+				"contextId", "historyLength", "inputPartCount", "messageId",
+				"protocolVersion", "returnImmediately", "taskId", "transport",
+			},
+		},
+		A2AResponsePropertiesKey: {
+			value: A2AResponseAnalyticsProperties{
+				IsError: &isError, ErrorCode: &errorCode,
+				TimeToFirstEventMs: &ttfe, StreamDurationMs: &duration, IsStreaming: &isStreaming,
+				PayloadType: "task", TaskID: "task-9", ContextID: "ctx-9",
+				TaskState: "TASK_STATE_COMPLETED",
+			},
+			want: []string{
+				"contextId", "errorCode", "isError", "isStreaming", "payloadType",
+				"streamDurationMs", "taskId", "taskState", "timeToFirstEventMs",
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			encoded, err := json.Marshal(tc.value)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var decoded map[string]interface{}
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			got := make([]string, 0, len(decoded))
+			for key := range decoded {
+				got = append(got, key)
+			}
+			sort.Strings(got)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("field names = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
