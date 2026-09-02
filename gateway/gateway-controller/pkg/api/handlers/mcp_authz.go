@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	"github.com/wso2/go-httpkit/httputil"
 )
 
@@ -46,6 +47,33 @@ func routeKey(method string, ops *kindOps, item bool) string {
 	return method + " " + ops.Collection
 }
 
+// keyRouteKey builds the route key for an api-key sub-resource. These sit two
+// segments below the parent collection and carry a second placeholder, which
+// routeKey cannot express.
+//
+// suffix is "" for the collection ("POST /rest-apis/{id}/api-keys"),
+// "/{apiKeyName}" for one key, or "/{apiKeyName}/regenerate" for rotation. The
+// placeholder spelling must match generateAuthConfig in cmd/controller/main.go
+// exactly — a typo fails closed, which is correct but silently disables the
+// tool
+func keyRouteKey(method string, ops *kindOps, suffix string) string {
+	return method + " " + ops.Collection + "/{id}/api-keys" + suffix
+}
+
+// apiKeyRouteSuffixes lists every api-key route suffix an MCP tool can reach,
+// paired with its method. Used by MCPBaselineRoles so the advertised scope set
+// includes the roles these routes need.
+var apiKeyRouteSuffixes = []struct {
+	Method string
+	Suffix string
+}{
+	{http.MethodPost, ""},
+	{http.MethodGet, ""},
+	{http.MethodPost, "/{apiKeyName}/regenerate"},
+	{http.MethodPut, "/{apiKeyName}"},
+	{http.MethodDelete, "/{apiKeyName}"},
+}
+
 // Caller identity, carried from the HTTP gate to the tool handlers.
 type mcpCallerKeyType struct{}
 
@@ -54,11 +82,21 @@ type mcpCallerKeyType struct{}
 // which is what proves the gate ran (GO-AUTH-015 — the invariant is enforced at
 // the layer every entry point funnels through, not only in one router).
 type mcpCaller struct {
-	Roles []string
+	// Auth is the verified authentication context, carried whole rather than
+	// reduced to Roles. UserID is what APIKeyService scopes every key operation
+	// on (canRegenerateAPIKey, canRevokeAPIKey, filterAPIKeysByUser), and none
+	// of those guard against an empty value — an empty UserID matches every key
+	// whose CreatedBy is also empty and acts as NO filter on a list. Dropping
+	// the field here would be the implicit-empty-caller widening GO-AUTH-020
+	// prohibits, so it is kept and callerIdentity fails closed on it.
+	Auth commonmodels.AuthContext
 	// Skipped is true when the controller runs with no authenticator
 	// configured, or the request matched a configured skip path. It mirrors
 	// authenticators.GetAuthzSkip so MCP behaves exactly as the REST API does
 	// in that mode rather than inventing its own policy.
+	//
+	// It exempts the ROLE check only. Identity is a separate question: see
+	// callerIdentity, which refuses regardless of Skipped.
 	Skipped bool
 }
 
@@ -102,12 +140,56 @@ func (h *McpHandler) authorize(ctx context.Context, key string) error {
 			slog.String("route", key))
 		return fmt.Errorf("this operation is not available")
 	}
-	if !hasAnyRole(caller.Roles, allowed) {
+	if !hasAnyRole(caller.Auth.Roles, allowed) {
+		// Named in the IdP's vocabulary, not the gateway's: this string reaches
+		// the model, and telling it to obtain a local role name it cannot
+		// request from the IdP is worse than saying nothing.
 		return fmt.Errorf(
 			"insufficient scope: this operation requires one of [%s]",
-			strings.Join(allowed, " "))
+			strings.Join(h.scopesFor(allowed), " "))
 	}
 	return nil
+}
+
+// scopesFor projects local roles into the IdP scope vocabulary configured in
+// auth.idp.role_mapping.
+//
+// Every value that leaves this process naming what a caller must obtain — each
+// WWW-Authenticate `scope`, each client-visible scope error — goes through
+// here. Internal logs keep the local role names, which is what an operator
+// reads the route role map in.
+func (h *McpHandler) scopesFor(roles []string) []string {
+	return authenticators.MapRolesToScopes(h.roleMapping, roles)
+}
+
+// callerIdentity returns the verified caller for operations that are scoped to
+// an individual user rather than only to a role — every API-key tool.
+//
+// It fails closed on a missing context AND on an empty UserID, including when
+// Skipped is set. Skipped exempts the role check, not identity: passing an empty
+// UserID into APIKeyService would put every unidentified caller into one shared
+// CreatedBy bucket and one shared per-user quota, and would turn a key listing
+// into an unfiltered one. This mirrors the REST path, where
+// handlerkit.ExtractAuthenticatedUser answers 401 when no authenticated user is
+// present, so the api-key endpoints are already unreachable without an
+// authenticator.
+//
+// Returning a non-nil context also keeps the process alive: every APIKeyService
+// method logs user.UserID before any nil check, so a nil User is a panic.
+func (h *McpHandler) callerIdentity(ctx context.Context) (*commonmodels.AuthContext, error) {
+	caller, ok := mcpCallerFromContext(ctx)
+	if !ok {
+		h.logger.Error("MCP key tool reached without an authorization decision — denying")
+		return nil, fmt.Errorf("this operation is not available")
+	}
+	if strings.TrimSpace(caller.Auth.UserID) == "" {
+		h.logger.Warn("MCP key tool denied: no authenticated user identity on the request",
+			slog.Bool("authz_skipped", caller.Skipped))
+		return nil, fmt.Errorf(
+			"this operation requires an authenticated user identity; API keys are scoped to the user who created them")
+	}
+	auth := caller.Auth
+	return &auth, nil
 }
 
 // hasAnyRole reports set membership. The route role map is an explicit
@@ -122,43 +204,23 @@ func hasAnyRole(held, allowed []string) bool {
 	return false
 }
 
-// validateAuthorizationCoverage asserts at startup that every route key the six
-// tools can produce exists in the management role map. A tool call that maps to
-// a missing key is denied at runtime; finding that at boot instead of in
-// production is the point.
-func (h *McpHandler) validateAuthorizationCoverage() error {
-	var missing []string
-	for _, kind := range canonicalKinds() {
-		ops, ok := h.kinds[kind]
-		if !ok {
-			continue
-		}
-		keys := []string{
-			routeKey(http.MethodGet, ops, false),
-			routeKey(http.MethodGet, ops, true),
-			routeKey(http.MethodPost, ops, false),
-			routeKey(http.MethodPut, ops, true),
-			routeKey(http.MethodDelete, ops, true),
-		}
-		for _, k := range keys {
-			if _, ok := h.rolesFor(k); !ok {
-				missing = append(missing, k)
+// MCPBaselineRoles is the union of every role that can call at least one tool.
+// Used for the endpoint's own entry in the route role map, and as the default
+// entry set main.go projects through MapRolesToScopes to build the advertised
+// scopes.
+//
+// It returns LOCAL ROLES and must keep doing so: it reads h.resourceRoles, and
+// callers either compare against that map or project explicitly. Projecting
+// here would double-translate main.go's operator-configured entry set.
+func (h *McpHandler) MCPBaselineRoles() []string {
+	seen := map[string]struct{}{}
+	collect := func(key string) {
+		if roles, ok := h.rolesFor(key); ok {
+			for _, r := range roles {
+				seen[r] = struct{}{}
 			}
 		}
 	}
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		return fmt.Errorf("MCP endpoint cannot start: no role mapping for management routes %v "+
-			"(add them to generateAuthConfig in cmd/controller/main.go)", missing)
-	}
-	return nil
-}
-
-// MCPBaselineRoles is the union of every role that can call at least one tool.
-// Used for the endpoint's own entry in the route role map and as the scope set
-// advertised in a 401 challenge.
-func (h *McpHandler) MCPBaselineRoles() []string {
-	seen := map[string]struct{}{}
 	for _, kind := range canonicalKinds() {
 		ops, ok := h.kinds[kind]
 		if !ok {
@@ -166,11 +228,15 @@ func (h *McpHandler) MCPBaselineRoles() []string {
 		}
 		for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
 			for _, item := range []bool{false, true} {
-				if roles, ok := h.rolesFor(routeKey(m, ops, item)); ok {
-					for _, r := range roles {
-						seen[r] = struct{}{}
-					}
-				}
+				collect(routeKey(m, ops, item))
+			}
+		}
+		// Without these the api-key routes' roles never surface, and consumer
+		// would be missing from the advertised scopes_supported even though
+		// "POST /mcp" admits it.
+		if ops.Keys != nil {
+			for _, r := range apiKeyRouteSuffixes {
+				collect(keyRouteKey(r.Method, ops, r.Suffix))
 			}
 		}
 	}
@@ -208,11 +274,12 @@ type jsonRPCPeek struct {
 // no business at this endpoint is already gone.
 func (h *McpHandler) ScopeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The auth context is read regardless of Skipped. Skipped exempts the
+		// role check; it does not mean there is no identity, and the API-key
+		// tools need the UserID even when role enforcement is off.
 		caller := mcpCaller{Skipped: authenticators.GetAuthzSkip(r)}
-		if !caller.Skipped {
-			if ac, ok := authenticators.GetAuthContext(r); ok {
-				caller.Roles = ac.Roles
-			}
+		if ac, ok := authenticators.GetAuthContext(r); ok {
+			caller.Auth = ac
 		}
 
 		// MCP 2026-07-28 has a single POST endpoint. The mux only registers
@@ -256,10 +323,13 @@ func (h *McpHandler) ScopeGate(next http.Handler) http.Handler {
 
 		if peek.Method == "tools/call" && peek.Params.Name != "" && !caller.Skipped {
 			if keys, ok := h.routeKeysForCall(peek.Params.Name, peek.Params.Arguments); ok {
-				if allowed, permitted := h.evaluate(caller.Roles, keys); !permitted {
+				if allowed, permitted := h.evaluate(caller.Auth.Roles, keys); !permitted {
+					// Logs the scopes actually sent in the challenge, not the
+					// local roles behind them — that is what a client stuck in a
+					// step-up loop can be compared against.
 					h.logger.Info("MCP tool call denied at the HTTP gate",
 						slog.String("tool", peek.Params.Name),
-						slog.Any("required_scopes", allowed))
+						slog.Any("required_scopes", h.scopesFor(allowed)))
 					h.writeInsufficientScope(w, allowed)
 					return
 				}
@@ -276,19 +346,25 @@ func (h *McpHandler) ScopeGate(next http.Handler) http.Handler {
 	})
 }
 
-// routeKeysForCall maps a tools/call to the management route key(s) governing
-// it. More than one key is returned only for the cross-kind list_resources
-// form, where the keys are alternatives: holding a role for any one of them
-// admits the call, and the tool then lists only the kinds the caller may read.
+// routeKeysForCall takes the tool name and arguments the caller sent and works
+// out which normal REST API operation that tool is really doing — e.g.
+// "POST /rest-apis". That route key is what we check the caller's roles
+// against, since the role rules are written for REST routes, not tool names.
+//
+// Normally one key. It is several only for a bare "list everything" call
+// (wso2_apip_gw_list_resources with no kind): those are alternatives — a role
+// for any one kind lets the call in, and the tool then lists only the kinds
+// the caller may read. Returns false when the call can't be matched (unknown
+// tool, bad arguments, unknown kind).
 func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]string, bool) {
 	switch tool {
-	case "deploy_api", "apply_config":
+	case "wso2_apip_gw_deploy_api", "wso2_apip_gw_apply_config":
 		var in deployInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
 		}
 		class := classRoutable
-		if tool == "apply_config" {
+		if tool == "wso2_apip_gw_apply_config" {
 			class = classConfig
 		}
 		env, err := readManifestEnvelope([]byte(in.Yaml))
@@ -304,13 +380,13 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return []string{routeKey(http.MethodPost, ops, false)}, true
 
-	case "undeploy_api", "delete_config":
+	case "wso2_apip_gw_undeploy_api", "wso2_apip_gw_delete_config":
 		var in deleteInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
 		}
 		class := classRoutable
-		if tool == "delete_config" {
+		if tool == "wso2_apip_gw_delete_config" {
 			class = classConfig
 		}
 		ops, err := h.resolveKind(in.Kind, class)
@@ -319,7 +395,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return []string{routeKey(http.MethodDelete, ops, true)}, true
 
-	case "get_resource":
+	case "wso2_apip_gw_get_resource":
 		var in getInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
@@ -330,7 +406,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return []string{routeKey(http.MethodGet, ops, true)}, true
 
-	case "list_resources":
+	case "wso2_apip_gw_list_resources":
 		var in listInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
@@ -350,9 +426,56 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return keys, true
 
+	case "wso2_apip_gw_issue_api_key":
+		var in issueKeyInput
+		if err := json.Unmarshal(args, &in); err != nil {
+			return nil, false
+		}
+		return h.keyRouteKeysFor(in.Kind, http.MethodPost, "")
+
+	case "wso2_apip_gw_list_api_keys":
+		var in listKeysInput
+		if err := json.Unmarshal(args, &in); err != nil {
+			return nil, false
+		}
+		return h.keyRouteKeysFor(in.Kind, http.MethodGet, "")
+
+	case "wso2_apip_gw_rotate_api_key":
+		var in rotateKeyInput
+		if err := json.Unmarshal(args, &in); err != nil {
+			return nil, false
+		}
+		// Dispatched exactly as the tool dispatches it, through the same
+		// helper: a caller-supplied key value is an injection (PUT), otherwise
+		// the Gateway generates one (POST .../regenerate). One route key per
+		// call, so the disjunctive evaluate() below stays correct.
+		if rotateIsInjection(in) {
+			return h.keyRouteKeysFor(in.Kind, http.MethodPut, "/{apiKeyName}")
+		}
+		return h.keyRouteKeysFor(in.Kind, http.MethodPost, "/{apiKeyName}/regenerate")
+
+	case "wso2_apip_gw_revoke_api_key":
+		var in revokeKeyInput
+		if err := json.Unmarshal(args, &in); err != nil {
+			return nil, false
+		}
+		return h.keyRouteKeysFor(in.Kind, http.MethodDelete, "/{apiKeyName}")
+
 	default:
 		return nil, false
 	}
+}
+
+// keyRouteKeysFor resolves a raw kind to the single api-key route key governing
+// the call. ok=false means the kind could not be resolved or bears no keys; the
+// gate passes such a call through so the tool itself can explain why, and the
+// tool re-resolves through the same helper before touching a service.
+func (h *McpHandler) keyRouteKeysFor(rawKind, method, suffix string) ([]string, bool) {
+	ops, err := h.resolveKeyBearing(rawKind)
+	if err != nil {
+		return nil, false
+	}
+	return []string{keyRouteKey(method, ops, suffix)}, true
 }
 
 // evaluate returns the roles that would grant the call and whether the caller
@@ -387,12 +510,17 @@ func (h *McpHandler) evaluate(held []string, keys []string) ([]string, bool) {
 // Scope names are not secrets — they are published in the metadata document's
 // scopes_supported — so naming them leaks nothing while being the only thing
 // that makes step-up possible. The body stays sterile.
-func (h *McpHandler) writeInsufficientScope(w http.ResponseWriter, required []string) {
+//
+// requiredRoles arrives in local-role vocabulary and is projected here rather
+// than at the call sites: this is the single choke point for the step-up
+// challenge, so no future caller can forget the translation and emit a role
+// name the IdP has never heard of.
+func (h *McpHandler) writeInsufficientScope(w http.ResponseWriter, requiredRoles []string) {
 	params := []string{
 		`error="insufficient_scope"`,
 		`error_description="The access token lacks a scope required for this operation."`,
 	}
-	if len(required) > 0 {
+	if required := h.scopesFor(requiredRoles); len(required) > 0 {
 		params = append(params, fmt.Sprintf("scope=%q", strings.Join(required, " ")))
 	}
 	if h.resourceMetadataURL != "" {

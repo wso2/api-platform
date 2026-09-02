@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -743,16 +744,39 @@ func main() {
 		mcpResourceMetadata = base + "/.well-known/oauth-protected-resource" +
 			managementAPIBasePath + mcpRelPath
 
-		mcpHandler, err := apiServer.EnableMCP(authConfig.ResourceRoles, mcpResourceMetadata)
-		if err != nil {
-			log.Error("Failed to initialize the MCP endpoint", slog.Any("error", err))
-			os.Exit(1)
+		roleMapping := cfg.Controller.Auth.IDP.RoleMapping
+		mcpHandler := apiServer.EnableMCP(authConfig.ResourceRoles, roleMapping, mcpResourceMetadata)
+
+		// controller.mcp_server.advertised_scopes holds LOCAL ROLE names, not raw
+		// IdP scopes — the same names every other authorization surface here uses.
+		// They are translated into the IdP's scope names once, immediately below.
+		// Empty means "every role the endpoint admits".
+		baselineRoles := mcpHandler.MCPBaselineRoles()
+		entryRoles := cfg.Controller.MCPServer.AdvertisedScopes
+		if len(entryRoles) == 0 {
+			entryRoles = baselineRoles
+		}
+		// Fail closed on the effective outcome (GO-AUTH-011): advertising a role
+		// no MCP operation accepts hands every client a scope that can never
+		// authorize anything, and the failure is otherwise silent — the client
+		// completes the OAuth flow and is still refused.
+		for _, r := range entryRoles {
+			if !slices.Contains(baselineRoles, r) {
+				log.Error("invalid controller.mcp_server.advertised_scopes entry — refusing to start; "+
+					"entries must be local role names, which are translated through auth.idp.role_mapping",
+					slog.String("entry", r),
+					slog.Any("roles_accepted_by_mcp_operations", baselineRoles))
+				os.Exit(1)
+			}
 		}
 
-		advertisedScopes := cfg.Controller.MCPServer.AdvertisedScopes
-		if len(advertisedScopes) == 0 {
-			advertisedScopes = mcpHandler.MCPBaselineRoles()
-		}
+		// Translated once, here. Everything downstream — the metadata document
+		// and both challenge middlewares — receives IdP scope names only.
+		advertisedScopes := authenticators.MapRolesToScopes(roleMapping, entryRoles)
+		log.Info("MCP endpoint advertising scopes",
+			slog.Any("entry_roles", entryRoles),
+			slog.Any("advertised_scopes", advertisedScopes))
+
 		mcpChallenge = onlyForPatterns(
 			handlers.MCPChallengeMiddleware(mcpResourceMetadata, advertisedScopes),
 			mcpRoutePatterns)
@@ -1104,7 +1128,7 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /secrets/{id}":    {"admin"},
 		"DELETE /secrets/{id}": {"admin"},
 
-		"POST /mcp": {"admin", "developer"},
+		"POST /mcp": {"admin", "developer", "consumer"},
 	}
 
 	// Populate both the versioned and legacy (unprefixed) keys so the auth

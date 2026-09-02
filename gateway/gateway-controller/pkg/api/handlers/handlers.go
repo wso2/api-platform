@@ -648,26 +648,27 @@ func (s *APIServer) HandleMcp(w http.ResponseWriter, r *http.Request) {
 // EnableMCP builds the MCP endpoint handler. Called from main only when
 // controller.mcp_server.enabled is true, so the whole MCP surface — including
 // the SDK — stays inert in a default deployment.
-//
-// resourceRoles is the same route->roles map the authorization middleware uses,
-// so an MCP call is authorized exactly as the equivalent REST call.
-func (s *APIServer) EnableMCP(resourceRoles map[string][]string, resourceMetadataURL string) (*McpHandler, error) {
-	h, err := newMcpHandler(McpHandlerParams{
+func (s *APIServer) EnableMCP(
+	resourceRoles map[string][]string,
+	roleMapping map[string][]string,
+	resourceMetadataURL string,
+) *McpHandler {
+	h := newMcpHandler(McpHandlerParams{
 		RestAPIService:       s.restAPIService,
 		MCPDeploymentService: s.mcpDeploymentService,
 		LLMDeploymentService: s.llmDeploymentService,
+		SecretService:        s.secretService,
+		APIKeyService:        s.apiKeyService,
 		ResourceRoles:        resourceRoles,
+		RoleMapping:          roleMapping,
 		ResourceMetadataURL:  resourceMetadataURL,
 		Immutable:            s.systemConfig.ImmutableGateway.Enabled,
 		MaxRequestBytes:      s.systemConfig.Controller.MCPServer.MaxRequestBytes,
 		Logger:               s.logger,
 	})
-	if err != nil {
-		return nil, err
-	}
 	// Same DP->CP undeploy push the REST handlers use, so an artifact deleted
 	// through an MCP tool is marked undeployed upstream too.
 	h.pushArtifactUndeploy = s.pushArtifactUndeploy
 	s.mcpHandler = h
-	return h, nil
+	return h
 }
