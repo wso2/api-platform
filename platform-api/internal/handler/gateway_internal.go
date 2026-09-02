@@ -948,6 +948,22 @@ func (h *GatewayInternalAPIHandler) GetAgentAPIKeys(w http.ResponseWriter, r *ht
 	httputil.WriteJSON(w, http.StatusOK, keys)
 }
 
+// GetGraphQLAPIAPIKeys handles GET /api/internal/v1/graphql-apis/api-keys
+func (h *GatewayInternalAPIHandler) GetGraphQLAPIAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
+	}
+	issuer := r.URL.Query().Get("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.GraphQLApi, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for GraphQL APIs", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, keys)
+}
+
 // CheckArtifactsExist handles POST /api/internal/v1/artifacts/exists
 // Returns the subset of provided artifact UUIDs that still exist on the platform.
 // Used by the gateway during sync to avoid deleting artifacts that still exist
@@ -1159,6 +1175,7 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET /api/internal/v1/mcp-proxies/{proxyId}", h.GetMCPProxy)
 	mux.HandleFunc("GET /api/internal/v1/agents/api-keys", h.GetAgentAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/agents/{agentId}", h.GetAgent)
+	mux.HandleFunc("GET /api/internal/v1/graphql-apis/api-keys", h.GetGraphQLAPIAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/graphql-apis/{apiId}", h.GetGraphQLAPI)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/api-keys", h.GetWebSubAPIAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}", h.GetWebSubAPI)
