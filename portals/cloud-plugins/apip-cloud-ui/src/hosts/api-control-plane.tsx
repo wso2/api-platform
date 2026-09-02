@@ -9,7 +9,7 @@
 
 import { Layers } from '@wso2/oxygen-ui-icons-react';
 
-import { EnvironmentsPage } from '@wso2-enterprise/apip-cloud-ui-environments';
+import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import {
   settingsTabSlot,
   type ApiControlPlaneExtension,
@@ -24,14 +24,14 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * imported directly from core rather than hand-mirrored.
  *
  * `environments` is nested under Settings via the `settings.project.tabs`
- * slot, mirroring the ai-workspace cloud UI work that moves its own
- * Environments page under Settings there too. It lives in its own package
- * (`apip-cloud-ui-environments`) for code organization, but ships in the same
- * branch/release as the rest of this repo — no independent version tag, no
- * separate fetch stage. Backed by an in-memory mock port
- * (`createMockEnvironmentPort`) until a real backend exists — swap that in
- * without touching `EnvironmentsList`/`useEnvironmentList`, which only ever
- * see the `EnvironmentPort` interface.
+ * slot. It shares the same `apip-cloud-ui-environments-new` package the
+ * ai-workspace host uses (`hosts/ai-workspace.tsx`) rather than a
+ * control-plane-specific package, but ships in the same branch/release as the
+ * rest of this repo — no independent version tag, no separate fetch stage.
+ * Backed by an in-memory mock port (`createMockEnvironmentPort`, constructed
+ * internally by `EnvironmentsFeature`) until a real backend exists — swap
+ * that in without touching `EnvironmentsList`/`EnvironmentForm`, which only
+ * ever see the `EnvironmentPort` interface.
  */
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
   defineCloudPlugin({
@@ -41,7 +41,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
       {
         id: 'environments',
         routePath: 'settings/environments',
-        render: (port) => <EnvironmentsPage port={port} />,
+        render: (port) => <EnvironmentsFeature port={port} />,
         label: 'Environments',
         icon: <Layers />,
         level: 'project',

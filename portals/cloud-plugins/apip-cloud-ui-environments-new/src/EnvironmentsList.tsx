@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMemo, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
 import {
   Alert,
   Avatar,
@@ -42,11 +42,11 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock3, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
-import { deleteEnvironment, listEnvironments } from './mocks/environmentsStore';
 import type { NotifySeverity } from './hostPort';
-import type { Environment } from './types';
+import type { Environment, EnvironmentPort } from './types';
 
 export type EnvironmentsListProps = {
+  port: EnvironmentPort;
   readOnly: boolean;
   onCreateClick: () => void;
   notify?: (message: string, severity?: NotifySeverity) => void;
@@ -65,19 +65,28 @@ function relativeTime(value: string): string {
   return `${years} year${years === 1 ? '' : 's'} ago`;
 }
 
-const EnvironmentsList: FC<EnvironmentsListProps> = ({ readOnly, onCreateClick, notify }) => {
-  const [environments, setEnvironments] = useState(() => listEnvironments());
+const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateClick, notify }) => {
+  const [environments, setEnvironments] = useState<Environment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
+
+  const refetch = useCallback(() => {
+    void port.list().then(setEnvironments);
+  }, [port]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
   const rows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return query ? environments.filter((environment) => environment.name.toLowerCase().includes(query)) : environments;
   }, [environments, searchQuery]);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    deleteEnvironment(deleteTarget.id);
-    setEnvironments(listEnvironments());
+    await port.remove(deleteTarget.id);
+    refetch();
     notify?.(`Environment "${deleteTarget.name}" deleted.`, 'success');
     setDeleteTarget(null);
   };

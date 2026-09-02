@@ -24,3 +24,15 @@ export type Environment = {
 };
 
 export type CreateEnvironmentInput = Pick<Environment, 'name' | 'critical'>;
+
+/**
+ * The data contract this feature is built against. `EnvironmentsFeature`
+ * constructs an in-memory `createMockEnvironmentPort()` internally today (no
+ * real backend exists yet) — this interface is what a real implementation
+ * swaps in for, without any change to `EnvironmentsList`/`EnvironmentForm`.
+ */
+export interface EnvironmentPort {
+  list(): Promise<Environment[]>;
+  create(input: CreateEnvironmentInput): Promise<Environment>;
+  remove(id: string): Promise<void>;
+}
