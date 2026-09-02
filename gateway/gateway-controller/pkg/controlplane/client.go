@@ -1065,6 +1065,7 @@ var apiKeyBulkSyncKinds = []string{
 	models.KindLlmProvider,
 	models.KindLlmProxy,
 	models.KindAgent,
+	models.KindGraphQLApi,
 }
 
 // isAPIKeyBulkSyncKind reports whether kind is in apiKeyBulkSyncKinds.
