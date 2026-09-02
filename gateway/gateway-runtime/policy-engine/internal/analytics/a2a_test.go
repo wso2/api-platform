@@ -125,13 +125,19 @@ func a2aLogEntry(opts a2aEntryOptions) *v3.HTTPAccessLogEntry {
 	return entry
 }
 
-func a2aBlock(t *testing.T, entry *v3.HTTPAccessLogEntry) map[string]interface{} {
+// a2aBlock builds one Agent event and returns its A2A section.
+//
+// Typed, like the published model: these assertions are the contract with a downstream
+// consumer, and asserting them against a map would pass just as happily on a field
+// whose value quietly changed type.
+func a2aBlock(t *testing.T, entry *v3.HTTPAccessLogEntry) *dto.A2AAnalytics {
 	t.Helper()
 	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
 	require.NotNil(t, event)
-	block, ok := event.Properties[A2AAnalyticsProperty].(map[string]interface{})
-	require.True(t, ok, "expected an %s block on an Agent event", A2AAnalyticsProperty)
-	return block
+	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
+	require.True(t, ok, "expected an %s envelope on an Agent event", AgentAnalyticsProperty)
+	require.NotNil(t, envelope.A2A, "the envelope must carry an a2a section")
+	return envelope.A2A
 }
 
 // ─── Transport convergence ───────────────────────────────────────────────────
@@ -148,20 +154,20 @@ func TestA2AAnalytics_TransportsConvergeOnOneOperationWithDistinctTransports(t *
 		operation: "SendMessage", transport: "HTTP+JSON", protocolVersion: "1.0",
 	}))
 
-	assert.Equal(t, "SendMessage", jsonrpc["operation"])
-	assert.Equal(t, jsonrpc["operation"], httpjson["operation"],
+	assert.Equal(t, "SendMessage", jsonrpc.Operation)
+	assert.Equal(t, jsonrpc.Operation, httpjson.Operation,
 		"both transports must aggregate under one canonical operation")
 
-	assert.Equal(t, "JSONRPC", jsonrpc["transport"])
-	assert.Equal(t, "HTTP+JSON", httpjson["transport"])
-	assert.NotEqual(t, jsonrpc["transport"], httpjson["transport"],
+	assert.Equal(t, "JSONRPC", jsonrpc.Transport)
+	assert.Equal(t, "HTTP+JSON", httpjson.Transport)
+	assert.NotEqual(t, jsonrpc.Transport, httpjson.Transport,
 		"transport must stay a separate dimension, not be folded into the operation")
 
 	// Both are invocations, both succeeded.
-	for name, block := range map[string]map[string]interface{}{"jsonrpc": jsonrpc, "httpjson": httpjson} {
-		assert.Equal(t, A2ARequestTypeOperation, block["requestType"], name)
-		assert.Equal(t, A2AOutcomeSuccess, block["outcome"], name)
-		assert.Equal(t, "1.0", block["protocolVersion"], name)
+	for name, block := range map[string]*dto.A2AAnalytics{"jsonrpc": jsonrpc, "httpjson": httpjson} {
+		assert.Equal(t, A2ARequestTypeOperation, block.RequestType, name)
+		assert.Equal(t, A2AOutcomeSuccess, block.Outcome, name)
+		assert.Equal(t, "1.0", block.ProtocolVersion, name)
 	}
 }
 
@@ -178,11 +184,14 @@ func TestA2AAnalytics_JSONRPCErrorInsideA200IsAFailure(t *testing.T) {
 		responseIsError: true, responseErrorCode: &code,
 	}))
 
-	assert.Equal(t, A2AOutcomeFailure, block["outcome"])
-	assert.Equal(t, A2AFailureOriginUpstream, block["failureOrigin"],
+	assert.Equal(t, A2AOutcomeFailure, block.Outcome)
+	assert.Equal(t, A2AFailureOriginUpstream, block.FailureOrigin,
 		"a JSON-RPC error object is the agent's own failure")
-	assert.Equal(t, true, block["isError"])
-	assert.EqualValues(t, code, block["errorCode"])
+	require.NotNil(t, block.Response)
+	require.NotNil(t, block.Response.IsError)
+	assert.True(t, *block.Response.IsError)
+	require.NotNil(t, block.Response.ErrorCode)
+	assert.Equal(t, code, *block.Response.ErrorCode)
 }
 
 func TestA2AAnalytics_CleanTwoHundredIsASuccessWithNoFailureOrigin(t *testing.T) {
@@ -191,8 +200,8 @@ func TestA2AAnalytics_CleanTwoHundredIsASuccessWithNoFailureOrigin(t *testing.T)
 		statusCode: 200, upstreamContacted: true,
 	}))
 
-	assert.Equal(t, A2AOutcomeSuccess, block["outcome"])
-	assert.NotContains(t, block, "failureOrigin",
+	assert.Equal(t, A2AOutcomeSuccess, block.Outcome)
+	assert.Empty(t, block.FailureOrigin,
 		"a successful invocation must carry no failure origin at all")
 }
 
@@ -258,8 +267,8 @@ func TestA2AAnalytics_FailureOrigin(t *testing.T) {
 				statusCode: tc.statusCode, terminalReason: tc.terminalReason,
 				upstreamContacted: tc.upstreamContacted,
 			}))
-			assert.Equal(t, A2AOutcomeFailure, block["outcome"])
-			assert.Equal(t, tc.wantOrigin, block["failureOrigin"])
+			assert.Equal(t, A2AOutcomeFailure, block.Outcome)
+			assert.Equal(t, tc.wantOrigin, block.FailureOrigin)
 		})
 	}
 }
@@ -273,7 +282,7 @@ func TestA2AAnalytics_PolicyDenialOutranksTheResponseBody(t *testing.T) {
 		statusCode: 401, terminalReason: constants.TerminalReasonPolicyDenied,
 		responseIsError: false,
 	}))
-	assert.Equal(t, A2AFailureOriginPolicy, block["failureOrigin"])
+	assert.Equal(t, A2AFailureOriginPolicy, block.FailureOrigin)
 }
 
 // A policy that *answers* is not a policy that refused.
@@ -295,11 +304,11 @@ func TestA2AAnalytics_APolicyThatAnswersSuccessfullyIsNotAFailure(t *testing.T) 
 			omitResponseProps: true,
 		}))
 
-		assert.Equal(t, A2ARequestTypeOperation, block["requestType"],
+		assert.Equal(t, A2ARequestTypeOperation, block.RequestType,
 			"an extended-card request is the operation, never discovery")
-		assert.Equal(t, "GetExtendedAgentCard", block["operation"])
-		assert.Equal(t, A2AOutcomeSuccess, block["outcome"])
-		assert.NotContains(t, block, "failureOrigin")
+		assert.Equal(t, "GetExtendedAgentCard", block.Operation)
+		assert.Equal(t, A2AOutcomeSuccess, block.Outcome)
+		assert.Empty(t, block.FailureOrigin)
 	})
 
 	// JSON-RPC answers 200 whether the call succeeded or failed, and an
@@ -317,9 +326,9 @@ func TestA2AAnalytics_APolicyThatAnswersSuccessfullyIsNotAFailure(t *testing.T) 
 			omitResponseProps: true,
 		}))
 
-		assert.Equal(t, A2ARequestTypeOperation, block["requestType"])
-		assert.Equal(t, A2AOutcomeUnknown, block["outcome"])
-		assert.NotContains(t, block, "failureOrigin")
+		assert.Equal(t, A2ARequestTypeOperation, block.RequestType)
+		assert.Equal(t, A2AOutcomeUnknown, block.Outcome)
+		assert.Empty(t, block.FailureOrigin)
 	})
 
 	// And the refusal is unchanged: a 401 from the same policy on the same
@@ -332,9 +341,9 @@ func TestA2AAnalytics_APolicyThatAnswersSuccessfullyIsNotAFailure(t *testing.T) 
 			upstreamContacted: false,
 		}))
 
-		assert.Equal(t, A2ARequestTypeOperation, block["requestType"])
-		assert.Equal(t, A2AOutcomeFailure, block["outcome"])
-		assert.Equal(t, A2AFailureOriginPolicy, block["failureOrigin"])
+		assert.Equal(t, A2ARequestTypeOperation, block.RequestType)
+		assert.Equal(t, A2AOutcomeFailure, block.Outcome)
+		assert.Equal(t, A2AFailureOriginPolicy, block.FailureOrigin)
 	})
 }
 
@@ -358,13 +367,17 @@ func TestA2AAnalytics_CardAndPreflightAreReportedSeparately(t *testing.T) {
 				requestMethod: tc.method, omitRequestProps: true, omitResponseProps: true,
 			}))
 
-			assert.Equal(t, tc.wantRequestType, block["requestType"])
+			assert.Equal(t, tc.wantRequestType, block.RequestType)
 			// None of the invocation dimensions may be present, or a downstream
-			// rollup could count card polling as agent traffic.
-			for _, dimension := range []string{"operation", "transport", "outcome", "failureOrigin"} {
-				assert.NotContains(t, block, dimension,
-					"%s must not be shaped like an invocation", tc.name)
-			}
+			// rollup could count card polling as agent traffic. requestType is the
+			// only field such an event carries.
+			assert.Empty(t, block.Operation, tc.name)
+			assert.Empty(t, block.Transport, tc.name)
+			assert.Empty(t, block.ProtocolVersion, tc.name)
+			assert.Empty(t, block.Outcome, tc.name)
+			assert.Empty(t, block.FailureOrigin, tc.name)
+			assert.Nil(t, block.Request, tc.name)
+			assert.Nil(t, block.Response, tc.name)
 		})
 	}
 }
@@ -386,11 +399,11 @@ func TestA2AAnalytics_ResolutionFailureIsAClientSideInvocationFailure(t *testing
 		omitRequestProps: true, omitResponseProps: true,
 	}))
 
-	assert.Equal(t, A2ARequestTypeOperation, block["requestType"],
+	assert.Equal(t, A2ARequestTypeOperation, block.RequestType,
 		"a rejected operation request must not be misfiled as a card fetch")
-	assert.Equal(t, A2AOperationUnknown, block["operation"])
-	assert.Equal(t, A2AOutcomeFailure, block["outcome"])
-	assert.Equal(t, A2AFailureOriginClient, block["failureOrigin"])
+	assert.Equal(t, A2AOperationUnknown, block.Operation)
+	assert.Equal(t, A2AOutcomeFailure, block.Outcome)
+	assert.Equal(t, A2AFailureOriginClient, block.FailureOrigin)
 }
 
 // An Agent event whose request/response property blocks are missing entirely — the
@@ -403,12 +416,12 @@ func TestA2AAnalytics_OperationWithoutPolicyPropertiesIsUndetermined(t *testing.
 		omitRequestProps: true, omitResponseProps: true,
 	}))
 
-	assert.Equal(t, A2ARequestTypeOperation, block["requestType"])
-	assert.Equal(t, "CancelTask", block["operation"])
-	assert.Equal(t, A2AOutcomeUnknown, block["outcome"])
-	assert.NotContains(t, block, "failureOrigin",
+	assert.Equal(t, A2ARequestTypeOperation, block.RequestType)
+	assert.Equal(t, "CancelTask", block.Operation)
+	assert.Equal(t, A2AOutcomeUnknown, block.Outcome)
+	assert.Empty(t, block.FailureOrigin,
 		"an undetermined outcome is not a failure and has no origin")
-	assert.NotContains(t, block, "transport")
+	assert.Empty(t, block.Transport)
 }
 
 // The load-bearing case for A2AOutcomeUnknown. On JSON-RPC the status is 200 whether
@@ -424,8 +437,8 @@ func TestA2AAnalytics_JSONRPCTwoHundredWithAnUnreadableBodyIsUndetermined(t *tes
 		omitResponseProps: true,
 	}))
 
-	assert.Equal(t, A2AOutcomeUnknown, block["outcome"])
-	assert.NotContains(t, block, "failureOrigin")
+	assert.Equal(t, A2AOutcomeUnknown, block.Outcome)
+	assert.Empty(t, block.FailureOrigin)
 }
 
 // HTTP+JSON is REST-shaped: an error is a real error status, never a 200. So a 2xx is
@@ -438,8 +451,8 @@ func TestA2AAnalytics_HTTPJSONTwoHundredWithNoBodyIsASuccess(t *testing.T) {
 		omitResponseProps: true,
 	}))
 
-	assert.Equal(t, A2AOutcomeSuccess, block["outcome"])
-	assert.NotContains(t, block, "failureOrigin")
+	assert.Equal(t, A2AOutcomeSuccess, block.Outcome)
+	assert.Empty(t, block.FailureOrigin)
 }
 
 // A determined outcome always wins over the transport convention, in both directions:
@@ -451,14 +464,14 @@ func TestA2AAnalytics_AReadBodyOutranksTheTransportConvention(t *testing.T) {
 		statusCode: 200, upstreamContacted: true,
 		responseIsError: true, responseErrorCode: &code,
 	}))
-	assert.Equal(t, A2AOutcomeFailure, failed["outcome"])
-	assert.Equal(t, A2AFailureOriginUpstream, failed["failureOrigin"])
+	assert.Equal(t, A2AOutcomeFailure, failed.Outcome)
+	assert.Equal(t, A2AFailureOriginUpstream, failed.FailureOrigin)
 
 	succeeded := a2aBlock(t, a2aLogEntry(a2aEntryOptions{
 		operation: "SendMessage", transport: "JSONRPC", protocolVersion: "1.0",
 		statusCode: 200, upstreamContacted: true,
 	}))
-	assert.Equal(t, A2AOutcomeSuccess, succeeded["outcome"])
+	assert.Equal(t, A2AOutcomeSuccess, succeeded.Outcome)
 }
 
 // ─── Cardinality ─────────────────────────────────────────────────────────────
@@ -473,9 +486,10 @@ func TestA2AAnalytics_CarriesTheCorrelationIdentifiers(t *testing.T) {
 		contextID: "ctx-abc", taskID: "task-def", messageID: "msg-ghi",
 	}))
 
-	assert.Equal(t, "ctx-abc", block["contextId"])
-	assert.Equal(t, "task-def", block["taskId"])
-	assert.Equal(t, "msg-ghi", block["messageId"])
+	require.NotNil(t, block.Request)
+	assert.Equal(t, "ctx-abc", block.Request.ContextID)
+	assert.Equal(t, "task-def", block.Request.TaskID)
+	assert.Equal(t, "msg-ghi", block.Request.MessageID)
 }
 
 // ─── Consumer identity ──────────────────────────────────────────────────────
@@ -502,9 +516,10 @@ func TestA2AAnalytics_CarriesTheConsumerIdentifierAlongsideTheA2ADimensions(t *t
 
 	assert.Equal(t, "client-123", event.Properties[dto.PropKeyAuthCredentialID],
 		"a stable consumer identifier must reach the event for the active-consumers family")
-	block, ok := event.Properties[A2AAnalyticsProperty].(map[string]interface{})
+	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
 	require.True(t, ok)
-	assert.Equal(t, "SendMessage", block["operation"],
+	require.NotNil(t, envelope.A2A)
+	assert.Equal(t, "SendMessage", envelope.A2A.Operation,
 		"consumer identity and the A2A dimensions must be on the same event, "+
 			"or volume-per-consumer cannot be broken down by operation")
 }
@@ -533,28 +548,235 @@ func TestA2AAnalytics_NotEmittedForOtherKinds(t *testing.T) {
 			})
 			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
 			require.NotNil(t, event)
-			assert.NotContains(t, event.Properties, A2AAnalyticsProperty)
+			assert.NotContains(t, event.Properties, AgentAnalyticsProperty)
 		})
 	}
 }
 
-// ─── Robustness of the property merge ───────────────────────────────────────
+// ─── The published envelope shape ───────────────────────────────────────────
 
-// An unparseable block is kept as a raw string rather than dropped: the event stays
-// diagnosable and a consumer reading a named dimension sees it as absent, never as a
-// wrong value.
-func TestMergeJSONProperties_UnparseableIsKeptRawAndNamedDimensionsStayAbsent(t *testing.T) {
-	dest := map[string]interface{}{}
-	mergeJSONProperties(dest, "{not json", A2ARequestPropertiesKey)
+// The whole published model in one assertion: the envelope's domain key, the A2A
+// section's four scalars, and the two flat objects with every field the policy can
+// contribute. This is the contract a downstream dashboard is written against, so it is
+// pinned as a shape rather than field by field — a field silently moved between the
+// A2A level and one of the objects would still satisfy per-field assertions.
+func TestAgentAnalytics_PublishedEnvelopeShape(t *testing.T) {
+	requestProps, err := json.Marshal(map[string]any{
+		"transport":         "JSONRPC",
+		"protocolVersion":   "1.0",
+		"messageId":         "msg-1",
+		"taskId":            "task-existing",
+		"contextId":         "ctx-1",
+		"inputPartCount":    3,
+		"returnImmediately": false,
+		"historyLength":     5,
+	})
+	require.NoError(t, err)
+	responseProps, err := json.Marshal(map[string]any{
+		"isError":            false,
+		"isStreaming":        true,
+		"timeToFirstEventMs": 120,
+		"streamDurationMs":   850,
+		"payloadType":        "task",
+		"taskId":             "task-456",
+		"contextId":          "ctx-1",
+		"taskState":          "TASK_STATE_COMPLETED",
+	})
+	require.NoError(t, err)
 
-	assert.Equal(t, "{not json", dest[A2ARequestPropertiesKey])
-	assert.NotContains(t, dest, "transport")
+	entry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:               string(policy.APIKindAgent),
+		APIIDKey:                 "agent-1",
+		APINameKey:               "WeatherAgent",
+		ResolvedOperationKey:     "SendMessage",
+		A2ARequestPropertiesKey:  string(requestProps),
+		A2AResponsePropertiesKey: string(responseProps),
+	})
+
+	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
+	require.NotNil(t, event)
+	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
+	require.True(t, ok, "the Agent envelope must be published as a typed value, not a map")
+	require.NotNil(t, envelope.A2A)
+
+	// The four A2A-level scalars plus the derived outcome.
+	assert.Equal(t, A2ARequestTypeOperation, envelope.A2A.RequestType)
+	assert.Equal(t, "SendMessage", envelope.A2A.Operation)
+	assert.Equal(t, "JSONRPC", envelope.A2A.Transport)
+	assert.Equal(t, "1.0", envelope.A2A.ProtocolVersion)
+	assert.Equal(t, A2AOutcomeSuccess, envelope.A2A.Outcome)
+	assert.Empty(t, envelope.A2A.FailureOrigin)
+
+	// Transport and protocol version describe the invocation, not what the caller
+	// asked the agent to do, so they sit at the A2A level even though the policy
+	// serializes them alongside the request identifiers.
+	request := envelope.A2A.Request
+	require.NotNil(t, request)
+	assert.Equal(t, "msg-1", request.MessageID)
+	assert.Equal(t, "task-existing", request.TaskID)
+	assert.Equal(t, "ctx-1", request.ContextID)
+	require.NotNil(t, request.InputPartCount)
+	assert.Equal(t, 3, *request.InputPartCount)
+	require.NotNil(t, request.ReturnImmediately)
+	assert.False(t, *request.ReturnImmediately)
+	require.NotNil(t, request.HistoryLength)
+	assert.Equal(t, 5, *request.HistoryLength)
+
+	response := envelope.A2A.Response
+	require.NotNil(t, response)
+	require.NotNil(t, response.IsError)
+	assert.False(t, *response.IsError)
+	require.NotNil(t, response.IsStreaming)
+	assert.True(t, *response.IsStreaming)
+	require.NotNil(t, response.TimeToFirstEventMs)
+	assert.EqualValues(t, 120, *response.TimeToFirstEventMs)
+	require.NotNil(t, response.StreamDurationMs)
+	assert.EqualValues(t, 850, *response.StreamDurationMs)
+	assert.Equal(t, "task", response.PayloadType)
+	assert.Equal(t, "TASK_STATE_COMPLETED", response.TaskState)
+
+	// The identifiers the caller sent and the ones the agent answered with are
+	// carried separately, in the object that says which direction produced them, so
+	// a disagreement between the two stays diagnosable.
+	assert.Equal(t, "task-456", response.TaskID)
+	assert.Equal(t, "ctx-1", response.ContextID)
+	assert.NotEqual(t, request.TaskID, response.TaskID)
 }
 
-func TestMergeJSONProperties_EmptyIsANoOp(t *testing.T) {
-	dest := map[string]interface{}{}
-	mergeJSONProperties(dest, "", A2ARequestPropertiesKey)
-	assert.Empty(t, dest)
+// The published JSON is the actual contract — a consumer reads names, not Go fields —
+// so the serialized document is asserted directly. It also pins the two omissions the
+// model depends on: an absent optional is missing rather than null or zero, and there
+// is no schema-version property.
+func TestAgentAnalytics_SerializesToTheDocumentedJSON(t *testing.T) {
+	requestProps, err := json.Marshal(map[string]any{
+		"transport": "JSONRPC", "protocolVersion": "1.0", "messageId": "msg-1",
+	})
+	require.NoError(t, err)
+	responseProps, err := json.Marshal(map[string]any{
+		"isError": false, "payloadType": "task", "taskState": "TASK_STATE_COMPLETED",
+	})
+	require.NoError(t, err)
+
+	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(
+		createLogEntryWithMetadata(map[string]string{
+			APITypeKey:               string(policy.APIKindAgent),
+			APIIDKey:                 "agent-1",
+			APINameKey:               "WeatherAgent",
+			ResolvedOperationKey:     "SendMessage",
+			A2ARequestPropertiesKey:  string(requestProps),
+			A2AResponsePropertiesKey: string(responseProps),
+		}))
+	require.NotNil(t, event)
+
+	encoded, err := json.Marshal(event.Properties[AgentAnalyticsProperty])
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"a2a": {
+			"requestType": "operation",
+			"operation": "SendMessage",
+			"transport": "JSONRPC",
+			"protocolVersion": "1.0",
+			"request": {"messageId": "msg-1"},
+			"response": {"isError": false, "payloadType": "task", "taskState": "TASK_STATE_COMPLETED"},
+			"outcome": "SUCCESS"
+		}
+	}`, string(encoded))
+}
+
+// A card fetch and a preflight use the same envelope and carry only requestType, so a
+// consumer cannot mistake either for an invocation — and so neither needs a separate
+// shape to be recognised by.
+func TestAgentAnalytics_CardAndPreflightSerializeToRequestTypeAlone(t *testing.T) {
+	for name, method := range map[string]corev3.RequestMethod{
+		"agentCard": corev3.RequestMethod_GET,
+		"preflight": corev3.RequestMethod_OPTIONS,
+	} {
+		t.Run(name, func(t *testing.T) {
+			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(
+				a2aLogEntry(a2aEntryOptions{
+					requestMethod: method, omitRequestProps: true, omitResponseProps: true,
+				}))
+			require.NotNil(t, event)
+
+			encoded, err := json.Marshal(event.Properties[AgentAnalyticsProperty])
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"a2a": {"requestType": "`+name+`"}}`, string(encoded))
+		})
+	}
+}
+
+// The field names inside the two blocks are a wire contract with the analytics system
+// policy, which is a separate Go module: it serializes these documents and this package
+// unmarshals them into the published DTOs. A field renamed on one side alone decodes
+// into nothing — the dimension disappears with no error anywhere — so both sides pin
+// the names. The matching assertion is TestA2ABlockFieldNamesArePinned in that module.
+func TestAgentAnalyticsWireFieldNamesArePinned(t *testing.T) {
+	request := decodeA2ARequestBlock(`{
+		"transport": "JSONRPC", "protocolVersion": "1.0",
+		"messageId": "m-1", "contextId": "ctx-1", "taskId": "task-1",
+		"inputPartCount": 2, "returnImmediately": false, "historyLength": 5
+	}`)
+	assert.Equal(t, "JSONRPC", request.Transport)
+	assert.Equal(t, "1.0", request.ProtocolVersion)
+	assert.Equal(t, "m-1", request.MessageID)
+	assert.Equal(t, "ctx-1", request.ContextID)
+	assert.Equal(t, "task-1", request.TaskID)
+	require.NotNil(t, request.InputPartCount)
+	assert.Equal(t, 2, *request.InputPartCount)
+	require.NotNil(t, request.ReturnImmediately)
+	require.NotNil(t, request.HistoryLength)
+	assert.Equal(t, 5, *request.HistoryLength)
+
+	response := decodeA2AResponseBlock(`{
+		"isError": false, "errorCode": -32601,
+		"isStreaming": true, "timeToFirstEventMs": 120, "streamDurationMs": 850,
+		"payloadType": "task", "taskId": "task-9", "contextId": "ctx-9",
+		"taskState": "TASK_STATE_COMPLETED"
+	}`)
+	require.NotNil(t, response)
+	require.NotNil(t, response.IsError)
+	require.NotNil(t, response.ErrorCode)
+	assert.Equal(t, -32601, *response.ErrorCode)
+	require.NotNil(t, response.IsStreaming)
+	require.NotNil(t, response.TimeToFirstEventMs)
+	require.NotNil(t, response.StreamDurationMs)
+	assert.Equal(t, "task", response.PayloadType)
+	assert.Equal(t, "task-9", response.TaskID)
+	assert.Equal(t, "ctx-9", response.ContextID)
+	assert.Equal(t, "TASK_STATE_COMPLETED", response.TaskState)
+}
+
+// ─── Robustness of the block decode ─────────────────────────────────────────
+
+// A block that will not parse costs its own section and nothing else. The earlier flat
+// map kept the raw string on the event under its own key; a typed envelope has nowhere
+// honest to put it, and a consumer reading a named field sees it as absent either way.
+func TestDecodeA2ABlocks_UnparseableYieldsAnEmptySectionAndDoesNotBreakTheEvent(t *testing.T) {
+	entry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:               string(policy.APIKindAgent),
+		APIIDKey:                 "agent-1",
+		APINameKey:               "WeatherAgent",
+		ResolvedOperationKey:     "SendMessage",
+		A2ARequestPropertiesKey:  "{not json",
+		A2AResponsePropertiesKey: "{not json",
+	})
+
+	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
+	require.NotNil(t, event)
+	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
+	require.True(t, ok)
+	require.NotNil(t, envelope.A2A)
+
+	assert.Equal(t, "SendMessage", envelope.A2A.Operation,
+		"the operation is kernel-stamped and must survive an unreadable policy block")
+	assert.Nil(t, envelope.A2A.Request)
+	assert.Nil(t, envelope.A2A.Response)
+}
+
+func TestDecodeA2ABlocks_EmptyYieldsNoObjects(t *testing.T) {
+	empty := decodeA2ARequestBlock("")
+	assert.True(t, empty.A2ARequestAnalytics.IsEmpty())
+	assert.Nil(t, decodeA2AResponseBlock(""))
 }
 
 // ─── Cross-module and cross-package key spellings ───────────────────────────
@@ -568,7 +790,7 @@ func TestA2AMetadataKeySpellingsArePinned(t *testing.T) {
 	assert.Equal(t, "a2a_response_properties", A2AResponsePropertiesKey)
 	assert.Equal(t, "x-wso2-resolved-operation", ResolvedOperationKey)
 	assert.Equal(t, "x-wso2-terminal-reason", TerminalReasonKey)
-	assert.Equal(t, "a2aAnalytics", A2AAnalyticsProperty)
+	assert.Equal(t, "agentAnalytics", AgentAnalyticsProperty)
 
 	// The transport value arrives as an opaque string out of Envoy dynamic metadata,
 	// having been spelled by common/agentproto at the other end of the pipeline. This

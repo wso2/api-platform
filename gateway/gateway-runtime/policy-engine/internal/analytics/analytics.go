@@ -676,18 +676,25 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindAgent) {
-		event.Properties[A2AAnalyticsProperty] = buildA2AAnalytics(
+		event.Properties[AgentAnalyticsProperty] = buildAgentAnalytics(
 			keyValuePairsFromMetadata, logEntry, operation.APIMethod, event.ProxyResponseCode)
 	}
 
 	return event
 }
 
-// A2AAnalyticsProperty is the event property the A2A dimensions are assembled under,
-// mirroring mcpAnalytics.
-const A2AAnalyticsProperty = "a2aAnalytics"
+// AgentAnalyticsProperty is the event property the Agent analytics envelope is
+// assembled under.
+//
+// It is an envelope keyed by domain rather than a flat block named after one protocol,
+// so a later Agent analytics domain can be added as a sibling of `a2a` without its
+// fields having to be told apart from A2A's by name. It replaces the earlier flat
+// `a2aAnalytics` property; nothing publishes that key any more, and a publisher test
+// asserts its absence, because a consumer reading both would silently see two
+// different shapes of the same event depending on the gateway version.
+const AgentAnalyticsProperty = "agentAnalytics"
 
-// buildA2AAnalytics assembles the A2A dimension block for one Agent event.
+// buildAgentAnalytics assembles the published Agent analytics envelope for one event.
 //
 // Every dimension a downstream A2A dashboard needs that is not already a first-class
 // field on the event lives here. Latency stays on event.Latencies, which the ALS
@@ -696,16 +703,20 @@ const A2AAnalyticsProperty = "a2aAnalytics"
 // facts specific to A2A — which operation, over which transport, and whether the agent
 // actually succeeded — are assembled here.
 //
+// The result is typed rather than a map. What this function produces is an external
+// contract, and a map is a contract only by convention: a renamed key or a value that
+// quietly changes type stays invisible until a dashboard goes blank.
+//
 // Nothing in here is aggregated. Counts, distinct-consumer rollups and success rates
 // are computed downstream; this function's whole contract is that the dimensions each
 // of those needs are present, bounded where they must be, and derived correctly.
-func buildA2AAnalytics(
+func buildAgentAnalytics(
 	metadata map[string]string,
 	logEntry *v3.HTTPAccessLogEntry,
 	requestMethod string,
 	statusCode int,
-) map[string]interface{} {
-	a2a := make(map[string]interface{}, 12)
+) *dto.AgentAnalytics {
+	a2a := &dto.A2AAnalytics{}
 
 	// The canonical operation, stamped by the kernel from the bound chain key rather
 	// than reported by anything that parsed the request — so it names the operation
@@ -713,14 +724,13 @@ func buildA2AAnalytics(
 	operation := metadata[ResolvedOperationKey]
 	terminalReason := metadata[TerminalReasonKey]
 
-	requestType := a2aRequestType(operation, terminalReason, requestMethod)
-	a2a["requestType"] = requestType
+	a2a.RequestType = a2aRequestType(operation, terminalReason, requestMethod)
 
-	if requestType != A2ARequestTypeOperation {
+	if a2a.RequestType != A2ARequestTypeOperation {
 		// A card fetch or a preflight. It gets no operation, no outcome and no
 		// transport: it is reported so the traffic is visible, and deliberately not
 		// shaped like an invocation so nothing downstream can roll it in with one.
-		return a2a
+		return &dto.AgentAnalytics{A2A: a2a}
 	}
 
 	if operation == "" {
@@ -731,24 +741,80 @@ func buildA2AAnalytics(
 		// the value that failed to resolve was caller-supplied.
 		operation = A2AOperationUnknown
 	}
-	a2a["operation"] = operation
+	a2a.Operation = operation
 
 	// Transport, protocol version and the request identifiers, extracted once by the
 	// a2a resolver and passed through the analytics system policy. Transport is a
 	// separate dimension from operation on purpose: the two A2A bindings of one
 	// operation resolve to the same chain and must aggregate to the same operation,
 	// while still being distinguishable.
-	mergeJSONProperties(a2a, metadata[A2ARequestPropertiesKey], A2ARequestPropertiesKey)
-	mergeJSONProperties(a2a, metadata[A2AResponsePropertiesKey], A2AResponsePropertiesKey)
+	request := decodeA2ARequestBlock(metadata[A2ARequestPropertiesKey])
+	a2a.Transport = request.Transport
+	a2a.ProtocolVersion = request.ProtocolVersion
+	if !request.A2ARequestAnalytics.IsEmpty() {
+		a2a.Request = &request.A2ARequestAnalytics
+	}
+
+	if response := decodeA2AResponseBlock(metadata[A2AResponsePropertiesKey]); !response.IsEmpty() {
+		a2a.Response = response
+	}
+
 	applyA2AResolverAttributes(a2a, metadata)
 
 	outcome, origin := a2aOutcome(a2a, terminalReason, statusCode,
 		logEntry.GetCommonProperties().GetUpstreamRemoteAddress() != nil)
-	a2a["outcome"] = outcome
-	if origin != "" {
-		a2a["failureOrigin"] = origin
+	a2a.Outcome = outcome
+	a2a.FailureOrigin = origin
+
+	return &dto.AgentAnalytics{A2A: a2a}
+}
+
+// a2aRequestBlock is the wire shape of the analytics system policy's request block.
+//
+// It is the published request object plus the two protocol facts, which the policy
+// assembles alongside the identifiers because they come from the same resolver output —
+// but which belong at the A2A level of the published model, not inside `request`: they
+// describe the invocation, not what the caller asked the agent to do. Embedding keeps
+// the published type the single definition of the fields it owns, rather than a second
+// struct listing them again.
+type a2aRequestBlock struct {
+	dto.A2ARequestAnalytics
+	Transport       string `json:"transport,omitempty"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+}
+
+// decodeA2ARequestBlock and decodeA2AResponseBlock unmarshal the blocks the analytics
+// system policy serialized at the Envoy metadata boundary.
+//
+// A block that will not parse yields an empty one and a debug line, rather than being
+// carried onto the event as a raw string the way the earlier flat map did. On a typed
+// envelope there is nowhere honest to put it: a consumer reading a named field would
+// see it as absent either way, and a stray string where an object belongs is the kind
+// of shape change the typing exists to prevent.
+func decodeA2ARequestBlock(encoded string) a2aRequestBlock {
+	var block a2aRequestBlock
+	if encoded == "" {
+		return block
 	}
-	return a2a
+	if err := json.Unmarshal([]byte(encoded), &block); err != nil {
+		slog.Debug("Failed to unmarshal A2A request analytics properties",
+			"key", A2ARequestPropertiesKey, "error", err)
+		return a2aRequestBlock{}
+	}
+	return block
+}
+
+func decodeA2AResponseBlock(encoded string) *dto.A2AResponseAnalytics {
+	if encoded == "" {
+		return nil
+	}
+	var block dto.A2AResponseAnalytics
+	if err := json.Unmarshal([]byte(encoded), &block); err != nil {
+		slog.Debug("Failed to unmarshal A2A response analytics properties",
+			"key", A2AResponsePropertiesKey, "error", err)
+		return nil
+	}
+	return &block
 }
 
 // applyA2AResolverAttributes fills in the two bounded protocol facts from the
@@ -764,17 +830,13 @@ func buildA2AAnalytics(
 // transport enum, a registered protocol version), which is what makes them safe to
 // put on an event a dashboard groups by. The version the *caller* stated is not here
 // and must not be: it is unbounded and attacker-chosen.
-func applyA2AResolverAttributes(a2a map[string]interface{}, metadata map[string]string) {
-	fill := func(dimension, metadataKey string) {
-		if _, present := a2a[dimension]; present {
-			return
-		}
-		if value := metadata[metadataKey]; value != "" {
-			a2a[dimension] = value
-		}
+func applyA2AResolverAttributes(a2a *dto.A2AAnalytics, metadata map[string]string) {
+	if a2a.Transport == "" {
+		a2a.Transport = metadata[A2ATransportAttributeKey]
 	}
-	fill("transport", A2ATransportAttributeKey)
-	fill("protocolVersion", A2AProtocolVersionAttributeKey)
+	if a2a.ProtocolVersion == "" {
+		a2a.ProtocolVersion = metadata[A2AProtocolVersionAttributeKey]
+	}
 }
 
 // a2aRequestType classifies a request on an Agent's routes.
@@ -836,7 +898,7 @@ func isA2APreChainRefusal(terminalReason string) bool {
 // Known gap: a response-phase policy denial is not covered by rule 1 — only
 // request-phase short-circuits stamp the terminal reason — so it lands in rule 2 or 3
 // and is attributed to the upstream the request did reach.
-func a2aOutcome(a2a map[string]interface{}, terminalReason string, statusCode int, upstreamContacted bool) (string, string) {
+func a2aOutcome(a2a *dto.A2AAnalytics, terminalReason string, statusCode int, upstreamContacted bool) (string, string) {
 	switch terminalReason {
 	case constants.TerminalReasonPolicyDenied:
 		// A policy produced the response instead of the agent. Refusing is the
@@ -873,15 +935,13 @@ func a2aOutcome(a2a map[string]interface{}, terminalReason string, statusCode in
 		}
 		return A2AOutcomeFailure, A2AFailureOriginClient
 	}
-	isError, determined := a2a["isError"].(bool)
-	switch {
-	case determined && isError:
-		return A2AOutcomeFailure, A2AFailureOriginUpstream
-	case determined:
+	if a2a.Response != nil && a2a.Response.IsError != nil {
+		if *a2a.Response.IsError {
+			return A2AOutcomeFailure, A2AFailureOriginUpstream
+		}
 		return A2AOutcomeSuccess, ""
-	default:
-		return a2aSuccessStatusOutcome(a2a), ""
 	}
+	return a2aSuccessStatusOutcome(a2a), ""
 }
 
 // a2aSuccessStatusOutcome decides what a 2xx means when the response body yielded no
@@ -902,31 +962,11 @@ func a2aOutcome(a2a map[string]interface{}, terminalReason string, statusCode in
 // An unrecognised or absent transport is treated as undetermined rather than assumed
 // REST-shaped: this is the fail-honest direction, and it is not reachable in practice —
 // every operation route's resolver stamps the transport at ingest.
-func a2aSuccessStatusOutcome(a2a map[string]interface{}) string {
-	if transport, ok := a2a["transport"].(string); ok && transport == a2aTransportHTTPJSON {
+func a2aSuccessStatusOutcome(a2a *dto.A2AAnalytics) string {
+	if a2a.Transport == a2aTransportHTTPJSON {
 		return A2AOutcomeSuccess
 	}
 	return A2AOutcomeUnknown
-}
-
-// mergeJSONProperties folds a JSON-encoded property block emitted by the analytics
-// system policy into dest.
-//
-// A block that will not parse is kept under its own key as a raw string rather than
-// dropped, matching how the MCP block already handles the same case: the event stays
-// diagnosable, and a downstream consumer reading a named dimension sees it as absent
-// rather than as a wrong value.
-func mergeJSONProperties(dest map[string]interface{}, encoded, rawKey string) {
-	if encoded == "" {
-		return
-	}
-	var props map[string]interface{}
-	if err := json.Unmarshal([]byte(encoded), &props); err != nil {
-		slog.Debug("Failed to unmarshal A2A analytics properties", "key", rawKey, "error", err)
-		dest[rawKey] = encoded
-		return
-	}
-	maps.Copy(dest, props)
 }
 
 func (c *Analytics) getAnonymousApp() *dto.Application {
