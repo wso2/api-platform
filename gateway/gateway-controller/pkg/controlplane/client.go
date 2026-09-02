@@ -1040,9 +1040,10 @@ var onPremSupportedAPIKeyKinds = map[string]bool{
 }
 
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
-// currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
-// is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
-// then reloads the in-memory store and refreshes the xDS snapshot once.
+// currently known RestApi, WebSubApi, LlmProvider, LlmProxy, and GraphQLApi artifacts
+// after the WebSocket connection is established. Upserts fetched keys into the DB,
+// reconciles deletions per artifact, then reloads the in-memory store and refreshes
+// the xDS snapshot once.
 // For on-prem control planes only KindRestApi is synced; other kinds are skipped because
 // the corresponding backfill endpoints do not exist in carbon-apimgt for now.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
@@ -1073,7 +1074,8 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			continue
 		}
 		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy &&
-			cfg.Kind != models.KindRestApi && cfg.Kind != models.KindWebSubApi && cfg.Kind != models.KindWebBrokerApi {
+			cfg.Kind != models.KindRestApi && cfg.Kind != models.KindWebSubApi &&
+			cfg.Kind != models.KindWebBrokerApi && cfg.Kind != models.KindGraphQLApi {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
@@ -1092,7 +1094,7 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		localArtifactIDs[cfg.CPArtifactID] = cfg.UUID
 	}
 
-	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy, models.KindGraphQLApi} {
 		// On-prem APIM only exposes backfill endpoints for RestApi keys.
 		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
 			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",
