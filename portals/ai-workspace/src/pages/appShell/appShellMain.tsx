@@ -50,7 +50,7 @@ import { FormattedMessage } from 'react-intl';
 import OoopsImage from '../../assets/images/Ooops.svg';
 import { AI_WORKSPACE_SIDEBAR_SLOT, type AIWorkspaceExtension } from '../../extensions';
 import { useSlot } from '../../slots';
-import { PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
+import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
 
 type SelectableOrg = {
@@ -107,6 +107,7 @@ export default function AppLayout(): JSX.Element {
       projectHandle: currentProject ? getProjectSlug(currentProject) : undefined,
       navigate,
       notify,
+      apiFetch: extensionApiFetch,
     }),
     [currentOrganization, currentProject, navigate, notify]
   );
