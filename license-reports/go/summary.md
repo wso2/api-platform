@@ -1,6 +1,6 @@
 # Third-party Go License Report
 
-- Generated at: 2026-08-08T16:31:11Z
+- Generated at: 2026-09-03T05:44:18Z
 - Components scanned: 4
 - Internal prefixes ignored: github.com/wso2/,github.com/policy-engine/,platform-api/
 
