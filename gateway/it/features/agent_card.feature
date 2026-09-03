@@ -342,17 +342,20 @@ Feature: Agent Card serving
 
   # ==================== EXTENDED CARD ====================
 
-  # `agentCard.protected` is optional, and omitting it is NOT the same as
-  # configuring passthrough. An Agent written before protected cards existed keeps
-  # the behaviour it shipped with — GetExtendedAgentCard is a route like any other
-  # operation, proxied to the agent, with no gateway-added authentication guard —
-  # so upgrading the controller cannot change what it does. That is what this
-  # scenario pins, and it is why it still fetches the card with no credentials.
+  # `agentCard.protected` is optional, and omitting it reads as passthrough — not
+  # as "unprotected". The extended card is the more privileged of the two
+  # representations by A2A convention, so leaving it open is never the safer
+  # reading of an author's silence: requiring the block to be written out before
+  # the guard applies would make protection depend on the author knowing the field
+  # exists. That is what this scenario pins, and it is why it configures no
+  # `protected` block and no authentication policy — with nothing able to
+  # authenticate the request, the unconditional guard refuses it, exactly as it
+  # does for an explicit passthrough block with no auth policy.
   #
-  # The upstream's extended card carries a skill its public card does not
-  # ("book_trip"), which is what distinguishes "proxied to the agent" from
-  # "answered locally with the public card".
-  Scenario: An omitted protected block leaves GetExtendedAgentCard proxied and unguarded
+  # "book_trip" is on the upstream's extended card and nowhere else, so its
+  # absence is what proves the request stopped at the gateway rather than being
+  # proxied to the agent.
+  Scenario: An omitted protected block is passthrough, so GetExtendedAgentCard is guarded
     When I deploy this Agent configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
@@ -382,18 +385,19 @@ Feature: Agent Card serving
 
     When I clear all headers
     And I send an A2A "GET" request to "http://localhost:8080/agent-extended-card/v1/extendedAgentCard"
-    Then the response status code should be 200
-    And the response body should contain "book_trip"
+    Then the response status code should be 401
+    And the response body should not contain "book_trip"
 
     When I clear all headers
     And I send an A2A JSON-RPC request to "http://localhost:8080/agent-extended-card":
       """
       {"jsonrpc": "2.0", "id": 1, "method": "GetExtendedAgentCard", "params": {}}
       """
-    Then the response status code should be 200
-    And the response body should contain "book_trip"
+    Then the response status code should be 401
+    And the response body should not contain "book_trip"
 
-    # The public card, by contrast, does not carry the extended skill.
+    # The public card is unaffected by the extended card's guard, and does not
+    # carry the extended skill.
     When I clear all headers
     And I send an A2A "GET" request to "http://localhost:8080/agent-extended-card/.well-known/agent-card.json"
     Then the response status code should be 200
