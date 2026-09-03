@@ -16,7 +16,14 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -128,6 +135,7 @@ function buildApiKeyResourceName(displayName: string): string {
 type ServiceProviderOverviewTabProps = {
   onApiKeyCreated?: () => void;
   highlightApiKeySection?: boolean;
+  apiKeysSectionRef?: Ref<HTMLDivElement>;
   onCreateProxy?: () => void;
   onBlockedNavigation?: () => void;
 };
@@ -135,6 +143,7 @@ type ServiceProviderOverviewTabProps = {
 export default function ServiceProviderOverviewTab({
   onApiKeyCreated,
   highlightApiKeySection,
+  apiKeysSectionRef,
   onCreateProxy,
   onBlockedNavigation,
 }: ServiceProviderOverviewTabProps) {
@@ -858,7 +867,7 @@ export default function ServiceProviderOverviewTab({
                   </Grid>
                 </Stack>
                 <Divider />
-                <Box>
+                <Box ref={apiKeysSectionRef}>
                   <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 600 }}>
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderDeploymentsCard.api.keys"
