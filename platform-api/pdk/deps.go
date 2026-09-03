@@ -40,20 +40,11 @@ type Deps struct {
 	Projects      Projects
 	RestAPIs      RestAPIs
 	Organizations Organizations
-	Projects      Projects
 	// add more capability groups as external plugins need them
 	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
-}
-
-// Projects exposes the minimum project identity capability external plugins
-// need to validate and query project-scoped resources. The internal UUID is
-// returned only after the handle has been resolved inside the authenticated
-// organization.
-type Projects interface {
-	GetProjectInternalID(handle, orgID string) (string, error)
 }
 
 // Organizations exposes the minimum read-only organization identity capability
@@ -96,6 +87,8 @@ type Gateways interface {
 // and takes the organization id explicitly — handlers MUST pass the org resolved
 // from the request context, never one from request input (GO-AUTH-005).
 type Projects interface {
+	GetProjectInternalID(handle, orgID string) (string, error)
+
 	// CreateProject creates a project in an organization (Create).
 	CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error)
 

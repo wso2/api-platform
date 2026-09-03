@@ -440,7 +440,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		Projects:      projectService,
 		RestAPIs:      apiService,
 		Organizations: orgService,
-		Projects:      projectService,
 		Config:        cfg,
 		Logger:        slogger,
 	}
