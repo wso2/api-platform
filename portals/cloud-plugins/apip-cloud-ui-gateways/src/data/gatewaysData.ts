@@ -63,17 +63,40 @@ export function environmentFromGatewayId(id: string): string {
   return parts[parts.length - 1] ?? '';
 }
 
-export async function listGateways(apiFetch: ApiFetch): Promise<Gateway[]> {
+/**
+ * The gateway rows, plus whether the managed-gateway half of the join could be
+ * read at all.
+ */
+export type GatewayListing = {
+  gateways: Gateway[];
+  /**
+   * `/managed-gateways` did not answer, so no row can be known to be managed
+   * and every one reports `isManaged: false`. The caller must say so rather
+   * than let the configuration affordance quietly disappear.
+   */
+  managedUnavailable: boolean;
+};
+
+export async function listGateways(
+  apiFetch: ApiFetch
+): Promise<GatewayListing> {
+  // The binding list is an ENRICHMENT: it decides which rows are configurable,
+  // while `/gateways` decides which rows exist. So its failure must not take
+  // the page down with it -- a caller without the managed-gateway permission,
+  // or an outage on that one route, would otherwise see no gateways at all
+  // rather than the list it is entitled to.
   const [gateways, bindings] = await Promise.all([
     apiFetch<NativeGatewayList>('GET', '/gateways'),
-    apiFetch<BindingList>('GET', '/managed-gateways'),
+    apiFetch<BindingList>('GET', '/managed-gateways').catch(() => null),
   ]);
 
   const environmentById = new Map(
-    (bindings.list ?? []).map((binding) => [binding.id, binding.environment])
+    (bindings?.list ?? []).map((binding) => [binding.id, binding.environment])
   );
 
-  return (gateways.list ?? []).map((native) => ({
+  // Annotated: without a contextual type the ternaries below widen to `string`
+  // and stop matching the union.
+  const rows: Gateway[] = (gateways.list ?? []).map((native) => ({
     description: native.description,
     environmentId:
       environmentById.get(native.id) ?? environmentFromGatewayId(native.id),
@@ -87,4 +110,6 @@ export async function listGateways(apiFetch: ApiFetch): Promise<Gateway[]> {
     updatedAt: native.updatedAt ?? '',
     url: native.endpoints?.[0] ?? '',
   }));
+
+  return { gateways: rows, managedUnavailable: bindings === null };
 }

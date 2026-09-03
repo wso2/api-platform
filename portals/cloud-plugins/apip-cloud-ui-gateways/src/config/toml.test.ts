@@ -75,4 +75,18 @@ describe('redeclaredSections', () => {
       redeclaredSections('[policy_configurations.ratelimit_v2]\nx = 1')
     ).toEqual([]);
   });
+
+  it('sees a seeded header that carries a trailing comment', () => {
+    // TOML comments run to end of line, so this declares the table just as
+    // surely as the bare form -- and it is the form that kills a gateway
+    // silently if the warning misses it.
+    expect(
+      redeclaredSections('[policy_configurations.ratelimit_v1] # note')
+    ).toEqual(['policy_configurations.ratelimit_v1']);
+    expect(
+      tomlSections('[a.b]\t#  trailing\n[c]#tight\n')
+    ).toEqual(['a.b', 'c']);
+    // A commented-OUT header is still a comment, not a declaration.
+    expect(tomlSections('# [policy_configurations.ratelimit_v1]')).toEqual([]);
+  });
 });

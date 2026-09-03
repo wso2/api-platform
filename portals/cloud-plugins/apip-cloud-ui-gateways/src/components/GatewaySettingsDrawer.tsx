@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import {
   Alert,
   Box,
@@ -80,22 +80,39 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
 
+  /**
+   * Bumped by every read AND every write, so a response can tell whether it is
+   * still the newest thing in flight.
+   *
+   * A refresh started before a save can land after it. Both call `setConfig`,
+   * so without this the older GET would replace the configuration the PUT just
+   * confirmed -- leaving stale values on screen with no pending edits, which
+   * reads as "saved" and is not.
+   */
+  const generation = useRef(0);
+
   /** Re-seeds `config` only. Pending edits survive, so Refresh cannot discard them. */
   const load = useCallback(
     async (id: string) => {
       if (!apiFetch) return;
+      const mine = ++generation.current;
       setLoading(true);
       setLoadError(null);
       try {
-        setConfig(await readConfiguration(apiFetch, id));
+        const loaded = await readConfiguration(apiFetch, id);
+        if (mine !== generation.current) return;
+        setConfig(loaded);
       } catch (error) {
+        if (mine !== generation.current) return;
         setLoadError(
           error instanceof Error
             ? error.message
             : 'The configuration could not be loaded.'
         );
       } finally {
-        setLoading(false);
+        // Only the newest request owns the spinner; a superseded one must not
+        // turn it off while its replacement is still running.
+        if (mine === generation.current) setLoading(false);
       }
     },
     [apiFetch]
@@ -144,6 +161,9 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
 
   const save = async () => {
     if (!config || !gatewayId || !apiFetch) return;
+    // Invalidates any read still in flight: what the write returns is newer
+    // than anything a GET started before it can report.
+    const mine = ++generation.current;
     setSaving(true);
     setSaveError(null);
     setServerErrors({});
@@ -152,7 +172,13 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       // shape — so it is both the confirmation and the new baseline. Re-seeding
       // from it is what makes a canonicalized quantity ("1000m" -> "1") stop
       // looking edited, and why there is no second GET here.
-      setConfig(await writeConfiguration(apiFetch, gatewayId, patch));
+      const written = await writeConfiguration(apiFetch, gatewayId, patch);
+      // The write happened, so it is confirmed and the edits are no longer
+      // pending whatever else is in flight. Only the BASELINE is conditional:
+      // a refresh started after this write owns the newer generation and its
+      // response is about to arrive, so let it install the values rather than
+      // fighting over them.
+      if (mine === generation.current) setConfig(written);
       setDrafts({});
       notify('Configuration saved.', 'success');
     } catch (error) {

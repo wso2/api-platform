@@ -76,4 +76,13 @@ describe('parseQuantity', () => {
     expect(parseQuantity('1constructor')).toBeNull();
     expect(parseQuantity('1toString')).toBeNull();
   });
+
+  it('rejects a value that overflows once its suffix is applied', () => {
+    // Finite before scaling, Infinity after. Infinity compares greater than
+    // any declared `max`, but a field without one would have accepted it.
+    const huge = '1'.padEnd(309, '0');
+    expect(Number.isFinite(Number(huge))).toBe(true);
+    expect(parseQuantity(`${huge}E`)).toBeNull();
+    expect(parseQuantity('8Gi')).toBe(8589934592);
+  });
 });

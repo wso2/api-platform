@@ -67,6 +67,14 @@ export type SettingFieldProps = {
 const inputText = (value: unknown): string =>
   value === undefined || value === null ? '' : String(value);
 
+/*
+ * Every control carries `aria-label={label}`. The visible label is a
+ * `Typography` in the row beside it, not an `<label htmlFor>`, so nothing
+ * associates the two -- a screen reader would announce the enum as an unnamed
+ * combobox. Naming the control directly is the smaller fix here: the layout is
+ * a two-column row shared by six widget types, and `InputLabel` would put a
+ * floating label inside each one.
+ */
 const SettingField: FC<SettingFieldProps> = ({
   field,
   value,
@@ -82,6 +90,7 @@ const SettingField: FC<SettingFieldProps> = ({
       case 'enum':
         return (
           <Select
+            aria-label={label}
             disabled={readOnly}
             displayEmpty
             fullWidth
@@ -116,7 +125,9 @@ const SettingField: FC<SettingFieldProps> = ({
             fullWidth
             size="small"
             type="number"
-            slotProps={{ htmlInput: { min: field.min, max: field.max } }}
+            slotProps={{
+              htmlInput: { 'aria-label': label, min: field.min, max: field.max },
+            }}
             value={inputText(value)}
             // An emptied input becomes '' rather than 0 or "unedited": the
             // former would save a number nobody typed, the latter would put the
@@ -150,6 +161,7 @@ const SettingField: FC<SettingFieldProps> = ({
             error={Boolean(error)}
             fullWidth
             size="small"
+            slotProps={{ htmlInput: { 'aria-label': label } }}
             value={inputText(value)}
             onChange={(event) => onChange(event.target.value)}
           />

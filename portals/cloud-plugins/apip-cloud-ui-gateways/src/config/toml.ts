@@ -44,7 +44,11 @@ export const SEEDED_SECTIONS = [
  * is the normal state of a text area, and a parser would spend most of its life
  * reporting syntax errors about text the user has not finished writing.
  */
-const SECTION_HEADER = /^[ \t]*\[([^\]]+)\][ \t]*$/gm;
+// A header may be followed by a comment: TOML treats `#` as a comment to the
+// end of the line, so `[policy_configurations.ratelimit_v1] # note` declares
+// that table just as surely as the bare form. Missing it meant the redeclared
+// -section warning stayed silent for the exact text that kills a gateway.
+const SECTION_HEADER = /^[ \t]*\[([^\]]+)\][ \t]*(?:#[^\n]*)?$/gm;
 
 /** Every table header the text declares, in order of appearance. */
 export function tomlSections(text: string): string[] {

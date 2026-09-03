@@ -71,4 +71,14 @@ describe('parseDurationSeconds', () => {
     expect(parseDurationSeconds('5m30')).toBeNull();
     expect(parseDurationSeconds('5m junk')).toBeNull();
   });
+
+  it('rejects surrounding whitespace, which Go rejects too', () => {
+    // The drawer sends the text verbatim, so accepting padding here would turn
+    // a catchable typo into a 400 from the platform.
+    expect(parseDurationSeconds(' 5m')).toBeNull();
+    expect(parseDurationSeconds('5m ')).toBeNull();
+    expect(parseDurationSeconds(' 5m ')).toBeNull();
+    expect(parseDurationSeconds('5 m')).toBeNull();
+    expect(parseDurationSeconds('5m')).toBe(300);
+  });
 });

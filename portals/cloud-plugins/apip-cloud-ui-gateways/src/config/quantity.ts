@@ -68,5 +68,9 @@ export function parseQuantity(text: string): number | null {
   const suffix = match[1] === undefined ? '' : match[2];
   const multiplier = BINARY.get(suffix) ?? DECIMAL.get(suffix);
   if (multiplier === undefined) return null;
-  return value * multiplier;
+  // The value was finite; the product need not be. 308 digits with an `E`
+  // suffix overflows to Infinity, which compares greater than any `max` but
+  // would slip past a field that declares none.
+  const scaled = value * multiplier;
+  return Number.isFinite(scaled) ? scaled : null;
 }

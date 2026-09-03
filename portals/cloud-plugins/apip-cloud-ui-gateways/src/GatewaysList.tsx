@@ -70,6 +70,8 @@ const GatewaysList: FC<GatewaysListProps> = ({ port, onAddClick, onEditClick }) 
   const [gateways, setGateways] = useState<Gateway[]>(() => (apiFetch ? [] : listGateways()));
   const [searchQuery, setSearchQuery] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** `/managed-gateways` did not answer, so no row can offer configuration. */
+  const [managedUnavailable, setManagedUnavailable] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
 
@@ -81,7 +83,9 @@ const GatewaysList: FC<GatewaysListProps> = ({ port, onAddClick, onEditClick }) 
       return;
     }
     try {
-      setGateways(await listRealGateways(apiFetch));
+      const listing = await listRealGateways(apiFetch);
+      setGateways(listing.gateways);
+      setManagedUnavailable(listing.managedUnavailable);
       setLoadError(null);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Gateways could not be loaded.');
@@ -100,6 +104,11 @@ const GatewaysList: FC<GatewaysListProps> = ({ port, onAddClick, onEditClick }) 
     );
   }, [gateways, searchQuery]);
 
+  // Delete is mock-only, exactly as the AI Workspace has it -- there is no
+  // platform delete for this list to call. On an API-backed list it therefore
+  // removes nothing: `load()` refetches and the row comes straight back, so
+  // reporting success would be a plain untruth. The button is not offered
+  // there (see `canDelete`), and this stays the store-backed path.
   const handleDeleteConfirm = () => {
     if (!deleteTarget) return;
     deleteGateway(deleteTarget.id);
@@ -107,6 +116,9 @@ const GatewaysList: FC<GatewaysListProps> = ({ port, onAddClick, onEditClick }) 
     notify?.(`Gateway "${deleteTarget.name}" deleted.`, 'success');
     setDeleteTarget(null);
   };
+
+  /** Only the in-memory store can actually delete, so only it offers to. */
+  const canDelete = !apiFetch;
 
   return (
     <PageContent fullWidth>
@@ -139,6 +151,29 @@ const GatewaysList: FC<GatewaysListProps> = ({ port, onAddClick, onEditClick }) 
               }
             >
               {loadError}
+            </Alert>
+          </Grid>
+        ) : null}
+
+        {/*
+          The gateways loaded but the managed-gateway list did not, so no row
+          can be shown as configurable. A warning rather than an error: the
+          list itself is complete and correct, and only the Configure action is
+          missing -- which would otherwise just be absent, with nothing on
+          screen to say why.
+        */}
+        {managedUnavailable && !loadError ? (
+          <Grid size={{ xs: 12 }}>
+            <Alert
+              severity="warning"
+              action={
+                <Button size="small" onClick={() => void load()}>
+                  Retry
+                </Button>
+              }
+            >
+              Gateway configuration is unavailable right now, so no gateway can
+              be configured from this page. The list below is complete.
             </Alert>
           </Grid>
         ) : null}
@@ -259,14 +294,16 @@ const GatewaysList: FC<GatewaysListProps> = ({ port, onAddClick, onEditClick }) 
                                   <Settings size={16} />
                                 </IconButton>
                               ) : null}
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
-                                aria-label={`Delete ${gateway.name}`}
-                              >
-                                <Trash2 size={16} />
-                              </IconButton>
+                              {canDelete ? (
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
+                                  aria-label={`Delete ${gateway.name}`}
+                                >
+                                  <Trash2 size={16} />
+                                </IconButton>
+                              ) : null}
                             </TableCell>
                           </TableRow>
                         ))

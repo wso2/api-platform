@@ -43,7 +43,12 @@ const TOKEN = /(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|μs|ms|s|m|h)/y;
 
 /** The duration in seconds, or `null` when the text is not a Go duration. */
 export function parseDurationSeconds(text: string): number | null {
-  let rest = text.trim();
+  // NOT trimmed. The drawer sends the user's text verbatim, so anything this
+  // accepts must be something Go's time.ParseDuration accepts -- and it takes
+  // no surrounding whitespace. Trimming here made " 5m " pass in the browser
+  // and 400 on the server, which is the one outcome this parser exists to
+  // prevent.
+  let rest = text;
   if (!rest) return null;
 
   let sign = 1;
