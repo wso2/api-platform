@@ -18,12 +18,15 @@
 'use strict';
 
 /*
- * The single organization this portal instance serves.
+ * The single organization and portal this portal instance serves.
  *
  * The database schema is multi-organization — one shared database can hold many
  * organizations, each served by its own portal instance — but a given instance is
- * pinned to exactly one, named by `organization.handle` in config. This module is
- * the only place that resolves it, and every org-scoped surface goes through here:
+ * pinned to exactly one org, named by `organization.handle` in config, and exactly
+ * one portal, identified by `organization.portal_id` in config.toml, resolved
+ * from the APIP_AP_ORGANIZATION_PORTAL_ID env var via the {{ env }} template token.
+ * This module is the only place that resolves both,
+ * and every org/portal-scoped surface goes through here:
  *
  *   - authMiddleware.js  — verifies a token/header-supplied org resolves to the pin
  *   - orgGuard.js        — verifies the {orgHandle} URL segment matches the pin
@@ -34,10 +37,10 @@
  * than at import time because this module is required by middleware that loads
  * before the database is ready.
  *
- * A note on the eventual portalId: the plan is for one organization to hold several
- * portals, with an instance pinned to one portal under one organization. That lands
- * as a getPortalId()/assertPortalPinned() pair alongside these, so callers keep
- * asking this module "what am I scoped to?" and nothing else has to change.
+ * getPortalId() is synchronous — env vars and config are stable at startup —
+ * so DAO callers do not need to await it. The value is never accepted from
+ * request input: that would be equivalent to accepting org_id from the request,
+ * which is the IDOR vulnerability class described in JS-AUTH-005.
  */
 
 const { config } = require('../config/configLoader');
@@ -53,6 +56,10 @@ const { CustomError, NotFoundError } = require('./errors/customErrors');
 // recovers on the next request instead of failing until restart.
 let cachedOrgUuid = null;
 let pendingLookup = null;
+
+// Cached after first call. The value is stable for the lifetime of the process:
+// it is read from the environment or config at startup and never changes.
+let cachedPortalId = null;
 
 /**
  * Handle of the organization this instance serves. Always lowercase — normalized
@@ -182,6 +189,27 @@ function resetCache() {
 }
 
 /**
+ * The API portal identifier this instance is pinned to.
+ *
+ * config.organization.portalId is populated by the config.toml template:
+ *   portal_id = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "portal_id" }}'
+ *
+ * NOTE: Every INSERT into a portal-scoped table MUST supply portal_id from
+ * getPortalId() explicitly. If a row is ever written without it, it silently
+ * falls back to its DEFAULT value 'portal_id' and if the configured
+ * organization.portal_id for this deployment resolves to anything else,
+ * that row becomes unreachable to every portal-scoped query.
+ *
+ * @returns {string}
+ */
+function getPortalId() {
+    if (cachedPortalId) return cachedPortalId;
+    const fromConfig = config.organization?.portalId;
+    cachedPortalId = typeof fromConfig === 'string' ? fromConfig.trim() : '';
+    return cachedPortalId;
+}
+
+/**
  * True when `uuid` is this instance's organization.
  *
  * Compares uuids rather than handles on purpose: an org identifier arriving from a
@@ -255,4 +283,5 @@ module.exports = {
     isPinnedOrg,
     requirePinnedOrg,
     resetCache,
+    getPortalId,
 };

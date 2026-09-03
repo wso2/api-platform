@@ -25,9 +25,10 @@ const TABLE = 'user_idp_references';
 const DELETED_USER = 'deleted_user';
 
 /**
- * Find-or-create the idp reference row for this idp id, returning its uuid.
- * Falls back to a plain lookup on a unique-constraint race between concurrent
- * requests for the same idp id.
+ * Find-or-create the idp reference row for this idp_id, returning its uuid.
+ * user_idp_references is not portal-scoped — one row per IdP sub claim shared
+ * across all portals of the same org. Falls back to a plain lookup on a
+ * unique-constraint race between concurrent requests for the same idp_id.
  */
 const resolveUuid = async (idpId) => {
     const reference = await findOrCreateSafe(

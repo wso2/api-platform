@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { groupBy } = require('../db/rows');
 const { ValidationError } = require('../utils/errors/customErrors');
+const { getPortalId } = require('../utils/orgContext');
 
 const SUBSCRIPTION_PLANS_TABLE = 'subscription_plans';
 const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'subscription_plan_limits';
@@ -67,11 +68,12 @@ const replaceLimits = async (planId, limits, t) => {
   const exec = t || db;
   await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ?`, [planId]);
   const rows = normalizeLimits(limits);
+  const portalId = getPortalId();
   for (const r of rows) {
     await exec.execute(
-      `INSERT INTO ${SUBSCRIPTION_PLAN_LIMITS_TABLE} (uuid, plan_uuid, limit_type, time_unit, time_amount, limit_count)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [r.uuid, planId, r.limit_type, r.time_unit, r.time_amount, r.limit_count]
+      `INSERT INTO ${SUBSCRIPTION_PLAN_LIMITS_TABLE} (uuid, portal_id, plan_uuid, limit_type, time_unit, time_amount, limit_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [r.uuid, portalId, planId, r.limit_type, r.time_unit, r.time_amount, r.limit_count]
     );
   }
 };
@@ -98,12 +100,12 @@ const attachLimits = async (plans, t) => {
   return plans;
 };
 
-/** Fetches a single plan (scoped to its organization) with `.limits` attached. */
+/** Fetches a single plan (scoped to its organization and portal) with `.limits` attached. */
 const findPlanByUuid = async (orgId, planId, t) => {
   const exec = t || db;
   const plan = await exec.queryOne(
-    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid = ? AND org_uuid = ?`,
-    [planId, orgId]
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+    [planId, orgId, getPortalId()]
   );
   if (!plan) return null;
   await attachLimits([plan], t);
@@ -118,9 +120,9 @@ const create = async (orgId, plan, createdBy, t) => {
 
   await exec.execute(
     `INSERT INTO ${SUBSCRIPTION_PLANS_TABLE}
-       (uuid, org_uuid, handle, display_name, description, ref_id, created_by, updated_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [uuid, row.org_uuid, row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
+       (uuid, org_uuid, portal_id, handle, display_name, description, ref_id, created_by, updated_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [uuid, row.org_uuid, getPortalId(), row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
   );
   await replaceLimits(uuid, plan.limits || [], t);
   return findPlanByUuid(orgId, uuid, t);
@@ -128,6 +130,7 @@ const create = async (orgId, plan, createdBy, t) => {
 
 const createMany = async (orgId, plans, createdBy, t) => {
   const exec = t || db;
+  const portalId = getPortalId();
   const uuids = [];
   for (const plan of plans) {
     const uuid = crypto.randomUUID();
@@ -135,9 +138,9 @@ const createMany = async (orgId, plans, createdBy, t) => {
     const row = buildSubscriptionPlanRow(orgId, plan);
     await exec.execute(
       `INSERT INTO ${SUBSCRIPTION_PLANS_TABLE}
-         (uuid, org_uuid, handle, display_name, description, ref_id, created_by, updated_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [uuid, row.org_uuid, row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
+         (uuid, org_uuid, portal_id, handle, display_name, description, ref_id, created_by, updated_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uuid, row.org_uuid, portalId, row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
     );
     await replaceLimits(uuid, plan.limits || [], t);
     uuids.push(uuid);
@@ -145,8 +148,8 @@ const createMany = async (orgId, plans, createdBy, t) => {
   if (uuids.length === 0) return [];
   const placeholders = uuids.map(() => '?').join(', ');
   const rows = await exec.query(
-    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid IN (${placeholders}) AND org_uuid = ?`,
-    [...uuids, orgId]
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid IN (${placeholders}) AND org_uuid = ? AND portal_id = ?`,
+    [...uuids, orgId, portalId]
   );
   await attachLimits(rows, t);
   return rows;
@@ -178,10 +181,12 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   setCols.push('updated_by = ?', 'updated_at = ?');
   params.push(updatedBy, updatedAt);
 
-  await exec.execute(
-    `UPDATE ${SUBSCRIPTION_PLANS_TABLE} SET ${setCols.join(', ')} WHERE uuid = ? AND org_uuid = ?`,
-    [...params, planId, orgId]
+  const { rowCount } = await exec.execute(
+    `UPDATE ${SUBSCRIPTION_PLANS_TABLE} SET ${setCols.join(', ')} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+    [...params, planId, orgId, getPortalId()]
   );
+
+  if (rowCount === 0) return null;
 
   if (Object.prototype.hasOwnProperty.call(plan, 'limits')) {
     await replaceLimits(planId, plan.limits || [], t);
@@ -192,9 +197,17 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
 
 const deletePlan = async (orgId, planName, t) => {
   const exec = t || db;
+  // Nullify nullable plan_uuid references before deleting the subscription_plan row.
+  // The DB constraint is ON DELETE NO ACTION; application code owns the nullification.
+  await exec.execute(
+    `UPDATE subscriptions SET plan_uuid = NULL WHERE plan_uuid IN (
+       SELECT uuid FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?
+     )`,
+    [planName, orgId, getPortalId()]
+  );
   const { rowCount } = await exec.execute(
-    `DELETE FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-    [planName, orgId]
+    `DELETE FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+    [planName, orgId, getPortalId()]
   );
   return rowCount;
 };
@@ -202,8 +215,8 @@ const deletePlan = async (orgId, planName, t) => {
 const getByName = async (orgId, planName, t) => {
   const exec = t || db;
   const plan = await exec.queryOne(
-    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-    [planName, orgId]
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+    [planName, orgId, getPortalId()]
   );
   if (!plan) return null;
   await attachLimits([plan], t);
@@ -220,9 +233,9 @@ const listByApi = async (apiId, t) => {
   const exec = t || db;
   const plans = await exec.query(
     `SELECT sp.* FROM ${SUBSCRIPTION_PLANS_TABLE} sp
-     JOIN ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} m ON m.plan_uuid = sp.uuid
-     WHERE m.api_uuid = ?`,
-    [apiId]
+     JOIN ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} m ON m.plan_uuid = sp.uuid AND m.portal_id = sp.portal_id
+     WHERE m.api_uuid = ? AND m.portal_id = ?`,
+    [apiId, getPortalId()]
   );
   await attachLimits(plans, t);
   return plans;
@@ -230,7 +243,10 @@ const listByApi = async (apiId, t) => {
 
 const list = async (orgId, t) => {
   const exec = t || db;
-  const plans = await exec.query(`SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ?`, [orgId]);
+  const plans = await exec.query(
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+    [orgId, getPortalId()]
+  );
   await attachLimits(plans, t);
   return plans;
 };
@@ -238,13 +254,14 @@ const list = async (orgId, t) => {
 const createApiMapping = async (apiSubscriptionPlans, apiId, createdBy, t) => {
   const exec = t || db;
   const now = new Date();
+  const portalId = getPortalId();
   const created = [];
   for (const plan of apiSubscriptionPlans) {
     const uuid = crypto.randomUUID();
     await exec.execute(
-      `INSERT INTO ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} (uuid, plan_uuid, api_uuid, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [uuid, plan.planId, apiId, createdBy, now]
+      `INSERT INTO ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} (uuid, portal_id, plan_uuid, api_uuid, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [uuid, portalId, plan.planId, apiId, createdBy, now]
     );
     created.push({ uuid, plan_uuid: plan.planId, api_uuid: apiId, created_by: createdBy, created_at: now });
   }

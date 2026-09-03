@@ -27,18 +27,21 @@ const constants = require('../utils/constants');
 const ORG_TABLE = 'organizations';
 const ORG_CONTENT_TABLE = 'organization_assets';
 
+const getPortalId = () => require('../utils/orgContext').getPortalId();
+
 const create = async (orgData, t) => {
     const exec = t || db;
     const orgHandle = orgData.handle ? orgData.handle.toLowerCase() : '';
     const uuid = crypto.randomUUID();
 
+    const portalId = getPortalId();
     await exec.execute(
         `INSERT INTO ${ORG_TABLE}
-            (uuid, display_name, business_owner, business_owner_contact, business_owner_email,
+            (uuid, portal_id, display_name, business_owner, business_owner_contact, business_owner_email,
              handle, idp_ref_id, cp_ref_id, configuration, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            uuid, orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
+            uuid, portalId, orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
             orgData.businessOwnerEmail, orgHandle, orgData.idpRefId, orgData.cpRefId,
             orgData.configuration, orgData.createdBy, orgData.createdBy,
         ]
@@ -78,10 +81,11 @@ const normalizeOrgRow = (row) => {
 const findOrgByIdentifier = async (param, t) => {
     const exec = t || db;
     const handle = typeof param === 'string' ? param.toLowerCase() : param;
+    const portalId = getPortalId();
     return normalizeOrgRow(
-        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ?`, [handle])) ||
-        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE display_name = ?`, [param])) ||
-        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE idp_ref_id = ?`, [param]))
+        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ? AND portal_id = ?`, [handle, portalId])) ||
+        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE display_name = ? AND portal_id = ?`, [param, portalId])) ||
+        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE idp_ref_id = ? AND portal_id = ?`, [param, portalId]))
     );
 };
 
@@ -97,7 +101,7 @@ const get = async (param, t) => {
 // auth middleware) — not for public REST lookups, which should use get()/handle instead.
 const getByUuid = async (uuid, t) => {
     const exec = t || db;
-    const organization = await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ?`, [uuid]);
+    const organization = await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ? AND portal_id = ?`, [uuid, getPortalId()]);
     if (!organization) {
         throw new NotFoundError('Organization not found');
     }
@@ -112,7 +116,7 @@ const getByUuid = async (uuid, t) => {
 const getByHandle = async (handle, t) => {
     const exec = t || db;
     const organization = normalizeOrgRow(
-        await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ?`, [String(handle).toLowerCase()])
+        await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ? AND portal_id = ?`, [String(handle).toLowerCase(), getPortalId()])
     );
     if (!organization) {
         throw new NotFoundError('Organization not found');
@@ -129,7 +133,7 @@ const getId = async (orgName) => {
 };
 
 const list = async () => {
-    return (await db.query(`SELECT * FROM ${ORG_TABLE}`)).map(normalizeOrgRow);
+    return (await db.query(`SELECT * FROM ${ORG_TABLE} WHERE portal_id = ?`, [getPortalId()])).map(normalizeOrgRow);
 };
 
 const update = async (orgData, t) => {
@@ -155,10 +159,10 @@ const update = async (orgData, t) => {
         setClauses.push('configuration = ?');
         params.push(orgData.configuration);
     }
-    params.push(existing.uuid);
+    params.push(existing.uuid, getPortalId());
 
     const { rowCount } = await exec.execute(
-        `UPDATE ${ORG_TABLE} SET ${setClauses.join(', ')} WHERE uuid = ?`,
+        `UPDATE ${ORG_TABLE} SET ${setClauses.join(', ')} WHERE uuid = ? AND portal_id = ?`,
         params
     );
     if (rowCount < 1) {
@@ -166,7 +170,7 @@ const update = async (orgData, t) => {
     }
     // Some dialects don't support RETURNING on UPDATE — re-fetch explicitly instead
     // (same pattern as applicationDao.update).
-    const updatedOrg = normalizeOrgRow(await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ?`, [existing.uuid]));
+    const updatedOrg = normalizeOrgRow(await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ? AND portal_id = ?`, [existing.uuid, getPortalId()]));
     return [rowCount, [updatedOrg]];
 };
 
@@ -179,8 +183,8 @@ const update = async (orgData, t) => {
 const updateIdpRefId = async (orgUuid, idpRefId, actor, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `UPDATE ${ORG_TABLE} SET idp_ref_id = ?, updated_by = ?, updated_at = ? WHERE uuid = ?`,
-        [idpRefId, actor, new Date(), orgUuid]
+        `UPDATE ${ORG_TABLE} SET idp_ref_id = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND portal_id = ?`,
+        [idpRefId, actor, new Date(), orgUuid, getPortalId()]
     );
     if (rowCount < 1) {
         throw new NotFoundError('Organization not found');
@@ -199,17 +203,22 @@ const updateIdpRefId = async (orgUuid, idpRefId, actor, t) => {
 const findOtherOrgClaimingIdentifier = async (value, excludeUuid, t) => {
     const exec = t || db;
     const rows = await exec.query(
-        `SELECT * FROM ${ORG_TABLE} WHERE (handle = ? OR display_name = ? OR idp_ref_id = ?) AND uuid <> ?`,
-        [String(value).toLowerCase(), value, value, excludeUuid]
+        `SELECT * FROM ${ORG_TABLE} WHERE (handle = ? OR display_name = ? OR idp_ref_id = ?) AND uuid <> ? AND portal_id = ?`,
+        [String(value).toLowerCase(), value, value, excludeUuid, getPortalId()]
     );
     return rows.length ? normalizeOrgRow(rows[0]) : null;
 };
 
 // Tables whose org_uuid FK is ON DELETE NO ACTION (database/schema.*.sql) block
-// deleting the organization row unless their rows are removed first. Tables with
-// ON DELETE CASCADE/SET NULL (api_metadata, subscription_plans, audit,
-// user_organization_mappings, and the *_mappings join tables) are left to the
-// database to handle and aren't touched here.
+// deleting the organization row unless their rows are removed first.
+// api_metadata.org_uuid and subscription_plans.org_uuid are nullable and use
+// ON DELETE NO ACTION (composite FKs cannot partially SET NULL while portal_id is
+// NOT NULL), so we nullify them here before deleting the org row.
+// Tables with ON DELETE CASCADE (audit, user_organization_mappings, and the
+// *_mappings join tables) are left to the database to handle.
+
+// NOTE: This only removes the current portal's dependents.
+// Other portals in the same org are unaffected.
 const deleteOrgDependents = async (orgUuid, t) => {
     const exec = t || db;
 
@@ -222,6 +231,11 @@ const deleteOrgDependents = async (orgUuid, t) => {
         );
     }
     await exec.execute('DELETE FROM events WHERE org_uuid = ?', [orgUuid]);
+
+    // Nullify nullable org_uuid references before deleting the org row.
+    // The DB constraint is ON DELETE NO ACTION; application code owns the nullification.
+    await exec.execute('UPDATE api_metadata SET org_uuid = NULL WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('UPDATE subscription_plans SET org_uuid = NULL WHERE org_uuid = ?', [orgUuid]);
 
     await exec.execute('DELETE FROM api_keys WHERE org_uuid = ?', [orgUuid]);
     await exec.execute('DELETE FROM subscriptions WHERE org_uuid = ?', [orgUuid]);
@@ -257,6 +271,10 @@ const deleteOrgDependents = async (orgUuid, t) => {
     await exec.execute('DELETE FROM webhook_subscribers WHERE org_uuid = ?', [orgUuid]);
 };
 
+// NOTE: Removes current portal and all its dependents. In a multi-portal scenario
+// the same logical org (same handle) exists as a separate row per portal in the organizations table,
+// each with a distinct UUID, so this only removes the current portal.
+// Other portals inthe same org are unaffected.
 const deleteOrg = async (orgId, t) => {
     const exec = t || db;
     const existing = await get(orgId, t);
@@ -275,11 +293,11 @@ const createContent = async (orgData, t) => {
     const content = toBlobBuffer(orgData.fileContent);
     await exec.execute(
         `INSERT INTO ${ORG_CONTENT_TABLE}
-            (uuid, file_type, file_name, file_content, file_path, org_uuid, view_uuid, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (uuid, file_type, file_name, file_content, file_path, org_uuid, view_uuid, portal_id, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             uuid, orgData.fileType, orgData.fileName, content, orgData.filePath,
-            orgData.orgId, viewId, orgData.createdBy, orgData.createdBy,
+            orgData.orgId, viewId, getPortalId(), orgData.createdBy, orgData.createdBy,
         ]
     );
     return {
@@ -299,13 +317,14 @@ const updateContent = async (orgData) => {
     const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
     const updatedAt = new Date();
     const content = toBlobBuffer(orgData.fileContent);
+    const portalId = getPortalId();
     const { rowCount } = await db.execute(
         `UPDATE ${ORG_CONTENT_TABLE}
          SET file_type = ?, file_name = ?, file_content = ?, file_path = ?, updated_by = ?, updated_at = ?
-         WHERE file_type = ? AND file_name = ? AND file_path = ? AND org_uuid = ? AND view_uuid = ?`,
+         WHERE file_type = ? AND file_name = ? AND file_path = ? AND org_uuid = ? AND view_uuid = ? AND portal_id = ?`,
         [
             orgData.fileType, orgData.fileName, content, orgData.filePath, orgData.updatedBy, updatedAt,
-            orgData.fileType, orgData.fileName, orgData.filePath, orgData.orgId, viewId,
+            orgData.fileType, orgData.fileName, orgData.filePath, orgData.orgId, viewId, portalId,
         ]
     );
     if (rowCount < 1) {
@@ -313,17 +332,18 @@ const updateContent = async (orgData) => {
     }
     const updatedOrgContent = await db.query(
         `SELECT * FROM ${ORG_CONTENT_TABLE}
-         WHERE file_type = ? AND file_name = ? AND file_path = ? AND org_uuid = ? AND view_uuid = ?`,
-        [orgData.fileType, orgData.fileName, orgData.filePath, orgData.orgId, viewId]
+         WHERE file_type = ? AND file_name = ? AND file_path = ? AND org_uuid = ? AND view_uuid = ? AND portal_id = ?`,
+        [orgData.fileType, orgData.fileName, orgData.filePath, orgData.orgId, viewId, portalId]
     );
     return [rowCount, updatedOrgContent];
 };
 
 const getContent = async (orgData) => {
     const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
+    const portalId = getPortalId();
     if (orgData.fileName || orgData.filePath) {
-        const conditions = ['org_uuid = ?', 'view_uuid = ?', 'file_type = ?'];
-        const params = [orgData.orgId, viewId, orgData.fileType];
+        const conditions = ['org_uuid = ?', 'view_uuid = ?', 'file_type = ?', 'portal_id = ?'];
+        const params = [orgData.orgId, viewId, orgData.fileType, portalId];
         if (orgData.fileName) {
             conditions.push('file_name = ?');
             params.push(orgData.fileName);
@@ -335,16 +355,16 @@ const getContent = async (orgData) => {
         return db.queryOne(`SELECT * FROM ${ORG_CONTENT_TABLE} WHERE ${conditions.join(' AND ')}`, params);
     }
     return db.query(
-        `SELECT * FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_type = ?`,
-        [orgData.orgId, viewId, orgData.fileType]
+        `SELECT * FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_type = ? AND portal_id = ?`,
+        [orgData.orgId, viewId, orgData.fileType, portalId]
     );
 };
 
 const deleteContent = async (orgId, viewName, fileName) => {
     const viewId = await viewDao.getId(orgId, viewName);
     const { rowCount } = await db.execute(
-        `DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_name = ?`,
-        [orgId, viewId, fileName]
+        `DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_name = ? AND portal_id = ?`,
+        [orgId, viewId, fileName, getPortalId()]
     );
     if (rowCount < 1) {
         throw new NotFoundError('Organization content not found');
@@ -360,8 +380,8 @@ const deleteThemeContent = async (orgId, viewName, t) => {
     const viewId = await viewDao.getId(orgId, viewName);
     const placeholders = constants.THEME_FILE_TYPES.map(() => '?').join(', ');
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_type IN (${placeholders})`,
-        [orgId, viewId, ...constants.THEME_FILE_TYPES]
+        `DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND portal_id = ? AND file_type IN (${placeholders})`,
+        [orgId, viewId, getPortalId(), ...constants.THEME_FILE_TYPES]
     );
     return rowCount;
 };
@@ -371,8 +391,8 @@ const hasThemeContent = async (orgId, viewName) => {
     if (!viewId) return false;
     const placeholders = constants.THEME_FILE_TYPES.map(() => '?').join(', ');
     const rows = await db.query(
-        `SELECT 1 AS found FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_type IN (${placeholders})`,
-        [orgId, viewId, ...constants.THEME_FILE_TYPES]
+        `SELECT 1 AS found FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND portal_id = ? AND file_type IN (${placeholders})`,
+        [orgId, viewId, getPortalId(), ...constants.THEME_FILE_TYPES]
     );
     return rows.length > 0;
 };

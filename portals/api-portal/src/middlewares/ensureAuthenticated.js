@@ -19,6 +19,8 @@ const minimatch = require('minimatch');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
 const orgDao = require('../dao/organizationDao');
+const orgContext = require('../utils/orgContext');
+const { clearPortalCookies } = require('../utils/sessionCookies');
 const { validationResult } = require('express-validator');
 const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
@@ -73,6 +75,13 @@ function enforceSecurity(scope) {
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
                 return res.status(400).json(util.getErrors(errors));
+            }
+            // Portal isolation — same guard as authResolver/ensureAuthenticated.
+            if (req.isAuthenticated && req.isAuthenticated()) {
+                if (!req.session?.portalId || req.session.portalId !== orgContext.getPortalId()) {
+                    logger.warn('Rejected cross-portal session', { operation: 'enforceSecurity' });
+                    return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
+                }
             }
             // Local auth users: validate dp:* scope from platform JWT
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
@@ -252,6 +261,16 @@ const ensureAuthenticated = async (req, res, next) => {
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
         if (req.isAuthenticated()) {
+            if (!req.session?.portalId || req.session.portalId !== orgContext.getPortalId()) {
+                logger.warn('Rejected cross-portal session', { operation: 'ensureAuthenticated' });
+                return req.session.destroy(() => {
+                    clearPortalCookies(res);
+                    const loginPath = req.params.orgName
+                        ? `${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.params.viewName || 'default'}/login`
+                        : `${constants.ROUTE.BASE_PATH}/login`;
+                    res.redirect(303, loginPath);
+                });
+            }
             // Config-auth: skip all token/exchange checks; roles already in session
             if (req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 req.orgId = req.orgId || orgDetails?.uuid;
