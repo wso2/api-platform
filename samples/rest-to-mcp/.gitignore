@@ -4,4 +4,5 @@ wso2apip-ai-gateway-*.zip
 bin/
 generated/
 .generate.log
+.generate.status
 .env

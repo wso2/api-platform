@@ -34,9 +34,13 @@ if [ ! -f "${SCRIPT_DIR}/.env" ] && [ -f "${SCRIPT_DIR}/.env.example" ]; then
 fi
 [ -f "${SCRIPT_DIR}/.env" ] && . "${SCRIPT_DIR}/.env"
 
-MGMT_PORT="${MGMT_PORT:-9090}"
-HEALTH_PORT="${HEALTH_PORT:-9094}"
-TRAFFIC_PORT="${TRAFFIC_PORT:-8443}"
+# These match the host ports the downloaded distribution's own
+# docker-compose.yaml hardcodes for the gateway-controller (9090, 9094) and
+# gateway-runtime (8443) containers. The URLs built below only reach the
+# gateway if they agree with those values, so they are not configurable.
+MGMT_PORT=9090
+HEALTH_PORT=9094
+TRAFFIC_PORT=8443
 # Host port for the generated MCP server. Inside its container it always
 # listens on 5000, which is the port mcp.yaml refers to.
 MCP_PORT="${MCP_PORT:-5050}"
@@ -105,7 +109,8 @@ docker network create "$NETWORK" >/dev/null 2>&1 || true
 docker rm -f "$BACKEND" >/dev/null 2>&1 || true
 print_info "Building sample-service..."
 docker build -q -t sample-service-image "${SCRIPT_DIR}/../sample-service" >/dev/null
-docker run -d --name "$BACKEND" --network "$NETWORK" -p 8090:8080 sample-service-image >/dev/null || {
+# 127.0.0.1: reachable from this machine only, not the network.
+docker run -d --name "$BACKEND" --network "$NETWORK" -p 127.0.0.1:8090:8080 sample-service-image >/dev/null || {
   print_error "Could not start sample-service."
   echo "  If the error above mentions a port bind, something already holds 8090."
   echo "  Find it with:  docker ps | grep 8090"
@@ -130,19 +135,36 @@ print_info "Validating arazzo/ ..."
 }
 
 print_info "Generating and building the image..."
-"$GEN" mcp-server generate -f ./arazzo -p 5000 -o ./generated | tee "${SCRIPT_DIR}/.generate.log"
+# A pipeline reports tee's status, not the generator's, so capture it explicitly.
+GEN_STATUS="${SCRIPT_DIR}/.generate.status"
+rm -f "$GEN_STATUS"
+{
+  rc=0
+  "$GEN" mcp-server generate -f ./arazzo -p 5000 -o ./generated || rc=$?
+  echo "$rc" >"$GEN_STATUS"
+} | tee "${SCRIPT_DIR}/.generate.log"
+
+if [ "$(cat "$GEN_STATUS" 2>/dev/null || echo 1)" != "0" ]; then
+  rm -f "$GEN_STATUS"
+  print_error "MCP server generation failed. Fix the errors above and re-run."
+  exit 1
+fi
+rm -f "$GEN_STATUS"
 
 IMAGE="$(grep -oE '^.*Image: +[a-z0-9._-]+' "${SCRIPT_DIR}/.generate.log" | sed -E 's/.*Image: +//' | tail -1)"
 if [ -z "${IMAGE:-}" ]; then
-  IMAGE=sample-service-echo-workflows-mcp-server
-  print_warn "Could not read the image name from the output; assuming ${IMAGE}"
+  print_error "Could not read the built image name from the generator output."
+  echo "  Check ${SCRIPT_DIR}/.generate.log"
+  exit 1
 fi
 print_ok "Built image: ${IMAGE}"
 print_info "Generated code is in ./generated - mcp_server.py is worth a look."
 
 docker rm -f "$MCP_SERVER" >/dev/null 2>&1 || true
+# Loopback only. The gateway is unaffected: it reaches this server as
+# rest-to-mcp-server:5000 over the Docker network.
 docker run -d --name "$MCP_SERVER" --network "$NETWORK" \
-  -p "${MCP_PORT}:5000" "$IMAGE" >/dev/null || {
+  -p "127.0.0.1:${MCP_PORT}:5000" "$IMAGE" >/dev/null || {
   print_error "Could not start the MCP server."
   echo "  If the error above mentions a port bind, ${MCP_PORT} is already in use."
   echo "  Change MCP_PORT in ${SCRIPT_DIR}/.env and re-run, or free the port."
@@ -205,19 +227,25 @@ curl -sf -X POST "${MGMT}/mcp-proxies" \
 print_ok "MCP proxy registered at /sample-service"
 
 print_info "Waiting for the route to go live..."
+# Probe with initialize, not tools/list: initialize is the first message every
+# MCP client sends, so it is valid before a session exists. A stateful server
+# is entitled to reject tools/list until then.
 n=0
 until [ "$(curl -sk -o /dev/null -w '%{http_code}' -X POST \
   "https://localhost:${TRAFFIC_PORT}/sample-service/mcp" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')" = "200" ]; do
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"setup-probe","version":"1.0"}}}')" = "200" ]; do
   n=$((n + 1))
   if [ "$n" -ge 20 ]; then
-    print_warn "Route did not answer 200 yet. It may still come up - try test.sh."
-    break
+    print_error "The gateway route never came up."
+    echo "  MCP server logs : docker logs ${MCP_SERVER}"
+    echo "  Gateway logs    : cd ${GW_DIR} && docker compose logs gateway-runtime"
+    exit 1
   fi
   sleep "$RETRY_INTERVAL"
 done
+print_ok "Route is live"
 
 # --------------------------------------------------------------------------
 print_title "Ready"

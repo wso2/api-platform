@@ -38,7 +38,9 @@ except ImportError as exc:
         "    python3 -m pip install -r requirements.txt"
     )
 
-TRAFFIC_PORT = os.environ.get("TRAFFIC_PORT", "8443")
+# Fixed by the gateway distribution's docker-compose.yaml. Set GATEWAY_MCP_URL
+# to point this client somewhere else.
+TRAFFIC_PORT = "8443"
 GATEWAY_URL = os.environ.get(
     "GATEWAY_MCP_URL", f"https://localhost:{TRAFFIC_PORT}/sample-service/mcp"
 )

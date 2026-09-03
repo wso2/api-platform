@@ -147,19 +147,13 @@ That is the sample working end to end. From here you can
 
 ## Configuration
 
-These ports must be free before you start. `setup.sh` creates `.env` from
-`.env.example` on first run. Edit `.env` and re-run `setup.sh` to change any
-of them:
+`setup.sh` creates `.env` from `.env.example` on first run. Edit `.env` and
+re-run `setup.sh` to change either of these:
 
 | Variable | Default | What it is |
 |---|---|---|
-| `TRAFFIC_PORT` | `8443` | Gateway HTTPS port, where MCP traffic goes in |
-| `MGMT_PORT` | `9090` | Gateway management API, used to register `mcp.yaml` |
-| `HEALTH_PORT` | `9094` | Gateway health endpoint, polled during startup |
 | `MCP_PORT` | `5050` | Host port the generated MCP server is published on |
 | `MAX_RETRIES` | `45` | How long to wait for the gateway, in 2-second attempts |
-
-The backend port `8090` is fixed in `setup.sh` rather than configurable here.
 
 ## What client.py shows
 
@@ -203,8 +197,8 @@ Step 1 matters: it establishes that nothing in the backend changed.
 | `arazzo/echo-workflow.yaml` | Workflows over those operations, one MCP tool each |
 | `mcp.yaml` | The gateway's MCP proxy config, registered by `setup.sh` |
 | `client.py` | An MCP client, the agent's side of the conversation |
-| `requirements.txt` | Python dependencies for `client.py` (`mcp`, `httpx`) |
-| `.env.example` | Template for ports and credentials, copied to `.env` on first run |
+| `requirements.txt` | Python dependencies for `client.py` (`mcp`, `httpx2`) |
+| `.env.example` | Template for the settings in [Configuration](#configuration), copied to `.env` on first run |
 | `setup.sh` | One-command setup: downloads, builds, starts and registers everything |
 | `test.sh` | Checks each layer of the chain in turn |
 | `teardown.sh` | Stops the containers and removes the sample network |
@@ -249,3 +243,10 @@ the folder back to its original state.
   commands skip verification. Don't carry that into anything real.
 - `mcp.yaml` has a commented-out policy block. Uncomment it to restrict which
   tools callers may invoke.
+- **The sample runs without authentication on purpose**, so the MCP exchange
+  stays readable. `mcp-auth` is the policy to add before running this anywhere
+  but a local machine.
+- `setup.sh` publishes the REST backend and the MCP server on `127.0.0.1`, so
+  they are reachable from your machine only. The gateway's `8443` is not: that
+  mapping comes from the distribution's own `docker-compose.yaml`. On a shared
+  network, enable `mcp-auth` before running this.

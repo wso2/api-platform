@@ -12,7 +12,8 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 [ -f "${SCRIPT_DIR}/.env" ] && . "${SCRIPT_DIR}/.env"
-TRAFFIC_PORT="${TRAFFIC_PORT:-8443}"
+# Fixed by the gateway distribution's docker-compose.yaml, not configurable.
+TRAFFIC_PORT=8443
 MCP_PORT="${MCP_PORT:-5050}"
 
 PASS=0
@@ -27,6 +28,38 @@ check() {
 title() { echo ""; echo "${BOLD}$1${RESET}"; }
 
 echo "${BOLD}=== rest-to-mcp tests ===${RESET}"
+
+# ---------------------------------------------------------------------------
+# MCP requires a handshake: a client sends initialize first, and only then asks
+# anything else. These helpers do that, so the tests exercise the protocol the
+# way a real client would rather than skipping straight to the tool calls.
+
+MCP_INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-sh","version":"1.0"}}}'
+
+# _post <url> <session-id-or-empty> <body>
+_post() {
+  if [ -n "$2" ]; then
+    curl -sk -X POST "$1" \
+      -H 'Content-Type: application/json' \
+      -H 'Accept: application/json, text/event-stream' \
+      -H "Mcp-Session-Id: $2" -d "$3"
+  else
+    curl -sk -X POST "$1" \
+      -H 'Content-Type: application/json' \
+      -H 'Accept: application/json, text/event-stream' -d "$3"
+  fi
+}
+
+# mcp_call <url> <body> - opens a session, then sends the body.
+# A stateless server returns no session id; the calls then simply carry none.
+mcp_call() {
+  _sid="$(curl -sk -D - -o /dev/null -X POST "$1" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -d "$MCP_INIT" | tr -d '\r' | sed -n 's/^[Mm]cp-[Ss]ession-[Ii]d: *//p' | head -1)"
+  _post "$1" "$_sid" '{"jsonrpc":"2.0","method":"notifications/initialized"}' >/dev/null
+  _post "$1" "$_sid" "$2"
+}
 
 # ---------------------------------------------------------------------------
 title "1. The REST backend answers, and does NOT speak MCP"
@@ -47,10 +80,8 @@ fi
 # ---------------------------------------------------------------------------
 title "2. The generated MCP server exposes the workflows as tools"
 
-DIRECT="$(curl -s -X POST "http://localhost:${MCP_PORT}/mcp" \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+DIRECT="$(mcp_call "http://localhost:${MCP_PORT}/mcp" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')"
 
 echo "$DIRECT" | grep -q 'echo_message'
 check $? "generated server lists echo_message"
@@ -61,10 +92,8 @@ check $? "generated server lists echo_and_verify"
 # ---------------------------------------------------------------------------
 title "3. The same tools are reachable through the gateway"
 
-VIA_GW="$(curl -sk -X POST "https://localhost:${TRAFFIC_PORT}/sample-service/mcp" \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+VIA_GW="$(mcp_call "https://localhost:${TRAFFIC_PORT}/sample-service/mcp" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')"
 
 echo "$VIA_GW" | grep -q 'echo_message'
 check $? "gateway lists echo_message"
@@ -75,10 +104,8 @@ check $? "gateway lists echo_and_verify"
 # ---------------------------------------------------------------------------
 title "4. Calling a tool through the gateway reaches the REST backend"
 
-CALL="$(curl -sk -X POST "https://localhost:${TRAFFIC_PORT}/sample-service/mcp" \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo_message","arguments":{"message":"test-sh-probe"}}}')"
+CALL="$(mcp_call "https://localhost:${TRAFFIC_PORT}/sample-service/mcp" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo_message","arguments":{"message":"test-sh-probe"}}}')"
 
 echo "$CALL" | grep -q 'test-sh-probe'
 check $? "echo_message round-trips the message through to sample-service"
