@@ -1,0 +1,33 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/v1/chat/completions"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "chatcmpl-mockguardrails",
+      "object": "chat.completion",
+      "created": 1700000000,
+      "model": "gpt-4o-mini",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "This response came through your local WSO2 AI Gateway — no real OpenAI call was made. The request passed every guardrail in the chain."
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 12,
+        "completion_tokens": 24,
+        "total_tokens": 36
+      }
+    }
+  }
+}

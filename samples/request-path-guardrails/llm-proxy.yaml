@@ -1,0 +1,87 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+  name: guardrails-proxy
+spec:
+  displayName: Request-Path Guardrails Proxy
+  version: v1.0
+  context: /api/llm
+  provider:
+    id: guardrails-mock-provider
+  # Policies run in the order listed below on every request to /chat/completions.
+  # Cheapest/structural checks run first so an oversized or over-length request
+  # is rejected before it reaches the pattern-matching and embedding-based checks:
+  #   1. content-length-guardrail  — byte-size ceiling on the message content
+  #   2. word-count-guardrail      — word-count ceiling on the message content
+  #   3. regex-guardrail           — prompt-injection pattern matching
+  #   4. semantic-prompt-guard     — topic allow/deny list via embedding similarity
+  policies:
+    - name: content-length-guardrail
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              min: 1
+              max: 5120 # 5 KB
+              jsonPath: "$.messages[-1].content"
+              showAssessment: true
+
+    - name: word-count-guardrail
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              min: 1
+              max: 500
+              jsonPath: "$.messages[-1].content"
+              showAssessment: true
+
+    - name: regex-guardrail
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              # Case-insensitive match across the classic prompt-injection phrasings.
+              # The modifier group uses `*` (zero-or-more), not `?` (zero-or-one) —
+              # real injection attempts commonly stack modifiers ("ignore ALL PREVIOUS
+              # instructions"), and `?` only allows one, silently missing that phrasing.
+              regex: "(?i)(ignore\\s+(all\\s+|any\\s+|the\\s+above\\s+|previous\\s+|prior\\s+)*instructions|system\\s+prompt|pretend\\s+you\\s+are|<\\|im_start\\|>)"
+              jsonPath: "$.messages[-1].content"
+              # invert:true makes this a BLOCKLIST — the request is rejected as soon
+              # as the pattern matches. Without it, regex-guardrail is an ALLOWLIST
+              # (the content must match the pattern to pass) — the opposite of what
+              # a prompt-injection filter needs.
+              invert: true
+              showAssessment: true
+
+    - name: semantic-prompt-guard
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            jsonPath: "$.messages[-1].content"
+            allowSimilarityThreshold: 0.65
+            denySimilarityThreshold: 0.65
+            allowedPhrases:
+              - math
+              - coding
+              - general_knowledge
+              - science
+            deniedPhrases:
+              - system_architecture
+              - credentials
+              - personal_data
+              - api_keys
+            showAssessment: true
+            # NOTE: embeddingProvider/embeddingEndpoint/embeddingModel/apiKey are
+            # systemParameters, not per-proxy params — they are NOT set here.
+            # The gateway resolves them from global config.toml keys
+            # (embedding_provider, embedding_provider_endpoint, etc.), merged in
+            # by setup.sh from additional-config.toml (see its own comments).
