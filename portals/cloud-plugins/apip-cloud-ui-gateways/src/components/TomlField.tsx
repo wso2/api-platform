@@ -24,6 +24,7 @@ import {
   FormHelperText,
   IconButton,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, TriangleAlert } from '@wso2/oxygen-ui-icons-react';
@@ -47,12 +48,29 @@ export type TomlFieldProps = {
  * already written. TOML forbids declaring a table twice, so a block repeating a
  * section the structured values already emitted is a startup parse error rather
  * than an override. Nothing on the server checks for that yet — it is the known
- * gap this field shipped with — and the warning below does not close it. It
- * only means the user is told before they find out from a dead gateway.
+ * gap this field shipped with, and nothing here closes it.
+ *
+ * The append-not-merge warning sits behind the triangle beside the label. It
+ * used to be a persistent Alert on the argument that a tooltip is not read by
+ * someone already typing — which is true, and the reason the REDECLARED-SECTION
+ * Alert below stays persistent. That one fires on the actual mistake, naming
+ * the offending sections, so the case that kills a gateway is still called out
+ * inline; the general caution is what moved behind the hover.
  *
  * No Monaco: the console does not ship it, and this component renders in both
  * hosts.
  */
+
+/**
+ * Why this field is not an override. Plain text rather than markup: a tooltip
+ * title is read out as its text content, and the emphasis the Alert carried
+ * cannot survive the move anyway.
+ */
+const APPEND_WARNING =
+  'This text is appended to the configuration the gateway already generates — ' +
+  'it does not merge with it. A section the gateway already configures cannot ' +
+  'be redefined here, and repeating one stops the gateway from starting. ' +
+  'Clear the field to remove it.';
 
 const TomlField: FC<TomlFieldProps> = ({
   field,
@@ -85,6 +103,24 @@ const TomlField: FC<TomlFieldProps> = ({
         <Typography sx={{ fontWeight: 500 }} variant="body2">
           {field.label || field.path}
         </Typography>
+        <Tooltip
+          describeChild
+          enterTouchDelay={0}
+          leaveTouchDelay={8000}
+          title={APPEND_WARNING}
+        >
+          <IconButton
+            aria-label="About this field"
+            // The whole row toggles the section, so the icon must not: a hover
+            // that collapses the editor under the cursor is worse than no
+            // tooltip at all.
+            onClick={(event) => event.stopPropagation()}
+            size="small"
+            sx={{ p: 0.25, color: 'warning.main' }}
+          >
+            <TriangleAlert size={14} />
+          </IconButton>
+        </Tooltip>
         <Typography
           color={error ? 'error.main' : 'text.secondary'}
           sx={{ ml: 'auto' }}
@@ -106,22 +142,6 @@ const TomlField: FC<TomlFieldProps> = ({
       </Box>
 
       <Collapse in={open}>
-        {/*
-          Persistent copy, not a tooltip: this is the one thing a user has to
-          know before typing, and a tooltip is not read by someone who is
-          already typing.
-        */}
-        <Alert
-          icon={<TriangleAlert size={18} />}
-          severity="warning"
-          sx={{ mb: 1.5 }}
-        >
-          This text is <strong>appended</strong> to the configuration the gateway
-          already generates — it does not merge with it. A section the gateway
-          already configures cannot be redefined here, and repeating one stops
-          the gateway from starting.
-        </Alert>
-
         {redeclared.length > 0 ? (
           <Alert severity="error" sx={{ mb: 1.5 }}>
             {redeclared.join(' and ')}{' '}
@@ -150,10 +170,11 @@ const TomlField: FC<TomlFieldProps> = ({
           value={text}
         />
 
-        <FormHelperText error={Boolean(error)} sx={{ mx: 0 }}>
-          {/* An empty value is how the field is cleared — there is no other way. */}
-          {error ?? `${field.description ?? ''} Clear the field to remove it.`}
-        </FormHelperText>
+        {error ? (
+          <FormHelperText error sx={{ mx: 0 }}>
+            {error}
+          </FormHelperText>
+        ) : null}
       </Collapse>
     </Box>
   );
