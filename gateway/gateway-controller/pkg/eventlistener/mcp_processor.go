@@ -62,7 +62,7 @@ func (l *EventListener) handleMCPProxyCreateOrUpdate(event eventhub.Event) {
 			slog.String("kind", storedConfig.Kind))
 		return
 	}
-	if err := utils.HydrateStoredMCPConfig(storedConfig); err != nil {
+	if err := utils.HydrateStoredMCPConfig(storedConfig, l.policyVersionResolver); err != nil {
 		l.logger.Error("Failed to hydrate MCP proxy configuration from source",
 			slog.String("proxy_id", entityID),
 			slog.Any("error", err))

@@ -18,6 +18,7 @@ func hydrateStoredConfigsFromDatabaseOnStartup(
 	db storage.Storage,
 	routerConfig *config.RouterConfig,
 	policyDefinitions map[string]models.PolicyDefinition,
+	policyVersionResolver utils.PolicyVersionResolver,
 	log *slog.Logger,
 	skipInvalidDeployments bool,
 ) error {
@@ -30,7 +31,9 @@ func hydrateStoredConfigsFromDatabaseOnStartup(
 		"stored MCP proxy configuration",
 		log,
 		skipInvalidDeployments,
-		utils.HydrateStoredMCPConfig,
+		func(cfg *models.StoredConfig) error {
+			return utils.HydrateStoredMCPConfig(cfg, policyVersionResolver)
+		},
 	); err != nil {
 		return err
 	}

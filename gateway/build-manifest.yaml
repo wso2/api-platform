@@ -90,6 +90,9 @@ policies:
     - name: nvidia-nemoguard-content-safety
       version: v0.9.0
       pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/nvidia-nemoguard-content-safety/v0.9.0#subdirectory=policies/nvidia-nemoguard-content-safety
+    - name: oauth2-generator
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/oauth2-generator@v0
     - name: opaque-token-auth
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1

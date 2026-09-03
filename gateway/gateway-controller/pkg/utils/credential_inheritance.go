@@ -18,23 +18,21 @@
 
 // Upstream credential inheritance on update.
 //
-// An upstream `auth.value` is write-only: accepted on create/update, never
-// returned on a read (see pkg/api/handlers/credential_redaction.go). An update
-// that does not carry a credential therefore inherits the persisted one:
+// An upstream credential is write-only - accepted on create/update, never
+// returned on a read (see pkg/api/handlers/credential_redaction.go), via
+// `value` for legacy auth types or `policyParams` for oauth2/other. An update
+// that doesn't carry a credential inherits the persisted one instead:
 //
-//	value supplied                -> use it
-//	auth present, same type, value omitted -> inherit the stored value
-//	auth omitted entirely         -> inherit the stored auth block
-//	auth present, type changed    -> no inheritance; supply a new value
-//	type: none                    -> no inheritance; auth is removed
+//	credential supplied                       -> use it
+//	auth present, same type, credential omitted -> inherit the stored credential
+//	auth omitted entirely                     -> inherit the stored auth block
+//	auth present, type changed                -> no inheritance; supply a new credential
+//	type: none                                -> no inheritance; auth is removed
 //
-// Inheritance reads the stored SourceConfiguration, which is the unrendered
-// artifact, so a credential held as a `secret` expression is carried forward
-// unresolved and re-rendered downstream like any other value.
-//
-// This applies to control-plane deploys as well as management API updates, so a
-// declarative apply that intends to drop upstream auth must say `type: none`
-// rather than omit the block.
+// Inheritance reads the stored SourceConfiguration (the unrendered artifact),
+// so a `secret` expression is carried forward unresolved. This applies to
+// control-plane deploys too, so a declarative apply that means to drop
+// upstream auth must say `type: none` rather than omit the block.
 package utils
 
 import (
@@ -132,6 +130,55 @@ func hasCredential(value *string) bool {
 	return value != nil && *value != ""
 }
 
+// hasAnyCredential reports whether an auth block carries credential material via
+// either mechanism an auth type can use: legacy Value, or the policyParams bucket
+// oauth2/other stores its secret in instead. A present-but-empty policyParams map
+// counts as absent, like hasCredential's empty string - otherwise a client that
+// always serializes the field as `{}` would have its stored credential silently
+// dropped instead of inherited.
+func hasAnyCredential(value *string, policyParams *map[string]interface{}) bool {
+	return hasCredential(value) || (policyParams != nil && len(*policyParams) > 0)
+}
+
+// mergePolicyParams merges stored policyParams under incoming ones: every key
+// present in incoming wins, and any key omitted from incoming but present in
+// stored is carried forward - so rotating just tokenEndpoint doesn't drop a
+// stored clientSecret it never touched.
+func mergePolicyParams(incoming, stored *map[string]interface{}) *map[string]interface{} {
+	if stored == nil || len(*stored) == 0 {
+		return incoming
+	}
+	if incoming == nil || len(*incoming) == 0 {
+		return stored
+	}
+	merged := make(map[string]interface{}, len(*stored)+len(*incoming))
+	for k, v := range *stored {
+		merged[k] = v
+	}
+	for k, v := range *incoming {
+		merged[k] = v
+	}
+	return &merged
+}
+
+// inheritSameTypeCredential applies same-type inheritance to a Value/
+// PolicyParams pair, in place. Whichever mechanism incoming actually uses
+// wins outright (Value present -> policyParams left alone, don't resurrect a
+// stored one from a different mechanism and trip the validator's mutual-
+// exclusivity check; policyParams present, even empty -> merge in omitted
+// stored keys, don't touch Value). Neither supplied -> inherit both wholesale.
+func inheritSameTypeCredential(incomingValue **string, incomingPolicyParams **map[string]interface{}, storedValue *string, storedPolicyParams *map[string]interface{}) {
+	switch {
+	case hasCredential(*incomingValue):
+		return
+	case *incomingPolicyParams != nil:
+		*incomingPolicyParams = mergePolicyParams(*incomingPolicyParams, storedPolicyParams)
+	default:
+		*incomingValue = storedValue
+		*incomingPolicyParams = storedPolicyParams
+	}
+}
+
 // inheritLLMProviderCredential carries a persisted upstream credential forward
 // when an LLM provider update omits it.
 func inheritLLMProviderCredential(incoming *api.LLMProviderConfiguration, storedSource any) {
@@ -139,7 +186,8 @@ func inheritLLMProviderCredential(incoming *api.LLMProviderConfiguration, stored
 		return
 	}
 	stored, ok := reinterpret[api.LLMProviderConfiguration](storedSource)
-	if !ok || stored.Spec.Upstream.Auth == nil || !hasCredential(stored.Spec.Upstream.Auth.Value) {
+	if !ok || stored.Spec.Upstream.Auth == nil ||
+		!hasAnyCredential(stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams) {
 		return
 	}
 
@@ -157,9 +205,10 @@ func inheritLLMProviderCredential(incoming *api.LLMProviderConfiguration, stored
 	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
 		return
 	}
-	if !hasCredential(incoming.Spec.Upstream.Auth.Value) {
-		incoming.Spec.Upstream.Auth.Value = stored.Spec.Upstream.Auth.Value
-	}
+	inheritSameTypeCredential(
+		&incoming.Spec.Upstream.Auth.Value, &incoming.Spec.Upstream.Auth.PolicyParams,
+		stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams,
+	)
 }
 
 // inheritLLMProxyCredentials carries persisted upstream credentials forward when
@@ -201,7 +250,7 @@ func inheritLLMProxyCredentials(incoming *api.LLMProxyConfiguration, storedSourc
 // inheritLLMUpstreamAuth applies the inheritance rules to a single
 // *api.LLMUpstreamAuth field, in place.
 func inheritLLMUpstreamAuth(incoming **api.LLMUpstreamAuth, stored *api.LLMUpstreamAuth) {
-	if incoming == nil || stored == nil || !hasCredential(stored.Value) {
+	if incoming == nil || stored == nil || !hasAnyCredential(stored.Value, stored.PolicyParams) {
 		return
 	}
 	if *incoming == nil {
@@ -215,9 +264,7 @@ func inheritLLMUpstreamAuth(incoming **api.LLMUpstreamAuth, stored *api.LLMUpstr
 	if (*incoming).Type != stored.Type {
 		return
 	}
-	if !hasCredential((*incoming).Value) {
-		(*incoming).Value = stored.Value
-	}
+	inheritSameTypeCredential(&(*incoming).Value, &(*incoming).PolicyParams, stored.Value, stored.PolicyParams)
 }
 
 // inheritMCPProxyCredential carries a persisted upstream credential forward when
@@ -227,7 +274,8 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 		return
 	}
 	stored, ok := reinterpret[api.MCPProxyConfiguration](storedSource)
-	if !ok || stored.Spec.Upstream.Auth == nil || !hasCredential(stored.Spec.Upstream.Auth.Value) {
+	if !ok || stored.Spec.Upstream.Auth == nil ||
+		!hasAnyCredential(stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams) {
 		return
 	}
 
@@ -242,7 +290,8 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
 		return
 	}
-	if !hasCredential(incoming.Spec.Upstream.Auth.Value) {
-		incoming.Spec.Upstream.Auth.Value = stored.Spec.Upstream.Auth.Value
-	}
+	inheritSameTypeCredential(
+		&incoming.Spec.Upstream.Auth.Value, &incoming.Spec.Upstream.Auth.PolicyParams,
+		stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams,
+	)
 }
