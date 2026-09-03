@@ -289,14 +289,19 @@ func (h *GraphQLAPIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Reques
 	return nil
 }
 
-// decodeCreateGraphQLAPIRequest decodes a create request from either
-// application/json (the metadata struct directly) or multipart/form-data
-// (a JSON "metadata" field plus an optional "sdlFile" upload) — see
-// GraphQLAPIMultipartRequest in resources/openapi.yaml. A file part always
-// wins over any sdl/sdlUrl present in metadata.
+// decodeCreateGraphQLAPIRequest decodes a create request from
+// multipart/form-data — a JSON "metadata" field plus an optional "sdlFile"
+// upload — see GraphQLAPIMultipartRequest in resources/openapi.yaml. This is
+// the only accepted content type: every schemaSource variant (inline, url,
+// file, introspection) is expressed the same way rather than splitting file
+// uploads onto a second content type. A file part's content is copied into
+// req.Sdl as the schemaSource="file" candidate text; it is not silently
+// preferred over a conflicting sdl/sdlUrl already in metadata — that
+// conflict is a schemaSource structural-validation error, caught in the
+// service layer (graphql_api.go's resolveSchema), not resolved here.
 func decodeCreateGraphQLAPIRequest(r *http.Request, req *api.CreateGraphQLAPIRequest) error {
 	if !utils.IsMultipartFormRequest(r) {
-		return json.NewDecoder(r.Body).Decode(req)
+		return fmt.Errorf("Content-Type must be multipart/form-data")
 	}
 	metadataJSON, sdl, err := utils.ParseGraphQLAPIMultipartRequest(r)
 	if err != nil {
@@ -307,18 +312,17 @@ func decodeCreateGraphQLAPIRequest(r *http.Request, req *api.CreateGraphQLAPIReq
 	}
 	if sdl != "" {
 		req.Sdl = &sdl
-		req.SdlUrl = nil
 	}
 	return nil
 }
 
 // decodeUpdateGraphQLAPIRequest is decodeCreateGraphQLAPIRequest's update
-// counterpart — same multipart/JSON split, targeting api.GraphQLAPI instead
-// of api.CreateGraphQLAPIRequest (oapi-codegen generates these as distinct,
-// non-embedding struct types, so the two can't share one generic function).
+// counterpart, targeting api.GraphQLAPI instead of api.CreateGraphQLAPIRequest
+// (oapi-codegen generates these as distinct, non-embedding struct types, so
+// the two can't share one generic function).
 func decodeUpdateGraphQLAPIRequest(r *http.Request, req *api.GraphQLAPI) error {
 	if !utils.IsMultipartFormRequest(r) {
-		return json.NewDecoder(r.Body).Decode(req)
+		return fmt.Errorf("Content-Type must be multipart/form-data")
 	}
 	metadataJSON, sdl, err := utils.ParseGraphQLAPIMultipartRequest(r)
 	if err != nil {
@@ -329,7 +333,6 @@ func decodeUpdateGraphQLAPIRequest(r *http.Request, req *api.GraphQLAPI) error {
 	}
 	if sdl != "" {
 		req.Sdl = &sdl
-		req.SdlUrl = nil
 	}
 	return nil
 }

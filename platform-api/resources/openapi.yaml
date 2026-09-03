@@ -1052,12 +1052,22 @@ paths:
     post:
       summary: Create a new GraphQL API
       description: |
-        Creates a new GraphQL API in the platform. The schema can be supplied in one
-        of three ways: `sdl` (pasted inline), `sdlUrl` (fetched from a raw SDL
-        document URL), or a `multipart/form-data` file upload (`sdlFile`) — exactly
-        one of these, or none at all, in which case `upstream.main.url` must expose
-        standard GraphQL introspection and the schema is derived server-side. The
-        API is associated with a project, which must belong to the organization
+        Creates a new GraphQL API in the platform. `schemaSource` declares how the
+        schema is supplied: `inline` (the `sdl` field), `url` (fetched from
+        `sdlUrl`), `file` (the `sdlFile` multipart part), or `introspection` (the
+        default — `upstream.main.url` must expose standard GraphQL introspection).
+        Only the field matching the declared source may be present — a request
+        that supplies a field not matching the declared `schemaSource` (or more
+        than one schema field at once), omits the field/part its declared source
+        requires, or declares `introspection` against an `upstream.main.ref`
+        instead of a literal `url`, is a request-shape problem and is rejected
+        with `400` (`VALIDATION_FAILED`) describing exactly what's inconsistent.
+        Once the request shape itself is valid, schema resolution is best-effort:
+        if the declared source can't actually be resolved (unreachable URL,
+        invalid SDL, introspection failing/disabled), the API is still created
+        with an empty schema rather than failing — fetch it later via
+        `GET /graphql-apis/{graphqlApiId}/sdl` once it can be resolved. The API is
+        associated with a project, which must belong to the organization
         specified in the JWT token.
       operationId: CreateGraphQLAPI
       security:
@@ -1068,14 +1078,12 @@ paths:
         - GraphQL APIs
       requestBody:
         description: |
-          GraphQL API object that needs to be added. Use `application/json` for
-          inline `sdl`/`sdlUrl`/introspection-only requests. Use
-          `multipart/form-data` to upload the SDL as a file instead — see
-          GraphQLAPIMultipartRequest.
+          GraphQL API object that needs to be added, as `multipart/form-data` — see
+          GraphQLAPIMultipartRequest. This is the only accepted content type, even
+          when `schemaSource` is `inline`, `url`, or `introspection` and no file is
+          being uploaded, so that every schema-source variant is expressed the
+          same way.
         content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateGraphQLAPIRequest'
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/GraphQLAPIMultipartRequest'
@@ -1100,12 +1108,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-        '422':
-          description: The provided endpoint could not be used to derive a GraphQL schema (introspection failed or was rejected), or the supplied SDL failed to parse.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1151,8 +1153,14 @@ paths:
     put:
       summary: Update GraphQL API
       description: |
-        Updates an existing GraphQL API's details, including re-supplying `sdl` or
-        re-introspecting `upstream.main.url` to pick up a changed backend schema.
+        Updates an existing GraphQL API's details. `schemaSource` behaves as on
+        create (see `POST /graphql-apis`), including the same `400`
+        (`VALIDATION_FAILED`) response for a request shape that's inconsistent
+        with the declared `schemaSource` — re-supply `sdl`/`sdlUrl`/`sdlFile`, or
+        leave it as `introspection` to re-query `upstream.main.url` and pick up a
+        changed backend schema. If resolution fails (the source can't actually be
+        resolved right now), the previously-stored schema is left unchanged rather
+        than being cleared.
       operationId: UpdateGraphQLAPI
       security:
         - OAuth2Security:
@@ -1171,10 +1179,10 @@ paths:
             example: countries-graphql-api
       requestBody:
         required: true
+        description: |
+          As `multipart/form-data` only — see GraphQLAPIMultipartRequest and the
+          note on `POST /graphql-apis`.
         content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GraphQLAPI'
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/GraphQLAPIMultipartRequest'
@@ -1195,12 +1203,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-        '422':
-          description: Re-introspection or re-parsing of the updated schema failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
     delete:
@@ -7122,18 +7124,36 @@ components:
           description: Kind of the API based on its communication protocol or architectural style
           example: GraphQLApi
           default: GraphQLApi
+        schemaSource:
+          type: string
+          enum: [inline, url, file, introspection]
+          default: introspection
+          description: |
+            Declares how the schema is being supplied, so the server validates
+            against stated intent instead of guessing it from which fields happen
+            to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+            `file` requires the `sdlFile` multipart part (see
+            GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+            literal `upstream.main.url` and derives the schema by querying it.
+            Only the field matching the declared source may be present — a
+            mismatch (wrong field populated, nothing populated, more than one
+            populated) is a `400` (`VALIDATION_FAILED`), not a silent
+            fall-through to a different resolution path. Schema *resolution* is
+            separate and best-effort: a failure to actually resolve (bad SDL,
+            unreachable URL, introspection failing) never fails the request —
+            see `sdl` below.
+          example: introspection
         sdl:
           type: string
           description: |
-            The GraphQL schema in SDL form, supplied directly (pasted/uploaded) or
-            resolved from `sdlUrl`. Optional on create — if all of `sdl`, `sdlUrl`,
-            and a reachable `upstream.main.url` are omitted, creation fails; if only
-            `upstream.main.url` is given, it must expose standard GraphQL
-            introspection and the schema is derived server-side. Always
+            The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+            directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+            (`url`), or derived from `upstream.main.url` (`introspection`). Always
             the *resolved* schema, never a document-supplied schema-location
-            reference. `sdl` and `sdlUrl` are mutually exclusive on a request; this
-            field always holds the resolved text on every read regardless of which
-            input path produced it.
+            reference. Optional in practice: if resolution fails, the API is still
+            created/updated and this is left empty (create) or unchanged from its
+            previous value (update) rather than the request failing — see
+            `schemaSource`.
           example: |
             type Query {
               countries: [Country]
@@ -7149,20 +7169,20 @@ components:
           format: uri
           writeOnly: true
           description: |
-            A URL to a raw SDL document to fetch and use as `sdl` — the write-side
-            counterpart to how an OpenAPI document can be supplied by reference for
-            other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
-            Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
-            schema file, not a live introspection query against a GraphQL server, and
-            is fetched through the same shared SSRF-guarded HTTP client every other
+            A URL to a raw SDL document to fetch and use as `sdl` when
+            `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+            document can be supplied by reference for other artifact kinds (see
+            LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+            `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+            file, not a live introspection query against a GraphQL server, and is
+            fetched through the same shared SSRF-guarded HTTP client every other
             operator/tenant-supplied fetch in this API uses, under the operator-
             configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
             host is resolved and every candidate IP — including each redirect hop —
             is checked at dial time, refusing link-local/metadata/unspecified/
             multicast addresses while private and in-cluster addresses (a Kubernetes
-            ClusterIP, a service-DNS name, localhost) remain reachable. Mutually
-            exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
-            text is persisted and returned.
+            ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+            or echoed back; only the fetched `sdl` text is persisted and returned.
           example: https://raw.githubusercontent.com/example/countries-api/main/schema.graphql
         introspectionMode:
           allOf:
@@ -7355,16 +7375,20 @@ components:
           type: string
           description: |
             JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
-            GraphQLAPI fields for update. When a non-empty `sdlFile` part is
-            uploaded, it overrides any `sdl`/`sdlUrl` included here. When no
-            `sdlFile` part is uploaded, this metadata's own `sdl`/`sdlUrl` (or
-            upstream introspection) is used unchanged.
+            GraphQLAPI fields for update, including `schemaSource`. When
+            `schemaSource` is `file`, the `sdlFile` part below is required and any
+            `sdl`/`sdlUrl` in this metadata is a structural-validation error, not a
+            silent override — every schema-source variant is expressed
+            consistently through the `schemaSource` field rather than by which
+            part happens to be present.
           example: |
-            {"displayName":"Countries GraphQL API","context":"/countries","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
+            {"displayName":"Countries GraphQL API","context":"/countries","version":"v1.0","projectId":"default-project","schemaSource":"introspection","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
         sdlFile:
           type: string
           format: binary
-          description: The GraphQL SDL document as a file upload (e.g. schema.graphql).
+          description: |
+            The GraphQL SDL document as a file upload (e.g. schema.graphql).
+            Required when `schemaSource` is `file`; must be omitted otherwise.
 
     GraphQLAPIListItem:
       title: GraphQL API list item

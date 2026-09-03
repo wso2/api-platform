@@ -58,6 +58,14 @@ const (
 	CreateGatewayRequestFunctionalityTypeRegular CreateGatewayRequestFunctionalityType = "regular"
 )
 
+// Defines values for CreateGraphQLAPIRequestSchemaSource.
+const (
+	CreateGraphQLAPIRequestSchemaSourceFile          CreateGraphQLAPIRequestSchemaSource = "file"
+	CreateGraphQLAPIRequestSchemaSourceInline        CreateGraphQLAPIRequestSchemaSource = "inline"
+	CreateGraphQLAPIRequestSchemaSourceIntrospection CreateGraphQLAPIRequestSchemaSource = "introspection"
+	CreateGraphQLAPIRequestSchemaSourceUrl           CreateGraphQLAPIRequestSchemaSource = "url"
+)
+
 // Defines values for CreateRESTAPIRequestLifeCycleStatus.
 const (
 	CreateRESTAPIRequestLifeCycleStatusBLOCKED    CreateRESTAPIRequestLifeCycleStatus = "BLOCKED"
@@ -117,6 +125,14 @@ const (
 	GatewayResponseFunctionalityTypeAi      GatewayResponseFunctionalityType = "ai"
 	GatewayResponseFunctionalityTypeEvent   GatewayResponseFunctionalityType = "event"
 	GatewayResponseFunctionalityTypeRegular GatewayResponseFunctionalityType = "regular"
+)
+
+// Defines values for GraphQLAPISchemaSource.
+const (
+	GraphQLAPISchemaSourceFile          GraphQLAPISchemaSource = "file"
+	GraphQLAPISchemaSourceInline        GraphQLAPISchemaSource = "inline"
+	GraphQLAPISchemaSourceIntrospection GraphQLAPISchemaSource = "introspection"
+	GraphQLAPISchemaSourceUrl           GraphQLAPISchemaSource = "url"
 )
 
 // Defines values for GraphQLIntrospectionMode.
@@ -833,31 +849,45 @@ type CreateGraphQLAPIRequest struct {
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
-	// Sdl The GraphQL schema in SDL form, supplied directly (pasted/uploaded) or
-	// resolved from `sdlUrl`. Optional on create — if all of `sdl`, `sdlUrl`,
-	// and a reachable `upstream.main.url` are omitted, creation fails; if only
-	// `upstream.main.url` is given, it must expose standard GraphQL
-	// introspection and the schema is derived server-side. Always
+	// SchemaSource Declares how the schema is being supplied, so the server validates
+	// against stated intent instead of guessing it from which fields happen
+	// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+	// `file` requires the `sdlFile` multipart part (see
+	// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+	// literal `upstream.main.url` and derives the schema by querying it.
+	// Only the field matching the declared source may be present — a
+	// mismatch (wrong field populated, nothing populated, more than one
+	// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+	// fall-through to a different resolution path. Schema *resolution* is
+	// separate and best-effort: a failure to actually resolve (bad SDL,
+	// unreachable URL, introspection failing) never fails the request —
+	// see `sdl` below.
+	SchemaSource *CreateGraphQLAPIRequestSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+	// directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+	// (`url`), or derived from `upstream.main.url` (`introspection`). Always
 	// the *resolved* schema, never a document-supplied schema-location
-	// reference. `sdl` and `sdlUrl` are mutually exclusive on a request; this
-	// field always holds the resolved text on every read regardless of which
-	// input path produced it.
+	// reference. Optional in practice: if resolution fails, the API is still
+	// created/updated and this is left empty (create) or unchanged from its
+	// previous value (update) rather than the request failing — see
+	// `schemaSource`.
 	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
 
-	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` — the write-side
-	// counterpart to how an OpenAPI document can be supplied by reference for
-	// other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
-	// Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
-	// schema file, not a live introspection query against a GraphQL server, and
-	// is fetched through the same shared SSRF-guarded HTTP client every other
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` when
+	// `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+	// document can be supplied by reference for other artifact kinds (see
+	// LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+	// `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+	// file, not a live introspection query against a GraphQL server, and is
+	// fetched through the same shared SSRF-guarded HTTP client every other
 	// operator/tenant-supplied fetch in this API uses, under the operator-
 	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
 	// host is resolved and every candidate IP — including each redirect hop —
 	// is checked at dial time, refusing link-local/metadata/unspecified/
 	// multicast addresses while private and in-cluster addresses (a Kubernetes
-	// ClusterIP, a service-DNS name, localhost) remain reachable. Mutually
-	// exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
-	// text is persisted and returned.
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+	// or echoed back; only the fetched `sdl` text is persisted and returned.
 	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
 
 	// SubscriptionPlans List of subscription plan names enabled for this API.
@@ -871,6 +901,21 @@ type CreateGraphQLAPIRequest struct {
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 	Version  string   `binding:"required" json:"version" yaml:"version"`
 }
+
+// CreateGraphQLAPIRequestSchemaSource Declares how the schema is being supplied, so the server validates
+// against stated intent instead of guessing it from which fields happen
+// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+// `file` requires the `sdlFile` multipart part (see
+// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+// literal `upstream.main.url` and derives the schema by querying it.
+// Only the field matching the declared source may be present — a
+// mismatch (wrong field populated, nothing populated, more than one
+// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+// fall-through to a different resolution path. Schema *resolution* is
+// separate and best-effort: a failure to actually resolve (bad SDL,
+// unreachable URL, introspection failing) never fails the request —
+// see `sdl` below.
+type CreateGraphQLAPIRequestSchemaSource string
 
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
@@ -1391,31 +1436,45 @@ type GraphQLAPI struct {
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
-	// Sdl The GraphQL schema in SDL form, supplied directly (pasted/uploaded) or
-	// resolved from `sdlUrl`. Optional on create — if all of `sdl`, `sdlUrl`,
-	// and a reachable `upstream.main.url` are omitted, creation fails; if only
-	// `upstream.main.url` is given, it must expose standard GraphQL
-	// introspection and the schema is derived server-side. Always
+	// SchemaSource Declares how the schema is being supplied, so the server validates
+	// against stated intent instead of guessing it from which fields happen
+	// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+	// `file` requires the `sdlFile` multipart part (see
+	// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+	// literal `upstream.main.url` and derives the schema by querying it.
+	// Only the field matching the declared source may be present — a
+	// mismatch (wrong field populated, nothing populated, more than one
+	// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+	// fall-through to a different resolution path. Schema *resolution* is
+	// separate and best-effort: a failure to actually resolve (bad SDL,
+	// unreachable URL, introspection failing) never fails the request —
+	// see `sdl` below.
+	SchemaSource *GraphQLAPISchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+	// directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+	// (`url`), or derived from `upstream.main.url` (`introspection`). Always
 	// the *resolved* schema, never a document-supplied schema-location
-	// reference. `sdl` and `sdlUrl` are mutually exclusive on a request; this
-	// field always holds the resolved text on every read regardless of which
-	// input path produced it.
+	// reference. Optional in practice: if resolution fails, the API is still
+	// created/updated and this is left empty (create) or unchanged from its
+	// previous value (update) rather than the request failing — see
+	// `schemaSource`.
 	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
 
-	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` — the write-side
-	// counterpart to how an OpenAPI document can be supplied by reference for
-	// other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
-	// Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
-	// schema file, not a live introspection query against a GraphQL server, and
-	// is fetched through the same shared SSRF-guarded HTTP client every other
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` when
+	// `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+	// document can be supplied by reference for other artifact kinds (see
+	// LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+	// `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+	// file, not a live introspection query against a GraphQL server, and is
+	// fetched through the same shared SSRF-guarded HTTP client every other
 	// operator/tenant-supplied fetch in this API uses, under the operator-
 	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
 	// host is resolved and every candidate IP — including each redirect hop —
 	// is checked at dial time, refusing link-local/metadata/unspecified/
 	// multicast addresses while private and in-cluster addresses (a Kubernetes
-	// ClusterIP, a service-DNS name, localhost) remain reachable. Mutually
-	// exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
-	// text is persisted and returned.
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+	// or echoed back; only the fetched `sdl` text is persisted and returned.
 	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
 
 	// SubscriptionPlans List of subscription plan names enabled for this API.
@@ -1429,6 +1488,21 @@ type GraphQLAPI struct {
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 	Version  string   `binding:"required" json:"version" yaml:"version"`
 }
+
+// GraphQLAPISchemaSource Declares how the schema is being supplied, so the server validates
+// against stated intent instead of guessing it from which fields happen
+// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+// `file` requires the `sdlFile` multipart part (see
+// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+// literal `upstream.main.url` and derives the schema by querying it.
+// Only the field matching the declared source may be present — a
+// mismatch (wrong field populated, nothing populated, more than one
+// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+// fall-through to a different resolution path. Schema *resolution* is
+// separate and best-effort: a failure to actually resolve (bad SDL,
+// unreachable URL, introspection failing) never fails the request —
+// see `sdl` below.
+type GraphQLAPISchemaSource string
 
 // GraphQLAPIDetail defines model for GraphQLAPIDetail.
 type GraphQLAPIDetail struct {
@@ -1507,13 +1581,16 @@ type GraphQLAPIListResponse struct {
 // GraphQLAPIMultipartRequest defines model for GraphQLAPIMultipartRequest.
 type GraphQLAPIMultipartRequest struct {
 	// Metadata JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
-	// GraphQLAPI fields for update. When a non-empty `sdlFile` part is
-	// uploaded, it overrides any `sdl`/`sdlUrl` included here. When no
-	// `sdlFile` part is uploaded, this metadata's own `sdl`/`sdlUrl` (or
-	// upstream introspection) is used unchanged.
+	// GraphQLAPI fields for update, including `schemaSource`. When
+	// `schemaSource` is `file`, the `sdlFile` part below is required and any
+	// `sdl`/`sdlUrl` in this metadata is a structural-validation error, not a
+	// silent override — every schema-source variant is expressed
+	// consistently through the `schemaSource` field rather than by which
+	// part happens to be present.
 	Metadata string `binding:"required" json:"metadata" yaml:"metadata"`
 
 	// SdlFile The GraphQL SDL document as a file upload (e.g. schema.graphql).
+	// Required when `schemaSource` is `file`; must be omitted otherwise.
 	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
 }
 
@@ -3564,14 +3641,8 @@ type CreateGatewayJSONRequestBody = CreateGatewayRequest
 // UpdateGatewayJSONRequestBody defines body for UpdateGateway for application/json ContentType.
 type UpdateGatewayJSONRequestBody = GatewayResponse
 
-// CreateGraphQLAPIJSONRequestBody defines body for CreateGraphQLAPI for application/json ContentType.
-type CreateGraphQLAPIJSONRequestBody = CreateGraphQLAPIRequest
-
 // CreateGraphQLAPIMultipartRequestBody defines body for CreateGraphQLAPI for multipart/form-data ContentType.
 type CreateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
-
-// UpdateGraphQLAPIJSONRequestBody defines body for UpdateGraphQLAPI for application/json ContentType.
-type UpdateGraphQLAPIJSONRequestBody = GraphQLAPI
 
 // UpdateGraphQLAPIMultipartRequestBody defines body for UpdateGraphQLAPI for multipart/form-data ContentType.
 type UpdateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
