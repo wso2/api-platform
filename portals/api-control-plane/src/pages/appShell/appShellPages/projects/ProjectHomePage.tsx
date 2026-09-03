@@ -17,17 +17,18 @@
  */
 
 import { Divider, Grid } from '@wso2/oxygen-ui';
-import { Layers } from '@wso2/oxygen-ui-icons-react';
 import { useParams } from 'react-router-dom';
 
 import { useProject } from '@/api/resources/projects';
-import { QuickStartBanner } from '@/components/common/QuickStartBanner';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { ApiList } from '@/pages/appShell/appShellPages/apis/listing';
+import { ProjectMetadata } from './components/ProjectMetadata';
+import { ProjectQuickActions } from './components/ProjectQuickActions';
+import { ProjectStatistics } from './components/ProjectStatistics';
 
 // No `ScopeGate`: Overview falls back to the org tier without a project.
 export function ProjectHomePage() {
-  const { projectHandler = '' } = useParams();
+  const { orgHandle = '', projectHandler = '' } = useParams();
   const projectQuery = useProject(projectHandler);
 
   if (projectQuery.isLoading) return <LoadingState label="Loading project" />;
@@ -40,17 +41,21 @@ export function ProjectHomePage() {
     <>
       <Grid container spacing={3} sx={{ m: 0, width: '100%' }}>
         <Grid size={{ xs: 12 }}>
-          <QuickStartBanner
-            description={project.description || 'Add an API to this project.'}
-            icon={<Layers size={32} />}
-            title={project.displayName}
-          />
+          <ProjectMetadata orgHandle={orgHandle} project={project} />
         </Grid>
 
         <Divider sx={{ width: '100%' }} />
 
-        <Grid size={{ xs: 12 }}>
+        <Grid size={{ xs: 12 }} sx={{ minHeight: 400 }}>
           <ApiList />
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <ProjectStatistics />
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <ProjectQuickActions orgHandle={orgHandle} projectId={project.id} />
         </Grid>
       </Grid>
     </>

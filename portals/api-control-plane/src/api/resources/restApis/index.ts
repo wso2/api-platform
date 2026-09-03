@@ -44,6 +44,7 @@ export {
   useCreateRestApi,
   useDeleteRestApi,
   useRestApi,
+  useRestApiCounts,
   useRestApiIdAvailability,
   useRestApiOptions,
   useRestApis,

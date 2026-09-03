@@ -16,25 +16,16 @@
  * under the License.
  */
 
-import {
-  Card,
-  CardActions,
-  CardContent,
-  CardHeader,
-  Divider,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
+import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 
 import type { RestApi } from '@/api/resources/restApis';
 import { interactiveCardSx } from '@/theme';
 import {
   apiDescriptionSx,
+  ApiActionsMenu,
   ApiKindAvatar,
-  DeleteApiButton,
-  GatewayManagedChip,
-  revealApiDeleteOnHoverSx,
-  TransportChips,
+  ApiKindChip,
+  LifecycleStatusLabel,
   UpdatedLabel,
   VersionChip,
 } from './RestApiChips';
@@ -45,69 +36,57 @@ type ApiCardProps = {
   onDelete?: (api: RestApi) => void;
 };
 
-/** Edge of the square kind tile; the icon inside scales with it. */
-const AVATAR_SIZE = 56;
+const AVATAR_SIZE = 42;
 
 /**
  * API card for the grid view, rendering the spec's `RESTAPI` shape.
  */
 export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
   const updated = api.updatedAt || api.createdAt;
-  const transports = api.transport ?? [];
 
   return (
     <Card
       onClick={() => onOpen(api)}
       sx={{
         ...interactiveCardSx,
-        ...revealApiDeleteOnHoverSx,
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
       }}
     >
-      <CardHeader
-        avatar={<ApiKindAvatar kind={api.kind} size={AVATAR_SIZE} />}
-        slotProps={{
-          // `content` has no min-width of its own, so a long name would widen
-          // the card instead of truncating. Both slots render a Stack, which
-          // cannot legally sit inside the default `span`.
-          content: { sx: { minWidth: 0 } },
-          subheader: { component: 'div' },
-          title: { component: 'div', sx: { mb: 1 } },
-        }}
-        subheader={
-          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }} useFlexGap>
-            <TransportChips transports={transports} />
-            {api.readOnly && <GatewayManagedChip />}
+      <CardContent sx={{ flex: 1 }}>
+        <Stack spacing={2}>
+          <Stack alignItems="flex-start" direction="row" spacing={1.5}>
+            <ApiKindAvatar kind={api.kind} size={AVATAR_SIZE} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography noWrap sx={{ fontWeight: 700 }} variant="h6">
+                {api.displayName}
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                <ApiKindChip kind={api.kind} />
+                <VersionChip version={api.version} />
+              </Stack>
+            </Box>
           </Stack>
-        }
-        sx={{ alignItems: 'flex-start' }}
-        title={
-          <Stack alignItems="center" direction="row" spacing={1} sx={{ minWidth: 0 }}>
-            <Typography component="span" noWrap sx={{ fontWeight: 600 }} variant="h5">
-              {api.displayName}
-            </Typography>
-            <VersionChip version={api.version} />
-          </Stack>
-        }
-      />
-
-      {/* Two-line clamped description; the flex grow is what keeps every
-          card's footer on the same line across the grid. */}
-      <CardContent sx={{ flex: 1, pt: 0 }}>
-        <Typography color="text.secondary" sx={apiDescriptionSx(2)} variant="body2">
-          {api.description || ''}
-        </Typography>
+          <Typography color="text.secondary" sx={apiDescriptionSx(2)} variant="body2">
+            {api.description || ''}
+          </Typography>
+        </Stack>
       </CardContent>
 
       <Divider />
 
-      {/* Footer: when it last changed, and the one destructive action. */}
-      <CardActions sx={{ justifyContent: 'space-between', px: 2 }}>
-        <UpdatedLabel timestamp={updated} />
-        {onDelete && <DeleteApiButton apiName={api.displayName} onDelete={() => onDelete(api)} />}
-      </CardActions>
+      <Box sx={{ alignItems: 'center', display: 'flex', gap: 1, px: 2, py: 1.25 }}>
+        <LifecycleStatusLabel status={api.lifeCycleStatus} />
+        <Stack alignItems="center" direction="row" spacing={0.5} sx={{ ml: 'auto' }}>
+          <UpdatedLabel timestamp={updated} />
+          {onDelete && (
+            <Box sx={{ mr: -1.5 }}>
+              <ApiActionsMenu apiName={api.displayName} onDelete={() => onDelete(api)} />
+            </Box>
+          )}
+        </Stack>
+      </Box>
     </Card>
   );
 }

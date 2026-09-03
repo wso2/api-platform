@@ -120,21 +120,13 @@ describe('ApiListPage', () => {
     expect(screen.getByText('Inventory API')).toBeInTheDocument();
   });
 
-  it('defaults to newest-first and sends the chosen order to the server', async () => {
+  it('requests APIs newest-first', async () => {
     server.use(collection('/rest-apis', apiFixtures, { record: requests }));
-    const { user } = renderPage();
+    renderPage();
 
     await screen.findByText('Orders API');
     expect(requests.last()?.params.get('sortBy')).toBe('createdAt');
     expect(requests.last()?.params.get('sortOrder')).toBe('desc');
-
-    await user.click(screen.getByRole('combobox', { name: 'Sort by' }));
-    await user.click(screen.getByRole('option', { name: 'Name (A–Z)' }));
-
-    await waitFor(() => {
-      expect(requests.last()?.params.get('sortBy')).toBe('name');
-      expect(requests.last()?.params.get('sortOrder')).toBe('asc');
-    });
   });
 
   it('requests the next page when the pagination control advances', async () => {
@@ -150,16 +142,20 @@ describe('ApiListPage', () => {
     expect(await screen.findByText('API 13')).toBeInTheDocument();
   });
 
-  it('returns to the first page when the sort order changes', async () => {
-    server.use(collection('/rest-apis', manyApis, { record: requests }));
+  it('returns to the first page when the search changes', async () => {
+    server.use(
+      collection('/rest-apis', manyApis, {
+        matches: matchesHandle,
+        record: requests,
+      }),
+    );
     const { user } = renderPage();
 
     await screen.findByText('API 1');
     await user.click(screen.getByRole('button', { name: /next page/i }));
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
 
-    await user.click(screen.getByRole('combobox', { name: 'Sort by' }));
-    await user.click(screen.getByRole('option', { name: 'Oldest first' }));
+    await user.type(screen.getByPlaceholderText('Search APIs'), 'api');
 
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('0'));
   });
@@ -240,7 +236,8 @@ describe('ApiListPage', () => {
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
     await screen.findByText('API 13');
 
-    await user.click(screen.getByRole('button', { name: 'Delete API 13' }));
+    await user.click(screen.getByRole('button', { name: 'More actions for API 13' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete API' }));
     const dialog = screen.getByRole('dialog');
     await user.type(within(dialog).getByRole('textbox'), 'API 13');
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));

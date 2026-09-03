@@ -21,13 +21,17 @@ import {
   Box,
   Chip,
   IconButton,
+  ListItemIcon,
+  Menu,
+  MenuItem,
   Stack,
   Tooltip,
   Typography,
   useTheme,
 } from '@wso2/oxygen-ui';
 import type { Theme } from '@wso2/oxygen-ui';
-import { Boxes, Clock, Globe, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Clock, Globe, Lock, MoreVertical, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { useState, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { relativeTime } from '@/utils/relativeTime';
@@ -41,15 +45,15 @@ import {
 } from '../../utils/restApiDisplay';
 
 const messages = defineMessages({
-  delete: {
-    id: 'apiCard.delete',
-    defaultMessage: 'Delete {apiName}',
-    description: 'Accessible label for deleting an API from API card',
+  deleteAction: {
+    id: 'apiCard.deleteAction',
+    defaultMessage: 'Delete API',
+    description: 'Delete action shown in an API card or row actions menu.',
   },
-  deleteTooltip: {
-    id: 'apiCard.deleteTooltip',
-    defaultMessage: 'Delete',
-    description: 'Tooltip on the delete button of an API card or list row.',
+  moreActions: {
+    id: 'apiCard.moreActions',
+    defaultMessage: 'More actions for {apiName}',
+    description: 'Accessible label for the API actions menu button.',
   },
   gatewayManagedLabel: {
     id: 'apiCard.gatewayManaged.label',
@@ -92,6 +96,25 @@ export function LifecycleChip({ status }: { status?: LifeCycleStatus }) {
       variant="outlined"
     />
   );
+}
+
+/** Compact dot-and-label lifecycle treatment used by overview cards and rows. */
+export function LifecycleStatusLabel({ status }: { status?: LifeCycleStatus }) {
+  const theme = useTheme();
+  const { color, label } = lifecycleMeta(status);
+  const main = tone(theme, color);
+
+  return (
+    <Stack alignItems="center" direction="row" spacing={0.75} sx={{ color: main }}>
+      <Box sx={{ bgcolor: main, borderRadius: '50%', height: 8, width: 8 }} />
+      <Typography variant="caption">{label}</Typography>
+    </Stack>
+  );
+}
+
+/** API kind shown as a quiet chip beside the version. */
+export function ApiKindChip({ kind }: { kind?: string }) {
+  return <Chip label={apiKindLabel(kind)} size="small" sx={metaChipSx} />;
 }
 
 /**
@@ -221,7 +244,7 @@ export function GatewayManagedChip() {
         icon={<Lock size={12} />}
         label={formatMessage(messages.gatewayManagedLabel)}
         size="small"
-        sx={{ flexShrink: 0 }}
+        sx={{ flexShrink: 0, height: 24, p: 0, width: 24 }}
         variant="outlined"
       />
     </Tooltip>
@@ -248,7 +271,13 @@ export const apiDescriptionSx = (lines: number) =>
  * When the API last changed. Renders the row/footer slot even with no
  * timestamp, so a card footer's space-between layout does not collapse.
  */
-export function UpdatedLabel({ timestamp }: { timestamp?: string }) {
+export function UpdatedLabel({
+  timestamp,
+  withPrefix = true,
+}: {
+  timestamp?: string;
+  withPrefix?: boolean;
+}) {
   return (
     <Stack
       alignItems="center"
@@ -258,12 +287,16 @@ export function UpdatedLabel({ timestamp }: { timestamp?: string }) {
     >
       {timestamp && (
         <>
-          <Clock size={16} />
+          {withPrefix && <Clock size={16} />}
           <Typography color="text.secondary" noWrap variant="caption">
-            <FormattedMessage
-              {...messages.updated}
-              values={{ relative: relativeTime(timestamp) }}
-            />
+            {withPrefix ? (
+              <FormattedMessage
+                {...messages.updated}
+                values={{ relative: relativeTime(timestamp) }}
+              />
+            ) : (
+              relativeTime(timestamp)
+            )}
           </Typography>
         </>
       )}
@@ -271,44 +304,46 @@ export function UpdatedLabel({ timestamp }: { timestamp?: string }) {
   );
 }
 
-/**
- * Marks the delete button so its container can reveal it on hover. One
- * constant, so `revealApiDeleteOnHoverSx` and the button it targets can never
- * drift apart.
- */
-const DELETE_CLASS = 'ApiDelete-button';
-
-/**
- * Spread onto whichever surface owns the hover — the card, or the list row.
- * `focus-within` is what keeps the hidden button keyboard-reachable.
- */
-export const revealApiDeleteOnHoverSx = {
-  [`&:hover .${DELETE_CLASS}, &:focus-within .${DELETE_CLASS}`]: { opacity: 1 },
-} as const;
-
-/** The one destructive action, hidden until its container is hovered. */
-export function DeleteApiButton({ apiName, onDelete }: { apiName?: string; onDelete: () => void }) {
+/** Compact actions menu shared by API cards and rows. */
+export function ApiActionsMenu({ apiName, onDelete }: { apiName?: string; onDelete: () => void }) {
   const { formatMessage } = useIntl();
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+
+  const openMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setAnchorEl(event.currentTarget);
+  };
+
+  const closeMenu = () => setAnchorEl(null);
 
   return (
-    <Tooltip title={formatMessage(messages.deleteTooltip)}>
+    <>
       <IconButton
-        aria-label={formatMessage(messages.delete, { apiName })}
-        className={DELETE_CLASS}
-        onClick={(event) => {
-          event.stopPropagation();
-          onDelete();
-        }}
+        aria-label={formatMessage(messages.moreActions, { apiName })}
+        onClick={openMenu}
         size="small"
-        sx={(theme) => ({
-          flexShrink: 0,
-          opacity: 0,
-          transition: theme.transitions.create(['opacity', 'color']),
-          '&:hover': { color: 'error.main' },
-        })}
+        sx={{ flexShrink: 0 }}
       >
-        <Trash2 size={18} />
+        <MoreVertical size={18} />
       </IconButton>
-    </Tooltip>
+      <Menu
+        anchorEl={anchorEl}
+        onClick={(event) => event.stopPropagation()}
+        onClose={closeMenu}
+        open={Boolean(anchorEl)}
+      >
+        <MenuItem
+          onClick={() => {
+            closeMenu();
+            onDelete();
+          }}
+        >
+          <ListItemIcon>
+            <Trash2 size={18} />
+          </ListItemIcon>
+          <FormattedMessage {...messages.deleteAction} />
+        </MenuItem>
+      </Menu>
+    </>
   );
 }

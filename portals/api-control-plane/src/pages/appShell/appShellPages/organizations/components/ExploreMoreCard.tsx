@@ -17,7 +17,7 @@
  */
 
 import { Box, Card, CardContent, Grid, Stack, Typography, useTheme } from '@wso2/oxygen-ui';
-import { ArrowRight, BookOpen, Network, Server } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, BookOpen, Server, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 const DOCS_BASE = 'https://wso2.com/api-platform/docs';
@@ -123,7 +123,7 @@ export default function ExploreMoreCard() {
     {
       key: 'govern',
       title: intl.formatMessage(messages.governTitle),
-      icon: Network,
+      icon: ShieldCheck,
       links: [
         {
           label: intl.formatMessage(messages.governGovernance),
@@ -148,7 +148,7 @@ export default function ExploreMoreCard() {
             {sections.map((section) => {
               const Icon = section.icon;
               return (
-                <Grid key={section.key} size={{ xs: 12, md: 4 }}>
+                <Grid key={section.key} size={{ md: 4, xs: 12 }}>
                   <Stack spacing={1.2}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Icon size={24} color={theme.palette.primary.main} />
@@ -167,12 +167,12 @@ export default function ExploreMoreCard() {
                           target="_blank"
                           rel="noopener noreferrer"
                           sx={{
-                            display: 'flex',
                             alignItems: 'center',
-                            gap: 0.5,
                             color: 'text.secondary',
-                            textDecoration: 'none',
+                            display: 'flex',
                             fontSize: '0.82rem',
+                            gap: 0.5,
+                            textDecoration: 'none',
                             '&:hover': { color: 'primary.main' },
                           }}
                         >

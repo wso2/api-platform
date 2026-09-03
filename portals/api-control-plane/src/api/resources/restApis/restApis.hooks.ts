@@ -19,6 +19,7 @@
 import {
   keepPreviousData,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
@@ -75,7 +76,7 @@ export type RestApiListFilters = Omit<ListRestApisQuery, 'projectId'>;
  */
 export const useRestApis = (
   filters: RestApiListFilters = {},
-  overrides: { orgId?: string; projectId?: string } = {}
+  overrides: { orgId?: string; projectId?: string } = {},
 ) => {
   const { org, projectId } = useApiScope(overrides);
 
@@ -86,11 +87,40 @@ export const useRestApis = (
   });
 };
 
-/** A single REST API by handle. */
-export const useRestApi = (
-  restApiId: string | undefined,
-  overrides: { orgId?: string } = {}
+/**
+ * REST API totals for several projects in one organization.
+ *
+ * The list endpoint is project-scoped, so an organization overview has to
+ * request the first item from each project and read the authoritative
+ * `pagination.total` value. Keeping this fan-out here prevents pages from
+ * reaching through the hook boundary or reimplementing query keys.
+ */
+export const useRestApiCounts = (
+  projectIds: readonly string[],
+  overrides: { orgId?: string } = {},
 ) => {
+  const { org } = useApiScope(overrides);
+  const queries = useQueries({
+    queries: projectIds.map((projectId) => ({
+      ...restApiQueries.list(org!, { limit: 1, offset: 0, projectId }),
+      enabled: Boolean(org),
+    })),
+  });
+
+  const counts = Object.fromEntries(
+    projectIds.map((projectId, index) => [projectId, queries[index]?.data?.pagination.total]),
+  );
+
+  return {
+    counts,
+    error: queries.find((query) => query.error)?.error,
+    isPending: queries.some((query) => query.isPending),
+    total: queries.reduce((sum, query) => sum + (query.data?.pagination.total ?? 0), 0),
+  };
+};
+
+/** A single REST API by handle. */
+export const useRestApi = (restApiId: string | undefined, overrides: { orgId?: string } = {}) => {
   const { org } = useApiScope(overrides);
 
   return useQuery({
@@ -220,7 +250,7 @@ const AVAILABILITY_PROBE_LIMIT = 100;
  */
 export const useRestApiIdAvailability = (
   candidateId: string | undefined,
-  overrides: { orgId?: string; projectId?: string } = {}
+  overrides: { orgId?: string; projectId?: string } = {},
 ) => {
   const { org, projectId } = useApiScope(overrides);
   const candidate = candidateId?.trim().toLowerCase() ?? '';
