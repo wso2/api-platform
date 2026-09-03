@@ -85,6 +85,8 @@ const (
 	FlagGatewayType            = "gateway-type"
 	FlagProjectID              = "project-id"
 	FlagEnvFile                = "env-file"
+	FlagExpiresInDuration      = "expires-in-duration"
+	FlagExpiresInUnit          = "expires-in-unit"
 )
 
 var shortFlags = map[string]string{
