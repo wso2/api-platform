@@ -17,8 +17,8 @@
  */
 
 import type { FC } from 'react';
-import { Box, IconButton, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { CircleAlert, CircleCheck, RefreshCw } from '@wso2/oxygen-ui-icons-react';
+import { Box, Chip, IconButton, Tooltip } from '@wso2/oxygen-ui';
+import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import type { ConfigPhase, ConfigStatus } from '../types';
 
 export type ConfigStatusBarProps = {
@@ -28,17 +28,21 @@ export type ConfigStatusBarProps = {
 };
 
 /**
- * The phase of the last configuration change. `applying` is the expected state
- * immediately after ANY write and can persist for minutes — it is not a
- * failure, and the `message` that often comes with it is prose, not an error.
+ * The phase of the last configuration change, as one chip beside the gateway
+ * name.
+ *
+ * `applying` is the expected state immediately after ANY write and can persist
+ * for minutes -- it is not a failure. The `message` that often accompanies it
+ * is deliberately NOT shown: it is prose of unbounded length, it pushed the
+ * form down the drawer, and the phase word is the part a reader acts on. It
+ * stays in the response for anyone reading the endpoint directly.
  */
-const PHASES: Record<
-  ConfigPhase,
-  { label: string; color: string; Icon: typeof CircleCheck }
-> = {
-  applying: { color: 'info.main', Icon: RefreshCw, label: 'Applying' },
-  failed: { color: 'error.main', Icon: CircleAlert, label: 'Failed' },
-  healthy: { color: 'success.main', Icon: CircleCheck, label: 'Healthy' },
+type ChipColor = 'default' | 'info' | 'error' | 'success';
+
+const PHASES: Record<ConfigPhase, { color: ChipColor; label: string }> = {
+  applying: { color: 'info', label: 'Applying' },
+  failed: { color: 'error', label: 'Failed' },
+  healthy: { color: 'success', label: 'Healthy' },
 };
 
 const ConfigStatusBar: FC<ConfigStatusBarProps> = ({
@@ -49,48 +53,32 @@ const ConfigStatusBar: FC<ConfigStatusBarProps> = ({
   // An unrecognised phase is a newer platform than this build; say the word it
   // sent rather than mislabelling it as healthy.
   const phase = PHASES[status.phase] ?? {
-    color: 'text.secondary',
-    Icon: CircleAlert,
+    color: 'default' as ChipColor,
     label: status.phase,
   };
 
   return (
-    <Box
-      sx={{
-        alignItems: 'center',
-        borderBottom: 1,
-        borderColor: 'divider',
-        display: 'flex',
-        gap: 1,
-        px: 3,
-        py: 1.25,
-      }}
-    >
-      <Box sx={{ color: phase.color, display: 'flex' }}>
-        <phase.Icon size={18} />
-      </Box>
-      <Typography sx={{ color: phase.color, fontWeight: 600 }} variant="body2">
-        {phase.label}
-      </Typography>
-      {status.message ? (
-        <Typography
-          color="text.secondary"
-          sx={{ flex: 1, minWidth: 0 }}
-          variant="body2"
-        >
-          {status.message}
-        </Typography>
-      ) : null}
+    <Box sx={{ alignItems: 'center', display: 'flex', gap: 0.5 }}>
+      <Chip
+        color={phase.color}
+        label={phase.label}
+        size="small"
+        sx={{ flexShrink: 0 }}
+        variant="outlined"
+      />
       <Tooltip title="Refresh status">
-        <IconButton
-          aria-label="Refresh status"
-          disabled={refreshing}
-          onClick={onRefresh}
-          size="small"
-          sx={{ ml: 'auto' }}
-        >
-          <RefreshCw size={16} />
-        </IconButton>
+        {/* Wrapped: a disabled button fires no events, so the tooltip on it
+            would never open while a refresh is in flight. */}
+        <Box component="span">
+          <IconButton
+            aria-label="Refresh status"
+            disabled={refreshing}
+            onClick={onRefresh}
+            size="small"
+          >
+            <RefreshCw size={14} />
+          </IconButton>
+        </Box>
       </Tooltip>
     </Box>
   );

@@ -67,60 +67,64 @@ export const characterCount = (text: string): number => [...text].length;
  * One value against one field declaration, or `null` when it passes.
  * `undefined` means the field was never edited and the stored value stands, so
  * there is nothing to check.
+ *
+ * Messages are FIELD-RELATIVE: they never name the setting path, because they
+ * render directly under the control whose label already says which setting this
+ * is. A path here would be both redundant and, for the deeper policy settings,
+ * longer than the message it prefixes.
  */
 export function validateFieldValue(
   field: EditableField,
   value: unknown
 ): string | null {
   if (value === undefined) return null;
-  const { path } = field;
 
   switch (field.type) {
     case 'enum': {
       const permitted = field.values ?? [];
       if (typeof value !== 'string' || !permitted.includes(value)) {
-        return `${path} must be one of ${permitted.join(', ')}`;
+        return `Must be one of ${permitted.join(', ')}`;
       }
       return null;
     }
 
     case 'boolean':
       // A string "yes" is a 400 — the widget must produce a real boolean.
-      return typeof value === 'boolean' ? null : `${path} must be true or false`;
+      return typeof value === 'boolean' ? null : 'Must be true or false';
 
     case 'integer': {
       if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
         // Also the guard for the `cost_scale_factor` ceiling of 1e12: a double
         // holds that exactly, but anything past 2^53 has silently stopped being
         // the number that was typed.
-        return `${path} must be a whole number`;
+        return 'Must be a whole number';
       }
       const low = boundInteger(field.min);
       const high = boundInteger(field.max);
       if ((low !== null && value < low) || (high !== null && value > high)) {
-        return `${path} must be between ${low} and ${high}`;
+        return `Must be between ${low} and ${high}`;
       }
       return null;
     }
 
     case 'quantity': {
-      const example = `${path} must be a quantity such as "500m" or "512Mi"`;
+      const example = 'Must be a quantity such as "500m" or "512Mi"';
       if (typeof value !== 'string') return example;
       const parsed = parseQuantity(value);
       if (parsed === null) return example;
       // Zero or negative is legal to Kubernetes and meaningless for a gateway;
       // a zero limit means "no limit", which the ceiling assumes away.
-      if (parsed <= 0) return `${path} must be greater than zero`;
+      if (parsed <= 0) return 'Must be greater than zero';
       const low = field.min === undefined ? null : parseQuantity(field.min);
       const high = field.max === undefined ? null : parseQuantity(field.max);
       if ((low !== null && parsed < low) || (high !== null && parsed > high)) {
-        return `${path} must be between ${field.min} and ${field.max}`;
+        return `Must be between ${field.min} and ${field.max}`;
       }
       return null;
     }
 
     case 'duration': {
-      const example = `${path} must be a duration such as "5m"`;
+      const example = 'Must be a duration such as "5m"';
       if (typeof value !== 'string') return example;
       const parsed = parseDurationSeconds(value);
       if (parsed === null) return example;
@@ -129,21 +133,21 @@ export function validateFieldValue(
       const high =
         field.max === undefined ? null : parseDurationSeconds(field.max);
       if ((low !== null && parsed < low) || (high !== null && parsed > high)) {
-        return `${path} must be between ${field.min} and ${field.max}`;
+        return `Must be between ${field.min} and ${field.max}`;
       }
       return null;
     }
 
     case 'string': {
-      if (typeof value !== 'string') return `${path} must be a string`;
+      if (typeof value !== 'string') return 'Must be a string';
       const length = characterCount(value);
       const low = boundInteger(field.min) ?? 0;
       const high = boundInteger(field.max);
       if (high !== null && (length < low || length > high)) {
-        return `${path} must be between ${low} and ${high} characters`;
+        return `Must be between ${low} and ${high} characters`;
       }
       if (UNRENDERABLE.test(value)) {
-        return `${path} must not contain control characters or line separators`;
+        return 'Must not contain control characters or line separators';
       }
       return null;
     }
@@ -217,9 +221,12 @@ export function validateConstraints(
     );
     if (comparison === null || comparison <= 0) continue;
 
-    const message =
-      constraint.message ??
-      `${constraint.path} must not exceed ${constraint.than}`;
+    // Names the OTHER field by its label, not its path: this message renders
+    // under a field whose own label is already on screen, so the only thing
+    // worth spelling out is the one it is being compared against.
+    const thanLabel =
+      fieldsByPath.get(constraint.than)?.label ?? constraint.than;
+    const message = constraint.message ?? `Must not exceed ${thanLabel}`;
     const edited = [constraint.path, constraint.than].filter(
       (path) => dirty[path] !== undefined
     );
@@ -290,4 +297,19 @@ export function fieldForServerMessage(
     if (best === null || path.length > best.length) best = path;
   }
   return best;
+}
+
+/**
+ * A server message with its leading setting path removed, so it reads like the
+ * client-side messages above when shown under the field it belongs to.
+ *
+ * The platform's own sentence is kept verbatim apart from that prefix — it is
+ * user-presentable prose and may say things this client cannot derive. Only the
+ * banner keeps the full text, where there is no field label to supply context.
+ */
+export function withoutPathPrefix(message: string, path: string): string {
+  if (!message.startsWith(path)) return message;
+  const rest = message.slice(path.length).trim();
+  if (rest === '') return message;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
 }

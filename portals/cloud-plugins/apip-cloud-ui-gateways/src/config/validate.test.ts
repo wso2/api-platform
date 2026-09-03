@@ -23,14 +23,17 @@ import {
   fieldForServerMessage,
   validateFieldValue,
   validateForm,
+  withoutPathPrefix,
 } from './validate';
 
 /*
  * Every expected message below is the sentence the PLATFORM returns for the
- * same value, taken from the rejection list that was run against a cluster on
- * 2026-08-30 (and the config_toml ones on 2026-08-31). That is the point of the
- * assertions: a user must read the same wording whichever side caught it, so a
- * drift here is a real defect even though the value is refused either way.
+ * same value -- taken from the rejection list run against a cluster on
+ * 2026-08-30 (and the config_toml ones on 2026-08-31) -- MINUS its leading
+ * setting path. A user must read the same wording whichever side caught it, so
+ * a drift in the words is still a real defect; only the path is dropped, and it
+ * is dropped on both sides (see `withoutPathPrefix` for the server's copy)
+ * because these render under a control whose label already names the setting.
  */
 
 const LOG_LEVEL: EditableField = {
@@ -81,6 +84,7 @@ const MEMORY_REQUEST: EditableField = {
 };
 
 const MEMORY_LIMIT: EditableField = {
+  label: 'Gateway controller memory limit',
   max: '8Gi',
   min: '128Mi',
   path: 'gateway.controller.deployment.resources.limits.memory',
@@ -101,7 +105,7 @@ describe('validateFieldValue', () => {
   it('names the permitted values for an enum', () => {
     expect(validateFieldValue(LOG_LEVEL, 'debug')).toBeNull();
     expect(validateFieldValue(LOG_LEVEL, 'trace')).toBe(
-      'gateway.config.controller.logging.level must be one of debug, info, warn, error'
+      'Must be one of debug, info, warn, error'
     );
   });
 
@@ -109,21 +113,21 @@ describe('validateFieldValue', () => {
     expect(validateFieldValue(ACCESS_LOGS, false)).toBeNull();
     // A literal "yes" is a 400 on the wire, so the widget must never send one.
     expect(validateFieldValue(ACCESS_LOGS, 'yes')).toBe(
-      'gateway.config.router.access_logs.enabled must be true or false'
+      'Must be true or false'
     );
   });
 
   it('bounds an integer, and reports the bound the platform declared', () => {
     expect(validateFieldValue(ROUTE_TIMEOUT, 60000)).toBeNull();
     expect(validateFieldValue(ROUTE_TIMEOUT, 999)).toBe(
-      'gateway.config.router.upstream.timeouts.route_timeout_ms must be between 1000 and 300000'
+      'Must be between 1000 and 300000'
     );
     expect(validateFieldValue(ROUTE_TIMEOUT, 300001)).not.toBeNull();
   });
 
   it('refuses a non-integer, an emptied input and a value past 2^53', () => {
     expect(validateFieldValue(ROUTE_TIMEOUT, 1500.5)).toBe(
-      'gateway.config.router.upstream.timeouts.route_timeout_ms must be a whole number'
+      'Must be a whole number'
     );
     // An emptied number input arrives as '' rather than 0, so it is refused
     // instead of silently saving a number nobody typed.
@@ -141,26 +145,26 @@ describe('validateFieldValue', () => {
   it('bounds a duration without normalising its spelling', () => {
     expect(validateFieldValue(CLEANUP, '5m')).toBeNull();
     expect(validateFieldValue(CLEANUP, '10s')).toBe(
-      'gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval must be between 30s and 1h'
+      'Must be between 30s and 1h'
     );
     expect(validateFieldValue(CLEANUP, 'soon')).toBe(
-      'gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval must be a duration such as "5m"'
+      'Must be a duration such as "5m"'
     );
   });
 
   it('bounds a quantity and refuses one that is not positive', () => {
     expect(validateFieldValue(CPU_REQUEST, '500m')).toBeNull();
     expect(validateFieldValue(CPU_REQUEST, '10m')).toBe(
-      'gateway.controller.deployment.resources.requests.cpu must be between 50m and 4'
+      'Must be between 50m and 4'
     );
     expect(validateFieldValue(CPU_REQUEST, '8')).not.toBeNull();
     // Zero is legal to Kubernetes and meaningless for a gateway; a zero limit
     // would mean "no limit", which the ceiling assumes away.
     expect(validateFieldValue(CPU_REQUEST, '0')).toBe(
-      'gateway.controller.deployment.resources.requests.cpu must be greater than zero'
+      'Must be greater than zero'
     );
     expect(validateFieldValue(CPU_REQUEST, 'lots')).toBe(
-      'gateway.controller.deployment.resources.requests.cpu must be a quantity such as "500m" or "512Mi"'
+      'Must be a quantity such as "500m" or "512Mi"'
     );
   });
 
@@ -168,7 +172,7 @@ describe('validateFieldValue', () => {
     const ascii = 'a'.repeat(8192);
     expect(validateFieldValue(CONFIG_TOML, ascii)).toBeNull();
     expect(validateFieldValue(CONFIG_TOML, `${ascii}a`)).toBe(
-      'gateway.config_toml must be between 0 and 8192 characters'
+      'Must be between 0 and 8192 characters'
     );
 
     // 8192 astral characters are 16384 UTF-16 units and 32768 bytes, and are
@@ -193,7 +197,7 @@ describe('validateFieldValue', () => {
     const lineSeparator = String.fromCharCode(0x2028);
     const paragraphSeparator = String.fromCharCode(0x2029);
     const refused =
-      'gateway.config_toml must not contain control characters or line separators';
+      'Must not contain control characters or line separators';
 
     for (const character of [
       nul,
@@ -216,7 +220,7 @@ describe('validateFieldValue', () => {
 
   it('refuses a non-string for the string field', () => {
     expect(validateFieldValue(CONFIG_TOML, 42)).toBe(
-      'gateway.config_toml must be a string'
+      'Must be a string'
     );
   });
 });
@@ -316,9 +320,57 @@ describe('validateForm', () => {
       [MEMORY_LIMIT.path]: 'not-a-quantity',
     });
     expect(Object.keys(errors)).toEqual([MEMORY_LIMIT.path]);
-    expect(errors[MEMORY_LIMIT.path]).toContain('must be a quantity');
+    expect(errors[MEMORY_LIMIT.path]).toContain('Must be a quantity');
+  });
+  it('names the compared field by its label when the platform sends no message', () => {
+    // The response usually carries its own `message`; when it does not, the
+    // fallback must still be readable under a field, which means the OTHER
+    // field's label rather than its path.
+    const config = configuration({
+      [MEMORY_LIMIT.path]: '256Mi',
+      [MEMORY_REQUEST.path]: '256Mi',
+    });
+    const errors = validateForm(
+      {
+        ...config,
+        constraints: [
+          {
+            path: MEMORY_REQUEST.path,
+            than: MEMORY_LIMIT.path,
+            type: 'notGreaterThan',
+          },
+        ],
+      },
+      { [MEMORY_REQUEST.path]: '512Mi' }
+    );
+
+    expect(errors[MEMORY_REQUEST.path]).toBe(
+      'Must not exceed Gateway controller memory limit'
+    );
   });
 });
+
+describe('withoutPathPrefix', () => {
+  const PATH = 'gateway.config.policy_configurations.ratelimit_v1.enabled';
+
+  it('drops the leading path and opens the remainder with a capital', () => {
+    expect(withoutPathPrefix(`${PATH} must be true or false`, PATH)).toBe(
+      'Must be true or false'
+    );
+  });
+
+  it('leaves a message that does not begin with the path alone', () => {
+    const message = 'The gateway is still applying an earlier change.';
+    expect(withoutPathPrefix(message, PATH)).toBe(message);
+  });
+
+  it('keeps a message that is nothing but the path', () => {
+    // Stripping would leave an empty helper line under the field, which says
+    // less than the odd-looking path does.
+    expect(withoutPathPrefix(PATH, PATH)).toBe(PATH);
+  });
+});
+
 
 describe('fieldForServerMessage', () => {
   const paths = [

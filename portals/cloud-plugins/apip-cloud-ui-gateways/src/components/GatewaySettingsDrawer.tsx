@@ -31,6 +31,7 @@ import { readConfiguration, writeConfiguration } from '../config/api';
 import {
   fieldForServerMessage,
   validateForm,
+  withoutPathPrefix,
   type FieldErrors,
 } from '../config/validate';
 import type { AIWorkspaceHostPort } from '../hostPort';
@@ -109,9 +110,18 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const patch = useMemo<ConfigValues>(() => {
     if (!config) return {};
     return Object.fromEntries(
-      Object.entries(drafts).filter(
-        ([path, value]) => value !== config.values[path]
-      )
+      Object.entries(drafts).filter(([path, value]) => {
+        // Typing into a field the platform carries NO value for and then
+        // clearing it again is not an edit. The stored value reads back
+        // `undefined` while an emptied input reads `''`, so a plain `!==`
+        // called that a change and left the form permanently dirty — with a
+        // validation error under a field the user had just put back the way
+        // they found it. There is no "unset" operation on the endpoint: an
+        // empty input on an unset field means the chart default still stands,
+        // which is exactly the state before the typing.
+        if (!(path in config.values)) return value !== '' && value !== undefined;
+        return value !== config.values[path];
+      })
     );
   }, [config, drafts]);
 
@@ -157,7 +167,10 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
         message,
         config.editable.map((field) => field.path)
       );
-      if (path) setServerErrors({ [path]: message });
+      // Under a field the path is dropped — the label already says which
+      // setting this is. The banner keeps the full sentence, having no label
+      // to lean on.
+      if (path) setServerErrors({ [path]: withoutPathPrefix(message, path) });
       else setSaveError(message);
     } finally {
       setSaving(false);
@@ -199,18 +212,31 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
               <X size={18} />
             </IconButton>
           </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {gateway.name}
-          </Typography>
+          <Box
+            sx={{
+              alignItems: 'center',
+              display: 'flex',
+              gap: 1,
+              mb: 2,
+              minHeight: 32,
+            }}
+          >
+            <Typography
+              color="text.secondary"
+              sx={{ flex: 1, minWidth: 0 }}
+              variant="body2"
+            >
+              {gateway.name}
+            </Typography>
+            {config ? (
+              <ConfigStatusBar
+                status={config.status}
+                refreshing={loading}
+                onRefresh={() => gatewayId && void load(gatewayId)}
+              />
+            ) : null}
+          </Box>
         </Box>
-
-        {config ? (
-          <ConfigStatusBar
-            status={config.status}
-            refreshing={loading}
-            onRefresh={() => gatewayId && void load(gatewayId)}
-          />
-        ) : null}
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 3 }}>
           {loading && !config ? (
