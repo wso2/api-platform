@@ -46,9 +46,9 @@ const GatewaysListRoute: FC<{ port: AIWorkspaceHostPort }> = ({ port }) => {
   const navigate = useNavigate();
   return (
     <GatewaysList
+      port={port}
       onAddClick={() => navigate('create')}
       onEditClick={(gatewayId) => navigate(`edit/${gatewayId}`)}
-      notify={port.notify}
     />
   );
 };

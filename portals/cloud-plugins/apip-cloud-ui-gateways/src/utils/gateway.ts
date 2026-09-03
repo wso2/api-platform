@@ -18,6 +18,12 @@
 
 import type { GatewayType } from '../types';
 
+const TYPE_LABEL: Record<GatewayType, string> = {
+  regular: 'API Gateway',
+  ai: 'AI Gateway',
+  event: 'Event Gateway',
+};
+
 export function gatewayTypeLabel(type: GatewayType): string {
-  return type === 'ai' ? 'AI Gateway' : 'Event Gateway';
+  return TYPE_LABEL[type];
 }

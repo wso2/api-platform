@@ -22,5 +22,5 @@ export { default as GatewaysList } from './GatewaysList';
 export type { GatewaysListProps } from './GatewaysList';
 export { default as GatewayForm } from './GatewayForm';
 export type { GatewayFormProps } from './GatewayForm';
-export type { AIWorkspaceHostPort, NotifySeverity } from './hostPort';
+export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity } from './hostPort';
 export type { Environment, Gateway, GatewayInput, GatewayStatus, GatewayType } from './types';

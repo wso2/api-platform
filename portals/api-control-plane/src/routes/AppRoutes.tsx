@@ -31,13 +31,17 @@ import {
 import { ConsoleScopeProvider } from '@/scope/ConsoleScopeProvider';
 import AppLayout from '@/pages/appShell/AppLayout';
 import {
+  API_CONTROL_PLANE_GATEWAYS_SLOT,
   extensionScopedPaths,
   isSidebarExtension,
   settingsTabExtensions,
+  type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
+  type ApiControlPlanePageOverride,
 } from '@/extensions';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
+import { Hideable, useSlot } from '@/slots';
 import { ProtectedRoute } from './ProtectedRoute';
 import { apiScopedPaths, projectScopedPaths, routes } from './paths';
 
@@ -174,7 +178,7 @@ const GeneralSettingsPage = lazy(() =>
 );
 
 export type AppRoutesProps = {
-  extensions?: readonly ApiControlPlaneExtension[];
+  extensions?: readonly ApiControlPlaneCloudEntry[];
 };
 
 /**
@@ -196,6 +200,38 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
 function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) {
   const port = usePort();
   return <>{extension.render(port)}</>;
+}
+
+/**
+ * Renders a cloud-registered replacement for the built-in API Gateways pages
+ * when one is registered against `API_CONTROL_PLANE_GATEWAYS_SLOT`, otherwise
+ * the built-in list/create/detail pages — suppressible on their own via
+ * `Hideable`, per `slots/index.tsx`'s Slot-adds/Hideable-suppresses split.
+ *
+ * The built-ins are re-nested one level down rather than deleted, and
+ * `routes.gateways()`, `routes.newGateway()` and `routes.gateway()` keep the
+ * exact strings they had, so every link, the nav matcher and any bookmarked
+ * URL answer the same as before whenever no override is registered.
+ *
+ * The mount path ends in `/*` because an override renders its own `<Routes>`
+ * below this point; without it the override's index route would render while
+ * every path under it fell through to the 404.
+ */
+function GatewaysRoute() {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlanePageOverride>(
+    API_CONTROL_PLANE_GATEWAYS_SLOT
+  );
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={API_CONTROL_PLANE_GATEWAYS_SLOT}>
+      <Routes>
+        <Route index element={<GatewaysPage />} />
+        <Route path="new" element={<GatewayCreatePage />} />
+        <Route path=":gatewayId" element={<GatewayDetailPage />} />
+      </Routes>
+    </Hideable>
+  );
 }
 
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
@@ -245,9 +281,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
           <Route path={routes.organizationHome()} element={<OrganizationHomePage />} />
           <Route path={routes.projects()} element={<ProjectListPage />} />
-          <Route path={routes.gateways()} element={<GatewaysPage />} />
-          <Route path={routes.newGateway()} element={<GatewayCreatePage />} />
-          <Route path={routes.gateway()} element={<GatewayDetailPage />} />
+          <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />
           {/*
             Project and API overview take a single fully-scoped path each: they
             are the deeper tiers of the sidebar's Overview item, which degrades

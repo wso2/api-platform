@@ -10,12 +10,15 @@
 import { Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
+import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
+  API_CONTROL_PLANE_GATEWAYS_SLOT,
   settingsTabSlot,
+  type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
@@ -44,8 +47,16 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * scope, so each is gated by `isVisible` on whether a project is in scope, and
  * exactly one is shown at a time. Data flows through the host port's `apiFetch`
  * to the platform-api REST endpoints.
+ *
+ * `gateways` is a page override rather than a new nav item: it registers
+ * against the host's `page.gateways` slot to replace what renders behind the
+ * existing, built-in "API Gateways" sidebar entry -- see `GatewaysRoute` in
+ * `api-control-plane/src/routes/AppRoutes.tsx`. The console therefore shows
+ * one gateways page, not two, and nothing under
+ * `api-control-plane/src/pages/appShell/appShellPages/gateways` is touched:
+ * unregister this entry and all three built-in routes answer again.
  */
-export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
+export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
     id: 'environments',
     version: '0.1.0',
@@ -89,6 +100,18 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         icon: <Workflow size={20} />,
         level: 'project',
         isVisible: (scope) => scope.isProjectScope,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'gateways',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'gateways',
+        slot: API_CONTROL_PLANE_GATEWAYS_SLOT,
+        order: 0,
+        render: (port) => <GatewaysFeature port={port} />,
       },
     ],
   }),

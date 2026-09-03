@@ -16,8 +16,9 @@
  * under the License.
  */
 
-import { useMemo, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
 import {
+  Alert,
   Avatar,
   Box,
   Button,
@@ -45,17 +46,18 @@ import {
 } from '@wso2/oxygen-ui';
 import { Edit, Plus, Search, Settings, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
-import { deleteGateway, listEnvironments, listGateways } from './mocks/gatewaysStore';
+import { listGateways as listRealGateways } from './data/gatewaysData';
+import { deleteGateway, listGateways } from './mocks/gatewaysStore';
 import { relativeTime } from './utils/time';
 import { gatewayTypeLabel } from './utils/gateway';
 import NoGatewaysImage from './assets/images/NoGW.svg';
-import type { NotifySeverity } from './hostPort';
+import type { AIWorkspaceHostPort } from './hostPort';
 import type { Gateway } from './types';
 
 export type GatewaysListProps = {
+  port: AIWorkspaceHostPort;
   onAddClick: () => void;
   onEditClick: (gatewayId: string) => void;
-  notify?: (message: string, severity?: NotifySeverity) => void;
 };
 
 function truncateText(text: string, maxLength: number): string {
@@ -63,12 +65,32 @@ function truncateText(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength).trim()}…`;
 }
 
-const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }) => {
-  const [gateways, setGateways] = useState<Gateway[]>(() => listGateways());
-  const [environments] = useState(() => listEnvironments());
+const GatewaysList: FC<GatewaysListProps> = ({ port, onAddClick, onEditClick }) => {
+  const { apiFetch, notify } = port;
+  const [gateways, setGateways] = useState<Gateway[]>(() => (apiFetch ? [] : listGateways()));
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
+
+  // Real gateways where the host's Port can reach platform-api (the console);
+  // the in-memory store otherwise, which is what the AI Workspace runs on.
+  const load = useCallback(async () => {
+    if (!apiFetch) {
+      setGateways(listGateways());
+      return;
+    }
+    try {
+      setGateways(await listRealGateways(apiFetch));
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Gateways could not be loaded.');
+    }
+  }, [apiFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const filteredGateways = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -81,7 +103,7 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
   const handleDeleteConfirm = () => {
     if (!deleteTarget) return;
     deleteGateway(deleteTarget.id);
-    setGateways(listGateways());
+    void load();
     notify?.(`Gateway "${deleteTarget.name}" deleted.`, 'success');
     setDeleteTarget(null);
   };
@@ -105,6 +127,21 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
             </Stack>
           </Box>
         </Grid>
+
+        {loadError ? (
+          <Grid size={{ xs: 12 }}>
+            <Alert
+              severity="error"
+              action={
+                <Button size="small" onClick={() => void load()}>
+                  Retry
+                </Button>
+              }
+            >
+              {loadError}
+            </Alert>
+          </Grid>
+        ) : null}
 
         {gateways.length === 0 ? (
           <Grid size={{ xs: 12 }}>
@@ -213,13 +250,15 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
                               <IconButton size="small" onClick={() => onEditClick(gateway.id)} aria-label={`Edit ${gateway.name}`}>
                                 <Edit size={16} />
                               </IconButton>
-                              <IconButton
-                                size="small"
-                                onClick={() => setSettingsGateway(gateway)}
-                                aria-label={`Configure ${gateway.name}`}
-                              >
-                                <Settings size={16} />
-                              </IconButton>
+                              {apiFetch && gateway.isManaged ? (
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setSettingsGateway(gateway)}
+                                  aria-label={`Configure ${gateway.name}`}
+                                >
+                                  <Settings size={16} />
+                                </IconButton>
+                              ) : null}
                               <IconButton
                                 size="small"
                                 color="error"
@@ -257,10 +296,11 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
       </Dialog>
 
       <GatewaySettingsDrawer
+        key={settingsGateway?.id ?? 'none'}
         open={settingsGateway !== null}
         onClose={() => setSettingsGateway(null)}
         gateway={settingsGateway}
-        environments={environments}
+        port={port}
       />
     </PageContent>
   );
