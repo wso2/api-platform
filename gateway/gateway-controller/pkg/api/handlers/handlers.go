@@ -44,6 +44,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -54,8 +55,10 @@ import (
 // APIServer implements the generated ServerInterface
 type APIServer struct {
 	*RestAPIHandler // embedded — promotes CreateRestAPI, ListRestAPIs, GetRestAPIById, UpdateRestAPI, DeleteRestAPI
+	*AgentHandler   // embedded — promotes CreateAgent, ListAgents, GetAgentById, UpdateAgent, DeleteAgent
 
 	restAPIService              *restapi.RestAPIService
+	agentService                *agent.AgentService
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -100,6 +103,7 @@ func NewAPIServer(
 	secretService *secrets.SecretService,
 	restAPIService *restapi.RestAPIService,
 	httpClient *http.Client,
+	agentService *agent.AgentService,
 ) (*APIServer, error) {
 	if db == nil {
 		panic("APIServer requires non-nil storage")
@@ -157,6 +161,9 @@ func NewAPIServer(
 	pushEnabled := systemConfig.Controller.ControlPlane.DeploymentSyncEnabled
 	server.mcpDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
+
+	server.agentService = agentService
+	server.AgentHandler = NewAgentHandler(agentService, logger)
 
 	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
@@ -300,6 +307,8 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 		envelopeKey = "mcpProxies"
 	case "WebSubApi":
 		envelopeKey = "websubApis"
+	case string(api.AgentConfigurationKindAgent):
+		envelopeKey = "agents"
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
@@ -373,7 +382,7 @@ func (s *APIServer) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonBytes, err := json.Marshal(*response)
+	redacted, err := s.redactConfigDump(response)
 	if err != nil {
 		log.Error("Failed to marshal configuration dump", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
@@ -383,16 +392,38 @@ func (s *APIServer) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sensitiveValues := s.store.GetAllSensitiveValues()
-	redacted := redact.Redact(string(jsonBytes), sensitiveValues)
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(redacted)) //nolint:errcheck
+	w.Write(redacted) //nolint:errcheck
 	log.Info("Configuration dump retrieved successfully",
 		slog.Int("apis", len(*response.Apis)),
 		slog.Int("policies", len(*response.Policies)),
 		slog.Int("certificates", len(*response.Certificates)))
+}
+
+// ConfigDumpJSON builds the configuration dump and returns it as JSON with every
+// resolved secret value redacted.
+//
+// The dump serves cfg.Configuration, which is the *rendered* configuration — a
+// `{{ secret "..." }}` in an upstream credential appears there as the plaintext
+// it resolved to. Redaction is therefore not cosmetic, and it has to happen on
+// every route that serves this payload, which is why both the management API and
+// the admin server go through here rather than marshalling the response
+// themselves.
+func (s *APIServer) ConfigDumpJSON(log *slog.Logger) ([]byte, error) {
+	response, err := s.BuildConfigDumpResponse(log)
+	if err != nil {
+		return nil, err
+	}
+	return s.redactConfigDump(response)
+}
+
+func (s *APIServer) redactConfigDump(response *adminapi.ConfigDumpResponse) ([]byte, error) {
+	jsonBytes, err := json.Marshal(*response)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(redact.Redact(string(jsonBytes), s.store.GetAllSensitiveValues())), nil
 }
 
 // BuildConfigDumpResponse builds the complete configuration dump response payload.
