@@ -27,8 +27,8 @@ const (
 	APIKeyCmdExample = `# List API keys for a GraphQL API
 ap gateway graphql-api api-key list --id countries-graphql-api
 
-# Generate a new API key from a CR file
-ap gateway graphql-api api-key create --file api-key.yaml`
+# Generate a new API key with an auto-generated name
+ap gateway graphql-api api-key create --id countries-graphql-api`
 )
 
 // APIKeyCmd represents the gateway GraphQL API api-key command group. API keys
