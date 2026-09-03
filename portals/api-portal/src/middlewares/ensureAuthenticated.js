@@ -76,6 +76,13 @@ function enforceSecurity(scope) {
             if (!errors.isEmpty()) {
                 return res.status(400).json(util.getErrors(errors));
             }
+            // Portal isolation — same guard as authResolver/ensureAuthenticated.
+            if (req.isAuthenticated && req.isAuthenticated()) {
+                if (!req.session?.portalId || req.session.portalId !== orgContext.getPortalId()) {
+                    logger.warn('Rejected cross-portal session', { operation: 'enforceSecurity' });
+                    return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
+                }
+            }
             // Local auth users: validate dp:* scope from platform JWT
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 const platformToken = req.user[constants.ACCESS_TOKEN];

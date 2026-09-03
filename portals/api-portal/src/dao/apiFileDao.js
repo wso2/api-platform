@@ -29,9 +29,9 @@ const API_METADATA_TABLE = 'api_metadata';
 // Every content row is tenant-scoped through the API it belongs to — this
 // correlated EXISTS clause (not a JOIN alias, which sqlite's UPDATE grammar
 // doesn't support portably) is appended to UPDATE/DELETE statements that need
-// to verify org ownership. Requires org_uuid as the LAST bind param.
+// to verify org ownership. Requires org_uuid then getPortalId() as the last two bind params.
 const TENANT_SCOPE_EXISTS =
-    `EXISTS (SELECT 1 FROM ${API_METADATA_TABLE} m WHERE m.uuid = ${CONTENT_TABLE}.api_uuid AND m.org_uuid = ? AND m.portal_id = ${CONTENT_TABLE}.portal_id)`;
+    `EXISTS (SELECT 1 FROM ${API_METADATA_TABLE} m WHERE m.uuid = ${CONTENT_TABLE}.api_uuid AND m.org_uuid = ? AND m.portal_id = ${CONTENT_TABLE}.portal_id AND m.portal_id = ?)`;
 
 const store = async (apiFile, fileName, apiId, type, createdBy, t, key) => {
     const exec = t || db;
@@ -93,8 +93,8 @@ const getByType = async (type, orgId, apiId, t) => {
 const getByKey = async (key, apiId, t) => {
     const exec = t || db;
     return exec.queryOne(
-        `SELECT * FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND lookup_key = ?`,
-        [apiId, constants.DOC_TYPES.IMAGES, key]
+        `SELECT * FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND lookup_key = ? AND portal_id = ?`,
+        [apiId, constants.DOC_TYPES.IMAGES, key, getPortalId()]
     );
 };
 
@@ -135,7 +135,7 @@ const upsertMany = async (files, apiId, orgId, updatedBy, t) => {
                  WHERE api_uuid = ? AND file_name = ? AND type = ? AND ${TENANT_SCOPE_EXISTS}`,
                 [
                     toBlobBuffer(file.content), file.fileName, file.key ?? existing.lookup_key, updatedBy, updatedAt,
-                    apiId, existing.file_name, existing.type, orgId,
+                    apiId, existing.file_name, existing.type, orgId, getPortalId(),
                 ]
             );
             if (!rowCount) {
@@ -179,7 +179,7 @@ const upsert = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
         `UPDATE ${CONTENT_TABLE}
          SET file_content = ?, file_name = ?, lookup_key = ?, updated_by = ?, updated_at = ?
          WHERE api_uuid = ? AND type = ? AND ${TENANT_SCOPE_EXISTS}`,
-        [content, fileName, key ?? existing.lookup_key, updatedBy, updatedAt, apiId, type, orgId]
+        [content, fileName, key ?? existing.lookup_key, updatedBy, updatedAt, apiId, type, orgId, getPortalId()]
     );
     return rowCount;
 };
@@ -208,7 +208,7 @@ const update = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
         `UPDATE ${CONTENT_TABLE}
          SET file_content = ?, file_name = ?, lookup_key = ?, updated_by = ?, updated_at = ?
          WHERE api_uuid = ? AND file_name = ? AND type = ? AND ${TENANT_SCOPE_EXISTS}`,
-        [content, fileName, key ?? existing.lookup_key, updatedBy, updatedAt, apiId, fileName, type, orgId]
+        [content, fileName, key ?? existing.lookup_key, updatedBy, updatedAt, apiId, fileName, type, orgId, getPortalId()]
     );
     return rowCount;
 };

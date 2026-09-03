@@ -71,7 +71,7 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
     // call an explicit DAO update instead.
     row.save = async (opts) => {
         const saveExec = (opts && opts.transaction) || exec;
-        await saveExec.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`, [row.status, row.uuid]);
+        await saveExec.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`, [row.status, row.uuid, portalId]);
         return row;
     };
 
@@ -135,8 +135,8 @@ async function claimPending(batchSize, orgUuid) {
         const ids = events.map((e) => e.uuid);
         const placeholders = ids.map(() => '?').join(', ');
         await tx.execute(
-            `UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid IN (${placeholders})`,
-            ['DISPATCHED', ...ids]
+            `UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid IN (${placeholders}) AND portal_id = ?`,
+            ['DISPATCHED', ...ids, getPortalId()]
         );
         return events.map(parseEventRow);
     });
@@ -182,8 +182,8 @@ async function claimDueDeliveries(batchSize, orgUuid) {
         const ids = rows.map((r) => r.uuid);
         const placeholders = ids.map(() => '?').join(', ');
         await tx.execute(
-            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_attempt_at = ? WHERE uuid IN (${placeholders})`,
-            ['IN_FLIGHT', new Date(), ...ids]
+            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_attempt_at = ? WHERE uuid IN (${placeholders}) AND portal_id = ?`,
+            ['IN_FLIGHT', new Date(), ...ids, getPortalId()]
         );
         return rows.map(parseDeliveryRow);
     });
@@ -194,10 +194,10 @@ async function claimDueDeliveries(batchSize, orgUuid) {
  */
 async function markDelivered(deliveryId, httpStatus) {
     await db.execute(
-        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, delivered_at = ? WHERE uuid = ?`,
-        ['DELIVERED', httpStatus, new Date(), deliveryId]
+        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, delivered_at = ? WHERE uuid = ? AND portal_id = ?`,
+        ['DELIVERED', httpStatus, new Date(), deliveryId, getPortalId()]
     );
-    const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ?`, [deliveryId]);
+    const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ? AND portal_id = ?`, [deliveryId, getPortalId()]);
     await reconcile(parseDeliveryRow(delivery));
 }
 
@@ -206,10 +206,10 @@ async function markDelivered(deliveryId, httpStatus) {
  */
 async function markFailed(deliveryId, { httpStatus, error }) {
     await db.execute(
-        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, last_error = ? WHERE uuid = ?`,
-        ['FAILED', httpStatus ?? null, error ? String(error).slice(0, 1000) : null, deliveryId]
+        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, last_error = ? WHERE uuid = ? AND portal_id = ?`,
+        ['FAILED', httpStatus ?? null, error ? String(error).slice(0, 1000) : null, deliveryId, getPortalId()]
     );
-    const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ?`, [deliveryId]);
+    const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ? AND portal_id = ?`, [deliveryId, getPortalId()]);
     await reconcile(parseDeliveryRow(delivery));
 }
 
@@ -225,8 +225,8 @@ async function reconcile(delivery) {
     if (!terminal) return;
     const allDelivered = all.every((d) => d.status === 'DELIVERED');
     await db.execute(
-        `UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`,
-        [allDelivered ? 'ALL_DELIVERED' : 'FAILED', delivery.event_uuid]
+        `UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`,
+        [allDelivered ? 'ALL_DELIVERED' : 'FAILED', delivery.event_uuid, getPortalId()]
     );
 }
 
@@ -277,7 +277,7 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
  * Admin: get a single event with all delivery details.
  */
 async function get(eventId) {
-    const event = await db.queryOne(`SELECT * FROM ${EVENTS_TABLE} WHERE uuid = ?`, [eventId]);
+    const event = await db.queryOne(`SELECT * FROM ${EVENTS_TABLE} WHERE uuid = ? AND portal_id = ?`, [eventId, getPortalId()]);
     if (!event) return null;
     const deliveries = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [eventId]);
     return parseEventRow({ ...event, event_deliveries: deliveries.map(parseDeliveryRow) });

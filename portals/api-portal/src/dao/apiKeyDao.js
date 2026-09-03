@@ -51,8 +51,8 @@ async function attachAssociations(exec, keys) {
     const apiIds = [...new Set(keys.map((k) => k.api_uuid))];
     const metadataRows = apiIds.length
         ? await exec.query(
-            `SELECT uuid, name, version, handle, ref_id, type FROM ${API_METADATA_TABLE} WHERE uuid IN (${apiIds.map(() => '?').join(', ')})`,
-            apiIds
+            `SELECT uuid, name, version, handle, ref_id, type FROM ${API_METADATA_TABLE} WHERE uuid IN (${apiIds.map(() => '?').join(', ')}) AND portal_id = ?`,
+            [...apiIds, getPortalId()]
         )
         : [];
     const metadataByUuid = indexBy(metadataRows, 'uuid');
@@ -60,8 +60,8 @@ async function attachAssociations(exec, keys) {
     const keyIds = keys.map((k) => k.uuid);
     const mappingRows = keyIds.length
         ? await exec.query(
-            `SELECT * FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid IN (${keyIds.map(() => '?').join(', ')})`,
-            keyIds
+            `SELECT * FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid IN (${keyIds.map(() => '?').join(', ')}) AND portal_id = ?`,
+            [...keyIds, getPortalId()]
         )
         : [];
     const mappingByKeyUuid = indexBy(mappingRows, 'key_uuid');
@@ -69,8 +69,8 @@ async function attachAssociations(exec, keys) {
     const appIds = [...new Set(mappingRows.map((m) => m.app_uuid))];
     const appRows = appIds.length
         ? await exec.query(
-            `SELECT uuid, display_name, handle FROM ${APPLICATIONS_TABLE} WHERE uuid IN (${appIds.map(() => '?').join(', ')})`,
-            appIds
+            `SELECT uuid, display_name, handle FROM ${APPLICATIONS_TABLE} WHERE uuid IN (${appIds.map(() => '?').join(', ')}) AND portal_id = ?`,
+            [...appIds, getPortalId()]
         )
         : [];
     const appByUuid = indexBy(appRows, 'uuid');

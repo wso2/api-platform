@@ -80,8 +80,8 @@ async function attachApiAndPlan(subs) {
     if (apiIds.length > 0) {
         const placeholders = apiIds.map(() => '?').join(', ');
         const apis = await db.query(
-            `SELECT ${API_METADATA_COLUMNS} FROM ${API_METADATA_TABLE} WHERE uuid IN (${placeholders})`,
-            apiIds
+            `SELECT ${API_METADATA_COLUMNS} FROM ${API_METADATA_TABLE} WHERE uuid IN (${placeholders}) AND portal_id = ?`,
+            [...apiIds, getPortalId()]
         );
         apiByUuid = indexBy(apis, 'uuid');
     }
@@ -90,8 +90,8 @@ async function attachApiAndPlan(subs) {
     if (planIds.length > 0) {
         const placeholders = planIds.map(() => '?').join(', ');
         const plans = await db.query(
-            `SELECT ${SUBSCRIPTION_PLAN_COLUMNS} FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid IN (${placeholders})`,
-            planIds
+            `SELECT ${SUBSCRIPTION_PLAN_COLUMNS} FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid IN (${placeholders}) AND portal_id = ?`,
+            [...planIds, getPortalId()]
         );
         planByUuid = indexBy(plans, 'uuid');
     }

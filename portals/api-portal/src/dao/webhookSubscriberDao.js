@@ -184,13 +184,13 @@ const get = async (orgId, subscriberHandle) => {
 };
 
 /**
- * Get a single webhook subscriber by UUID only, without scoping to an org or a portal.
- * UUID is a globally unique UUID, so this is safe.
+ * Get a single webhook subscriber by UUID only, without scoping to an org.
  * Used by the delivery worker, which only has the subscriber UUID (from the
- * delivery row) and not the org UUID in scope.
+ * delivery row) and not the org UUID in scope. portal_id is still included
+ * so the query can use the composite PK (portal_id, uuid) index.
  */
 const getById = async (subscriberId) => {
-    const sub = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [subscriberId]);
+    const sub = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ? AND portal_id = ?`, [subscriberId, getPortalId()]);
     if (!sub) {
         throw new NotFoundError('Webhook subscriber not found');
     }

@@ -279,16 +279,22 @@ async function resolvePortalOrg(req) {
  */
 async function authResolver(req, res, next) {
     try {
+        // Portal isolation: any session-authenticated request must have been issued by this
+        // portal's login flow.
+        if (req.isAuthenticated && req.isAuthenticated()) {
+            if (!req.session?.portalId || req.session.portalId !== orgContext.getPortalId()) {
+                logger.warn('Rejected cross-portal session', { operation: 'authResolver' });
+                const err = new Error('Forbidden');
+                err.status = 403;
+                return next(err);
+            }
+        }
+
         // 1. Local auth users (platform JWT in session, no IdP configured).
         // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
         // sessions, so resolveScopedOrg works via the HANDLE lookup in orgDao.getId.
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && config.auth.mode !== 'idp') {
-            if (!req.session?.portalId || req.session.portalId !== orgContext.getPortalId()) {
-                const err = new Error('Forbidden');
-                err.status = 403;
-                return next(err);
-            }
             const platformToken = req.user[constants.ACCESS_TOKEN];
             const claims = platformToken ? decodePlatformJwtClaims(platformToken) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
@@ -329,11 +335,6 @@ async function authResolver(req, res, next) {
         // derive dp:* scopes, so the operation-level check is enforced here instead of
         // bypassed — that is the gap role mode exists to close.
         if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.auth.mode === 'idp') {
-            if (!req.session?.portalId || req.session.portalId !== orgContext.getPortalId()) {
-                const err = new Error('Forbidden');
-                err.status = 403;
-                return next(err);
-            }
             // The session's org claim is populated at login from
             // config.auth.claimMappings.organization (see passportConfig) and stored
             // under ORGANIZATION_CLAIM. Resolve req.orgId from it directly — do NOT

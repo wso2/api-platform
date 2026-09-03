@@ -211,8 +211,8 @@ const deleteMappingsByIds = async (orgId, mappingIds, t) => {
 
     const ownedPlaceholders = ownedIds.map(() => '?').join(', ');
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${KEY_MAPPING_TABLE} WHERE uuid IN (${ownedPlaceholders})`,
-        ownedIds
+        `DELETE FROM ${KEY_MAPPING_TABLE} WHERE uuid IN (${ownedPlaceholders}) AND portal_id = ?`,
+        [...ownedIds, getPortalId()]
     );
     return rowCount;
 };

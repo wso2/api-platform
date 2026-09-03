@@ -216,6 +216,9 @@ const findOtherOrgClaimingIdentifier = async (value, excludeUuid, t) => {
 // NOT NULL), so we nullify them here before deleting the org row.
 // Tables with ON DELETE CASCADE (audit, user_organization_mappings, and the
 // *_mappings join tables) are left to the database to handle.
+
+// NOTE: This only removes the current portal's dependents.
+// Other portals in the same org are unaffected.
 const deleteOrgDependents = async (orgUuid, t) => {
     const exec = t || db;
 
@@ -259,8 +262,6 @@ const deleteOrgDependents = async (orgUuid, t) => {
     await exec.execute('DELETE FROM key_managers WHERE org_uuid = ?', [orgUuid]);
 
     await exec.execute('DELETE FROM api_workflows WHERE org_uuid = ?', [orgUuid]);
-    // This method is not scoped by portal_id: this is an org-level deletion that
-    // removes all assets belonging to the org across every portal.
     await exec.execute(`DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ?`, [orgUuid]);
     // view_label_mappings/api_label_mappings cascade automatically from
     // views/labels ON DELETE CASCADE.
@@ -270,12 +271,14 @@ const deleteOrgDependents = async (orgUuid, t) => {
     await exec.execute('DELETE FROM webhook_subscribers WHERE org_uuid = ?', [orgUuid]);
 };
 
+// NOTE: Removes current portal and all its dependents. In a multi-portal scenario
+// the same logical org (same handle) exists as a separate row per portal in the organizations table,
+// each with a distinct UUID, so this only removes the current portal.
+// Other portals inthe same org are unaffected.
 const deleteOrg = async (orgId, t) => {
     const exec = t || db;
     const existing = await get(orgId, t);
     await deleteOrgDependents(existing.uuid, t);
-    // Since this is org deletion without any consideration of its portals
-    // portal_id is not included in the WHERE clause
     const { rowCount } = await exec.execute(`DELETE FROM ${ORG_TABLE} WHERE uuid = ?`, [existing.uuid]);
     if (rowCount < 1) {
         throw new NotFoundError('Organization not found');

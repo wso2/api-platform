@@ -194,13 +194,11 @@ function resetCache() {
  * config.organization.portalId is populated by the config.toml template:
  *   portal_id = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "portal_id" }}'
  *
- * so env var resolution and the sentinel fallback are already handled before this
- * function runs — mirroring how getHandle() reads config.organization.handle without
- * separately checking process.env.APIP_AP_ORGANIZATION_HANDLE.
- *
- * Synchronous: env vars and config are stable after startup, so no await is needed
- * and every DAO method can call this inline. Never accept a portalId from request
- * input — that is the same IDOR class as accepting org_id from the request.
+ * NOTE: Every INSERT into a portal-scoped table MUST supply portal_id from
+ * getPortalId() explicitly. If a row is ever written without it, it silently
+ * falls back to its DEFAULT value 'portal_id' and if the configured
+ * organization.portal_id for this deployment resolves to anything else,
+ * that row becomes unreachable to every portal-scoped query.
  *
  * @returns {string}
  */
