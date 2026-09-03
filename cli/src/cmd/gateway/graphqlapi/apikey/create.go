@@ -31,40 +31,38 @@ import (
 	"github.com/wso2/api-platform/cli/utils"
 )
 
-const (
-	// kindApiKey is the CR kind accepted by the create command.
-	kindApiKey = "ApiKey"
-	// parentKindGraphQLApi is the only parentRef.kind supported by this command,
-	// which targets the /graphql-apis/{id}/api-keys management endpoint.
-	parentKindGraphQLApi = "GraphQLApi"
-)
+// validExpiresInUnits mirrors gateway-controller's
+// APIKeyCreationRequestExpiresInUnit enum (pkg/utils/api_key.go) — the only
+// units the server accepts for expiresIn.unit.
+var validExpiresInUnits = map[string]bool{
+	"seconds": true,
+	"minutes": true,
+	"hours":   true,
+	"days":    true,
+	"weeks":   true,
+	"months":  true,
+}
 
 const (
 	CreateCmdLiteral = "create"
-	CreateCmdExample = `# Generate an API key from a CR file
-ap gateway graphql-api api-key create --file api-key.yaml
-ap gateway graphql-api api-key create -f api-key.json
+	CreateCmdExample = `# Generate an API key with an auto-generated name that never expires
+ap gateway graphql-api api-key create --id countries-graphql-api
 
-# The file is an ApiKey custom resource, e.g.:
-#   apiVersion: gateway.api-platform.wso2.com/v1
-#   kind: ApiKey
-#   metadata:
-#     name: countries-key-acme
-#   spec:
-#     parentRef:
-#       kind: GraphQLApi
-#       name: countries-graphql-api
-#     expiresIn:
-#       duration: 30
-#       unit: days`
+# Generate a named API key that expires in 30 days
+ap gateway graphql-api api-key create --id countries-graphql-api --name my-production-key --expires-in-duration 30 --expires-in-unit days`
 )
 
-var createFilePath string
+var (
+	createAPIID             string
+	createName              string
+	createExpiresInDuration int
+	createExpiresInUnit     string
+)
 
 var createCmd = &cobra.Command{
 	Use:     CreateCmdLiteral,
 	Short:   "Generate an API key for a GraphQL API",
-	Long:    "Generates a new API key from an ApiKey custom resource file (YAML or JSON). The parent GraphQL API is taken from spec.parentRef.name and the key name from metadata.name. The plaintext key is returned once in the response.",
+	Long:    "Generates a new API key for a GraphQL API. --name is optional — if omitted, the server generates a unique name. --expires-in-duration and --expires-in-unit must be supplied together to set an expiry; omit both for a key that never expires. The plaintext key is returned once in the response.",
 	Example: CreateCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runCreateCommand(cmd); err != nil {
@@ -76,35 +74,42 @@ var createCmd = &cobra.Command{
 
 func init() {
 	gateway.AddSelectionFlags(createCmd)
-	utils.AddStringFlag(createCmd, utils.FlagFile, &createFilePath, "", "Path to the ApiKey CR file (YAML or JSON)")
-	createCmd.MarkFlagRequired(utils.FlagFile)
+	utils.AddStringFlag(createCmd, utils.FlagID, &createAPIID, "", "GraphQL API ID (required)")
+	utils.AddStringFlag(createCmd, utils.FlagPropertyName, &createName, "", "Name for the API key. Omit to let the server generate a unique name.")
+	utils.AddIntFlag(createCmd, utils.FlagExpiresInDuration, &createExpiresInDuration, 0, "Expiry duration; must be paired with --expires-in-unit. Omit both for a key that never expires.")
+	utils.AddStringFlag(createCmd, utils.FlagExpiresInUnit, &createExpiresInUnit, "", "Expiry duration unit: seconds, minutes, hours, days, weeks, or months. Must be paired with --expires-in-duration.")
+	createCmd.MarkFlagRequired(utils.FlagID)
 }
 
 func runCreateCommand(cmd *cobra.Command) error {
-	if strings.TrimSpace(createFilePath) == "" {
-		return fmt.Errorf("--%s is required", utils.FlagFile)
+	if strings.TrimSpace(createAPIID) == "" {
+		return fmt.Errorf("--%s is required", utils.FlagID)
 	}
 
-	cr, err := gateway.ParseResourceCR(createFilePath, kindApiKey)
-	if err != nil {
-		return err
-	}
-
-	// The parent GraphQL API id comes from spec.parentRef.name; the key name from
-	// metadata.name. Everything else in the spec is forwarded as the request body.
-	apiID, err := graphQLAPIParentName(cr)
-	if err != nil {
-		return err
+	// A duration of 0 / an empty unit both mean "not set" - there is no
+	// meaningful key that expires in 0 seconds, so treating either as unset
+	// requires the pair to be supplied together rather than one silently
+	// defaulting the other.
+	durationSet := createExpiresInDuration != 0
+	unitSet := strings.TrimSpace(createExpiresInUnit) != ""
+	if durationSet != unitSet {
+		return fmt.Errorf("--%s and --%s must be provided together", utils.FlagExpiresInDuration, utils.FlagExpiresInUnit)
 	}
 
 	body := map[string]interface{}{}
-	for k, v := range cr.Spec {
-		if k == "parentRef" {
-			continue
-		}
-		body[k] = v
+	if name := strings.TrimSpace(createName); name != "" {
+		body["name"] = name
 	}
-	body["name"] = cr.Metadata.Name
+	if durationSet {
+		unit := strings.ToLower(strings.TrimSpace(createExpiresInUnit))
+		if !validExpiresInUnits[unit] {
+			return fmt.Errorf("invalid --%s %q: must be one of seconds, minutes, hours, days, weeks, months", utils.FlagExpiresInUnit, createExpiresInUnit)
+		}
+		body["expiresIn"] = map[string]interface{}{
+			"duration": createExpiresInDuration,
+			"unit":     unit,
+		}
+	}
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -119,33 +124,12 @@ func runCreateCommand(cmd *cobra.Command) error {
 	// Client.Post already treats any non-2xx status as an error (via
 	// formatHTTPError) and returns a nil *http.Response in that case, so there
 	// is no status code left to branch on once err is nil.
-	endpoint := fmt.Sprintf(utils.GatewayGraphQLAPIKeysPath, url.PathEscape(apiID))
+	endpoint := fmt.Sprintf(utils.GatewayGraphQLAPIKeysPath, url.PathEscape(createAPIID))
 	resp, err := client.Post(endpoint, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create API key: %w", err)
 	}
 
-	fmt.Printf("API key %q generated successfully.\n", cr.Metadata.Name)
+	fmt.Println("API key generated successfully.")
 	return gateway.PrintJSONResponse(resp)
-}
-
-// graphQLAPIParentName extracts and validates spec.parentRef.name, requiring the
-// parent kind to be GraphQLApi (or unset) since this command targets the GraphQL
-// API api-key endpoint.
-func graphQLAPIParentName(cr *gateway.ResourceCR) (string, error) {
-	parentRef, ok := cr.Spec["parentRef"].(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("invalid %s: spec.parentRef is required", kindApiKey)
-	}
-
-	if kind, ok := parentRef["kind"].(string); ok && strings.TrimSpace(kind) != "" && kind != parentKindGraphQLApi {
-		return "", fmt.Errorf("unsupported spec.parentRef.kind %q: 'ap gateway graphql-api api-key' only supports %s", kind, parentKindGraphQLApi)
-	}
-
-	name, ok := parentRef["name"].(string)
-	if !ok || strings.TrimSpace(name) == "" {
-		return "", fmt.Errorf("invalid %s: spec.parentRef.name is required", kindApiKey)
-	}
-
-	return strings.TrimSpace(name), nil
 }
