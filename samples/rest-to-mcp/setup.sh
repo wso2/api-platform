@@ -203,13 +203,27 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${HEALTH_POR
 done
 print_ok "Gateway controller is healthy"
 
+# The gateway can only reach rest-to-mcp-server:5000 if both containers share a
+# network, so this has to succeed before the proxy is worth registering.
 GW_NETWORK="$(docker network ls --filter name=gateway-network --format '{{.Name}}' | head -1)"
-if [ -n "$GW_NETWORK" ]; then
-  docker network connect "$GW_NETWORK" "$MCP_SERVER" 2>/dev/null || true
-  print_ok "MCP server joined the gateway network (${GW_NETWORK})"
-else
-  print_warn "Could not find the gateway network - routing may fail."
+if [ -z "$GW_NETWORK" ]; then
+  print_error "Could not find the gateway's Docker network."
+  echo "  Check the gateway started: cd ${GW_DIR} && docker compose ps"
+  exit 1
 fi
+
+# Connecting fails harmlessly when the container is already attached, which is
+# the normal case on a re-run, so check the result instead of the command.
+docker network connect "$GW_NETWORK" "$MCP_SERVER" 2>/dev/null || true
+
+if ! docker inspect -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}' \
+     "$MCP_SERVER" 2>/dev/null | grep -qw "$GW_NETWORK"; then
+  print_error "The MCP server is not on the gateway network (${GW_NETWORK})."
+  echo "  The gateway cannot reach ${MCP_SERVER}:5000 without it."
+  echo "  Try:  docker network connect ${GW_NETWORK} ${MCP_SERVER}"
+  exit 1
+fi
+print_ok "MCP server joined the gateway network (${GW_NETWORK})"
 
 # --------------------------------------------------------------------------
 print_title "Registering the MCP proxy"

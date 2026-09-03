@@ -25,6 +25,7 @@ import json
 import os
 import ssl
 import sys
+from urllib.parse import urlparse
 
 try:
     import httpx2
@@ -45,11 +46,19 @@ GATEWAY_URL = os.environ.get(
     "GATEWAY_MCP_URL", f"https://localhost:{TRAFFIC_PORT}/sample-service/mcp"
 )
 
-# The gateway ships with a self-signed certificate, so this sample does not
-# verify it. Do not copy this into anything that talks to a real gateway.
-_INSECURE_SSL = ssl.create_default_context()
-_INSECURE_SSL.check_hostname = False
-_INSECURE_SSL.verify_mode = ssl.CERT_NONE
+# The gateway ships with a self-signed certificate, which normal verification
+# rejects. Skipping that check is only reasonable because the gateway is on
+# this machine, so this turns it off for loopback addresses and nowhere else.
+# Point GATEWAY_MCP_URL at a real host and the certificate is verified as usual.
+_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+_IS_LOCAL = (urlparse(GATEWAY_URL).hostname or "").lower() in _LOOPBACK
+
+if _IS_LOCAL:
+    _VERIFY = ssl.create_default_context()
+    _VERIFY.check_hostname = False
+    _VERIFY.verify_mode = ssl.CERT_NONE
+else:
+    _VERIFY = True
 
 
 def rule(title):
@@ -63,10 +72,12 @@ def show(payload):
 
 async def run(tool_name, list_only):
     print(f"Connecting to the gateway at {GATEWAY_URL}")
+    if not _IS_LOCAL:
+        print("Not a local address, so the TLS certificate is verified.")
 
     async with contextlib.AsyncExitStack() as stack:
         http_client = await stack.enter_async_context(
-            httpx2.AsyncClient(verify=_INSECURE_SSL)
+            httpx2.AsyncClient(verify=_VERIFY)
         )
         read, write = await stack.enter_async_context(
             streamable_http_client(GATEWAY_URL, http_client=http_client)

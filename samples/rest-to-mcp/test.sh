@@ -51,12 +51,15 @@ _post() {
 }
 
 # mcp_call <url> <body> - opens a session, then sends the body.
+# HTTP header names are case-insensitive, so the session header is matched
+# case-insensitively while the id itself keeps its original casing.
 # A stateless server returns no session id; the calls then simply carry none.
 mcp_call() {
   _sid="$(curl -sk -D - -o /dev/null -X POST "$1" \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
-    -d "$MCP_INIT" | tr -d '\r' | sed -n 's/^[Mm]cp-[Ss]ession-[Ii]d: *//p' | head -1)"
+    -d "$MCP_INIT" | tr -d '\r' \
+    | awk 'tolower($0) ~ /^mcp-session-id:/ { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }')"
   _post "$1" "$_sid" '{"jsonrpc":"2.0","method":"notifications/initialized"}' >/dev/null
   _post "$1" "$_sid" "$2"
 }

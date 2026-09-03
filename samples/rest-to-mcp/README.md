@@ -1,8 +1,7 @@
 # Expose a REST API as MCP Tools via WSO2 AI Gateway
 
 This sample takes a plain REST service that knows nothing about AI agents and
-puts it in front of one as callable MCP tools, with the WSO2 AI Gateway
-handling authentication, rate limiting and observability on the traffic.
+exposes it as callable MCP tools, with the WSO2 AI Gateway in front.
 
 The backend is `samples/sample-service`, unchanged. No new backend code.
 `setup.sh` builds it from `../sample-service`, so run this sample from inside
