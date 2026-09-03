@@ -273,7 +273,6 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
               key={field.path}
               field={field}
               value={currentValue(field.path)}
-              present={config ? field.path in config.values : false}
               error={errors[field.path]}
               readOnly={saving}
               onChange={(value) => setDraft(field.path, value)}

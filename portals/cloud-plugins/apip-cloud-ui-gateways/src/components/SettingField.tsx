@@ -35,8 +35,6 @@ export type SettingFieldProps = {
   field: EditableField;
   /** The value to show: the pending edit if there is one, else the stored value. */
   value: unknown;
-  /** Whether the platform carries a stored value for this path at all. */
-  present: boolean;
   error?: string;
   readOnly?: boolean;
   onChange: (value: unknown) => void;
@@ -50,12 +48,15 @@ export type SettingFieldProps = {
  * particular the two replica labels ("Gateway controller replicas" vs "Gateway
  * runtime replicas") name DIFFERENT pods and must never both become "Replicas".
  *
- * The three things that used to share one helper line are split by WHEN they
- * are needed, because sixteen fields of prose is three screens of scrolling:
+ * Only two things ever sit beside a control, split by WHEN they are needed,
+ * because sixteen fields of prose is three screens of scrolling:
  *
- *   bounds       needed WHILE editing  -> inline under the control
  *   error        needed always         -> inline, and never behind a hover
  *   description  needed once, before   -> behind the `?`
+ *
+ * Bounds are NOT shown. They were a permanent second line under every field
+ * for something that only matters while typing, and the message that arrives
+ * when a value is actually out of range states them anyway.
  *
  * `string` is not handled here: its one field today is a multi-line TOML block
  * whose copy is an operational warning rather than a description, so it keeps
@@ -69,26 +70,12 @@ const inputText = (value: unknown): string =>
 const SettingField: FC<SettingFieldProps> = ({
   field,
   value,
-  present,
   error,
   readOnly = false,
   onChange,
 }) => {
   const label = field.label || field.path;
 
-  // A path the values document does not carry is not "set to nothing": the
-  // chart's own values.yaml is the merge base, so what runs is the chart
-  // default. Say so, rather than letting a blank input imply an empty value.
-  const hint =
-    error ??
-    [
-      field.min !== undefined && field.max !== undefined
-        ? `${field.min} – ${field.max}`
-        : null,
-      present ? null : 'Not set — the platform default applies.',
-    ]
-      .filter(Boolean)
-      .join('  ');
 
   const control = () => {
     switch (field.type) {
@@ -149,8 +136,12 @@ const SettingField: FC<SettingFieldProps> = ({
       //
       // NO PLACEHOLDER. An example value in a greyed-out input is read as the
       // setting's current value, and for the ten paths the response carries no
-      // value for, that is exactly the wrong thing to imply. The bounds hint
-      // ("30s – 1h") already shows the syntax, and it does not look like data.
+      // value for, that is exactly the wrong thing to imply.
+      //
+      // With the bounds line gone there is now nothing on screen that spells
+      // the syntax before a value is typed: the `?` carries the platform's
+      // description, and an out-of-range value is told its bounds when it is
+      // rejected. That is the accepted cost of a quieter form.
       case 'duration':
       case 'quantity':
         return (
@@ -211,9 +202,9 @@ const SettingField: FC<SettingFieldProps> = ({
 
       <Box sx={{ flex: '0 0 200px', minHeight: 40 }}>
         {rendered}
-        {hint ? (
-          <FormHelperText error={Boolean(error)} sx={{ mx: 0 }}>
-            {hint}
+        {error ? (
+          <FormHelperText error sx={{ mx: 0 }}>
+            {error}
           </FormHelperText>
         ) : null}
       </Box>
