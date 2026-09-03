@@ -47,12 +47,12 @@ spec:
           pathPrefix: /rest
       # Applied to every A2A operation, before operation-level policies.
       policies:
-        - name: jwt-auth
-          version: v1
-          params:
-            issuer: https://idp.example.com
-            requiredScopes:
-              - a2a.invoke
+        # - name: jwt-auth
+        #   version: v1
+        #   params:
+        #     issuer: https://idp.example.com
+        #     requiredScopes:
+        #       - a2a.invoke
       # Not an allowlist: unlisted operations still get the policies above.
       operations:
         - name: SendMessage
@@ -73,8 +73,8 @@ spec:
         mode: managed
         path: /.well-known/agent-card.json
         policies:
-          - name: cors
-            version: v1
+          # - name: cors
+          #   version: v1
         # Served as supplied — the gateway never rewrites the card, so
         # extension fields are preserved.
         content:
