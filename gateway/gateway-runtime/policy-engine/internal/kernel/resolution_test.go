@@ -958,11 +958,13 @@ func TestResolverContentCoding(t *testing.T) {
 	}
 }
 
-// Invariant: the gate is deferred-path only. An identity route keeps decompressBody's
-// lenient behaviour — a body it cannot decode still reaches policies as raw bytes with
-// the encoding cleared — because there the chain is already selected and no
-// policy-selection decision hangs on how the body reads.
-func TestIdentityRoute_UndecodableBodyKeepsLenientBehaviour(t *testing.T) {
+// An identity route fails closed on an undecodable body too, but through the
+// general buffered-body guard in processRequestBody rather than the deferred-path
+// gate — the chain is already selected there, so nothing needs to be rejected
+// before a resolver runs. Handing the raw bytes to policies instead would let any
+// caller disable every request-body policy by labelling arbitrary bytes
+// "Content-Encoding: gzip" (see TestProcessRequestBody_UndecodableBodyRejected).
+func TestIdentityRoute_UndecodableBodyRejected(t *testing.T) {
 	f := newResolutionFixture(t)
 	var seen []byte
 	chain := buildChainFor([]policy.Policy{&bodyPolicy{seen: &seen}})
@@ -980,9 +982,10 @@ func TestIdentityRoute_UndecodableBodyKeepsLenientBehaviour(t *testing.T) {
 		&extprocv3.HttpBody{Body: notGzip, EndOfStream: true})
 	require.NoError(t, err)
 
-	assert.Nil(t, resp.GetImmediateResponse(), "an identity route must not start rejecting these")
-	assert.Equal(t, notGzip, seen, "policies still receive the raw bytes, as before")
-	assert.Empty(t, ec.requestContentEncoding, "the encoding is cleared so nothing tries to re-compress")
+	imm := resp.GetImmediateResponse()
+	require.NotNil(t, imm, "a body that is not in its declared encoding must be rejected")
+	assert.Equal(t, typev3.StatusCode_BadRequest, imm.Status.Code)
+	assert.Nil(t, seen, "undecodable bytes must never reach a body policy")
 }
 
 // The decoded ceiling applies to an uncompressed body too, so the resolver's input
