@@ -21,8 +21,6 @@ package apikey
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -59,31 +57,6 @@ func writeGatewayConfig(t *testing.T, serverURL string) {
 	})
 }
 
-// writeAPIKeyCR writes an ApiKey CR file (the shape runCreateCommand parses
-// via gateway.ParseResourceCR) to a temp directory and returns its path.
-func writeAPIKeyCR(t *testing.T, name, parentKind, parentName string, extraSpec string) string {
-	t.Helper()
-
-	extra := ""
-	if extraSpec != "" {
-		extra = "\n" + extraSpec
-	}
-	content := "apiVersion: gateway.api-platform.wso2.com/v1\n" +
-		"kind: ApiKey\n" +
-		"metadata:\n" +
-		"  name: " + name + "\n" +
-		"spec:\n" +
-		"  parentRef:\n" +
-		"    kind: " + parentKind + "\n" +
-		"    name: " + parentName + extra + "\n"
-
-	path := filepath.Join(t.TempDir(), "apikey.yaml")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write ApiKey CR fixture: %v", err)
-	}
-	return path
-}
-
 func TestRunCreateCommand_PostsToAPIKeysEndpoint(t *testing.T) {
 	testutil.WithTempHome(t)
 
@@ -101,7 +74,10 @@ func TestRunCreateCommand_PostsToAPIKeysEndpoint(t *testing.T) {
 	})
 	writeGatewayConfig(t, server.URL)
 
-	createFilePath = writeAPIKeyCR(t, "smoke-key-1", "GraphQLApi", "countries-graphql-api", "")
+	createAPIID = "countries-graphql-api"
+	createName = "smoke-key-1"
+	createExpiresInDuration = 0
+	createExpiresInUnit = ""
 
 	if err := runCreateCommand(newTestCommand()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -113,11 +89,14 @@ func TestRunCreateCommand_PostsToAPIKeysEndpoint(t *testing.T) {
 		t.Fatalf("unexpected request path %q", gotPath)
 	}
 	if gotBody["name"] != "smoke-key-1" {
-		t.Fatalf("expected request body name to be the CR's metadata.name, got %v", gotBody["name"])
+		t.Fatalf("expected request body name to be the --name flag value, got %v", gotBody["name"])
+	}
+	if _, present := gotBody["expiresIn"]; present {
+		t.Fatalf("expected no expiresIn field when duration/unit are unset, got %v", gotBody)
 	}
 }
 
-func TestRunCreateCommand_ForwardsExtraSpecFields(t *testing.T) {
+func TestRunCreateCommand_NameOmitted_NotSentInBody(t *testing.T) {
 	testutil.WithTempHome(t)
 
 	var gotBody map[string]interface{}
@@ -125,53 +104,91 @@ func TestRunCreateCommand_ForwardsExtraSpecFields(t *testing.T) {
 		_ = json.NewDecoder(req.Body).Decode(&gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"status":"success","message":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"success","apiKey":{"name":"auto-generated-name"}}`))
 	})
 	writeGatewayConfig(t, server.URL)
 
-	createFilePath = writeAPIKeyCR(t, "smoke-key-2", "GraphQLApi", "countries-graphql-api", "  apiKey: external-key-value-that-is-at-least-36-characters-long")
+	createAPIID = "countries-graphql-api"
+	createName = ""
+	createExpiresInDuration = 0
+	createExpiresInUnit = ""
 
 	if err := runCreateCommand(newTestCommand()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotBody["apiKey"] != "external-key-value-that-is-at-least-36-characters-long" {
-		t.Fatalf("expected spec.apiKey to be forwarded into the request body, got %v", gotBody["apiKey"])
-	}
-	if _, present := gotBody["parentRef"]; present {
-		t.Fatalf("parentRef must not be forwarded into the request body, got %v", gotBody)
+	if _, present := gotBody["name"]; present {
+		t.Fatalf("expected no 'name' field in the request body when --name is omitted, letting the server auto-generate one, got %v", gotBody)
 	}
 }
 
-func TestRunCreateCommand_RejectsNonGraphQLParentKind(t *testing.T) {
+func TestRunCreateCommand_WithExpiresIn_SendsDurationAndUnit(t *testing.T) {
 	testutil.WithTempHome(t)
 
-	createFilePath = writeAPIKeyCR(t, "smoke-key-3", "RestApi", "some-rest-api", "")
+	var gotBody map[string]interface{}
+	server := testutil.NewGatewayServer(t, func(w http.ResponseWriter, req *http.Request) {
+		_ = json.NewDecoder(req.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"status":"success","apiKey":{"name":"smoke-key-1"}}`))
+	})
+	writeGatewayConfig(t, server.URL)
 
-	err := runCreateCommand(newTestCommand())
-	if err == nil || !strings.Contains(err.Error(), "RestApi") {
-		t.Fatalf("expected a parentRef.kind validation error mentioning RestApi, got %v", err)
+	createAPIID = "countries-graphql-api"
+	createName = "smoke-key-1"
+	createExpiresInDuration = 30
+	createExpiresInUnit = "days"
+
+	if err := runCreateCommand(newTestCommand()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expiresIn, ok := gotBody["expiresIn"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected request body to contain an expiresIn object, got %v", gotBody)
+	}
+	if expiresIn["duration"] != float64(30) || expiresIn["unit"] != "days" {
+		t.Fatalf("expected expiresIn {duration: 30, unit: days}, got %v", expiresIn)
 	}
 }
 
-func TestRunCreateCommand_RequiresParentRefName(t *testing.T) {
+func TestRunCreateCommand_RequiresID(t *testing.T) {
 	testutil.WithTempHome(t)
 
-	path := filepath.Join(t.TempDir(), "apikey.yaml")
-	content := "apiVersion: gateway.api-platform.wso2.com/v1\n" +
-		"kind: ApiKey\n" +
-		"metadata:\n" +
-		"  name: smoke-key-4\n" +
-		"spec:\n" +
-		"  parentRef:\n" +
-		"    kind: GraphQLApi\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write fixture: %v", err)
-	}
-	createFilePath = path
+	createAPIID = ""
+	createName = ""
+	createExpiresInDuration = 0
+	createExpiresInUnit = ""
 
 	err := runCreateCommand(newTestCommand())
-	if err == nil || !strings.Contains(err.Error(), "parentRef.name") {
-		t.Fatalf("expected a parentRef.name validation error, got %v", err)
+	if err == nil {
+		t.Fatal("expected an --id validation error, got nil")
+	}
+}
+
+func TestRunCreateCommand_ExpiresInDurationWithoutUnit_Errors(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	createAPIID = "countries-graphql-api"
+	createName = ""
+	createExpiresInDuration = 30
+	createExpiresInUnit = ""
+
+	err := runCreateCommand(newTestCommand())
+	if err == nil || !strings.Contains(err.Error(), "expires-in-unit") {
+		t.Fatalf("expected an error about --expires-in-unit being required alongside --expires-in-duration, got %v", err)
+	}
+}
+
+func TestRunCreateCommand_InvalidExpiresInUnit_Errors(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	createAPIID = "countries-graphql-api"
+	createName = ""
+	createExpiresInDuration = 30
+	createExpiresInUnit = "fortnights"
+
+	err := runCreateCommand(newTestCommand())
+	if err == nil || !strings.Contains(err.Error(), "fortnights") {
+		t.Fatalf("expected an invalid-unit error mentioning the bad value, got %v", err)
 	}
 }
 
