@@ -16,7 +16,12 @@
  * under the License.
  */
 
-export type GatewayType = 'ai' | 'event';
+/**
+ * The gateway's functionality type. Mirrors platform-api's `functionalityType`
+ * (`regular | ai | event`); this UI only offers `ai`/`event` on create, but a
+ * gateway created elsewhere can come back as `regular`, so the type tolerates it.
+ */
+export type GatewayType = 'regular' | 'ai' | 'event';
 
 export type GatewayStatus = 'active' | 'inactive';
 
@@ -31,16 +36,20 @@ export type Gateway = {
   description?: string;
   type: GatewayType;
   environmentId: string;
+  /** The external host the gateway is exposed on — server-assigned, not a create input. */
   url: string;
   status: GatewayStatus;
   updatedAt: string;
 };
 
-/** Fields the create/edit form collects — everything else (`id`, `status`, `updatedAt`) is store-assigned. */
+/**
+ * Fields the create/edit form collects. `id`/`url` (host) are server-assigned;
+ * on edit only `name`/`description` are mutable (`type`/`environmentId` are
+ * fixed at creation).
+ */
 export type GatewayInput = {
   name: string;
   description?: string;
   type: GatewayType;
   environmentId: string;
-  url: string;
 };

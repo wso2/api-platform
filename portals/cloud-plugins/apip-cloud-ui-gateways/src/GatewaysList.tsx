@@ -45,17 +45,17 @@ import {
 } from '@wso2/oxygen-ui';
 import { Edit, Plus, Search, Settings, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
-import { deleteGateway, listEnvironments, listGateways } from './mocks/gatewaysStore';
 import { relativeTime } from './utils/time';
 import { gatewayTypeLabel } from './utils/gateway';
 import NoGatewaysImage from './assets/images/NoGW.svg';
-import type { NotifySeverity } from './hostPort';
-import type { Gateway } from './types';
+import type { Environment, Gateway } from './types';
 
 export type GatewaysListProps = {
+  gateways: Gateway[];
+  environments: Environment[];
   onAddClick: () => void;
   onEditClick: (gatewayId: string) => void;
-  notify?: (message: string, severity?: NotifySeverity) => void;
+  onDelete: (gatewayId: string, name: string) => void;
 };
 
 function truncateText(text: string, maxLength: number): string {
@@ -63,9 +63,13 @@ function truncateText(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength).trim()}…`;
 }
 
-const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }) => {
-  const [gateways, setGateways] = useState<Gateway[]>(() => listGateways());
-  const [environments] = useState(() => listEnvironments());
+const GatewaysList: FC<GatewaysListProps> = ({
+  gateways,
+  environments,
+  onAddClick,
+  onEditClick,
+  onDelete,
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
@@ -80,9 +84,7 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
 
   const handleDeleteConfirm = () => {
     if (!deleteTarget) return;
-    deleteGateway(deleteTarget.id);
-    setGateways(listGateways());
-    notify?.(`Gateway "${deleteTarget.name}" deleted.`, 'success');
+    onDelete(deleteTarget.id, deleteTarget.name);
     setDeleteTarget(null);
   };
 

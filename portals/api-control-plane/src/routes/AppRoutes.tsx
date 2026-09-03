@@ -33,11 +33,13 @@ import AppLayout from '@/pages/appShell/AppLayout';
 import {
   extensionScopedPaths,
   isSidebarExtension,
+  PAGE_GATEWAYS_SLOT,
   settingsTabExtensions,
   type ApiControlPlaneExtension,
 } from '@/extensions';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
+import { Hideable, useSlot } from '@/slots';
 import { ProtectedRoute } from './ProtectedRoute';
 import { apiScopedPaths, projectScopedPaths, routes } from './paths';
 
@@ -198,6 +200,29 @@ function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) 
   return <>{extension.render(port)}</>;
 }
 
+/**
+ * The gateways route subtree. Renders a cloud override registered against
+ * `PAGE_GATEWAYS_SLOT` when one is present, otherwise the built-in gateways
+ * pages — the same Slot-adds / Hideable-suppresses split the ai-workspace host
+ * uses, so the cloud build swaps in the managed-gateways plugin while the public
+ * build keeps its native pages. Mounted at `gateways/*` so either branch owns
+ * the nested `create`/`new`/`:gatewayId` routes.
+ */
+function GatewaysRoute() {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_GATEWAYS_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={PAGE_GATEWAYS_SLOT}>
+      <Routes>
+        <Route index element={<GatewaysPage />} />
+        <Route path="new" element={<GatewayCreatePage />} />
+        <Route path=":gatewayId" element={<GatewayDetailPage />} />
+      </Routes>
+    </Hideable>
+  );
+}
+
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   // Extensions registered against a `settings.<level>.tabs` slot render nested
   // under the matching Settings layout, at a path relative to it — so the tab's
@@ -245,9 +270,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
           <Route path={routes.organizationHome()} element={<OrganizationHomePage />} />
           <Route path={routes.projects()} element={<ProjectListPage />} />
-          <Route path={routes.gateways()} element={<GatewaysPage />} />
-          <Route path={routes.newGateway()} element={<GatewayCreatePage />} />
-          <Route path={routes.gateway()} element={<GatewayDetailPage />} />
+          <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />
           {/*
             Project and API overview take a single fully-scoped path each: they
             are the deeper tiers of the sidebar's Overview item, which degrades
