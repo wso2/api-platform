@@ -19,5 +19,7 @@
 import type { GatewayType } from '../types';
 
 export function gatewayTypeLabel(type: GatewayType): string {
-  return type === 'ai' ? 'AI Gateway' : 'Event Gateway';
+  if (type === 'ai') return 'AI Gateway';
+  if (type === 'event') return 'Event Gateway';
+  return 'Gateway';
 }

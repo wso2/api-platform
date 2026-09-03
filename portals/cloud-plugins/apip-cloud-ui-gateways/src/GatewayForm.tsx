@@ -32,49 +32,35 @@ import {
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import EnvironmentSelect from './components/EnvironmentSelect';
 import GatewayTypeSelector from './components/GatewayTypeSelector';
-import { createGateway, getGateway, listEnvironments, updateGateway } from './mocks/gatewaysStore';
-import type { NotifySeverity } from './hostPort';
-import type { GatewayType } from './types';
+import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
 export type GatewayFormProps = {
   /** Editing an existing gateway pre-fills the form and changes the page's labels. Omit (or 'create') for a blank gateway. */
   mode?: 'create' | 'edit';
   /** Required when `mode` is 'edit' — the gateway to load and update. */
-  gatewayId?: string;
+  gateway?: Gateway;
+  environments: Environment[];
   onBack: () => void;
-  notify?: (message: string, severity?: NotifySeverity) => void;
+  onSubmit: (input: GatewayInput) => void;
 };
 
-const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gatewayId, onBack, notify }) => {
-  const isEdit = mode === 'edit' && !!gatewayId;
-  const editingGateway = isEdit ? getGateway(gatewayId as string) : undefined;
+const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gateway, environments, onBack, onSubmit }) => {
+  const isEdit = mode === 'edit' && !!gateway;
 
-  const [environments] = useState(() => listEnvironments());
-  const [type, setType] = useState<GatewayType>(editingGateway?.type ?? 'ai');
-  const [name, setName] = useState(editingGateway?.name ?? '');
-  const [description, setDescription] = useState(editingGateway?.description ?? '');
-  const [url, setUrl] = useState(editingGateway?.url ?? '');
-  const [environmentId, setEnvironmentId] = useState(editingGateway?.environmentId ?? '');
+  const [type, setType] = useState<GatewayType>(gateway?.type ?? 'ai');
+  const [name, setName] = useState(gateway?.name ?? '');
+  const [description, setDescription] = useState(gateway?.description ?? '');
+  const [environmentId, setEnvironmentId] = useState(gateway?.environmentId ?? '');
 
-  const canSubmit = name.trim().length > 0 && url.trim().length > 0 && environmentId.length > 0;
+  const canSubmit = name.trim().length > 0 && environmentId.length > 0;
 
   const handleSubmit = () => {
-    const input = {
+    onSubmit({
       name: name.trim(),
       description: description.trim() || undefined,
       type,
       environmentId,
-      url: url.trim(),
-    };
-
-    if (isEdit && editingGateway) {
-      updateGateway(editingGateway.id, input);
-      notify?.(`Gateway "${input.name}" updated.`, 'success');
-    } else {
-      createGateway(input);
-      notify?.(`Gateway "${input.name}" created.`, 'success');
-    }
-    onBack();
+    });
   };
 
   return (
@@ -128,21 +114,14 @@ const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gatewayId, onBack,
 
           <Grid size={{ xs: 12 }}>
             <FormControl fullWidth>
-              <FormLabel required>URL</FormLabel>
-              <TextField
-                fullWidth
-                required
-                placeholder="https://localhost:8443"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-              />
-            </FormControl>
-          </Grid>
-
-          <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth>
               <FormLabel required>Environment</FormLabel>
-              <EnvironmentSelect environments={environments} value={environmentId} onChange={setEnvironmentId} />
+              {/* The environment is fixed at creation — a managed gateway lives in exactly one. */}
+              <EnvironmentSelect
+                environments={environments}
+                value={environmentId}
+                onChange={setEnvironmentId}
+                disabled={isEdit}
+              />
             </FormControl>
           </Grid>
         </Grid>
