@@ -228,6 +228,11 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler'
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
+  apiObservabilityTraces: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler'
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/traces'),
   apiAdmin: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

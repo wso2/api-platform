@@ -20,13 +20,17 @@ package tracing
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"log/slog"
-	"time"
-
+	"os"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
@@ -62,6 +66,34 @@ func InitTracer(cfg *config.Config) (func(), error) {
 	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(endpoint)}
 	if cfg.TracingConfig.Insecure {
 		opts = append(opts, otlptracegrpc.WithInsecure())
+	} else {
+		tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: cfg.TracingConfig.TLSServerName}
+		if cfg.TracingConfig.TLSCAFile != "" {
+			pem, err := os.ReadFile(cfg.TracingConfig.TLSCAFile)
+			if err != nil {
+				return nil, fmt.Errorf("read tracing CA file: %w", err)
+			}
+			roots, err := x509.SystemCertPool()
+			if err != nil || roots == nil {
+				roots = x509.NewCertPool()
+			}
+			if !roots.AppendCertsFromPEM(pem) {
+				return nil, fmt.Errorf("tracing CA file contains no certificates")
+			}
+			tlsConfig.RootCAs = roots
+		}
+		opts = append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tlsConfig)))
+	}
+	if cfg.TracingConfig.BearerTokenFile != "" {
+		token, err := os.ReadFile(cfg.TracingConfig.BearerTokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("read tracing bearer token: %w", err)
+		}
+		tokenValue := strings.TrimSpace(string(token))
+		if tokenValue == "" {
+			return nil, fmt.Errorf("tracing bearer token is empty")
+		}
+		opts = append(opts, otlptracegrpc.WithHeaders(map[string]string{"authorization": "Bearer " + tokenValue}))
 	}
 
 	exporter, err := otlptracegrpc.New(ctx, opts...)

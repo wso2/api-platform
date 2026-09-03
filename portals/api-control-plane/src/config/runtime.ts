@@ -43,6 +43,7 @@ export type RuntimeConfig = {
   billingProxyEnabled: boolean;
   /** Exposes API-scoped gateway logs backed by the cloud observability plane. */
   observabilityLogsEnabled: boolean;
+  observabilityTracesEnabled: boolean;
   /**
    * Same-origin path the BFF proxies to the Platform API (typically
    * "/proxy") — the browser only ever calls this BFF's own origin, which
@@ -87,6 +88,8 @@ type LegacyWindowConfig = Partial<{
   billingProxyEnabled: boolean | string;
   APIP_OBSERVABILITY_LOGS_ENABLED: string;
   observabilityLogsEnabled: boolean | string;
+  APIP_OBSERVABILITY_TRACES_ENABLED: string;
+  observabilityTracesEnabled: boolean | string;
   DEFAULT_LOCALE: string;
   defaultLocale: string;
   PLATFORM_API_BASE_URL: string;
@@ -201,6 +204,11 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().APIP_OBSERVABILITY_LOGS_ENABLED ||
       fromWindow().observabilityLogsEnabled ||
       import.meta.env.VITE_APIP_OBSERVABILITY_LOGS_ENABLED
+  ),
+  observabilityTracesEnabled: readBoolean(
+    fromWindow().APIP_OBSERVABILITY_TRACES_ENABLED ||
+      fromWindow().observabilityTracesEnabled ||
+      import.meta.env.VITE_APIP_OBSERVABILITY_TRACES_ENABLED
   ),
   platformApiBaseUrl: resolvedPlatformApiBaseUrl,
   platformApiVersion:

@@ -20,6 +20,7 @@ import { useApiScope } from '../../../core/scope';
 import type {
   ObservabilityLogsScope,
   RestApiObservabilityLogsQuery,
+  RestApiObservabilityTracesQuery,
 } from './observability.endpoints';
 import {
   restApiObservabilityQueries,
@@ -76,5 +77,30 @@ export const useObservabilityLogTail = (
     ...restApiObservabilityQueries.tail(org!, scope, filters),
     enabled: Boolean(enabled && org),
     refetchInterval: live ? intervalMs : false,
+  });
+};
+
+export const useRestApiObservabilityTraces = (
+  restApiId: string | undefined,
+  query: RestApiObservabilityTracesQuery,
+  enabled = true
+) => {
+  const { org } = useApiScope();
+  return useQuery({
+    ...restApiObservabilityQueries.traces(org!, restApiId!, query),
+    enabled: Boolean(enabled && org && restApiId),
+  });
+};
+
+export const useRestApiObservabilityTrace = (
+  restApiId: string | undefined,
+  traceId: string | undefined,
+  query: Pick<RestApiObservabilityTracesQuery, 'startTime' | 'endTime' | 'environment'>,
+  enabled = true
+) => {
+  const { org } = useApiScope();
+  return useQuery({
+    ...restApiObservabilityQueries.trace(org!, restApiId!, traceId!, query),
+    enabled: Boolean(enabled && org && restApiId && traceId),
   });
 };

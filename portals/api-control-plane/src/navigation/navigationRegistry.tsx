@@ -398,6 +398,12 @@ export const navigationRegistry: NavigationDefinition[] = [
         to: routes.apiObservabilityLogs,
       },
       {
+        icon: <GitBranch />,
+        id: 'observability-traces',
+        label: 'Traces',
+        to: routes.apiObservabilityTraces,
+      },
+      {
         icon: <BellRing />,
         id: 'observability-alerts',
         label: 'Alert',

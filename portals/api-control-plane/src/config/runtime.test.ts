@@ -104,4 +104,12 @@ describe('runtimeConfig', () => {
 
     expect((await loadRuntimeConfig()).observabilityLogsEnabled).toBe(true);
   });
+
+  it('keeps API traces disabled unless the runtime flag is true', async () => {
+    expect((await loadRuntimeConfig()).observabilityTracesEnabled).toBe(false);
+    window.__RUNTIME_CONFIG__ = {
+      observabilityTracesEnabled: 'true',
+    };
+    expect((await loadRuntimeConfig()).observabilityTracesEnabled).toBe(true);
+  });
 });

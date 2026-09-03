@@ -202,9 +202,10 @@ describe('submenu parents', () => {
       'observability',
       'observability',
       [
+        ['observability-logs', 'logs'],
+        ['observability-traces', 'traces'],
         ['observability-alerts', 'alerts'],
         ['observability-metrics', 'metrics'],
-        ['observability-logs', 'logs'],
       ],
     ],
     [

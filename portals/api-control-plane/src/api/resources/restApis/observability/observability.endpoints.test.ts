@@ -20,8 +20,10 @@ import { resetHttpClient } from '../../../core/http';
 import { recorder, resource, type Recorder } from '../../../../test/msw';
 import { server } from '../../../../test/server';
 import {
+  getRestApiObservabilityTrace,
   listObservabilityLogs,
   listRestApiObservabilityLogs,
+  listRestApiObservabilityTraces,
 } from './observability.endpoints';
 
 let requests: Recorder;
@@ -29,6 +31,46 @@ let requests: Recorder;
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+});
+
+describe('REST API observability traces', () => {
+  it('queries trace summaries and spans within the selected environment', async () => {
+    server.use(
+      resource(
+        '/rest-apis/:restApiId/observability/traces',
+        { items: [{ traceId: 'trace-1' }], pagination: { limit: 100 } },
+        { record: requests }
+      ),
+      resource(
+        '/rest-apis/:restApiId/observability/traces/:traceId',
+        { spans: [{ spanId: 'span-1' }], total: 1 },
+        { record: requests }
+      )
+    );
+
+    await listRestApiObservabilityTraces('orders/v1', {
+      startTime: '2026-08-22T09:00:00Z',
+      endTime: '2026-08-22T10:00:00Z',
+      environment: 'stage',
+    });
+    expect(requests.last()?.url.pathname).toBe(
+      '/api/v0.9/rest-apis/orders%2Fv1/observability/traces'
+    );
+    expect(requests.last()?.params.get('environment')).toBe('stage');
+
+    await getRestApiObservabilityTrace(
+      'orders/v1',
+      'trace/1',
+      {
+        startTime: '2026-08-22T09:00:00Z',
+        endTime: '2026-08-22T10:00:00Z',
+        environment: 'stage',
+      }
+    );
+    expect(requests.last()?.url.pathname).toBe(
+      '/api/v0.9/rest-apis/orders%2Fv1/observability/traces/trace%2F1'
+    );
+  });
 });
 
 describe('listObservabilityLogs', () => {

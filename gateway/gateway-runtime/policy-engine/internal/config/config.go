@@ -573,6 +573,12 @@ type TracingConfig struct {
 	// Insecure indicates whether to use an insecure connection (no TLS)
 	Insecure bool `koanf:"insecure"`
 
+	BearerTokenFile string `koanf:"bearer_token_file"`
+
+	TLSCAFile string `koanf:"tls_ca_file"`
+
+	TLSServerName string `koanf:"tls_server_name"`
+
 	// ServiceVersion is the service version reported to the tracing backend
 	ServiceVersion string `koanf:"service_version"`
 

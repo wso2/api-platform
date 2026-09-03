@@ -53,6 +53,45 @@ export type RestApiObservabilityLogsPage = {
   };
 };
 
+export type RestApiObservabilityTrace = {
+  traceId: string;
+  traceName?: string;
+  rootSpanName?: string;
+  startTime?: string;
+  endTime?: string;
+  durationNs?: number;
+  spanCount?: number;
+  hasErrors?: boolean;
+};
+
+export type RestApiObservabilitySpan = {
+  spanId?: string;
+  parentSpanId?: string;
+  spanName?: string;
+  spanKind?: string;
+  startTime?: string;
+  endTime?: string;
+  durationNs?: number;
+  status?: { code?: string; message?: string };
+  attributes?: Record<string, unknown>;
+  resourceAttributes?: Record<string, unknown>;
+};
+
+export type RestApiObservabilityTracesQuery = Pick<
+  RestApiObservabilityLogsQuery,
+  'startTime' | 'endTime' | 'limit' | 'query' | 'environment'
+>;
+
+export type RestApiObservabilityTracesPage = {
+  items: RestApiObservabilityTrace[];
+  pagination: { limit: number; nextCursor?: string | null };
+};
+
+export type RestApiObservabilityTraceDetail = {
+  spans: RestApiObservabilitySpan[];
+  total: number;
+};
+
 const logsPath = (restApiId: string): string =>
   `/rest-apis/${encodeURIComponent(restApiId)}/observability/logs`;
 
@@ -100,3 +139,40 @@ export const listObservabilityLogs = async (
     },
   });
 };
+
+export const listRestApiObservabilityTraces = async (
+  restApiId: string,
+  query: RestApiObservabilityTracesQuery,
+  options?: RequestOptions
+): Promise<RestApiObservabilityTracesPage> => {
+  const search = query.query?.trim();
+  return http.get<RestApiObservabilityTracesPage>(
+    `/rest-apis/${encodeURIComponent(restApiId)}/observability/traces`,
+    {
+      ...options,
+      operationName: 'QueryRESTAPIObservabilityTraces',
+      query: {
+        startTime: query.startTime,
+        endTime: query.endTime,
+        limit: query.limit ?? 100,
+        query: search || undefined,
+        environment: query.environment,
+      },
+    }
+  );
+};
+
+export const getRestApiObservabilityTrace = async (
+  restApiId: string,
+  traceId: string,
+  query: Pick<RestApiObservabilityTracesQuery, 'startTime' | 'endTime' | 'environment'>,
+  options?: RequestOptions
+): Promise<RestApiObservabilityTraceDetail> =>
+  http.get<RestApiObservabilityTraceDetail>(
+    `/rest-apis/${encodeURIComponent(restApiId)}/observability/traces/${encodeURIComponent(traceId)}`,
+    {
+      ...options,
+      operationName: 'GetRESTAPIObservabilityTrace',
+      query,
+    }
+  );

@@ -22,9 +22,12 @@ import { restApiKeys } from '../restApis.queries';
 import {
   listObservabilityLogs,
   listRestApiObservabilityLogs,
+  listRestApiObservabilityTraces,
+  getRestApiObservabilityTrace,
   type ObservabilityLogLevel,
   type ObservabilityLogsScope,
   type RestApiObservabilityLogsQuery,
+  type RestApiObservabilityTracesQuery,
 } from './observability.endpoints';
 
 /**
@@ -101,6 +104,32 @@ export const restApiObservabilityQueries = {
           orgId: org,
           signal,
         }),
+      staleTime: staleTimes.realtime,
+    }),
+  traces: (
+    org: OrgScope,
+    restApiId: string,
+    query: RestApiObservabilityTracesQuery
+  ) =>
+    queryOptions({
+      queryKey: restApiKeys.child(org, restApiId, 'observabilityTraces', query),
+      queryFn: ({ signal }) =>
+        listRestApiObservabilityTraces(restApiId, query, { orgId: org, signal }),
+      staleTime: staleTimes.realtime,
+    }),
+  trace: (
+    org: OrgScope,
+    restApiId: string,
+    traceId: string,
+    query: Pick<RestApiObservabilityTracesQuery, 'startTime' | 'endTime' | 'environment'>
+  ) =>
+    queryOptions({
+      queryKey: restApiKeys.child(org, restApiId, 'observabilityTrace', {
+        traceId,
+        ...query,
+      }),
+      queryFn: ({ signal }) =>
+        getRestApiObservabilityTrace(restApiId, traceId, query, { orgId: org, signal }),
       staleTime: staleTimes.realtime,
     }),
 };

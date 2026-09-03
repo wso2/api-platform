@@ -44,6 +44,11 @@ export type {
   RestApiObservabilityLog,
   RestApiObservabilityLogsPage,
   RestApiObservabilityLogsQuery,
+  RestApiObservabilitySpan,
+  RestApiObservabilityTrace,
+  RestApiObservabilityTraceDetail,
+  RestApiObservabilityTracesPage,
+  RestApiObservabilityTracesQuery,
 } from './observability/observability.endpoints';
 
 export type { ObservabilityLogTailFilters } from './observability/observability.queries';
@@ -65,4 +70,6 @@ export {
   useObservabilityLogs,
   useObservabilityLogTail,
   useRestApiObservabilityLogs,
+  useRestApiObservabilityTrace,
+  useRestApiObservabilityTraces,
 } from './observability/observability.hooks';

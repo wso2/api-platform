@@ -88,6 +88,11 @@ const (
 	// and other route-scoped consumers.
 	envoyRouteMetadataNamespace = "wso2.route"
 	envoyRouteHTTPRouteKey      = "http.route"
+	envoyRouteAPIIDKey          = "api_id"
+	envoyRouteAPINameKey        = "api_name"
+	envoyRouteAPIVersionKey     = "api_version"
+	envoyRouteAPIContextKey     = "api_context"
+	envoyRouteProjectIDKey      = "project_id"
 )
 
 func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
@@ -376,6 +381,7 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
 	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
 	setRouteHTTPRoute(r, fullPath)
+	setRouteAPIAttributes(r, rdc.Metadata.UUID, rdc.Metadata.DisplayName, rdc.Metadata.Version, rdc.Context, rdc.Metadata.ProjectID)
 
 	// Compute regex rewrite to strip context and prepend upstream path
 	upstreamPath := ""
@@ -1761,6 +1767,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}
 	}
 	setRouteHTTPRoute(r, fullPath)
+	setRouteAPIAttributes(r, apiId, apiName, apiVersion, context, projectID)
 
 	// Add path rewriting if upstream has a path prefix
 	// Strip the API context (with version if included) and prepend the upstream path
@@ -2211,6 +2218,43 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 		},
 		// Enable HTTP/2 for gRPC (OTLP uses gRPC)
 		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+	if !t.config.TracingConfig.Insecure {
+		caFile := t.config.TracingConfig.TLSCAFile
+		if caFile == "" {
+			caFile = "/etc/ssl/certs/ca-certificates.crt"
+		}
+		serverName := t.config.TracingConfig.TLSServerName
+		if serverName == "" {
+			serverName = host
+		}
+		sanType := tlsv3.SubjectAltNameMatcher_DNS
+		sni := serverName
+		if net.ParseIP(serverName) != nil {
+			sanType = tlsv3.SubjectAltNameMatcher_IP_ADDRESS
+			sni = ""
+		}
+		validationContext := &tlsv3.CertificateValidationContext{
+			TrustedCa: &core.DataSource{
+				Specifier: &core.DataSource_Filename{Filename: caFile},
+			},
+			MatchTypedSubjectAltNames: []*tlsv3.SubjectAltNameMatcher{{
+				SanType: sanType,
+				Matcher: &matcher.StringMatcher{MatchPattern: &matcher.StringMatcher_Exact{Exact: serverName}},
+			}},
+		}
+		tlsContext := &tlsv3.UpstreamTlsContext{
+			Sni: sni,
+			CommonTlsContext: &tlsv3.CommonTlsContext{
+				ValidationContextType: &tlsv3.CommonTlsContext_ValidationContext{ValidationContext: validationContext},
+			},
+		}
+		tlsContextAny, err := anypb.New(tlsContext)
+		if err != nil {
+			t.logger.Error("Failed to create OTEL TLS configuration", slog.Any("error", err))
+			return nil
+		}
+		c.TransportSocket = &core.TransportSocket{Name: "envoy.transport_sockets.tls", ConfigType: &core.TransportSocket_TypedConfig{TypedConfig: tlsContextAny}}
 	}
 
 	t.logger.Info("Created OTEL collector cluster",
@@ -2882,6 +2926,18 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		ServiceName:       serviceName,
 		ResourceDetectors: resourceDetectors,
 	}
+	if t.config.TracingConfig.BearerTokenFile != "" {
+		token, err := os.ReadFile(t.config.TracingConfig.BearerTokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("read tracing bearer token: %w", err)
+		}
+		tokenValue := strings.TrimSpace(string(token))
+		if tokenValue == "" {
+			return nil, fmt.Errorf("tracing bearer token is empty")
+		}
+		h := &core.HeaderValue{Key: "authorization", Value: "Bearer " + tokenValue}
+		otelConfig.GrpcService.InitialMetadata = append(otelConfig.GrpcService.InitialMetadata, h)
+	}
 
 	// Marshal to Any
 	otelConfigAny, err := anypb.New(otelConfig)
@@ -2985,7 +3041,7 @@ func createOTelStaticResourceDetector(attributes map[string]string) (*core.Typed
 //     since the path template is a property of the matched route, not the selected
 //     upstream endpoint.
 func createTracingCustomTags() []*tracingv3.CustomTag {
-	return []*tracingv3.CustomTag{
+	tags := []*tracingv3.CustomTag{
 		{
 			Tag: "peer.service",
 			Type: &tracingv3.CustomTag_Metadata_{
@@ -3031,6 +3087,30 @@ func createTracingCustomTags() []*tracingv3.CustomTag {
 			},
 		},
 	}
+	for _, entry := range []struct {
+		tag string
+		key string
+	}{
+		{tag: "api.id", key: envoyRouteAPIIDKey},
+		{tag: "api.name", key: envoyRouteAPINameKey},
+		{tag: "api.version", key: envoyRouteAPIVersionKey},
+		{tag: "api.context", key: envoyRouteAPIContextKey},
+		{tag: "api.projectId", key: envoyRouteProjectIDKey},
+	} {
+		tags = append(tags, &tracingv3.CustomTag{
+			Tag: entry.tag,
+			Type: &tracingv3.CustomTag_Metadata_{
+				Metadata: &tracingv3.CustomTag_Metadata{
+					Kind: &metadatav3.MetadataKind{Kind: &metadatav3.MetadataKind_Route_{Route: &metadatav3.MetadataKind_Route{}}},
+					MetadataKey: &metadatav3.MetadataKey{
+						Key:  envoyRouteMetadataNamespace,
+						Path: []*metadatav3.MetadataKey_PathSegment{{Segment: &metadatav3.MetadataKey_PathSegment_Key{Key: entry.key}}},
+					},
+				},
+			},
+		})
+	}
+	return tags
 }
 
 // ensureFilterMetadata returns lbEndpoint's FilterMetadata map, allocating Metadata/
@@ -3101,6 +3181,31 @@ func setRouteHTTPRoute(r *route.Route, pathTemplate string) {
 		routeMeta.Fields = map[string]*structpb.Value{}
 	}
 	routeMeta.Fields[envoyRouteHTTPRouteKey] = structpb.NewStringValue(pathTemplate)
+}
+
+func setRouteAPIAttributes(r *route.Route, apiID, apiName, apiVersion, apiContext, projectID string) {
+	if r == nil {
+		return
+	}
+	filterMetadata := ensureRouteFilterMetadata(r)
+	routeMeta := filterMetadata[envoyRouteMetadataNamespace]
+	if routeMeta == nil {
+		routeMeta = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		filterMetadata[envoyRouteMetadataNamespace] = routeMeta
+	} else if routeMeta.Fields == nil {
+		routeMeta.Fields = map[string]*structpb.Value{}
+	}
+	for key, value := range map[string]string{
+		envoyRouteAPIIDKey:      apiID,
+		envoyRouteAPINameKey:    apiName,
+		envoyRouteAPIVersionKey: apiVersion,
+		envoyRouteAPIContextKey: apiContext,
+		envoyRouteProjectIDKey:  projectID,
+	} {
+		if value != "" {
+			routeMeta.Fields[key] = structpb.NewStringValue(value)
+		}
+	}
 }
 
 // setEndpointTransportSocketMatchID tags an endpoint with the lb_id its Cluster_
