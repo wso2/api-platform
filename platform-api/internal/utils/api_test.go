@@ -23,6 +23,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
@@ -651,6 +652,70 @@ func TestBuildAPIDeploymentYAML(t *testing.T) {
 	}
 	if deploymentStruct.Spec.Upstream.Main.URL != "http://backend:8080" {
 		t.Errorf("Upstream URL = %q", deploymentStruct.Spec.Upstream.Main.URL)
+	}
+}
+
+func TestBuildAPIDeploymentYAMLStampsProjectIDAndHandle(t *testing.T) {
+	util := &APIUtil{}
+	ctx := "/test"
+	projectUUID := "019feb20-bd8f-74f1-9489-8814a129cd80"
+	apiModel := &model.API{
+		Handle:        "test-api-handle",
+		Kind:          constants.RestApi,
+		ProjectID:     projectUUID,
+		ProjectHandle: "new-project",
+		Configuration: model.RestAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "http://backend:8080"},
+			},
+		},
+	}
+
+	deploymentStruct, err := util.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("BuildAPIDeploymentYAML() error = %v", err)
+	}
+
+	gotID := deploymentStruct.Metadata.Annotations[commonconstants.AnnotationProjectID]
+	if gotID != projectUUID {
+		t.Fatalf("project-id annotation = %q, want UUID %q", gotID, projectUUID)
+	}
+	gotHandle := deploymentStruct.Metadata.Annotations[commonconstants.AnnotationProjectHandle]
+	if gotHandle != "new-project" {
+		t.Fatalf("project-handle annotation = %q, want %q", gotHandle, "new-project")
+	}
+	if deploymentStruct.Metadata.Labels[commonconstants.DeprecatedLabelProjectID] != projectUUID {
+		t.Fatalf("deprecated project-id label = %q, want UUID %q",
+			deploymentStruct.Metadata.Labels[commonconstants.DeprecatedLabelProjectID], projectUUID)
+	}
+}
+
+func TestBuildAPIDeploymentYAMLOmitsProjectHandleWhenUnset(t *testing.T) {
+	util := &APIUtil{}
+	ctx := "/test"
+	projectUUID := "019feb20-bd8f-74f1-9489-8814a129cd80"
+	apiModel := &model.API{
+		Handle:    "test-api-handle",
+		Kind:      constants.RestApi,
+		ProjectID: projectUUID,
+		Configuration: model.RestAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "http://backend:8080"},
+			},
+		},
+	}
+
+	deploymentStruct, err := util.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("BuildAPIDeploymentYAML() error = %v", err)
+	}
+	if _, ok := deploymentStruct.Metadata.Annotations[commonconstants.AnnotationProjectHandle]; ok {
+		t.Fatal("expected project-handle annotation to be omitted when ProjectHandle is empty")
+	}
+	if got := deploymentStruct.Metadata.Annotations[commonconstants.AnnotationProjectID]; got != projectUUID {
+		t.Fatalf("project-id annotation = %q, want UUID %q", got, projectUUID)
 	}
 }
 

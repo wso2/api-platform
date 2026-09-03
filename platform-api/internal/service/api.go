@@ -366,6 +366,7 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	// and defaults the origin to control_plane).
 	updatedAPIModel.Handle = existingAPIModel.Handle
 	updatedAPIModel.ProjectID = existingAPIModel.ProjectID
+	updatedAPIModel.ProjectHandle = existingAPIModel.ProjectHandle
 	updatedAPIModel.Kind = existingAPIModel.Kind
 	updatedAPIModel.Origin = existingAPIModel.Origin
 	updatedAPIModel.CreatedBy = existingAPIModel.CreatedBy

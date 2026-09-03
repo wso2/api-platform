@@ -1051,7 +1051,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
 
-	apiProjectID := extractProjectIDFromConfig(cfg)
+	apiProjectID := analyticsProjectRefFromConfig(cfg)
 
 	// Build a map of upstream definition name -> basePath for dynamic routing
 	// This allows the policy engine to apply the correct path transformation when UpstreamName is used
@@ -1506,6 +1506,24 @@ func extractProjectIDFromConfig(cfg *models.StoredConfig) string {
 		}
 	}
 	return ""
+}
+
+// extractProjectHandleFromConfig reads the analytics-facing project handle annotation.
+func extractProjectHandleFromConfig(cfg *models.StoredConfig) string {
+	if annotations := cfg.GetAnnotations(); annotations != nil {
+		if handle, exists := (*annotations)[commonconstants.AnnotationProjectHandle]; exists {
+			return strings.TrimSpace(handle)
+		}
+	}
+	return ""
+}
+
+// analyticsProjectRefFromConfig prefers project-handle for Moesif / analytics metadata.
+func analyticsProjectRefFromConfig(cfg *models.StoredConfig) string {
+	if handle := extractProjectHandleFromConfig(cfg); handle != "" {
+		return handle
+	}
+	return extractProjectIDFromConfig(cfg)
 }
 
 func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) string {
