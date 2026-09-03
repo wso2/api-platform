@@ -960,9 +960,13 @@ Feature: Rate Limiting
     And I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
     Then the response status code should be 429
 
-    # a non-matching app_id bypasses the quota entirely, no matter the user - never throttled
+    # a non-matching app_id bypasses the quota entirely, no matter the user - never throttled.
+    # A 4th request beyond the quota's limit of 3 must still be 200, proving this is a true
+    # bypass and not just a separate 3-request bucket (as bob's case above legitimately is).
     When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=456,user_id=alice"
     And I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
     Then the response status code should be 200
     When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
     Then the response status code should be 200
