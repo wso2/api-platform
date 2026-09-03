@@ -213,10 +213,20 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 	}
 
 	upstream := mapUpstreamAPIToModel(req.Upstream)
-	sdl, introspectionMode, err := s.resolveSchema(utils.ValueOrEmpty(req.Sdl), utils.ValueOrEmpty(req.SdlUrl), upstream)
+	var schemaSource string
+	if req.SchemaSource != nil {
+		schemaSource = string(*req.SchemaSource)
+	}
+	// A blank schemaSource is not defaulted here — resolveSchema infers it
+	// from which of sdl/sdlUrl is populated, for backward compatibility with
+	// a caller that predates this field.
+	resolution, err := s.resolveSchema(schemaSource, utils.ValueOrEmpty(req.Sdl), utils.ValueOrEmpty(req.SdlUrl), upstream)
 	if err != nil {
 		return nil, err
 	}
+	// resolution.Resolved false is not an error on create — there is no
+	// previous schema to fall back to, so an unresolved schema just means the
+	// new API's sdl/introspectionMode start out empty (see resolveSchema).
 
 	var subscriptionPlans []string
 	if req.SubscriptionPlans != nil {
@@ -237,8 +247,8 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 			Name:              req.DisplayName,
 			Version:           req.Version,
 			Context:           &context,
-			SDL:               sdl,
-			IntrospectionMode: introspectionMode,
+			SDL:               resolution.SDL,
+			IntrospectionMode: resolution.IntrospectionMode,
 			Upstream:          *upstream,
 			Policies:          mapMCPPoliciesAPIToModel(req.Policies),
 			SubscriptionPlans: subscriptionPlans,
@@ -259,50 +269,140 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 	return s.Get(orgUUID, handle)
 }
 
-// resolveSchema implements the onboarding paths: a directly supplied SDL
-// (pasted inline, uploaded as a file, or fetched from sdlUrl — the caller has
-// already collapsed all three into suppliedSDL/sdlURL by the time this runs)
-// is parsed/validated as-is; when neither is given, upstream.main.url is
-// required and the schema is derived via introspection. Exactly one of
-// sdl/mode is returned on success; on failure the error is always the sterile
-// GraphQLAPISchemaResolveFailed catalog entry (422) — the specific
-// parser/fetch/introspection failure reason is never surfaced to the client
-// (error-handling.md / ssrf-prevention.md).
-func (s *GraphQLAPIService) resolveSchema(suppliedSDL, sdlURL string, upstream *model.UpstreamConfig) (sdl string, introspectionMode string, err error) {
+// graphQLSchemaResolution is resolveSchema's outcome. Resolved is false when
+// the declared schemaSource was structurally valid but the actual content
+// couldn't be turned into a usable schema (bad SDL text, an unreachable
+// sdlUrl, introspection failing) — that is never an error (see resolveSchema).
+type graphQLSchemaResolution struct {
+	SDL               string
+	IntrospectionMode string
+	Resolved          bool
+}
+
+// resolveSchema validates the request's declared schemaSource against which
+// of sdl/sdlUrl/upstream.main.url was actually supplied, then attempts to
+// resolve the schema that way. It returns two independent kinds of outcome:
+//
+//   - A non-nil error means the request itself is structurally inconsistent
+//     with its declared schemaSource — a field not matching it was supplied
+//     (or more than one was), the field/part its value requires is missing,
+//     or introspection was declared against an upstream.main.ref (which has
+//     no URL to introspect). These are request-shape problems the caller can
+//     fix by changing what they sent, reported via the "%s"-templated
+//     ValidationFailed catalog entry (400) with a specific, actionable
+//     message — same as the pre-existing sdl/sdlUrl mutual-exclusivity check
+//     this replaces. This is deliberately not GraphQLAPISchemaResolveFailed:
+//     that entry's message is a fixed sterile string with no format verb, by
+//     design (error-handling.md — never reveal which resolution-quality
+//     reason applied), so passing it a specific reason for a *structural*
+//     mismatch would either be silently dropped or (worse) surface as a
+//     literal Go fmt "%!(EXTRA ...)" artifact — a structural problem is safe
+//     to explain to the caller precisely because it's about their own
+//     request shape, not about the upstream/parser internals that entry
+//     exists to hide.
+//   - A nil error with Resolved=false means the request was well-formed but
+//     resolving the schema didn't actually work this time (invalid SDL text,
+//     an unreachable sdlUrl, introspection failing/disabled). This never
+//     blocks the request — see the doc comments on Create and Update for how
+//     each handles it.
+func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL string, upstream *model.UpstreamConfig) (graphQLSchemaResolution, error) {
+	schemaSource = strings.TrimSpace(schemaSource)
 	suppliedSDL = strings.TrimSpace(suppliedSDL)
 	sdlURL = strings.TrimSpace(sdlURL)
 
-	if suppliedSDL != "" && sdlURL != "" {
-		return "", "", apperror.ValidationFailed.New("The sdl and sdlUrl fields are mutually exclusive — provide only one.")
+	// A caller that doesn't set schemaSource at all predates the field (or
+	// simply doesn't need to be explicit); infer it from whichever field is
+	// actually populated, the same way this resolved before schemaSource
+	// existed. Defaulting unconditionally to "introspection" here would
+	// reject that caller's own sdl/sdlUrl as an "introspection but sdl was
+	// also provided" structural error — a real caller sending exactly what
+	// they always sent. Only when schemaSource is explicitly set does an
+	// unmatched field become a structural error (see below) — that's the
+	// whole reason to set it explicitly, and inferring around a stated intent
+	// would defeat it.
+	if schemaSource == "" {
+		switch {
+		case suppliedSDL != "":
+			schemaSource = string(api.GraphQLAPISchemaSourceInline)
+		case sdlURL != "":
+			schemaSource = string(api.GraphQLAPISchemaSourceUrl)
+		default:
+			schemaSource = string(api.GraphQLAPISchemaSourceIntrospection)
+		}
 	}
 
-	if sdlURL != "" {
+	// Structural validation: exactly the field(s) matching the declared
+	// schemaSource may be populated — a mismatch is a request-shape problem,
+	// reported immediately rather than silently falling through to whatever
+	// happens to be non-empty.
+	switch schemaSource {
+	case string(api.GraphQLAPISchemaSourceInline):
+		if sdlURL != "" {
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'inline' but sdlUrl was also provided.")
+		}
+		if suppliedSDL == "" {
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'inline' but no sdl was provided.")
+		}
+	case string(api.GraphQLAPISchemaSourceUrl):
+		if suppliedSDL != "" {
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'url' but sdl was also provided.")
+		}
+		if sdlURL == "" {
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'url' but no sdlUrl was provided.")
+		}
+	case string(api.GraphQLAPISchemaSourceFile):
+		// The handler copies an uploaded sdlFile's content into suppliedSDL —
+		// from here a file is just inline text; only the structural
+		// expectation (no sdlUrl) differs from schemaSource "inline".
+		if sdlURL != "" {
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'file' but sdlUrl was also provided.")
+		}
+		if suppliedSDL == "" {
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'file' but no sdlFile was uploaded.")
+		}
+	case string(api.GraphQLAPISchemaSourceIntrospection):
+		if suppliedSDL != "" || sdlURL != "" {
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'introspection' but sdl/sdlUrl was also provided.")
+		}
+		if upstream == nil || upstream.Main == nil || strings.TrimSpace(upstream.Main.URL) == "" {
+			if upstream != nil && upstream.Main != nil && strings.TrimSpace(upstream.Main.Ref) != "" {
+				return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'introspection' but upstream.main is a ref, not a literal url — introspection has nothing to call.")
+			}
+			return graphQLSchemaResolution{}, apperror.ValidationFailed.New("schemaSource is 'introspection' but upstream.main.url is not set.")
+		}
+	default:
+		return graphQLSchemaResolution{}, apperror.ValidationFailed.New(fmt.Sprintf("Invalid schemaSource %q — must be one of inline, url, file, introspection.", schemaSource))
+	}
+
+	// Resolution: best-effort from here — a failure never returns an error,
+	// it just means Resolved is false.
+	switch schemaSource {
+	case string(api.GraphQLAPISchemaSourceInline), string(api.GraphQLAPISchemaSourceFile):
+		if err := validateGraphQLSDL(suppliedSDL); err != nil {
+			s.slogger.Warn("Supplied GraphQL SDL failed validation", "schemaSource", schemaSource, "error", err)
+			return graphQLSchemaResolution{}, nil
+		}
+		return graphQLSchemaResolution{SDL: suppliedSDL, IntrospectionMode: "SDL", Resolved: true}, nil
+	case string(api.GraphQLAPISchemaSourceUrl):
 		fetched, err := utils.FetchOpenAPISpecFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes)
 		if err != nil {
 			s.slogger.Warn("Failed to fetch GraphQL SDL from sdlUrl", "error", err)
-			return "", "", apperror.GraphQLAPISchemaResolveFailed.Wrap(err)
+			return graphQLSchemaResolution{}, nil
 		}
-		suppliedSDL = strings.TrimSpace(fetched)
-	}
-
-	if suppliedSDL != "" {
-		if err := validateGraphQLSDL(suppliedSDL); err != nil {
-			s.slogger.Warn("Supplied GraphQL SDL failed validation", "error", err)
-			return "", "", apperror.GraphQLAPISchemaResolveFailed.Wrap(err)
+		fetched = strings.TrimSpace(fetched)
+		if err := validateGraphQLSDL(fetched); err != nil {
+			s.slogger.Warn("Fetched GraphQL SDL failed validation", "error", err)
+			return graphQLSchemaResolution{}, nil
 		}
-		return suppliedSDL, "SDL", nil
+		return graphQLSchemaResolution{SDL: fetched, IntrospectionMode: "SDL", Resolved: true}, nil
+	default: // introspection
+		derived, err := fetchAndConvertGraphQLSchema(upstream.Main.URL)
+		if err != nil {
+			s.slogger.Warn("GraphQL introspection failed", "error", err)
+			return graphQLSchemaResolution{}, nil
+		}
+		return graphQLSchemaResolution{SDL: derived, IntrospectionMode: "ENDPOINT", Resolved: true}, nil
 	}
-
-	if upstream == nil || upstream.Main == nil || strings.TrimSpace(upstream.Main.URL) == "" {
-		return "", "", apperror.ValidationFailed.New("One of sdl, sdlUrl, or upstream.main.url must be provided.")
-	}
-
-	derived, err := fetchAndConvertGraphQLSchema(upstream.Main.URL)
-	if err != nil {
-		s.slogger.Warn("GraphQL introspection failed", "error", err)
-		return "", "", apperror.GraphQLAPISchemaResolveFailed.Wrap(err)
-	}
-	return derived, "ENDPOINT", nil
 }
 
 // handleExistsCheck returns a function that checks if a GraphQL API handle
@@ -503,9 +603,24 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	}
 
 	upstream := mapUpstreamAPIToModel(req.Upstream)
-	sdl, introspectionMode, err := s.resolveSchema(utils.ValueOrEmpty(req.Sdl), utils.ValueOrEmpty(req.SdlUrl), upstream)
+	var schemaSource string
+	if req.SchemaSource != nil {
+		schemaSource = string(*req.SchemaSource)
+	}
+	// A blank schemaSource is not defaulted here — resolveSchema infers it
+	// from which of sdl/sdlUrl is populated, for backward compatibility with
+	// a caller that predates this field.
+	resolution, err := s.resolveSchema(schemaSource, utils.ValueOrEmpty(req.Sdl), utils.ValueOrEmpty(req.SdlUrl), upstream)
 	if err != nil {
 		return nil, err
+	}
+	// Unlike Create, a failed resolution on update keeps the previously-stored
+	// schema instead of blanking it out — the whole point of best-effort
+	// resolution is that a metadata-only edit (or a transient upstream issue)
+	// shouldn't destroy a schema that was working before this request.
+	sdl, introspectionMode := existing.Configuration.SDL, existing.Configuration.IntrospectionMode
+	if resolution.Resolved {
+		sdl, introspectionMode = resolution.SDL, resolution.IntrospectionMode
 	}
 
 	var subscriptionPlans []string
