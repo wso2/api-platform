@@ -52,6 +52,32 @@ export type ApiControlPlaneExtension = SlotEntry & {
 };
 
 /**
+ * A host-injected replacement for a specific built-in page. Unlike
+ * `ApiControlPlaneExtension` this adds no nav item and no route: the built-in
+ * page keeps its own route, sidebar entry and capability gate, and only what
+ * renders there changes. Pairs with a `Hideable` of the same name wrapping the
+ * built-in element — Slot supplies the replacement, Hideable suppresses the
+ * original (see `slots/index.tsx`).
+ */
+export type ApiControlPlanePageOverride = SlotEntry & {
+  render: (port: CloudHostPort) => ReactNode;
+};
+
+/**
+ * Every registered cloud entry. Sidebar/settings extensions and page overrides
+ * share one slot registry, filtered by `slot` at each consumption site.
+ */
+export type ApiControlPlaneCloudEntry =
+  | ApiControlPlaneExtension
+  | ApiControlPlanePageOverride;
+
+/**
+ * Slot for overriding the built-in API Deploy page. The page is API-scoped, so an
+ * entry here renders against a Port carrying `apiHandle`.
+ */
+export const API_DEPLOY_SLOT = 'page.apiDeploy';
+
+/**
  * Slot names core knows about. Both live here rather than being spelled out at
  * each use site, so the sidebar route builder and the nav pipeline (and the
  * Settings tab list and its routes) can never drift apart on a string literal.
@@ -62,10 +88,16 @@ const SIDEBAR_SLOT_PREFIX = 'sidebar.';
 export const settingsTabSlot = (level: NavigationLevel): string =>
   `settings.${level}.tabs`;
 
-/** Whether this entry is a top-level sidebar item rather than a nested one. */
+/**
+ * Whether this entry is a top-level sidebar item rather than a nested one or a
+ * page override. Takes the union because the registry holds every cloud entry,
+ * and narrows, so callers that build routes and nav items only ever see entries
+ * that actually have a `routePath` and a `level`.
+ */
 export const isSidebarExtension = (
-  extension: ApiControlPlaneExtension
-): boolean => extension.slot.startsWith(SIDEBAR_SLOT_PREFIX);
+  entry: ApiControlPlaneCloudEntry
+): entry is ApiControlPlaneExtension =>
+  entry.slot.startsWith(SIDEBAR_SLOT_PREFIX);
 
 /**
  * Entries for `settingsTabSlot(level)`, sorted by `order`.
@@ -76,13 +108,14 @@ export const isSidebarExtension = (
  * in the matching route pass rather than half-honoured.
  */
 export const settingsTabExtensions = (
-  extensions: readonly ApiControlPlaneExtension[],
+  extensions: readonly ApiControlPlaneCloudEntry[],
   level: NavigationLevel
 ): ApiControlPlaneExtension[] =>
   extensions
     .filter(
-      (extension) =>
-        extension.slot === settingsTabSlot(level) && extension.level === level
+      (entry): entry is ApiControlPlaneExtension =>
+        entry.slot === settingsTabSlot(level) &&
+        (entry as ApiControlPlaneExtension).level === level
     )
     .sort((left, right) => left.order - right.order);
 
@@ -90,7 +123,7 @@ export function ExtensionsProvider({
   extensions,
   children,
 }: {
-  extensions: readonly ApiControlPlaneExtension[];
+  extensions: readonly ApiControlPlaneCloudEntry[];
   children: ReactNode;
 }) {
   return (
@@ -98,8 +131,8 @@ export function ExtensionsProvider({
   );
 }
 
-export function useExtensions(): readonly ApiControlPlaneExtension[] {
-  return useSlotEntries<ApiControlPlaneExtension>();
+export function useExtensions(): readonly ApiControlPlaneCloudEntry[] {
+  return useSlotEntries<ApiControlPlaneCloudEntry>();
 }
 
 /**

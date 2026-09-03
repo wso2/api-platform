@@ -9,13 +9,16 @@
 
 import { Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
 
+import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
+  API_DEPLOY_SLOT,
   settingsTabSlot,
+  type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
@@ -44,8 +47,15 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * scope, so each is gated by `isVisible` on whether a project is in scope, and
  * exactly one is shown at a time. Data flows through the host port's `apiFetch`
  * to the platform-api REST endpoints.
+ *
+ * `deploy` is different again: it registers against `API_DEPLOY_SLOT` to replace
+ * what renders at the host's existing, built-in API Deploy route — see
+ * `DeployRoute` in `api-control-plane/src/routes/AppRoutes.tsx` — rather than
+ * adding a new nav item. The built-in page keeps its route, sidebar entry and
+ * capability gate; nothing under
+ * `api-control-plane/src/pages/appShell/appShellPages/deploy` is touched.
  */
-export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
+export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
     id: 'environments',
     version: '0.1.0',
@@ -92,7 +102,19 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
       },
     ],
   }),
+  defineCloudPlugin({
+    id: 'deploy',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'deploy',
+        slot: API_DEPLOY_SLOT,
+        order: 0,
+        render: (port) => <DeployFeature port={port} />,
+      },
+    ],
+  }),
 ];
 
 export const cloudExtensions = getCloudExtensions(cloudPluginFeatures);
-export type { ApiControlPlaneExtension };
+export type { ApiControlPlaneCloudEntry, ApiControlPlaneExtension };

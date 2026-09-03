@@ -73,6 +73,7 @@ export default function AppLayout() {
   const port: CloudHostPort = {
     orgHandle: params.orgHandle ?? '',
     projectHandle: params.projectHandler,
+    apiHandle: params.apiHandler,
     navigate,
     notify,
     apiFetch: extensionApiFetch,

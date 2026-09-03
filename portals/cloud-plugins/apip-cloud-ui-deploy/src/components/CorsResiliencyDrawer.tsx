@@ -16,6 +16,13 @@
  * under the License.
  */
 
+/**
+ * NOT WIRED YET. CORS, rate limiting and resiliency are not yet customizable per
+ * deployment: the API exposes only the endpoint and virtual hosts today. This
+ * drawer is retained, unwired, for the increment that adds them — at which point
+ * it becomes environment-scoped, like the settings that already exist, rather
+ * than the per-gateway view sketched here.
+ */
 import type { FC } from 'react';
 import { Box, Divider, Drawer, IconButton, Typography } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';

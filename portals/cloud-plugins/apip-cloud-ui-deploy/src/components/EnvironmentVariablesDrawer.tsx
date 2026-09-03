@@ -16,6 +16,12 @@
  * under the License.
  */
 
+/**
+ * NOT WIRED YET. Environment variables are not yet part of a deployment: the API exposes
+ * only the endpoint and virtual hosts today. This drawer is retained, unwired,
+ * for the increment that adds them. Its contents are placeholder names, not real
+ * data.
+ */
 import type { FC } from 'react';
 import { Box, Divider, Drawer, IconButton, Typography } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';

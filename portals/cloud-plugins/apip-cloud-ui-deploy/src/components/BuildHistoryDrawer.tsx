@@ -16,6 +16,11 @@
  * under the License.
  */
 
+/**
+ * NOT WIRED YET. Build history is not yet available: the API reports each gateway's current
+ * deployment, not a history. This drawer is retained, unwired, for the increment
+ * that adds one.
+ */
 import type { FC } from 'react';
 import { Box, Divider, Drawer, IconButton, Typography } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';

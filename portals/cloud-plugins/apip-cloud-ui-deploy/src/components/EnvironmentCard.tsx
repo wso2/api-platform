@@ -16,22 +16,26 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
+import type { FC } from 'react';
 import { Box, Button, Chip, Divider, Typography } from '@wso2/oxygen-ui';
 import { MoveRight, Wrench } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
-import CorsResiliencyDrawer from './CorsResiliencyDrawer';
-import EnvironmentVariablesDrawer from './EnvironmentVariablesDrawer';
 import GatewayRow from './GatewayRow';
 import { activeGatewayCount, hasAnyDeployment } from '../utils/status';
 import type { Environment } from '../types';
 
 export type EnvironmentCardProps = {
   environment: Environment;
+  /** Set when a later stage exists, which is what makes promotion offerable. */
   nextEnvironmentName?: string;
-  onPromoteClick: () => void;
+  /** Set when this stage is the pipeline's entry, the only one deployed to directly. */
+  isEntry: boolean;
+  busy: boolean;
+  onDeploy: () => void;
+  onPromote: () => void;
+  onEditSettings: () => void;
   onStopGateway: (gatewayId: string) => void;
-  onRetryGateway: (gatewayId: string) => void;
+  onRedeployGateway: (gatewayId: string) => void;
 };
 
 const sectionLabelSx = {
@@ -42,19 +46,26 @@ const sectionLabelSx = {
   letterSpacing: '0.04em',
 };
 
+/*
+ * The environment variables and CORS / rate-limiting / resiliency links from the
+ * original design are left out until the API exposes those settings. What it does
+ * support — the endpoint and virtual hosts an environment deploys with — is
+ * reached through "Deployment settings" below.
+ */
 const EnvironmentCard: FC<EnvironmentCardProps> = ({
   environment,
   nextEnvironmentName,
-  onPromoteClick,
+  isEntry,
+  busy,
+  onDeploy,
+  onPromote,
+  onEditSettings,
   onStopGateway,
-  onRetryGateway,
+  onRedeployGateway,
 }) => {
-  const [envVarsOpen, setEnvVarsOpen] = useState(false);
-  const [corsOpen, setCorsOpen] = useState(false);
-
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
-  const deployed = hasAnyDeployment(gateways);
+  const promotable = hasAnyDeployment(gateways);
 
   return (
     <Box
@@ -75,7 +86,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
       <Box>
         <Typography sx={{ fontSize: 16, fontWeight: 600 }}>{environment.name}</Typography>
         <Typography variant="body2" color="text.secondary">
-          {activeCount} of {gateways.length} gateways active
+          {activeCount} of {gateways.length} gateway{gateways.length === 1 ? '' : 's'} active
         </Typography>
       </Box>
 
@@ -86,33 +97,53 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
         <Chip label={gateways.length} size="small" sx={{ height: 18, fontSize: 11 }} />
       </Box>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {gateways.map((gateway) => (
-          <GatewayRow
-            key={gateway.id}
-            gateway={gateway}
-            environmentName={environment.name}
-            onRetry={() => onRetryGateway(gateway.id)}
-            onStop={() => onStopGateway(gateway.id)}
-          />
-        ))}
-      </Box>
+      {gateways.length === 0 ? (
+        <Typography variant="caption" color="text.disabled">
+          No gateway is bound to this environment yet.
+        </Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {gateways.map((gateway) => (
+            <GatewayRow
+              key={gateway.id}
+              gateway={gateway}
+              busy={busy}
+              onStop={() => onStopGateway(gateway.id)}
+              onRedeploy={() => onRedeployGateway(gateway.id)}
+            />
+          ))}
+        </Box>
+      )}
 
       <Divider />
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-        <ActionRow label="Environment Variables" icon={<Wrench size={14} />} onClick={() => setEnvVarsOpen(true)} />
-        <Divider sx={{ borderStyle: 'dashed' }} />
-        <ActionRow
-          label="CORS, Rate Limiting and Resiliency"
-          icon={<Wrench size={14} />}
-          onClick={() => setCorsOpen(true)}
-        />
-      </Box>
+      <ActionRow
+        label="Deployment settings"
+        icon={<Wrench size={14} />}
+        onClick={onEditSettings}
+      />
+
+      {/*
+        The entry environment is the only one that can be deployed to directly;
+        every later one is reached by promoting from the stage before it, which is
+        what keeps a higher environment from running an artifact that skipped a
+        lower one. The API enforces the same rule.
+      */}
+      {isEntry && (
+        <Button fullWidth variant="contained" onClick={onDeploy} disabled={busy}>
+          Deploy
+        </Button>
+      )}
 
       {nextEnvironmentName ? (
-        deployed ? (
-          <Button fullWidth variant="contained" startIcon={<MoveRight size={16} />} onClick={onPromoteClick}>
+        promotable ? (
+          <Button
+            fullWidth
+            variant={isEntry ? 'outlined' : 'contained'}
+            startIcon={<MoveRight size={16} />}
+            onClick={onPromote}
+            disabled={busy}
+          >
             Promote to {nextEnvironmentName}
           </Button>
         ) : (
@@ -130,14 +161,6 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
           </Box>
         )
       ) : null}
-
-      <EnvironmentVariablesDrawer
-        open={envVarsOpen}
-        onClose={() => setEnvVarsOpen(false)}
-        scopeLabel={environment.name}
-        count={environment.envVars}
-      />
-      <CorsResiliencyDrawer open={corsOpen} onClose={() => setCorsOpen(false)} scopeLabel={environment.name} />
     </Box>
   );
 };
