@@ -374,6 +374,16 @@ Feature: Agent policy attachment and enforcement
               - protocolBinding: HTTP+JSON
                 pathPrefix: /v1
             policies:
+              # Present so the GetExtendedAgentCard request below can be
+              # authenticated: the extended card is guarded on every Agent, and
+              # an unauthenticated caller never reaches its chain. It sits ahead
+              # of set-headers but does not affect the relative order of the two
+              # set-headers instances, which is what this scenario measures.
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
               - name: set-headers
                 version: v1
                 params:
@@ -403,6 +413,8 @@ Feature: Agent policy attachment and enforcement
     And I wait for policy snapshot sync
 
     When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
     And I send an A2A "GET" request to "http://localhost:8080/agent-chain-order/v1/tasks"
     Then the response status code should be 200
     # Both instances ran: neither was deduplicated away.
@@ -417,7 +429,11 @@ Feature: Agent policy attachment and enforcement
 
     # An operation with no operation-level policies gets only the Agent-wide
     # instance — the operation policy is scoped to ListTasks, not to the Agent.
+    # The extended card is guarded on every Agent, so this request authenticates;
+    # the guard rides alongside the Agent-wide chain rather than replacing it.
     When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
     And I send an A2A "GET" request to "http://localhost:8080/agent-chain-order/v1/extendedAgentCard"
     Then the response status code should be 200
     And the response header "X-Agent-Wide" should be "agent-level"

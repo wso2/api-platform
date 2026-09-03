@@ -232,6 +232,18 @@ Feature: Agent deployment and A2A routing
                 pathPrefix: /
               - protocolBinding: HTTP+JSON
                 pathPrefix: /v1
+            # Required for GetExtendedAgentCard to be reachable at all: the
+            # extended card is guarded on every Agent, so without an
+            # authentication policy no caller can ever reach that one operation,
+            # and "all eleven are reachable" could not hold. The other ten do not
+            # need it, but an Agent-wide policy is what the guard checks against,
+            # so every operation below authenticates.
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
           agentCard:
             public:
               mode: passthrough
@@ -240,7 +252,11 @@ Feature: Agent deployment and A2A routing
     And I wait for policy snapshot sync
 
     # ---- HTTP+JSON ----
+    # The client reads the Authorization header at call time, so setting it once
+    # here covers every operation it issues below.
     When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
     And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-sdk-operations/v1"
 
     # 1. SendMessage
@@ -296,6 +312,8 @@ Feature: Agent deployment and A2A routing
 
     # ---- JSON-RPC: the same eleven ----
     When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
     And I create an A2A client "rpc" for the "JSONRPC" binding at "http://localhost:8080/agent-sdk-operations"
 
     # 1. SendMessage
