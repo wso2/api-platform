@@ -58,21 +58,30 @@ func newGraphQLAPIMultipartHandlerRequest(t *testing.T, metadata, sdlFileContent
 
 const graphQLHandlerTestSDL = "type Query { countries: [String] }"
 
-func TestDecodeCreateGraphQLAPIRequest_JSON(t *testing.T) {
+// TestDecodeCreateGraphQLAPIRequest_JSON_Rejected guards the multipart-only
+// requirement: application/json is no longer an accepted content type for
+// GraphQL API create/update, so every schemaSource variant is expressed the
+// same way instead of splitting file uploads onto a second content type.
+func TestDecodeCreateGraphQLAPIRequest_JSON_Rejected(t *testing.T) {
 	body := `{"displayName":"Countries","context":"/countries","version":"v1.0","projectId":"default-project","sdl":"type Query { x: String }"}`
 	req := httptest.NewRequest(http.MethodPost, "/graphql-apis", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	var out api.CreateGraphQLAPIRequest
-	if err := decodeCreateGraphQLAPIRequest(req, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out.DisplayName != "Countries" || out.Sdl == nil || *out.Sdl != "type Query { x: String }" {
-		t.Errorf("unexpected decode result: %+v", out)
+	if err := decodeCreateGraphQLAPIRequest(req, &out); err == nil {
+		t.Fatal("expected application/json to be rejected now that multipart/form-data is the only accepted content type")
 	}
 }
 
-func TestDecodeCreateGraphQLAPIRequest_Multipart_FileWinsOverMetadataSDLUrl(t *testing.T) {
+// TestDecodeCreateGraphQLAPIRequest_Multipart_FileContentAndMetadataSDLUrlBothSurvive
+// guards a deliberate behavior change from the old "file always wins,
+// clearing sdlUrl" decoder logic: the decoder no longer resolves a
+// file-vs-sdlUrl conflict itself, it only copies the file's content into
+// req.Sdl and leaves whatever else was in metadata untouched. Detecting (and
+// rejecting) a request that populated more than one schema source is now
+// resolveSchema's job, driven by the declared schemaSource — see
+// graphql_api.go in internal/service.
+func TestDecodeCreateGraphQLAPIRequest_Multipart_FileContentAndMetadataSDLUrlBothSurvive(t *testing.T) {
 	metadata := `{"displayName":"Countries","context":"/countries","version":"v1.0","projectId":"default-project","sdlUrl":"https://example.com/schema.graphql"}`
 	req := newGraphQLAPIMultipartHandlerRequest(t, metadata, graphQLHandlerTestSDL, true)
 
@@ -81,10 +90,10 @@ func TestDecodeCreateGraphQLAPIRequest_Multipart_FileWinsOverMetadataSDLUrl(t *t
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if out.Sdl == nil || *out.Sdl != graphQLHandlerTestSDL {
-		t.Errorf("expected sdl to come from the uploaded file, got %v", out.Sdl)
+		t.Errorf("expected sdl to carry the uploaded file's content, got %v", out.Sdl)
 	}
-	if out.SdlUrl != nil {
-		t.Errorf("expected sdlUrl to be cleared when a file part is uploaded, got %v", *out.SdlUrl)
+	if out.SdlUrl == nil || *out.SdlUrl != "https://example.com/schema.graphql" {
+		t.Errorf("expected sdlUrl from metadata to be left as-is (not silently cleared), got %v", out.SdlUrl)
 	}
 	if out.DisplayName != "Countries" {
 		t.Errorf("expected other metadata fields to still be populated, got %+v", out)
@@ -116,21 +125,23 @@ func TestDecodeCreateGraphQLAPIRequest_Multipart_MissingMetadata(t *testing.T) {
 	}
 }
 
-func TestDecodeUpdateGraphQLAPIRequest_JSON(t *testing.T) {
+// TestDecodeUpdateGraphQLAPIRequest_JSON_Rejected is Update's counterpart to
+// TestDecodeCreateGraphQLAPIRequest_JSON_Rejected.
+func TestDecodeUpdateGraphQLAPIRequest_JSON_Rejected(t *testing.T) {
 	body := `{"displayName":"Countries","context":"/countries","version":"v1.0","sdl":"type Query { x: String }"}`
 	req := httptest.NewRequest(http.MethodPut, "/graphql-apis/countries", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	var out api.GraphQLAPI
-	if err := decodeUpdateGraphQLAPIRequest(req, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out.Sdl == nil || *out.Sdl != "type Query { x: String }" {
-		t.Errorf("unexpected decode result: %+v", out)
+	if err := decodeUpdateGraphQLAPIRequest(req, &out); err == nil {
+		t.Fatal("expected application/json to be rejected now that multipart/form-data is the only accepted content type")
 	}
 }
 
-func TestDecodeUpdateGraphQLAPIRequest_Multipart_FileWinsOverMetadataSDLUrl(t *testing.T) {
+// TestDecodeUpdateGraphQLAPIRequest_Multipart_FileContentAndMetadataSDLUrlBothSurvive
+// is Update's counterpart to
+// TestDecodeCreateGraphQLAPIRequest_Multipart_FileContentAndMetadataSDLUrlBothSurvive.
+func TestDecodeUpdateGraphQLAPIRequest_Multipart_FileContentAndMetadataSDLUrlBothSurvive(t *testing.T) {
 	metadata := `{"displayName":"Countries","context":"/countries","version":"v1.0","sdlUrl":"https://example.com/schema.graphql"}`
 	req := newGraphQLAPIMultipartHandlerRequest(t, metadata, graphQLHandlerTestSDL, true)
 
@@ -139,10 +150,10 @@ func TestDecodeUpdateGraphQLAPIRequest_Multipart_FileWinsOverMetadataSDLUrl(t *t
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if out.Sdl == nil || *out.Sdl != graphQLHandlerTestSDL {
-		t.Errorf("expected sdl to come from the uploaded file, got %v", out.Sdl)
+		t.Errorf("expected sdl to carry the uploaded file's content, got %v", out.Sdl)
 	}
-	if out.SdlUrl != nil {
-		t.Errorf("expected sdlUrl to be cleared when a file part is uploaded, got %v", *out.SdlUrl)
+	if out.SdlUrl == nil || *out.SdlUrl != "https://example.com/schema.graphql" {
+		t.Errorf("expected sdlUrl from metadata to be left as-is (not silently cleared), got %v", out.SdlUrl)
 	}
 }
 

@@ -334,7 +334,12 @@ func TestGraphQLCreate_WithIntrospection_Success(t *testing.T) {
 // same shared-client policy as MCP and as sdlUrl's own fetcher), so a local
 // httptest.Server genuinely exercises this path rather than tripping an SSRF
 // block first.
-func TestGraphQLCreate_IntrospectionFailure_UnprocessableEntity(t *testing.T) {
+// TestGraphQLCreate_IntrospectionFailure_SucceedsWithEmptySchema guards
+// resolveSchema's best-effort posture: introspection failing (upstream
+// unreachable, disabled, or misbehaving) is a resolution-quality problem, not
+// a structural one, so it must never block creation — the API is created with
+// an empty sdl instead, fetchable/refreshable later.
+func TestGraphQLCreate_IntrospectionFailure_SucceedsWithEmptySchema(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("not json at all"))
@@ -353,35 +358,27 @@ func TestGraphQLCreate_IntrospectionFailure_UnprocessableEntity(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for a failed introspection")
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("expected creation to succeed despite a failed introspection, got: %v", err)
 	}
-	var appErr *apperror.Error
-	if !errors.As(err, &appErr) {
-		t.Fatalf("expected an *apperror.Error, got %T: %v", err, err)
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
 	}
-	if appErr.Code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, appErr.Code)
+	if repo.created == nil {
+		t.Fatal("expected repo.Create to be called")
 	}
-	if appErr.HTTPStatus != http.StatusUnprocessableEntity {
-		t.Errorf("expected 422, got %d", appErr.HTTPStatus)
-	}
-	if strings.Contains(appErr.Message, "not json at all") || strings.Contains(appErr.Message, server.URL) {
-		t.Errorf("client message leaks introspection internals: %q", appErr.Message)
-	}
-	if repo.created != nil {
-		t.Error("expected no repository write when introspection fails")
+	if repo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL when introspection fails, got %q", repo.created.Configuration.SDL)
 	}
 }
 
 // TestGraphQLCreate_SchemaResolveFailure_IdenticalShapeRegardlessOfCause pins
-// the CSV's "422 introspection failure and 422 SDL parse failure return the
-// identical generic response shape" scenario directly: both failure causes
-// route through the exact same apperror.GraphQLAPISchemaResolveFailed catalog
-// entry, so the client-visible {code, httpStatus, message} triple must be
-// byte-for-byte identical no matter which cause produced it — verified here
-// rather than left to code inspection alone.
+// resolveSchema's best-effort posture uniformly across both resolution-
+// failure causes it can hit: a malformed inline SDL and a failed
+// introspection must both succeed with an empty schema — neither is a
+// structural problem, so neither may block the request, and the outcome
+// shouldn't depend on which cause produced it.
 func TestGraphQLCreate_SchemaResolveFailure_IdenticalShapeRegardlessOfCause(t *testing.T) {
 	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -399,21 +396,19 @@ func TestGraphQLCreate_SchemaResolveFailure_IdenticalShapeRegardlessOfCause(t *t
 	}
 
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
-	_, sdlErr := newGraphQLTestService(&mockGraphQLAPIRepo{}, project).Create("org-1", "creator-uuid", malformedSDLReq)
-	_, introspectErr := newGraphQLTestService(&mockGraphQLAPIRepo{}, project).Create("org-1", "creator-uuid", introspectionFailureReq)
+	sdlRepo, introspectRepo := &mockGraphQLAPIRepo{}, &mockGraphQLAPIRepo{}
+	sdlResp, sdlErr := newGraphQLTestService(sdlRepo, project).Create("org-1", "creator-uuid", malformedSDLReq)
+	introspectResp, introspectErr := newGraphQLTestService(introspectRepo, project).Create("org-1", "creator-uuid", introspectionFailureReq)
 
-	var sdlAppErr, introspectAppErr *apperror.Error
-	if !errors.As(sdlErr, &sdlAppErr) || !errors.As(introspectErr, &introspectAppErr) {
-		t.Fatalf("expected both errors to be *apperror.Error, got %T and %T", sdlErr, introspectErr)
+	if sdlErr != nil || introspectErr != nil {
+		t.Fatalf("expected both to succeed, got sdlErr=%v introspectErr=%v", sdlErr, introspectErr)
 	}
-	if sdlAppErr.Code != introspectAppErr.Code {
-		t.Errorf("expected identical error codes, got %q vs %q", sdlAppErr.Code, introspectAppErr.Code)
+	if sdlResp == nil || introspectResp == nil {
+		t.Fatal("expected both responses to be non-nil")
 	}
-	if sdlAppErr.HTTPStatus != introspectAppErr.HTTPStatus {
-		t.Errorf("expected identical HTTP status, got %d vs %d", sdlAppErr.HTTPStatus, introspectAppErr.HTTPStatus)
-	}
-	if sdlAppErr.Message != introspectAppErr.Message {
-		t.Errorf("expected identical generic message regardless of cause, got %q vs %q", sdlAppErr.Message, introspectAppErr.Message)
+	if sdlRepo.created.Configuration.SDL != "" || introspectRepo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL for both causes, got %q and %q",
+			sdlRepo.created.Configuration.SDL, introspectRepo.created.Configuration.SDL)
 	}
 }
 
@@ -765,7 +760,11 @@ func TestGraphQLList_UnknownProjectHandle_NotFound(t *testing.T) {
 	}
 }
 
-func TestGraphQLCreate_MalformedSDL_UnprocessableEntity(t *testing.T) {
+// TestGraphQLCreate_MalformedSDL_SucceedsWithEmptySchema guards resolveSchema's
+// best-effort posture for the "inline" source: invalid SDL text is a
+// resolution-quality problem (like a failed introspection or sdlUrl fetch),
+// not a structural one, so it must not block creation.
+func TestGraphQLCreate_MalformedSDL_SucceedsWithEmptySchema(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
@@ -779,34 +778,27 @@ func TestGraphQLCreate_MalformedSDL_UnprocessableEntity(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for malformed SDL")
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("expected creation to succeed despite malformed SDL, got: %v", err)
 	}
-	var appErr *apperror.Error
-	if !errors.As(err, &appErr) {
-		t.Fatalf("expected an *apperror.Error, got %T: %v", err, err)
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
 	}
-	if appErr.Code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, appErr.Code)
+	if repo.created == nil {
+		t.Fatal("expected repo.Create to be called")
 	}
-	if appErr.HTTPStatus != http.StatusUnprocessableEntity {
-		t.Errorf("expected 422, got %d", appErr.HTTPStatus)
-	}
-	// Sterile response: the client message must never echo raw parser internals.
-	if strings.Contains(strings.ToLower(appErr.Message), "expected") || strings.Contains(appErr.Message, "{") {
-		t.Errorf("client message leaks parser internals: %q", appErr.Message)
-	}
-	if repo.created != nil {
-		t.Error("expected no repository write for a schema that failed validation")
+	if repo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL for a schema that failed validation, got %q", repo.created.Configuration.SDL)
 	}
 }
 
-// TestGraphQLCreate_SDLWithNoQueryRoot_UnprocessableEntity covers the
+// TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema covers the
 // schema.Query == nil branch in validateGraphQLSDL — syntactically valid SDL
 // that nonetheless never defines a Query root type. Distinct from the
-// malformed-syntax case above, which never reaches that check.
-func TestGraphQLCreate_SDLWithNoQueryRoot_UnprocessableEntity(t *testing.T) {
+// malformed-syntax case above, which never reaches that check. Like any other
+// resolution-quality failure, this must not block creation.
+func TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
@@ -820,15 +812,18 @@ func TestGraphQLCreate_SDLWithNoQueryRoot_UnprocessableEntity(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for SDL with no Query root type")
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("expected creation to succeed despite a schema with no Query root type, got: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, code)
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
 	}
-	if repo.created != nil {
-		t.Error("expected no repository write for a schema with no Query root type")
+	if repo.created == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	if repo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL for a schema with no Query root type, got %q", repo.created.Configuration.SDL)
 	}
 }
 
@@ -868,8 +863,12 @@ func TestGraphQLCreate_SDLTakesPrecedenceOverIntrospection(t *testing.T) {
 }
 
 // TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive guards resolveSchema's
-// precedence check for the third onboarding input (sdlUrl) — sdl and sdlUrl
-// must never both be honored silently.
+// structural validation — sdl and sdlUrl must never both be honored silently.
+// With no explicit schemaSource, the presence of sdl infers "inline", so this
+// is a schemaSource mismatch — a request-shape problem reported via the
+// specific-message ValidationFailed entry (400), not the sterile
+// GraphQLAPISchemaResolveFailed entry, which has no format verb for a
+// specific reason and is reserved for resolution-quality failures.
 func TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
@@ -896,15 +895,16 @@ func TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// TestGraphQLCreate_SDLUrlFetchFailure_SchemaResolveFailed covers the
-// sdlUrl decision logic itself: a URL the SSRF guard refuses (loopback,
-// standing in for "unreachable/disallowed") surfaces as the sterile
-// GraphQLAPISchemaResolveFailed error, not a raw network error. The
-// successful-fetch path is covered by utils.TestFetchOpenAPISpecFromURL_*,
-// mirroring TestResolveTemplateOpenAPISpec's convention for the identical
-// LLM-provider-template case — ipIsAllowed can't be overridden from this
-// package, so a real successful fetch isn't exercisable here.
-func TestGraphQLCreate_SDLUrlFetchFailure_SchemaResolveFailed(t *testing.T) {
+// TestGraphQLCreate_SDLUrlFetchFailure_SucceedsWithEmptySchema covers the
+// sdlUrl fetch path: a URL the SSRF guard refuses (loopback, standing in for
+// "unreachable/disallowed") is a resolution-quality failure, not a structural
+// one, so — like a failed introspection or malformed inline SDL — it must not
+// block creation. The successful-fetch path is covered by
+// utils.TestFetchOpenAPISpecFromURL_*, mirroring TestResolveTemplateOpenAPISpec's
+// convention for the identical LLM-provider-template case — ipIsAllowed can't
+// be overridden from this package, so a real successful fetch isn't
+// exercisable here.
+func TestGraphQLCreate_SDLUrlFetchFailure_SucceedsWithEmptySchema(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
@@ -917,23 +917,28 @@ func TestGraphQLCreate_SDLUrlFetchFailure_SchemaResolveFailed(t *testing.T) {
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for a blocked sdlUrl")
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("expected creation to succeed despite a blocked sdlUrl, got: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, code)
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
 	}
-	if repo.created != nil {
-		t.Error("expected no repository write when sdlUrl fetch fails")
+	if repo.created == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	if repo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL when sdlUrl fetch fails, got %q", repo.created.Configuration.SDL)
 	}
 }
 
 // TestGraphQLCreate_SDLUrlFetchFailure_DoesNotFallBackToIntrospection locks in
-// a real design decision in resolveSchema: a failed sdlUrl fetch fails the
-// request outright — it does NOT silently fall back to introspecting
-// upstream.main.url, even when that upstream is present and reachable. The
-// introspection endpoint must never be called in this case.
+// a real design decision in resolveSchema: schemaSource "url" (inferred here
+// from sdlUrl being the only schema field populated) only ever attempts the
+// URL fetch — it does NOT silently fall back to introspecting
+// upstream.main.url just because that upstream is present and reachable. The
+// introspection endpoint must never be called in this case, and the failed
+// fetch still succeeds with an empty schema rather than erroring.
 func TestGraphQLCreate_SDLUrlFetchFailure_DoesNotFallBackToIntrospection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("introspection endpoint must not be called when sdlUrl was supplied and failed")
@@ -954,18 +959,30 @@ func TestGraphQLCreate_SDLUrlFetchFailure_DoesNotFallBackToIntrospection(t *test
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for a blocked sdlUrl, even with a reachable upstream present")
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("expected creation to succeed despite a blocked sdlUrl, even with a reachable upstream present, got: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, code)
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
 	}
-	if repo.created != nil {
-		t.Error("expected no repository write when sdlUrl fetch fails")
+	if repo.created == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	if repo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL when sdlUrl fetch fails, got %q", repo.created.Configuration.SDL)
 	}
 }
 
+// TestGraphQLCreate_MissingSDLAndUpstream_ValidationFailed covers the case
+// where nothing to derive a schema from was supplied at all. With no
+// explicit schemaSource, this infers "introspection" (the same default as
+// before schemaSource existed), and introspection has no upstream.main.url to
+// call — that's a structural problem (there's nothing to even attempt), not a
+// resolution-quality one, so it's reported immediately via the
+// specific-message ValidationFailed entry (400), not the sterile
+// GraphQLAPISchemaResolveFailed entry reserved for resolution-quality
+// failures.
 func TestGraphQLCreate_MissingSDLAndUpstream_ValidationFailed(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
@@ -1214,11 +1231,12 @@ func TestGraphQLUpdate_ReIntrospect_RefreshesSchema(t *testing.T) {
 	}
 }
 
-// TestGraphQLUpdate_ReIntrospectFails_NoPartialWrite pins the "no partial
-// write" guarantee: resolveSchema runs — and can fail — before Update
-// mutates the in-memory existing record or calls repo.Update, so a failed
-// re-introspection must leave the stored config completely untouched.
-func TestGraphQLUpdate_ReIntrospectFails_NoPartialWrite(t *testing.T) {
+// TestGraphQLUpdate_ReIntrospectFails_PreservesExistingSchema pins Update's
+// soft-fail fallback: unlike Create (which has no previous schema to fall
+// back to), a failed re-introspection on Update must not blank out a schema
+// that was working before this request — the update still succeeds, and the
+// previously-stored sdl/introspectionMode are carried forward unchanged.
+func TestGraphQLUpdate_ReIntrospectFails_PreservesExistingSchema(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
@@ -1244,26 +1262,26 @@ func TestGraphQLUpdate_ReIntrospectFails_NoPartialWrite(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	_, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error when re-introspection fails")
+	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+		t.Fatalf("expected update to succeed despite a failed re-introspection, got: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, code)
+	if repo.updated == nil {
+		t.Fatal("expected the repository Update to be called")
 	}
-	if repo.updated != nil {
-		t.Error("expected no repository write when re-introspection fails")
+	if repo.updated.Configuration.SDL != validCountriesGraphQLSDL {
+		t.Errorf("expected the previously-stored SDL to be preserved, got: %q", repo.updated.Configuration.SDL)
 	}
-	if stored.Configuration.SDL != validCountriesGraphQLSDL {
-		t.Errorf("expected the in-memory existing record to be left unchanged, got sdl: %q", stored.Configuration.SDL)
+	if repo.updated.Configuration.IntrospectionMode != "SDL" {
+		t.Errorf("expected the previously-stored introspectionMode to be preserved, got: %q", repo.updated.Configuration.IntrospectionMode)
 	}
 }
 
-// TestGraphQLUpdate_MalformedSDL_UnprocessableEntity is Update's counterpart
-// to TestGraphQLCreate_MalformedSDL_UnprocessableEntity — resolveSchema's SDL
-// parse validation is shared by both entry points, but only Create had a test
-// pinning it; a broken update must be rejected without touching storage.
-func TestGraphQLUpdate_MalformedSDL_UnprocessableEntity(t *testing.T) {
+// TestGraphQLUpdate_MalformedSDL_PreservesExistingSchema is Update's
+// counterpart to TestGraphQLCreate_MalformedSDL_SucceedsWithEmptySchema —
+// resolveSchema's SDL parse validation is shared by both entry points, but
+// Update's failure fallback differs from Create's: instead of ending up with
+// an empty schema, a broken update keeps whatever schema was already stored.
+func TestGraphQLUpdate_MalformedSDL_PreservesExistingSchema(t *testing.T) {
 	stored := &model.GraphQLAPI{
 		ID:             "some-uuid",
 		Handle:         "countries-graphql-api",
@@ -1285,21 +1303,20 @@ func TestGraphQLUpdate_MalformedSDL_UnprocessableEntity(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for malformed SDL")
+	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+		t.Fatalf("expected update to succeed despite malformed SDL, got: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, code)
+	if repo.updated == nil {
+		t.Fatal("expected the repository Update to be called")
 	}
-	if repo.updated != nil {
-		t.Error("expected no repository write for malformed SDL")
+	if repo.updated.Configuration.SDL != validCountriesGraphQLSDL {
+		t.Errorf("expected the previously-stored SDL to be preserved, got: %q", repo.updated.Configuration.SDL)
 	}
 }
 
-// TestGraphQLUpdate_SDLWithNoQueryRoot_UnprocessableEntity is Update's
-// counterpart to TestGraphQLCreate_SDLWithNoQueryRoot_UnprocessableEntity.
-func TestGraphQLUpdate_SDLWithNoQueryRoot_UnprocessableEntity(t *testing.T) {
+// TestGraphQLUpdate_SDLWithNoQueryRoot_PreservesExistingSchema is Update's
+// counterpart to TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema.
+func TestGraphQLUpdate_SDLWithNoQueryRoot_PreservesExistingSchema(t *testing.T) {
 	stored := &model.GraphQLAPI{
 		ID:             "some-uuid",
 		Handle:         "countries-graphql-api",
@@ -1321,21 +1338,22 @@ func TestGraphQLUpdate_SDLWithNoQueryRoot_UnprocessableEntity(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for SDL with no Query root type")
+	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+		t.Fatalf("expected update to succeed despite a schema with no Query root type, got: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, code)
+	if repo.updated == nil {
+		t.Fatal("expected the repository Update to be called")
 	}
-	if repo.updated != nil {
-		t.Error("expected no repository write for a schema with no Query root type")
+	if repo.updated.Configuration.SDL != validCountriesGraphQLSDL {
+		t.Errorf("expected the previously-stored SDL to be preserved, got: %q", repo.updated.Configuration.SDL)
 	}
 }
 
 // TestGraphQLUpdate_SDLAndSDLUrlMutuallyExclusive is Update's counterpart to
 // TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive — the same resolveSchema
-// validation is shared by both entry points.
+// structural validation is shared by both entry points, so this is still a
+// hard failure, reported via the specific-message ValidationFailed entry
+// (400).
 func TestGraphQLUpdate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 	stored := &model.GraphQLAPI{
 		ID:             "some-uuid",
@@ -1371,9 +1389,9 @@ func TestGraphQLUpdate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// TestGraphQLUpdate_SDLUrlFetchFailure_SchemaResolveFailed is Update's
-// counterpart to TestGraphQLCreate_SDLUrlFetchFailure_SchemaResolveFailed.
-func TestGraphQLUpdate_SDLUrlFetchFailure_SchemaResolveFailed(t *testing.T) {
+// TestGraphQLUpdate_SDLUrlFetchFailure_PreservesExistingSchema is Update's
+// counterpart to TestGraphQLCreate_SDLUrlFetchFailure_SucceedsWithEmptySchema.
+func TestGraphQLUpdate_SDLUrlFetchFailure_PreservesExistingSchema(t *testing.T) {
 	stored := &model.GraphQLAPI{
 		ID:             "some-uuid",
 		Handle:         "countries-graphql-api",
@@ -1395,15 +1413,14 @@ func TestGraphQLUpdate_SDLUrlFetchFailure_SchemaResolveFailed(t *testing.T) {
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
 	}
 
-	_, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error for a blocked sdlUrl")
+	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+		t.Fatalf("expected update to succeed despite a blocked sdlUrl, got: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPISchemaResolveFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPISchemaResolveFailed, code)
+	if repo.updated == nil {
+		t.Fatal("expected the repository Update to be called")
 	}
-	if repo.updated != nil {
-		t.Error("expected no repository write when sdlUrl fetch fails")
+	if repo.updated.Configuration.SDL != validCountriesGraphQLSDL {
+		t.Errorf("expected the previously-stored SDL to be preserved, got: %q", repo.updated.Configuration.SDL)
 	}
 }
 
