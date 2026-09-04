@@ -19,43 +19,130 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/model"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // Build persistence lives on DeploymentRepo: a build is the deploy path's own
 // input, and keeping it here avoids a second repository for one table.
 
+// buildIDAttempts bounds the retries when deriving a build id. Two prepares of the
+// same API on the same day compete for the same index, and the primary key is what
+// settles it; a handful of attempts is far more than a real race needs.
+const buildIDAttempts = 5
+
 // CreateBuild stores a rendered snapshot of an API's definition. Builds are
 // immutable, so there is no update — preparing again creates another build.
+//
+// A build id is readable rather than random: the date and that day's index for the
+// API, e.g. 2026-01-31-1 then 2026-01-31-2. It is an id people name in a support
+// ticket or a log line, which a UUID is not. It is unique per API, so the artifact
+// is always part of resolving one.
 func (r *DeploymentRepo) CreateBuild(build *model.Build) error {
-	if build.BuildID == "" {
-		buildID, err := utils.GenerateUUID()
-		if err != nil {
-			return fmt.Errorf("failed to generate build ID: %w", err)
-		}
-		build.BuildID = buildID
-	}
 	if build.CreatedAt.IsZero() {
 		build.CreatedAt = time.Now().UTC()
 	} else {
 		build.CreatedAt = build.CreatedAt.UTC()
 	}
+	if build.BuildID != "" {
+		return r.insertBuild(build)
+	}
+
+	var insertErr error
+	for attempt := 0; attempt < buildIDAttempts; attempt++ {
+		next, err := r.nextBuildID(build.ArtifactID, build.OrganizationID, build.CreatedAt)
+		if err != nil {
+			return err
+		}
+		if attempt > 0 && next == build.BuildID {
+			// The id we just tried is still free, so the insert failed on something
+			// other than a concurrent prepare and retrying cannot help.
+			return insertErr
+		}
+		build.BuildID = next
+		if insertErr = r.insertBuild(build); insertErr == nil {
+			return nil
+		}
+	}
+	return insertErr
+}
+
+// nextBuildID returns the next unused id for an API on the given day. Reading the
+// day's ids and taking the highest index — rather than counting rows — keeps the
+// sequence correct even after an API's builds are pruned.
+func (r *DeploymentRepo) nextBuildID(artifactUUID, orgUUID string, day time.Time) (string, error) {
+	prefix := day.UTC().Format("2006-01-02") + "-"
+	const query = `
+		SELECT build_id
+		FROM builds
+		WHERE artifact_uuid = ? AND organization_uuid = ? AND build_id LIKE ?
+	`
+	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID, prefix+"%")
+	if err != nil {
+		return "", fmt.Errorf("failed to read build ids: %w", err)
+	}
+	defer rows.Close()
+
+	highest := 0
+	for rows.Next() {
+		var buildID string
+		if err := rows.Scan(&buildID); err != nil {
+			return "", fmt.Errorf("failed to scan build id: %w", err)
+		}
+		index, err := strconv.Atoi(strings.TrimPrefix(buildID, prefix))
+		if err != nil {
+			continue
+		}
+		if index > highest {
+			highest = index
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("failed to read build ids: %w", err)
+	}
+	return prefix + strconv.Itoa(highest+1), nil
+}
+
+// insertBuild writes one build row.
+func (r *DeploymentRepo) insertBuild(build *model.Build) error {
+	var propertyBytes []byte
+	if len(build.Properties) > 0 {
+		var err error
+		propertyBytes, err = json.Marshal(build.Properties)
+		if err != nil {
+			return fmt.Errorf("failed to marshal build properties: %w", err)
+		}
+	}
 
 	const query = `
-		INSERT INTO builds (uuid, artifact_uuid, organization_uuid, content, data_version, created_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO builds (build_id, artifact_uuid, organization_uuid, content, data_version, properties, created_by, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
 		build.BuildID, build.ArtifactID, build.OrganizationID,
-		build.Content, build.DataVersion, build.CreatedBy, build.CreatedAt,
+		build.Content, build.DataVersion, propertyBytes, build.CreatedBy, build.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create build: %w", err)
 	}
+	return nil
+}
+
+// applyBuildProperties decodes the stored property bag onto the model.
+func applyBuildProperties(build *model.Build, propertyBytes []byte) error {
+	if len(propertyBytes) == 0 {
+		return nil
+	}
+	var properties map[string]any
+	if err := json.Unmarshal(propertyBytes, &properties); err != nil {
+		return fmt.Errorf("failed to unmarshal build properties: %w", err)
+	}
+	build.Properties = properties
 	return nil
 }
 
@@ -64,21 +151,25 @@ func (r *DeploymentRepo) CreateBuild(build *model.Build) error {
 // another organization — resolving here.
 func (r *DeploymentRepo) GetBuild(buildID, artifactUUID, orgUUID string) (*model.Build, error) {
 	const query = `
-		SELECT uuid, artifact_uuid, organization_uuid, content, data_version, created_by, created_at
+		SELECT build_id, artifact_uuid, organization_uuid, content, data_version, properties, created_by, created_at
 		FROM builds
-		WHERE uuid = ? AND artifact_uuid = ? AND organization_uuid = ?
+		WHERE build_id = ? AND artifact_uuid = ? AND organization_uuid = ?
 	`
 	var build model.Build
 	var createdBy sql.NullString
+	var propertyBytes []byte
 	err := r.db.QueryRow(r.db.Rebind(query), buildID, artifactUUID, orgUUID).Scan(
 		&build.BuildID, &build.ArtifactID, &build.OrganizationID,
-		&build.Content, &build.DataVersion, &createdBy, &build.CreatedAt,
+		&build.Content, &build.DataVersion, &propertyBytes, &createdBy, &build.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
+	}
+	if err := applyBuildProperties(&build, propertyBytes); err != nil {
+		return nil, err
 	}
 	build.CreatedBy = createdBy.String
 	return &build, nil
@@ -91,10 +182,10 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 		limit = 50
 	}
 	const query = `
-		SELECT uuid, artifact_uuid, organization_uuid, data_version, created_by, created_at
+		SELECT build_id, artifact_uuid, organization_uuid, data_version, properties, created_by, created_at
 		FROM builds
 		WHERE artifact_uuid = ? AND organization_uuid = ?
-		ORDER BY created_at DESC, uuid DESC
+		ORDER BY created_at DESC, build_id DESC
 		LIMIT ?
 	`
 	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID, limit)
@@ -107,11 +198,15 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 	for rows.Next() {
 		var build model.Build
 		var createdBy sql.NullString
+		var propertyBytes []byte
 		if err := rows.Scan(
 			&build.BuildID, &build.ArtifactID, &build.OrganizationID,
-			&build.DataVersion, &createdBy, &build.CreatedAt,
+			&build.DataVersion, &propertyBytes, &createdBy, &build.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan build: %w", err)
+		}
+		if err := applyBuildProperties(&build, propertyBytes); err != nil {
+			return nil, err
 		}
 		build.CreatedBy = createdBy.String
 		builds = append(builds, &build)

@@ -770,6 +770,12 @@ paths:
         - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
       responses:
         '201':
           description: Build prepared successfully
@@ -842,7 +848,7 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the build
+          description: Identifier of the build
       responses:
         '200':
           description: Build metadata retrieved successfully
@@ -6776,9 +6782,10 @@ components:
           type: string
           description: |
             The source for the API definition. One of `current` (render the latest working
-            copy now), a `buildId` (deploy a previously prepared snapshot — preferred, so the
-            deployment cannot pick up edits made since), or a `deploymentId` (promote an
-            existing deployment, reusing its already-rendered artifact).
+            copy now), a `buildId` such as `2026-01-31-2` (deploy a previously prepared
+            snapshot — preferred, so the deployment cannot pick up edits made since), or a
+            `deploymentId` (promote an existing deployment, reusing its already-rendered
+            artifact).
           example: "current"
         gatewayId:
           type: string
@@ -6796,6 +6803,20 @@ components:
           additionalProperties: true
           description: Optional structured override document deep-merged onto the deployment definition before it is sent to the gateway, letting a caller customize any field of the API config for this deployment. The applied overrides are persisted with the deployment.
 
+    BuildRequest:
+      type: object
+      description: Optional details to record with a build.
+      properties:
+        properties:
+          type: object
+          additionalProperties: true
+          description: |
+            Free-form properties to store with the build, such as the commit an API kept in a
+            repository was prepared from. They are returned with the build and are not
+            interpreted by the platform.
+          example:
+            commitId: "9f1c2ab"
+
     BuildResponse:
       type: object
       description: An immutable, rendered snapshot of an API's definition, not bound to any gateway.
@@ -6805,11 +6826,17 @@ components:
       properties:
         buildId:
           type: string
-          format: uuid
-          description: Unique identifier for the build, used as a deployment's `base`
+          description: |
+            Identifier for the build, used as a deployment's `base`. It is the date the build
+            was prepared followed by that day's index for the API, and is unique per API.
+          example: "2026-01-31-2"
         dataVersion:
           type: string
           description: Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
+        properties:
+          type: object
+          additionalProperties: true
+          description: Properties recorded with the build, such as the commit it was prepared from
         createdBy:
           type: string
           description: Who prepared the build

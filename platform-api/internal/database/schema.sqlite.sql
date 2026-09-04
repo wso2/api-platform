@@ -273,13 +273,18 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 -- time. It is stored at the platform's own data version and translated to the
 -- target gateway's version when it is deployed.
 CREATE TABLE IF NOT EXISTS builds (
-    uuid VARCHAR(40) PRIMARY KEY,
+    -- A readable id, unique per API: a date and that day's index, e.g. 2026-09-04-1.
+    build_id VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     content BLOB NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    -- A free-form bag of properties recorded with the build, such as the commit a
+    -- build was prepared from. JSON.
+    properties BLOB,
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (artifact_uuid, build_id),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );

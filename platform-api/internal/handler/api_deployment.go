@@ -289,12 +289,26 @@ func (h *DeploymentHandler) CreateBuild(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	build, err := h.deploymentService.CreateBuildByHandle(apiId, orgId, createdBy)
+
+	// The body is optional: preparing a build needs nothing beyond the API, and
+	// properties are there for callers that have an origin to record.
+	var req api.BuildRequest
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return apperror.ValidationFailed.New("Request body is not valid JSON")
+		}
+	}
+	var properties map[string]interface{}
+	if req.Properties != nil {
+		properties = *req.Properties
+	}
+
+	build, err := h.deploymentService.CreateBuildByHandle(apiId, orgId, createdBy, properties)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to prepare a build for API %s", apiId))
 	}
 
-	setLocation(w, "rest-apis", apiId, "builds", build.BuildId.String())
+	setLocation(w, "rest-apis", apiId, "builds", build.BuildId)
 	httputil.WriteJSON(w, http.StatusCreated, build)
 	return nil
 }

@@ -94,7 +94,8 @@ func NewDeploymentService(
 // promoted onward without being re-rendered. The artifact is stored at the
 // platform's own data version — the target gateway is not known yet, so
 // translation happens at deploy time.
-func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy string) (*api.BuildResponse, error) {
+func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy string,
+	properties map[string]interface{}) (*api.BuildResponse, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -122,6 +123,7 @@ func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy string) (*ap
 		OrganizationID: orgUUID,
 		Content:        contentBytes,
 		DataVersion:    apiModel.DataVersion,
+		Properties:     properties,
 		CreatedBy:      createdBy,
 	}
 	if err := s.deploymentRepo.CreateBuild(build); err != nil {
@@ -165,12 +167,17 @@ func (s *DeploymentService) GetBuilds(apiUUID, orgUUID string, limit int) (*api.
 
 // toAPIBuildResponse projects a stored build onto the API response.
 func toAPIBuildResponse(build *model.Build) *api.BuildResponse {
-	return &api.BuildResponse{
-		BuildId:     utils.ParseOpenAPIUUIDOrZero(build.BuildID),
+	out := &api.BuildResponse{
+		BuildId:     build.BuildID,
 		DataVersion: utils.StringPtrIfNotEmpty(build.DataVersion),
 		CreatedBy:   utils.StringPtrIfNotEmpty(build.CreatedBy),
 		CreatedAt:   build.CreatedAt,
 	}
+	if len(build.Properties) > 0 {
+		properties := build.Properties
+		out.Properties = &properties
+	}
+	return out
 }
 
 // DeployAPI creates a new immutable deployment artifact and deploys it to a gateway
@@ -1160,12 +1167,14 @@ func (s *DeploymentService) backfillAPIKeysToGateway(apiUUID, gatewayID, actor s
 }
 
 // CreateBuildByHandle prepares a build of an API identified by its handle.
-func (s *DeploymentService) CreateBuildByHandle(apiHandle, orgUUID, createdBy string) (*api.BuildResponse, error) {
+func (s *DeploymentService) CreateBuildByHandle(apiHandle, orgUUID, createdBy string,
+	properties map[string]interface{}) (*api.BuildResponse, error) {
+
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.CreateBuild(apiUUID, orgUUID, createdBy)
+	return s.CreateBuild(apiUUID, orgUUID, createdBy, properties)
 }
 
 // GetBuildByHandle returns one build of an API identified by its handle.

@@ -652,10 +652,19 @@ type BuildListResponse struct {
 	List []BuildResponse `binding:"required" json:"list" yaml:"list"`
 }
 
+// BuildRequest Optional details to record with a build.
+type BuildRequest struct {
+	// Properties Free-form properties to store with the build, such as the commit an API kept in a
+	// repository was prepared from. They are returned with the build and are not
+	// interpreted by the platform.
+	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+}
+
 // BuildResponse An immutable, rendered snapshot of an API's definition, not bound to any gateway.
 type BuildResponse struct {
-	// BuildId Unique identifier for the build, used as a deployment's `base`
-	BuildId openapi_types.UUID `binding:"required" json:"buildId" yaml:"buildId"`
+	// BuildId Identifier for the build, used as a deployment's `base`. It is the date the build
+	// was prepared followed by that day's index for the API, and is unique per API.
+	BuildId string `binding:"required" json:"buildId" yaml:"buildId"`
 
 	// CreatedAt Timestamp when the build was prepared
 	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
@@ -665,6 +674,9 @@ type BuildResponse struct {
 
 	// DataVersion Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
 	DataVersion *string `json:"dataVersion,omitempty" yaml:"dataVersion,omitempty"`
+
+	// Properties Properties recorded with the build, such as the commit it was prepared from
+	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
 // Channel Defines a single channel within the Async API
@@ -1045,9 +1057,10 @@ type CustomPolicyResponse struct {
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
 	// Base The source for the API definition. One of `current` (render the latest working
-	// copy now), a `buildId` (deploy a previously prepared snapshot — preferred, so the
-	// deployment cannot pick up edits made since), or a `deploymentId` (promote an
-	// existing deployment, reusing its already-rendered artifact).
+	// copy now), a `buildId` such as `2026-01-31-2` (deploy a previously prepared
+	// snapshot — preferred, so the deployment cannot pick up edits made since), or a
+	// `deploymentId` (promote an existing deployment, reusing its already-rendered
+	// artifact).
 	Base string `binding:"required" json:"base" yaml:"base"`
 
 	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
@@ -3319,6 +3332,9 @@ type CreateAPIKeyJSONRequestBody = CreateAPIKeyRequest
 
 // UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
 type UpdateAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateBuildJSONRequestBody defines body for CreateBuild for application/json ContentType.
+type CreateBuildJSONRequestBody = BuildRequest
 
 // DeployAPIJSONRequestBody defines body for DeployAPI for application/json ContentType.
 type DeployAPIJSONRequestBody = DeployRequest

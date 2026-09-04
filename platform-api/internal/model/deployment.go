@@ -58,13 +58,17 @@ func (Deployment) TableName() string {
 // Content is stored at the platform's own DataVersion, untranslated: the target
 // gateway's version is only known at deploy time, so translation happens there.
 type Build struct {
-	BuildID        string    `json:"buildId" db:"uuid"`
-	ArtifactID     string    `json:"artifactId" db:"artifact_uuid"`
-	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
-	Content        []byte    `json:"-" db:"content"`
-	DataVersion    string    `json:"dataVersion" db:"data_version"`
-	CreatedBy      string    `json:"createdBy,omitempty" db:"created_by"`
-	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+	BuildID        string `json:"buildId" db:"build_id"`
+	ArtifactID     string `json:"artifactId" db:"artifact_uuid"`
+	OrganizationID string `json:"organizationId" db:"organization_uuid"`
+	Content        []byte `json:"-" db:"content"`
+	DataVersion    string `json:"dataVersion" db:"data_version"`
+	// Properties is a free-form bag recorded with the build. It carries where the
+	// build came from — a commit for an API kept in a repository, for instance —
+	// so a running deployment can be traced back to its origin.
+	Properties map[string]any `json:"properties,omitempty" db:"properties"`
+	CreatedBy  string         `json:"createdBy,omitempty" db:"created_by"`
+	CreatedAt  time.Time      `json:"createdAt" db:"created_at"`
 }
 
 // TableName returns the table name for the Build model

@@ -35,7 +35,7 @@ const (
 	buildTestOrgUUID     = "00000000-0000-0000-0000-0000000000aa"
 	buildTestAPIUUID     = "11111111-1111-1111-1111-1111111111aa"
 	buildTestGatewayUUID = "22222222-2222-2222-2222-2222222222aa"
-	buildTestBuildID     = "44444444-4444-4444-4444-4444444444aa"
+	buildTestBuildID     = "2026-01-31-2"
 )
 
 // buildTestAPIRepo serves one API and accepts gateway associations.
@@ -148,7 +148,7 @@ func TestCreateBuild_StoresASnapshotAtThePlatformDataVersion(t *testing.T) {
 	depRepo := &buildTestDeploymentRepo{}
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
 
-	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester")
+	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", nil)
 	if err != nil {
 		t.Fatalf("CreateBuild: %v", err)
 	}
@@ -168,15 +168,36 @@ func TestCreateBuild_StoresASnapshotAtThePlatformDataVersion(t *testing.T) {
 	if depRepo.createdBuild.CreatedBy != "tester" {
 		t.Errorf("createdBy = %q", depRepo.createdBuild.CreatedBy)
 	}
-	if build.BuildId.String() == "" {
+	if build.BuildId == "" {
 		t.Error("no build id was returned")
+	}
+}
+
+// The property bag travels with the build and is handed back untouched, which is
+// what lets a caller record where a build came from — a commit, for an API kept in
+// a repository — and read it off the build later.
+func TestCreateBuild_RecordsTheGivenProperties(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester",
+		map[string]interface{}{"commitId": "9f1c2ab"})
+	if err != nil {
+		t.Fatalf("CreateBuild: %v", err)
+	}
+	if depRepo.createdBuild.Properties["commitId"] != "9f1c2ab" {
+		t.Errorf("stored properties = %v, want the commit recorded",
+			depRepo.createdBuild.Properties)
+	}
+	if build.Properties == nil || (*build.Properties)["commitId"] != "9f1c2ab" {
+		t.Errorf("returned properties = %v, want the commit reported back", build.Properties)
 	}
 }
 
 func TestCreateBuild_APINotFound(t *testing.T) {
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: nil}, &buildTestDeploymentRepo{})
 
-	if _, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester"); err == nil {
+	if _, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", nil); err == nil {
 		t.Fatal("expected an error for an API that does not exist")
 	}
 }

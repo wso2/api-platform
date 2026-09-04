@@ -96,7 +96,8 @@ type Deployments interface {
 	// CreateBuildByHandle renders the API's current definition into an immutable
 	// snapshot without deploying it, so a later deploy can name that snapshot
 	// instead of re-rendering whatever the definition has become (Prepare).
-	CreateBuildByHandle(apiHandle, orgID, actor string) (*api.BuildResponse, error)
+	// Properties are stored with the build and returned with it, uninterpreted.
+	CreateBuildByHandle(apiHandle, orgID, actor string, properties map[string]interface{}) (*api.BuildResponse, error)
 
 	// GetBuildsByHandle lists an API's builds, newest first (Read).
 	GetBuildsByHandle(apiHandle, orgID string, limit int) (*api.BuildListResponse, error)
