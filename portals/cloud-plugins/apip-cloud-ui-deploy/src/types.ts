@@ -48,7 +48,8 @@ export type Gateway = {
 /**
  * An immutable snapshot of the API's definition, taken when someone prepares it.
  * Deploying names a build, so editing the API never changes what a pending deploy
- * will send — picking up an edit means preparing again.
+ * will send — picking up an edit means preparing again. The id is the date the
+ * build was prepared and that day's index, so it can be read out loud.
  */
 export type Build = {
   buildId: string;
@@ -57,22 +58,19 @@ export type Build = {
 };
 
 /**
- * One environment of the project's deployment pipeline, in promotion order.
- * `buildId` is the deployment this environment is currently serving — what a
- * promotion out of it carries forward — and its presence is what makes the next
- * environment promotable.
+ * One environment of the project's deployment pipeline, in promotion order. There
+ * is no environment-level build: each gateway runs the build it was deployed with,
+ * and a promotion out of this environment carries one of them.
  */
 export type Environment = {
   name: string;
-  /** The build this environment is currently serving. */
-  buildId?: string;
   gateways: Gateway[];
 };
 
 /**
- * One customizable deployment setting for an environment. The catalog is served
- * by the API rather than hardcoded here, so a setting can be added without a UI
- * change; `type` drives client-side validation only.
+ * One customizable setting for a deployment. The catalog is served by the API
+ * rather than hardcoded here, so a setting can be added without a UI change;
+ * `type` drives client-side validation only.
  */
 export type DeploymentParameter = {
   name: string;

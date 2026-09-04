@@ -21,36 +21,42 @@ import {
   Alert,
   Box,
   Button,
-  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
-  FormControlLabel,
+  MenuItem,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
-import { shortBuild } from '../utils/build';
+import { buildLabel } from '../utils/build';
 import type { DeploymentParameter, Environment } from '../types';
 
 export type DeployDialogProps = {
   open: boolean;
-  /** Promote carries the previous environment's build forward; deploy renders one. */
+  /** Promote carries a build the source environment is running; deploy sends a prepared one. */
   mode: 'deploy' | 'promote';
   environment: Environment | null;
   /** Source environment shown in the promote wording. */
   fromEnvironment?: string;
-  /** The build a deploy will send. Unset when promoting, which carries the source's. */
-  buildId?: string;
-  /** Null while the environment's settings are still loading. */
+  /**
+   * Builds this dialog may send. Deploying offers the prepared builds; promoting
+   * offers only what the source environment is running, which is what the API will
+   * accept. Empty when deploying an API that has never been built — the first
+   * deploy prepares one itself.
+   */
+  buildOptions: string[];
+  /** Null while the selected gateway's settings are still loading. */
   parameters: DeploymentParameter[] | null;
   submitting: boolean;
   onClose: () => void;
-  onConfirm: (gatewayIds: string[], parameters: Record<string, string>) => void;
+  /** Called when the target gateway changes, so its current settings can be read. */
+  onGatewayChange: (gatewayId: string) => void;
+  onConfirm: (gatewayId: string, buildId: string, parameters: Record<string, string>) => void;
 };
 
 const sectionLabelSx = {
@@ -81,27 +87,45 @@ const validate = (parameter: DeploymentParameter, value: string): string | null 
   return null;
 };
 
+/**
+ * One deployment goes to one gateway with the settings it is deployed with, which
+ * is why the gateway is chosen here and the settings are read from it: the form
+ * opens on what that gateway is currently running, not on what an environment was
+ * configured with.
+ */
 const DeployDialog: FC<DeployDialogProps> = ({
   open,
   mode,
   environment,
   fromEnvironment,
-  buildId,
+  buildOptions,
   parameters,
   submitting,
   onClose,
+  onGatewayChange,
   onConfirm,
 }) => {
-  const [selected, setSelected] = useState<string[]>([]);
+  const [gatewayId, setGatewayId] = useState('');
+  const [buildId, setBuildId] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
 
-  // Every gateway is preselected: deploying to all of an environment is the common
-  // case, and unchecking is easier than checking.
+  // The environment's first gateway is preselected, and its settings are what the
+  // form opens on.
   useEffect(() => {
-    if (open && environment) {
-      setSelected(environment.gateways.map((gateway) => gateway.id));
-    }
+    if (!open || !environment) return;
+    const first = environment.gateways[0]?.id ?? '';
+    setGatewayId(first);
+    if (first) onGatewayChange(first);
+    // onGatewayChange is stable for a given dialog opening; re-running on it would
+    // reload the settings on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, environment]);
+
+  // Deploying defaults to the newest build; promoting to what the source is
+  // running, which is a single build unless its gateways were deployed separately.
+  useEffect(() => {
+    if (open) setBuildId(buildOptions[buildOptions.length - 1] ?? '');
+  }, [open, buildOptions]);
 
   useEffect(() => {
     if (!open || !parameters) return;
@@ -111,19 +135,16 @@ const DeployDialog: FC<DeployDialogProps> = ({
   if (!environment) return null;
 
   const gateways = environment.gateways;
-  const allSelected = selected.length === gateways.length && gateways.length > 0;
   const actionLabel = mode === 'deploy' ? 'Deploy' : 'Promote';
 
   const errors = (parameters ?? [])
     .map((parameter) => validate(parameter, values[parameter.name] ?? ''))
     .filter((error): error is string => error !== null);
 
-  const toggleGateway = (gatewayId: string) => {
-    setSelected((previous) =>
-      previous.includes(gatewayId)
-        ? previous.filter((id) => id !== gatewayId)
-        : [...previous, gatewayId]
-    );
+  const selectGateway = (id: string) => {
+    if (id === gatewayId) return;
+    setGatewayId(id);
+    onGatewayChange(id);
   };
 
   return (
@@ -134,11 +155,85 @@ const DeployDialog: FC<DeployDialogProps> = ({
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {mode === 'promote'
-            ? `The build running in ${fromEnvironment ?? 'the previous environment'} is carried forward unchanged, with ${environment.name}'s own settings applied.`
-            : `Sends this build to ${environment.name} and applies its settings. Edits made to the API after it was prepared are not included — prepare again to pick those up.`}
+            ? `Carries a build ${fromEnvironment ?? 'the previous environment'} is running forward, with the settings you give here.`
+            : 'Sends a prepared build to one gateway. Edits made to the API since it was prepared are not included — prepare a new build to pick those up.'}
         </Typography>
 
-        {mode === 'deploy' && (
+        <Typography sx={{ ...sectionLabelSx, mb: 1 }}>Gateway</Typography>
+        {gateways.length === 0 ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {environment.name} has no gateway to deploy to. Add one to this environment first.
+          </Alert>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+            {gateways.map((gateway) => {
+              const selected = gateway.id === gatewayId;
+              return (
+                <Box
+                  key={gateway.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => selectGateway(gateway.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') selectGateway(gateway.id);
+                  }}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 1.5,
+                    py: 1,
+                    border: '1px solid',
+                    borderColor: selected ? 'primary.main' : 'divider',
+                    bgcolor: selected ? 'action.selected' : 'background.paper',
+                    borderRadius: 1.5,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                      {gateway.name}
+                    </Typography>
+                    {gateway.buildId && (
+                      <Typography variant="caption" color="text.secondary">
+                        Running {buildLabel(gateway.buildId)}
+                      </Typography>
+                    )}
+                  </Box>
+                  <StatusPill tone={gatewayStatusTone(gateway.status)} />
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
+        {/*
+          Promoting offers only the builds the source environment is actually
+          running: the API checks the build against that environment's live state,
+          so offering anything else would be offering a rejection.
+        */}
+        {buildOptions.length > 1 ? (
+          <TextField
+            select
+            label="Build"
+            value={buildId}
+            size="small"
+            fullWidth
+            sx={{ mb: 2 }}
+            helperText={
+              mode === 'promote'
+                ? `${fromEnvironment ?? 'The source environment'} is running more than one build; choose the one to promote.`
+                : 'The prepared build to deploy.'
+            }
+            onChange={(event) => setBuildId(event.target.value)}
+          >
+            {buildOptions.map((option) => (
+              <MenuItem key={option} value={option}>
+                {buildLabel(option)}
+              </MenuItem>
+            ))}
+          </TextField>
+        ) : (
           <Box
             sx={{
               display: 'flex',
@@ -152,92 +247,20 @@ const DeployDialog: FC<DeployDialogProps> = ({
               mb: 2,
             }}
           >
-            <Typography sx={sectionLabelSx}>Deploying</Typography>
+            <Typography sx={sectionLabelSx}>{actionLabel}ing</Typography>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              {shortBuild(buildId)}
+              {buildOptions.length === 1
+                ? buildLabel(buildOptions[0])
+                : 'A build prepared from this API as it stands now'}
             </Typography>
-          </Box>
-        )}
-
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Typography sx={sectionLabelSx}>Gateways</Typography>
-          {gateways.length > 1 && (
-            <FormControlLabel
-              control={
-                <Checkbox
-                  size="small"
-                  checked={allSelected}
-                  onChange={() =>
-                    setSelected(allSelected ? [] : gateways.map((gateway) => gateway.id))
-                  }
-                />
-              }
-              label={<Typography variant="body2">Select all</Typography>}
-              sx={{ mr: 0 }}
-            />
-          )}
-        </Box>
-
-        {mode === 'deploy' && !buildId && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            There is no build to deploy. Prepare one first.
-          </Alert>
-        )}
-
-        {gateways.length === 0 ? (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            {environment.name} has no gateway to deploy to. Add one to this environment first.
-          </Alert>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
-            {gateways.map((gateway) => {
-              const checked = selected.includes(gateway.id);
-              return (
-                <Box
-                  key={gateway.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => toggleGateway(gateway.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') toggleGateway(gateway.id);
-                  }}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    px: 1.5,
-                    py: 1,
-                    border: '1px solid',
-                    borderColor: checked ? 'primary.main' : 'divider',
-                    bgcolor: checked ? 'action.selected' : 'background.paper',
-                    borderRadius: 1.5,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Checkbox
-                    size="small"
-                    checked={checked}
-                    onChange={() => toggleGateway(gateway.id)}
-                    onClick={(event) => event.stopPropagation()}
-                  />
-                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                      {gateway.name}
-                    </Typography>
-                  </Box>
-                  <StatusPill tone={gatewayStatusTone(gateway.status)} />
-                </Box>
-              );
-            })}
           </Box>
         )}
 
         <Divider sx={{ mb: 2 }} />
 
-        <Typography sx={{ ...sectionLabelSx, mb: 0.5 }}>{environment.name} settings</Typography>
+        <Typography sx={{ ...sectionLabelSx, mb: 0.5 }}>Settings</Typography>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
-          These apply to every gateway in {environment.name} and are remembered for the next
-          deployment.
+          These are deployed with this gateway. They start from what it is running now.
         </Typography>
 
         {parameters === null ? (
@@ -267,27 +290,17 @@ const DeployDialog: FC<DeployDialogProps> = ({
           </Box>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2, display: 'flex', justifyContent: 'space-between' }}>
-        <Typography variant="body2" color="text.secondary">
-          {selected.length} of {gateways.length} selected
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            disabled={
-              selected.length === 0 ||
-              errors.length > 0 ||
-              submitting ||
-              (mode === 'deploy' && !buildId)
-            }
-            onClick={() => onConfirm(selected, values)}
-          >
-            {submitting ? `${actionLabel}ing...` : actionLabel}
-          </Button>
-        </Box>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          disabled={!gatewayId || errors.length > 0 || submitting}
+          onClick={() => onConfirm(gatewayId, buildId, values)}
+        >
+          {submitting ? `${actionLabel}ing...` : actionLabel}
+        </Button>
       </DialogActions>
     </Dialog>
   );

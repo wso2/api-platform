@@ -21,6 +21,7 @@ import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } fro
 import DeployPage from './DeployPage';
 import DeployDialog from './components/DeployDialog';
 import { createDeployClient, isSettling } from './deployApi';
+import { buildsRunningIn } from './utils/build';
 import type { CloudHostPort } from './hostPort';
 import type { Build, DeploymentParameter, Environment } from './types';
 
@@ -35,8 +36,12 @@ type DialogState = {
   mode: 'deploy' | 'promote';
   target: Environment;
   from?: Environment;
-  /** The build a deploy will send. A promotion carries the source's, so this is unset. */
-  buildId?: string;
+  /**
+   * The builds this dialog may send: the prepared ones when deploying, or the ones
+   * the source environment is running when promoting — the same set the API will
+   * accept.
+   */
+  buildOptions: string[];
 } | null;
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -110,17 +115,18 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
     return () => clearInterval(timer);
   }, [client, load]);
 
-  const openDialog = useCallback(
-    async (state: NonNullable<DialogState>) => {
+  // The settings shown are the ones the chosen gateway is currently deployed with,
+  // so they are read when the dialog opens and again whenever the gateway changes.
+  const loadParameters = useCallback(
+    async (gatewayId: string) => {
       if (!client) return;
-      setDialog(state);
       setParameters(null);
       try {
-        setParameters(await client.getParameters(state.target.name));
+        setParameters(await client.getParameters(gatewayId));
       } catch (parameterError) {
         // The settings are a prefill, not a precondition: report the failure and
-        // let the deployment proceed with whatever is already stored.
-        notify(errorMessage(parameterError, 'Unable to load the environment settings.'), 'warning');
+        // let the deployment proceed with what the form has.
+        notify(errorMessage(parameterError, 'Unable to load the gateway settings.'), 'warning');
         setParameters([]);
       }
     },
@@ -144,18 +150,23 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
     [client, load, notify]
   );
 
-  const handleConfirm = (gatewayIds: string[], values: Record<string, string>) => {
+  const handleConfirm = (
+    gatewayId: string,
+    buildId: string,
+    values: Record<string, string>
+  ) => {
     if (!dialog || !client) return;
-    const { mode, target, from, buildId } = dialog;
+    const { mode, target, from } = dialog;
     setDialog(null);
     void runAction(
       () =>
         client.deploy({
           environment: target.name,
-          gatewayIds,
-          // A deploy names the build it sends, so it cannot drift to a newer one
-          // prepared between opening the dialog and confirming it.
-          buildId: mode === 'deploy' ? buildId : undefined,
+          gatewayId,
+          // The build is named, so this cannot drift to a newer one prepared
+          // between opening the dialog and confirming it. On a promotion the
+          // server checks it against what the source is running anyway.
+          buildId: buildId || undefined,
           fromEnvironment: mode === 'promote' ? from?.name : undefined,
           parameters: values,
         }),
@@ -175,6 +186,14 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
     );
   };
 
+  const openDialog = useCallback(
+    (state: NonNullable<DialogState>) => {
+      setDialog(state);
+      setParameters(null);
+    },
+    []
+  );
+
   const handleStop = (environment: Environment, gatewayId: string) => {
     const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
     if (!client || !gateway?.deploymentId) return;
@@ -185,9 +204,8 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
     );
   };
 
-  // Redeploying one gateway is a deploy targeting only it: the environment's
-  // current build and settings are reapplied, so it rejoins the rest rather than
-  // picking up unrelated edits made since.
+  // Redeploying sends a gateway the build it is already running, so it comes back
+  // on the same artifact rather than picking up edits or a newer build.
   const handleRedeploy = (environment: Environment, gatewayId: string) => {
     const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
     if (!client || !gateway) return;
@@ -197,10 +215,8 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       () =>
         client.deploy({
           environment: environment.name,
-          gatewayIds: [gatewayId],
-          // Send back what this environment is already running, not the newest
-          // build — redeploying one gateway should rejoin it to the rest.
-          buildId: index === 0 ? environment.buildId : undefined,
+          gatewayId,
+          buildId: gateway.buildId,
           // A later stage can only be deployed to by promoting into it.
           fromEnvironment: index > 0 ? previous?.name : undefined,
         }),
@@ -261,11 +277,22 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
           busy={busy}
           onPrepare={handlePrepare}
           onDeploy={(environment) =>
-            void openDialog({ mode: 'deploy', target: environment, buildId: builds[0]?.buildId })
+            openDialog({
+              mode: 'deploy',
+              target: environment,
+              // Newest last, so the dialog can default to it.
+              buildOptions: builds.map((build) => build.buildId).reverse(),
+            })
           }
-          onPromote={(target, from) => void openDialog({ mode: 'promote', target, from })}
+          onPromote={(target, from) =>
+            openDialog({ mode: 'promote', target, from, buildOptions: buildsRunningIn(from) })
+          }
           onEditSettings={(environment) =>
-            void openDialog({ mode: 'deploy', target: environment, buildId: builds[0]?.buildId })
+            openDialog({
+              mode: 'deploy',
+              target: environment,
+              buildOptions: builds.map((build) => build.buildId).reverse(),
+            })
           }
           onStopGateway={handleStop}
           onRedeployGateway={handleRedeploy}
@@ -277,10 +304,11 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
         mode={dialog?.mode ?? 'deploy'}
         environment={dialog?.target ?? null}
         fromEnvironment={dialog?.from?.name}
-        buildId={dialog?.buildId}
+        buildOptions={dialog?.buildOptions ?? []}
         parameters={parameters}
         submitting={busy}
         onClose={() => setDialog(null)}
+        onGatewayChange={(gatewayId) => void loadParameters(gatewayId)}
         onConfirm={handleConfirm}
       />
     </PageContent>

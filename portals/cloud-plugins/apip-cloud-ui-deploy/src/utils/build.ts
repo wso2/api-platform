@@ -16,12 +16,28 @@
  * under the License.
  */
 
+import type { Environment } from '../types';
+
 /**
- * A build id shortened for display. Build ids are UUIDs, which are unreadable in
- * full but recognisable by their first segment — enough to tell two builds apart
- * on screen, while the full id stays available wherever it is acted on.
+ * A build named for display. Build ids are already readable — the date the build
+ * was prepared and that day's index — so this only labels one.
  */
-export function shortBuild(buildId?: string): string {
-  if (!buildId) return '—';
-  return `Build ${buildId.slice(0, 8)}`;
+export function buildLabel(buildId?: string): string {
+  return buildId ? `Build ${buildId}` : '—';
+}
+
+/**
+ * The distinct builds an environment's gateways are currently serving, newest id
+ * last. Usually one; more than one means the environment's gateways were deployed
+ * to separately, and a promotion out of it has to say which build it carries —
+ * exactly the choice the API requires.
+ */
+export function buildsRunningIn(environment?: Environment): string[] {
+  const seen = new Set<string>();
+  for (const gateway of environment?.gateways ?? []) {
+    if (gateway.status === 'DEPLOYED' && gateway.buildId) {
+      seen.add(gateway.buildId);
+    }
+  }
+  return [...seen].sort();
 }

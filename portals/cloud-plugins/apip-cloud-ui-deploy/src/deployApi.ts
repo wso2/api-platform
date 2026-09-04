@@ -34,7 +34,6 @@ type BuildDTO = { buildId: string; createdBy?: string; createdAt?: string };
 
 type StageDTO = {
   environment: string;
-  buildId?: string;
   gateways?: GatewayDeploymentDTO[];
 };
 
@@ -110,7 +109,6 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
 
       return (stages?.list ?? []).map((stage) => ({
         name: stage.environment,
-        buildId: stage.buildId,
         gateways: (stage.gateways ?? []).map(
           (dto): Gateway => ({
             id: dto.gatewayId,
@@ -150,21 +148,24 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
     },
 
     /**
-     * Deploys a prepared build to the named gateways of an environment.
-     * `fromEnvironment` promotes that environment's build forward instead; the
-     * server rejects a promotion the pipeline does not allow, or one whose source
-     * has nothing deployed.
+     * Deploys a build to one gateway of an environment, with the parameter values
+     * that deployment is made with. `fromEnvironment` promotes instead, carrying
+     * that environment's build forward.
+     *
+     * The build is named where it is known, but the server decides what a promotion
+     * may carry: it checks the named build against what the source environment is
+     * running, so a stale screen cannot promote something that is no longer there.
      */
     async deploy(input: {
       environment: string;
-      gatewayIds: string[];
+      gatewayId: string;
       buildId?: string;
       fromEnvironment?: string;
       parameters?: Record<string, string>;
     }): Promise<void> {
       await apiFetch('POST', `${base}/deployments`, {
         environment: input.environment,
-        gatewayIds: input.gatewayIds,
+        gatewayId: input.gatewayId,
         ...(input.buildId ? { buildId: input.buildId } : {}),
         ...(input.fromEnvironment ? { fromEnvironment: input.fromEnvironment } : {}),
         ...(input.parameters ? { parameters: input.parameters } : {}),
@@ -178,14 +179,14 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
     },
 
     /**
-     * An environment's deployment settings. These are per environment, not per
-     * gateway, and exist whether or not anything is deployed there — so the form
-     * can be filled in before an environment is first deployed to.
+     * The settings one gateway is currently deployed with, used to prefill the
+     * form. Settings belong to a deployment rather than to an environment, so a
+     * gateway that has never been deployed to reads as empty.
      */
-    async getParameters(environment: string): Promise<DeploymentParameter[]> {
+    async getParameters(gatewayId: string): Promise<DeploymentParameter[]> {
       const response = await apiFetch<{ list?: ParameterDTO[] }>(
         'GET',
-        `${base}/environments/${encodeURIComponent(environment)}/parameters`
+        `${base}/gateways/${encodeURIComponent(gatewayId)}/parameters`
       );
       return (response?.list ?? []).map((dto) => ({
         name: dto.name,
@@ -196,14 +197,6 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
       }));
     },
 
-    /** Stores an environment's settings. An empty value clears that setting. */
-    async setParameters(environment: string, values: Record<string, string>): Promise<void> {
-      await apiFetch(
-        'PUT',
-        `${base}/environments/${encodeURIComponent(environment)}/parameters`,
-        { parameters: values }
-      );
-    },
   };
 }
 

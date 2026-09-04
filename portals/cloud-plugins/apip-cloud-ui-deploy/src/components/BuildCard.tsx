@@ -20,7 +20,7 @@ import type { FC } from 'react';
 import { Box, Button, Divider, Typography } from '@wso2/oxygen-ui';
 import { Package } from '@wso2/oxygen-ui-icons-react';
 import { relativeTime } from '../utils/time';
-import { shortBuild } from '../utils/build';
+import { buildLabel } from '../utils/build';
 import type { Build } from '../types';
 
 export type BuildCardProps = {
@@ -44,6 +44,9 @@ const sectionLabelSx = {
  * A build fixes the definition as it stands now; deploying sends that build. An
  * edit made afterwards changes nothing that is running, and nothing that is about
  * to be deployed, until someone prepares again.
+ *
+ * The first deployment prepares its own build, so this card is not a gate to get
+ * started — it is how a later edit is picked up.
  */
 const BuildCard: FC<BuildCardProps> = ({ builds, busy, onPrepare }) => {
   const latest = builds[0];
@@ -77,7 +80,7 @@ const BuildCard: FC<BuildCardProps> = ({ builds, busy, onPrepare }) => {
         <Box>
           <Typography sx={sectionLabelSx}>Latest</Typography>
           <Typography variant="body2" sx={{ fontWeight: 500, mt: 0.5 }}>
-            {shortBuild(latest.buildId)}
+            {buildLabel(latest.buildId)}
           </Typography>
           {latest.createdAt && (
             <Typography variant="caption" color="text.secondary">
@@ -89,7 +92,7 @@ const BuildCard: FC<BuildCardProps> = ({ builds, busy, onPrepare }) => {
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, py: 2 }}>
           <Package size={32} strokeWidth={1.25} />
           <Typography variant="body2" color="text.secondary" textAlign="center">
-            Nothing prepared yet. Prepare a build to deploy this API.
+            Nothing prepared yet. Deploying this API prepares a build for you.
           </Typography>
         </Box>
       )}
@@ -109,7 +112,7 @@ const BuildCard: FC<BuildCardProps> = ({ builds, busy, onPrepare }) => {
               {builds.slice(1).map((build) => (
                 <Box key={build.buildId}>
                   <Typography variant="caption" display="block">
-                    {shortBuild(build.buildId)}
+                    {buildLabel(build.buildId)}
                   </Typography>
                   {build.createdAt && (
                     <Typography variant="caption" color="text.disabled" display="block">
