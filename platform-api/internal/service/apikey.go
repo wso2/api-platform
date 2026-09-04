@@ -272,7 +272,7 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 	}
 
 	if err := utils.ValidateHandle(baseName); err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid API key id: %w", err)
 	}
 
 	// Check for collision and retry with a short suffix (up to 5 attempts)
