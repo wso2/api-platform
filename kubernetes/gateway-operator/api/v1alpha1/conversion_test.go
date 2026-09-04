@@ -101,7 +101,7 @@ func TestAgentConversionRoundTrip(t *testing.T) {
 			DisplayName: "Weather Agent",
 			Version:     "v1.0",
 			Context:     &ctxPath,
-			Upstream:    AgentUpstream{Url: strPtr("https://weather.internal")},
+			Upstream:    AgentUpstream{Url: "https://weather.internal"},
 			A2A: A2AConfig{
 				ProtocolVersion: "1.0",
 				OperationConfigs: A2AOperationConfigs{

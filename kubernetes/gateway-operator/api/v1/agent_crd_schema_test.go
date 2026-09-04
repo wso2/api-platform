@@ -129,9 +129,10 @@ spec:
 // is the guard that a marker added on one side does not reject an artifact the
 // other side accepts.
 //
-// Note: CEL x-kubernetes-validations rules (the url/ref exclusivity on
-// AgentUpstream) are enforced by the API server, not by this validator, so they
-// are out of this test's reach.
+// Note: CEL x-kubernetes-validations rules are enforced by the API server, not
+// by this validator, so they are out of this test's reach. AgentUpstream no
+// longer has one — url is required and there is no ref — so its contract is
+// structural and covered below.
 func TestAgentCRDAcceptsWorkedExample(t *testing.T) {
 	obj := map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(agentWorkedExample), &obj); err != nil {
@@ -221,6 +222,36 @@ func TestAgentCRDRejectsInvalidSpecs(t *testing.T) {
 				publicCard(spec)["signing"] = map[string]interface{}{}
 			},
 			wantErr: "enabled",
+		},
+		{
+			// An Agent forwards to exactly one upstream and, in passthrough card
+			// mode, fetches its card from the same origin, so the
+			// gateway-controller requires a url where the other kinds accept a
+			// ref instead. Admission has to say the same thing, or a ref-only
+			// Agent applies cleanly and then fails at deploy time.
+			name: "upstream url missing",
+			mutate: func(spec map[string]interface{}) {
+				delete(spec["upstream"].(map[string]interface{}), "url")
+			},
+			wantErr: "url",
+		},
+		{
+			name: "upstream url empty",
+			mutate: func(spec map[string]interface{}) {
+				spec["upstream"].(map[string]interface{})["url"] = ""
+			},
+			wantErr: "url",
+		},
+		{
+			// There is no ref form for an Agent, so the schema prunes or rejects
+			// one rather than admitting a shape the controller ignores.
+			name: "upstream ref instead of url",
+			mutate: func(spec map[string]interface{}) {
+				upstream := spec["upstream"].(map[string]interface{})
+				delete(upstream, "url")
+				upstream["ref"] = "weather-pool"
+			},
+			wantErr: "url",
 		},
 	}
 

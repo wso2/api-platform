@@ -901,19 +901,23 @@ func isA2APreChainRefusal(terminalReason string) bool {
 func a2aOutcome(a2a *dto.A2AAnalytics, terminalReason string, statusCode int, upstreamContacted bool) (string, string) {
 	switch terminalReason {
 	case constants.TerminalReasonPolicyDenied:
-		// A policy produced the response instead of the agent. Refusing is the
-		// common case and the one this attribution exists for: an auth denial and
-		// an upstream's own 401 are otherwise indistinguishable, and a success-rate
-		// dashboard that cannot separate them blames the agent for the gateway's
-		// rejections.
+		// A policy refused the request instead of the agent answering it. This is
+		// what the attribution exists for: an auth denial and an upstream's own 401
+		// are otherwise indistinguishable, and a success-rate dashboard that cannot
+		// separate them blames the agent for the gateway's rejections.
 		//
-		// But a policy can also *answer*. A managed protected Agent Card is served
-		// by the gateway's own A2A policy with a 200, and the request stopping at
-		// the gateway is the feature rather than a fault. Treating every
-		// short-circuit as a failure would move every locally served card into the
-		// failure bucket and make the Agent look broken in proportion to how often
-		// its card is fetched. So the status decides, and a successful one falls
-		// through to the ordinary derivation below.
+		// A policy can also *answer* rather than refuse — a managed Agent Card is
+		// served by the gateway's own A2A policy with a 200, or a 304 against the
+		// client's If-None-Match, and the request stopping at the gateway is the
+		// feature rather than a fault. That case now arrives as
+		// TerminalReasonPolicyAnswered and is not handled here at all: it falls
+		// through to the ordinary derivation below, which is what keeps every
+		// locally served card out of the failure bucket.
+		//
+		// The status check stays as a guard. The reason is assigned in the kernel
+		// (terminalReasonForImmediateResponse) and read here, so if the two ever
+		// drift, a success arriving under the denial reason must not be counted as
+		// a policy failure on the strength of the label alone.
 		if statusCode >= 400 {
 			return A2AOutcomeFailure, A2AFailureOriginPolicy
 		}

@@ -118,7 +118,7 @@ func agentWithPolicyScopes(t *testing.T) *apiv1.Agent {
 			DisplayName: "Weather Agent",
 			Version:     "v1.0",
 			Context:     &ctxPath,
-			Upstream:    apiv1.AgentUpstream{Url: ptr("https://weather.internal")},
+			Upstream:    apiv1.AgentUpstream{Url: "https://weather.internal"},
 			A2A: apiv1.A2AConfig{
 				ProtocolVersion: "1.0",
 				OperationConfigs: apiv1.A2AOperationConfigs{
