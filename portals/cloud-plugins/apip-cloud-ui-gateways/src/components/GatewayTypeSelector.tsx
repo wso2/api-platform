@@ -18,41 +18,59 @@
 
 import type { FC } from 'react';
 import { Box } from '@wso2/oxygen-ui';
-import { ShieldCheck, Waypoints } from '@wso2/oxygen-ui-icons-react';
+import { Network, Sparkles, Zap } from '@wso2/oxygen-ui-icons-react';
 import GatewayTypeCard from './GatewayTypeCard';
+import { gatewayTypeLabel } from '../utils/gateway';
 import type { GatewayType } from '../types';
 
-const TYPE_CARDS: { type: GatewayType; icon: FC<{ size?: number }>; label: string; badge?: string }[] = [
-  { type: 'ai', icon: ShieldCheck, label: 'AI Gateway' },
-  { type: 'event', icon: Waypoints, label: 'Event Gateway', badge: 'Beta' },
-];
+/**
+ * One card per gateway type. A `Record` rather than an array so every type a
+ * host may offer is guaranteed to have a card — icons and labels match the
+ * built-in console's own type selector.
+ */
+const TYPE_CARDS: Record<GatewayType, { icon: FC<{ size?: number }>; badge?: string }> = {
+  regular: { icon: Network },
+  ai: { icon: Sparkles },
+  event: { icon: Zap, badge: 'Beta' },
+};
 
 export type GatewayTypeSelectorProps = {
+  /** The types this host offers, in the order they are shown. */
+  types: GatewayType[];
   value: GatewayType;
   onChange: (type: GatewayType) => void;
   /** A gateway's type is fixed at creation — show only the card matching `value`, not the full picker. */
   readOnly?: boolean;
 };
 
-const GatewayTypeSelector: FC<GatewayTypeSelectorProps> = ({ value, onChange, readOnly }) => (
-  <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-    {TYPE_CARDS.map(({ type, icon: Icon, label, badge }) => {
-      // Read-only mode keeps both flex slots (so the visible card is the same
-      // width as in the create-mode two-card layout) but only renders the
-      // card matching the gateway's actual type — the other slot stays empty.
-      if (readOnly && type !== value) return <Box key={type} sx={{ flex: 1 }} />;
-      return (
-        <GatewayTypeCard
-          key={type}
-          icon={<Icon size={20} />}
-          label={label}
-          badge={badge}
-          selected={value === type}
-          onClick={() => onChange(type)}
-        />
-      );
-    })}
-  </Box>
-);
+const GatewayTypeSelector: FC<GatewayTypeSelectorProps> = ({ types, value, onChange, readOnly }) => {
+  // Read-only mode shows just the gateway's own type — taken from `value`, not
+  // from `types`, so a gateway of a type this host no longer offers on create
+  // still renders its card. The remaining slots stay empty so the visible card
+  // keeps the same width it has in the full picker.
+  const visibleTypes = readOnly ? [value] : types;
+  const spacerCount = readOnly ? Math.max(types.length - 1, 0) : 0;
+
+  return (
+    <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+      {visibleTypes.map((type) => {
+        const { icon: Icon, badge } = TYPE_CARDS[type];
+        return (
+          <GatewayTypeCard
+            key={type}
+            icon={<Icon size={20} />}
+            label={gatewayTypeLabel(type)}
+            badge={badge}
+            selected={value === type}
+            onClick={() => onChange(type)}
+          />
+        );
+      })}
+      {Array.from({ length: spacerCount }, (_, index) => (
+        <Box key={`spacer-${index}`} sx={{ flex: 1 }} />
+      ))}
+    </Box>
+  );
+};
 
 export default GatewayTypeSelector;

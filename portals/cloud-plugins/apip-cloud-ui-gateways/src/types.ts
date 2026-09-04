@@ -17,12 +17,19 @@
  */
 
 /**
- * The gateway's functionality type. Mirrors platform-api's `functionalityType`
- * (`regular | ai | event`); this UI only offers `ai`/`event` on create, but a
- * gateway created elsewhere can come back as `regular`, so the type tolerates it.
+ * The gateway's functionality type, mirroring platform-api's
+ * `functionalityType`: `regular` is an API gateway, `event` an event gateway,
+ * `ai` an AI gateway. Which of them a host offers on create is the host's own
+ * choice (see `GatewaysFeature`'s `gatewayTypes`), but any of the three can come
+ * back from the API, so the type covers them all.
  */
 export type GatewayType = 'regular' | 'ai' | 'event';
 
+/**
+ * Whether the gateway's controller is currently connected to the control plane.
+ * A newly created gateway is `inactive` until its data-plane gateway finishes
+ * provisioning and dials in.
+ */
 export type GatewayStatus = 'active' | 'inactive';
 
 export type Environment = {
@@ -39,6 +46,9 @@ export type Gateway = {
   /** The external host the gateway is exposed on — server-assigned, not a create input. */
   url: string;
   status: GatewayStatus;
+  isCritical: boolean;
+  version?: string;
+  createdAt: string;
   updatedAt: string;
 };
 

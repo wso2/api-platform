@@ -36,7 +36,9 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * `gateways` overrides the built-in Gateways page via the `page.gateways` slot
  * (consumed by `AppRoutes`' `gateways/*` route wrapper) rather than adding a
  * sidebar item — the native nav entry and route stay in place; only what renders
- * there changes. Data flows through `apiFetch` to `/managed-gateways`.
+ * there changes. Data flows through `apiFetch` to `/managed-gateways`. This
+ * console manages API and event gateways; AI gateways belong to the AI
+ * workspace host, which registers the same feature with only that type.
  *
  * `pipelines` ships one plugin with two extensions from the same feature
  * package: an organization-level list/create/edit view, and a project-level
@@ -78,7 +80,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         // nav/Settings-tab pipeline) but required by the shared extension type.
         order: 45,
         routePath: 'gateways',
-        render: (port) => <GatewaysFeature port={port} />,
+        render: (port) => <GatewaysFeature gatewayTypes={['regular', 'event']} port={port} />,
         label: 'Gateways',
         level: 'organization',
       },

@@ -199,11 +199,14 @@ const GatewaysList: FC<GatewaysListProps> = ({
                               <Chip label={gatewayTypeLabel(gateway.type)} size="small" variant="outlined" />
                             </TableCell>
                             <TableCell>
+                              {/* Inactive is a warning, not an error: a gateway
+                                  reads inactive while it is still being
+                                  provisioned, before its controller connects. */}
                               <Chip
                                 size="small"
                                 variant="outlined"
                                 label={gateway.status === 'active' ? 'Active' : 'Inactive'}
-                                color={gateway.status === 'active' ? 'success' : 'error'}
+                                color={gateway.status === 'active' ? 'success' : 'warning'}
                               />
                             </TableCell>
                             <TableCell>

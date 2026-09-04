@@ -39,15 +39,28 @@ export type GatewayFormProps = {
   mode?: 'create' | 'edit';
   /** Required when `mode` is 'edit' — the gateway to load and update. */
   gateway?: Gateway;
+  /** The gateway types this host offers. A host with only one type gets no picker. */
+  types: GatewayType[];
   environments: Environment[];
   onBack: () => void;
   onSubmit: (input: GatewayInput) => void;
 };
 
-const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gateway, environments, onBack, onSubmit }) => {
+const GatewayForm: FC<GatewayFormProps> = ({
+  mode = 'create',
+  gateway,
+  types,
+  environments,
+  onBack,
+  onSubmit,
+}) => {
   const isEdit = mode === 'edit' && !!gateway;
 
-  const [type, setType] = useState<GatewayType>(gateway?.type ?? 'ai');
+  // A host that offers a single type has nothing to pick, so the field is left
+  // out entirely and that one type is used.
+  const showTypeField = types.length > 1;
+
+  const [type, setType] = useState<GatewayType>(gateway?.type ?? types[0]);
   const [name, setName] = useState(gateway?.name ?? '');
   const [description, setDescription] = useState(gateway?.description ?? '');
   const [environmentId, setEnvironmentId] = useState(gateway?.environmentId ?? '');
@@ -77,12 +90,14 @@ const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gateway, environme
 
       <Box sx={{ mt: 2, maxWidth: 820 }}>
         <Grid container spacing={2}>
-          <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth>
-              <FormLabel required>Gateway Type</FormLabel>
-              <GatewayTypeSelector value={type} onChange={setType} readOnly={isEdit} />
-            </FormControl>
-          </Grid>
+          {showTypeField ? (
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <FormLabel required>Gateway Type</FormLabel>
+                <GatewayTypeSelector types={types} value={type} onChange={setType} readOnly={isEdit} />
+              </FormControl>
+            </Grid>
+          ) : null}
 
           <Grid size={{ xs: 12 }}>
             <FormControl fullWidth>

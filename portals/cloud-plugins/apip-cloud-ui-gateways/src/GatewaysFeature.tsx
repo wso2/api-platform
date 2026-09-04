@@ -22,10 +22,18 @@ import GatewayForm from './GatewayForm';
 import GatewaysList from './GatewaysList';
 import { createGatewaysClient } from './gatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import type { Environment, Gateway, GatewayInput } from './types';
+import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
 export type GatewaysFeatureProps = {
   port: AIWorkspaceHostPort;
+  /**
+   * The gateway types this host lets a user create, in the order they are
+   * offered. Each host declares its own set — the API console offers API and
+   * event gateways, while the AI workspace only ever creates AI gateways and so
+   * shows no type picker at all. Required rather than defaulted so a new host
+   * has to state which kinds of gateway it is for.
+   */
+  gatewayTypes: GatewayType[];
 };
 
 /**
@@ -35,7 +43,7 @@ export type GatewaysFeatureProps = {
  * feature). It owns the data: it loads `/managed-gateways` and `/environments`
  * through the host-injected `apiFetch` and feeds the presentational list/form.
  */
-const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port }) => {
+const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const { apiFetch, notify } = port;
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
 
@@ -149,6 +157,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port }) => {
       <GatewayForm
         mode={view}
         gateway={editingGateway}
+        types={gatewayTypes}
         environments={environments}
         onBack={() => {
           setView('list');

@@ -21,11 +21,22 @@ import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
 /** Reference-data shapes returned by the platform-api list endpoints. */
 type EnvironmentDTO = { id?: string; name: string; isProduction?: boolean };
+
+/**
+ * A `/managed-gateways` record: the whole platform-api gateway record plus the
+ * cloud-only `environment` and `host`, so the list call alone carries everything
+ * the detail view shows.
+ */
 type ManagedGatewayDTO = {
   id: string;
   displayName?: string;
   description?: string;
   functionalityType?: string;
+  version?: string;
+  isCritical?: boolean;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   environment?: string;
   host?: string;
 };
@@ -35,9 +46,9 @@ const normalizeType = (functionalityType?: string): GatewayType =>
 
 /**
  * Projects a `/managed-gateways` record into the view model. The host is
- * server-assigned (shown as the gateway's URL); `managed-gateways` carries no
- * status or timestamp, so status is derived from whether a host is allocated and
- * `updatedAt` is left empty (rendered as "—").
+ * server-assigned (shown as the gateway's URL). Status comes from `isActive` —
+ * whether the gateway's controller has dialled in to the control plane — so a
+ * gateway still being provisioned reads as inactive until it is really up.
  */
 const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
   id: dto.id,
@@ -46,8 +57,11 @@ const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
   type: normalizeType(dto.functionalityType),
   environmentId: dto.environment ?? '',
   url: dto.host ?? '',
-  status: dto.host ? 'active' : 'inactive',
-  updatedAt: '',
+  status: dto.isActive ? 'active' : 'inactive',
+  isCritical: dto.isCritical ?? false,
+  version: dto.version,
+  createdAt: dto.createdAt ?? '',
+  updatedAt: dto.updatedAt ?? '',
 });
 
 /**

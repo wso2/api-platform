@@ -18,8 +18,13 @@
 
 import type { GatewayType } from '../types';
 
+/**
+ * The gateway type as it is named on screen. Matches the built-in console's own
+ * labels (`regular` is an API gateway), so the same gateway reads the same way
+ * whichever portal shows it.
+ */
 export function gatewayTypeLabel(type: GatewayType): string {
   if (type === 'ai') return 'AI Gateway';
   if (type === 'event') return 'Event Gateway';
-  return 'Gateway';
+  return 'API Gateway';
 }
