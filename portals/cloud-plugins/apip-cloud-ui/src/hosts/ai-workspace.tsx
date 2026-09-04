@@ -7,9 +7,8 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Boxes, Rocket, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Workflow } from '@wso2/oxygen-ui-icons-react';
 
-import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { PipelinesFeature, ProjectPipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
@@ -31,6 +30,12 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * — see `GatewaysRoute` in `ai-workspace/src/App.tsx` — rather than adding a
  * new one. Nothing under `ai-workspace/src/pages/appShell/appShellPages/gateways`
  * is touched by this.
+ *
+ * `deploy` is NOT registered here. It deploys one API through its project's
+ * pipeline, so it needs an API in scope; this host has no API-scoped placement
+ * and its Port carries no `apiHandle`, so the page could only ever tell the user
+ * to open an API. The feature package is shared and unchanged — registering it
+ * here is a matter of adding that placement, not of changing the feature.
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = [
   defineCloudPlugin({
@@ -67,21 +72,6 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
           ) : (
             <PipelinesFeature port={port} />
           ),
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'deploy',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'deploy',
-        slot: 'sidebar.main',
-        order: 70,
-        path: 'deploy',
-        label: 'Deploy',
-        icon: <Rocket size={20} />,
-        render: (port) => <DeployFeature port={port} />,
       },
     ],
   }),

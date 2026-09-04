@@ -36,7 +36,3 @@ export function relativeTime(iso: string): string {
   }
   return 'just now';
 }
-
-export function isoMinutesAgo(minutes: number): string {
-  return new Date(Date.now() - minutes * 60 * 1000).toISOString();
-}

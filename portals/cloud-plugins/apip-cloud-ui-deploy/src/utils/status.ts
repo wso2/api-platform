@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import type { Gateway, GatewayStatus } from '../types';
+import type { DeploymentStatus, Gateway } from '../types';
 
-/** Maps onto Oxygen/MUI's own `color` prop (Chip, Alert, etc.) so status coloring always follows the active theme instead of hardcoded hex. */
+/** Maps onto Oxygen's own `color` prop so status coloring follows the active theme. */
 export type Tone = 'success' | 'warning' | 'error' | 'default';
 
 export type StatusTone = {
@@ -26,22 +26,48 @@ export type StatusTone = {
   tone: Tone;
 };
 
-const GATEWAY_STATUS_TONE: Record<GatewayStatus, StatusTone> = {
-  active: { label: 'Active', tone: 'success' },
-  failed: { label: 'Failed', tone: 'error' },
-  deploying: { label: 'Deploying', tone: 'warning' },
+/**
+ * The card's status vocabulary, which is deliberately not the API's: a person
+ * reads a gateway as active or suspended, not deployed or undeployed. `ARCHIVED`
+ * shows as superseded because a newer deployment has replaced it.
+ */
+const STATUS_TONE: Record<DeploymentStatus, StatusTone> = {
+  DEPLOYED: { label: 'Active', tone: 'success' },
+  DEPLOYING: { label: 'Deploying', tone: 'warning' },
+  UNDEPLOYED: { label: 'Suspended', tone: 'default' },
+  UNDEPLOYING: { label: 'Stopping', tone: 'warning' },
+  FAILED: { label: 'Failed', tone: 'error' },
+  ARCHIVED: { label: 'Superseded', tone: 'default' },
   none: { label: 'Not deployed', tone: 'default' },
 };
 
-export function gatewayStatusTone(status: GatewayStatus): StatusTone {
-  return GATEWAY_STATUS_TONE[status];
+export function gatewayStatusTone(status: DeploymentStatus): StatusTone {
+  return STATUS_TONE[status] ?? STATUS_TONE.none;
 }
 
 export function activeGatewayCount(gateways: Gateway[]): number {
-  return gateways.filter((gateway) => gateway.status === 'active').length;
+  return gateways.filter((gateway) => gateway.status === 'DEPLOYED').length;
 }
 
-/** Whether anything has ever been deployed in this environment — gates the Promote button. */
+/**
+ * Whether this environment can be promoted out of. It requires a gateway that is
+ * actually serving — a failed or still-deploying gateway is not something to
+ * promote — which mirrors the rule the API enforces on the promotion itself.
+ */
 export function hasAnyDeployment(gateways: Gateway[]): boolean {
-  return gateways.some((gateway) => gateway.status !== 'none');
+  return gateways.some((gateway) => gateway.status === 'DEPLOYED');
+}
+
+/** Explanations for the `statusReason` codes the API returns on a failure. */
+const STATUS_REASONS: Record<string, string> = {
+  GATEWAY_PROCESSING_ERROR: 'The gateway could not process the deployment. Check its logs.',
+  DEPLOYMENT_TIMEOUT: 'The deployment timed out; the gateway did not respond.',
+};
+
+/**
+ * A readable explanation for a failure code, falling back to the raw code — it is
+ * server data, so it reaches the user unchanged rather than guessed at.
+ */
+export function statusReasonText(reason: string): string {
+  return STATUS_REASONS[reason] ?? reason;
 }

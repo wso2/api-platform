@@ -16,6 +16,11 @@
  * under the License.
  */
 
+/**
+ * NOT WIRED YET. Security settings are not yet customizable per deployment. This drawer is
+ * retained, unwired, for the increment that adds them. Its contents are a
+ * placeholder summary, not real data.
+ */
 import type { FC } from 'react';
 import { Box, Divider, Drawer, IconButton, Typography } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';

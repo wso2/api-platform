@@ -31,11 +31,15 @@ import {
 import { ConsoleScopeProvider } from '@/scope/ConsoleScopeProvider';
 import AppLayout from '@/pages/appShell/AppLayout';
 import {
+  API_DEPLOY_SLOT,
   extensionScopedPaths,
   isSidebarExtension,
   settingsTabExtensions,
+  type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
+  type ApiControlPlanePageOverride,
 } from '@/extensions';
+import { Hideable, useSlot } from '@/slots';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -174,7 +178,7 @@ const GeneralSettingsPage = lazy(() =>
 );
 
 export type AppRoutesProps = {
-  extensions?: readonly ApiControlPlaneExtension[];
+  extensions?: readonly ApiControlPlaneCloudEntry[];
 };
 
 /**
@@ -196,6 +200,23 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
 function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) {
   const port = usePort();
   return <>{extension.render(port)}</>;
+}
+
+/**
+ * The API Deploy route, which a host may replace. The built-in page keeps this
+ * route, its sidebar entry and its capability gate; an extension registered
+ * against `API_DEPLOY_SLOT` only changes what renders here. With none
+ * registered, `Hideable` is transparent and the built-in page renders as before.
+ */
+function DeployRoute() {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlanePageOverride>(API_DEPLOY_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={API_DEPLOY_SLOT}>
+      <DeployPage />
+    </Hideable>
+  );
 }
 
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
@@ -270,7 +291,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestCurl), <TestPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestChat), <ApiChatPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiDeploy), <DeployPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDeploy), <DeployRoute />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}

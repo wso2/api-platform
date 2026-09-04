@@ -16,37 +16,66 @@
  * under the License.
  */
 
-export type GatewayStatus = 'active' | 'failed' | 'deploying' | 'none';
+/**
+ * The API's lifecycle state on one gateway. `none` is not a server state: it is
+ * how a gateway with no deployment at all is rendered, so an environment can
+ * show every gateway it has rather than only the deployed ones.
+ */
+export type DeploymentStatus =
+  | 'DEPLOYED'
+  | 'DEPLOYING'
+  | 'UNDEPLOYED'
+  | 'UNDEPLOYING'
+  | 'FAILED'
+  | 'ARCHIVED'
+  | 'none';
 
-export type Deployment = {
-  result: 'Success' | 'Failed';
-  buildId: string;
-  when: string;
-};
-
+/** One gateway of an environment, with the API's deployment on it. */
 export type Gateway = {
   id: string;
+  /** Display name where the gateway list provides one; the handle otherwise. */
   name: string;
-  region: string;
-  status: GatewayStatus;
-  buildId?: string;
+  status: DeploymentStatus;
+  deploymentId?: string;
+  deploymentName?: string;
+  /** Error code explaining a FAILED deployment. */
+  statusReason?: string;
   deployedAt?: string;
-  envVars: number;
-  history: Deployment[];
+  /** The prepared build this gateway is running. */
+  buildId?: string;
 };
 
+/**
+ * An immutable snapshot of the API's definition, taken when someone prepares it.
+ * Deploying names a build, so editing the API never changes what a pending deploy
+ * will send — picking up an edit means preparing again. The id is the date the
+ * build was prepared and that day's index, so it can be read out loud.
+ */
+export type Build = {
+  buildId: string;
+  createdBy?: string;
+  createdAt?: string;
+};
+
+/**
+ * One environment of the project's deployment pipeline, in promotion order. There
+ * is no environment-level build: each gateway runs the build it was deployed with,
+ * and a promotion out of this environment carries one of them.
+ */
 export type Environment = {
-  id: string;
   name: string;
-  envVars: number;
   gateways: Gateway[];
 };
 
-export type BuildRecord = {
-  id: string;
-  buildId: string;
-  result: 'Success' | 'Failed';
-  when: string;
-  targetEnvironmentId: string;
-  targetGatewayCount: number;
+/**
+ * One customizable setting for a deployment. The catalog is served by the API
+ * rather than hardcoded here, so a setting can be added without a UI change;
+ * `type` drives client-side validation only.
+ */
+export type DeploymentParameter = {
+  name: string;
+  label: string;
+  description: string;
+  type: 'url' | 'host' | string;
+  value: string;
 };
