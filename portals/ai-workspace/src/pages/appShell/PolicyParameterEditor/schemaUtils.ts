@@ -231,21 +231,39 @@ export function deleteValueByPath(
 }
 
 /**
- * Initialize default values from schema
+ * Initialize default values from schema.
+ *
+ * Schema defaults are only backfilled into missing leaf values when adding a
+ * brand-new policy instance (no `existingValues`). When editing an
+ * already-saved instance, a missing key means the user's prior save either
+ * never configured that field or explicitly cleared it — `omitOptionalEmptyValues`
+ * strips empty optional fields before submission, so an absent key can't be
+ * told apart from "never touched" once persisted. Backfilling the schema
+ * default in that case would silently resurrect a value the user removed, the
+ * moment they reopen the form. `applySchemaDefaults` defaults to whether
+ * `existingValues` was passed at all, and is threaded through recursion so a
+ * nested object that's entirely missing from `existingValues` still renders
+ * blank rather than pre-filled, while a fresh "add" form keeps showing
+ * defaults as before.
  */
 export function initializeDefaultValues(
   schema: ParameterSchema,
-  existingValues?: ParameterValues
+  existingValues?: ParameterValues,
+  applySchemaDefaults: boolean = existingValues === undefined
 ): ParameterValues {
   const result: ParameterValues = existingValues ? { ...existingValues } : {};
 
   if (schema.type === 'object' && schema.properties) {
     Object.entries(schema.properties).forEach(([key, propSchema]) => {
       if (result[key] === undefined) {
-        if (propSchema.default !== undefined) {
+        if (applySchemaDefaults && propSchema.default !== undefined) {
           result[key] = propSchema.default;
         } else if (propSchema.type === 'object' && propSchema.properties) {
-          result[key] = initializeDefaultValues(propSchema);
+          result[key] = initializeDefaultValues(
+            propSchema,
+            undefined,
+            applySchemaDefaults
+          );
         } else if (propSchema.type === 'array') {
           result[key] = [];
         } else if (propSchema.type === 'boolean') {
@@ -254,7 +272,7 @@ export function initializeDefaultValues(
           propSchema.type === 'number' ||
           propSchema.type === 'integer'
         ) {
-          result[key] = propSchema.default ?? '';
+          result[key] = '';
         } else {
           result[key] = '';
         }
@@ -265,7 +283,8 @@ export function initializeDefaultValues(
       ) {
         result[key] = initializeDefaultValues(
           propSchema,
-          result[key] as ParameterValues
+          result[key] as ParameterValues,
+          applySchemaDefaults
         );
       }
     });
@@ -469,7 +488,7 @@ export function createDefaultArrayItem(itemSchema: ParameterSchema): unknown {
     return itemSchema.default ?? false;
   }
   if (itemSchema.type === 'number' || itemSchema.type === 'integer') {
-    return itemSchema.default ?? 0;
+    return itemSchema.default ?? '';
   }
   if (itemSchema.type === 'array') {
     return [];
