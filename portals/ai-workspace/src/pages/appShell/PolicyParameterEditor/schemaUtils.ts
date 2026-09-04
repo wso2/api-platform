@@ -488,7 +488,7 @@ export function createDefaultArrayItem(itemSchema: ParameterSchema): unknown {
     return itemSchema.default ?? false;
   }
   if (itemSchema.type === 'number' || itemSchema.type === 'integer') {
-    return itemSchema.default ?? 0;
+    return itemSchema.default ?? '';
   }
   if (itemSchema.type === 'array') {
     return [];
