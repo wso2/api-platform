@@ -78,6 +78,14 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         // built-in placement. `routePath`/`level` are inert (the page override
         // is consumed by the `gateways/*` route wrapper in `AppRoutes`, not the
         // nav/Settings-tab pipeline) but required by the shared extension type.
+        //
+        // `group` must be set explicitly, and to the same cluster Environments
+        // and Pipelines fall into. Those are sidebar extensions that declare no
+        // group, so they share the unnamed divider cluster (`item.group ?? ''`
+        // in `useNavigationClusters`), while the built-in Gateways item lives in
+        // the "place" cluster higher up. Omitting it here would keep that
+        // built-in cluster and leave Gateways above Environments.
+        group: '',
         order: 45,
         routePath: 'gateways',
         render: (port) => <GatewaysFeature gatewayTypes={['regular', 'event']} port={port} />,
