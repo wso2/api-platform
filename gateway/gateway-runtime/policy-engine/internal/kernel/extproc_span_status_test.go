@@ -21,6 +21,7 @@ package kernel
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -450,6 +451,60 @@ func TestProcessSpanStatus_PolicyDeny500(t *testing.T) {
 	reason, ok := reasonAttr(root)
 	require.True(t, ok)
 	assert.Equal(t, constants.TerminalReasonPolicyDenied, reason)
+}
+
+// A policy can answer a request as well as refuse it: the A2A system policy
+// serves a managed Agent Card with a 200, or a 304 when the client's
+// If-None-Match still matches. Both reach the wire through the same
+// short-circuit an auth denial uses, so only the status separates them — and
+// filing them as policy_denied puts every card fetch in the rejection bucket of
+// any dashboard or alert that counts by terminal reason.
+func TestProcessSpanStatus_PolicyAnsweredIsNotADenial(t *testing.T) {
+	for _, status := range []int{200, 304} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server, k, sr := newSpanStatusServer(t)
+
+			chain := buildChainWithPolicy(t, "answer-policy",
+				&denyHeaderPolicy{statusCode: status}, map[string]interface{}{})
+			registerTestRoute(k, "test-route", chain)
+
+			stream := newMockStream([]*extprocv3.ProcessingRequest{
+				requestHeadersReq("test-route", "GET", "/.well-known/agent-card.json"),
+			})
+
+			require.NoError(t, server.Process(stream))
+
+			root := spanByName(sr.Ended(), constants.SpanExternalProcessingProcess)
+			require.NotNil(t, root)
+			assert.Equal(t, codes.Unset, root.Status().Code)
+			code, ok := statusCodeAttr(t, root)
+			require.True(t, ok)
+			assert.Equal(t, int64(status), code)
+			reason, ok := reasonAttr(root)
+			require.True(t, ok)
+			assert.Equal(t, constants.TerminalReasonPolicyAnswered, reason)
+		})
+	}
+}
+
+// A short-circuit the engine cannot read as an answer stays a denial. A status
+// of 0 is a malformed policy response — Envoy rejects it anyway — and must not
+// be counted as a success by falling into the answered bucket.
+func TestTerminalReasonForImmediateResponse(t *testing.T) {
+	for status, want := range map[int]string{
+		0:   constants.TerminalReasonPolicyDenied,
+		100: constants.TerminalReasonPolicyDenied,
+		200: constants.TerminalReasonPolicyAnswered,
+		204: constants.TerminalReasonPolicyAnswered,
+		304: constants.TerminalReasonPolicyAnswered,
+		399: constants.TerminalReasonPolicyAnswered,
+		400: constants.TerminalReasonPolicyDenied,
+		401: constants.TerminalReasonPolicyDenied,
+		429: constants.TerminalReasonPolicyDenied,
+		500: constants.TerminalReasonPolicyDenied,
+	} {
+		assert.Equal(t, want, terminalReasonForImmediateResponse(status), "status %d", status)
+	}
 }
 
 func TestProcessSpanStatus_UpstreamPassThrough_NeverError(t *testing.T) {

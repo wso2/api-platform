@@ -183,13 +183,15 @@ func (a *agentAdapter) Deploy(ctx context.Context, k8sClient client.Client, gate
 	if err != nil {
 		return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("build payload: %w", err)}
 	}
-	if err := deployEnvelopeResource(ctx, gatewayEndpoint, gatewayclient.AgentsPath(), cr.Name, body, authFn); err != nil {
-		return DeployResult{}, err
-	}
-	// Compute the fingerprint of the deployed state so it can be written to the
-	// annotation by onExternalDepsApplied without a racy re-computation.
+	// Compute the fingerprint of the state about to be deployed, before the
+	// deployment starts, so onExternalDepsApplied records exactly what went to
+	// the gateway rather than a racy post-deploy re-computation. A failure here
+	// aborts before anything is deployed.
 	fp, err := agentExternalDepsFingerprint(ctx, k8sClient, cr)
 	if err != nil {
+		return DeployResult{}, err
+	}
+	if err := deployEnvelopeResource(ctx, gatewayEndpoint, gatewayclient.AgentsPath(), cr.Name, body, authFn); err != nil {
 		return DeployResult{}, err
 	}
 	return DeployResult{Fingerprint: fp}, nil

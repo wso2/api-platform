@@ -434,19 +434,26 @@ func main() {
 
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	// No Agent transformer: the event gateway serves the async kinds and never
-	// registers Agent with the xDS translator below, so nothing can reach that
-	// dispatch arm. A nil transformer resolves to ErrUnsupportedKind if anything
-	// ever does.
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, nil)
+	// The Agent transformer is required here even though this binary's reason for
+	// existing is the async kinds: it mounts the shared management API (which
+	// registers the /agents routes unconditionally) and runs the shared event
+	// listener (which dispatches EventTypeAgent), so Agents do reach both the
+	// policy manager and the xDS translator below.
+	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
 	policyManager.SetTransformers(transformerRegistry)
 
-	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
-	})
+	// Derived from the registry rather than hand-listed, for the same reason the
+	// gateway controller derives it: a hand-written map beside the registry's own
+	// kind list is two lists that drift silently. A kind missing here does not
+	// error — the translator falls back to the legacy path, which rejects
+	// anything that is not an api.RestAPI and drops that artifact's routes from
+	// the snapshot after an otherwise successful deployment.
+	envoyTransformers := make(map[string]models.ConfigTransformer)
+	for _, kind := range transform.EnvoyTranslatorKinds() {
+		envoyTransformers[kind] = transformerRegistry
+	}
+	xdsTranslator.SetTransformers(envoyTransformers)
 
 	loadedAPIs := configStore.GetAll()
 	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup); err != nil {

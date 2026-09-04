@@ -450,8 +450,33 @@ func populateAuthAnalyticsMetadata(analyticsMetadata map[string]any, authChain *
 	}
 }
 
-// populateGenericMetadata JSON-encodes SharedContext.Metadata (minus the internal
-// streaming accumulator, which is never meant for export) into analyticsMetadata
+// internalMetadataKeys are the SharedContext.Metadata entries this policy writes for
+// its own bookkeeping, and the ones populateGenericMetadata leaves out of the export.
+//
+// None of them is an analytics value. The accumulator is the streamed response body
+// held for later parsing, so exporting it would duplicate the whole body — base64'd,
+// since it is a []byte — into every traffic-log line. The three A2A marks are a
+// request timestamp, a first-event timestamp and a scan offset: intermediate state the
+// policy turns into TTFB and stream duration, which are exported properly under
+// A2AResponsePropertiesKey. The marks are also written and cleared in different
+// phases from this export — a2aRequestStartKey is set in the request phase and
+// deleted only when the stream ends, while this runs at response headers — so
+// without this filter every Agent request carries an internal timestamp into its
+// traffic-log line as a "$ctx:metadata['__a2a_request_start']" field an operator has
+// no use for.
+//
+// Named individually rather than filtered by the "__" prefix they happen to share:
+// this bag is writable by any policy, third-party ones included, and a prefix rule
+// would silently swallow a key someone else chose to spell that way.
+var internalMetadataKeys = map[string]struct{}{
+	analyticsStreamAccKey: {},
+	a2aRequestStartKey:    {},
+	a2aFirstEventKey:      {},
+	a2aStreamScanKey:      {},
+}
+
+// populateGenericMetadata JSON-encodes SharedContext.Metadata (minus this policy's own
+// internal bookkeeping keys, which are never meant for export) into analyticsMetadata
 // under GenericMetadataKey, so the stdout traffic-logging publisher's
 // "$ctx:metadata['<key>']" CEL surface can reach ANY key any policy has written to
 // the shared metadata bag. Unlike populateAuthAnalyticsMetadata and the
@@ -466,7 +491,7 @@ func populateGenericMetadata(analyticsMetadata map[string]any, sharedMetadata ma
 	}
 	filtered := make(map[string]interface{}, len(sharedMetadata))
 	for k, v := range sharedMetadata {
-		if k == analyticsStreamAccKey {
+		if _, internal := internalMetadataKeys[k]; internal {
 			continue
 		}
 		filtered[k] = v
@@ -1461,11 +1486,40 @@ func sseBlockEnd(b []byte) (int, int) {
 	}
 }
 
+// sseDataField is the SSE field name both scanners on the A2A path key off — the one
+// that ends the timing scan (sseBlockHasData) and the one the observation reads
+// (sseDataValue). Spelled once because the two must agree: a line one of them counts
+// as an event and the other skips is a stream that reports a first-event time and no
+// observation, which surfaces as an outcome of UNKNOWN with every field absent.
+//
+// The separator space is **not** part of the field. Per the SSE field-parsing rule
+// (WHATWG HTML, server-sent events), the value is everything after the colon with a
+// single leading space removed if present — so "data:{...}" and "data: {...}" are the
+// same field, and an agent that omits the optional space must be read the same way as
+// one that sends it.
+const sseDataField = "data:"
+
+// sseDataFieldBytes is sseDataField for the byte-oriented scanner, which runs over
+// every forwarded chunk and so avoids a per-line string conversion.
+var sseDataFieldBytes = []byte(sseDataField)
+
+// sseDataValue reports whether line is an SSE data field and returns its value, with
+// the optional single separator space removed. See sseDataField for the rule.
+func sseDataValue(line string) (string, bool) {
+	value, isData := strings.CutPrefix(line, sseDataField)
+	if !isData {
+		return "", false
+	}
+	// Exactly one space, never all leading whitespace: a second space is content the
+	// agent sent, and this must not silently rewrite a payload.
+	return strings.TrimPrefix(value, " "), true
+}
+
 // sseBlockHasData reports whether an event block carries a data field, which is what
 // separates an event a client dispatches from a comment or a directive.
 func sseBlockHasData(block []byte) bool {
 	for line := range bytes.SplitSeq(block, []byte("\n")) {
-		if bytes.HasPrefix(bytes.TrimSuffix(line, []byte("\r")), []byte("data:")) {
+		if bytes.HasPrefix(bytes.TrimSuffix(line, []byte("\r")), sseDataFieldBytes) {
 			return true
 		}
 	}
@@ -1569,11 +1623,10 @@ func observeA2AResponse(body []byte, responseHeaders *policy.Headers) a2aRespons
 	}
 
 	for line := range strings.SplitSeq(string(body), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data: ") {
+		data, isData := sseDataValue(strings.TrimSpace(line))
+		if !isData {
 			continue
 		}
-		data := strings.TrimPrefix(line, "data: ")
 		if data == "" || data == "[DONE]" {
 			continue
 		}
