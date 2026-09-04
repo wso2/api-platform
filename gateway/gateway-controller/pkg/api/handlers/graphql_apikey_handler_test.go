@@ -168,6 +168,35 @@ func TestCreateGraphQLAPIKeyDBError(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCreateGraphQLAPIKeyExpirationInPast_ReturnsBadRequest guards against a regression where
+// an expiresIn duration that computes to a past timestamp — a client input error — was mapped
+// to a generic 500 instead of 400; see the identical fix applied to REST's CreateAPIKey.
+func TestCreateGraphQLAPIKeyExpirationInPast_ReturnsBadRequest(t *testing.T) {
+	server := createTestAPIServer()
+	seedGraphQLAPIForAPIKeyHandlerTests(t, server, "test-handle")
+
+	name := "test-key"
+	request := api.APIKeyCreationRequest{
+		Name: &name,
+		ExpiresIn: &struct {
+			Duration int                                     `json:"duration" yaml:"duration"`
+			Unit     api.APIKeyCreationRequestExpiresInUnit `json:"unit" yaml:"unit"`
+		}{Duration: -10, Unit: api.APIKeyCreationRequestExpiresInUnitSeconds},
+	}
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+
+	w, r := createTestContextWithHeader("POST", "/graphql-apis/test-handle/api-keys", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	r = withAuthContext(r, commonmodels.AuthContext{UserID: "test-user", Roles: []string{"admin"}})
+
+	server.CreateGraphQLAPIKey(w, r, "test-handle")
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "must be in the future")
+}
+
 func TestCreateGraphQLAPIKeyAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
