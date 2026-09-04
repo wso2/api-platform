@@ -69,13 +69,28 @@ export type GatewayInput = {
 /**
  * `applying` is the expected state immediately after ANY write and can persist
  * for minutes. It is not a failure and not an unfinished save.
+ *
+ * `unknown` is the platform reporting no phase at all: whether the last change
+ * has landed cannot be said, and it will not settle on its own — so it is a
+ * fourth case to render, not a variant of `applying` to keep waiting on.
  */
-export type ConfigPhase = 'applying' | 'healthy' | 'failed';
+export type ConfigPhase = 'applying' | 'healthy' | 'failed' | 'unknown';
 
 export type ConfigStatus = {
   phase: ConfigPhase;
   /** Platform detail, present when the phase is not healthy. Prose, not a code. */
   message?: string;
+  /**
+   * RFC 3339 — when the gateway ENTERED this phase, already validated as a
+   * timestamp by platform-api (a bad one is dropped rather than forwarded).
+   *
+   * Read it with `phase`, never instead of it: `applying` reads the same five
+   * minutes after a write and stalled an hour later, and this is the only thing
+   * that separates them. Absent on the response to a write — the phase there is
+   * `applying` before the data plane has seen the change — and on a gateway
+   * whose resources have not reported yet.
+   */
+  lastTransitionTime?: string;
 };
 
 export type ConfigFieldType =

@@ -17,9 +17,10 @@
  */
 
 import type { FC } from 'react';
-import { Box, Chip, IconButton, Tooltip } from '@wso2/oxygen-ui';
+import { Box, IconButton, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
-import type { ConfigPhase, ConfigStatus } from '../types';
+import { describeStatus } from '../config/status';
+import type { ConfigStatus } from '../types';
 
 export type ConfigStatusBarProps = {
   status: ConfigStatus;
@@ -28,44 +29,37 @@ export type ConfigStatusBarProps = {
 };
 
 /**
- * The phase of the last configuration change, as one chip beside the gateway
- * name.
+ * The configuration's phase as one line of text beside the gateway name — no
+ * chip: a healthy gateway shows when its configuration last landed, and only a
+ * phase that is still moving or has gone wrong spends the line on a word.
+ * `config/status.ts` decides what that line says and why.
  *
- * `applying` is the expected state immediately after ANY write and can persist
- * for minutes -- it is not a failure. The `message` that often accompanies it
- * is deliberately NOT shown: it is prose of unbounded length, it pushed the
- * form down the drawer, and the phase word is the part a reader acts on. It
- * stays in the response for anyone reading the endpoint directly.
+ * The Refresh button stays even though the drawer polls: polling is on a
+ * 20-second clock and someone watching a change land wants it now. It is also
+ * the only path that surfaces a read failure, a background poll being silent by
+ * design.
  */
-type ChipColor = 'default' | 'info' | 'error' | 'success';
-
-const PHASES: Record<ConfigPhase, { color: ChipColor; label: string }> = {
-  applying: { color: 'info', label: 'Applying' },
-  failed: { color: 'error', label: 'Failed' },
-  healthy: { color: 'success', label: 'Healthy' },
-};
-
 const ConfigStatusBar: FC<ConfigStatusBarProps> = ({
   status,
   onRefresh,
   refreshing = false,
 }) => {
-  // An unrecognised phase is a newer platform than this build; say the word it
-  // sent rather than mislabelling it as healthy.
-  const phase = PHASES[status.phase] ?? {
-    color: 'default' as ChipColor,
-    label: status.phase,
-  };
+  const display = describeStatus(status);
 
   return (
     <Box sx={{ alignItems: 'center', display: 'flex', gap: 0.5 }}>
-      <Chip
-        color={phase.color}
-        label={phase.label}
-        size="small"
-        sx={{ flexShrink: 0 }}
-        variant="outlined"
-      />
+      {display ? (
+        // An empty title renders no tooltip, so an absent detail needs no branch.
+        <Tooltip title={display.detail ?? ''}>
+          <Typography
+            color={display.tone === 'error' ? 'error.main' : 'text.secondary'}
+            sx={{ flexShrink: 0 }}
+            variant="body2"
+          >
+            {display.text}
+          </Typography>
+        </Tooltip>
+      ) : null}
       <Tooltip title="Refresh status">
         {/* Wrapped: a disabled button fires no events, so the tooltip on it
             would never open while a refresh is in flight. */}

@@ -24,10 +24,12 @@ import {
   CircularProgress,
   Drawer,
   IconButton,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';
 import { readConfiguration, writeConfiguration } from '../config/api';
+import { isApplying } from '../config/status';
 import {
   fieldForServerMessage,
   validateForm,
@@ -62,6 +64,21 @@ export type GatewaySettingsDrawerProps = {
 
 const DRAWER_WIDTH = 520;
 
+/**
+ * How often the drawer re-reads the configuration while it is open.
+ *
+ * The phase moves on the platform's clock, not the user's: a write comes back
+ * `applying` and the data plane takes minutes to catch up (10m07s measured on
+ * 2026-08-31), so nothing the user does will ever be the event that turns the
+ * line to `healthy`. A read is cheap and idempotent, and it re-seeds `config`
+ * only — pending edits are untouched — so the cost of polling is one GET and
+ * the benefit is a status line that is true without anyone pressing anything.
+ *
+ * The PUT is never re-sent. Only the phase is being waited on, and it settles on
+ * its own.
+ */
+const POLL_INTERVAL_MS = 20_000;
+
 const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   open,
   onClose,
@@ -77,6 +94,13 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   /** Only the paths the user has touched. The request body is a sparse patch of exactly these. */
   const [drafts, setDrafts] = useState<ConfigValues>({});
   const [saving, setSaving] = useState(false);
+  /**
+   * The same flag the poll timer reads. `saving` itself cannot be: the interval
+   * callback closes over the render that created it, so it would see `false`
+   * forever unless the timer were torn down and rebuilt on every keystroke-
+   * adjacent state change.
+   */
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
 
@@ -91,18 +115,31 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
    */
   const generation = useRef(0);
 
-  /** Re-seeds `config` only. Pending edits survive, so Refresh cannot discard them. */
+  /**
+   * Re-seeds `config` only. Pending edits survive, so neither Refresh nor the
+   * poll below can discard them.
+   *
+   * `background: true` is the poll's read: it owns no spinner, and a failure
+   * leaves the form exactly as it is. A poll that lost the network must not
+   * replace a working form with an error banner every twenty seconds — the
+   * Refresh button is the path that reports a read failure, because someone
+   * pressed it and is waiting for an answer.
+   */
   const load = useCallback(
-    async (id: string) => {
+    async (id: string, { background = false }: { background?: boolean } = {}) => {
       const mine = ++generation.current;
-      setLoading(true);
-      setLoadError(null);
+      if (!background) {
+        setLoading(true);
+        setLoadError(null);
+      }
       try {
         const loaded = await readConfiguration(apiFetch, id);
         if (mine !== generation.current) return;
         setConfig(loaded);
+        // A read that worked settles any banner an earlier one left behind.
+        setLoadError(null);
       } catch (error) {
-        if (mine !== generation.current) return;
+        if (mine !== generation.current || background) return;
         setLoadError(
           error instanceof Error
             ? error.message
@@ -111,7 +148,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       } finally {
         // Only the newest request owns the spinner; a superseded one must not
         // turn it off while its replacement is still running.
-        if (mine === generation.current) setLoading(false);
+        if (!background && mine === generation.current) setLoading(false);
       }
     },
     [apiFetch]
@@ -120,6 +157,25 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   useEffect(() => {
     if (!open || !gatewayId) return;
     void load(gatewayId);
+  }, [gatewayId, load, open]);
+
+  /**
+   * Poll while the drawer is open, so `Applying…` becomes a timestamp on its own.
+   *
+   * A tick is SKIPPED while a write is in flight. The generation counter settles
+   * which response wins by which started last, and a read that started before
+   * the PUT returned can legitimately own the newer generation while carrying
+   * pre-write values — the one ordering that would leave stale values on screen
+   * with no pending edits, which reads as "saved" and is not. Once the PUT has
+   * returned, the binding is written and any read reflects it.
+   */
+  useEffect(() => {
+    if (!open || !gatewayId) return;
+    const timer = setInterval(() => {
+      if (savingRef.current) return;
+      void load(gatewayId, { background: true });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
   }, [gatewayId, load, open]);
 
   /** Edits that actually differ from what is stored — editing a field back to its original un-dirties it. */
@@ -148,8 +204,18 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const errors = { ...serverErrors, ...clientErrors };
 
   const dirtyCount = Object.keys(patch).length;
+  /**
+   * The previous change has not reached the data plane yet. Writing again on top
+   * of it re-renders the release from a document the gateway has not finished
+   * picking up, so Save waits — and this is the state EVERY write lands in, for
+   * minutes, which is why the button explains itself rather than just greying out.
+   */
+  const applying = isApplying(config?.status);
   const canSave =
-    dirtyCount > 0 && Object.keys(clientErrors).length === 0 && !saving;
+    dirtyCount > 0 &&
+    Object.keys(clientErrors).length === 0 &&
+    !saving &&
+    !applying;
 
   const setDraft = (path: string, value: unknown) => {
     setDrafts((current) => ({ ...current, [path]: value }));
@@ -163,6 +229,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
     // Invalidates any read still in flight: what the write returns is newer
     // than anything a GET started before it can report.
     const mine = ++generation.current;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     setServerErrors({});
@@ -198,6 +265,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       if (path) setServerErrors({ [path]: withoutPathPrefix(message, path) });
       else setSaveError(message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -341,11 +409,23 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             >
               Reset
             </Button>
-            <Button variant="contained" disabled={!canSave} onClick={save}>
-              {dirtyCount === 0
-                ? 'Save'
-                : `Save ${dirtyCount} ${dirtyCount === 1 ? 'change' : 'changes'}`}
-            </Button>
+            <Tooltip
+              title={
+                applying
+                  ? 'The previous change is still being applied. Saving is available once it has landed.'
+                  : ''
+              }
+            >
+              {/* Wrapped: a disabled button fires no events, so the tooltip
+                  explaining why it is disabled would never open. */}
+              <Box component="span">
+                <Button variant="contained" disabled={!canSave} onClick={save}>
+                  {dirtyCount === 0
+                    ? 'Save'
+                    : `Save ${dirtyCount} ${dirtyCount === 1 ? 'change' : 'changes'}`}
+                </Button>
+              </Box>
+            </Tooltip>
           </Box>
         ) : null}
       </Box>
