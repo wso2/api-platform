@@ -524,6 +524,19 @@ func collectShortCircuitAnalytics(
 
 	// The rejecting policy wins on any key it also sets.
 	maps.Copy(out, immResp.AnalyticsMetadata)
+
+	// Attribute the outcome to the policy layer. This is the one place where being
+	// short-circuited by a policy is known as a fact rather than inferred from a
+	// status code: an auth denial and an upstream's own 401 are indistinguishable
+	// downstream otherwise, and a success-rate dashboard that cannot separate them
+	// blames the agent for the gateway's rejections. Written last, and not
+	// overridable by a policy, because it describes what the engine did rather than
+	// anything a policy observed.
+	//
+	// Which of the two policy-layer reasons it is depends on the status: a policy
+	// can answer a request as well as refuse it, and a managed Agent Card served
+	// with a 200 or a conditional-GET 304 is not a denial.
+	out[TerminalReasonKey] = terminalReasonForImmediateResponse(immResp.StatusCode)
 	return out
 }
 

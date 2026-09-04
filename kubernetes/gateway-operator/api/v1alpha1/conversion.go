@@ -68,6 +68,26 @@ func (dst *RestApi) ConvertFrom(srcRaw conversion.Hub) error {
 	return convertViaJSON(src.Status, &dst.Status)
 }
 
+// --- Agent ---
+
+func (src *Agent) ConvertTo(dstRaw conversion.Hub) error {
+	dst := dstRaw.(*v1.Agent)
+	dst.ObjectMeta = src.ObjectMeta
+	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
+		return err
+	}
+	return convertViaJSON(src.Status, &dst.Status)
+}
+
+func (dst *Agent) ConvertFrom(srcRaw conversion.Hub) error {
+	src := srcRaw.(*v1.Agent)
+	dst.ObjectMeta = src.ObjectMeta
+	if err := convertViaJSON(src.Spec, &dst.Spec); err != nil {
+		return err
+	}
+	return convertViaJSON(src.Status, &dst.Status)
+}
+
 // --- APIGateway ---
 
 func (src *APIGateway) ConvertTo(dstRaw conversion.Hub) error {

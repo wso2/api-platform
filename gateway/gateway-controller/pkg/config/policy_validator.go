@@ -20,8 +20,8 @@ package config
 
 import (
 	"fmt"
-	"regexp"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -96,6 +96,50 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
 				errors = append(errors, errs...)
 			}
+		}
+	}
+
+	return errors
+}
+
+// ValidateAgentPolicies validates all policies in an Agent configuration.
+//
+// An Agent has three policy scopes, and they are not interchangeable: the
+// operation-common list runs for every A2A operation, an operation's own list
+// runs after it for that operation only, and the public Agent Card list guards
+// card discovery alone — card serving is not an A2A operation and deliberately
+// does not inherit the operation policies. All three are user-authored, so all
+// three are validated, following ValidateRestAPIPolicies rather than
+// ValidateMCPProxyPolicies, which has no operation scope to walk.
+func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfiguration) []ValidationError {
+	var errors []ValidationError
+
+	operationConfigs := &agentConfig.Spec.A2a.OperationConfigs
+
+	if operationConfigs.Policies != nil {
+		for i, policy := range *operationConfigs.Policies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.operationConfigs.policies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
+
+	if operationConfigs.Operations != nil {
+		for opIdx, operation := range *operationConfigs.Operations {
+			if operation.Policies == nil {
+				continue
+			}
+			for pIdx, policy := range *operation.Policies {
+				errs := pv.validatePolicy(policy,
+					fmt.Sprintf("spec.a2a.operationConfigs.operations[%d].policies[%d]", opIdx, pIdx))
+				errors = append(errors, errs...)
+			}
+		}
+	}
+
+	if cardPolicies := agentConfig.Spec.A2a.AgentCard.Public.Policies; cardPolicies != nil {
+		for i, policy := range *cardPolicies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.agentCard.public.policies[%d]", i))
+			errors = append(errors, errs...)
 		}
 	}
 
@@ -297,6 +341,29 @@ func (pv *PolicyValidator) CoerceRestAPIPolicies(config *api.RestAPI) {
 func (pv *PolicyValidator) CoerceMCPProxyPolicies(config *api.MCPProxyConfiguration) {
 	if config.Spec.Policies != nil {
 		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+}
+
+// CoerceAgentPolicies coerces policy param strings to their schema-declared types for
+// an AgentConfiguration, across the same three scopes ValidateAgentPolicies walks.
+// Called by AgentValidator immediately before validation, which is after template
+// rendering — text/template emits strings for every value, so without this an
+// integer param supplied as a template expression fails its own schema.
+func (pv *PolicyValidator) CoerceAgentPolicies(agentConfig *api.AgentConfiguration) {
+	operationConfigs := &agentConfig.Spec.A2a.OperationConfigs
+
+	if operationConfigs.Policies != nil {
+		pv.coercePolicySlice(*operationConfigs.Policies)
+	}
+	if operationConfigs.Operations != nil {
+		for i := range *operationConfigs.Operations {
+			if operation := &(*operationConfigs.Operations)[i]; operation.Policies != nil {
+				pv.coercePolicySlice(*operation.Policies)
+			}
+		}
+	}
+	if cardPolicies := agentConfig.Spec.A2a.AgentCard.Public.Policies; cardPolicies != nil {
+		pv.coercePolicySlice(*cardPolicies)
 	}
 }
 

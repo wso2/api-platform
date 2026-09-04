@@ -1132,14 +1132,14 @@ func TestGenericResolutionFailure_StatusPerKind(t *testing.T) {
 // ─── Request view construction ───────────────────────────────────────────────
 
 func TestBuildRequestView(t *testing.T) {
-	view := buildRequestView("POST|/rpc|example.com", &extprocv3.HttpHeaders{
+	view := snapshotRequestHeaders(&extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
 			{Key: ":method", RawValue: []byte("post")},
 			{Key: ":path", RawValue: []byte("/rpc?x=1")},
 			{Key: "accept", RawValue: []byte("application/json")},
 			{Key: "accept", RawValue: []byte("text/plain")},
 		}},
-	})
+	}).requestView("POST|/rpc|example.com")
 
 	assert.Equal(t, "POST|/rpc|example.com", view.RouteKey)
 	assert.Equal(t, "POST", view.Method, "the method must be upper-cased at extraction (GO-AUTH-006)")
@@ -1149,7 +1149,7 @@ func TestBuildRequestView(t *testing.T) {
 }
 
 func TestBuildRequestView_NilHeaders(t *testing.T) {
-	view := buildRequestView("r", nil)
+	view := snapshotRequestHeaders(nil).requestView("r")
 	assert.Equal(t, "r", view.RouteKey)
 	assert.Nil(t, view.Headers)
 }
@@ -1194,7 +1194,7 @@ func (f *resolutionFixture) bindPendingWithHeaders(t *testing.T, routeKey string
 }
 
 // Guard against a stray "strings" import removal breaking the method-normalization
-// assertion above: buildRequestView must actually be doing the upper-casing.
+// assertion above: snapshotRequestHeaders must actually be doing the upper-casing.
 var _ = strings.ToUpper
 
 // ─── Compressed-body mutation on the deferred path ───────────────────────────

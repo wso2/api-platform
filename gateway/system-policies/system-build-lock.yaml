@@ -1,5 +1,7 @@
 version: v1
 
 policies:
+  - name: wso2_apip_sys_a2a
+    filePath: ./a2a
   - name: wso2_apip_sys_analytics
     filePath: ./analytics
