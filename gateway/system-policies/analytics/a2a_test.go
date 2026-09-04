@@ -501,12 +501,16 @@ func TestA2ABlockFieldNamesArePinned(t *testing.T) {
 			value: A2AResponseAnalyticsProperties{
 				IsError: &isError, ErrorCode: &errorCode,
 				TimeToFirstEventMs: &ttfe, StreamDurationMs: &duration, IsStreaming: &isStreaming,
-				PayloadType: "task", TaskID: "task-9", ContextID: "ctx-9",
+				PayloadType: "task", ResponseTaskID: "task-9", ResponseContextID: "ctx-9",
 				TaskState: "TASK_STATE_COMPLETED",
 			},
+			// The published model is one flat object, so the two identifiers that
+			// share a name with a request field carry a `response` prefix. The
+			// other seven have no request-side counterpart and keep bare names.
 			want: []string{
-				"contextId", "errorCode", "isError", "isStreaming", "payloadType",
-				"streamDurationMs", "taskId", "taskState", "timeToFirstEventMs",
+				"errorCode", "isError", "isStreaming", "payloadType",
+				"responseContextId", "responseTaskId", "streamDurationMs",
+				"taskState", "timeToFirstEventMs",
 			},
 		},
 	} {

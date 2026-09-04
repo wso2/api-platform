@@ -187,11 +187,10 @@ func TestA2AAnalytics_JSONRPCErrorInsideA200IsAFailure(t *testing.T) {
 	assert.Equal(t, A2AOutcomeFailure, block.Outcome)
 	assert.Equal(t, A2AFailureOriginUpstream, block.FailureOrigin,
 		"a JSON-RPC error object is the agent's own failure")
-	require.NotNil(t, block.Response)
-	require.NotNil(t, block.Response.IsError)
-	assert.True(t, *block.Response.IsError)
-	require.NotNil(t, block.Response.ErrorCode)
-	assert.Equal(t, code, *block.Response.ErrorCode)
+	require.NotNil(t, block.IsError)
+	assert.True(t, *block.IsError)
+	require.NotNil(t, block.ErrorCode)
+	assert.Equal(t, code, *block.ErrorCode)
 }
 
 func TestA2AAnalytics_CleanTwoHundredIsASuccessWithNoFailureOrigin(t *testing.T) {
@@ -376,8 +375,8 @@ func TestA2AAnalytics_CardAndPreflightAreReportedSeparately(t *testing.T) {
 			assert.Empty(t, block.ProtocolVersion, tc.name)
 			assert.Empty(t, block.Outcome, tc.name)
 			assert.Empty(t, block.FailureOrigin, tc.name)
-			assert.Nil(t, block.Request, tc.name)
-			assert.Nil(t, block.Response, tc.name)
+			assert.Equal(t, dto.A2ARequestAnalytics{}, block.A2ARequestAnalytics, tc.name)
+			assert.Equal(t, dto.A2AResponseAnalytics{}, block.A2AResponseAnalytics, tc.name)
 		})
 	}
 }
@@ -486,10 +485,9 @@ func TestA2AAnalytics_CarriesTheCorrelationIdentifiers(t *testing.T) {
 		contextID: "ctx-abc", taskID: "task-def", messageID: "msg-ghi",
 	}))
 
-	require.NotNil(t, block.Request)
-	assert.Equal(t, "ctx-abc", block.Request.ContextID)
-	assert.Equal(t, "task-def", block.Request.TaskID)
-	assert.Equal(t, "msg-ghi", block.Request.MessageID)
+	assert.Equal(t, "ctx-abc", block.ContextID)
+	assert.Equal(t, "task-def", block.TaskID)
+	assert.Equal(t, "msg-ghi", block.MessageID)
 }
 
 // ─── Consumer identity ──────────────────────────────────────────────────────
@@ -578,8 +576,8 @@ func TestAgentAnalytics_PublishedEnvelopeShape(t *testing.T) {
 		"timeToFirstEventMs": 120,
 		"streamDurationMs":   850,
 		"payloadType":        "task",
-		"taskId":             "task-456",
-		"contextId":          "ctx-1",
+		"responseTaskId":     "task-456",
+		"responseContextId":  "ctx-1",
 		"taskState":          "TASK_STATE_COMPLETED",
 	})
 	require.NoError(t, err)
@@ -607,53 +605,50 @@ func TestAgentAnalytics_PublishedEnvelopeShape(t *testing.T) {
 	assert.Equal(t, A2AOutcomeSuccess, envelope.A2A.Outcome)
 	assert.Empty(t, envelope.A2A.FailureOrigin)
 
-	// Transport and protocol version describe the invocation, not what the caller
-	// asked the agent to do, so they sit at the A2A level even though the policy
-	// serializes them alongside the request identifiers.
-	request := envelope.A2A.Request
-	require.NotNil(t, request)
-	assert.Equal(t, "msg-1", request.MessageID)
-	assert.Equal(t, "task-existing", request.TaskID)
-	assert.Equal(t, "ctx-1", request.ContextID)
-	require.NotNil(t, request.InputPartCount)
-	assert.Equal(t, 3, *request.InputPartCount)
-	require.NotNil(t, request.ReturnImmediately)
-	assert.False(t, *request.ReturnImmediately)
-	require.NotNil(t, request.HistoryLength)
-	assert.Equal(t, 5, *request.HistoryLength)
+	a2a := envelope.A2A
+	assert.Equal(t, "msg-1", a2a.MessageID)
+	assert.Equal(t, "task-existing", a2a.TaskID)
+	assert.Equal(t, "ctx-1", a2a.ContextID)
+	require.NotNil(t, a2a.InputPartCount)
+	assert.Equal(t, 3, *a2a.InputPartCount)
+	require.NotNil(t, a2a.ReturnImmediately)
+	assert.False(t, *a2a.ReturnImmediately)
+	require.NotNil(t, a2a.HistoryLength)
+	assert.Equal(t, 5, *a2a.HistoryLength)
 
-	response := envelope.A2A.Response
-	require.NotNil(t, response)
-	require.NotNil(t, response.IsError)
-	assert.False(t, *response.IsError)
-	require.NotNil(t, response.IsStreaming)
-	assert.True(t, *response.IsStreaming)
-	require.NotNil(t, response.TimeToFirstEventMs)
-	assert.EqualValues(t, 120, *response.TimeToFirstEventMs)
-	require.NotNil(t, response.StreamDurationMs)
-	assert.EqualValues(t, 850, *response.StreamDurationMs)
-	assert.Equal(t, "task", response.PayloadType)
-	assert.Equal(t, "TASK_STATE_COMPLETED", response.TaskState)
+	require.NotNil(t, a2a.IsError)
+	assert.False(t, *a2a.IsError)
+	require.NotNil(t, a2a.IsStreaming)
+	assert.True(t, *a2a.IsStreaming)
+	require.NotNil(t, a2a.TimeToFirstEventMs)
+	assert.EqualValues(t, 120, *a2a.TimeToFirstEventMs)
+	require.NotNil(t, a2a.StreamDurationMs)
+	assert.EqualValues(t, 850, *a2a.StreamDurationMs)
+	assert.Equal(t, "task", a2a.PayloadType)
+	assert.Equal(t, "TASK_STATE_COMPLETED", a2a.TaskState)
 
 	// The identifiers the caller sent and the ones the agent answered with are
-	// carried separately, in the object that says which direction produced them, so
-	// a disagreement between the two stays diagnosable.
-	assert.Equal(t, "task-456", response.TaskID)
-	assert.Equal(t, "ctx-1", response.ContextID)
-	assert.NotEqual(t, request.TaskID, response.TaskID)
+	// carried under distinct names on the one flat object, so a disagreement
+	// between the two stays diagnosable.
+	assert.Equal(t, "task-456", a2a.ResponseTaskID)
+	assert.Equal(t, "ctx-1", a2a.ResponseContextID)
+	assert.NotEqual(t, a2a.TaskID, a2a.ResponseTaskID)
 }
 
 // The published JSON is the actual contract — a consumer reads names, not Go fields —
-// so the serialized document is asserted directly. It also pins the two omissions the
-// model depends on: an absent optional is missing rather than null or zero, and there
-// is no schema-version property.
+// so the serialized document is asserted directly. It pins that the a2a section is one
+// flat level, that the two colliding response identifiers are the only prefixed names,
+// and the two omissions the model depends on: an absent optional is missing rather than
+// null or zero, and there is no schema-version property.
 func TestAgentAnalytics_SerializesToTheDocumentedJSON(t *testing.T) {
 	requestProps, err := json.Marshal(map[string]any{
 		"transport": "JSONRPC", "protocolVersion": "1.0", "messageId": "msg-1",
+		"taskId": "task-existing",
 	})
 	require.NoError(t, err)
 	responseProps, err := json.Marshal(map[string]any{
 		"isError": false, "payloadType": "task", "taskState": "TASK_STATE_COMPLETED",
+		"responseTaskId": "task-456",
 	})
 	require.NoError(t, err)
 
@@ -676,8 +671,12 @@ func TestAgentAnalytics_SerializesToTheDocumentedJSON(t *testing.T) {
 			"operation": "SendMessage",
 			"transport": "JSONRPC",
 			"protocolVersion": "1.0",
-			"request": {"messageId": "msg-1"},
-			"response": {"isError": false, "payloadType": "task", "taskState": "TASK_STATE_COMPLETED"},
+			"messageId": "msg-1",
+			"taskId": "task-existing",
+			"isError": false,
+			"payloadType": "task",
+			"taskState": "TASK_STATE_COMPLETED",
+			"responseTaskId": "task-456",
 			"outcome": "SUCCESS"
 		}
 	}`, string(encoded))
@@ -730,10 +729,9 @@ func TestAgentAnalyticsWireFieldNamesArePinned(t *testing.T) {
 	response := decodeA2AResponseBlock(`{
 		"isError": false, "errorCode": -32601,
 		"isStreaming": true, "timeToFirstEventMs": 120, "streamDurationMs": 850,
-		"payloadType": "task", "taskId": "task-9", "contextId": "ctx-9",
+		"payloadType": "task", "responseTaskId": "task-9", "responseContextId": "ctx-9",
 		"taskState": "TASK_STATE_COMPLETED"
 	}`)
-	require.NotNil(t, response)
 	require.NotNil(t, response.IsError)
 	require.NotNil(t, response.ErrorCode)
 	assert.Equal(t, -32601, *response.ErrorCode)
@@ -741,8 +739,8 @@ func TestAgentAnalyticsWireFieldNamesArePinned(t *testing.T) {
 	require.NotNil(t, response.TimeToFirstEventMs)
 	require.NotNil(t, response.StreamDurationMs)
 	assert.Equal(t, "task", response.PayloadType)
-	assert.Equal(t, "task-9", response.TaskID)
-	assert.Equal(t, "ctx-9", response.ContextID)
+	assert.Equal(t, "task-9", response.ResponseTaskID)
+	assert.Equal(t, "ctx-9", response.ResponseContextID)
 	assert.Equal(t, "TASK_STATE_COMPLETED", response.TaskState)
 }
 
@@ -769,14 +767,37 @@ func TestDecodeA2ABlocks_UnparseableYieldsAnEmptySectionAndDoesNotBreakTheEvent(
 
 	assert.Equal(t, "SendMessage", envelope.A2A.Operation,
 		"the operation is kernel-stamped and must survive an unreadable policy block")
-	assert.Nil(t, envelope.A2A.Request)
-	assert.Nil(t, envelope.A2A.Response)
+	assert.Equal(t, dto.A2ARequestAnalytics{}, envelope.A2A.A2ARequestAnalytics)
+	assert.Equal(t, dto.A2AResponseAnalytics{}, envelope.A2A.A2AResponseAnalytics)
 }
 
-func TestDecodeA2ABlocks_EmptyYieldsNoObjects(t *testing.T) {
-	empty := decodeA2ARequestBlock("")
-	assert.True(t, empty.A2ARequestAnalytics.IsEmpty())
-	assert.Nil(t, decodeA2AResponseBlock(""))
+func TestDecodeA2ABlocks_EmptyYieldsNoDimensions(t *testing.T) {
+	assert.Equal(t, a2aRequestBlock{}, decodeA2ARequestBlock(""))
+	assert.Equal(t, dto.A2AResponseAnalytics{}, decodeA2AResponseBlock(""))
+}
+
+// A policy-supplied block cannot set a dimension the kernel owns: the wire types it
+// decodes into have no field for one, so a block naming it decodes into nothing.
+func TestDecodeA2ABlocks_CannotOverrideKernelStampedDimensions(t *testing.T) {
+	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(
+		createLogEntryWithMetadata(map[string]string{
+			APITypeKey:           string(policy.APIKindAgent),
+			APIIDKey:             "agent-1",
+			APINameKey:           "WeatherAgent",
+			ResolvedOperationKey: "SendMessage",
+			A2ARequestPropertiesKey: `{"operation":"CancelTask","requestType":"agentCard",` +
+				`"outcome":"SUCCESS","failureOrigin":"client","messageId":"m-1"}`,
+		}))
+	require.NotNil(t, event)
+	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
+	require.True(t, ok)
+	require.NotNil(t, envelope.A2A)
+
+	assert.Equal(t, "SendMessage", envelope.A2A.Operation)
+	assert.Equal(t, A2ARequestTypeOperation, envelope.A2A.RequestType)
+	assert.Equal(t, A2AOutcomeUnknown, envelope.A2A.Outcome)
+	assert.Empty(t, envelope.A2A.FailureOrigin)
+	assert.Equal(t, "m-1", envelope.A2A.MessageID, "the fields it does own still arrive")
 }
 
 // ─── Cross-module and cross-package key spellings ───────────────────────────
