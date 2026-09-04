@@ -119,8 +119,11 @@ export const useNavigationItems = (): NavigationItem[] => {
     );
     const registryWithOverrides = navigationRegistry.map((definition) => {
       const override = overridePlacements.get(definition.id);
+      // `group` is optional on an override — one that only repositions within
+      // its existing cluster sets `order` alone — so fall back to the built-in
+      // group rather than clearing it and moving the item out of its cluster.
       return override
-        ? { ...definition, group: override.group, order: override.order }
+        ? { ...definition, group: override.group ?? definition.group, order: override.order }
         : definition;
     });
     const combinedRegistry = [...registryWithOverrides, ...extensionDefinitions];

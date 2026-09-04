@@ -55,8 +55,15 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const [error, setError] = useState<string | null>(null);
   // Guards against a save being issued twice (the form also disables its button).
   const submittingRef = useRef(false);
+  const deletingRef = useRef(false);
+  // Refreshes are fired from several places (mount, after save, after each
+  // delete) and can overlap. Only the newest one may write state, or a slower
+  // earlier response could land last and restore a gateway that was deleted
+  // since.
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -64,12 +71,14 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         client.listGateways(),
         client.listEnvironments(),
       ]);
+      if (seq !== loadSeqRef.current) return;
       setGateways(gatewayList);
       setEnvironments(environmentList);
     } catch (loadError) {
+      if (seq !== loadSeqRef.current) return;
       setError(loadError instanceof Error ? loadError.message : 'Unable to load gateways.');
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [client]);
 
@@ -106,6 +115,10 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   const removeGateway = useCallback(
     async (id: string, name: string) => {
+      // One delete at a time: the confirm dialog closes on confirm, so a second
+      // gateway can otherwise be deleted while the first is still in flight.
+      if (deletingRef.current) return;
+      deletingRef.current = true;
       try {
         await client.deleteGateway(id);
         notify(`Gateway "${name}" deleted.`, 'success');
@@ -115,6 +128,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
           deleteError instanceof Error ? deleteError.message : 'Unable to delete the gateway.',
           'error'
         );
+      } finally {
+        deletingRef.current = false;
       }
     },
     [client, load, notify]

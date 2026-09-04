@@ -45,11 +45,12 @@ export function createApiEnvironmentPort(apiFetch: ApiFetch): EnvironmentPort {
         name: input.name,
         isProduction: input.critical,
       });
-      // A successful create always returns the new record; fall back to the
-      // request data if the body is empty so the caller still gets an Environment.
-      return created
-        ? mapEnvironment(created)
-        : { id: input.name, name: input.name, critical: input.critical, createdAt: '' };
+      // A successful create always answers 201 with the new record. Deriving an
+      // id from the name instead would be wrong rather than merely incomplete:
+      // the id is the environment's OpenChoreo resource name, so a later
+      // remove(id) would target the wrong path.
+      if (!created) throw new Error('Creating the environment returned an empty response.');
+      return mapEnvironment(created);
     },
     async remove(id: string): Promise<void> {
       await apiFetch('DELETE', `/environments/${encodeURIComponent(id)}`);

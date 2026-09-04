@@ -17,7 +17,7 @@
  */
 
 import { lazy, type ReactNode } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useResolvedPath } from 'react-router-dom';
 
 import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -211,7 +211,22 @@ function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) 
 function GatewaysRoute() {
   const port = usePort();
   const [override] = useSlot<ApiControlPlaneExtension>(PAGE_GATEWAYS_SLOT);
-  if (override) return <>{override.render(port)}</>;
+  // `useResolvedPath('')` is the segment before the splat — this route's own
+  // `gateways` path, with the scope handles already filled in.
+  const indexPath = useResolvedPath('').pathname;
+  if (override) {
+    // An override replaces the whole subtree with one self-contained flow that
+    // keeps its view in local state (a feature package holds no router of its
+    // own, so it cannot own nested routes). There is therefore no `new` or
+    // `:gatewayId` URL under it: send those to the index instead of rendering
+    // the list at a URL claiming to be a create or detail page.
+    return (
+      <Routes>
+        <Route index element={<>{override.render(port)}</>} />
+        <Route element={<Navigate replace to={indexPath} />} path="*" />
+      </Routes>
+    );
+  }
   return (
     <Hideable name={PAGE_GATEWAYS_SLOT}>
       <Routes>
