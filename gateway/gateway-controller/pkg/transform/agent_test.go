@@ -162,6 +162,12 @@ func withCardContent(content api.A2AAgentCardDocument) agentOption {
 	}
 }
 
+func withCardSigning(enabled bool) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		cfg.Spec.A2a.AgentCard.Public.Signing = &api.A2ACardSigning{Enabled: enabled}
+	}
+}
+
 // agentTransformer builds a transformer whose catalogue holds only the A2A
 // system policy, which is what most of these tests want: route topology, chain
 // keys and timeouts are independent of which policies exist, and an otherwise
@@ -1075,15 +1081,16 @@ func TestAgentOperationScopedCORSPreflights(t *testing.T) {
 	// GetTask's own path, plus the JSON-RPC endpoint — every operation is
 	// reachable there, so an operation-level cors covers it too.
 	assert.Equal(t, map[string][]string{
-		"OPTIONS|/weather/tasks/{id}|main.local": {"auth", "cors"},
-		"OPTIONS|/weather/rpc|main.local":        {"auth", "cors"},
+		"OPTIONS|/weather/tasks/{id}|main.local": {"cors"},
+		"OPTIONS|/weather/rpc|main.local":        {"cors"},
 	}, preflights)
 
-	// The operation's other policies stay out: a preflight carries no
-	// credentials, so running the operation's authentication against it would
-	// reject the very request the cors policy is there to answer. Only cors is
-	// borrowed — auth here comes from the common scope, which every preflight
-	// gets.
+	// Nothing but cors reaches a preflight, from either scope. A preflight
+	// carries no credentials, so running authentication against it would reject
+	// the very request the cors policy is there to answer — and that argument
+	// does not depend on which scope the authentication was attached at, so the
+	// common scope's `auth` is filtered out exactly like an operation's would
+	// be. Only cors is borrowed, from the common scope and the operation alike.
 	getTaskChain := rdc.PolicyChains[chainkey.For(testAgentUUID, "main.local", string(agentproto.GetTask))]
 	assert.Equal(t, []string{"auth", "cors"}, policyNames(getTaskChain),
 		"the operation's real chain is unaffected")
@@ -1462,6 +1469,19 @@ func withProtectedCard(mode api.A2AProtectedAgentCardMode, content *api.A2AAgent
 	}
 }
 
+// withProtectedCardSigning sets signing on a protected card that some earlier
+// option already declared. Options apply in order, so it follows
+// withProtectedCard rather than replacing the block itself.
+func withProtectedCardSigning(enabled bool) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		protected := cfg.Spec.A2a.AgentCard.Protected
+		if protected == nil {
+			panic("withProtectedCardSigning needs withProtectedCard before it")
+		}
+		protected.Signing = &api.A2ACardSigning{Enabled: enabled}
+	}
+}
+
 func protectedCardDocument() api.A2AAgentCardDocument {
 	return api.A2AAgentCardDocument{
 		"name":            "Weather Agent",
@@ -1579,6 +1599,47 @@ func TestAgentProtectedCardAttachesToTheExtendedCardChainInBothModes(t *testing.
 			// No validator: the response is authenticated and uncacheable, and
 			// the JSON-RPC binding is a POST that cannot answer a conditional GET.
 			assert.NotContains(t, block, constants.A2A_POLICY_PARAM_ETAG)
+		})
+	}
+}
+
+// Nothing signs a card yet: the transformer hands the card bytes to the A2A
+// system policy, which serves them unchanged. So a card asking to be signed is
+// refused rather than served unsigned — a client that trusts signing.enabled
+// could not tell the difference, and the failure would be silent at both ends.
+//
+// config.validateCardSigning already rejects this and names the field, so these
+// cases are unreachable through the management API. They cover the entry point
+// that reaches the transformer without the validator having run.
+func TestAgentSigningEnabledIsRefused(t *testing.T) {
+	content := protectedCardDocument()
+
+	for name, options := range map[string][]agentOption{
+		"public card": {withCardSigning(true)},
+		"protected card": {
+			withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content),
+			withProtectedCardSigning(true),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := agentTransformer().Transform(testAgent(options...))
+			require.Error(t, err, "a card configured for signing must not be served")
+			assert.Contains(t, err.Error(), "signing")
+		})
+	}
+
+	// signing.enabled: false is the shape an author writes to say "not signed",
+	// and it must keep deploying.
+	for name, options := range map[string][]agentOption{
+		"public card": {withCardSigning(false)},
+		"protected card": {
+			withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content),
+			withProtectedCardSigning(false),
+		},
+	} {
+		t.Run(name+" with signing disabled", func(t *testing.T) {
+			_, err := agentTransformer().Transform(testAgent(options...))
+			require.NoError(t, err)
 		})
 	}
 }

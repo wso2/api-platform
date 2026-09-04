@@ -132,12 +132,29 @@ const (
 	// the tag that keeps denials queryable.
 	TerminalReasonUpstream             = "upstream_response"      // pass-through with no policy status override; status came from the backend unmodified. The one reason exempt from the Error span status — see tracing.upstreamFaultReasons.
 	TerminalReasonPolicyStatusOverride = "policy_status_override" // a response-body policy set DownstreamResponseModifications.StatusCode
-	TerminalReasonPolicyDenied         = "policy_denied"          // a policy returned an ImmediateResponse
+	TerminalReasonPolicyDenied         = "policy_denied"          // a policy returned an ImmediateResponse refusing the request (>= 400)
 	TerminalReasonPolicyError          = "policy_error"           // handlePolicyError generated a 500
 	TerminalReasonPayloadTooLarge      = "payload_too_large"      // handlePayloadTooLarge generated a 413
 	TerminalReasonNoPolicyChain        = "no_policy_chain"        // route resolved but no chain registered
 	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
 	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
+
+	// TerminalReasonPolicyAnswered marks a request a policy answered itself with a
+	// non-denial status, rather than refusing it: the request stopped at the
+	// gateway because that is the feature, not because it was rejected.
+	//
+	// A managed Agent Card is the case that exists today — the A2A system policy
+	// serves the card body with a 200, or a 304 when the client's If-None-Match
+	// still matches. Both share the short-circuit mechanism with an auth denial
+	// and are otherwise indistinguishable from one, so without this reason every
+	// card fetch is filed under TerminalReasonPolicyDenied and a success-rate
+	// dashboard counts discovery traffic as gateway rejections — an Agent then
+	// looks broken in proportion to how often its card is read.
+	//
+	// The two are split by status rather than by a flag a policy sets, so the
+	// classification comes from what actually goes on the wire and no policy can
+	// describe its own refusal as an answer.
+	TerminalReasonPolicyAnswered = "policy_answered"
 
 	// TerminalReasonResolutionFailed marks a request whose logical operation could not
 	// be resolved to a policy chain. It exists because the status alone cannot identify

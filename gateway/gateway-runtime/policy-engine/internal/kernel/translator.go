@@ -532,7 +532,11 @@ func collectShortCircuitAnalytics(
 	// blames the agent for the gateway's rejections. Written last, and not
 	// overridable by a policy, because it describes what the engine did rather than
 	// anything a policy observed.
-	out[TerminalReasonKey] = constants.TerminalReasonPolicyDenied
+	//
+	// Which of the two policy-layer reasons it is depends on the status: a policy
+	// can answer a request as well as refuse it, and a managed Agent Card served
+	// with a 200 or a conditional-GET 304 is not a denial.
+	out[TerminalReasonKey] = terminalReasonForImmediateResponse(immResp.StatusCode)
 	return out
 }
 

@@ -4898,7 +4898,7 @@ components:
           enum:
             - managed
             - passthrough
-          example: passthrough
+          example: managed
         content:
           $ref: "#/components/schemas/A2AAgentCardDocument"
         signing:

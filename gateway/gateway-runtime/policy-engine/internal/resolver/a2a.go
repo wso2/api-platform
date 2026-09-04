@@ -571,14 +571,18 @@ func (r *preparedA2AJSONRPC) Resolve(_ context.Context, view RequestView) (Resol
 		}
 	}
 
-	// One pass captures both what selects the chain and what is carried forward, so
-	// the payload is never parsed twice for the same request.
+	// One pass over the envelope captures what selects the chain. params is held
+	// raw rather than decoded into a shape here, because its shape is not the
+	// gateway's to police: A2A sends by-name params today, but JSON-RPC permits a
+	// positional array, and null or absent are both legal envelopes. Decoding it
+	// into a struct made every one of those a FailureParse — the gateway refusing
+	// a request the Agent may well accept, with a sterile response the client
+	// cannot learn anything from. Raw keeps chain selection resting on jsonrpc and
+	// method alone, which is all it ever needed.
 	var envelope struct {
-		JSONRPC string `json:"jsonrpc"`
-		Method  string `json:"method"`
-		Params  struct {
-			Message a2aMessage `json:"message"`
-		} `json:"params"`
+		JSONRPC string          `json:"jsonrpc"`
+		Method  string          `json:"method"`
+		Params  json.RawMessage `json:"params"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return Resolution{}, &ResolutionError{Kind: FailureParse, Cause: err}
@@ -608,12 +612,32 @@ func (r *preparedA2AJSONRPC) Resolve(_ context.Context, view RequestView) (Resol
 			Cause: fmt.Errorf("no A2A operation named %q", envelope.Method),
 		}
 	}
+	// The identifiers are read out of params on a best-effort basis, under the same
+	// policy as preparedA2AHTTPJSONBody.Resolve: an object-shaped params may yield a
+	// message, and anything else — an array, a scalar, null, absent, or an object
+	// whose message field does not fit — simply leaves the identifiers absent. The
+	// chain has already been selected by this point, so a params the gateway cannot
+	// read costs only attributes, and validating the payload stays with the Agent,
+	// which is the component that can tell the client what was actually wrong.
+	//
+	// Only params is decoded here, not the envelope again, and only for a request
+	// that already named a known operation.
+	var message a2aMessage
+	if params := trimLeadingJSONSpace(envelope.Params); len(params) > 0 && params[0] == '{' {
+		var byName struct {
+			Message a2aMessage `json:"message"`
+		}
+		if err := json.Unmarshal(params, &byName); err == nil {
+			message = byName.Message
+		}
+	}
+
 	// The operation reported is the map key that produced this chain key: one entry,
 	// built in one loop iteration from one operation name, so the attribute and the
 	// chain that runs cannot name different operations.
 	return Resolution{
 		ChainKey:   key,
-		Attributes: r.facts.attributes(envelope.Method, envelope.Params.Message),
+		Attributes: r.facts.attributes(envelope.Method, message),
 	}, nil
 }
 

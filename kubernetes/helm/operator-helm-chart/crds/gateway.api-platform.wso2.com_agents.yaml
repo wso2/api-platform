@@ -435,20 +435,22 @@ spec:
                     - auto
                     - manual
                     type: string
-                  ref:
-                    description: Ref is the name of a predefined upstreamDefinition.
-                    type: string
                   url:
-                    description: Url is the direct backend URL.
+                    description: 'Url is the direct backend URL. Required: an Agent
+                      has no ref form.'
+                    minLength: 1
                     type: string
+                required:
+                - url
                 type: object
-                x-kubernetes-validations:
-                - message: exactly one of url or ref must be set
-                  rule: has(self.url) != has(self.ref)
               upstreamDefinitions:
                 description: |-
                   UpstreamDefinitions is the list of reusable upstream definitions (with
-                  optional connect timeout) that upstream.ref can reference.
+                  optional connect timeout) an Agent's policies can route to.
+
+                  spec.upstream has no ref form (see AgentUpstream), so these are not
+                  referenced from there: declaring any of them turns on cluster-header
+                  routing, which lets a policy pick one of them per request.
                 items:
                   description: |-
                     UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
@@ -1034,20 +1036,22 @@ spec:
                     - auto
                     - manual
                     type: string
-                  ref:
-                    description: Ref is the name of a predefined upstreamDefinition.
-                    type: string
                   url:
-                    description: Url is the direct backend URL.
+                    description: 'Url is the direct backend URL. Required: an Agent
+                      has no ref form.'
+                    minLength: 1
                     type: string
+                required:
+                - url
                 type: object
-                x-kubernetes-validations:
-                - message: exactly one of url or ref must be set
-                  rule: has(self.url) != has(self.ref)
               upstreamDefinitions:
                 description: |-
                   UpstreamDefinitions is the list of reusable upstream definitions (with
-                  optional connect timeout) that upstream.ref can reference.
+                  optional connect timeout) an Agent's policies can route to.
+
+                  spec.upstream has no ref form (see AgentUpstream), so these are not
+                  referenced from there: declaring any of them turns on cluster-header
+                  routing, which lets a policy pick one of them per request.
                 items:
                   description: |-
                     UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and

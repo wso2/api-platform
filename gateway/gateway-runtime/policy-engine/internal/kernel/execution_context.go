@@ -370,6 +370,32 @@ func (ec *PolicyExecutionContext) finalResponseStatus() int {
 	return 0 // request phase — no response status exists yet
 }
 
+// terminalReasonForImmediateResponse classifies a policy-produced
+// ImmediateResponse as a refusal or as the policy answering the request itself.
+//
+// A short-circuit is one mechanism serving two purposes: an auth denial and a
+// managed Agent Card served with a 200 are the same ext_proc response shape, so
+// only the status separates them. Anything a client would read as success or a
+// redirect — 2xx, 3xx, the card's 200 and its conditional-GET 304 — is the
+// policy answering; everything else is a refusal.
+//
+// A status outside both ranges (0, or a stray 1xx) is a malformed policy
+// response that Envoy will reject anyway. It is classified as a denial rather
+// than an answer, matching the fail-toward-visible default that
+// tracing.upstreamFaultReasons keeps as a denylist: an unclassifiable outcome
+// stays attributed to the engine short-circuiting instead of being quietly
+// counted as a success.
+//
+// Used by both terminal-outcome paths — this file's span stamp and
+// collectShortCircuitAnalytics — so the tag on the span and the field in the
+// analytics line can never disagree.
+func terminalReasonForImmediateResponse(statusCode int) string {
+	if statusCode >= http.StatusOK && statusCode < http.StatusBadRequest {
+		return constants.TerminalReasonPolicyAnswered
+	}
+	return constants.TerminalReasonPolicyDenied
+}
+
 // resolveTerminalOutcome derives the terminal HTTP outcome of the phase that is
 // about to return resp, and memoizes it on ec for the root-span stamp in
 // Process. Reading the outgoing ext_proc response rather than tracking state at
@@ -389,11 +415,13 @@ func (ec *PolicyExecutionContext) resolveTerminalOutcome(resp *extprocv3.Process
 			out = ec.generated.outcome
 		} else {
 			// Every other ImmediateResponse originates from a policy returning
-			// policy.ImmediateResponse (auth denial, rate limit, guardrail, or a
-			// python-bridge fault).
+			// policy.ImmediateResponse (auth denial, rate limit, guardrail, a
+			// python-bridge fault, or a policy answering the request itself — a
+			// managed Agent Card).
+			status := int(imm.GetStatus().GetCode())
 			out = tracing.HTTPOutcome{
-				StatusCode: int(imm.GetStatus().GetCode()),
-				Reason:     constants.TerminalReasonPolicyDenied,
+				StatusCode: status,
+				Reason:     terminalReasonForImmediateResponse(status),
 			}
 		}
 	} else if status := ec.finalResponseStatus(); status != 0 {
