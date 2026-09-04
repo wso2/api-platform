@@ -89,11 +89,12 @@ import {
   AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_SIDEBAR_SLOT,
   ExtensionsProvider,
+  hiddenRegionsOf,
   type AIWorkspaceCloudEntry,
   type AIWorkspaceExtension,
   type AIWorkspacePageOverride,
 } from './extensions';
-import { Hideable, useSlot } from './slots';
+import { Hideable, HiddenRegionsProvider, useSlot } from './slots';
 import { usePort } from './hostPort';
 
 /**
@@ -864,9 +865,14 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
 }
 
 export default function App({ extensions = [] }: AppProps) {
+  // Slot adds, Hideable suppresses: entries declare which built-in regions they
+  // replace via `hides`, so a built-in item is only ever hidden when something
+  // actually took its place. With no extensions registered nothing is hidden.
   return (
     <ExtensionsProvider extensions={extensions}>
-      <WorkspaceRoutes extensions={extensions} />
+      <HiddenRegionsProvider hidden={hiddenRegionsOf(extensions)}>
+        <WorkspaceRoutes extensions={extensions} />
+      </HiddenRegionsProvider>
     </ExtensionsProvider>
   );
 }
