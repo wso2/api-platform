@@ -295,6 +295,38 @@ CREATE TABLE dbo.gateway_tokens (
 
 -- Artifact Deployments table (immutable deployment artifacts)
 IF OBJECT_ID(N'dbo.deployments', N'U') IS NULL
+-- Builds: an immutable, rendered snapshot of an API's definition that is not
+-- bound to any gateway. A build is prepared once from the API's current
+-- definition and then deployed, so what reaches a gateway is a snapshot taken at
+-- a known moment rather than whatever the definition happens to be at deploy
+-- time. It is stored at the platform's own data version and translated to the
+-- target gateway's version when it is deployed.
+CREATE TABLE dbo.builds (
+    -- Globally unique identity, and what a deployment references.
+    uuid VARCHAR(40) PRIMARY KEY,
+    -- A readable id, unique per API: a date and that day's index, e.g. 2026-09-04-1.
+    build_id VARCHAR(40) NOT NULL,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    content VARBINARY(MAX) NOT NULL,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    -- A free-form bag of properties recorded with the build, such as the commit a
+    -- build was prepared from. JSON.
+    properties VARBINARY(MAX),
+    created_by VARCHAR(200),
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    -- One readable id per API: this is also what settles two prepares racing
+    -- for the same day's index.
+    UNIQUE (artifact_uuid, build_id),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
+    -- (error 1785); organization deletes still reach builds through
+    -- organizations -> artifacts -> builds.
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
+);
+
+CREATE INDEX idx_builds_artifact ON dbo.builds(artifact_uuid, organization_uuid, created_at);
+
 CREATE TABLE dbo.deployments (
     uuid VARCHAR(40) PRIMARY KEY,
     display_name VARCHAR(255) NOT NULL,
@@ -302,11 +334,19 @@ CREATE TABLE dbo.deployments (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     base_deployment_uuid VARCHAR(40),
+    -- The build this deployment was made from, when it came from one. NULL for a
+    -- deployment rendered directly from the API definition, and for one whose
+    -- build has since been pruned; metadata.buildId keeps the readable origin.
+    build_uuid VARCHAR(40),
     content VARBINARY(MAX) NOT NULL,
     metadata VARBINARY(MAX),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    -- NO ACTION, with references cleared explicitly before a build is pruned:
+    -- cleanup here is done in code, in dependency order, rather than left to the
+    -- database (SQL Server also forbids further cascade paths onto this table).
+    FOREIGN KEY (build_uuid) REFERENCES builds(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
     -- (error 1785). Organization deletes still reach deployments through
@@ -320,6 +360,9 @@ CREATE TABLE dbo.deployments (
     -- same operation and no dangling reference remains.
     FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE NO ACTION
 );
+
+-- Resolving which deployments a build is the origin of.
+CREATE INDEX idx_deployments_build ON dbo.deployments(build_uuid);
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
 IF OBJECT_ID(N'dbo.deployment_status', N'U') IS NULL

@@ -135,6 +135,11 @@ const DeletedUser = "deleted_user"
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement
 	DeploymentLimitBuffer = 100
+
+	// BuildCleanupBatch is how many of an API's unused builds are removed when
+	// preparing another one reaches the limit. A batch rather than one keeps the
+	// cleanup from running on every single prepare.
+	BuildCleanupBatch = 5
 )
 
 // Gateway artifact apiVersion (the `apiVersion:` field on deployment artifacts).
@@ -251,6 +256,13 @@ const (
 	MetadataKeyVhostMain = "vhostMain"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
 	MetadataKeyVhostSandbox = "vhostSandbox"
+	// MetadataKeyBuildID is the metadata key naming the build a deployment was
+	// created from, so a deployment can be traced back to the snapshot it runs.
+	MetadataKeyBuildID = "buildId"
+	// MetadataKeyOverrides is the metadata key under which the applied generic
+	// override document is persisted, so it can be read back (e.g. to prefill a
+	// re-deployment from the same environment).
+	MetadataKeyOverrides = "overrides"
 	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
 	// and persist the current gateway default vhosts, ensuring deployments are immune to future
 	// gateway config changes.

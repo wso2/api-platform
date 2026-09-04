@@ -554,10 +554,14 @@ type Database struct {
 
 // Deployments holds deployment-specific configuration.
 type Deployments struct {
-	MaxPerAPIGateway int  `koanf:"max_per_api_gateway"`
-	TimeoutEnabled   bool `koanf:"timeout_enabled"`
-	TimeoutInterval  int  `koanf:"timeout_interval"`
-	TimeoutDuration  int  `koanf:"timeout_duration"`
+	MaxPerAPIGateway int `koanf:"max_per_api_gateway"`
+	// MaxBuildsPerAPI caps how many builds are stored per API. Preparing another
+	// one past this prunes the API's oldest builds that no gateway is deployed
+	// from. Zero or less keeps every build.
+	MaxBuildsPerAPI int  `koanf:"max_builds_per_api"`
+	TimeoutEnabled  bool `koanf:"timeout_enabled"`
+	TimeoutInterval int  `koanf:"timeout_interval"`
+	TimeoutDuration int  `koanf:"timeout_duration"`
 }
 
 // APIKey holds API key-specific configuration.

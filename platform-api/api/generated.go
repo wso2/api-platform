@@ -643,6 +643,45 @@ type AssociatedGateway struct {
 	Id string `binding:"required" json:"id" yaml:"id"`
 }
 
+// BuildListResponse defines model for BuildListResponse.
+type BuildListResponse struct {
+	// Count Number of builds in current response
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List Builds, newest first
+	List []BuildResponse `binding:"required" json:"list" yaml:"list"`
+}
+
+// BuildRequest Optional details to record with a build.
+type BuildRequest struct {
+	// Properties Free-form properties to store with the build, such as the commit an API kept in a
+	// repository was prepared from. They are returned with the build and are not
+	// interpreted by the platform.
+	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+}
+
+// BuildResponse An immutable, rendered snapshot of an API's definition, not bound to any gateway.
+type BuildResponse struct {
+	// BuildId Identifier for the build, used as a deployment's `base`. It is the date the build
+	// was prepared followed by that day's index for the API, and is unique per API.
+	BuildId string `binding:"required" json:"buildId" yaml:"buildId"`
+
+	// CreatedAt Timestamp when the build was prepared
+	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy Who prepared the build
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// DataVersion Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
+	DataVersion *string `json:"dataVersion,omitempty" yaml:"dataVersion,omitempty"`
+
+	// Properties Properties recorded with the build, such as the commit it was prepared from
+	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+
+	// Uuid Globally unique identifier for the build, and what a deployment references
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+}
+
 // Channel Defines a single channel within the Async API
 type Channel struct {
 	// Description Description of the channel
@@ -1020,7 +1059,11 @@ type CustomPolicyResponse struct {
 
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
-	// Base The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+	// Base The source for the API definition. One of `current` (render the latest working
+	// copy now), a `buildId` such as `2026-01-31-2` (deploy a previously prepared
+	// snapshot — preferred, so the deployment cannot pick up edits made since), or a
+	// `deploymentId` (promote an existing deployment, reusing its already-rendered
+	// artifact).
 	Base string `binding:"required" json:"base" yaml:"base"`
 
 	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
@@ -1031,6 +1074,9 @@ type DeployRequest struct {
 
 	// Name Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
 	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Overrides Optional structured override document deep-merged onto the deployment definition before it is sent to the gateway, letting a caller customize any field of the API config for this deployment. The applied overrides are persisted with the deployment.
+	Overrides *map[string]interface{} `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 }
 
 // DeploymentListResponse defines model for DeploymentListResponse.
@@ -3098,6 +3144,12 @@ type ListRESTAPIsParamsSortBy string
 // ListRESTAPIsParamsSortOrder defines parameters for ListRESTAPIs.
 type ListRESTAPIsParamsSortOrder string
 
+// GetBuildsParams defines parameters for GetBuilds.
+type GetBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -3283,6 +3335,9 @@ type CreateAPIKeyJSONRequestBody = CreateAPIKeyRequest
 
 // UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
 type UpdateAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateBuildJSONRequestBody defines body for CreateBuild for application/json ContentType.
+type CreateBuildJSONRequestBody = BuildRequest
 
 // DeployAPIJSONRequestBody defines body for DeployAPI for application/json ContentType.
 type DeployAPIJSONRequestBody = DeployRequest

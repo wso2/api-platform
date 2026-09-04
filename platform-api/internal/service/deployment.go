@@ -85,6 +85,101 @@ func NewDeploymentService(
 	}
 }
 
+// CreateBuild renders the API's current definition into an immutable snapshot and
+// stores it, without deploying it anywhere.
+//
+// Preparing and deploying are separate on purpose: a build fixes WHAT will be
+// deployed at a known moment, so a later deploy cannot silently pick up edits made
+// since, and the same snapshot can be deployed to any number of gateways and
+// promoted onward without being re-rendered. The artifact is stored at the
+// platform's own data version — the target gateway is not known yet, so
+// translation happens at deploy time.
+func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy string,
+	properties map[string]interface{}) (*api.BuildResponse, error) {
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil {
+		return nil, apperror.RESTAPINotFound.New()
+	}
+	// DP-originated artifacts are read-only in the control plane, so there is
+	// nothing here to snapshot and deploy.
+	if err := ensureOriginMutable(apiModel.Origin); err != nil {
+		return nil, err
+	}
+
+	apiDeployment, err := s.apiUtil.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
+	}
+	contentBytes, err := yaml.Marshal(apiDeployment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
+	}
+
+	build := &model.Build{
+		ArtifactID:     apiUUID,
+		OrganizationID: orgUUID,
+		Content:        contentBytes,
+		DataVersion:    apiModel.DataVersion,
+		Properties:     properties,
+		CreatedBy:      createdBy,
+	}
+	if err := s.deploymentRepo.CreateBuildWithLimitEnforcement(build, s.cfg.Deployments.MaxBuildsPerAPI); err != nil {
+		return nil, err
+	}
+	s.slogger.Debug("Build created", "buildID", build.BuildID, "apiUUID", apiUUID)
+	return toAPIBuildResponse(build), nil
+}
+
+// GetBuild returns one build of an API.
+func (s *DeploymentService) GetBuild(apiUUID, buildID, orgUUID string) (*api.BuildResponse, error) {
+	build, err := s.deploymentRepo.GetBuild(buildID, apiUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if build == nil {
+		return nil, apperror.BuildNotFound.New()
+	}
+	return toAPIBuildResponse(build), nil
+}
+
+// GetBuilds lists an API's builds, newest first.
+func (s *DeploymentService) GetBuilds(apiUUID, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil {
+		return nil, apperror.RESTAPINotFound.New()
+	}
+	builds, err := s.deploymentRepo.GetBuilds(apiUUID, orgUUID, limit)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]api.BuildResponse, 0, len(builds))
+	for _, build := range builds {
+		list = append(list, *toAPIBuildResponse(build))
+	}
+	return &api.BuildListResponse{Count: len(list), List: list}, nil
+}
+
+// toAPIBuildResponse projects a stored build onto the API response.
+func toAPIBuildResponse(build *model.Build) *api.BuildResponse {
+	out := &api.BuildResponse{
+		BuildId:     build.BuildID,
+		DataVersion: utils.StringPtrIfNotEmpty(build.DataVersion),
+		CreatedBy:   utils.StringPtrIfNotEmpty(build.CreatedBy),
+		CreatedAt:   build.CreatedAt,
+	}
+	if len(build.Properties) > 0 {
+		properties := build.Properties
+		out.Properties = &properties
+	}
+	return out
+}
+
 // DeployAPI creates a new immutable deployment artifact and deploys it to a gateway
 func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Validate request
@@ -92,7 +187,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, apperror.RESTAPIDeploymentValidationFailed.New("A request body is required.")
 	}
 	if req.Base == "" {
-		return nil, apperror.RESTAPIDeploymentValidationFailed.New("Base is required (use 'current' or a deploymentId).")
+		return nil, apperror.RESTAPIDeploymentValidationFailed.New("Base is required (use 'current', a buildId, or a deploymentId).")
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
@@ -133,19 +228,33 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	var baseDeploymentID *string
 	var contentBytes []byte
 	var baseDeployment *model.Deployment
+	var baseBuild *model.Build
+	// The build this deployment comes from, when it comes from one; nil when the
+	// artifact is rendered straight from the API definition.
+	var buildUUID *string
 
-	// Determine the source: "current" or existing deployment
+	// Determine the source: "current" (render from the API's definition now), a
+	// build (a snapshot rendered earlier, by far the common case once a caller
+	// prepares before deploying), or an existing deployment (promotion). A build
+	// and a deployment are both addressed by id, so an id that is not a deployment
+	// is looked up as a build before it is rejected.
 	if req.Base != "current" {
-		// Use existing deployment as base
 		var err error
 		baseDeployment, err = s.deploymentRepo.GetWithContent(req.Base, apiUUID, orgUUID)
-		if err != nil {
-			if apperror.DeploymentNotFound.Is(err) {
-				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
-			}
+		if err != nil && !apperror.DeploymentNotFound.Is(err) {
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
-		baseDeploymentID = &req.Base
+		if baseDeployment != nil {
+			baseDeploymentID = &req.Base
+		} else {
+			baseBuild, err = s.deploymentRepo.GetBuild(req.Base, apiUUID, orgUUID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get base build: %w", err)
+			}
+			if baseBuild == nil {
+				return nil, apperror.DeploymentBaseNotFound.New()
+			}
+		}
 	}
 
 	// Generate deployment ID
@@ -166,8 +275,10 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	var vhostMain *string
 	var vhostSandbox *string
 
-	if req.Base == "current" {
-		// Fresh deployment: default to sentinel so the gateway resolves and persists its defaults.
+	if baseDeployment == nil {
+		// Rendering from the API's definition or from a build: neither carries a
+		// vhost, so default to the sentinel and let the gateway resolve and persist
+		// its own.
 		mainSentinel := constants.VhostGatewayDefault
 		vhostMain = &mainSentinel
 		if apiModel.Configuration.Upstream.Sandbox != nil {
@@ -175,8 +286,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			vhostSandbox = &sandboxSentinel
 		}
 	} else {
-		// Base deployment: start from the base's stored vhosts.
-		if baseDeployment != nil && baseDeployment.Metadata != nil {
+		// Promotion: start from the base deployment's stored vhosts.
+		if baseDeployment.Metadata != nil {
 			if m, ok := baseDeployment.Metadata[constants.MetadataKeyVhostMain]; ok {
 				if ms, ok := m.(string); ok && ms != "" {
 					val := ms
@@ -242,14 +353,34 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	}
 
 	// Build content bytes with minimal marshal/unmarshal
-	if req.Base == "current" {
-		// Build struct directly, apply overrides on struct, marshal once
-		apiDeployment, err := s.apiUtil.BuildAPIDeploymentYAML(apiModel)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
+	if baseDeployment == nil {
+		// Rendering a fresh artifact: either from the API's current definition, or
+		// from a build, which is that same rendering captured earlier. Both are
+		// stored at a platform data version and translated to the target gateway's
+		// version here, so the two paths differ only in where the artifact and its
+		// source version come from.
+		var apiDeployment *dto.APIDeploymentYAML
+		var sourceDataVersion gatewaytranslator.PlatformDataVersion
+		if baseBuild != nil {
+			apiDeployment = &dto.APIDeploymentYAML{}
+			if err := yaml.Unmarshal(baseBuild.Content, apiDeployment); err != nil {
+				return nil, fmt.Errorf("failed to parse build YAML: %w", err)
+			}
+			sourceDataVersion = gatewaytranslator.PlatformDataVersion(baseBuild.DataVersion)
+			// Record which build this deployment runs, so it can be traced back to
+			// the snapshot it came from: the reference to the build row, and the
+			// readable id in metadata, which outlives the row if it is ever pruned.
+			buildUUID = &baseBuild.UUID
+			metadata[constants.MetadataKeyBuildID] = baseBuild.BuildID
+		} else {
+			var err error
+			apiDeployment, err = s.apiUtil.BuildAPIDeploymentYAML(apiModel)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
+			}
+			sourceDataVersion = gatewaytranslator.PlatformDataVersion(apiModel.DataVersion)
 		}
 		applyStructOverrides(apiDeployment, endpointURL, vhostMain, vhostSandbox)
-		sourceDataVersion := gatewaytranslator.PlatformDataVersion(apiModel.DataVersion)
 		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 		if err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, targetDataVersion, apiDeployment); err != nil {
 			return nil, fmt.Errorf("failed to transform API deployment for gateway %s: %w", gateway.Version, err)
@@ -268,14 +399,24 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
 		}
 	} else {
-		// Start from base deployment bytes
-		contentBytes = baseDeployment.Content
+		// Promote from an existing deployment: start from that deployment's already
+		// rendered artifact and NEVER re-read the base API definition. Re-translate it
+		// to the target gateway's data version so promoting across gateways on
+		// different versions still yields a valid artifact — the source data version
+		// is computed from the base artifact's own apiVersion, and only the artifact
+		// Kind (an immutable classifier, unchanged by any edit to the API) is read from
+		// the API record, never its definition.
+		var apiDeployment dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(baseDeployment.Content, &apiDeployment); err != nil {
+			return nil, fmt.Errorf("failed to parse base deployment YAML: %w", err)
+		}
+		sourceDataVersion := gatewaytranslator.ComputeDataVersion(apiModel.Kind, apiDeployment.ApiVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, targetDataVersion, &apiDeployment); err != nil {
+			return nil, fmt.Errorf("failed to transform base deployment for gateway %s: %w", gateway.Version, err)
+		}
 		if needsOverride {
-			// Single unmarshal -> apply overrides -> single marshal
-			contentBytes, err = applyDeploymentOverrides(contentBytes, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
-			if err != nil {
-				return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
-			}
+			applyBaseStructOverrides(&apiDeployment, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
 			if endpointURL != nil {
 				s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 			}
@@ -286,8 +427,44 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
 			}
 		}
+		contentBytes, err = yaml.Marshal(&apiDeployment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal promoted deployment YAML: %w", err)
+		}
 	}
-	// If base: <deploymentId> and no overrides, contentBytes passes through unchanged.
+
+	// Apply the generic override document (customize any field of the config for
+	// this deployment) onto the resolved definition, and persist it so it can be
+	// read back and carried forward when this deployment is later used as a base.
+	//
+	// A promoted deployment starts from the base's already-overridden artifact, so
+	// the base's override document is inherited (see effectiveOverrideDocument):
+	// without it the record would report no overrides while its content carries
+	// them.
+	if req.Overrides != nil && len(*req.Overrides) > 0 {
+		contentBytes, err = mergeGenericOverrides(contentBytes, *req.Overrides)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
+		}
+		s.slogger.Debug("Generic overrides applied", "deploymentID", deploymentID)
+	}
+	if effective := effectiveOverrideDocument(baseDeployment, req.Overrides); effective != nil {
+		metadata[constants.MetadataKeyOverrides] = effective
+	}
+
+	// A promoted deployment runs the base's artifact, so it runs the base's build:
+	// carry both the reference and the readable id forward, or the trace back to
+	// the snapshot would stop at the first promotion.
+	if baseDeployment != nil {
+		if baseDeployment.BuildUUID != nil {
+			buildUUID = baseDeployment.BuildUUID
+		}
+		if baseDeployment.Metadata != nil {
+			if buildID, ok := baseDeployment.Metadata[constants.MetadataKeyBuildID].(string); ok && buildID != "" {
+				metadata[constants.MetadataKeyBuildID] = buildID
+			}
+		}
+	}
 
 	// Store vhost in metadata so it is returned in the deployment response.
 	if vhostMain != nil {
@@ -306,6 +483,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		OrganizationID:   orgUUID,
 		GatewayID:        gatewayID,
 		BaseDeploymentID: baseDeploymentID,
+		BuildUUID:        buildUUID,
 		Content:          contentBytes,
 		Metadata:         metadata,
 		CreatedBy:        createdBy,
@@ -733,19 +911,128 @@ func applyBaseStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vho
 	}
 }
 
-// applyDeploymentOverrides unmarshals deployment YAML bytes, applies endpoint URL and/or vhost
-// overrides, and marshals back. Used for the base-deployment path when overrides are needed.
-func applyDeploymentOverrides(contentBytes []byte, endpointURL *string, vhostMain *string, vhostSandbox *string, vhostMainOverridden bool, vhostSandboxOverridden bool) ([]byte, error) {
-	var apiDeployment dto.APIDeploymentYAML
-	if err := yaml.Unmarshal(contentBytes, &apiDeployment); err != nil {
-		return nil, fmt.Errorf("failed to parse deployment YAML: %w", err)
+// protectedOverridePaths are the artifact's immutable identity fields, which an
+// override must never change — doing so would repoint or redefine the API rather
+// than customize a deployment of it. A customization that targets any of these is
+// rejected.
+var protectedOverridePaths = [][]string{
+	{"apiVersion"},
+	{"kind"},
+	{"metadata", "name"},
+	{"spec", "context"},
+	{"spec", "version"},
+	{"spec", "operations"},
+	{"spec", "channels"},
+}
+
+// overrideProtectedPath reports the first protected identity path an override
+// document sets (present at or below that path), if any.
+func overrideProtectedPath(overrides map[string]interface{}) (string, bool) {
+	for _, path := range protectedOverridePaths {
+		cur := overrides
+		reached := true
+		for i, seg := range path {
+			v, exists := cur[seg]
+			if !exists {
+				reached = false
+				break
+			}
+			if i == len(path)-1 {
+				break
+			}
+			m, isMap := asStringKeyedMap(v)
+			if !isMap {
+				reached = false
+				break
+			}
+			cur = m
+		}
+		if reached {
+			return strings.Join(path, "."), true
+		}
 	}
-	applyBaseStructOverrides(&apiDeployment, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
-	modifiedBytes, err := yaml.Marshal(&apiDeployment)
+	return "", false
+}
+
+// effectiveOverrideDocument returns the override document to persist with a new
+// deployment: the base deployment's document with the request's deep-merged on
+// top. A promoted deployment starts from the base's already-overridden artifact,
+// so it inherits that document — otherwise the record would read back as having
+// no overrides while its content carries them. Returns nil when neither the base
+// nor the request carries one, so no empty document is stored.
+func effectiveOverrideDocument(base *model.Deployment, requested *map[string]interface{}) map[string]interface{} {
+	effective := map[string]interface{}{}
+	if base != nil && base.Metadata != nil {
+		if inherited, ok := asStringKeyedMap(base.Metadata[constants.MetadataKeyOverrides]); ok {
+			deepMergeMap(effective, inherited)
+		}
+	}
+	if requested != nil {
+		deepMergeMap(effective, *requested)
+	}
+	if len(effective) == 0 {
+		return nil
+	}
+	return effective
+}
+
+// mergeGenericOverrides deep-merges a structured override document onto the
+// deployment definition YAML, letting a caller customize any field of the API
+// config for this deployment without the service needing to know the field. An
+// override that targets an immutable identity field is rejected.
+func mergeGenericOverrides(contentBytes []byte, overrides map[string]interface{}) ([]byte, error) {
+	if path, bad := overrideProtectedPath(overrides); bad {
+		return nil, apperror.RESTAPIDeploymentValidationFailed.New(
+			fmt.Sprintf("Override targets the immutable field %q, which cannot be customized for a deployment.", path))
+	}
+	var base map[string]interface{}
+	if err := yaml.Unmarshal(contentBytes, &base); err != nil {
+		return nil, fmt.Errorf("failed to parse deployment YAML for override: %w", err)
+	}
+	if base == nil {
+		base = map[string]interface{}{}
+	}
+	out, err := yaml.Marshal(deepMergeMap(base, overrides))
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal modified deployment YAML: %w", err)
+		return nil, fmt.Errorf("failed to marshal overridden deployment YAML: %w", err)
 	}
-	return modifiedBytes, nil
+	return out, nil
+}
+
+// deepMergeMap recursively merges src into dst and returns dst. Nested maps are
+// merged key-by-key; every other value in src replaces the value in dst. Keys
+// absent from src are left untouched.
+func deepMergeMap(dst, src map[string]interface{}) map[string]interface{} {
+	for k, sv := range src {
+		if svMap, ok := asStringKeyedMap(sv); ok {
+			if dvMap, ok := asStringKeyedMap(dst[k]); ok {
+				dst[k] = deepMergeMap(dvMap, svMap)
+				continue
+			}
+			dst[k] = svMap
+			continue
+		}
+		dst[k] = sv
+	}
+	return dst
+}
+
+// asStringKeyedMap normalizes the two map shapes YAML/JSON decoding can produce
+// (map[string]interface{} and map[interface{}]interface{}) into a string-keyed
+// map, reporting whether the value was a map at all.
+func asStringKeyedMap(v interface{}) (map[string]interface{}, bool) {
+	switch m := v.(type) {
+	case map[string]interface{}:
+		return m, true
+	case map[interface{}]interface{}:
+		out := make(map[string]interface{}, len(m))
+		for k, val := range m {
+			out[fmt.Sprintf("%v", k)] = val
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 // GetDeployments retrieves all deployments for an API with optional filters
@@ -888,6 +1175,35 @@ func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgU
 // keys identically.
 func (s *DeploymentService) backfillAPIKeysToGateway(apiUUID, gatewayID, actor string) {
 	BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, actor)
+}
+
+// CreateBuildByHandle prepares a build of an API identified by its handle.
+func (s *DeploymentService) CreateBuildByHandle(apiHandle, orgUUID, createdBy string,
+	properties map[string]interface{}) (*api.BuildResponse, error) {
+
+	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.CreateBuild(apiUUID, orgUUID, createdBy, properties)
+}
+
+// GetBuildByHandle returns one build of an API identified by its handle.
+func (s *DeploymentService) GetBuildByHandle(apiHandle, buildID, orgUUID string) (*api.BuildResponse, error) {
+	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetBuild(apiUUID, buildID, orgUUID)
+}
+
+// GetBuildsByHandle lists the builds of an API identified by its handle.
+func (s *DeploymentService) GetBuildsByHandle(apiHandle, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetBuilds(apiUUID, orgUUID, limit)
 }
 
 // DeployAPIByHandle creates a new immutable deployment artifact using API handle
