@@ -46,13 +46,14 @@ type refreshLock struct {
 
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
-	cfg       *config.Config
-	claims    session.ClaimMapping
-	store     session.Store
-	fileBased *auth.FileBased
-	oidc      *auth.OIDC
-	proxy     *httputil.ReverseProxy
-	handler   http.Handler
+	cfg        *config.Config
+	claims     session.ClaimMapping
+	store      session.Store
+	fileBased  *auth.FileBased
+	oidc       *auth.OIDC
+	proxy      *httputil.ReverseProxy
+	cloudProxy *httputil.ReverseProxy
+	handler    http.Handler
 
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
@@ -93,6 +94,22 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// knows nothing about either.
 		proxy:        proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
 		refreshLocks: make(map[string]*refreshLock),
+	}
+
+	if cfg.ControlPlane.CloudURL != "" {
+		cloudTarget, err := url.Parse(cfg.ControlPlane.CloudURL)
+		if err != nil {
+			return nil, err
+		}
+		cloudTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
+			CAFile:     cfg.ControlPlane.CloudCAFile,
+			SkipVerify: cfg.ControlPlane.CloudTLSSkipVerify,
+		})
+		if err != nil {
+			return nil, err
+		}
+		// Strip <base>/proxy/cloud so /analytics/id-token joins onto CloudURL's /cloud.
+		s.cloudProxy = proxy.ReverseProxy(cloudTarget, paths.Base+paths.Proxy+"/cloud", cloudTransport)
 	}
 
 	if cfg.Auth.OIDCEnabled() {

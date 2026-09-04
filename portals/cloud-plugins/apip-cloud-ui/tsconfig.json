@@ -7,6 +7,7 @@
       "@wso2-enterprise/apip-cloud-ui-deploy": ["../apip-cloud-ui-deploy/src/index.ts"],
       "@wso2-enterprise/apip-cloud-ui-environments-new": ["../apip-cloud-ui-environments-new/src/index.ts"],
       "@wso2-enterprise/apip-cloud-ui-gateways": ["../apip-cloud-ui-gateways/src/index.ts"],
+      "@wso2-enterprise/apip-cloud-ui-insights": ["../apip-cloud-ui-insights/src/index.ts"],
       "@wso2-enterprise/apip-cloud-ui-pipelines": ["../apip-cloud-ui-pipelines/src/index.ts"],
       "@wso2/oxygen-ui": ["../../ai-workspace/node_modules/@wso2/oxygen-ui"],
       "@wso2/oxygen-ui-icons-react": ["../../ai-workspace/node_modules/@wso2/oxygen-ui-icons-react"],

@@ -42,6 +42,17 @@ export type RuntimeConfig = {
    */
   billingProxyEnabled: boolean;
   /**
+   * Set when the BFF has a "cloud" named upstream configured (cloud only).
+   * When true, cloud Insights extensions may call it via the same-origin
+   * proxy (/proxy/cloud/...) — the browser never learns the real cloud URL.
+   */
+  cloudProxyEnabled: boolean;
+  /**
+   * Moesif wrap/basic iframe origin (HTTPS). Absent when Insights embed is
+   * not configured for this deployment.
+   */
+  moesifAppUrl: string;
+  /**
    * Same-origin path the BFF proxies to the Platform API (typically
    * "/proxy") — the browser only ever calls this BFF's own origin, which
    * injects the session's bearer token server-side.
@@ -83,6 +94,10 @@ type LegacyWindowConfig = Partial<{
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  CLOUD_PROXY_ENABLED: string;
+  cloudProxyEnabled: boolean | string;
+  MOESIF_APP_URL: string;
+  moesifAppUrl: string;
   DEFAULT_LOCALE: string;
   defaultLocale: string;
   PLATFORM_API_BASE_URL: string;
@@ -193,6 +208,16 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().billingProxyEnabled ||
       import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
+  cloudProxyEnabled: readBoolean(
+    fromWindow().CLOUD_PROXY_ENABLED ||
+      fromWindow().cloudProxyEnabled ||
+      import.meta.env.VITE_CLOUD_PROXY_ENABLED
+  ),
+  moesifAppUrl:
+    fromWindow().MOESIF_APP_URL ||
+    fromWindow().moesifAppUrl ||
+    import.meta.env.VITE_MOESIF_APP_URL ||
+    '',
   platformApiBaseUrl: resolvedPlatformApiBaseUrl,
   platformApiVersion:
     fromWindow().PLATFORM_API_VERSION ||

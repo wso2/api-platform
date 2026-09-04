@@ -228,4 +228,109 @@ describe('host-injected sidebar extensions', () => {
 
     expect(items.find((entry) => entry.id === settingsTab.id)).toBeUndefined();
   });
+
+  it('hides built-in Insights outside API scope when cloud Insights extensions load', () => {
+    const orgInsights: ApiControlPlaneExtension = {
+      id: 'organization-insights',
+      label: 'Insights',
+      level: 'organization',
+      order: 60,
+      group: 'api',
+      render: () => <div>Cloud Insights</div>,
+      routePath: 'insights',
+      slot: 'sidebar.organization',
+      isVisible: (scope) => {
+        const typed = scope as {
+          isOrganizationScope?: boolean;
+          isProjectScope?: boolean;
+          isApiScope?: boolean;
+        };
+        return (
+          Boolean(typed.isOrganizationScope) &&
+          !typed.isProjectScope &&
+          !typed.isApiScope
+        );
+      },
+    };
+
+    const atOrg = () =>
+      makeConsoleScope({
+        isApiScope: false,
+        isProjectScope: false,
+        params: { orgHandle: ORG },
+        project: undefined,
+      });
+
+    const items = itemsWithExtensions(
+      atOrg(),
+      `/organizations/${ORG}/home`,
+      [orgInsights]
+    );
+    expect(items.find((entry) => entry.id === 'insights')).toBeUndefined();
+    expect(items.find((entry) => entry.id === 'organization-insights')).toBeDefined();
+
+    const insightsIndex = items.findIndex(
+      (entry) => entry.id === 'organization-insights'
+    );
+    const observabilityIndex = items.findIndex(
+      (entry) => entry.id === 'observability'
+    );
+    expect(insightsIndex).toBeGreaterThan(-1);
+    expect(observabilityIndex).toBeGreaterThan(-1);
+    expect(insightsIndex).toBeLessThan(observabilityIndex);
+  });
+
+  it('keeps built-in Insights submenu in API scope with cloud extensions loaded', () => {
+    const cloudInsights: ApiControlPlaneExtension = {
+      id: 'organization-insights',
+      label: 'Insights',
+      level: 'organization',
+      order: 60,
+      group: 'api',
+      render: () => <div>Cloud Insights</div>,
+      routePath: 'insights',
+      slot: 'sidebar.organization',
+      isVisible: (scope) => {
+        const typed = scope as {
+          isOrganizationScope?: boolean;
+          isProjectScope?: boolean;
+          isApiScope?: boolean;
+        };
+        return (
+          Boolean(typed.isOrganizationScope) &&
+          !typed.isProjectScope &&
+          !typed.isApiScope
+        );
+      },
+    };
+
+    const atApi = () =>
+      makeConsoleScope({
+        isApiScope: true,
+        isProjectScope: true,
+        params: {
+          apiHandler: API,
+          orgHandle: ORG,
+          projectHandler: PROJECT,
+        },
+        component: COMPONENT,
+      });
+
+    const items = itemsWithExtensions(
+      atApi(),
+      `/organizations/${ORG}/projects/${PROJECT}/apis/${API}/insights/api`,
+      [cloudInsights]
+    );
+
+    expect(items.find((entry) => entry.id === 'insights')).toBeDefined();
+    expect(items.find((entry) => entry.id === 'organization-insights')).toBeUndefined();
+  });
+
+  it('keeps built-in Insights at org scope when no cloud Insights extensions are registered', () => {
+    const items = itemsAt(atOrg(), routes.organizationHome(ORG));
+
+    expect(items.find((entry) => entry.id === 'insights')).toBeDefined();
+    expect(items.find((entry) => entry.id === 'organization-insights')).toBeUndefined();
+    expect(items.find((entry) => entry.id === 'project-insights')).toBeUndefined();
+  });
 });

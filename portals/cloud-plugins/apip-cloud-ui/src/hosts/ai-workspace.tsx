@@ -13,8 +13,11 @@ import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { PipelinesFeature, ProjectPipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
+import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
+import { PipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
   AI_WORKSPACE_GATEWAYS_SLOT,
+  AI_WORKSPACE_INSIGHTS_SLOT,
   type AIWorkspaceCloudEntry,
   type AIWorkspaceExtension,
 } from '../../../../ai-workspace/src/extensions';
@@ -26,11 +29,9 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * renders against the small host port passed to it.
  *
  * Most entries are `sidebar.main` items (new nav entry + route). `gateways`
- * is different: it registers against `AI_WORKSPACE_GATEWAYS_SLOT` to replace
- * what renders at the host's existing, built-in `gateways` route/sidebar item
- * — see `GatewaysRoute` in `ai-workspace/src/App.tsx` — rather than adding a
- * new one. Nothing under `ai-workspace/src/pages/appShell/appShellPages/gateways`
- * is touched by this.
+ * and `insights` register against page override slots to replace what renders
+ * at the host's built-in routes — see `GatewaysRoute` / `InsightsRoute` in
+ * `ai-workspace/src/App.tsx` — rather than adding new sidebar items.
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = [
   defineCloudPlugin({
@@ -94,6 +95,21 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         slot: AI_WORKSPACE_GATEWAYS_SLOT,
         order: 0,
         render: (port) => <GatewaysFeature port={port} />,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'insights',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'insights',
+        slot: AI_WORKSPACE_INSIGHTS_SLOT,
+        order: 0,
+        // Same Moesif ai-overview URL at org and project — no project_id filter.
+        render: (port) => (
+          <InsightsFeature port={port} embedProfile="ai-workspace" />
+        ),
       },
     ],
   }),

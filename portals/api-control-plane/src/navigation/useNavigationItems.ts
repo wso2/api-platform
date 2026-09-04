@@ -28,6 +28,7 @@ import {
   buildScopedExtensionPath,
   isSidebarExtension,
   useExtensions,
+  type ApiControlPlaneExtension,
 } from '../extensions';
 import { navigationRegistry } from './navigationRegistry';
 import {
@@ -53,6 +54,29 @@ const isScopeSatisfied = (
   if (definition.requires === 'project') return scope.isProjectScope;
   return true;
 };
+
+const CLOUD_INSIGHTS_SIDEBAR_IDS = new Set([
+  'organization-insights',
+  'project-insights',
+]);
+
+const hasCloudInsightsSidebar = (extensions: readonly ApiControlPlaneExtension[]) =>
+  extensions.some(
+    (extension) =>
+      isSidebarExtension(extension) &&
+      CLOUD_INSIGHTS_SIDEBAR_IDS.has(extension.id)
+  );
+
+/**
+ * The built-in Insights submenu and the cloud org/project Insights extensions
+ * both link to Insights outside API scope — keep only the cloud entries then.
+ */
+const isBuiltinInsightsHiddenByCloudPlugin = (
+  definition: NavigationDefinition,
+  scope: ConsoleScope,
+  cloudInsightsLoaded: boolean
+) =>
+  definition.id === 'insights' && cloudInsightsLoaded && !scope.isApiScope;
 
 export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
@@ -106,6 +130,7 @@ export const useNavigationItems = (): NavigationItem[] => {
           to: () => destination,
         };
       });
+    const cloudInsightsLoaded = hasCloudInsightsSidebar(extensions);
     const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
 
     // A definition becomes an item unless it has no target at all. Children go
@@ -116,6 +141,15 @@ export const useNavigationItems = (): NavigationItem[] => {
       definition: NavigationDefinition
     ): NavigationItem | undefined => {
       if (!isFeatureEnabled(definition)) return undefined;
+      if (
+        isBuiltinInsightsHiddenByCloudPlugin(
+          definition,
+          scope,
+          cloudInsightsLoaded
+        )
+      ) {
+        return undefined;
+      }
       if (!(definition.isVisible?.(scope) ?? true)) return undefined;
 
       const to = definition.to(scope);
