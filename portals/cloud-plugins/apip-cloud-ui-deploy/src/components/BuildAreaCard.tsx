@@ -16,102 +16,81 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
-import { Box, Button, Divider, Typography } from '@wso2/oxygen-ui';
-import { RefreshCw, Wrench } from '@wso2/oxygen-ui-icons-react';
-import ActionRow from './ActionRow';
-import BuildHistoryDrawer from './BuildHistoryDrawer';
-import SecuritySettingsDrawer from './SecuritySettingsDrawer';
+import type { FC } from 'react';
+import { Box, Button, Card, CardContent, Divider, Tooltip, Typography } from '@wso2/oxygen-ui';
 import StatusDot from './StatusDot';
 import { relativeTime } from '../utils/time';
+import { activeGatewayCount } from '../utils/status';
 import type { BuildRecord, Environment } from '../types';
 
 export type BuildAreaCardProps = {
   buildHistory: BuildRecord[];
-  environments: Environment[];
+  targetEnvironment: Environment;
   onDeployClick: () => void;
 };
 
-const BuildAreaCard: FC<BuildAreaCardProps> = ({ buildHistory, environments, onDeployClick }) => {
-  const [securityOpen, setSecurityOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-
-  const environmentName = (id: string) => environments.find((environment) => environment.id === id)?.name ?? id;
+const BuildAreaCard: FC<BuildAreaCardProps> = ({ buildHistory, targetEnvironment, onDeployClick }) => {
+  const latestBuild = buildHistory[0] ?? null;
+  const canDeploy = activeGatewayCount(targetEnvironment.gateways) > 0;
+  const deployDisabledReason = canDeploy
+    ? ''
+    : `All gateways in ${targetEnvironment.name} are inactive. Activate a gateway before deploying.`;
 
   return (
-    <Box
+    <Card
       sx={{
         flex: '0 0 300px',
         width: 300,
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: '14px',
-        p: 2.5,
-        display: 'flex',
-        flexDirection: 'column',
         alignSelf: 'flex-start',
       }}
     >
-      <Typography sx={{ fontSize: 16, fontWeight: 600 }}>Build Area</Typography>
+      <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+        <Typography sx={{ fontSize: 16, fontWeight: 600 }}>Build Area</Typography>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1.5 }}>
-        <Divider />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1.5 }}>
+          <Divider />
 
-        <Button fullWidth variant="contained" onClick={onDeployClick} sx={{ fontWeight: 600 }}>
-          Deploy
-        </Button>
+          <Tooltip title={deployDisabledReason}>
+            <span style={{ display: 'block' }}>
+              <Button
+                fullWidth
+                variant="contained"
+                disabled={!canDeploy}
+                onClick={onDeployClick}
+                sx={{ fontWeight: 600 }}
+              >
+                Deploy
+              </Button>
+            </span>
+          </Tooltip>
 
-        <ActionRow label="Security Settings" icon={<Wrench size={14} />} onClick={() => setSecurityOpen(true)} />
-        <Divider sx={{ borderStyle: 'dashed' }} />
-        <ActionRow
-          label="Build and Deployment History"
-          icon={<RefreshCw size={14} />}
-          onClick={() => setHistoryOpen(true)}
-        />
-
-        <Divider />
-      </Box>
-
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1.5, overflowY: 'auto', maxHeight: 360 }}>
-        {buildHistory.length === 0 ? (
-          <Typography variant="body2" color="text.disabled">
-            No builds yet.
-          </Typography>
-        ) : (
-          buildHistory.map((build) => (
-            <Box key={build.id}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <StatusDot tone={build.result === 'Success' ? 'success' : 'error'} />
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {build.result}
+          <Card>
+            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+              {latestBuild ? (
+                <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <StatusDot tone={latestBuild.result === 'Success' ? 'success' : 'error'} />
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {latestBuild.result}
+                    </Typography>
+                    <Typography variant="caption" color="text.disabled">
+                      · {relativeTime(latestBuild.when)}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ pl: 2.25, mt: 0.5 }}>
+                    ID {latestBuild.buildId}
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.disabled">
+                  No builds yet.
                 </Typography>
-                <Typography variant="caption" color="text.disabled">
-                  · {relativeTime(build.when)}
-                </Typography>
-              </Box>
-              <Box sx={{ pl: 2.25 }}>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  ID {build.buildId}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  {environmentName(build.targetEnvironmentId)} · {build.targetGatewayCount} gateway
-                  {build.targetGatewayCount === 1 ? '' : 's'}
-                </Typography>
-              </Box>
-            </Box>
-          ))
-        )}
-      </Box>
-
-      <SecuritySettingsDrawer open={securityOpen} onClose={() => setSecurityOpen(false)} />
-      <BuildHistoryDrawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        buildHistory={buildHistory}
-        environments={environments}
-      />
-    </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Box>
+      </CardContent>
+    </Card>
   );
 };
 
