@@ -129,7 +129,7 @@ type APIRepository interface {
 // DeploymentRepository defines the interface for deployment data operations
 type DeploymentRepository interface {
 	// Build methods (immutable rendered snapshots, not bound to a gateway)
-	CreateBuild(build *model.Build) error
+	CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error
 	GetBuild(buildID, artifactUUID, orgUUID string) (*model.Build, error)
 	GetBuilds(artifactUUID, orgUUID string, limit int) ([]*model.Build, error)
 

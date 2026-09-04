@@ -1345,6 +1345,7 @@ func strPtr(s string) *string {
 var testConfig = config.Server{
 	Deployments: config.Deployments{
 		MaxPerAPIGateway: 20,
+		MaxBuildsPerAPI:  50,
 	},
 }
 

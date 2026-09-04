@@ -374,6 +374,8 @@ enable_functionality_type_verification = false
 # ---------------------------------------------------------------------------
 [platform_api.deployments]
 max_per_api_gateway         = 20      # maximum API deployments per gateway
+max_builds_per_api          = 50      # maximum stored builds per API; preparing more prunes
+                                      # the oldest builds no gateway is deployed from (0 = keep all)
 
 # Deployment timeout — mark stuck deployments as failed after timeout_duration seconds.
 timeout_enabled  = true

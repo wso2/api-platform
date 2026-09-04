@@ -60,9 +60,10 @@ func (m *buildTestAPIRepo) CreateAPIAssociation(association *model.APIAssociatio
 type buildTestDeploymentRepo struct {
 	repository.DeploymentRepository
 
-	build        *model.Build
-	createdBuild *model.Build
-	builds       []*model.Build
+	build          *model.Build
+	createdBuild   *model.Build
+	createdWithCap int
+	builds         []*model.Build
 
 	// baseDeployment is what a base id resolves to as a DEPLOYMENT; nil means the
 	// id is not a deployment, which is what sends the lookup on to builds.
@@ -70,11 +71,12 @@ type buildTestDeploymentRepo struct {
 	created        *model.Deployment
 }
 
-func (m *buildTestDeploymentRepo) CreateBuild(build *model.Build) error {
+func (m *buildTestDeploymentRepo) CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error {
 	if build.BuildID == "" {
 		build.BuildID = buildTestBuildID
 	}
 	m.createdBuild = build
+	m.createdWithCap = hardLimit
 	return nil
 }
 
@@ -170,6 +172,12 @@ func TestCreateBuild_StoresASnapshotAtThePlatformDataVersion(t *testing.T) {
 	}
 	if build.BuildId == "" {
 		t.Error("no build id was returned")
+	}
+	// The configured cap reaches the store, which is what prunes the API's older
+	// unused builds as this one is added.
+	if depRepo.createdWithCap != testConfig.Deployments.MaxBuildsPerAPI {
+		t.Errorf("stored with cap %d, want the configured %d",
+			depRepo.createdWithCap, testConfig.Deployments.MaxBuildsPerAPI)
 	}
 }
 

@@ -18,6 +18,7 @@
 package repository
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestCreateBuild_IDIsTheDateAndThatDaysIndex(t *testing.T) {
 	first := time.Date(2026, 1, 31, 9, 0, 0, 0, time.UTC)
 	for _, want := range []string{"2026-01-31-1", "2026-01-31-2", "2026-01-31-3"} {
 		build := buildOn(first)
-		if err := repo.CreateBuild(build); err != nil {
+		if err := repo.CreateBuildWithLimitEnforcement(build, 0); err != nil {
 			t.Fatalf("CreateBuild: %v", err)
 		}
 		if build.BuildID != want {
@@ -62,7 +63,7 @@ func TestCreateBuild_IDIsTheDateAndThatDaysIndex(t *testing.T) {
 	}
 
 	nextDay := buildOn(time.Date(2026, 2, 1, 9, 0, 0, 0, time.UTC))
-	if err := repo.CreateBuild(nextDay); err != nil {
+	if err := repo.CreateBuildWithLimitEnforcement(nextDay, 0); err != nil {
 		t.Fatalf("CreateBuild: %v", err)
 	}
 	if nextDay.BuildID != "2026-02-01-1" {
@@ -82,12 +83,12 @@ func TestCreateBuild_IndexIsPerAPI(t *testing.T) {
 
 	day := time.Date(2026, 1, 31, 9, 0, 0, 0, time.UTC)
 	mine := buildOn(day)
-	if err := repo.CreateBuild(mine); err != nil {
+	if err := repo.CreateBuildWithLimitEnforcement(mine, 0); err != nil {
 		t.Fatalf("CreateBuild: %v", err)
 	}
 	theirs := buildOn(day)
 	theirs.ArtifactID = otherAPIUUID
-	if err := repo.CreateBuild(theirs); err != nil {
+	if err := repo.CreateBuildWithLimitEnforcement(theirs, 0); err != nil {
 		t.Fatalf("CreateBuild: %v", err)
 	}
 	if mine.BuildID != "2026-01-31-1" || theirs.BuildID != "2026-01-31-1" {
@@ -106,7 +107,7 @@ func TestGetBuild_ReturnsTheSnapshotAndItsProperties(t *testing.T) {
 
 	stored := buildOn(time.Date(2026, 1, 31, 9, 0, 0, 0, time.UTC))
 	stored.Properties = map[string]any{"commitId": "9f1c2ab"}
-	if err := repo.CreateBuild(stored); err != nil {
+	if err := repo.CreateBuildWithLimitEnforcement(stored, 0); err != nil {
 		t.Fatalf("CreateBuild: %v", err)
 	}
 
@@ -139,7 +140,7 @@ func TestGetBuild_IsScopedToItsAPI(t *testing.T) {
 	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
 	stored := buildOn(time.Date(2026, 1, 31, 9, 0, 0, 0, time.UTC))
-	if err := repo.CreateBuild(stored); err != nil {
+	if err := repo.CreateBuildWithLimitEnforcement(stored, 0); err != nil {
 		t.Fatalf("CreateBuild: %v", err)
 	}
 
@@ -162,7 +163,7 @@ func TestGetBuilds_NewestFirstWithoutContent(t *testing.T) {
 
 	day := time.Date(2026, 1, 31, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 3; i++ {
-		if err := repo.CreateBuild(buildOn(day.Add(time.Duration(i) * time.Hour))); err != nil {
+		if err := repo.CreateBuildWithLimitEnforcement(buildOn(day.Add(time.Duration(i)*time.Hour)), 0); err != nil {
 			t.Fatalf("CreateBuild: %v", err)
 		}
 	}
@@ -190,5 +191,210 @@ func insertBuildTestArtifact(t *testing.T, db *database.DB, artifactUUID, orgUUI
 		artifactUUID, "RestApi", orgUUID)
 	if err != nil {
 		t.Fatalf("Failed to create artifact: %v", err)
+	}
+}
+
+// deployFromBuild makes one gateway's CURRENT deployment come from a build, which
+// is what makes that build in use: a status row is what marks a deployment as the
+// one a gateway is serving.
+func deployFromBuild(t *testing.T, db *database.DB, gatewayUUID, deploymentID, buildID string) {
+	t.Helper()
+	metadata := fmt.Sprintf(`{"buildId":%q}`, buildID)
+	_, err := db.Exec(`
+		INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		deploymentID, deploymentID, buildRepoAPIUUID, buildRepoOrgUUID, gatewayUUID,
+		[]byte("content"), metadata, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Failed to insert deployment: %v", err)
+	}
+	_, err = db.Exec(`
+		REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		buildRepoAPIUUID, buildRepoOrgUUID, gatewayUUID, deploymentID, "DEPLOYED", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Failed to set deployment status: %v", err)
+	}
+}
+
+// storedBuildIDs lists what the API has kept, oldest first.
+func storedBuildIDs(t *testing.T, repo DeploymentRepository) []string {
+	t.Helper()
+	builds, err := repo.GetBuilds(buildRepoAPIUUID, buildRepoOrgUUID, 0)
+	if err != nil {
+		t.Fatalf("GetBuilds: %v", err)
+	}
+	out := make([]string, 0, len(builds))
+	for i := len(builds) - 1; i >= 0; i-- {
+		out = append(out, builds[i].BuildID)
+	}
+	return out
+}
+
+// prepareBuilds adds n builds an hour apart, oldest first, and returns their ids.
+func prepareBuilds(t *testing.T, repo DeploymentRepository, n, hardLimit int) []string {
+	t.Helper()
+	day := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
+	ids := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		build := buildOn(day.Add(time.Duration(i) * time.Hour))
+		if err := repo.CreateBuildWithLimitEnforcement(build, hardLimit); err != nil {
+			t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+		}
+		ids = append(ids, build.BuildID)
+	}
+	return ids
+}
+
+// Reaching the limit prunes a batch of the API's oldest builds, so preparing
+// repeatedly cannot grow the table without bound.
+func TestCreateBuild_PrunesTheOldestBuildsAtTheLimit(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	// The eleventh build is the one that finds the limit already reached: a batch of
+	// five older builds goes, and the new one is added to what remains.
+	prepareBuilds(t, repo, 11, 10)
+
+	kept := storedBuildIDs(t, repo)
+	want := []string{
+		"2026-01-31-6", "2026-01-31-7", "2026-01-31-8", "2026-01-31-9", "2026-01-31-10",
+		"2026-01-31-11",
+	}
+	if len(kept) != len(want) {
+		t.Fatalf("kept %v, want %v", kept, want)
+	}
+	for i := range want {
+		if kept[i] != want[i] {
+			t.Fatalf("kept %v, want %v", kept, want)
+		}
+	}
+}
+
+// The rule that matters: a build a gateway is currently deployed from survives,
+// however old it is, and a newer unused build goes instead. Age only orders the
+// builds that are free to go.
+func TestCreateBuild_KeepsBuildsAGatewayIsDeployedFrom(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-2", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	prepareBuilds(t, repo, 10, 0)
+	// The two oldest builds are what the gateways are serving.
+	deployFromBuild(t, db, "gw-1", "dep-1", "2026-01-31-1")
+	deployFromBuild(t, db, "gw-2", "dep-2", "2026-01-31-2")
+
+	eleventh := buildOn(time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(eleventh, 10); err != nil {
+		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+	}
+
+	kept := map[string]bool{}
+	for _, buildID := range storedBuildIDs(t, repo) {
+		kept[buildID] = true
+	}
+	for _, inUse := range []string{"2026-01-31-1", "2026-01-31-2"} {
+		if !kept[inUse] {
+			t.Errorf("build %s is deployed on a gateway but was pruned", inUse)
+		}
+	}
+	// Five of the unused builds went instead, oldest first.
+	for _, pruned := range []string{"2026-01-31-3", "2026-01-31-4", "2026-01-31-5", "2026-01-31-6", "2026-01-31-7"} {
+		if kept[pruned] {
+			t.Errorf("unused build %s should have been pruned, kept %v", pruned, kept)
+		}
+	}
+	if !kept["2026-01-31-9"] || !kept["2026-01-31-10"] || !kept[eleventh.BuildID] {
+		t.Errorf("the newest builds should have been kept, got %v", kept)
+	}
+}
+
+// An archived deployment is not a reason to keep a build: it carries its own
+// rendered content, so restoring it never needs the build back.
+func TestCreateBuild_AnArchivedDeploymentDoesNotHoldABuild(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	prepareBuilds(t, repo, 10, 0)
+	// Deployed from the oldest build, then superseded: the status row moves to the
+	// newer deployment, leaving the first one archived.
+	deployFromBuild(t, db, "gw-1", "dep-old", "2026-01-31-1")
+	deployFromBuild(t, db, "gw-1", "dep-new", "2026-01-31-10")
+
+	eleventh := buildOn(time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(eleventh, 10); err != nil {
+		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+	}
+
+	kept := map[string]bool{}
+	for _, buildID := range storedBuildIDs(t, repo) {
+		kept[buildID] = true
+	}
+	if kept["2026-01-31-1"] {
+		t.Error("a build held only by an archived deployment should have been pruned")
+	}
+	if !kept["2026-01-31-10"] {
+		t.Error("the build the gateway is now serving was pruned")
+	}
+}
+
+// With every old build in use there is nothing safe to remove, so the API keeps
+// more than the limit rather than the prepare failing or a running build going.
+func TestCreateBuild_KeepsEverythingWhenNothingIsFreeToGo(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	ids := prepareBuilds(t, repo, 3, 0)
+	for i, buildID := range ids {
+		gatewayID := fmt.Sprintf("gw-%d", i+1)
+		createTestGateway(t, db, gatewayID, buildRepoOrgUUID)
+		deployFromBuild(t, db, gatewayID, fmt.Sprintf("dep-%d", i+1), buildID)
+	}
+
+	fourth := buildOn(time.Date(2026, 1, 31, 3, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(fourth, 3); err != nil {
+		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+	}
+	if kept := storedBuildIDs(t, repo); len(kept) != 4 {
+		t.Errorf("kept %v, want all four builds retained", kept)
+	}
+}
+
+// The budget is per API: one API reaching its limit must not prune another's
+// builds, which is why the count and the cleanup are both scoped to the artifact.
+func TestCreateBuild_PruningIsScopedToOneAPI(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	const otherAPIUUID = "aaaaaaaa-0000-0000-0000-00000000000d"
+	insertBuildTestArtifact(t, db, otherAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	day := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 2; i++ {
+		other := buildOn(day.Add(time.Duration(i) * time.Hour))
+		other.ArtifactID = otherAPIUUID
+		if err := repo.CreateBuildWithLimitEnforcement(other, 2); err != nil {
+			t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+		}
+	}
+	prepareBuilds(t, repo, 3, 2)
+
+	otherBuilds, err := repo.GetBuilds(otherAPIUUID, buildRepoOrgUUID, 0)
+	if err != nil {
+		t.Fatalf("GetBuilds: %v", err)
+	}
+	if len(otherBuilds) != 2 {
+		t.Errorf("the other API kept %d builds, want its own 2 untouched", len(otherBuilds))
 	}
 }

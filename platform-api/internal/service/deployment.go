@@ -126,7 +126,7 @@ func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy string,
 		Properties:     properties,
 		CreatedBy:      createdBy,
 	}
-	if err := s.deploymentRepo.CreateBuild(build); err != nil {
+	if err := s.deploymentRepo.CreateBuildWithLimitEnforcement(build, s.cfg.Deployments.MaxBuildsPerAPI); err != nil {
 		return nil, err
 	}
 	s.slogger.Debug("Build created", "buildID", build.BuildID, "apiUUID", apiUUID)
