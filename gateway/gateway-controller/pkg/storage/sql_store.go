@@ -287,6 +287,8 @@ func kindToResourceTable(kind string) (string, error) {
 		return "llm_proxies", nil
 	case "Mcp":
 		return "mcp_proxies", nil
+	case "Agent":
+		return agentsResourceTable, nil
 	default:
 		if table, ok := extraResourceTables[kind]; ok {
 			return table, nil
@@ -306,7 +308,15 @@ var extraResourceTables = map[string]string{}
 // builtinResourceTables lists the per-kind tables core defines natively.
 // GetAllConfigs unions these with every table in extraResourceTables so
 // cross-kind listing also covers kinds registered by an external module.
-var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies"}
+var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies", agentsResourceTable}
+
+// agentsResourceTable holds Agent artifacts. Like llm_proxies, it carries
+// columns beyond (uuid, gateway_id, configuration) — here the signed Agent Card
+// documents the gateway produces at deploy time — but unlike llm_proxies'
+// provider_uuid, which is only ever written, those columns are also read back,
+// so the read paths have to recognise the table too. It is named once here
+// rather than spelled out at each of them.
+const agentsResourceTable = "agents"
 
 // RegisterKindResourceTable registers the resource table name for an artifact
 // kind not known to core. Intended to be called from an init() (or equivalent
@@ -370,6 +380,17 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
+	case "Agent":
+		// Agent follows the RestApi lane, not the MCP one: the stored payload is
+		// already the deployable shape, so Configuration is populated here and
+		// there is no hydrate step to rebuild a derived form later. Anything
+		// reading Configuration after a restart therefore finds it non-nil.
+		var config api.AgentConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	default:
 		if fn, ok := kindUnmarshalers[cfg.Kind]; ok {
 			return fn(cfg, jsonData)
@@ -1020,6 +1041,26 @@ const getAllConfigsColumns = `a.uuid, a.kind, a.handle, a.display_name, a.versio
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
 			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id`
 
+// signedCardColumnsFor projects the two signed Agent Card columns for the
+// agents table, and NULL placeholders for every other resource table.
+//
+// The placeholders keep every query feeding scanConfigRows the same arity, so a
+// row can be scanned without knowing which table produced it. This is the path
+// a controller restart reads through, and it is the reason the projection is
+// not simply omitted elsewhere: an Agent loaded at startup has to arrive with
+// the signature it was deployed with, because signing happens only on deploy.
+func signedCardColumnsFor(table string) string {
+	if table == agentsResourceTable {
+		return "r.signed_public_card, r.signed_protected_card"
+	}
+	// Untyped NULLs. In the UNION in GetAllConfigs they resolve against the
+	// agents branch, which is always present because agents is a built-in
+	// resource table; in a single-table query there is nothing to resolve
+	// against and nothing that needs it, since the values are only ever read
+	// back into a sql.NullString.
+	return "NULL, NULL"
+}
+
 // GetAllConfigs retrieves all artifact configurations.
 // TODO: (renuka) Remove this method once the in memory cache is removed.
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
@@ -1036,10 +1077,10 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	args := make([]interface{}, len(tables))
 	for i, table := range tables {
 		blocks[i] = fmt.Sprintf(`
-			SELECT %s
+			SELECT %s, %s
 			FROM artifacts a
 			JOIN %s r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
-			WHERE a.gateway_id = ?`, getAllConfigsColumns, table)
+			WHERE a.gateway_id = ?`, getAllConfigsColumns, signedCardColumnsFor(table), table)
 		args[i] = s.gatewayId
 	}
 	query := strings.Join(blocks, "\n\n\t\tUNION ALL\n") + "\n\t\tORDER BY created_at DESC"
@@ -1061,14 +1102,12 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	}
 
 	query := fmt.Sprintf(`
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
-				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
+			SELECT %s, %s
 			FROM artifacts a
 			JOIN %s r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
 			WHERE a.kind = ? AND a.gateway_id = ?
 			ORDER BY a.created_at DESC
-		`, resourceTable)
+		`, getAllConfigsColumns, signedCardColumnsFor(resourceTable), resourceTable)
 
 	rows, err := s.query(query, kind, s.gatewayId)
 	if err != nil {
@@ -1091,6 +1130,8 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		var cpSyncStatus sql.NullString
 		var cpSyncInfo sql.NullString
 		var cpArtifactID sql.NullString
+		var signedPublicCard sql.NullString
+		var signedProtectedCard sql.NullString
 
 		err := rows.Scan(
 			&cfg.UUID,
@@ -1109,6 +1150,8 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 			&cpSyncStatus,
 			&cpSyncInfo,
 			&cpArtifactID,
+			&signedPublicCard,
+			&signedProtectedCard,
 		)
 
 		if err != nil {
@@ -1130,6 +1173,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		if cpArtifactID.Valid {
 			cfg.CPArtifactID = cpArtifactID.String
 		}
+		applySignedCards(&cfg, signedPublicCard, signedProtectedCard)
 
 		if configJSON.Valid && configJSON.String != "" {
 			if err := unmarshalSourceConfig(&cfg, configJSON.String); err != nil {
@@ -1373,17 +1417,15 @@ func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredC
 // and have a cp_sync_status of 'pending' or 'failed'.
 // Used by the bottom-up sync to determine which APIs need to be pushed to the control plane.
 func (s *sqlStore) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
-	query := `
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
+	query := fmt.Sprintf(`
+		SELECT %s, %s
 		FROM artifacts a
 		JOIN rest_apis r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
 		WHERE a.gateway_id = ?
 		  AND a.origin = 'gateway_api'
 		  AND a.cp_sync_status IN ('pending', 'failed')
 		ORDER BY a.created_at ASC
-	`
+	`, getAllConfigsColumns, signedCardColumnsFor("rest_apis"))
 
 	rows, err := s.query(query, s.gatewayId)
 	if err != nil {
@@ -1402,16 +1444,25 @@ func (s *sqlStore) loadResourceConfig(cfg *models.StoredConfig) error {
 		return err
 	}
 
-	query := fmt.Sprintf(`SELECT configuration FROM %s WHERE uuid = ? AND gateway_id = ?`, resourceTable)
+	var configJSON, publicCard, protectedCard sql.NullString
 
-	var configJSON sql.NullString
-	err = s.queryRow(query, cfg.UUID, s.gatewayId).Scan(&configJSON)
+	// Only the agents table carries the signed-card columns, so the projection
+	// and the scan targets have to match the table being read.
+	if resourceTable == agentsResourceTable {
+		query := fmt.Sprintf(`SELECT configuration, signed_public_card, signed_protected_card FROM %s WHERE uuid = ? AND gateway_id = ?`, resourceTable)
+		err = s.queryRow(query, cfg.UUID, s.gatewayId).Scan(&configJSON, &publicCard, &protectedCard)
+	} else {
+		query := fmt.Sprintf(`SELECT configuration FROM %s WHERE uuid = ? AND gateway_id = ?`, resourceTable)
+		err = s.queryRow(query, cfg.UUID, s.gatewayId).Scan(&configJSON)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("resource config not found for uuid=%s in table %s", cfg.UUID, resourceTable)
 		}
 		return fmt.Errorf("failed to query resource config: %w", err)
 	}
+
+	applySignedCards(cfg, publicCard, protectedCard)
 
 	if configJSON.Valid && configJSON.String != "" {
 		if err := unmarshalSourceConfig(cfg, configJSON.String); err != nil {
@@ -1420,6 +1471,37 @@ func (s *sqlStore) loadResourceConfig(cfg *models.StoredConfig) error {
 	}
 
 	return nil
+}
+
+// applySignedCards copies the signed Agent Card columns onto cfg.
+//
+// cfg.Agent is allocated only when a column is non-NULL, so a nil Agent means
+// one thing consistently: no gateway-generated cards. That covers every
+// non-Agent row, and any Agent whose card is unsigned or proxied.
+func applySignedCards(cfg *models.StoredConfig, publicCard, protectedCard sql.NullString) {
+	if !publicCard.Valid && !protectedCard.Valid {
+		return
+	}
+
+	agent := &models.AgentArtifact{}
+	if publicCard.Valid {
+		card := publicCard.String
+		agent.SignedPublicCard = &card
+	}
+	if protectedCard.Valid {
+		card := protectedCard.String
+		agent.SignedProtectedCard = &card
+	}
+	cfg.Agent = agent
+}
+
+// signedCardValues returns the two card columns to bind for cfg, as nil
+// pointers when it carries none. A nil pointer binds as SQL NULL.
+func signedCardValues(cfg *models.StoredConfig) (publicCard, protectedCard *string) {
+	if cfg.Agent == nil {
+		return nil, nil
+	}
+	return cfg.Agent.SignedPublicCard, cfg.Agent.SignedProtectedCard
 }
 
 // addResourceConfigTx inserts the resource config into the correct type table.
@@ -1437,7 +1519,8 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 	var query string
 	var args []interface{}
 
-	if cfg.Kind == "LlmProxy" {
+	switch cfg.Kind {
+	case "LlmProxy":
 		// Proxies persist both the raw JSON payload and the resolved provider UUID
 		// so relational lookups do not depend on parsing the configuration blob.
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
@@ -1450,7 +1533,13 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 		}
 		query = fmt.Sprintf(`INSERT INTO %s (uuid, gateway_id, configuration, provider_uuid) VALUES (?, ?, ?, ?)`, resourceTable)
 		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
-	} else {
+	case "Agent":
+		// Agents also persist the signed Agent Card documents the gateway
+		// produced for this deployment.
+		publicCard, protectedCard := signedCardValues(cfg)
+		query = fmt.Sprintf(`INSERT INTO %s (uuid, gateway_id, configuration, signed_public_card, signed_protected_card) VALUES (?, ?, ?, ?, ?)`, resourceTable)
+		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), publicCard, protectedCard}
+	default:
 		query = fmt.Sprintf(`INSERT INTO %s (uuid, gateway_id, configuration) VALUES (?, ?, ?)`, resourceTable)
 		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON)}
 	}
@@ -1484,7 +1573,8 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	var query string
 	var args []interface{}
 
-	if cfg.Kind == "LlmProxy" {
+	switch cfg.Kind {
+	case "LlmProxy":
 		// Keep the provider UUID in sync with the latest handle->UUID resolution
 		// so proxy reads can follow a stable foreign key instead of JSON content.
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
@@ -1497,7 +1587,16 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		}
 		query = fmt.Sprintf(`UPDATE %s SET configuration = ?, provider_uuid = ? WHERE uuid = ? AND gateway_id = ?`, resourceTable)
 		args = []interface{}{string(configJSON), providerUUID, cfg.UUID, s.gatewayId}
-	} else {
+	case "Agent":
+		// The signed cards are overwritten with whatever this update carries,
+		// including NULL. That is deliberate: a signature is only valid for the
+		// exact card bytes it was computed over, so an update that changes the
+		// card and forgets to re-sign must drop the old signature rather than
+		// keep serving one that verifies against content nobody is served.
+		publicCard, protectedCard := signedCardValues(cfg)
+		query = fmt.Sprintf(`UPDATE %s SET configuration = ?, signed_public_card = ?, signed_protected_card = ? WHERE uuid = ? AND gateway_id = ?`, resourceTable)
+		args = []interface{}{string(configJSON), publicCard, protectedCard, cfg.UUID, s.gatewayId}
+	default:
 		query = fmt.Sprintf(`UPDATE %s SET configuration = ? WHERE uuid = ? AND gateway_id = ?`, resourceTable)
 		args = []interface{}{string(configJSON), cfg.UUID, s.gatewayId}
 	}
@@ -1548,7 +1647,8 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		setValues:    []interface{}{string(configJSON)},
 	}
 
-	if cfg.Kind == "LlmProxy" {
+	switch cfg.Kind {
+	case "LlmProxy":
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
 		if !ok {
 			return fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
@@ -1561,6 +1661,14 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		spec.insertValues = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
 		spec.setClauses = []string{"configuration = ?", "provider_uuid = ?"}
 		spec.setValues = []interface{}{string(configJSON), providerUUID}
+	case "Agent":
+		// Same overwrite semantics as updateResourceConfigTx: the stored
+		// signature never outlives the card bytes it was computed over.
+		publicCard, protectedCard := signedCardValues(cfg)
+		spec.columns = []string{"uuid", "gateway_id", "configuration", "signed_public_card", "signed_protected_card"}
+		spec.insertValues = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), publicCard, protectedCard}
+		spec.setClauses = []string{"configuration = ?", "signed_public_card = ?", "signed_protected_card = ?"}
+		spec.setValues = []interface{}{string(configJSON), publicCard, protectedCard}
 	}
 
 	if _, err := s.upsert(tx, spec); err != nil {

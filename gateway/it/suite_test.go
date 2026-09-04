@@ -92,6 +92,12 @@ func getFeaturePaths() []string {
 		"features/api_deploy.feature",
 		"features/mcp_deploy.feature",
 		"features/mcp_policies.feature",
+		"features/agent_deploy.feature",
+		"features/agent_policies.feature",
+		"features/agent_card.feature",
+		"features/agent_streaming.feature",
+		"features/agent_analytics.feature",
+		"features/agent-api-keys.feature",
 		"features/ratelimit.feature",
 		"features/jwt-auth.feature",
 		"features/oauth2-auth.feature",
@@ -351,6 +357,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterTimeoutSteps(ctx, testState)
 		RegisterMCPSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterA2ASteps(ctx, testState, httpSteps)
+		RegisterA2AClientSteps(ctx, testState, httpSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)

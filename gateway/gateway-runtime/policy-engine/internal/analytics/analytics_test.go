@@ -711,10 +711,22 @@ func TestPrepareAnalyticEvent_WithLatencies(t *testing.T) {
 	require.NotNil(t, event.Latencies)
 	assert.True(t, event.Latencies.BackendLatency >= 0)
 
+	// Total request duration (DS_RX_BEG → DS_TX_END). None of the other four is a
+	// substitute: ResponseLatency starts at the first upstream response byte, so a
+	// percentile computed from it measures the response phase rather than what the
+	// caller waited.
+	assert.Equal(t, int64(250), event.Latencies.Duration)        // 250ms
+	assert.Equal(t, int64(100), event.Latencies.BackendLatency)  // 200ms - 100ms
+	assert.Equal(t, int64(100), event.Latencies.ResponseLatency) // 250ms - 150ms
+
 	// Traffic-log latencies are computed in microseconds from the same timepoints.
 	require.NotNil(t, event.TrafficLogLatencies)
 	assert.Equal(t, int64(250000), event.TrafficLogLatencies.DurationUs)               // DS_RX_BEG → DS_TX_END = 250ms
 	assert.Equal(t, int64(50000), event.TrafficLogLatencies.RequestMediationLatencyUs) // 100ms - 50ms
+
+	// The millisecond and microsecond paths describe the same span, so they must not
+	// be able to drift apart.
+	assert.Equal(t, event.Latencies.Duration*1000, event.TrafficLogLatencies.DurationUs)
 }
 
 func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {

@@ -176,6 +176,58 @@ func (h *HTTPSteps) LastBody() []byte {
 	return h.lastBody
 }
 
+// ClearHeader removes a single header from the request state.
+//
+// Distinct from setting it to "": an empty value is still sent, and for headers
+// whose absence and emptiness mean different things — A2A-Version, where an
+// empty value is read as protocol version 0.3 rather than as "unset" — the two
+// are not interchangeable.
+func (h *HTTPSteps) ClearHeader(name string) {
+	for key := range h.headers {
+		if strings.EqualFold(key, name) {
+			delete(h.headers, key)
+		}
+	}
+}
+
+// Header returns a header the scenario has set for subsequent requests, or ""
+// if it has not set one.
+//
+// For a step that builds its own request and needs to carry the scenario's
+// credentials onto it without inheriting the rest of the header state.
+func (h *HTTPSteps) Header(name string) string {
+	for key, value := range h.headers {
+		if strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
+}
+
+// SendRequest performs an arbitrary request with the currently configured
+// headers and records it as the last response.
+//
+// It exists so a step defined in another package can still be followed by the
+// shared assertion steps, which read the last response through this type.
+// Prefer the specific step methods above; this is for callers that build the
+// method, URL, or body themselves — A2A's steps substitute captured task
+// identifiers into all three before sending.
+func (h *HTTPSteps) SendRequest(method, url string, body []byte) error {
+	return h.sendRequest(method, url, body)
+}
+
+// RecordResponse installs a response captured elsewhere as the last response,
+// so the shared assertion steps apply to it.
+//
+// Needed by any step that cannot use SendRequest because it must read the body
+// incrementally rather than to completion — an SSE stream, where the point of
+// the test is when each event arrived, not just the final bytes. The body
+// passed here is whatever that reader chose to retain.
+func (h *HTTPSteps) RecordResponse(resp *http.Response, body []byte) {
+	h.lastResponse = resp
+	h.lastBody = body
+}
+
 // iSetHeader sets a single header
 func (h *HTTPSteps) iSetHeader(name, value string) error {
 	h.headers[name] = value

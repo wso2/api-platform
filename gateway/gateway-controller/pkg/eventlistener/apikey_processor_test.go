@@ -231,3 +231,68 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS_ForLLMProxy(t *testing.T) {
 		assert.Equal(t, "corr-apikey-create-llm-proxy", xdsManager.storeCalls[0].correlationID)
 	}
 }
+
+// TestHandleEvent_APIKey_SyncsMemoryAndXDS_ForAgent covers the second half of
+// the Agent API key path: the management handler only writes the key and
+// publishes an event, and this listener is what carries it to the api-key xDS
+// surface `api-key-auth` reads. Nothing here is kind-aware — keys associate by
+// artifact UUID alone — so this test exists to keep that true for Agents rather
+// than to exercise Agent-specific code.
+func TestHandleEvent_APIKey_SyncsMemoryAndXDS_ForAgent(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	xdsManager := &mockAPIKeyXDSManager{}
+	cfg := testAgentStoredConfig("test-agent-id", "weather-agent-v1-0", "Weather Agent", "v1.0", models.StateDeployed)
+	apiKey := testAPIKey("api-key-id-agent", "weather-agent-key", cfg.UUID)
+
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, db.SaveAPIKey(apiKey))
+
+	listener := &EventListener{
+		store:            store,
+		db:               db,
+		apiKeyXDSManager: xdsManager,
+		logger:           newTestLogger(),
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeAPIKey,
+		Action:    "CREATE",
+		EntityID:  apikey.BuildAPIKeyEntityID(cfg.UUID, apiKey.UUID),
+		EventID:   "corr-apikey-create-agent",
+	})
+
+	storedKey, err := store.GetAPIKeyByName(cfg.UUID, apiKey.Name)
+	require.NoError(t, err)
+	assert.Equal(t, apiKey.UUID, storedKey.UUID)
+
+	storedCfg, err := store.Get(cfg.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.KindAgent, storedCfg.Kind)
+
+	if assert.Len(t, xdsManager.storeCalls, 1) {
+		assert.Equal(t, cfg.UUID, xdsManager.storeCalls[0].apiID)
+		assert.Equal(t, cfg.DisplayName, xdsManager.storeCalls[0].apiName)
+		assert.Equal(t, cfg.Version, xdsManager.storeCalls[0].apiVersion)
+		assert.Equal(t, apiKey.UUID, xdsManager.storeCalls[0].apiKeyID)
+		assert.Equal(t, "corr-apikey-create-agent", xdsManager.storeCalls[0].correlationID)
+	}
+
+	// Revoking must reach the same surface, or a revoked key keeps passing
+	// api-key-auth until the engine restarts.
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeAPIKey,
+		Action:    "DELETE",
+		EntityID:  apikey.BuildAPIKeyEntityID(cfg.UUID, apiKey.UUID),
+		EventID:   "corr-apikey-delete-agent",
+	})
+
+	_, err = store.GetAPIKeyByName(cfg.UUID, apiKey.Name)
+	require.ErrorIs(t, err, storage.ErrNotFound)
+
+	if assert.Len(t, xdsManager.revokeCalls, 1) {
+		assert.Equal(t, cfg.UUID, xdsManager.revokeCalls[0].apiID)
+		assert.Equal(t, apiKey.Name, xdsManager.revokeCalls[0].apiKeyName)
+		assert.Equal(t, "corr-apikey-delete-agent", xdsManager.revokeCalls[0].correlationID)
+	}
+}

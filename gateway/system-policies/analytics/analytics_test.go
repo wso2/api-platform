@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
@@ -281,6 +282,76 @@ func TestOnResponseHeaders_PopulatesAuthMetadata(t *testing.T) {
 	}
 }
 
+// The SSE separator space is optional, so the timing scanner (sseBlockHasData) and
+// the observation scanner (observeA2AResponse) must accept the same lines. When they
+// disagreed, an agent sending "data:{...}" was timed as having delivered a first
+// event while yielding no observation at all — isError, payloadType, taskState and
+// both identifiers absent, and the outcome reported as UNKNOWN.
+func TestSSEDataScannersAgreeOnTheOptionalSeparatorSpace(t *testing.T) {
+	const event = `{"jsonrpc":"2.0","id":1,"result":{"id":"task-1","contextId":"ctx-1",` +
+		`"status":{"state":"TASK_STATE_COMPLETED"}}}`
+	headers := policy.NewHeaders(map[string][]string{"content-type": {"text/event-stream"}})
+
+	for name, body := range map[string]string{
+		"with the separator space":    "data: " + event + "\n\n",
+		"without the separator space": "data:" + event + "\n\n",
+		"with a CRLF line ending":     "data:" + event + "\r\n\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			// The timing scanner must see an event...
+			if _, found := firstSSEDataEventEnd([]byte(body), 0); !found {
+				t.Fatalf("timing scanner found no event in %q", body)
+			}
+			// ...and the observation scanner must read the same one.
+			observation := observeA2AResponse([]byte(body), headers)
+			if observation.outcomeEnvelope == nil {
+				t.Fatalf("observation scanner read nothing from %q — the two scanners disagree", body)
+			}
+			if observation.taskID != "task-1" {
+				t.Errorf("taskID = %q, want task-1", observation.taskID)
+			}
+			if observation.contextID != "ctx-1" {
+				t.Errorf("contextID = %q, want ctx-1", observation.contextID)
+			}
+			if observation.payloadType != a2aPayloadTask {
+				t.Errorf("payloadType = %q, want %q", observation.payloadType, a2aPayloadTask)
+			}
+			if observation.taskState != "TASK_STATE_COMPLETED" {
+				t.Errorf("taskState = %q, want TASK_STATE_COMPLETED", observation.taskState)
+			}
+		})
+	}
+}
+
+// Only one space is the separator; a second belongs to the value. Stripping all
+// leading whitespace would silently rewrite a payload the agent chose to send.
+func TestSSEDataValueStripsExactlyOneSeparatorSpace(t *testing.T) {
+	cases := map[string]struct {
+		line       string
+		wantValue  string
+		wantIsData bool
+	}{
+		"no space":       {"data:{}", "{}", true},
+		"one space":      {"data: {}", "{}", true},
+		"two spaces":     {"data:  {}", " {}", true},
+		"empty value":    {"data:", "", true},
+		"a comment line": {": keep-alive", "", false},
+		"another field":  {"event: message", "", false},
+		"not a field":    {"database: x", "", false},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			value, isData := sseDataValue(c.line)
+			if isData != c.wantIsData {
+				t.Fatalf("isData = %v, want %v", isData, c.wantIsData)
+			}
+			if value != c.wantValue {
+				t.Errorf("value = %q, want %q", value, c.wantValue)
+			}
+		})
+	}
+}
+
 func TestPopulateGenericMetadata_PassesThroughArbitraryKeys(t *testing.T) {
 	metadata := make(map[string]any)
 	shared := map[string]interface{}{
@@ -328,6 +399,53 @@ func TestPopulateGenericMetadata_ExcludesStreamAccumulator(t *testing.T) {
 	}
 	if decoded["applicationId"] != "app-42" {
 		t.Errorf("applicationId = %v, want app-42", decoded["applicationId"])
+	}
+}
+
+// The A2A stream marks are the same kind of internal scratch space as the
+// accumulator: a request timestamp, a first-event timestamp and a scan offset the
+// policy turns into TTFB and stream duration, which it exports under
+// A2AResponsePropertiesKey instead. They are also written and cleared in different
+// phases from this export, so a2aRequestStartKey is live for every Agent request by
+// the time it runs — without the filter, every one of them carries an internal
+// timestamp into its traffic-log line.
+func TestPopulateGenericMetadata_ExcludesA2AStreamMarks(t *testing.T) {
+	metadata := make(map[string]any)
+	shared := map[string]interface{}{
+		"applicationId":    "app-42",
+		a2aRequestStartKey: time.Now(),
+		a2aFirstEventKey:   time.Now(),
+		a2aStreamScanKey:   512,
+	}
+
+	populateGenericMetadata(metadata, shared)
+
+	raw := metadata[GenericMetadataKey].(string)
+	var decoded map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("failed to decode %s: %v", GenericMetadataKey, err)
+	}
+	for _, key := range []string{a2aRequestStartKey, a2aFirstEventKey, a2aStreamScanKey} {
+		if _, present := decoded[key]; present {
+			t.Errorf("internal A2A mark %s must never be exported, got: %v", key, decoded)
+		}
+	}
+	if decoded["applicationId"] != "app-42" {
+		t.Errorf("applicationId = %v, want app-42", decoded["applicationId"])
+	}
+}
+
+// A metadata bag holding nothing but internal keys exports nothing at all, rather
+// than an empty JSON object a consumer would have to filter out itself.
+func TestPopulateGenericMetadata_OnlyInternalKeysExportsNothing(t *testing.T) {
+	metadata := make(map[string]any)
+	populateGenericMetadata(metadata, map[string]interface{}{
+		analyticsStreamAccKey: []byte("chunk"),
+		a2aRequestStartKey:    time.Now(),
+	})
+	if _, present := metadata[GenericMetadataKey]; present {
+		t.Errorf("metadata holding only internal keys must not set %s, got %v",
+			GenericMetadataKey, metadata[GenericMetadataKey])
 	}
 }
 

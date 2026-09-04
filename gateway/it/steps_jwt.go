@@ -54,6 +54,7 @@ func (j *JWTSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I send a GET request to "([^"]*)" with the JWT token$`, j.iSendGETRequestWithJWTToken)
 	ctx.Step(`^I send a POST request to "([^"]*)" with the JWT token$`, j.iSendPOSTRequestWithJWTToken)
 	ctx.Step(`^I send a GET request to "([^"]*)" with JWT in header "([^"]*)"$`, j.iSendGETRequestWithJWTInHeader)
+	ctx.Step(`^I set the Authorization header to the JWT token$`, j.iSetAuthorizationToJWTToken)
 	ctx.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and scope "([^"]*)"$`, j.iGetJWTTokenWithIssuerAndScope)
 	ctx.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and claims "([^"]*)"$`, j.iGetJWTTokenWithIssuerAndClaims)
 	ctx.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)", scope "([^"]*)" and claims "([^"]*)"$`, j.iGetJWTTokenWithIssuerScopeAndClaims)
@@ -226,6 +227,21 @@ func (j *JWTSteps) iSendPOSTRequestWithJWTToken(url string) error {
 
 	j.httpSteps.SetHeader("Authorization", "Bearer "+j.currentToken)
 	return j.httpSteps.ISendPOSTRequest(url)
+}
+
+// iSetAuthorizationToJWTToken puts the current token in the Authorization
+// header without sending anything.
+//
+// The steps above couple fetching a token to issuing one specific request
+// shape. A2A needs the token on request shapes they do not cover — a JSON-RPC
+// POST carrying an operation envelope, an SSE stream — so this separates
+// "carry the credential" from "make the call".
+func (j *JWTSteps) iSetAuthorizationToJWTToken() error {
+	if j.currentToken == "" {
+		return fmt.Errorf("no JWT token available - call 'I get a JWT token from the mock JWKS server' first")
+	}
+	j.httpSteps.SetHeader("Authorization", "Bearer "+j.currentToken)
+	return nil
 }
 
 // iSendGETRequestWithJWTInHeader sends a GET request with the JWT token in a custom header

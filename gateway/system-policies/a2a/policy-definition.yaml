@@ -1,0 +1,94 @@
+name: wso2_apip_sys_a2a
+version: v1.0.0
+description: |
+  The gateway's internal A2A system policy: the parts of the A2A protocol the
+  gateway answers itself rather than proxying to the agent behind it. Attached by
+  the gateway controller to the routes that need it, never by an Agent author.
+
+  Each gateway-answered concern gets its own parameter block. An instance carries
+  exactly one, and which one it carries is the whole of what that instance does;
+  an instance carrying none fails closed with a 500 rather than forwarding.
+
+  agentCard — serves an Agent's managed public Agent Card. Attached to the single
+  public Agent Card route of an Agent whose public card mode is `managed`. The
+  policy answers at the request-header phase and the request never reaches the
+  upstream agent. It honours If-None-Match, replying 304 with no body when the
+  client already holds the card identified by `etag`. Both values are written by
+  the controller from the Agent's validated `spec.a2a.agentCard.public.content`.
+
+  protectedAgentCard — answers the protected (extended) Agent Card operation.
+  Attached to the canonical GetExtendedAgentCard chain of an Agent with an
+  explicit `spec.a2a.agentCard.protected` block, in either mode, and to no other
+  chain. It sits at the tail of that chain, after every policy the Agent author
+  attached at either scope, and answers at the request-body phase. It requires
+  that the request was authenticated — by whichever of the author's policies, in
+  whichever scope, since where authentication sits in the chain is the author's
+  decision — and answers a sterile 401 otherwise, never forwarding and never
+  carrying card bytes. With `content`, the card is served locally and
+  binding-correctly: the bare card on HTTP+JSON, and a JSON-RPC 2.0 result
+  envelope echoing the caller's request id on JSON-RPC. Without it, the mode is
+  passthrough and the authenticated request is forwarded to the upstream.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    agentCard:
+      type: object
+      additionalProperties: false
+      required: ["content", "etag"]
+      description: >
+        Managed public Agent Card serving. Present on the public card route of an
+        Agent whose public card is managed, and on no other route.
+      properties:
+        content:
+          type: string
+          description: >
+            The exact Agent Card bytes to serve, as a JSON string. Carried as
+            serialized bytes rather than as a structured object because the bytes
+            are what the controller validated, and what card signing will sign —
+            a re-serialization in the runtime would change them.
+          minLength: 1
+        etag:
+          type: string
+          description: >
+            Strong entity tag for `content`, already quoted, used verbatim in the
+            ETag response header and compared against If-None-Match. Derived by
+            the controller from the same bytes, so a card and its tag cannot
+            disagree.
+          minLength: 1
+
+    protectedAgentCard:
+      type: object
+      additionalProperties: false
+      description: >
+        Protected (extended) Agent Card serving. Present on the canonical
+        GetExtendedAgentCard chain of an Agent with an explicit protected card
+        block, in either mode, and on no other chain.
+
+        The authentication requirement is not represented here and is not
+        configurable: it applies whenever this block is present, because a
+        protected card whose protection depended on a parameter could be switched
+        off by editing one.
+
+        There is deliberately no `etag` beside `content` either. A protected card
+        response is authenticated and carries Cache-Control: no-store, and the
+        JSON-RPC binding is a POST, so there is no conditional-GET contract for a
+        validator to take part in.
+      properties:
+        content:
+          type: string
+          description: >
+            The exact protected Agent Card bytes to serve, as a JSON string,
+            produced by the same encoder as the public card's `content` and for
+            the same reason. On HTTP+JSON these bytes are the whole response body;
+            on JSON-RPC they are placed under `result` without being re-encoded.
+
+            Present in managed mode only. Omitted, the mode is passthrough: the
+            authenticated request is forwarded and the upstream's own extended
+            card is proxied unparsed.
+          minLength: 1
+
+systemParameters:
+  type: object
+  properties: {}
