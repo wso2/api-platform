@@ -75,5 +75,5 @@ func handleSearchClause(search string) (string, []any) {
 		return "", nil
 	}
 	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(s))
-	return ` AND LOWER(handle) LIKE ? ESCAPE '\'`, []any{"%" + esc + "%"}
+	return ` AND (LOWER(display_name) LIKE ? ESCAPE '\' OR LOWER(handle) LIKE ? ESCAPE '\')`, []any{"%" + esc + "%", "%" + esc + "%"}
 }
