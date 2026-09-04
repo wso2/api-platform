@@ -1,9 +1,14 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Runtime environment variables, matching choreo-console bootstrap order. -->
-    <script src="%BASE_URL%api-platform.env.config.js"></script>
-    <script src="%BASE_URL%api-platform.common.config.js"></script>
+    <!--
+      Runtime environment variables, matching choreo-console bootstrap order.
+      Keep a versioned URL so browsers that previously loaded the legacy
+      Asgardeo runtime config cannot reuse that response after switching to
+      BFF-managed authentication.
+    -->
+    <script src="%BASE_URL%api-platform.env.config.js?v=bff-auth-v1"></script>
+    <script src="%BASE_URL%api-platform.common.config.js?v=bff-auth-v1"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>API Platform</title>

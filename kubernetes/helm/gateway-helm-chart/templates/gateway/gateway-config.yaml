@@ -626,6 +626,9 @@ data:
     enabled = {{ .Values.gateway.config.tracing.enabled }}
     endpoint = {{ .Values.gateway.config.tracing.endpoint | quote }}
     insecure = {{ .Values.gateway.config.tracing.insecure }}
+    bearer_token_file = {{ .Values.gateway.config.tracing.bearer_token_file | default "" | quote }}
+    tls_ca_file = {{ .Values.gateway.config.tracing.tls_ca_file | default "" | quote }}
+    tls_server_name = {{ .Values.gateway.config.tracing.tls_server_name | default "" | quote }}
     service_version = {{ .Values.gateway.config.tracing.service_version | quote }}
     batch_timeout = {{ .Values.gateway.config.tracing.batch_timeout | quote }}
     max_export_batch_size = {{ .Values.gateway.config.tracing.max_export_batch_size }}

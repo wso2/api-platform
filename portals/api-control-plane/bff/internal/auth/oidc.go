@@ -95,6 +95,7 @@ type OIDCOptions struct {
 	RedirectURL           string
 	PostLogoutRedirectURL string
 	Scopes                string
+	Resource              string
 }
 
 // OIDC implements the authorization-code flow with PKCE using only net/http,
@@ -255,6 +256,9 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
+	if o.opts.Resource != "" {
+		q.Set("resource", o.opts.Resource)
+	}
 	return o.disco.AuthorizationEndpoint + "?" + q.Encode(), txID, nil
 }
 
@@ -343,6 +347,9 @@ func (o *OIDC) exchange(ctx context.Context, code, verifier string) (*tokenRespo
 		"client_id":     {o.opts.ClientID},
 		"code_verifier": {verifier},
 	}
+	if o.opts.Resource != "" {
+		form.Set("resource", o.opts.Resource)
+	}
 	return o.postToken(ctx, form)
 }
 
@@ -353,6 +360,9 @@ func (o *OIDC) Refresh(ctx context.Context, refreshToken string) (*tokenResponse
 		"refresh_token": {refreshToken},
 		"client_id":     {o.opts.ClientID},
 		"scope":         {o.opts.Scopes},
+	}
+	if o.opts.Resource != "" {
+		form.Set("resource", o.opts.Resource)
 	}
 	return o.postToken(ctx, form)
 }

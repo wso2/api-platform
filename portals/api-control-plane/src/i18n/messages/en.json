@@ -1881,11 +1881,110 @@
   "appShell.monetizePage.feature": {
     "defaultMessage": "Monetization for this API"
   },
-  "appShell.runtimeLogsPage.header": {
-    "defaultMessage": "Observability"
+  "appShell.projectHomePage.noAdditionalMetadata": {
+    "defaultMessage": "No additional project metadata available."
   },
-  "appShell.runtimeLogsPage.subHeader": {
-    "defaultMessage": "Runtime logs for {apiHandler}."
+  "appShell.projectHomePage.projectDetails": {
+    "defaultMessage": "Project details"
+  },
+  "appShell.projectHomePage.viewAllAPIs": {
+    "defaultMessage": "View all APIs ({count})"
+  },
+  "appShell.runtimeLogsPage.aggregateSearchPlaceholder": {
+    "defaultMessage": "Message, route, project, or correlation ID"
+  },
+  "appShell.runtimeLogsPage.aggregateSubHeader": {
+    "defaultMessage": "Gateway runtime logs for {scopeLabel}, including operational and traffic records."
+  },
+  "appShell.runtimeLogsPage.allComponents": {
+    "defaultMessage": "All components"
+  },
+  "appShell.runtimeLogsPage.allLevels": {
+    "defaultMessage": "All levels"
+  },
+  "appShell.runtimeLogsPage.allProjects": {
+    "defaultMessage": "All projects"
+  },
+  "appShell.runtimeLogsPage.apiSearchPlaceholder": {
+    "defaultMessage": "Method, path, status, or correlation ID"
+  },
+  "appShell.runtimeLogsPage.apiSubHeader": {
+    "defaultMessage": "API traffic logs for {scopeLabel}. Request and response headers and bodies are not collected."
+  },
+  "appShell.runtimeLogsPage.applyFilters": {
+    "defaultMessage": "Apply filters"
+  },
+  "appShell.runtimeLogsPage.component": {
+    "defaultMessage": "Component"
+  },
+  "appShell.runtimeLogsPage.consoleLabel": {
+    "defaultMessage": "Gateway log output"
+  },
+  "appShell.runtimeLogsPage.emptyConsole": {
+    "defaultMessage": "No gateway logs in this window. Try a wider time range or remove a filter."
+  },
+  "appShell.runtimeLogsPage.environment": {
+    "defaultMessage": "Environment"
+  },
+  "appShell.runtimeLogsPage.environmentDevelopment": {
+    "defaultMessage": "Development"
+  },
+  "appShell.runtimeLogsPage.environmentProduction": {
+    "defaultMessage": "Production"
+  },
+  "appShell.runtimeLogsPage.environmentStage": {
+    "defaultMessage": "Stage"
+  },
+  "appShell.runtimeLogsPage.header": {
+    "defaultMessage": "Gateway logs"
+  },
+  "appShell.runtimeLogsPage.last15Minutes": {
+    "defaultMessage": "Last 15 minutes"
+  },
+  "appShell.runtimeLogsPage.last24Hours": {
+    "defaultMessage": "Last 24 hours"
+  },
+  "appShell.runtimeLogsPage.last6Hours": {
+    "defaultMessage": "Last 6 hours"
+  },
+  "appShell.runtimeLogsPage.lastHour": {
+    "defaultMessage": "Last hour"
+  },
+  "appShell.runtimeLogsPage.level": {
+    "defaultMessage": "Level"
+  },
+  "appShell.runtimeLogsPage.liveTail": {
+    "defaultMessage": "Live tail"
+  },
+  "appShell.runtimeLogsPage.loadError": {
+    "defaultMessage": "Could not load gateway logs. {message}"
+  },
+  "appShell.runtimeLogsPage.loading": {
+    "defaultMessage": "Loading gateway logs…"
+  },
+  "appShell.runtimeLogsPage.notConfigured": {
+    "defaultMessage": "Gateway log retrieval is not configured for this deployment."
+  },
+  "appShell.runtimeLogsPage.project": {
+    "defaultMessage": "Project"
+  },
+  "appShell.runtimeLogsPage.refresh": {
+    "defaultMessage": "Refresh"
+  },
+  "appShell.runtimeLogsPage.search": {
+    "defaultMessage": "Search"
+  },
+  "appShell.runtimeLogsPage.timeRange": {
+    "defaultMessage": "Time range"
+  },
+  "appShell.runtimeLogsPage.unknownTime": {
+    "defaultMessage": "Unknown time"
+  },
+  "appShell.testPage.header": {
+    "defaultMessage": "Test {apiName}"
+  },
+  "appShell.testPage.subHeader": {
+    "defaultMessage": "Use the following curl command to test the API."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."
@@ -2337,6 +2436,33 @@
   "gateways.view.list": {
     "defaultMessage": "List view",
     "description": "Accessible label for the button switching to compact rows."
+  },
+  "logConsole.clear": {
+    "defaultMessage": "Clear console"
+  },
+  "logConsole.copied": {
+    "defaultMessage": "Copied"
+  },
+  "logConsole.copyAll": {
+    "defaultMessage": "Copy all"
+  },
+  "logConsole.copyFailed": {
+    "defaultMessage": "Could not copy to the clipboard. Select the lines and copy them manually."
+  },
+  "logConsole.jumpToLatest": {
+    "defaultMessage": "Jump to latest"
+  },
+  "logConsole.lineCount": {
+    "defaultMessage": "{count, plural, one {# line} other {# lines}}"
+  },
+  "logConsole.liveBadge": {
+    "defaultMessage": "Live"
+  },
+  "logConsole.toggleRaw": {
+    "defaultMessage": "Show raw log payload"
+  },
+  "logConsole.toggleWrap": {
+    "defaultMessage": "Wrap long lines"
   },
   "project.card.actionsLabel": {
     "defaultMessage": "Project actions",

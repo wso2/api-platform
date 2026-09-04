@@ -38,6 +38,21 @@ export type {
 
 export type { RestApiListFilters } from './restApis.hooks';
 
+export type {
+  ObservabilityLogLevel,
+  ObservabilityLogsScope,
+  RestApiObservabilityLog,
+  RestApiObservabilityLogsPage,
+  RestApiObservabilityLogsQuery,
+  RestApiObservabilitySpan,
+  RestApiObservabilityTrace,
+  RestApiObservabilityTraceDetail,
+  RestApiObservabilityTracesPage,
+  RestApiObservabilityTracesQuery,
+} from './observability/observability.endpoints';
+
+export type { ObservabilityLogTailFilters } from './observability/observability.queries';
+
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
@@ -49,3 +64,12 @@ export {
   useRestApis,
   useUpdateRestApi,
 } from './restApis.hooks';
+
+export {
+  LOG_TAIL_POLL_MS,
+  useObservabilityLogs,
+  useObservabilityLogTail,
+  useRestApiObservabilityLogs,
+  useRestApiObservabilityTrace,
+  useRestApiObservabilityTraces,
+} from './observability/observability.hooks';

@@ -162,6 +162,11 @@ const RuntimeLogsPage = lazy(() =>
     default: m.RuntimeLogsPage,
   })),
 );
+const TracesPage = lazy(() =>
+  import('../pages/appShell/appShellPages/observability/TracesPage').then((m) => ({
+    default: m.TracesPage,
+  })),
+);
 const SettingsLayout = lazy(() =>
   import('../pages/appShell/appShellPages/settings/SettingsLayout').then((m) => ({
     default: m.SettingsLayout,
@@ -276,6 +281,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityMetrics), <MetricsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityLogs), <RuntimeLogsPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiObservabilityTraces), <TracesPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}

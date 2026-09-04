@@ -2132,6 +2132,15 @@ func TestTranslator_CreateOTELCollectorCluster(t *testing.T) {
 	cluster := translator.createOTELCollectorCluster()
 	assert.NotNil(t, cluster)
 	assert.Equal(t, OTELCollectorClusterName, cluster.Name)
+	require.NotNil(t, cluster.TransportSocket)
+	tlsContext := &tlsv3.UpstreamTlsContext{}
+	require.NoError(t, cluster.TransportSocket.GetTypedConfig().UnmarshalTo(tlsContext))
+	assert.Equal(t, "otel-collector", tlsContext.Sni)
+	validationContext := tlsContext.GetCommonTlsContext().GetValidationContext()
+	require.NotNil(t, validationContext)
+	assert.Equal(t, "/etc/ssl/certs/ca-certificates.crt", validationContext.GetTrustedCa().GetFilename())
+	require.Len(t, validationContext.MatchTypedSubjectAltNames, 1)
+	assert.Equal(t, "otel-collector", validationContext.MatchTypedSubjectAltNames[0].GetMatcher().GetExact())
 }
 
 func TestTranslator_CreateOTELCollectorCluster_Disabled(t *testing.T) {

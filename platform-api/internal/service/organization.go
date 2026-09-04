@@ -19,13 +19,13 @@ package service
 
 import (
 	"fmt"
-	"log/slog"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"log/slog"
 	"time"
 )
 
@@ -205,6 +205,22 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	}
 
 	return org, nil
+}
+
+// GetOrganizationExternalID returns the identity-provider organization
+// reference associated with an internal Platform API organization. It is a
+// deliberately narrow capability for external plugins that need to address a
+// deployment-owned tenant while retaining the internal organization UUID for
+// Platform API authorization and ownership checks.
+func (s *OrganizationService) GetOrganizationExternalID(orgID string) (string, error) {
+	orgModel, err := s.orgRepo.GetOrganizationByUUID(orgID)
+	if err != nil {
+		return "", err
+	}
+	if orgModel == nil {
+		return "", apperror.OrganizationNotFound.New()
+	}
+	return orgModel.IdpOrganizationRefUUID, nil
 }
 
 // ListOrganizations returns a paginated list of organizations along with the

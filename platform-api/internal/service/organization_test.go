@@ -100,6 +100,42 @@ func TestOrganizationService_RegisterOrganization_RecordsMembership(t *testing.T
 	}
 }
 
+func TestOrganizationService_GetOrganizationExternalID(t *testing.T) {
+	svc, _, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	const (
+		internalID = "org-internal-1"
+		externalID = "org-idp-1"
+	)
+	if err := svc.orgRepo.CreateOrganization(&model.Organization{
+		ID:                     internalID,
+		Handle:                 "identity-mapped-org",
+		Name:                   "Identity Mapped Org",
+		Region:                 "us",
+		IdpOrganizationRefUUID: externalID,
+	}); err != nil {
+		t.Fatalf("CreateOrganization failed: %v", err)
+	}
+
+	got, err := svc.GetOrganizationExternalID(internalID)
+	if err != nil {
+		t.Fatalf("GetOrganizationExternalID failed: %v", err)
+	}
+	if got != externalID {
+		t.Fatalf("GetOrganizationExternalID = %q, want %q", got, externalID)
+	}
+}
+
+func TestOrganizationService_GetOrganizationExternalIDRejectsUnknownOrganization(t *testing.T) {
+	svc, _, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if _, err := svc.GetOrganizationExternalID("missing-org"); err == nil {
+		t.Fatal("expected an unknown organization to fail")
+	}
+}
+
 // TestOrganizationService_ListOrganizationsForUser_HealsMembership verifies
 // the lazy-heal behavior: an organization predating user_organization_mappings
 // (e.g. the file-based seeded org) becomes visible to a caller on their first
@@ -208,6 +244,6 @@ func TestOrganizationService_ListOrganizationsForUser_PropagatesRepoErrors(t *te
 // resolvedOrgUUID empty) or don't care about its outcome.
 type noopUserOrgMappingRepo struct{}
 
-func (noopUserOrgMappingRepo) AddMembership(userUUID, orgUUID string) error { return nil }
+func (noopUserOrgMappingRepo) AddMembership(userUUID, orgUUID string) error   { return nil }
 func (noopUserOrgMappingRepo) DeleteByUser(tx *sql.Tx, userUUID string) error { return nil }
 func (noopUserOrgMappingRepo) DeleteByOrg(tx *sql.Tx, orgUUID string) error   { return nil }

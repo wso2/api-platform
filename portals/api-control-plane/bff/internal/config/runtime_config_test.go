@@ -34,6 +34,38 @@ func TestBuildRuntimeConfig_KeysMatchFrontendVocabulary(t *testing.T) {
 	if _, present := out["billingProxyEnabled"]; present {
 		t.Error(`out["billingProxyEnabled"] should be absent when no "billing" upstream is configured`)
 	}
+	if _, present := out["observabilityLogsEnabled"]; present {
+		t.Error(`out["observabilityLogsEnabled"] should be absent when the feature is disabled`)
+	}
+	if _, present := out["observabilityTracesEnabled"]; present {
+		t.Error(`out["observabilityTracesEnabled"] should be absent when the feature is disabled`)
+	}
+}
+
+func TestBuildRuntimeConfig_ObservabilityTracesEnabledWhenConfigured(t *testing.T) {
+	cfg := &Config{
+		Auth:         AuthConfig{Mode: "oidc"},
+		ControlPlane: ControlPlaneConfig{ProxyPrefix: "/proxy"},
+		Features:     FeatureConfig{ObservabilityTraces: true},
+	}
+	out := buildRuntimeConfig(cfg)
+
+	if out["observabilityTracesEnabled"] != "true" {
+		t.Errorf(`out["observabilityTracesEnabled"] = %q, want "true"`, out["observabilityTracesEnabled"])
+	}
+}
+
+func TestBuildRuntimeConfig_ObservabilityLogsEnabledWhenConfigured(t *testing.T) {
+	cfg := &Config{
+		Auth:         AuthConfig{Mode: "oidc"},
+		ControlPlane: ControlPlaneConfig{ProxyPrefix: "/proxy"},
+		Features:     FeatureConfig{ObservabilityLogs: true},
+	}
+	out := buildRuntimeConfig(cfg)
+
+	if out["observabilityLogsEnabled"] != "true" {
+		t.Errorf(`out["observabilityLogsEnabled"] = %q, want "true"`, out["observabilityLogsEnabled"])
+	}
 }
 
 func TestBuildRuntimeConfig_BillingProxyEnabledWhenUpstreamConfigured(t *testing.T) {
