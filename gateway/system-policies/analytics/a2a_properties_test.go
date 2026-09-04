@@ -288,8 +288,8 @@ func TestResponseProperties_TaskPayloadOnBothBindings(t *testing.T) {
 			props := responseProps(t, "SendMessage", 200, "application/json", []byte(tc.body))
 			assertProps(t, props, map[string]interface{}{
 				"payloadType":       "task",
-				"taskId":    "task-9",
-				"contextId": "ctx-9",
+				"responseTaskId":    "task-9",
+				"responseContextId": "ctx-9",
 				"taskState":         "TASK_STATE_COMPLETED",
 			})
 		})
@@ -304,8 +304,8 @@ func TestResponseProperties_BareTaskDocument(t *testing.T) {
 
 	assertProps(t, props, map[string]interface{}{
 		"payloadType":       "task",
-		"taskId":    "task-4",
-		"contextId": "ctx-4",
+		"responseTaskId":    "task-4",
+		"responseContextId": "ctx-4",
 		"taskState":         "TASK_STATE_WORKING",
 	})
 }
@@ -319,8 +319,8 @@ func TestResponseProperties_MessagePayloadCarriesNoTaskState(t *testing.T) {
 
 	assertProps(t, props, map[string]interface{}{
 		"payloadType":       "message",
-		"taskId":    "task-2",
-		"contextId": "ctx-2",
+		"responseTaskId":    "task-2",
+		"responseContextId": "ctx-2",
 	})
 	if _, present := props["taskState"]; present {
 		t.Errorf("taskState = %v, want absent for a message payload", props["taskState"])
@@ -355,7 +355,7 @@ func TestResponseProperties_TaskListReportsNoIdentifiers(t *testing.T) {
 	props := responseProps(t, "ListTasks", 200, "application/json",
 		[]byte(`{"tasks":[{"id":"t1","contextId":"c1","status":{"state":"TASK_STATE_COMPLETED"}}],"totalSize":1}`))
 
-	for _, key := range []string{"taskId", "contextId", "taskState"} {
+	for _, key := range []string{"responseTaskId", "responseContextId", "taskState"} {
 		if value, present := props[key]; present {
 			t.Errorf("%s = %v, want absent for a task list", key, value)
 		}
@@ -446,8 +446,8 @@ func TestResponseProperties_StreamRetainsTheLatestTaskState(t *testing.T) {
 
 	assertProps(t, props, map[string]interface{}{
 		"payloadType":       "artifact_update",
-		"taskId":    "task-7",
-		"contextId": "ctx-7",
+		"responseTaskId":    "task-7",
+		"responseContextId": "ctx-7",
 		"taskState":         "TASK_STATE_WORKING",
 	})
 }
@@ -463,8 +463,8 @@ func TestResponseProperties_HTTPJSONStreamEventsAreUnwrapped(t *testing.T) {
 
 	assertProps(t, props, map[string]interface{}{
 		"payloadType":       "status_update",
-		"taskId":    "task-8",
-		"contextId": "ctx-8",
+		"responseTaskId":    "task-8",
+		"responseContextId": "ctx-8",
 		"taskState":         "TASK_STATE_COMPLETED",
 	})
 	if _, present := props["isError"]; present {
@@ -482,8 +482,8 @@ func TestResponseProperties_LateStreamErrorKeepsEarlierIdentifiers(t *testing.T)
 
 	assertProps(t, props, map[string]interface{}{
 		"payloadType":       "error",
-		"taskId":    "task-3",
-		"contextId": "ctx-3",
+		"responseTaskId":    "task-3",
+		"responseContextId": "ctx-3",
 		"taskState":         "TASK_STATE_WORKING",
 		"isError":           true,
 	})
@@ -533,12 +533,12 @@ func TestResponseProperties_OverLongObservedIdentifierIsDropped(t *testing.T) {
 	props := responseProps(t, "GetTask", 200, "application/json",
 		[]byte(`{"id":"`+string(long)+`","contextId":"ctx-1","status":{"state":"TASK_STATE_WORKING"}}`))
 
-	if value, present := props["taskId"]; present {
-		t.Errorf("taskId = %v, want dropped", value)
+	if value, present := props["responseTaskId"]; present {
+		t.Errorf("responseTaskId = %v, want dropped", value)
 	}
-	if props["contextId"] != "ctx-1" {
-		t.Errorf("contextId = %v, want ctx-1 — one over-long value must not cost the others",
-			props["contextId"])
+	if props["responseContextId"] != "ctx-1" {
+		t.Errorf("responseContextId = %v, want ctx-1 — one over-long value must not cost the others",
+			props["responseContextId"])
 	}
 }
 

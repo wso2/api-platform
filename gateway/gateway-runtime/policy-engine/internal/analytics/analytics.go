@@ -751,13 +751,9 @@ func buildAgentAnalytics(
 	request := decodeA2ARequestBlock(metadata[A2ARequestPropertiesKey])
 	a2a.Transport = request.Transport
 	a2a.ProtocolVersion = request.ProtocolVersion
-	if !request.A2ARequestAnalytics.IsEmpty() {
-		a2a.Request = &request.A2ARequestAnalytics
-	}
+	a2a.A2ARequestAnalytics = request.A2ARequestAnalytics
 
-	if response := decodeA2AResponseBlock(metadata[A2AResponsePropertiesKey]); !response.IsEmpty() {
-		a2a.Response = response
-	}
+	a2a.A2AResponseAnalytics = decodeA2AResponseBlock(metadata[A2AResponsePropertiesKey])
 
 	applyA2AResolverAttributes(a2a, metadata)
 
@@ -769,14 +765,15 @@ func buildAgentAnalytics(
 	return &dto.AgentAnalytics{A2A: a2a}
 }
 
-// a2aRequestBlock is the wire shape of the analytics system policy's request block.
+// a2aRequestBlock is the wire shape of the analytics system policy's request block:
+// the published request fields plus the two protocol facts, which the policy assembles
+// alongside the identifiers because they come from the same resolver output. Embedding
+// keeps the published type the single definition of the fields it owns.
 //
-// It is the published request object plus the two protocol facts, which the policy
-// assembles alongside the identifiers because they come from the same resolver output —
-// but which belong at the A2A level of the published model, not inside `request`: they
-// describe the invocation, not what the caller asked the agent to do. Embedding keeps
-// the published type the single definition of the fields it owns, rather than a second
-// struct listing them again.
+// Decoding into these narrow types rather than straight into dto.A2AAnalytics is what
+// stops a policy-supplied block from setting a kernel-owned dimension — requestType,
+// operation, outcome and failureOrigin are not fields here, so a block carrying them
+// cannot reach them.
 type a2aRequestBlock struct {
 	dto.A2ARequestAnalytics
 	Transport       string `json:"transport,omitempty"`
@@ -804,17 +801,17 @@ func decodeA2ARequestBlock(encoded string) a2aRequestBlock {
 	return block
 }
 
-func decodeA2AResponseBlock(encoded string) *dto.A2AResponseAnalytics {
-	if encoded == "" {
-		return nil
-	}
+func decodeA2AResponseBlock(encoded string) dto.A2AResponseAnalytics {
 	var block dto.A2AResponseAnalytics
+	if encoded == "" {
+		return block
+	}
 	if err := json.Unmarshal([]byte(encoded), &block); err != nil {
 		slog.Debug("Failed to unmarshal A2A response analytics properties",
 			"key", A2AResponsePropertiesKey, "error", err)
-		return nil
+		return dto.A2AResponseAnalytics{}
 	}
-	return &block
+	return block
 }
 
 // applyA2AResolverAttributes fills in the two bounded protocol facts from the
@@ -939,8 +936,8 @@ func a2aOutcome(a2a *dto.A2AAnalytics, terminalReason string, statusCode int, up
 		}
 		return A2AOutcomeFailure, A2AFailureOriginClient
 	}
-	if a2a.Response != nil && a2a.Response.IsError != nil {
-		if *a2a.Response.IsError {
+	if a2a.IsError != nil {
+		if *a2a.IsError {
 			return A2AOutcomeFailure, A2AFailureOriginUpstream
 		}
 		return A2AOutcomeSuccess, ""

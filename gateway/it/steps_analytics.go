@@ -70,6 +70,7 @@ func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	ctx.Step(`^the latest analytics event should have metadata field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMetadataField)
 	ctx.Step(`^the latest analytics event should have A2A field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveA2AField)
 	ctx.Step(`^the latest analytics event should not have A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveA2AField)
+	ctx.Step(`^the latest analytics event should carry only A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldCarryOnlyA2AField)
 	ctx.Step(`^the latest analytics event should have a non-empty A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveNonEmptyA2AField)
 	ctx.Step(`^I send a GET request to the analytics collector events endpoint$`, a.iSendGETRequestToAnalyticsCollectorEvents)
 }
@@ -313,10 +314,9 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldNam
 // selects one by URI, and a separately-held event would silently assert against
 // the wrong one.
 //
-// The A2A block is nested — metadata.agentAnalytics.a2a.<field> — unlike the
-// flat metadata keys theLatestAnalyticsEventShouldHaveMetadataField reads, which
-// is why that step cannot be reused. A field name may itself be a dotted path
-// ("request.inputPartCount") to reach into the flat request and response objects.
+// The A2A block sits under metadata.agentAnalytics.a2a, unlike the flat metadata
+// keys theLatestAnalyticsEventShouldHaveMetadataField reads, which is why that
+// step cannot be reused. Within that block every dimension is one flat level.
 func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, expectedValue string) error {
 	block, err := a.a2aAnalyticsBlock()
 	if err != nil {
@@ -335,34 +335,18 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, ex
 	return nil
 }
 
-// a2aField walks a dotted path into the A2A block.
+// a2aField reads one dimension out of the A2A block.
 //
-// The published model puts the request and response facts in their own objects —
-// nesting is what records which direction produced a value — so a scenario names
-// "response.taskState" rather than a flattened key. A missing intermediate object
-// is reported as the missing field it is, not as a nil dereference: an absent
-// `response` object means the gateway observed nothing, which is exactly the
-// failure a scenario asserting a response field is trying to catch.
-func a2aField(block map[string]interface{}, path string) (interface{}, error) {
-	current := block
-	segments := strings.Split(path, ".")
-	for i, segment := range segments {
-		value, ok := current[segment]
-		if !ok {
-			return nil, fmt.Errorf("A2A analytics field '%s' not found: no '%s' in {%s}",
-				path, segment, sortedKeys(current))
-		}
-		if i == len(segments)-1 {
-			return value, nil
-		}
-		nested, ok := value.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("A2A analytics field '%s': '%s' is %T, expected an object",
-				path, segment, value)
-		}
-		current = nested
+// The published a2a section is one flat level, so a scenario names the dimension
+// directly — "taskState", or "responseTaskId" for one of the two response
+// identifiers a request field also carries.
+func a2aField(block map[string]interface{}, name string) (interface{}, error) {
+	value, ok := block[name]
+	if !ok {
+		return nil, fmt.Errorf("A2A analytics field '%s' not found in {%s}",
+			name, sortedKeys(block))
 	}
-	return nil, fmt.Errorf("A2A analytics field '%s' names no field", path)
+	return value, nil
 }
 
 // theLatestAnalyticsEventShouldNotHaveA2AField asserts a dimension is absent.
@@ -376,11 +360,27 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveA2AField(fieldName 
 	if err != nil {
 		return err
 	}
-	// An absent parent object is an absent field: a scenario asserting that a card
-	// fetch carries no response.taskState is satisfied by there being no response
-	// object at all, which is how such an event is actually shaped.
 	if value, err := a2aField(block, fieldName); err == nil {
 		return fmt.Errorf("expected no A2A analytics field '%s', but it is present with value '%v'", fieldName, value)
+	}
+	return nil
+}
+
+// theLatestAnalyticsEventShouldCarryOnlyA2AField asserts the whole A2A block is one
+// named dimension and nothing else.
+//
+// A card fetch and a preflight are the only events shaped this way, and listing the
+// dimensions they must not carry would go stale the moment one is added. Asserting the
+// block's entire key set is what keeps a new dimension from silently leaking onto
+// them — the published model being one flat level is what makes that checkable.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldCarryOnlyA2AField(fieldName string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+	if len(block) != 1 || block[fieldName] == nil {
+		return fmt.Errorf("expected the A2A block to carry only '%s', but it carries {%s}",
+			fieldName, sortedKeys(block))
 	}
 	return nil
 }

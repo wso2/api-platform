@@ -387,7 +387,9 @@ func TestPublish_ForwardsTotalDuration(t *testing.T) {
 
 // The published Agent contract, asserted at its actual boundary: what a downstream
 // consumer reads is the serialized metadata, so the whole envelope is checked as JSON
-// rather than field by field through Go accessors.
+// rather than field by field through Go accessors. It pins that the envelope keeps its
+// agentAnalytics.a2a nesting while the a2a section itself is one flat level, with a
+// `response` prefix only on the two identifiers a request field also carries.
 func TestPublish_AgentAnalyticsEnvelopeNesting(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
@@ -401,17 +403,18 @@ func TestPublish_AgentAnalyticsEnvelopeNesting(t *testing.T) {
 			Operation:       "SendMessage",
 			Transport:       "JSONRPC",
 			ProtocolVersion: "1.0",
-			Request: &dto.A2ARequestAnalytics{
+			A2ARequestAnalytics: dto.A2ARequestAnalytics{
 				MessageID:         "msg-1",
+				TaskID:            "task-existing",
 				InputPartCount:    &partCount,
 				ReturnImmediately: &returnImmediately,
 			},
-			Response: &dto.A2AResponseAnalytics{
-				IsError:     &isError,
-				PayloadType: "task",
-				TaskID:      "task-9",
-				ContextID:   "ctx-9",
-				TaskState:   "TASK_STATE_COMPLETED",
+			A2AResponseAnalytics: dto.A2AResponseAnalytics{
+				IsError:           &isError,
+				PayloadType:       "task",
+				ResponseTaskID:    "task-9",
+				ResponseContextID: "ctx-9",
+				TaskState:         "TASK_STATE_COMPLETED",
 			},
 			Outcome: "SUCCESS",
 		},
@@ -431,11 +434,15 @@ func TestPublish_AgentAnalyticsEnvelopeNesting(t *testing.T) {
 			"operation": "SendMessage",
 			"transport": "JSONRPC",
 			"protocolVersion": "1.0",
-			"request": {"messageId": "msg-1", "inputPartCount": 2, "returnImmediately": false},
-			"response": {
-				"isError": false, "payloadType": "task",
-				"taskId": "task-9", "contextId": "ctx-9", "taskState": "TASK_STATE_COMPLETED"
-			},
+			"messageId": "msg-1",
+			"taskId": "task-existing",
+			"inputPartCount": 2,
+			"returnImmediately": false,
+			"isError": false,
+			"payloadType": "task",
+			"responseTaskId": "task-9",
+			"responseContextId": "ctx-9",
+			"taskState": "TASK_STATE_COMPLETED",
 			"outcome": "SUCCESS"
 		}
 	}`, string(encoded))
