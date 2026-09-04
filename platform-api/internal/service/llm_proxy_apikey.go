@@ -213,7 +213,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	}
 	if err := utils.ValidateHandle(name); err != nil {
 		s.slogger.Warn("Invalid API key id for LLM proxy API key creation", "proxyId", proxyID)
-		return nil, err
+		return nil, fmt.Errorf("invalid API key id: %w", err)
 	}
 
 	displayName := req.DisplayName
