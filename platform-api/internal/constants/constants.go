@@ -251,6 +251,9 @@ const (
 	MetadataKeyVhostMain = "vhostMain"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
 	MetadataKeyVhostSandbox = "vhostSandbox"
+	// MetadataKeyBuildID is the metadata key naming the build a deployment was
+	// created from, so a deployment can be traced back to the snapshot it runs.
+	MetadataKeyBuildID = "buildId"
 	// MetadataKeyOverrides is the metadata key under which the applied generic
 	// override document is persisted, so it can be read back (e.g. to prefill a
 	// re-deployment from the same environment).

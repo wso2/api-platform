@@ -81,15 +81,26 @@ type Projects interface {
 	DeleteProject(handle, orgID, actor string) error
 }
 
-// Deployments exposes deploy/read/undeploy access to an API's gateway
+// Deployments exposes build/deploy/read/undeploy access to an API's gateway
 // deployments, scoped by organization and addressed by handle. Every method
 // mirrors an existing DeploymentService method verbatim and takes the
 // organization id explicitly — handlers MUST pass the org resolved from the
-// request context, never one from request input (GO-AUTH-005). A deployment is
-// built from a base ("current" or a prior deploymentId) and an optional generic
-// override document, letting a caller promote an existing deployment forward and
-// customize any field of the API config for the target gateway.
+// request context, never one from request input (GO-AUTH-005).
+//
+// A deployment is built from a base — "current", a buildId, or a prior
+// deploymentId — and an optional generic override document. That lets a caller
+// prepare a snapshot and deploy it (so a deploy cannot silently pick up edits made
+// since), promote an existing deployment forward, and customize any field of the
+// API config for the target gateway.
 type Deployments interface {
+	// CreateBuildByHandle renders the API's current definition into an immutable
+	// snapshot without deploying it, so a later deploy can name that snapshot
+	// instead of re-rendering whatever the definition has become (Prepare).
+	CreateBuildByHandle(apiHandle, orgID, actor string) (*api.BuildResponse, error)
+
+	// GetBuildsByHandle lists an API's builds, newest first (Read).
+	GetBuildsByHandle(apiHandle, orgID string, limit int) (*api.BuildListResponse, error)
+
 	// DeployAPIByHandle creates a new immutable deployment of an API onto one
 	// gateway (Create/Promote).
 	DeployAPIByHandle(apiHandle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error)

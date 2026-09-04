@@ -48,6 +48,30 @@ func (Deployment) TableName() string {
 	return "deployments"
 }
 
+// Build is an immutable, rendered snapshot of an API's definition that is NOT
+// bound to a gateway. Preparing a build and deploying it are separate steps, so
+// what reaches a gateway is a snapshot taken at a known moment rather than
+// whatever the definition happens to be when the deploy runs — and the same
+// build can then be deployed to any number of gateways, and promoted onward,
+// without being re-rendered.
+//
+// Content is stored at the platform's own DataVersion, untranslated: the target
+// gateway's version is only known at deploy time, so translation happens there.
+type Build struct {
+	BuildID        string    `json:"buildId" db:"uuid"`
+	ArtifactID     string    `json:"artifactId" db:"artifact_uuid"`
+	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
+	Content        []byte    `json:"-" db:"content"`
+	DataVersion    string    `json:"dataVersion" db:"data_version"`
+	CreatedBy      string    `json:"createdBy,omitempty" db:"created_by"`
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+}
+
+// TableName returns the table name for the Build model
+func (Build) TableName() string {
+	return "builds"
+}
+
 // DeploymentContent holds the artifact content for a single deployment,
 // used internally when constructing batch archive responses.
 type DeploymentContent struct {

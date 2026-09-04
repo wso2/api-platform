@@ -258,6 +258,26 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 );
 
 -- Artifact Deployments table (immutable deployment artifacts)
+-- Builds: an immutable, rendered snapshot of an API's definition that is not
+-- bound to any gateway. A build is prepared once from the API's current
+-- definition and then deployed, so what reaches a gateway is a snapshot taken at
+-- a known moment rather than whatever the definition happens to be at deploy
+-- time. It is stored at the platform's own data version and translated to the
+-- target gateway's version when it is deployed.
+CREATE TABLE IF NOT EXISTS builds (
+    uuid VARCHAR(40) PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    content BLOB NOT NULL,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_builds_artifact ON builds(artifact_uuid, organization_uuid, created_at);
+
 CREATE TABLE IF NOT EXISTS deployments (
     uuid VARCHAR(40) PRIMARY KEY,
     display_name VARCHAR(255) NOT NULL,
