@@ -17,7 +17,7 @@
  */
 
 import { lazy, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useResolvedPath } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 
 import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -211,9 +211,17 @@ function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) 
 function GatewaysRoute() {
   const port = usePort();
   const [override] = useSlot<ApiControlPlaneExtension>(PAGE_GATEWAYS_SLOT);
-  // `useResolvedPath('')` is the segment before the splat — this route's own
-  // `gateways` path, with the scope handles already filled in.
-  const indexPath = useResolvedPath('').pathname;
+  // This route's own `gateways` path, derived by stripping the matched splat
+  // off the current URL. Deliberately not `useResolvedPath('')`: from a splat
+  // route react-router 7 resolves relative to the *full* matched pathname, so
+  // that would hand back the current URL and redirect it to itself. Stripping
+  // the splat also keeps the scope-less `select-scope` aliases working, which
+  // rebuilding the path from `routes.gateways()` would not.
+  const { pathname } = useLocation();
+  const splat = useParams()['*'] ?? '';
+  const indexPath = splat
+    ? pathname.slice(0, pathname.length - splat.length).replace(/\/+$/, '')
+    : pathname;
   if (override) {
     // An override replaces the whole subtree with one self-contained flow that
     // keeps its view in local state (a feature package holds no router of its
