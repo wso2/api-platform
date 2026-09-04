@@ -28,10 +28,15 @@ import type { GatewayType } from '../types';
  * host may offer is guaranteed to have a card — icons and labels match the
  * built-in console's own type selector.
  */
-const TYPE_CARDS: Record<GatewayType, { icon: FC<{ size?: number }>; badge?: string }> = {
+const TYPE_CARDS: Record<
+  GatewayType,
+  { icon: FC<{ size?: number }>; badge?: string; comingSoon?: boolean }
+> = {
   regular: { icon: Network },
   ai: { icon: Sparkles },
-  event: { icon: Zap, badge: 'Beta' },
+  // Announced but not yet creatable: the card stays visible so the type is
+  // discoverable, and is rendered unselectable rather than dropped from the row.
+  event: { icon: Zap, badge: 'Coming soon', comingSoon: true },
 };
 
 export type GatewayTypeSelectorProps = {
@@ -54,7 +59,7 @@ const GatewayTypeSelector: FC<GatewayTypeSelectorProps> = ({ types, value, onCha
   return (
     <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
       {visibleTypes.map((type) => {
-        const { icon: Icon, badge } = TYPE_CARDS[type];
+        const { icon: Icon, badge, comingSoon } = TYPE_CARDS[type];
         return (
           <GatewayTypeCard
             key={type}
@@ -62,6 +67,7 @@ const GatewayTypeSelector: FC<GatewayTypeSelectorProps> = ({ types, value, onCha
             label={gatewayTypeLabel(type)}
             badge={badge}
             selected={value === type}
+            disabled={comingSoon}
             onClick={() => onChange(type)}
           />
         );
