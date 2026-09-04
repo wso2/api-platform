@@ -175,7 +175,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 |offset|query|integer|false|Zero-based index of the first item to return.|
 |sortBy|query|string|false|Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).|
 |sortOrder|query|string|false|Sort direction applied to `sortBy`.|
-|query|query|string|false|Case-insensitive substring filter matched against the resource id (handle).|
+|query|query|string|false|Case-insensitive substring filter matched against the resource display name and id (handle).|
 
 #### Enumerated Values
 

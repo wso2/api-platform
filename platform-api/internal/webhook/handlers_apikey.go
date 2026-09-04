@@ -180,7 +180,7 @@ func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) err
 		ExpiresAt:     expiresAt,
 	}
 	// userID is empty: webhook events are system-originated, not tied to an interactive user.
-	if err := r.apiKeys.CreateAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, "", req); err != nil {
+	if _, err := r.apiKeys.CreateAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, "", req); err != nil {
 		// Domain-level idempotency: a key already injected under this (api, handle) means a prior
 		// delivery succeeded. The underlying Create surfaces a raw unique-constraint error, so match
 		// on the constraint phrasing rather than a typed error.

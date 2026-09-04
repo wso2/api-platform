@@ -6212,7 +6212,6 @@ components:
       type: object
       required:
         - displayName
-        - apiKey
       properties:
         id:
           type: string
@@ -6230,7 +6229,11 @@ components:
           example: "Production API Key"
         apiKey:
           type: string
-          description: The plain text API key value that will be hashed before storage
+          x-go-type-skip-optional-pointer: true
+          description: Optional. A pre-minted plain text API key to inject (used by external
+            platforms pushing a key to hybrid gateways). Omit it to have the server
+            generate one, the generated value is returned once in the response and
+            is never retrievable afterwards.
           example: "sk_example_1234567890abcdef"
         externalRefId:
           type: string
@@ -6271,6 +6274,14 @@ components:
           type: string
           description: The internal ID generated for tracking
           example: "production-key-01"
+        apiKey:
+          type: string
+          description: |
+            The generated API key value. Present only when the server generated 
+            the key (no `apiKey` in the request); returned only in this 
+            creation response and never retrievable afterwards. The example value is
+            a non-functional placeholder.
+          example: "REDACTED_API_KEY"
 
     UpdateAPIKeyRequest:
       type: object

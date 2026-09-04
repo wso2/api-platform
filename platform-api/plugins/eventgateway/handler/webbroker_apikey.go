@@ -100,25 +100,8 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if req.ApiKey == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "API key value is required"))
-		return
-	}
-
-	var name string
-	if req.Id != nil && *req.Id != "" {
-		name = *req.Id
-	} else {
-		generatedName, err := utils.GenerateHandle(req.DisplayName, nil)
-		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "Failed to generate API key name"))
-			return
-		}
-		name = generatedName
-		req.Id = &name
-	}
-
-	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, userId, &req); err != nil {
+	resp, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, userId, &req)
+	if err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
 			return
@@ -132,11 +115,7 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
-		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Id,
-		Message: "API key created and broadcasted to gateways successfully",
-	})
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // UpdateAPIKey handles PUT /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName
