@@ -347,6 +347,50 @@ func TestA2AResolve_JSONRPCClassifiesEveryFailure(t *testing.T) {
 	}
 }
 
+// params is not the gateway's to police. Chain selection needs jsonrpc and method
+// and nothing else, so every params shape a client can legally send — JSON-RPC
+// permits a positional array, and null or absent are legal envelopes — must reach
+// the Agent, which is the component that can tell the client what was wrong with
+// it. Decoding params into a fixed struct here made each of these a FailureParse
+// answered by the engine's sterile response instead.
+//
+// The identifiers are best-effort: unreadable params costs attributes, never the
+// chain.
+func TestA2AResolve_JSONRPCAcceptsAnyParamsShape(t *testing.T) {
+	pr := jsonRPCRoute(t, agentproto.V1_0)
+	wantKey := ChainKeyFor(a2aAPIID, a2aVhost, string(agentproto.SendMessage))
+
+	for name, params := range map[string]string{
+		"a positional array":          `[{"message":{"messageId":"msg-1"}}]`,
+		"an empty array":              `[]`,
+		"a string":                    `"send it"`,
+		"a number":                    `7`,
+		"null":                        `null`,
+		"an object with no message":   `{"configuration":{"blocking":true}}`,
+		"a message of the wrong type": `{"message":"msg-1"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			body := []byte(`{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":` + params + `}`)
+
+			res, err := resolveJSONRPC(t, pr, body)
+			require.NoError(t, err, "params shape must not decide whether a chain binds")
+			assert.Equal(t, wantKey, res.ChainKey)
+			assert.Equal(t, string(agentproto.SendMessage), res.Attributes[AttrA2AOperation])
+			for _, absent := range []string{AttrA2AMessageID, AttrA2AContextID, AttrA2ATaskID} {
+				assert.NotContains(t, res.Attributes, absent,
+					"an identifier the gateway could not read must be absent, not guessed")
+			}
+		})
+	}
+
+	// Absent entirely — the shape every operation that takes no arguments sends.
+	t.Run("absent", func(t *testing.T) {
+		res, err := resolveJSONRPC(t, pr, []byte(`{"jsonrpc":"2.0","id":1,"method":"SendMessage"}`))
+		require.NoError(t, err)
+		assert.Equal(t, wantKey, res.ChainKey)
+	})
+}
+
 // A request whose headers are end-of-stream never produces a body callback, so a
 // BodyBuffered route is resolved at the header phase with no body at all. It must
 // classify, not panic — and nil and empty must behave alike.

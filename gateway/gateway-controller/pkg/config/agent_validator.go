@@ -815,12 +815,11 @@ const (
 // would let through an artifact the cluster cannot hold.
 //
 // This bounds one card. It does not bound a node's policy-xDS snapshot, which
-// is state-of-the-world — one message carries every policy chain for the node —
-// and which neither pkg/policyxds/server.go nor the engine's xDS client
-// currently limits explicitly, so the gRPC-Go default of 4 MiB on the receiving
-// side applies. Four maximal cards would exceed it. Setting
-// MaxRecvMsgSize/MaxSendMsgSize on both sides is the fix for that, and it is a
-// separate, pre-existing gap; a per-card cap cannot substitute for it.
+// is state-of-the-world — one message carries every policy chain for the node.
+// That is bounded separately and on both sides, at 16 MiB:
+// policyXDSMaxMessageSize in pkg/policyxds/server.go, and maxRecvMsgSize in the
+// engine's internal/xdsclient. A per-card cap is not a substitute for those and
+// does not interact with them.
 const maxAgentCardBytes = 1024 * 1024
 
 // validateManagedCardConsistency checks a managed Agent Card against the

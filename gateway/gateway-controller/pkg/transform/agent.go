@@ -330,7 +330,8 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			"requirements consistent with gateway enforcement",
 			"agent_id", cfg.UUID, "handle", cfg.Handle)
 	} else {
-		cardPolicy, err := t.agentCardPolicyInstance(a2a.AgentCard.Public.Content)
+		cardPolicy, err := t.agentCardPolicyInstance(
+			a2a.AgentCard.Public.Content, a2a.AgentCard.Public.Signing)
 		if err != nil {
 			return nil, err
 		}
@@ -428,23 +429,35 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 		type preflightRoute struct {
 			path, operationPath string
 			// policies is the chain, before system policies are prepended: the
-			// scope's own policies, then the cors instances contributed by each
-			// operation reachable at this path.
+			// governing scope's cors instances, then the cors instances
+			// contributed by each operation reachable at this path. Nothing but
+			// cors ever enters it.
 			policies []policyenginev1.PolicyInstance
 		}
 		var preflights []preflightRoute
 		preflightByPath := make(map[string]int)
 
 		// addPreflight registers, or extends, the preflight for one path. base is
-		// the governing scope's policies and is contributed once; operationCORS is
-		// appended per contributing operation.
+		// the governing scope's full policy chain and is contributed once;
+		// operationCORS is appended per contributing operation.
+		//
+		// Only the cors policies of base reach the preflight. The rest of a
+		// scope's chain must not run against an OPTIONS request for the same
+		// reason the per-operation chain is narrowed to corsInstances before it
+		// arrives here: a preflight carries no credentials, so an authentication
+		// policy would reject it before the cors policy could answer, and a rate
+		// limit or upstream-header mutation evaluated here bills and rewrites a
+		// request that never reaches the upstream. base is filtered here rather
+		// than at each call site so a fourth caller cannot reintroduce the
+		// problem by passing an unfiltered chain.
 		addPreflight := func(path, operationPath string, base, operationCORS []policyenginev1.PolicyInstance) {
 			if index, exists := preflightByPath[path]; exists {
 				preflights[index].policies = append(preflights[index].policies, operationCORS...)
 				return
 			}
-			policies := make([]policyenginev1.PolicyInstance, 0, len(base)+len(operationCORS))
-			policies = append(policies, base...)
+			baseCORS := corsInstances(base)
+			policies := make([]policyenginev1.PolicyInstance, 0, len(baseCORS)+len(operationCORS))
+			policies = append(policies, baseCORS...)
 			policies = append(policies, operationCORS...)
 			if !containsCORS(policies) {
 				return
@@ -696,6 +709,37 @@ func agentCardPath(configured *string) string {
 	return *configured
 }
 
+// rejectUnimplementedCardSigning refuses to build a card-serving instance for a
+// card the author asked to have signed.
+//
+// Nothing signs a card yet: the transformer hands the card bytes to the A2A
+// system policy, which serves them unchanged. Building the instance anyway would
+// serve an unsigned card under a configuration that says it is signed — a client
+// that trusts `signing.enabled` would have no way to tell, and the failure is
+// silent on both sides of the wire. Refusing is the only honest option until the
+// signing step exists.
+//
+// config.validateCardSigning rejects this at deploy time and names the offending
+// field, so this is the same kind of defensive check as the empty-content one
+// above: it guards a path that should be unreachable, and matters only for an
+// entry point that reaches the transformer without the validator having run
+// (authentication_authorization.md GO-AUTH-015 — the invariant belongs at the
+// layer every caller funnels through, not only at the one that happens to be in
+// front today). Both representations are signed independently, so cardKind names
+// which one refused.
+//
+// Mode is not consulted. A passthrough card is served by the upstream and has
+// nothing for the gateway to sign, so signing is a contradiction there rather
+// than a no-op, and the validator rejects that pairing outright too.
+func rejectUnimplementedCardSigning(cardKind string, signing *api.A2ACardSigning) error {
+	if signing == nil || !signing.Enabled {
+		return nil
+	}
+	return fmt.Errorf(
+		"%s agent card requests signing, which is not implemented: refusing to serve an unsigned card as signed",
+		cardKind)
+}
+
 // agentCardPolicyInstance builds the policy that serves a managed card.
 //
 // The policy is attached by name, so its version is resolved from the loaded
@@ -708,12 +752,16 @@ func agentCardPath(configured *string) string {
 // with no error anywhere.
 func (t *AgentTransformer) agentCardPolicyInstance(
 	content *api.A2AAgentCardDocument,
+	signing *api.A2ACardSigning,
 ) (policyenginev1.PolicyInstance, error) {
 	if content == nil || len(*content) == 0 {
 		// Validation rejects a managed card with no content, so this is a
 		// defensive check on a path that should be unreachable.
 		return policyenginev1.PolicyInstance{},
 			fmt.Errorf("managed agent card has no content to serve")
+	}
+	if err := rejectUnimplementedCardSigning("public", signing); err != nil {
+		return policyenginev1.PolicyInstance{}, err
 	}
 
 	body, etag, err := agentCardBody(*content)
@@ -779,8 +827,13 @@ func (t *AgentTransformer) protectedCardPolicyInstance(
 	managed := config.EffectiveProtectedCardMode(protected) == api.A2AProtectedAgentCardModeManaged
 
 	var content *api.A2AAgentCardDocument
+	var signing *api.A2ACardSigning
 	if protected != nil {
 		content = protected.Content
+		signing = protected.Signing
+	}
+	if err := rejectUnimplementedCardSigning("protected", signing); err != nil {
+		return nil, false, err
 	}
 
 	// Passthrough carries no content: require an authenticated request, then

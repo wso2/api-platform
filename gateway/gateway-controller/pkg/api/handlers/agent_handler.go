@@ -249,6 +249,41 @@ func (h *AgentHandler) DeleteAgent(w http.ResponseWriter, r *http.Request, id st
 // against. Omitting it is not an error: the service defaults an empty Kind to
 // KindRestApi and would silently operate on a RestAPI with the same handle.
 
+// Client-facing messages for the Agent API key operations. Each is bound to
+// one status, and none of them repeats the service error: an API key failure
+// wraps storage driver text, constraint names, and upstream addresses, none of
+// which belongs in a client response (error-handling.md directive 1). The
+// concrete cause goes to the log instead, via logAgentAPIKeyFailure.
+//
+// The 404s do not say whether it was the Agent or the named key that was
+// missing, even though the service error distinguishes them — the response
+// stays uniform, and the log line carries the distinction.
+const (
+	msgAgentNotFound           = "Agent not found"
+	msgAgentAPIKeyNotFound     = "Agent or API key not found"
+	msgAgentAPIKeyConflict     = "An API key with that name already exists for this Agent"
+	msgAgentAPIKeyNotAllowed   = "The requested API key update is not allowed"
+	msgAgentAPIKeyCreateFailed = "Failed to create the API key"
+	msgAgentAPIKeyListFailed   = "Failed to retrieve API keys"
+	msgAgentAPIKeyRegenFailed  = "Failed to regenerate the API key"
+	msgAgentAPIKeyUpdateFailed = "Failed to update the API key"
+	msgAgentAPIKeyRevokeFailed = "Failed to revoke the API key"
+)
+
+// logAgentAPIKeyFailure records the concrete cause of an Agent API key
+// failure. The wrapped error keeps the operation, Agent handle, and key name
+// attached to it, so the log line stands on its own while the client response
+// stays sterile.
+func logAgentAPIKeyFailure(log *slog.Logger, operation, handle, apiKeyName, correlationID string, err error) {
+	wrapped := fmt.Errorf("%s for agent %q: %w", operation, handle, err)
+	if apiKeyName != "" {
+		wrapped = fmt.Errorf("%s for agent %q api key %q: %w", operation, handle, apiKeyName, err)
+	}
+	log.Error("Agent API key operation failed",
+		slog.String("correlation_id", correlationID),
+		slog.Any("error", wrapped))
+}
+
 // CreateAgentAPIKey implements ServerInterface.CreateAgentAPIKey
 // (POST /agents/{id}/api-keys)
 func (s *APIServer) CreateAgentAPIKey(w http.ResponseWriter, r *http.Request, id string) {
@@ -282,12 +317,13 @@ func (s *APIServer) CreateAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 
 	result, err := s.apiKeyService.CreateAPIKey(params)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
-		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		logAgentAPIKeyFailure(log, "create agent api key", handle, "", correlationID, err)
+		if storage.IsNotFoundError(err) {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentNotFound})
+		} else if storage.IsConflictError(err) {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyConflict})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyCreateFailed})
 		}
 		return
 	}
@@ -317,10 +353,11 @@ func (s *APIServer) ListAgentAPIKeys(w http.ResponseWriter, r *http.Request, id 
 
 	result, err := s.apiKeyService.ListAPIKeys(params)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		logAgentAPIKeyFailure(log, "list agent api keys", handle, "", correlationID, err)
+		if storage.IsNotFoundError(err) {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentNotFound})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyListFailed})
 		}
 		return
 	}
@@ -358,10 +395,11 @@ func (s *APIServer) RegenerateAgentAPIKey(w http.ResponseWriter, r *http.Request
 
 	result, err := s.apiKeyService.RegenerateAPIKey(params)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		logAgentAPIKeyFailure(log, "regenerate agent api key", handle, apiKeyName, correlationID, err)
+		if storage.IsNotFoundError(err) {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotFound})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyRegenFailed})
 		}
 		return
 	}
@@ -404,14 +442,15 @@ func (s *APIServer) UpdateAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 
 	result, err := s.apiKeyService.UpdateAPIKey(params)
 	if err != nil {
+		logAgentAPIKeyFailure(log, "update agent api key", handle, apiKeyName, correlationID, err)
 		if storage.IsOperationNotAllowedError(err) {
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
-		} else if strings.Contains(err.Error(), "not found") {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
-		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotAllowed})
+		} else if storage.IsNotFoundError(err) {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotFound})
+		} else if storage.IsConflictError(err) {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyConflict})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyUpdateFailed})
 		}
 		return
 	}
@@ -442,10 +481,11 @@ func (s *APIServer) RevokeAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 
 	result, err := s.apiKeyService.RevokeAPIKey(params)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		logAgentAPIKeyFailure(log, "revoke agent api key", handle, apiKeyName, correlationID, err)
+		if storage.IsNotFoundError(err) {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotFound})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyRevokeFailed})
 		}
 		return
 	}

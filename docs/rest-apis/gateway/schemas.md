@@ -1892,7 +1892,7 @@ continued
     }
   },
   "status": {
-    "id": "reading-list-api-v1.0",
+    "id": "weather-agent-v1-0",
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
@@ -2428,7 +2428,7 @@ Public Agent Card configuration and optional protected Agent Card configuration 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |public|[A2APublicAgentCard](#schemaa2apublicagentcard)|true|none|Public Agent Card serving. `mode` selects whether the card is proxied unchanged from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`). Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card.|
-|protected|[A2AProtectedAgentCard](#schemaa2aprotectedagentcard)|false|none|Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.<br>This block is optional, and omitting it is not the same as configuring `passthrough`. When it is absent, GetExtendedAgentCard is exposed and proxied to the upstream with no gateway-added authentication guard, which is the behaviour Agents written before protected Agent Cards shipped already have.<br>When it is present, the gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in both modes and is not configurable: an Agent that declares a protected card but attaches no authentication policy therefore fails closed instead of publishing its extended card. Where authentication sits among the configured policies is the Agent author's choice.<br>Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.|
+|protected|[A2AProtectedAgentCard](#schemaa2aprotectedagentcard)|false|none|Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.<br>This block is optional, and omitting it is the same as configuring `passthrough`: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`).<br>The gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in every mode and is not configurable: an Agent that attaches no authentication policy therefore fails closed instead of publishing its extended card, whether or not it declared this block. Where authentication sits among the configured policies is the Agent author's choice.<br>Unlike `public`, which is required and whose `mode` must be stated, this block defaults, because the safe reading of an author's silence about the more privileged of the two representations is to protect it.<br>Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.|
 
 ## A2APublicAgentCard
 
@@ -2533,7 +2533,7 @@ Public Agent Card serving. `mode` selects whether the card is proxied unchanged 
 
 ```json
 {
-  "mode": "passthrough",
+  "mode": "managed",
   "content": {
     "name": "Weather Agent",
     "description": "Provides weather information",
@@ -2591,8 +2591,9 @@ Public Agent Card serving. `mode` selects whether the card is proxied unchanged 
 ```
 
 Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.
-This block is optional, and omitting it is not the same as configuring `passthrough`. When it is absent, GetExtendedAgentCard is exposed and proxied to the upstream with no gateway-added authentication guard, which is the behaviour Agents written before protected Agent Cards shipped already have.
-When it is present, the gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in both modes and is not configurable: an Agent that declares a protected card but attaches no authentication policy therefore fails closed instead of publishing its extended card. Where authentication sits among the configured policies is the Agent author's choice.
+This block is optional, and omitting it is the same as configuring `passthrough`: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`).
+The gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in every mode and is not configurable: an Agent that attaches no authentication policy therefore fails closed instead of publishing its extended card, whether or not it declared this block. Where authentication sits among the configured policies is the Agent author's choice.
+Unlike `public`, which is required and whose `mode` must be stated, this block defaults, because the safe reading of an author's silence about the more privileged of the two representations is to protect it.
 Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.
 
 #### Properties
