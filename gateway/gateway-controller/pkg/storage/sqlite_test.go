@@ -78,7 +78,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 4) // Current schema version
+	assert.Equal(t, version, 5) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -87,6 +87,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"llm_providers",
 		"llm_proxies",
 		"mcp_proxies",
+		"graphql_apis",
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
@@ -120,14 +121,14 @@ func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	storage := store.(*sqlStore)
 
 	// Set schema version to an unsupported value
-	_, err = storage.db.Exec("PRAGMA user_version = 5")
+	_, err = storage.db.Exec("PRAGMA user_version = 6")
 	assert.NilError(t, err)
 	storage.db.Close()
 
 	// Reopen — should fail with unsupported version error
 	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
 	assert.Assert(t, err != nil)
-	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 4; delete the database to recreate")
+	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 6, expected 5; delete the database to recreate")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -835,6 +836,37 @@ func TestSQLiteStorage_GetAPIKeysByAPI_Success(t *testing.T) {
 	}
 	assert.Assert(t, keyIDs["0000-key1-0000-000000000000"])
 	assert.Assert(t, keyIDs["0000-key2-0000-000000000000"])
+}
+
+// TestSQLiteStorage_ListAPIKeysForArtifactsNotIn_ExcludesLocalKeys guards against
+// regressing the CP bulk-sync reconciliation into treating every locally-generated key as
+// stale. A source="local" key was generated on the gateway itself and was never reported
+// to the control plane, so its absence from a CP fetch (keyUUIDs) must never make it a
+// deletion candidate — only source="external" keys the control plane once knew about and
+// has since stopped reporting are genuinely stale.
+func TestSQLiteStorage_ListAPIKeysForArtifactsNotIn_ExcludesLocalKeys(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	localKey := createTestAPIKey()
+	localKey.ArtifactUUID = config.UUID
+	localKey.Source = "local"
+	assert.NilError(t, storage.SaveAPIKey(localKey))
+
+	externalKey := createTestAPIKey()
+	externalKey.ArtifactUUID = config.UUID
+	externalKey.Source = "external"
+	assert.NilError(t, storage.SaveAPIKey(externalKey))
+
+	// Simulate a CP bulk-sync round that reported zero keys for this artifact's kind.
+	stale, err := storage.ListAPIKeysForArtifactsNotIn([]string{config.UUID}, []string{})
+	assert.NilError(t, err)
+	assert.Equal(t, len(stale), 1, "only the control-plane-issued key should be reported stale")
+	assert.Equal(t, stale[0].UUID, externalKey.UUID)
 }
 
 func TestLoadAPIKeysFromDatabase_Success(t *testing.T) {

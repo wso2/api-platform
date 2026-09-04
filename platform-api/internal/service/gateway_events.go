@@ -64,6 +64,10 @@ const (
 	EventTypeWebBrokerAPIUndeployed = "webbroker.undeployed"
 	EventTypeWebBrokerAPIDeleted    = "webbroker.deleted"
 
+	EventTypeGraphQLAPIDeployed   = "graphqlapi.deployed"
+	EventTypeGraphQLAPIUndeployed = "graphqlapi.undeployed"
+	EventTypeGraphQLAPIDeleted    = "graphqlapi.deleted"
+
 	EventTypeAPIKeyCreated = "apikey.created"
 	EventTypeAPIKeyRevoked = "apikey.revoked"
 	EventTypeAPIKeyUpdated = "apikey.updated"
@@ -177,6 +181,21 @@ func (s *GatewayEventsService) BroadcastWebBrokerAPIUndeploymentEvent(gatewayID 
 // BroadcastWebBrokerAPIDeletionEvent sends a WebBroker API deletion event to target gateway.
 func (s *GatewayEventsService) BroadcastWebBrokerAPIDeletionEvent(gatewayID string, deletion *model.WebBrokerAPIDeletionEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeWebBrokerAPIDeleted, deletion)
+}
+
+// BroadcastGraphQLAPIDeploymentEvent sends a GraphQL API deployment event to target gateway.
+func (s *GatewayEventsService) BroadcastGraphQLAPIDeploymentEvent(gatewayID string, deployment *model.GraphQLAPIDeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeGraphQLAPIDeployed, deployment)
+}
+
+// BroadcastGraphQLAPIUndeploymentEvent sends a GraphQL API undeployment event to target gateway.
+func (s *GatewayEventsService) BroadcastGraphQLAPIUndeploymentEvent(gatewayID string, undeployment *model.GraphQLAPIUndeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeGraphQLAPIUndeployed, undeployment)
+}
+
+// BroadcastGraphQLAPIDeletionEvent sends a GraphQL API deletion event to target gateway.
+func (s *GatewayEventsService) BroadcastGraphQLAPIDeletionEvent(gatewayID string, deletion *model.GraphQLAPIDeletionEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeGraphQLAPIDeleted, deletion)
 }
 
 // BroadcastLLMProviderDeletionEvent sends an LLM provider deletion event to target gateway.

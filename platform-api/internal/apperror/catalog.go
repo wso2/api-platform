@@ -204,6 +204,19 @@ var (
 	WebBrokerAPIExists   = def(CodeWebBrokerAPIExists, http.StatusConflict, "A WebBroker API with this ID already exists.")
 )
 
+// GraphQL API entries (GraphQL is a core artifact kind, not a plugin).
+// GraphQLAPISchemaResolveFailed is the generic 422 for both "introspection
+// against upstream.main.url failed" and
+// "the supplied SDL could not be parsed" — the message never echoes the resolved
+// IP, the parser's internal error text, or which specific reason applied
+// (error-handling.md / ssrf-prevention.md).
+var (
+	GraphQLAPINotFound                   = def(CodeGraphQLAPINotFound, http.StatusNotFound, "The specified GraphQL API could not be found.")
+	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "A GraphQL API with this ID already exists.")
+	GraphQLAPISchemaResolveFailed        = def(CodeGraphQLAPISchemaResolveFailed, http.StatusUnprocessableEntity, "The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.")
+	GraphQLAPIDeploymentValidationFailed = def(CodeGraphQLAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
+)
+
 // HMAC secret entries. The 32-character minimum is a fixed, publicly
 // documented rule, so stating it in the client message reveals nothing the
 // API contract does not already.

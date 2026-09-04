@@ -120,6 +120,8 @@ services:
       #   condition: service_healthy
       mock-openapi:
         condition: service_healthy
+      mock-graphql-backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "health-check.sh"]
       interval: 5s
@@ -299,6 +301,26 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8087:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock GraphQL Backend: echoes the request body back verbatim, so a test can produce
+  # an arbitrary upstream response shape (e.g. a GraphQL {"errors":[...]} body) that the
+  # generic sample-service fixture's fixed envelope can never produce.
+  mock-graphql-backend:
+    container_name: it-mock-graphql-backend
+    image: ghcr.io/wso2/api-platform/mock-graphql-backend:latest
+    build:
+      context: ../../tests/mock-servers/mock-graphql-backend
+      dockerfile: Dockerfile
+    ports:
+      - "8088:8080"
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:8080/health"]
       interval: 5s

@@ -281,6 +281,9 @@ type Storage interface {
 	// ListAPIKeysForArtifactsNotIn returns the minimal key info (uuid + artifact_uuid) for
 	// keys whose artifact_uuid is in artifactUUIDs but whose own UUID is not in keyUUIDs.
 	// Used to collect identifiers before deletion so callers can publish EventHub events.
+	// Only considers source='external' (control-plane-issued) keys — a source='local' key
+	// was never reported to the control plane, so its absence from keyUUIDs never makes it
+	// stale.
 	ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error)
 
 	// DeleteAPIKeysByUUIDs removes API keys by their UUIDs. Used after ListAPIKeysForArtifactsNotIn

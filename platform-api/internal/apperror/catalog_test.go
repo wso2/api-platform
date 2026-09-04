@@ -43,6 +43,7 @@ var messageArity = map[string]int{
 	CodeOf(LLMProviderDeploymentValidationFailed): 1,
 	CodeOf(LLMProxyDeploymentValidationFailed):    1,
 	CodeOf(MCPProxyDeploymentValidationFailed):    1,
+	CodeOf(GraphQLAPIDeploymentValidationFailed):  1,
 	CodeOf(DeploymentNotActive):                   1,
 	CodeOf(ArtifactReadOnly):                      1,
 	CodeOf(ArtifactRuntimeImmutable):              1,

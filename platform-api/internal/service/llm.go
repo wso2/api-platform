@@ -2438,40 +2438,6 @@ func mapUpstreamAPIToModel(in api.Upstream) *model.UpstreamConfig {
 	return out
 }
 
-func mapUpstreamModelToAPI(in *model.UpstreamConfig) api.Upstream {
-	main := api.UpstreamDefinition{}
-	if in != nil && in.Main != nil {
-		if strings.TrimSpace(in.Main.URL) != "" {
-			u := in.Main.URL
-			main.Url = &u
-		}
-		if strings.TrimSpace(in.Main.Ref) != "" {
-			r := in.Main.Ref
-			main.Ref = &r
-		}
-		if in.Main.Auth != nil {
-			main.Auth = mapUpstreamAuthModelToAPI(in.Main.Auth)
-		}
-	}
-	var sandbox *api.UpstreamDefinition
-	if in != nil && in.Sandbox != nil {
-		s := api.UpstreamDefinition{}
-		if strings.TrimSpace(in.Sandbox.URL) != "" {
-			u := in.Sandbox.URL
-			s.Url = &u
-		}
-		if strings.TrimSpace(in.Sandbox.Ref) != "" {
-			r := in.Sandbox.Ref
-			s.Ref = &r
-		}
-		if in.Sandbox.Auth != nil {
-			s.Auth = mapUpstreamAuthModelToAPI(in.Sandbox.Auth)
-		}
-		sandbox = &s
-	}
-	return api.Upstream{Main: main, Sandbox: sandbox}
-}
-
 // mapUpstreamConfigToDTO maps upstream config to API type with auth values redacted for security
 func mapUpstreamConfigToDTO(in *model.UpstreamConfig) api.Upstream {
 	main := api.UpstreamDefinition{}
@@ -2525,22 +2491,6 @@ func mapUpstreamConfigToDTO(in *model.UpstreamConfig) api.Upstream {
 		sandbox = &s
 	}
 	return api.Upstream{Main: main, Sandbox: sandbox}
-}
-
-func mapUpstreamAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
-	if in == nil {
-		return nil
-	}
-	var authType *api.UpstreamAuthType
-	if normalized := normalizeUpstreamAuthType(in.Type); normalized != "" {
-		t := api.UpstreamAuthType(normalized)
-		authType = &t
-	}
-	return &api.UpstreamAuth{
-		Type:   authType,
-		Header: utils.StringPtrIfNotEmpty(in.Header),
-		Value:  utils.StringPtrIfNotEmpty(in.Value),
-	}
 }
 
 func mapRateLimitingAPIToModel(in *api.LLMRateLimitingConfig) *model.LLMRateLimitingConfig {

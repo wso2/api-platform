@@ -1,5 +1,5 @@
 -- SQL Server Schema for Gateway-Controller API Configurations
--- Version: 4
+-- Version: 5
 --
 -- Portable counterpart of gateway-controller-db.postgres.sql. Type mapping:
 --   TEXT (keyed)      -> NVARCHAR(64)/NVARCHAR(255)  (NVARCHAR(MAX) cannot be indexed;
@@ -93,6 +93,19 @@ CREATE TABLE dbo.llm_proxies (
 
 IF OBJECT_ID(N'dbo.mcp_proxies', N'U') IS NULL
 CREATE TABLE dbo.mcp_proxies (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- GraphQL is not a separate product the way event-gateway is (see the websub_apis/
+-- webbroker_apis note above), so graphql_apis is defined directly here as a
+-- one-column-identical clone of rest_apis, instead of being owned by a separate
+-- supplemental-DDL module.
+IF OBJECT_ID(N'dbo.graphql_apis', N'U') IS NULL
+CREATE TABLE dbo.graphql_apis (
     uuid NVARCHAR(64) NOT NULL,
     gateway_id NVARCHAR(64) NOT NULL,
     configuration NVARCHAR(MAX) NOT NULL,

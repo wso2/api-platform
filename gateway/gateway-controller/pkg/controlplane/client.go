@@ -1040,9 +1040,10 @@ var onPremSupportedAPIKeyKinds = map[string]bool{
 }
 
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
-// currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
-// is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
-// then reloads the in-memory store and refreshes the xDS snapshot once.
+// currently known RestApi, WebSubApi, LlmProvider, LlmProxy, and GraphQLApi artifacts
+// after the WebSocket connection is established. Upserts fetched keys into the DB,
+// reconciles deletions per artifact, then reloads the in-memory store and refreshes
+// the xDS snapshot once.
 // For on-prem control planes only KindRestApi is synced; other kinds are skipped because
 // the corresponding backfill endpoints do not exist in carbon-apimgt for now.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
@@ -1073,7 +1074,8 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			continue
 		}
 		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy &&
-			cfg.Kind != models.KindRestApi && cfg.Kind != models.KindWebSubApi && cfg.Kind != models.KindWebBrokerApi {
+			cfg.Kind != models.KindRestApi && cfg.Kind != models.KindWebSubApi &&
+			cfg.Kind != models.KindWebBrokerApi && cfg.Kind != models.KindGraphQLApi {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
@@ -1092,7 +1094,7 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		localArtifactIDs[cfg.CPArtifactID] = cfg.UUID
 	}
 
-	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy, models.KindGraphQLApi} {
 		// On-prem APIM only exposes backfill endpoints for RestApi keys.
 		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
 			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",
@@ -1461,6 +1463,12 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleMCPProxyUndeploymentEvent(event)
 	case "mcpproxy.deleted":
 		c.handleMCPProxyDeletedEvent(event)
+	case "graphqlapi.deployed":
+		c.handleGraphQLAPIDeployedEvent(event)
+	case "graphqlapi.undeployed":
+		c.handleGraphQLAPIUndeployedEvent(event)
+	case "graphqlapi.deleted":
+		c.handleGraphQLAPIDeletedEvent(event)
 	case "websub.deployed":
 		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebSubAPIDeployed(c, event) })
 	case "websub.undeployed":
@@ -1534,6 +1542,286 @@ func (c *Client) fetchAndDeployAPI(apiID, deploymentID string, deployedAt *time.
 	}
 
 	return result, nil
+}
+
+// fetchAndDeployGraphQLAPI fetches a GraphQL API definition and deploys it.
+// GraphQLApi has no dedicated deployment service — it self-registers into
+// APIDeploymentService's generic kindDeployParsers extension point (see
+// pkg/utils/graphql_deployment.go's init()), so it is deployed through the
+// same generic deploymentService RestApi uses via fetchAndDeployAPI above,
+// keyed off the YAML's own "kind: GraphQLApi" field.
+func (c *Client) fetchAndDeployGraphQLAPI(apiID, deploymentID string, deployedAt *time.Time, correlationID string) (*utils.APIDeploymentResult, error) {
+	zipData, err := c.apiUtilsService.FetchGraphQLAPIDefinition(apiID)
+	if err != nil {
+		c.logger.Error("Failed to fetch GraphQL API definition",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to fetch GraphQL API definition: %w", err)
+	}
+
+	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
+	if err != nil {
+		c.logger.Error("Failed to extract YAML from zip",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to extract YAML from zip: %w", err)
+	}
+
+	c.syncSecretRefsFromYAML(yamlData, correlationID)
+
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deploymentID, deployedAt, correlationID, c.deploymentService)
+	if err != nil {
+		c.logger.Error("Failed to create GraphQL API from YAML",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to create GraphQL API from YAML: %w", err)
+	}
+
+	return result, nil
+}
+
+// handleGraphQLAPIDeployedEvent handles GraphQL API deployment events
+func (c *Client) handleGraphQLAPIDeployedEvent(event map[string]interface{}) {
+	c.logger.Info("GraphQL API Deployment Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deployedEvent GraphQLAPIDeployedEvent
+	if err := json.Unmarshal(eventBytes, &deployedEvent); err != nil {
+		c.logger.Error("Failed to parse GraphQL API deployment event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	apiID := deployedEvent.Payload.ApiId
+	if apiID == "" {
+		c.logger.Error("GraphQL API ID is empty in deployment event")
+		return
+	}
+
+	c.logger.Info("Processing GraphQL API deployment",
+		slog.String("api_id", apiID),
+		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
+	)
+
+	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
+	if performedAt.IsZero() {
+		performedAt = time.Now().Truncate(time.Millisecond)
+	}
+	result, err := c.fetchAndDeployGraphQLAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
+	if err != nil {
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	if result.IsStale {
+		// Stale event — DB was not modified. Do not send ack; in HA mode the
+		// controller that actually processed the event will ack. If all controllers
+		// see stale, platform-API will timeout and handle accordingly.
+		c.logger.Debug("Skipped stale GraphQL API deploy event (newer version exists in DB)",
+			slog.String("api_id", apiID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
+	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "deploy", "success",
+		deployedEvent.Payload.PerformedAt, "")
+
+	c.logger.Info("Successfully processed GraphQL API deployment event",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
+	)
+}
+
+// handleGraphQLAPIUndeployedEvent handles GraphQL API undeployment events
+func (c *Client) handleGraphQLAPIUndeployedEvent(event map[string]interface{}) {
+	c.logger.Info("GraphQL API Undeployment Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var undeployedEvent GraphQLAPIUndeployedEvent
+	if err := json.Unmarshal(eventBytes, &undeployedEvent); err != nil {
+		c.logger.Error("Failed to parse GraphQL API undeployment event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	apiID := undeployedEvent.Payload.ApiId
+	if apiID == "" {
+		c.logger.Error("GraphQL API ID is empty in undeployment event")
+		return
+	}
+
+	c.logger.Info("Processing GraphQL API undeployment",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
+
+	apiConfig, err := c.findAPIConfig(apiID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("GraphQL API configuration not found for undeployment",
+				slog.String("api_id", apiID),
+			)
+			// Still send success ack - the API is already undeployed
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
+			return
+		}
+		c.logger.Error("Failed to fetch GraphQL API configuration for undeployment",
+			slog.String("api_id", apiID),
+			slog.String("correlation_id", undeployedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	// This prevents stale undeploy events from affecting a newer deployment.
+	if apiConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		apiConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale GraphQL API undeploy event: deployment ID mismatch",
+			slog.String("api_id", apiID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", apiConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
+	graphqlUndeployPerformedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
+	if graphqlUndeployPerformedAt.IsZero() {
+		graphqlUndeployPerformedAt = time.Now().Truncate(time.Millisecond)
+	}
+	apiConfig.DesiredState = models.StateUndeployed
+	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	apiConfig.DeployedAt = &graphqlUndeployPerformedAt
+	apiConfig.UpdatedAt = time.Now()
+
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
+	// This prevents stale undeploy events from overwriting newer state.
+	affected, err := c.db.UpsertConfig(apiConfig)
+	if err != nil {
+		c.logger.Error("Failed to upsert config for undeployment",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+	if !affected {
+		c.logger.Debug("Skipped stale GraphQL API undeploy event (newer version exists in DB)",
+			slog.String("api_id", apiID),
+			slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
+	evt := eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "UPDATE",
+		EntityID:  apiID,
+		EventID:   undeployedEvent.CorrelationID,
+	}
+	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+		c.logger.Error("Failed to publish GraphQL API undeployment event", slog.Any("error", err))
+	}
+
+	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "undeploy", "success",
+		undeployedEvent.Payload.PerformedAt, "")
+
+	c.logger.Info("Successfully processed GraphQL API undeployment event",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
+}
+
+// handleGraphQLAPIDeletedEvent handles GraphQL API deletion events
+func (c *Client) handleGraphQLAPIDeletedEvent(event map[string]interface{}) {
+	c.logger.Info("GraphQL API Deletion Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deletedEvent GraphQLAPIDeletedEvent
+	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
+		c.logger.Error("Failed to parse GraphQL API deletion event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	apiID := deletedEvent.Payload.ApiId
+	if apiID == "" {
+		c.logger.Error("GraphQL API ID is empty in deletion event")
+		return
+	}
+
+	c.logger.Info("Processing GraphQL API deletion",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", deletedEvent.CorrelationID),
+	)
+
+	apiConfig, err := c.findAPIConfig(apiID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			// Config not found - proceed with orphan cleanup
+			c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID)
+			return
+		}
+		// Real storage error (DB failure, etc.) - log and abort
+		// Do NOT proceed with orphan cleanup as the config might actually exist
+		c.logger.Error("Failed to fetch GraphQL API configuration for deletion, aborting",
+			slog.String("api_id", apiID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Config found - perform full deletion
+	c.performFullAPIDeletion(apiID, apiConfig, deletedEvent.CorrelationID)
 }
 
 // updatePolicyForDeployment updates policy engine for API deployment

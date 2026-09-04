@@ -39,6 +39,7 @@ const (
 	KindLlmProxy            ArtifactKind = "LlmProxy"
 	KindLlmProvider         ArtifactKind = "LlmProvider"
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
+	KindGraphQLApi          ArtifactKind = "GraphQLApi"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.
@@ -135,6 +136,8 @@ func apiVersionOf(cfg any) string {
 		return string(sc.ApiVersion)
 	case api.MCPProxyConfiguration:
 		return string(sc.ApiVersion)
+	case api.GraphQLAPI:
+		return string(sc.ApiVersion)
 	}
 	return ""
 }
@@ -159,12 +162,17 @@ func (c *StoredConfig) GetContext() (string, error) {
 			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
 		return "", nil
+	case api.GraphQLAPI:
+		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
 	}
 	return "", fmt.Errorf("unsupported source configuration type: %T", c.SourceConfiguration)
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if sc, ok := c.Configuration.(api.RestAPI); ok {
+	switch sc := c.Configuration.(type) {
+	case api.RestAPI:
+		return sc.Spec.Policies
+	case api.GraphQLAPI:
 		return sc.Spec.Policies
 	}
 	// TODO: enable when policies are supported for WebSubHub
@@ -176,6 +184,8 @@ func (c *StoredConfig) GetMetadata() *api.Metadata {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
 		return &cfg.Metadata
+	case api.GraphQLAPI:
+		return &cfg.Metadata
 	}
 	return nil
 }
@@ -185,6 +195,8 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
 		return cfg.Metadata.Labels
+	case api.GraphQLAPI:
+		return cfg.Metadata.Labels
 	}
 	return nil
 }
@@ -193,6 +205,8 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 func (c *StoredConfig) GetAnnotations() *map[string]string {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
+		return cfg.Metadata.Annotations
+	case api.GraphQLAPI:
 		return cfg.Metadata.Annotations
 	}
 	return nil

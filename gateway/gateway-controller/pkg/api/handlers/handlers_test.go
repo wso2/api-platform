@@ -2343,6 +2343,36 @@ func TestCreateAPIKeyDBError(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCreateAPIKeyExpirationInPast_ReturnsBadRequest guards against a regression where a client
+// input error (an expiresIn duration that computes to a past timestamp) was mapped to a generic
+// 500 instead of 400 — the same fix applied identically to the GraphQL, LLM provider, and LLM
+// proxy API-key handlers, which all share this same createAPIKeyFromRequest/CreateAPIKey path.
+func TestCreateAPIKeyExpirationInPast_ReturnsBadRequest(t *testing.T) {
+	server := createTestAPIServer()
+	seedAPIForAPIKeyHandlerTests(t, server, "test-handle")
+
+	name := "test-key"
+	request := api.APIKeyCreationRequest{
+		Name: &name,
+		ExpiresIn: &struct {
+			Duration int                                        `json:"duration" yaml:"duration"`
+			Unit     api.APIKeyCreationRequestExpiresInUnit `json:"unit" yaml:"unit"`
+		}{Duration: -10, Unit: api.APIKeyCreationRequestExpiresInUnitSeconds},
+	}
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+
+	w, r := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	r = withAuthContext(r, commonmodels.AuthContext{UserID: "test-user", Roles: []string{"admin"}})
+
+	server.CreateAPIKey(w, r, "test-handle")
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "must be in the future")
+}
+
 // TestRevokeAPIKeyNoAuth tests RevokeAPIKey without authentication
 func TestRevokeAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
