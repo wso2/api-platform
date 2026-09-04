@@ -27,9 +27,9 @@ export type CreateEnvironmentInput = Pick<Environment, 'name' | 'critical'>;
 
 /**
  * The data contract this feature is built against. `EnvironmentsFeature`
- * constructs an in-memory `createMockEnvironmentPort()` internally today (no
- * real backend exists yet) — this interface is what a real implementation
- * swaps in for, without any change to `EnvironmentsList`/`EnvironmentForm`.
+ * constructs a real, BFF-backed `createApiEnvironmentPort(port.apiFetch)` over
+ * platform-api's `/environments` endpoints; the list/form components only ever
+ * see this interface, so the transport can change without touching them.
  */
 export interface EnvironmentPort {
   list(): Promise<Environment[]>;

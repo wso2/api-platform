@@ -26,17 +26,15 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 
 const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
-/** e.g. "2 hours ago", "just now". Falls back to that floor once a value is under a minute. */
+/** e.g. "2 hours ago", "just now". Falls back to that floor once a value is under a minute. Renders "—" for a missing or unparseable timestamp (managed gateways carry none). */
 export function relativeTime(iso: string): string {
-  const diffMs = Date.parse(iso) - Date.now();
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return '—';
+  const diffMs = parsed - Date.now();
   for (const [unit, ms] of UNITS) {
     if (Math.abs(diffMs) >= ms) {
       return formatter.format(Math.round(diffMs / ms), unit);
     }
   }
   return 'just now';
-}
-
-export function isoMinutesAgo(minutes: number): string {
-  return new Date(Date.now() - minutes * 60 * 1000).toISOString();
 }

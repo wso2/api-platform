@@ -18,9 +18,23 @@
 
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
 
+/**
+ * A same-origin, host-authenticated call to platform-api. `path` is relative to
+ * the API base (e.g. `/environments`); the host prepends its proxy base,
+ * attaches the bearer/CSRF as its transport requires, and resolves JSON — or
+ * `undefined` for a 204/205 or an empty successful body — rejecting with an
+ * `Error` on failure. Feature code never sees a token or a base URL.
+ */
+export type ApiFetch = <T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown
+) => Promise<T | undefined>;
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
+  apiFetch: ApiFetch;
 };
