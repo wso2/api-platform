@@ -396,6 +396,8 @@ func (s *APIServer) CreateGraphQLAPIKey(w http.ResponseWriter, r *http.Request, 
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to create GraphQL API key", slog.String("handle", handle), slog.Any("error", err))
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create API key"})
@@ -482,6 +484,8 @@ func (s *APIServer) UpdateGraphQLAPIKey(w http.ResponseWriter, r *http.Request, 
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to update GraphQL API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update API key"})
@@ -524,6 +528,8 @@ func (s *APIServer) RegenerateGraphQLAPIKey(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to regenerate GraphQL API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
