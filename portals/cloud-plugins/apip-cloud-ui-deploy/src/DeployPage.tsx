@@ -18,14 +18,18 @@
 
 import { Fragment, type FC } from 'react';
 import { Box, Typography } from '@wso2/oxygen-ui';
+import BuildCard from './components/BuildCard';
 import EnvironmentCard from './components/EnvironmentCard';
 import PipelineConnector from './components/PipelineConnector';
-import type { Environment } from './types';
+import type { Build, Environment } from './types';
 
 export type DeployPageProps = {
   /** Pipeline environments in promotion order. */
   environments: Environment[];
+  /** Prepared builds, newest first. */
+  builds: Build[];
   busy: boolean;
+  onPrepare: () => void;
   onDeploy: (environment: Environment) => void;
   onPromote: (target: Environment, from: Environment) => void;
   onEditSettings: (environment: Environment) => void;
@@ -40,7 +44,9 @@ export type DeployPageProps = {
  */
 const DeployPage: FC<DeployPageProps> = ({
   environments,
+  builds,
   busy,
+  onPrepare,
   onDeploy,
   onPromote,
   onEditSettings,
@@ -49,20 +55,24 @@ const DeployPage: FC<DeployPageProps> = ({
 }) => {
   if (environments.length === 0) {
     return (
-      <Box
-        sx={{
-          border: '1px dashed',
-          borderColor: 'divider',
-          borderRadius: 1.5,
-          py: 6,
-          px: 3,
-          textAlign: 'center',
-        }}
-      >
-        <Typography variant="body2" color="text.secondary">
-          This project&apos;s deployment pipeline has no environments yet. Add environments to the
-          pipeline to deploy this API.
-        </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+        <BuildCard builds={builds} busy={busy} onPrepare={onPrepare} />
+        <Box
+          sx={{
+            flexGrow: 1,
+            border: '1px dashed',
+            borderColor: 'divider',
+            borderRadius: 1.5,
+            py: 6,
+            px: 3,
+            textAlign: 'center',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            This project&apos;s deployment pipeline has no environments yet. Add environments to
+            the pipeline to deploy this API.
+          </Typography>
+        </Box>
       </Box>
     );
   }
@@ -79,9 +89,11 @@ const DeployPage: FC<DeployPageProps> = ({
         pb: 1,
       }}
     >
+      <BuildCard builds={builds} busy={busy} onPrepare={onPrepare} />
+
       {environments.map((environment, index) => (
         <Fragment key={environment.name}>
-          {index > 0 && <PipelineConnector />}
+          <PipelineConnector />
           <EnvironmentCard
             environment={environment}
             isEntry={index === 0}

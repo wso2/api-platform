@@ -41,6 +41,19 @@ export type Gateway = {
   /** Error code explaining a FAILED deployment. */
   statusReason?: string;
   deployedAt?: string;
+  /** The prepared build this gateway is running. */
+  buildId?: string;
+};
+
+/**
+ * An immutable snapshot of the API's definition, taken when someone prepares it.
+ * Deploying names a build, so editing the API never changes what a pending deploy
+ * will send — picking up an edit means preparing again.
+ */
+export type Build = {
+  buildId: string;
+  createdBy?: string;
+  createdAt?: string;
 };
 
 /**
@@ -51,6 +64,7 @@ export type Gateway = {
  */
 export type Environment = {
   name: string;
+  /** The build this environment is currently serving. */
   buildId?: string;
   gateways: Gateway[];
 };

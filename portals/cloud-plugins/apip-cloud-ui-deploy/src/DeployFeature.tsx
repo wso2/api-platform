@@ -22,7 +22,7 @@ import DeployPage from './DeployPage';
 import DeployDialog from './components/DeployDialog';
 import { createDeployClient, isSettling } from './deployApi';
 import type { CloudHostPort } from './hostPort';
-import type { DeploymentParameter, Environment } from './types';
+import type { Build, DeploymentParameter, Environment } from './types';
 
 export type DeployFeatureProps = {
   port: CloudHostPort;
@@ -35,6 +35,8 @@ type DialogState = {
   mode: 'deploy' | 'promote';
   target: Environment;
   from?: Environment;
+  /** The build a deploy will send. A promotion carries the source's, so this is unset. */
+  buildId?: string;
 } | null;
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -53,6 +55,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
   const { apiFetch, projectHandle, apiHandle, notify } = port;
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [builds, setBuilds] = useState<Build[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,7 +80,12 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       if (!client) return;
       if (!options.quiet) setLoading(true);
       try {
-        setEnvironments(await client.listEnvironments());
+        const [stages, prepared] = await Promise.all([
+          client.listEnvironments(),
+          client.listBuilds(),
+        ]);
+        setEnvironments(stages);
+        setBuilds(prepared);
         setError(null);
       } catch (loadError) {
         setError(errorMessage(loadError, 'Unable to load the deployment pipeline.'));
@@ -138,18 +146,32 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
 
   const handleConfirm = (gatewayIds: string[], values: Record<string, string>) => {
     if (!dialog || !client) return;
-    const { mode, target, from } = dialog;
+    const { mode, target, from, buildId } = dialog;
     setDialog(null);
     void runAction(
       () =>
         client.deploy({
           environment: target.name,
           gatewayIds,
+          // A deploy names the build it sends, so it cannot drift to a newer one
+          // prepared between opening the dialog and confirming it.
+          buildId: mode === 'deploy' ? buildId : undefined,
           fromEnvironment: mode === 'promote' ? from?.name : undefined,
           parameters: values,
         }),
       `${mode === 'promote' ? 'Promoting to' : 'Deploying to'} ${target.name}.`,
       `Unable to ${mode === 'promote' ? 'promote to' : 'deploy to'} ${target.name}.`
+    );
+  };
+
+  const handlePrepare = () => {
+    if (!client) return;
+    void runAction(
+      async () => {
+        await client.prepare();
+      },
+      'Build prepared. Deploy it to an environment when you are ready.',
+      'Unable to prepare a build.'
     );
   };
 
@@ -176,6 +198,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
         client.deploy({
           environment: environment.name,
           gatewayIds: [gatewayId],
+          // Send back what this environment is already running, not the newest
+          // build — redeploying one gateway should rejoin it to the rest.
+          buildId: index === 0 ? environment.buildId : undefined,
           // A later stage can only be deployed to by promoting into it.
           fromEnvironment: index > 0 ? previous?.name : undefined,
         }),
@@ -232,10 +257,16 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       ) : (
         <DeployPage
           environments={environments}
+          builds={builds}
           busy={busy}
-          onDeploy={(environment) => void openDialog({ mode: 'deploy', target: environment })}
+          onPrepare={handlePrepare}
+          onDeploy={(environment) =>
+            void openDialog({ mode: 'deploy', target: environment, buildId: builds[0]?.buildId })
+          }
           onPromote={(target, from) => void openDialog({ mode: 'promote', target, from })}
-          onEditSettings={(environment) => void openDialog({ mode: 'deploy', target: environment })}
+          onEditSettings={(environment) =>
+            void openDialog({ mode: 'deploy', target: environment, buildId: builds[0]?.buildId })
+          }
           onStopGateway={handleStop}
           onRedeployGateway={handleRedeploy}
         />
@@ -246,6 +277,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
         mode={dialog?.mode ?? 'deploy'}
         environment={dialog?.target ?? null}
         fromEnvironment={dialog?.from?.name}
+        buildId={dialog?.buildId}
         parameters={parameters}
         submitting={busy}
         onClose={() => setDialog(null)}

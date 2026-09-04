@@ -34,6 +34,7 @@ import {
 } from '@wso2/oxygen-ui';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
+import { shortBuild } from '../utils/build';
 import type { DeploymentParameter, Environment } from '../types';
 
 export type DeployDialogProps = {
@@ -43,6 +44,8 @@ export type DeployDialogProps = {
   environment: Environment | null;
   /** Source environment shown in the promote wording. */
   fromEnvironment?: string;
+  /** The build a deploy will send. Unset when promoting, which carries the source's. */
+  buildId?: string;
   /** Null while the environment's settings are still loading. */
   parameters: DeploymentParameter[] | null;
   submitting: boolean;
@@ -83,6 +86,7 @@ const DeployDialog: FC<DeployDialogProps> = ({
   mode,
   environment,
   fromEnvironment,
+  buildId,
   parameters,
   submitting,
   onClose,
@@ -130,9 +134,30 @@ const DeployDialog: FC<DeployDialogProps> = ({
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {mode === 'promote'
-            ? `The build currently running in ${fromEnvironment ?? 'the previous environment'} is carried forward unchanged, with ${environment.name}'s own settings applied.`
-            : `Deploys to ${environment.name} and applies its settings. Gateways already serving this API keep running the same build.`}
+            ? `The build running in ${fromEnvironment ?? 'the previous environment'} is carried forward unchanged, with ${environment.name}'s own settings applied.`
+            : `Sends this build to ${environment.name} and applies its settings. Edits made to the API after it was prepared are not included — prepare again to pick those up.`}
         </Typography>
+
+        {mode === 'deploy' && (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1.5,
+              px: 1.5,
+              py: 1,
+              mb: 2,
+            }}
+          >
+            <Typography sx={sectionLabelSx}>Deploying</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              {shortBuild(buildId)}
+            </Typography>
+          </Box>
+        )}
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography sx={sectionLabelSx}>Gateways</Typography>
@@ -152,6 +177,12 @@ const DeployDialog: FC<DeployDialogProps> = ({
             />
           )}
         </Box>
+
+        {mode === 'deploy' && !buildId && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            There is no build to deploy. Prepare one first.
+          </Alert>
+        )}
 
         {gateways.length === 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -246,7 +277,12 @@ const DeployDialog: FC<DeployDialogProps> = ({
           </Button>
           <Button
             variant="contained"
-            disabled={selected.length === 0 || errors.length > 0 || submitting}
+            disabled={
+              selected.length === 0 ||
+              errors.length > 0 ||
+              submitting ||
+              (mode === 'deploy' && !buildId)
+            }
             onClick={() => onConfirm(selected, values)}
           >
             {submitting ? `${actionLabel}ing...` : actionLabel}

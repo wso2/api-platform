@@ -22,6 +22,7 @@ import { MoveRight, Wrench } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
 import GatewayRow from './GatewayRow';
 import { activeGatewayCount, hasAnyDeployment } from '../utils/status';
+import { shortBuild } from '../utils/build';
 import type { Environment } from '../types';
 
 export type EnvironmentCardProps = {
@@ -88,6 +89,11 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
         <Typography variant="body2" color="text.secondary">
           {activeCount} of {gateways.length} gateway{gateways.length === 1 ? '' : 's'} active
         </Typography>
+        {environment.buildId && (
+          <Typography variant="caption" color="text.secondary">
+            Running {shortBuild(environment.buildId)}
+          </Typography>
+        )}
       </Box>
 
       <Divider />

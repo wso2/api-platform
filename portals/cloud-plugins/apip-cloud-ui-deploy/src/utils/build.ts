@@ -16,7 +16,12 @@
  * under the License.
  */
 
-export { default as DeployFeature } from './DeployFeature';
-export type { DeployFeatureProps } from './DeployFeature';
-export type { AIWorkspaceHostPort, ApiFetch, CloudHostPort, NotifySeverity } from './hostPort';
-export type { Build, DeploymentParameter, DeploymentStatus, Environment, Gateway } from './types';
+/**
+ * A build id shortened for display. Build ids are UUIDs, which are unreadable in
+ * full but recognisable by their first segment — enough to tell two builds apart
+ * on screen, while the full id stays available wherever it is acted on.
+ */
+export function shortBuild(buildId?: string): string {
+  if (!buildId) return '—';
+  return `Build ${buildId.slice(0, 8)}`;
+}

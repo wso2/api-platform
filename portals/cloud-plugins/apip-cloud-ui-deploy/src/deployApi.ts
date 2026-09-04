@@ -17,7 +17,7 @@
  */
 
 import type { ApiFetch } from './hostPort';
-import type { DeploymentParameter, DeploymentStatus, Environment, Gateway } from './types';
+import type { Build, DeploymentParameter, DeploymentStatus, Environment, Gateway } from './types';
 
 /** Wire shapes returned by the deployment endpoints. */
 type GatewayDeploymentDTO = {
@@ -27,7 +27,10 @@ type GatewayDeploymentDTO = {
   status?: string;
   statusReason?: string;
   createdAt?: string;
+  buildId?: string;
 };
+
+type BuildDTO = { buildId: string; createdBy?: string; createdAt?: string };
 
 type StageDTO = {
   environment: string;
@@ -117,26 +120,52 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
             deploymentName: dto.name,
             statusReason: dto.statusReason,
             deployedAt: dto.createdAt,
+            buildId: dto.buildId,
           })
         ),
       }));
     },
 
     /**
-     * Deploys to the named gateways of an environment. `fromEnvironment` promotes
-     * that environment's current build forward instead of rendering a new one;
-     * the server rejects a promotion the pipeline does not allow, or one whose
-     * source has nothing deployed.
+     * Prepares a build: an immutable snapshot of the API as it stands now. This is
+     * the step that fixes what a later deploy will send.
+     */
+    async prepare(): Promise<Build> {
+      const built = await apiFetch<BuildDTO>('POST', `${base}/builds`);
+      return {
+        buildId: built?.buildId ?? '',
+        createdBy: built?.createdBy,
+        createdAt: built?.createdAt,
+      };
+    },
+
+    /** The API's prepared builds, newest first. */
+    async listBuilds(): Promise<Build[]> {
+      const response = await apiFetch<{ list?: BuildDTO[] }>('GET', `${base}/builds`);
+      return (response?.list ?? []).map((dto) => ({
+        buildId: dto.buildId,
+        createdBy: dto.createdBy,
+        createdAt: dto.createdAt,
+      }));
+    },
+
+    /**
+     * Deploys a prepared build to the named gateways of an environment.
+     * `fromEnvironment` promotes that environment's build forward instead; the
+     * server rejects a promotion the pipeline does not allow, or one whose source
+     * has nothing deployed.
      */
     async deploy(input: {
       environment: string;
       gatewayIds: string[];
+      buildId?: string;
       fromEnvironment?: string;
       parameters?: Record<string, string>;
     }): Promise<void> {
       await apiFetch('POST', `${base}/deployments`, {
         environment: input.environment,
         gatewayIds: input.gatewayIds,
+        ...(input.buildId ? { buildId: input.buildId } : {}),
         ...(input.fromEnvironment ? { fromEnvironment: input.fromEnvironment } : {}),
         ...(input.parameters ? { parameters: input.parameters } : {}),
       });
