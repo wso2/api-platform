@@ -534,14 +534,21 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 		apiType = constants.WebSubApi
 	}
 
+	annotations := map[string]string{
+		// Stable internal id — keep UUID for consumers that depend on project-id format.
+		commonconstants.AnnotationProjectID: apiModel.ProjectID,
+	}
+	if handle := strings.TrimSpace(apiModel.ProjectHandle); handle != "" {
+		// User-facing handle for analytics (Moesif metadata.projectId).
+		annotations[commonconstants.AnnotationProjectHandle] = handle
+	}
+
 	return &dto.APIDeploymentYAML{
 		ApiVersion: constants.GatewayApiVersion,
 		Kind:       apiType,
 		Metadata: dto.DeploymentMetadata{
-			Name: apiModel.Handle,
-			Annotations: map[string]string{
-				commonconstants.AnnotationProjectID: apiModel.ProjectID,
-			},
+			Name:        apiModel.Handle,
+			Annotations: annotations,
 			Labels: map[string]string{
 				commonconstants.DeprecatedLabelProjectID: apiModel.ProjectID,
 			},

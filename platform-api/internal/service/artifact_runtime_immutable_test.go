@@ -90,6 +90,27 @@ func TestRESTRuntimeArtifactGuard(t *testing.T) {
 		}
 	})
 
+	t.Run("metadata-only edit allowed when project handle is set", func(t *testing.T) {
+		existing := baseRESTAPI(constants.OriginDP)
+		existing.ProjectHandle = "new-project"
+		updated := baseRESTAPI(constants.OriginDP)
+		updated.ProjectHandle = existing.ProjectHandle
+		updated.Description = "a shiny new description"
+		if err := svc.ensureRESTRuntimeArtifactUnchanged(existing, updated); err != nil {
+			t.Errorf("metadata-only edit with project handle rejected: %v", err)
+		}
+	})
+
+	t.Run("missing project handle rejects harmless edit", func(t *testing.T) {
+		existing := baseRESTAPI(constants.OriginDP)
+		existing.ProjectHandle = "new-project"
+		updated := baseRESTAPI(constants.OriginDP)
+		updated.Description = "a shiny new description"
+		if err := svc.ensureRESTRuntimeArtifactUnchanged(existing, updated); !apperror.ArtifactRuntimeImmutable.Is(err) {
+			t.Errorf("without ProjectHandle on updated: got %v, want read-only", err)
+		}
+	})
+
 	t.Run("upstream edit rejected", func(t *testing.T) {
 		existing := baseRESTAPI(constants.OriginDP)
 		updated := baseRESTAPI(constants.OriginDP)

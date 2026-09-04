@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -84,6 +85,58 @@ func makeRestAPIStoredConfig(apiPolicies []api.Policy, opPolicies []api.Policy) 
 		Kind:          string(api.RestAPIKindRestApi),
 		Configuration: restAPI,
 	}
+}
+
+func TestRestAPITransformer_PrefersProjectHandleForAnalyticsMetadata(t *testing.T) {
+	cfg := makeRestAPIStoredConfig(nil, nil)
+	restAPI := cfg.Configuration.(api.RestAPI)
+	restAPI.Metadata.Annotations = &map[string]string{
+		commonconstants.AnnotationProjectID:     "019feb20-bd8f-74f1-9489-8814a129cd80",
+		commonconstants.AnnotationProjectHandle: "new-project",
+	}
+	cfg.Configuration = restAPI
+
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "019feb20-bd8f-74f1-9489-8814a129cd80", rdc.Metadata.ProjectID)
+	assert.Equal(t, "new-project", rdc.Metadata.ProjectHandle)
+	assert.Equal(t, "new-project", rdc.Metadata.AnalyticsProjectRef())
+}
+
+func TestRestAPITransformer_TrimsProjectHandleAnnotation(t *testing.T) {
+	projectUUID := "019feb20-bd8f-74f1-9489-8814a129cd80"
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	t.Run("padded handle is trimmed", func(t *testing.T) {
+		cfg := makeRestAPIStoredConfig(nil, nil)
+		restAPI := cfg.Configuration.(api.RestAPI)
+		restAPI.Metadata.Annotations = &map[string]string{
+			commonconstants.AnnotationProjectID:     projectUUID,
+			commonconstants.AnnotationProjectHandle: "  new-project  ",
+		}
+		cfg.Configuration = restAPI
+
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "new-project", rdc.Metadata.ProjectHandle)
+		assert.Equal(t, "new-project", rdc.Metadata.AnalyticsProjectRef())
+	})
+
+	t.Run("whitespace-only handle falls back to project id", func(t *testing.T) {
+		cfg := makeRestAPIStoredConfig(nil, nil)
+		restAPI := cfg.Configuration.(api.RestAPI)
+		restAPI.Metadata.Annotations = &map[string]string{
+			commonconstants.AnnotationProjectID:     projectUUID,
+			commonconstants.AnnotationProjectHandle: "   \t  ",
+		}
+		cfg.Configuration = restAPI
+
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		assert.Empty(t, rdc.Metadata.ProjectHandle)
+		assert.Equal(t, projectUUID, rdc.Metadata.AnalyticsProjectRef())
+	})
 }
 
 // makeRestAPIStoredConfigWithResilience builds a RestAPI StoredConfig whose single

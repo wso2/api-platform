@@ -378,7 +378,7 @@ func (t *Translator) createRouteConfigResource(
 		"handle":       rdc.Metadata.Handle,
 		"version":      rdc.Metadata.Version,
 		"display_name": rdc.Metadata.DisplayName,
-		"project_id":   rdc.Metadata.ProjectID,
+		"project_id":   rdc.Metadata.AnalyticsProjectRef(),
 		"api_context":  rdc.Context,
 		"vhost":        route.Vhost,
 		"path":         route.OperationPath,

@@ -23,6 +23,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -852,5 +853,76 @@ func TestAPIServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
 	}
 	if apiRepo.updated != nil {
 		t.Error("expected API update to be aborted, but repo.UpdateAPI was called")
+	}
+}
+
+func TestAPIServiceUpdate_DPOriginAllowsMetadataEditWithProjectHandle(t *testing.T) {
+	contextPath := "/reading"
+	existing := &model.API{
+		ID:             "api-uuid",
+		Handle:         "reading-list-api",
+		Name:           "Reading List API",
+		OrganizationID: "org-1",
+		ProjectID:      "019feb20-aaaa-bbbb-cccc-ddddeeeeffff",
+		ProjectHandle:  "new-project",
+		Origin:         constants.OriginDP,
+		Kind:           constants.RestApi,
+		Version:        "v1.0",
+		Configuration: model.RestAPIConfig{
+			Name:    "Reading List API",
+			Version: "v1.0",
+			Context: &contextPath,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://backend.example.com"},
+			},
+			Operations: []model.Operation{
+				{Name: "get", Request: &model.OperationRequest{Method: "GET", Path: "/items"}},
+			},
+		},
+	}
+
+	apiRepo := &mockAPIRepository{
+		getByUUIDFunc: func(apiUUID, orgUUID string) (*model.API, error) {
+			copy := *existing
+			return &copy, nil
+		},
+	}
+	service := &APIService{
+		apiRepo: apiRepo,
+		projectRepo: &mockProjectRepository{
+			projectByUUID: &model.Project{
+				ID:     existing.ProjectID,
+				Handle: existing.ProjectHandle,
+			},
+		},
+		apiUtil:   &utils.APIUtil{},
+		identity:  newTestIdentityService(),
+		auditRepo: &noopAuditRepo{},
+	}
+
+	req := &api.RESTAPI{
+		DisplayName: "Reading List API",
+		Context:     contextPath,
+		Version:     "v1.0",
+		Description: ptr("Updated description"),
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{
+				Url: utils.StringPtrIfNotEmpty("https://backend.example.com"),
+			},
+		},
+		Operations: &[]api.Operation{
+			{Request: api.OperationRequest{Method: "GET", Path: "/items"}},
+		},
+	}
+
+	_, err := service.UpdateAPI("api-uuid", req, "org-1", "alice")
+	if err != nil {
+		t.Fatalf("UpdateAPI() error = %v", err)
+	}
+	if apiRepo.updated == nil {
+		t.Fatal("expected repo.UpdateAPI to be called")
+	}
+	if apiRepo.updated.Description != "Updated description" {
+		t.Errorf("description = %q, want %q", apiRepo.updated.Description, "Updated description")
 	}
 }
