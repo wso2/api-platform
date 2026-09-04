@@ -22,10 +22,9 @@ import type { RestApi } from '@/api/resources/restApis';
 import { interactiveCardSx } from '@/theme';
 import {
   apiDescriptionSx,
-  ApiActionsMenu,
+  ApiDeleteButton,
   ApiKindAvatar,
   ApiKindChip,
-  LifecycleStatusLabel,
   UpdatedLabel,
   VersionChip,
 } from './RestApiChips';
@@ -49,6 +48,9 @@ export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
       onClick={() => onOpen(api)}
       sx={{
         ...interactiveCardSx,
+        '&:focus-within .api-delete-action, &:hover .api-delete-action': {
+          opacity: 1,
+        },
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
@@ -63,8 +65,8 @@ export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
                 {api.displayName}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                <ApiKindChip kind={api.kind} />
                 <VersionChip version={api.version} />
+                <ApiKindChip kind={api.kind} />
               </Stack>
             </Box>
           </Stack>
@@ -77,15 +79,12 @@ export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
       <Divider />
 
       <Box sx={{ alignItems: 'center', display: 'flex', gap: 1, px: 2, py: 1.25 }}>
-        <LifecycleStatusLabel status={api.lifeCycleStatus} />
-        <Stack alignItems="center" direction="row" spacing={0.5} sx={{ ml: 'auto' }}>
-          <UpdatedLabel timestamp={updated} />
-          {onDelete && (
-            <Box sx={{ mr: -1.5 }}>
-              <ApiActionsMenu apiName={api.displayName} onDelete={() => onDelete(api)} />
-            </Box>
-          )}
-        </Stack>
+        <UpdatedLabel timestamp={updated} />
+        {onDelete && (
+          <Box sx={{ ml: 'auto', mr: -1 }}>
+            <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
+          </Box>
+        )}
       </Box>
     </Card>
   );

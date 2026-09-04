@@ -549,6 +549,10 @@
     "defaultMessage": "Delete API",
     "description": "Delete action shown in an API card or row actions menu."
   },
+  "apiCard.deleteAriaLabel": {
+    "defaultMessage": "Delete {apiName}",
+    "description": "Accessible label for the API delete button."
+  },
   "apiCard.gatewayManaged.label": {
     "defaultMessage": "Gateway-managed",
     "description": "Chip marking an API the console discovered from a gateway and cannot edit."
@@ -556,10 +560,6 @@
   "apiCard.gatewayManaged.tooltip": {
     "defaultMessage": "Discovered from a data-plane gateway — read-only here",
     "description": "Explains why a gateway-managed API cannot be edited here."
-  },
-  "apiCard.moreActions": {
-    "defaultMessage": "More actions for {apiName}",
-    "description": "Accessible label for the API actions menu button."
   },
   "apiCard.updated": {
     "defaultMessage": "Updated {relative}",
@@ -1587,7 +1587,7 @@
     "defaultMessage": "Loading organization"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectApiCount": {
-    "defaultMessage": "{count} APIs"
+    "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorCancel": {
     "defaultMessage": "Cancel"
@@ -1613,11 +1613,11 @@
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd": {
     "defaultMessage": "New project"
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsCount": {
-    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
-  },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmpty": {
     "defaultMessage": "No projects match your search."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsNone": {
+    "defaultMessage": "No projects yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsSearch": {
     "defaultMessage": "Search projects"
@@ -1779,17 +1779,11 @@
     "defaultMessage": "Test {apiName}",
     "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
   },
-  "apiControlPlane.projects.ProjectQuickActions.attachPolicy": {
-    "defaultMessage": "Attach a governance policy"
-  },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"
   },
   "apiControlPlane.projects.ProjectQuickActions.inviteMember": {
     "defaultMessage": "Invite a team member"
-  },
-  "apiControlPlane.projects.ProjectQuickActions.publishPortal": {
-    "defaultMessage": "Publish to a developer portal"
   },
   "apiControlPlane.projects.ProjectQuickActions.title": {
     "defaultMessage": "Quick actions"
@@ -1803,30 +1797,20 @@
   "apiControlPlane.projects.ProjectStatistics.deployments": {
     "defaultMessage": "Deployments"
   },
-  "apiControlPlane.projects.ProjectStatistics.environments": {
-    "defaultMessage": "across environments"
-  },
-  "apiControlPlane.projects.ProjectStatistics.errorRate": {
-    "defaultMessage": "Error rate"
-  },
   "apiControlPlane.projects.ProjectStatistics.graphql": {
     "defaultMessage": "GraphQL"
   },
   "apiControlPlane.projects.ProjectStatistics.grpc": {
     "defaultMessage": "gRPC"
   },
-  "apiControlPlane.projects.ProjectStatistics.requests": {
-    "defaultMessage": "Requests (24h)"
-  },
   "apiControlPlane.projects.ProjectStatistics.rest": {
     "defaultMessage": "REST"
   },
+  "apiControlPlane.projects.ProjectStatistics.selectType": {
+    "defaultMessage": "Filter APIs by {type}"
+  },
   "apiControlPlane.projects.ProjectStatistics.statusSummary": {
     "defaultMessage": "{published} published · {created} created"
-  },
-  "apiListPage.count": {
-    "defaultMessage": "{count, plural, one {# API} other {# APIs}}",
-    "description": "Heading above the listing, counting every match, not the page."
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",
@@ -1869,7 +1853,7 @@
     "defaultMessage": "Loading APIs"
   },
   "apiListPage.noMatches.description": {
-    "defaultMessage": "Try a different API name or clear the search."
+    "defaultMessage": "Try a different API name or clear the active filter."
   },
   "apiListPage.noMatches.title": {
     "defaultMessage": "No matching APIs"
@@ -1895,9 +1879,6 @@
   "apiListView.column.api": {
     "defaultMessage": "API"
   },
-  "apiListView.column.status": {
-    "defaultMessage": "Status"
-  },
   "apiListView.column.type": {
     "defaultMessage": "Type"
   },
@@ -1906,6 +1887,9 @@
   },
   "apiListView.column.version": {
     "defaultMessage": "Version"
+  },
+  "appLayout.breadcrumb.home": {
+    "defaultMessage": "Home"
   },
   "appLayout.footer.privacyPolicy": {
     "defaultMessage": "Privacy Policy",

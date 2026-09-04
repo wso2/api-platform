@@ -41,6 +41,7 @@ export type { RestApiListFilters } from './restApis.hooks';
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
+  useAllRestApis,
   useCreateRestApi,
   useDeleteRestApi,
   useRestApi,

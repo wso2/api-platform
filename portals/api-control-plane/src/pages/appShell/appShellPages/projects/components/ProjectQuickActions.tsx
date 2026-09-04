@@ -17,17 +17,13 @@
  */
 
 import { Button, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { FileUp, Send, ShieldCheck, UserPlus } from '@wso2/oxygen-ui-icons-react';
+import { FileUp, UserPlus } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { routes } from '@/routes/paths';
 
 const messages = defineMessages({
-  attachPolicy: {
-    id: 'apiControlPlane.projects.ProjectQuickActions.attachPolicy',
-    defaultMessage: 'Attach a governance policy',
-  },
   importApi: {
     id: 'apiControlPlane.projects.ProjectQuickActions.importApi',
     defaultMessage: 'Import an OpenAPI definition',
@@ -35,10 +31,6 @@ const messages = defineMessages({
   inviteMember: {
     id: 'apiControlPlane.projects.ProjectQuickActions.inviteMember',
     defaultMessage: 'Invite a team member',
-  },
-  publishPortal: {
-    id: 'apiControlPlane.projects.ProjectQuickActions.publishPortal',
-    defaultMessage: 'Publish to a developer portal',
   },
   title: {
     id: 'apiControlPlane.projects.ProjectQuickActions.title',
@@ -78,20 +70,6 @@ export function ProjectQuickActions({ orgHandle, projectId }: ProjectQuickAction
             variant="text"
           >
             <FormattedMessage {...messages.inviteMember} />
-          </Button>
-          <Button
-            onClick={() => navigate(routes.apis(orgHandle, projectId))}
-            startIcon={<Send size={16} />}
-            variant="text"
-          >
-            <FormattedMessage {...messages.publishPortal} />
-          </Button>
-          <Button
-            onClick={() => navigate(routes.apis(orgHandle, projectId))}
-            startIcon={<ShieldCheck size={16} />}
-            variant="text"
-          >
-            <FormattedMessage {...messages.attachPolicy} />
           </Button>
         </Stack>
       </Stack>

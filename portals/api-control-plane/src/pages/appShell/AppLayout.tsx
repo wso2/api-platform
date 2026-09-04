@@ -41,7 +41,7 @@ import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostP
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 
 /**
  * Full-page creation flows, which the shell renders without a breadcrumb trail.
@@ -54,9 +54,10 @@ import { FormattedMessage } from 'react-intl';
 const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway()];
 
 export default function AppLayout() {
+  const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
-  const { organization, project, component, params } = useConsoleScope();
+  const { project, component, params } = useConsoleScope();
   const { notify } = useNotifications();
 
   const hidesBreadcrumbs = BREADCRUMB_FREE_ROUTES.some(
@@ -79,7 +80,10 @@ export default function AppLayout() {
   if (params.orgHandle) {
     crumbs.push({
       key: 'org',
-      label: organization?.displayName || params.orgHandle,
+      label: intl.formatMessage({
+        id: 'appLayout.breadcrumb.home',
+        defaultMessage: 'Home',
+      }),
       onClick: () => navigate(routes.organizationHome(params.orgHandle!)),
     });
   }

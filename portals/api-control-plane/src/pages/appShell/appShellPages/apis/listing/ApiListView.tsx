@@ -22,18 +22,16 @@ import { defineMessages, FormattedMessage } from 'react-intl';
 import type { RestApi } from '@/api/resources/restApis';
 import {
   apiDescriptionSx,
-  ApiActionsMenu,
+  ApiDeleteButton,
   ApiKindAvatar,
   ApiKindChip,
   UpdatedLabel,
-  LifecycleStatusLabel,
 } from './components/RestApiChips';
 
 const AVATAR_SIZE = 40;
 
 const messages = defineMessages({
   api: { id: 'apiListView.column.api', defaultMessage: 'API' },
-  status: { id: 'apiListView.column.status', defaultMessage: 'Status' },
   type: { id: 'apiListView.column.type', defaultMessage: 'Type' },
   updated: { id: 'apiListView.column.updated', defaultMessage: 'Updated' },
   version: { id: 'apiListView.column.version', defaultMessage: 'Version' },
@@ -45,7 +43,7 @@ const rowGridSx = {
   gap: 2,
   gridTemplateColumns: {
     xs: 'minmax(0, 1fr) auto',
-    md: 'minmax(0, 1fr) 100px 120px 140px 160px',
+    md: 'minmax(0, 1fr) 120px 100px 180px',
   },
 } as const;
 
@@ -72,6 +70,9 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
         py: 1.75,
         transition: theme.transitions.create('background-color'),
         ...rowGridSx,
+        '&:focus-within .api-delete-action, &:hover .api-delete-action': {
+          opacity: 1,
+        },
         '&:hover': { bgcolor: 'action.hover' },
         '&:last-of-type': { borderBottom: 0 },
       })}
@@ -90,16 +91,12 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
       </Stack>
 
       <Box sx={{ display: { md: 'block', xs: 'none' } }}>
-        <ApiKindChip kind={api.kind} />
+        <Typography sx={{ fontFamily: 'monospace' }} variant="body2">
+          {api.version}
+        </Typography>
       </Box>
-      <Typography
-        sx={{ display: { md: 'block', xs: 'none' }, fontFamily: 'monospace' }}
-        variant="body2"
-      >
-        {api.version}
-      </Typography>
       <Box sx={{ display: { md: 'block', xs: 'none' } }}>
-        <LifecycleStatusLabel status={api.lifeCycleStatus} />
+        <ApiKindChip kind={api.kind} />
       </Box>
       <Stack
         alignItems="center"
@@ -110,14 +107,20 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
       >
         <UpdatedLabel timestamp={updated} />
         {onDelete && (
-          <Box sx={{ mr: -1.5 }}>
-            <ApiActionsMenu apiName={api.displayName} onDelete={() => onDelete(api)} />
+          <Box sx={{ mr: -1 }}>
+            <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
           </Box>
         )}
       </Stack>
-      <Box sx={{ display: { md: 'none', xs: 'block' } }}>
+      <Stack
+        alignItems="center"
+        direction="row"
+        spacing={0.5}
+        sx={{ display: { md: 'none', xs: 'flex' } }}
+      >
         <UpdatedLabel timestamp={updated} />
-      </Box>
+        {onDelete && <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />}
+      </Stack>
     </Box>
   );
 }
@@ -148,13 +151,6 @@ export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
           sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700 }}
           variant="caption"
         >
-          <FormattedMessage {...messages.type} />
-        </Typography>
-        <Typography
-          color="text.secondary"
-          sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700 }}
-          variant="caption"
-        >
           <FormattedMessage {...messages.version} />
         </Typography>
         <Typography
@@ -162,7 +158,7 @@ export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
           sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700 }}
           variant="caption"
         >
-          <FormattedMessage {...messages.status} />
+          <FormattedMessage {...messages.type} />
         </Typography>
         <Typography
           color="text.secondary"

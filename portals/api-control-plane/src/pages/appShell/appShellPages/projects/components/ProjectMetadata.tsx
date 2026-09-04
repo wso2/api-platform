@@ -23,8 +23,8 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
-import { useFormatters } from '@/i18n/useFormatters';
 import { routes } from '@/routes/paths';
+import { relativeTime } from '@/utils/relativeTime';
 
 const messages = defineMessages({
   created: {
@@ -61,12 +61,11 @@ type ProjectMetadataProps = {
 export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
   const intl = useIntl();
   const navigate = useNavigate();
-  const { shortDate } = useFormatters();
   const memberName = project.updatedBy;
   const memberCount = memberName ? 1 : 0;
   const owner = project.createdBy || intl.formatMessage(messages.unknown);
   const created = project.createdAt
-    ? shortDate(project.createdAt)
+    ? relativeTime(project.createdAt)
     : intl.formatMessage(messages.unknown);
   const muted = (chunks: ReactNode) => (
     <Box component="span" sx={{ opacity: 0.7 }}>

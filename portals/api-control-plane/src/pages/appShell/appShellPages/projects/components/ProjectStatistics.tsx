@@ -16,12 +16,16 @@
  * under the License.
  */
 
-import { Card, CardContent, Divider, Grid, Skeleton, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, ButtonBase, Divider, Grid, Skeleton, Stack, Typography } from '@wso2/oxygen-ui';
 import { Braces, Boxes, Network, Radio } from '@wso2/oxygen-ui-icons-react';
 import type { ReactNode } from 'react';
-import { defineMessages, FormattedMessage, FormattedNumber } from 'react-intl';
+import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 
-import { useRestApis } from '@/api/resources/restApis';
+import { useAllRestApis } from '@/api/resources/restApis';
+import {
+  matchesApiType,
+  type ApiTypeFilter,
+} from '@/pages/appShell/appShellPages/apis/listing/apiTypeFilter';
 
 const messages = defineMessages({
   apis: { id: 'apiControlPlane.projects.ProjectStatistics.apis', defaultMessage: 'APIs' },
@@ -33,24 +37,16 @@ const messages = defineMessages({
     id: 'apiControlPlane.projects.ProjectStatistics.deployments',
     defaultMessage: 'Deployments',
   },
-  environments: {
-    id: 'apiControlPlane.projects.ProjectStatistics.environments',
-    defaultMessage: 'across environments',
-  },
-  errorRate: {
-    id: 'apiControlPlane.projects.ProjectStatistics.errorRate',
-    defaultMessage: 'Error rate',
-  },
   graphql: {
     id: 'apiControlPlane.projects.ProjectStatistics.graphql',
     defaultMessage: 'GraphQL',
   },
   grpc: { id: 'apiControlPlane.projects.ProjectStatistics.grpc', defaultMessage: 'gRPC' },
-  requests: {
-    id: 'apiControlPlane.projects.ProjectStatistics.requests',
-    defaultMessage: 'Requests (24h)',
-  },
   rest: { id: 'apiControlPlane.projects.ProjectStatistics.rest', defaultMessage: 'REST' },
+  selectType: {
+    id: 'apiControlPlane.projects.ProjectStatistics.selectType',
+    defaultMessage: 'Filter APIs by {type}',
+  },
   statusSummary: {
     id: 'apiControlPlane.projects.ProjectStatistics.statusSummary',
     defaultMessage: '{published} published · {created} created',
@@ -58,155 +54,163 @@ const messages = defineMessages({
 });
 
 const ApiTypeMetric = ({
+  ariaLabel,
   icon,
   label,
+  onClick,
+  selected,
   value,
 }: {
+  ariaLabel: string;
   icon: ReactNode;
   label: ReactNode;
+  onClick: () => void;
+  selected: boolean;
   value?: number;
 }) => (
-  <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={1}>
-    <Stack alignItems="center" direction="row" spacing={0.75}>
-      {icon}
-      <Typography color="text.secondary" variant="body2">
+  <ButtonBase
+    aria-label={ariaLabel}
+    aria-pressed={selected}
+    onClick={onClick}
+    sx={{
+      '&:hover': { bgcolor: 'action.hover' },
+      bgcolor: selected ? 'action.selected' : 'transparent',
+      border: 1,
+      borderColor: selected ? 'primary.main' : 'transparent',
+      borderRadius: 1,
+      px: 1.5,
+      py: 1,
+      transition: 'background-color 150ms ease, border-color 150ms ease',
+      width: '100%',
+    }}
+  >
+    <Stack alignItems="center" direction="row" spacing={1.25} sx={{ width: '100%' }}>
+      <Box sx={{ color: selected ? 'primary.main' : 'text.secondary', display: 'flex' }}>
+        {icon}
+      </Box>
+      <Typography color={selected ? 'text.primary' : 'text.secondary'} variant="body1">
         {label}
       </Typography>
-    </Stack>
-    {value === undefined ? (
-      <Skeleton height={24} width={24} />
-    ) : (
-      <Typography sx={{ fontWeight: 600 }} variant="body2">
-        <FormattedNumber value={value} />
-      </Typography>
-    )}
-  </Stack>
-);
-
-const PendingMetricCard = ({ label }: { label: ReactNode }) => (
-  <Card sx={{ height: '100%' }} variant="outlined">
-    <CardContent
-      sx={{
-        '&:last-child': { pb: 2 },
-        alignItems: 'center',
-        display: 'flex',
-        height: '100%',
-        p: 2,
-      }}
-    >
-      <Stack spacing={1.5}>
-        <Typography color="text.secondary" sx={{ textTransform: 'uppercase' }} variant="caption">
-          {label}
+      {value === undefined ? (
+        <Skeleton height={24} width={24} />
+      ) : (
+        <Typography sx={{ fontWeight: 700 }} variant="h6">
+          <FormattedNumber value={value} />
         </Typography>
-        <Skeleton height={48} width="45%" />
-        <Skeleton height={20} width="65%" />
-      </Stack>
-    </CardContent>
-  </Card>
+      )}
+    </Stack>
+  </ButtonBase>
 );
 
-export function ProjectStatistics() {
-  const apisQuery = useRestApis({ limit: 100, offset: 0 });
+type ProjectStatisticsProps = {
+  onTypeFilterChange: (type: ApiTypeFilter | null) => void;
+  selectedType: ApiTypeFilter | null;
+};
+
+export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectStatisticsProps) {
+  const intl = useIntl();
+  const apisQuery = useAllRestApis();
   const total = apisQuery.data?.pagination.total;
   const apis = apisQuery.data?.list;
-  const countKind = (...kinds: string[]) =>
-    apis?.filter((api) => kinds.includes(api.kind?.toLowerCase() ?? '')).length;
+  const countType = (type: ApiTypeFilter) =>
+    apis?.filter((api) => matchesApiType(api.kind, type)).length;
   const published = apis?.filter((api) => api.lifeCycleStatus === 'PUBLISHED').length;
   const created = apis?.filter((api) => api.lifeCycleStatus === 'CREATED').length;
+  const selectType = (type: ApiTypeFilter) =>
+    onTypeFilterChange(selectedType === type ? null : type);
+  const filterLabel = (label: string) => intl.formatMessage(messages.selectType, { type: label });
 
   return (
-    <Grid container spacing={2}>
-      <Grid size={{ lg: 6, xs: 12 }}>
-        <Card sx={{ height: '100%' }} variant="outlined">
-          <CardContent
-            sx={{
-              '&:last-child': { pb: 2 },
-              alignItems: 'center',
-              display: 'flex',
-              height: '100%',
-              p: 2,
-            }}
-          >
-            <Grid container spacing={2} sx={{ width: '100%' }}>
-              <Grid size={{ sm: 3, xs: 12 }}>
-                <Typography
-                  color="text.secondary"
-                  sx={{ textTransform: 'uppercase' }}
-                  variant="caption"
-                >
-                  <FormattedMessage {...messages.apis} />
-                </Typography>
-                {total === undefined ? (
-                  <Skeleton height={52} width={64} />
-                ) : (
-                  <Typography sx={{ fontWeight: 700 }} variant="h2">
-                    <FormattedNumber value={total} />
-                  </Typography>
-                )}
-                {published === undefined || created === undefined ? (
-                  <Skeleton height={20} width={112} />
-                ) : (
-                  <Typography color="text.secondary" variant="caption">
-                    <FormattedMessage {...messages.statusSummary} values={{ created, published }} />
-                  </Typography>
-                )}
-              </Grid>
-              <Grid size={{ sm: 9, xs: 12 }}>
-                <Grid container spacing={1.25}>
-                  <Grid size={{ sm: 6, xs: 12 }}>
-                    <ApiTypeMetric
-                      icon={<Boxes size={16} />}
-                      label={<FormattedMessage {...messages.rest} />}
-                      value={total}
-                    />
-                  </Grid>
-                  <Grid size={{ sm: 6, xs: 12 }}>
-                    <ApiTypeMetric
-                      icon={<Braces size={16} />}
-                      label={<FormattedMessage {...messages.graphql} />}
-                      value={countKind('graphql')}
-                    />
-                  </Grid>
-                  <Grid size={{ sm: 6, xs: 12 }}>
-                    <ApiTypeMetric
-                      icon={<Radio size={16} />}
-                      label={<FormattedMessage {...messages.async} />}
-                      value={countKind('async', 'asyncapi', 'event')}
-                    />
-                  </Grid>
-                  <Grid size={{ sm: 6, xs: 12 }}>
-                    <ApiTypeMetric
-                      icon={<Network size={16} />}
-                      label={<FormattedMessage {...messages.grpc} />}
-                      value={countKind('grpc')}
-                    />
-                  </Grid>
-                </Grid>
-                <Divider sx={{ my: 1 }} />
-                <Stack alignItems="center" direction="row" justifyContent="space-between">
-                  <Stack alignItems="center" direction="row" spacing={0.75}>
-                    <Network size={16} />
-                    <Typography color="text.secondary" variant="body2">
-                      <FormattedMessage {...messages.deployments} />
-                    </Typography>
-                  </Stack>
-                  <Stack alignItems="center" direction="row" spacing={1}>
-                    <Skeleton height={24} width={28} />
-                    <Typography color="text.secondary" variant="caption">
-                      <FormattedMessage {...messages.environments} />
-                    </Typography>
-                  </Stack>
-                </Stack>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
+    <Grid alignItems="center" container sx={{ minHeight: 80, py: 1.5 }}>
+      <Grid size={{ md: 2, xs: 12 }}>
+        <Stack spacing={0.5}>
+          <Typography color="text.secondary" sx={{ textTransform: 'uppercase' }} variant="caption">
+            <FormattedMessage {...messages.apis} />
+          </Typography>
+          <Stack alignItems="baseline" direction="row" spacing={1}>
+            {total === undefined ? (
+              <Skeleton height={40} width={32} />
+            ) : (
+              <Typography sx={{ fontWeight: 700 }} variant="h2">
+                <FormattedNumber value={total} />
+              </Typography>
+            )}
+            {published === undefined || created === undefined ? (
+              <Skeleton height={20} width={112} />
+            ) : (
+              <Typography color="text.secondary" variant="caption">
+                <FormattedMessage {...messages.statusSummary} values={{ created, published }} />
+              </Typography>
+            )}
+          </Stack>
+        </Stack>
       </Grid>
-      <Grid size={{ lg: 3, sm: 6, xs: 12 }}>
-        <PendingMetricCard label={<FormattedMessage {...messages.requests} />} />
+
+      <Grid size={{ md: 'auto', xs: 12 }} sx={{ alignSelf: 'stretch', px: { md: 2.5, xs: 0 } }}>
+        <Divider orientation="vertical" sx={{ display: { md: 'block', xs: 'none' } }} />
+        <Divider sx={{ display: { md: 'none', xs: 'block' } }} />
       </Grid>
-      <Grid size={{ lg: 3, sm: 6, xs: 12 }}>
-        <PendingMetricCard label={<FormattedMessage {...messages.errorRate} />} />
+
+      <Grid size={{ md: 7, xs: 12 }}>
+        <Grid container spacing={2.5}>
+          <Grid size={{ lg: 3, sm: 6, xs: 12 }}>
+            <ApiTypeMetric
+              ariaLabel={filterLabel(intl.formatMessage(messages.rest))}
+              icon={<Boxes size={16} />}
+              label={<FormattedMessage {...messages.rest} />}
+              onClick={() => selectType('rest')}
+              selected={selectedType === 'rest'}
+              value={countType('rest')}
+            />
+          </Grid>
+          <Grid size={{ lg: 3, sm: 6, xs: 12 }}>
+            <ApiTypeMetric
+              ariaLabel={filterLabel(intl.formatMessage(messages.graphql))}
+              icon={<Braces size={16} />}
+              label={<FormattedMessage {...messages.graphql} />}
+              onClick={() => selectType('graphql')}
+              selected={selectedType === 'graphql'}
+              value={countType('graphql')}
+            />
+          </Grid>
+          <Grid size={{ lg: 3, sm: 6, xs: 12 }}>
+            <ApiTypeMetric
+              ariaLabel={filterLabel(intl.formatMessage(messages.async))}
+              icon={<Radio size={16} />}
+              label={<FormattedMessage {...messages.async} />}
+              onClick={() => selectType('async')}
+              selected={selectedType === 'async'}
+              value={countType('async')}
+            />
+          </Grid>
+          <Grid size={{ lg: 3, sm: 6, xs: 12 }}>
+            <ApiTypeMetric
+              ariaLabel={filterLabel(intl.formatMessage(messages.grpc))}
+              icon={<Network size={16} />}
+              label={<FormattedMessage {...messages.grpc} />}
+              onClick={() => selectType('grpc')}
+              selected={selectedType === 'grpc'}
+              value={countType('grpc')}
+            />
+          </Grid>
+        </Grid>
+      </Grid>
+
+      <Grid size={{ md: 'auto', xs: 12 }} sx={{ alignSelf: 'stretch', px: { md: 2.5, xs: 0 } }}>
+        <Divider orientation="vertical" sx={{ display: { md: 'block', xs: 'none' } }} />
+        <Divider sx={{ display: { md: 'none', xs: 'block' } }} />
+      </Grid>
+
+      <Grid size={{ md: 2, xs: 12 }}>
+        <Stack alignItems="center" direction="row" spacing={1.25}>
+          <Network size={16} />
+          <Typography color="text.secondary" variant="body1">
+            <FormattedMessage {...messages.deployments} />
+          </Typography>
+          <Box sx={{ ml: 'auto' }}>
+            <Skeleton height={24} width={28} />
+          </Box>
+        </Stack>
       </Grid>
     </Grid>
   );

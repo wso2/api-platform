@@ -47,7 +47,7 @@ import {
   Trash2,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { useOrganization } from '@/api/resources/organizations';
@@ -150,13 +150,13 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd',
     defaultMessage: 'New project',
   },
-  projectsCount: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsCount',
-    defaultMessage: '{count, plural, one {# project} other {# projects}}',
-  },
   projectsEmpty: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmpty',
     defaultMessage: 'No projects match your search.',
+  },
+  projectsNone: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsNone',
+    defaultMessage: 'No projects yet.',
   },
   projectsSearch: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsSearch',
@@ -164,7 +164,7 @@ const messages = defineMessages({
   },
   projectApiCount: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectApiCount',
-    defaultMessage: '{count} APIs',
+    defaultMessage: '{count, plural, one {# API} other {# APIs}}',
   },
   projectsTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsTitle',
@@ -373,10 +373,7 @@ export function OrganizationHomePage() {
               metric={
                 restApiCountsQuery.isPending || restApiCountsQuery.error
                   ? '—'
-                  : intl.formatNumber(restApiCountsQuery.total, {
-                      minimumIntegerDigits: 2,
-                      useGrouping: false,
-                    })
+                  : intl.formatNumber(restApiCountsQuery.total)
               }
               onAction={createApi}
               title={intl.formatMessage(messages.apiTitle)}
@@ -390,10 +387,7 @@ export function OrganizationHomePage() {
               metric={
                 gatewaysQuery.isPending || gatewaysQuery.error
                   ? '—'
-                  : intl.formatNumber(gatewaysQuery.data?.pagination.total ?? 0, {
-                      minimumIntegerDigits: 2,
-                      useGrouping: false,
-                    })
+                  : intl.formatNumber(gatewaysQuery.data?.pagination.total ?? 0)
               }
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
@@ -404,17 +398,14 @@ export function OrganizationHomePage() {
               action={intl.formatMessage(messages.developerPortalAction)}
               description={intl.formatMessage(messages.developerPortalDescription)}
               icon={<PanelTop size={22} />}
-              metric={intl.formatNumber(0, {
-                minimumIntegerDigits: 2,
-                useGrouping: false,
-              })}
+              metric={intl.formatNumber(0)}
               onAction={() => window.open(`${DOCS_BASE}/cloud/dev-portal/`, '_blank', 'noopener')}
               title={intl.formatMessage(messages.developerPortalTitle)}
             />
           </Grid>
         </Grid>
 
-        <Card sx={{ minHeight: 320 }}>
+        <Card sx={{ display: 'flex', flexDirection: 'column', minHeight: 320 }}>
           <Box
             sx={{
               alignItems: { md: 'center' },
@@ -425,12 +416,17 @@ export function OrganizationHomePage() {
               p: 2,
             }}
           >
-            <Stack alignItems="baseline" direction="row" spacing={1.5}>
+            <Stack
+              alignItems="center"
+              direction="row"
+              divider={<Divider flexItem orientation="vertical" />}
+              spacing={1.5}
+            >
               <Typography sx={{ fontWeight: 700 }} variant="h6">
                 <FormattedMessage {...messages.projectsTitle} />
               </Typography>
               <Typography color="text.secondary" variant="body2">
-                <FormattedMessage {...messages.projectsCount} values={{ count: projects.length }} />
+                <FormattedNumber value={projects.length} />
               </Typography>
             </Stack>
             <Stack
@@ -445,140 +441,155 @@ export function OrganizationHomePage() {
                 size="small"
                 value={search}
               />
-              <Button
-                onClick={() => navigate(routes.projects(orgHandle))}
-                size="small"
-                variant="text"
-              >
-                <FormattedMessage {...messages.projectsViewAll} />
-              </Button>
               <Button onClick={() => setCreateOpen(true)} size="small" variant="outlined">
                 <FormattedMessage {...messages.projectsAdd} />
               </Button>
             </Stack>
           </Box>
           <Divider />
-          {visibleProjects.length ? (
-            <>
-              <Stack divider={<Divider />}>
-                {visibleProjects.map((project) => (
-                  <Box
-                    key={project.id}
-                    sx={{
-                      alignItems: 'center',
-                      display: 'flex',
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      '&:focus-within .project-delete-action, &:hover .project-delete-action': {
-                        opacity: 1,
-                      },
-                    }}
-                  >
-                    <ButtonBase
-                      onClick={() => navigate(routes.projectHome(orgHandle, project.id))}
+          <Box sx={{ flexGrow: 1 }}>
+            {visibleProjects.length ? (
+              <>
+                <Stack divider={<Divider />}>
+                  {visibleProjects.map((project) => (
+                    <Box
+                      key={project.id}
                       sx={{
-                        flexGrow: 1,
-                        justifyContent: 'stretch',
-                        minWidth: 0,
+                        alignItems: 'center',
+                        display: 'flex',
+                        maxWidth: '100%',
                         overflow: 'hidden',
-                        textAlign: 'left',
+                        '&:focus-within .project-delete-action, &:hover .project-delete-action': {
+                          opacity: 1,
+                        },
                       }}
                     >
-                      <Box
+                      <ButtonBase
+                        onClick={() => navigate(routes.projectHome(orgHandle, project.id))}
                         sx={{
-                          alignItems: 'center',
-                          display: 'flex',
-                          gap: 1.5,
+                          flexGrow: 1,
+                          justifyContent: 'stretch',
                           minWidth: 0,
-                          pl: 2,
-                          py: 1.5,
-                          width: '100%',
+                          overflow: 'hidden',
+                          textAlign: 'left',
                         }}
                       >
-                        <Avatar
+                        <Box
                           sx={{
-                            bgcolor: 'primary.main',
-                            color: 'primary.contrastText',
-                            height: 32,
-                            width: 32,
+                            alignItems: 'center',
+                            display: 'flex',
+                            gap: 1.5,
+                            minWidth: 0,
+                            pl: 2,
+                            py: 1.5,
+                            width: '100%',
                           }}
                         >
-                          {project.displayName.charAt(0).toUpperCase()}
-                        </Avatar>
-                        <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'hidden' }}>
-                          <Typography noWrap sx={{ fontWeight: 600 }} variant="body2">
-                            {project.displayName}
-                          </Typography>
-                          {project.description && (
-                            <Typography
-                              color="text.secondary"
-                              noWrap
-                              sx={{ display: 'block', maxWidth: '80%', overflow: 'hidden' }}
-                              variant="caption"
-                            >
-                              {project.description}
-                            </Typography>
-                          )}
-                        </Box>
-                        <Typography
-                          color="text.secondary"
-                          sx={{ flexShrink: 0, minWidth: 72 }}
-                          variant="caption"
-                        >
-                          <FormattedMessage
-                            {...messages.projectApiCount}
-                            values={{ count: restApiCountsQuery.counts[project.id] ?? '—' }}
-                          />
-                        </Typography>
-                        {project.updatedAt && (
-                          <Stack
-                            alignItems="center"
-                            direction="row"
-                            justifyContent="flex-start"
-                            spacing={0.5}
+                          <Avatar
                             sx={{
-                              flexShrink: 0,
-                              maxWidth: 128,
-                              minWidth: 104,
-                              // width: 128,
+                              bgcolor: 'primary.main',
+                              color: 'primary.contrastText',
+                              height: 32,
+                              width: 32,
                             }}
                           >
-                            <Clock aria-hidden="true" size={14} />
-                            <Typography color="text.secondary" noWrap variant="caption">
-                              {relativeTime(project.updatedAt)}
+                            {project.displayName.charAt(0).toUpperCase()}
+                          </Avatar>
+                          <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'hidden' }}>
+                            <Typography noWrap sx={{ fontWeight: 600 }} variant="body2">
+                              {project.displayName}
                             </Typography>
-                          </Stack>
-                        )}
-                      </Box>
-                    </ButtonBase>
-                    <IconButton
-                      aria-label={intl.formatMessage(messages.deleteAriaLabel, {
-                        name: project.displayName,
-                      })}
-                      className="project-delete-action"
-                      color="error"
-                      onClick={() => setProjectToDelete(project)}
-                      size="small"
-                      sx={{
-                        flexShrink: 0,
-                        mr: 1.5,
-                        opacity: { md: 0, xs: 1 },
-                      }}
-                    >
-                      <Trash2 size={18} />
-                    </IconButton>
-                  </Box>
-                ))}
+                            {project.description && (
+                              <Typography
+                                color="text.secondary"
+                                noWrap
+                                sx={{ display: 'block', maxWidth: '80%', overflow: 'hidden' }}
+                                variant="caption"
+                              >
+                                {project.description}
+                              </Typography>
+                            )}
+                          </Box>
+                          <Typography
+                            color="text.secondary"
+                            sx={{ flexShrink: 0, minWidth: 72 }}
+                            variant="caption"
+                          >
+                            {restApiCountsQuery.counts[project.id] === undefined ? (
+                              '—'
+                            ) : (
+                              <FormattedMessage
+                                {...messages.projectApiCount}
+                                values={{ count: restApiCountsQuery.counts[project.id] }}
+                              />
+                            )}
+                          </Typography>
+                          {project.updatedAt && (
+                            <Stack
+                              alignItems="center"
+                              direction="row"
+                              justifyContent="flex-start"
+                              spacing={0.5}
+                              sx={{
+                                flexShrink: 0,
+                                maxWidth: 128,
+                                minWidth: 104,
+                                // width: 128,
+                              }}
+                            >
+                              <Clock aria-hidden="true" size={14} />
+                              <Typography color="text.secondary" noWrap variant="caption">
+                                {relativeTime(project.updatedAt)}
+                              </Typography>
+                            </Stack>
+                          )}
+                        </Box>
+                      </ButtonBase>
+                      <IconButton
+                        aria-label={intl.formatMessage(messages.deleteAriaLabel, {
+                          name: project.displayName,
+                        })}
+                        className="project-delete-action"
+                        color="error"
+                        onClick={() => setProjectToDelete(project)}
+                        size="small"
+                        sx={{
+                          flexShrink: 0,
+                          mr: 1.5,
+                          opacity: { md: 0, xs: 1 },
+                        }}
+                      >
+                        <Trash2 size={18} />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Stack>
+                {visibleProjects.length === 1 && <Divider />}
+              </>
+            ) : (
+              <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
+                <Boxes size={24} />
+                <Typography color="text.secondary" variant="body2">
+                  <FormattedMessage
+                    {...(search.trim() ? messages.projectsEmpty : messages.projectsNone)}
+                  />
+                </Typography>
               </Stack>
-              {visibleProjects.length === 1 && <Divider />}
+            )}
+          </Box>
+          {projects.length > 5 && (
+            <>
+              <Divider />
+              <Box sx={{ px: 1, py: 0.75 }}>
+                <Button
+                  onClick={() => navigate(routes.projects(orgHandle))}
+                  size="small"
+                  variant="text"
+                >
+                  <FormattedMessage {...messages.projectsViewAll} />
+                </Button>
+              </Box>
             </>
-          ) : (
-            <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
-              <Boxes size={24} />
-              <Typography color="text.secondary" variant="body2">
-                <FormattedMessage {...messages.projectsEmpty} />
-              </Typography>
-            </Stack>
           )}
         </Card>
 

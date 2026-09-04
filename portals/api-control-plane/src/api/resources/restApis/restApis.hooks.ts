@@ -119,6 +119,68 @@ export const useRestApiCounts = (
   };
 };
 
+/** The server-side cap on `limit` for `ListRESTAPIs` (see openapi.yaml `limit-Q`). */
+const LIST_MAX_PAGE_SIZE = 100;
+
+/**
+ * Every REST API in scope, fetched across as many pages as required.
+ *
+ * `ListRESTAPIs` caps `limit` at {@link LIST_MAX_PAGE_SIZE} server-side, so a
+ * project with more APIs than that cannot be summarized from a single
+ * request: `pagination.total` counts every API, but `list` only holds the
+ * first page. This hook fetches page one to learn `total`, fans the remaining
+ * pages out in parallel via `useQueries`, and concatenates them — so a caller
+ * computing metrics (status/type breakdowns) from `list` sees the full
+ * collection instead of silently truncating at the first page.
+ */
+export const useAllRestApis = (
+  filters: Omit<RestApiListFilters, 'limit' | 'offset'> = {},
+  overrides: { orgId?: string; projectId?: string } = {},
+) => {
+  const { org, projectId } = useApiScope(overrides);
+  const enabled = Boolean(org && projectId);
+
+  const firstPage = useQuery({
+    ...restApiQueries.list(org!, {
+      projectId: projectId!,
+      ...filters,
+      limit: LIST_MAX_PAGE_SIZE,
+      offset: 0,
+    }),
+    enabled,
+  });
+
+  const total = firstPage.data?.pagination.total ?? 0;
+  const remainingOffsets = Array.from(
+    { length: Math.max(0, Math.ceil(total / LIST_MAX_PAGE_SIZE) - 1) },
+    (_, index) => (index + 1) * LIST_MAX_PAGE_SIZE,
+  );
+
+  const remainingPages = useQueries({
+    queries: remainingOffsets.map((offset) => ({
+      ...restApiQueries.list(org!, {
+        projectId: projectId!,
+        ...filters,
+        limit: LIST_MAX_PAGE_SIZE,
+        offset,
+      }),
+      enabled: enabled && firstPage.isSuccess,
+    })),
+  });
+
+  const isPending = firstPage.isPending || remainingPages.some((page) => page.isPending);
+  const error = firstPage.error ?? remainingPages.find((page) => page.error)?.error;
+  const list = firstPage.isSuccess
+    ? [...firstPage.data.list, ...remainingPages.flatMap((page) => page.data?.list ?? [])]
+    : undefined;
+
+  return {
+    data: list ? { list, pagination: firstPage.data!.pagination } : undefined,
+    error,
+    isPending,
+  };
+};
+
 /** A single REST API by handle. */
 export const useRestApi = (restApiId: string | undefined, overrides: { orgId?: string } = {}) => {
   const { org } = useApiScope(overrides);

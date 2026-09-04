@@ -21,17 +21,13 @@ import {
   Box,
   Chip,
   IconButton,
-  ListItemIcon,
-  Menu,
-  MenuItem,
   Stack,
   Tooltip,
   Typography,
   useTheme,
 } from '@wso2/oxygen-ui';
 import type { Theme } from '@wso2/oxygen-ui';
-import { Boxes, Clock, Globe, Lock, MoreVertical, Trash2 } from '@wso2/oxygen-ui-icons-react';
-import { useState, type MouseEvent } from 'react';
+import { Boxes, Clock, Globe, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { relativeTime } from '@/utils/relativeTime';
@@ -50,10 +46,10 @@ const messages = defineMessages({
     defaultMessage: 'Delete API',
     description: 'Delete action shown in an API card or row actions menu.',
   },
-  moreActions: {
-    id: 'apiCard.moreActions',
-    defaultMessage: 'More actions for {apiName}',
-    description: 'Accessible label for the API actions menu button.',
+  deleteAriaLabel: {
+    id: 'apiCard.deleteAriaLabel',
+    defaultMessage: 'Delete {apiName}',
+    description: 'Accessible label for the API delete button.',
   },
   gatewayManagedLabel: {
     id: 'apiCard.gatewayManaged.label',
@@ -304,46 +300,29 @@ export function UpdatedLabel({
   );
 }
 
-/** Compact actions menu shared by API cards and rows. */
-export function ApiActionsMenu({ apiName, onDelete }: { apiName?: string; onDelete: () => void }) {
+/** Direct delete action shared by API cards and rows. */
+export function ApiDeleteButton({ apiName, onDelete }: { apiName: string; onDelete: () => void }) {
   const { formatMessage } = useIntl();
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-
-  const openMenu = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    setAnchorEl(event.currentTarget);
-  };
-
-  const closeMenu = () => setAnchorEl(null);
 
   return (
-    <>
+    <Tooltip title={formatMessage(messages.deleteAction)}>
       <IconButton
-        aria-label={formatMessage(messages.moreActions, { apiName })}
-        onClick={openMenu}
+        aria-label={formatMessage(messages.deleteAriaLabel, { apiName })}
+        className="api-delete-action"
+        color="error"
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
         size="small"
-        sx={{ flexShrink: 0 }}
+        sx={{
+          flexShrink: 0,
+          opacity: { md: 0, xs: 1 },
+          transition: 'opacity 150ms ease',
+        }}
       >
-        <MoreVertical size={18} />
+        <Trash2 size={18} />
       </IconButton>
-      <Menu
-        anchorEl={anchorEl}
-        onClick={(event) => event.stopPropagation()}
-        onClose={closeMenu}
-        open={Boolean(anchorEl)}
-      >
-        <MenuItem
-          onClick={() => {
-            closeMenu();
-            onDelete();
-          }}
-        >
-          <ListItemIcon>
-            <Trash2 size={18} />
-          </ListItemIcon>
-          <FormattedMessage {...messages.deleteAction} />
-        </MenuItem>
-      </Menu>
-    </>
+    </Tooltip>
   );
 }

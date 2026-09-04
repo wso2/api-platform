@@ -100,7 +100,7 @@ describe('ApiListPage', () => {
     renderPage();
 
     // 14 APIs exist; only 12 fit the first page.
-    expect(await screen.findByText('14 APIs')).toBeInTheDocument();
+    expect(await screen.findByText('14')).toBeInTheDocument();
   });
 
   it('searches server-side rather than filtering the current page', async () => {
@@ -236,8 +236,7 @@ describe('ApiListPage', () => {
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
     await screen.findByText('API 13');
 
-    await user.click(screen.getByRole('button', { name: 'More actions for API 13' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Delete API' }));
+    await user.click(screen.getByRole('button', { name: 'Delete API 13' }));
     const dialog = screen.getByRole('dialog');
     await user.type(within(dialog).getByRole('textbox'), 'API 13');
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));

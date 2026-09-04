@@ -17,17 +17,19 @@
  */
 
 import { Divider, Grid } from '@wso2/oxygen-ui';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { useProject } from '@/api/resources/projects';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { ApiList } from '@/pages/appShell/appShellPages/apis/listing';
+import type { ApiTypeFilter } from '@/pages/appShell/appShellPages/apis/listing/apiTypeFilter';
 import { ProjectMetadata } from './components/ProjectMetadata';
-import { ProjectQuickActions } from './components/ProjectQuickActions';
 import { ProjectStatistics } from './components/ProjectStatistics';
 
 // No `ScopeGate`: Overview falls back to the org tier without a project.
 export function ProjectHomePage() {
+  const [apiTypeFilter, setApiTypeFilter] = useState<ApiTypeFilter | null>(null);
   const { orgHandle = '', projectHandler = '' } = useParams();
   const projectQuery = useProject(projectHandler);
 
@@ -44,18 +46,14 @@ export function ProjectHomePage() {
           <ProjectMetadata orgHandle={orgHandle} project={project} />
         </Grid>
 
-        <Divider sx={{ width: '100%' }} />
+        <Grid size={{ xs: 12 }}>
+          <Divider />
+          <ProjectStatistics onTypeFilterChange={setApiTypeFilter} selectedType={apiTypeFilter} />
+          <Divider />
+        </Grid>
 
         <Grid size={{ xs: 12 }} sx={{ minHeight: 400 }}>
-          <ApiList />
-        </Grid>
-
-        <Grid size={{ xs: 12 }}>
-          <ProjectStatistics />
-        </Grid>
-
-        <Grid size={{ xs: 12 }}>
-          <ProjectQuickActions orgHandle={orgHandle} projectId={project.id} />
+          <ApiList typeFilter={apiTypeFilter} />
         </Grid>
       </Grid>
     </>
