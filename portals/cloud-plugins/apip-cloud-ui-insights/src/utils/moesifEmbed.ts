@@ -52,15 +52,15 @@ export const pickAllowlistedMoesifAppUrl = (
 
 /**
  * Return a trusted Moesif app base URL (HTTPS + allowlisted origin).
- * Falls back when runtime config points at an unexpected host.
+ * Returns undefined when neither URL is on the allowlist — callers must not
+ * silently fall back to web-dev in production.
  */
 export const resolveTrustedMoesifAppUrl = (
   configuredUrl: string,
   fallbackUrl: string
-): string =>
+): string | undefined =>
   pickAllowlistedMoesifAppUrl(configuredUrl) ??
-  pickAllowlistedMoesifAppUrl(fallbackUrl) ??
-  'https://web-dev.moesif.com';
+  pickAllowlistedMoesifAppUrl(fallbackUrl);
 
 /**
  * Org-level wrap/basic iframe.

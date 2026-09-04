@@ -35,6 +35,9 @@ export type InsightsFeatureProps = {
 /**
  * Resolves project scope when needed, then renders the wrap/basic Moesif embed.
  *
+ * Until Moesif reliably supports project filtering, a failed project resolve
+ * falls back to the organization embed instead of blocking the page.
+ *
  * Organization context for the viewer token comes from the BFF session — the
  * embed does not need `idpOrganizationRefUuid` from the platform-api org list.
  */
@@ -46,29 +49,34 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
   const orgHandle = port.orgHandle || routeParams.orgHandle || '';
   const projectHandle = port.projectHandle || routeParams.projectHandler;
 
-  const scopeLevel =
+  const requestedScopeLevel =
     forcedScopeLevel ??
     resolveInsightsScopeLevel({
       projectHandle,
     });
 
   const scopeKey = useMemo(
-    () => [orgHandle, projectHandle ?? '', scopeLevel].join('|'),
-    [orgHandle, projectHandle, scopeLevel]
+    () => [orgHandle, projectHandle ?? '', requestedScopeLevel].join('|'),
+    [orgHandle, projectHandle, requestedScopeLevel]
   );
 
+  const [embedScopeLevel, setEmbedScopeLevel] =
+    useState<InsightsScopeLevel>(requestedScopeLevel);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [scopeError, setScopeError] = useState<string | null>(null);
-  const [scopeLoading, setScopeLoading] = useState(scopeLevel === 'project');
+  const [scopeLoading, setScopeLoading] = useState(
+    requestedScopeLevel === 'project'
+  );
   const [resolvedScopeKey, setResolvedScopeKey] = useState<string | null>(() =>
-    scopeLevel === 'project' ? null : scopeKey
+    requestedScopeLevel === 'project' ? null : scopeKey
   );
 
   const isScopeReady = resolvedScopeKey === scopeKey;
 
   useEffect(() => {
-    if (scopeLevel !== 'project') {
+    if (requestedScopeLevel !== 'project') {
+      setEmbedScopeLevel('organization');
       setScopeLoading(false);
       setScopeError(null);
       setProjectId(null);
@@ -82,6 +90,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     setScopeError(null);
     setProjectId(null);
     setProjectName(null);
+    setEmbedScopeLevel('project');
     setResolvedScopeKey(null);
 
     (async () => {
@@ -90,16 +99,30 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
           throw new Error('Organization context is unavailable.');
         }
         if (!projectHandle) {
-          throw new Error('Project scope is required for project insights.');
+          // No project context — use org embed until Moesif project support is ready.
+          if (!cancelled) {
+            setEmbedScopeLevel('organization');
+            setProjectId(null);
+            setProjectName(null);
+            setResolvedScopeKey(scopeKey);
+          }
+          return;
         }
         const project = await resolveProjectScope(orgHandle, projectHandle);
         if (cancelled) return;
+        setEmbedScopeLevel('project');
         setProjectId(project.projectId);
         setProjectName(project.projectName);
         setResolvedScopeKey(scopeKey);
-      } catch (err: unknown) {
+      } catch {
+        // Project-level Insights unavailable (resolve failed / Moesif not ready) —
+        // fall back to organization wrap/basic.
         if (!cancelled) {
-          setScopeError(err instanceof Error ? err.message : String(err));
+          setEmbedScopeLevel('organization');
+          setProjectId(null);
+          setProjectName(null);
+          setScopeError(null);
+          setResolvedScopeKey(scopeKey);
         }
       } finally {
         if (!cancelled) setScopeLoading(false);
@@ -109,7 +132,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [orgHandle, projectHandle, scopeKey, scopeLevel]);
+  }, [orgHandle, projectHandle, scopeKey, requestedScopeLevel]);
 
   if (!orgHandle) {
     return (
@@ -133,7 +156,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
   return (
     <InsightsEmbed
       scope={{
-        level: scopeLevel,
+        level: embedScopeLevel,
         projectId,
         projectName,
       }}

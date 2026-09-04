@@ -58,12 +58,8 @@ vi.mock('@wso2/oxygen-ui', () => ({
   PageTitle: Object.assign(
     ({ children }: { children?: ReactNode }) => <div>{children}</div>,
     {
-      Header: ({ children }: { children?: ReactNode }) => (
-        <h1>{children}</h1>
-      ),
-      SubHeader: ({ children }: { children?: ReactNode }) => (
-        <p>{children}</p>
-      ),
+      Header: ({ children }: { children?: ReactNode }) => <h1>{children}</h1>,
+      SubHeader: ({ children }: { children?: ReactNode }) => <p>{children}</p>,
     }
   ),
 }));
@@ -95,7 +91,8 @@ describe('InsightsEmbed', () => {
             type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SCHEMA_GEN_FINISHED,
           },
           origin: 'https://web-dev.moesif.com',
-          source: iframe.contentWindow ?? undefined,
+          // wrap/basic can post from nested frames.
+          source: null,
         })
       );
     });

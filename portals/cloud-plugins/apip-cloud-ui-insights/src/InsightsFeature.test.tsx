@@ -45,7 +45,9 @@ vi.mock('./InsightsEmbed', () => ({
   default: ({ scope }: { scope: InsightsEmbedScope }) => {
     embedScopes.push(scope);
     return (
-      <div data-testid="insights-embed">{scope.projectId ?? 'organization'}</div>
+      <div data-testid="insights-embed">
+        {scope.level}:{scope.projectId ?? 'none'}
+      </div>
     );
   },
 }));
@@ -63,6 +65,52 @@ describe('InsightsFeature', () => {
   beforeEach(() => {
     embedScopes.length = 0;
     mockResolveProjectScope.mockReset();
+  });
+
+  it('embeds project Insights when project scope resolves', async () => {
+    mockResolveProjectScope.mockResolvedValue({
+      projectId: 'id-a',
+      projectName: 'Project A',
+    });
+
+    render(
+      <InsightsFeature
+        port={{ ...basePort, projectHandle: 'project-a' }}
+        forcedScopeLevel="project"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+        'project:id-a'
+      );
+    });
+    expect(mockResolveProjectScope).toHaveBeenCalledWith('acme', 'project-a');
+  });
+
+  it('falls back to organization Insights when project scope resolve fails', async () => {
+    mockResolveProjectScope.mockRejectedValue(
+      new Error('Project "missing" was not found')
+    );
+
+    render(
+      <InsightsFeature
+        port={{ ...basePort, projectHandle: 'missing' }}
+        forcedScopeLevel="project"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+        'organization:none'
+      );
+    });
+    expect(screen.queryByTestId('error-state')).not.toBeInTheDocument();
+    expect(embedScopes.at(-1)).toEqual({
+      level: 'organization',
+      projectId: null,
+      projectName: null,
+    });
   });
 
   it('shows loading instead of stale project metadata when switching projects', async () => {
@@ -98,7 +146,9 @@ describe('InsightsFeature', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('insights-embed')).toHaveTextContent('id-a');
+      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+        'project:id-a'
+      );
     });
     const embedRenderCountAfterA = embedScopes.length;
 
@@ -118,7 +168,9 @@ describe('InsightsFeature', () => {
     resolveProjectB({ projectId: 'id-b', projectName: 'Project B' });
 
     await waitFor(() => {
-      expect(screen.getByTestId('insights-embed')).toHaveTextContent('id-b');
+      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+        'project:id-b'
+      );
     });
     expect(embedScopes.at(-1)).toEqual({
       level: 'project',

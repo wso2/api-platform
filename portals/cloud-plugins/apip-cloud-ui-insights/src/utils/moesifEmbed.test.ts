@@ -61,13 +61,22 @@ describe('moesifEmbed helpers', () => {
     ).toBe('https://web-dev.moesif.com');
   });
 
-  it('rejects untrusted moesif hosts and falls back', () => {
+  it('rejects untrusted moesif hosts and uses allowlisted fallback', () => {
     expect(
       resolveTrustedMoesifAppUrl(
         'https://evil.example.com',
         'https://web-dev.moesif.com'
       )
     ).toBe('https://web-dev.moesif.com');
+  });
+
+  it('returns undefined when no allowlisted host is configured', () => {
+    expect(
+      resolveTrustedMoesifAppUrl(
+        'https://evil.example.com',
+        'https://also-evil.example.com'
+      )
+    ).toBeUndefined();
   });
 
   it('rejects non-https moesif hosts', () => {
@@ -108,6 +117,55 @@ describe('analyticsApi', () => {
     expect(fetch).toHaveBeenCalledWith(
       '/proxy/cloud/analytics/id-token',
       expect.objectContaining({ credentials: 'include' })
+    );
+  });
+
+  it('fetchViewerToken maps 404 to a user-facing org message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: 'not found' }),
+      }))
+    );
+
+    const { fetchViewerToken } = await import('../api/analyticsApi');
+    await expect(fetchViewerToken()).rejects.toThrow(
+      /not available for this organization/i
+    );
+  });
+
+  it('fetchViewerToken maps 502 without exposing the status code', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 502,
+        json: async () => ({ error: 'bad gateway' }),
+      }))
+    );
+
+    const { fetchViewerToken } = await import('../api/analyticsApi');
+    await expect(fetchViewerToken()).rejects.toThrow(
+      /temporarily unavailable/i
+    );
+    await expect(fetchViewerToken()).rejects.not.toThrow(/502/);
+  });
+
+  it('resolveProjectScope does not reuse the org-mapping 404 copy', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: 'missing' }),
+      }))
+    );
+
+    const { resolveProjectScope } = await import('../api/analyticsApi');
+    await expect(resolveProjectScope('default', 'missing-proj')).rejects.toThrow(
+      /Project "missing-proj" was not found/
     );
   });
 

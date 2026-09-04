@@ -32,6 +32,7 @@ import { ErrorState, LoadingState } from './components/StateViews';
 import { insightsRuntimeConfig } from './config/runtimeConfig';
 import type { InsightsEmbedScope } from './types';
 import {
+  ALLOWED_MOESIF_ORIGINS,
   MOESIF_EMBEDDED_POST_MESSAGE_TYPES,
   buildBasicIframeSrc,
   buildBasicProjectIframeSrc,
@@ -40,28 +41,24 @@ import {
 
 /** Match choreo-console ProtectedRoute: refresh before Moesif viewer token expiry (~1h). */
 const VIEWER_TOKEN_REFRESH_INTERVAL_MS = 50 * 60 * 1000;
-/** Stop waiting for Moesif ORG_LOAD_FINISHED / SCHEMA_GEN_FINISHED after this. */
-const EMBED_HANDSHAKE_TIMEOUT_MS = 60_000;
+/** wrap/basic is a SPA; first iframe load may happen before SET_TOKEN listener binds. */
+const SET_TOKEN_RETRY_MS = 400;
+/** Surface actionable UI if handshake never finishes. */
+const EMBED_HANDSHAKE_TIMEOUT_MS = 120_000;
+
+const isMoesifHandshakeDone = (type: unknown) =>
+  type === MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SCHEMA_GEN_FINISHED ||
+  type === MOESIF_EMBEDDED_POST_MESSAGE_TYPES.ORG_LOAD_FINISHED;
 
 export type InsightsEmbedProps = {
   scope: InsightsEmbedScope;
 };
 
-/**
- * Embeds Moesif Insights for organization or project scope via wrap/basic.
- *
- * Viewer tokens are fetched from WSO2 Cloud platform-api-service
- * (`/cloud/analytics/id-token`), not from Moesif directly.
- *
- * Does not wrap in `PageContent` — API Control Plane's AppLayout already
- * provides that around the route outlet.
- */
 const InsightsEmbedConfigured: FC<
   InsightsEmbedProps & { moesifAppUrl: string }
 > = ({ moesifAppUrl, scope }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tokenRef = useRef<string | null>(null);
-
   const embeddingOrigin = resolveMoesifEmbeddingOrigin(moesifAppUrl);
 
   const iframeSrc = useMemo(() => {
@@ -82,10 +79,10 @@ const InsightsEmbedConfigured: FC<
   const pageSubheader = useMemo(() => {
     if (scope.level === 'project') {
       return scope.projectName
-        ? `Usage analytics for ${scope.projectName} powered by Moesif.`
-        : 'Usage analytics for APIs in this project powered by Moesif.';
+        ? `Explore usage analytics for ${scope.projectName} powered by Moesif.`
+        : 'Explore usage analytics and traffic insights powered by Moesif.';
     }
-    return 'Explore organization-wide usage analytics and traffic insights powered by Moesif.';
+    return 'Explore usage analytics and traffic insights powered by Moesif.';
   }, [scope.level, scope.projectName]);
 
   useEffect(() => {
@@ -130,9 +127,6 @@ const InsightsEmbedConfigured: FC<
     };
   }, [mintToken]);
 
-  // choreo-console refreshes in ProtectedRoute on a 50-minute interval and
-  // re-posts SET_TOKEN when moesifIdToken changes. We mint here because the
-  // token is scoped to this embed rather than app-wide context.
   useEffect(() => {
     if (!viewerToken) return;
 
@@ -146,19 +140,28 @@ const InsightsEmbedConfigured: FC<
   }, [mintToken, viewerToken]);
 
   const sendTokenToChild = useCallback(() => {
-    if (!iframeRef.current?.contentWindow || !viewerToken) return;
-    iframeRef.current.contentWindow.postMessage(
-      { type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SET_TOKEN, token: viewerToken },
+    const child = iframeRef.current?.contentWindow;
+    if (!child || !viewerToken) return;
+
+    child.postMessage(
+      {
+        type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SET_TOKEN,
+        token: viewerToken,
+      },
       embeddingOrigin
     );
   }, [embeddingOrigin, viewerToken]);
 
   useEffect(() => {
-    if (isIframeDomLoaded && viewerToken) sendTokenToChild();
-  }, [isIframeDomLoaded, sendTokenToChild, viewerToken]);
+    if (!isIframeDomLoaded || !viewerToken || isEmbedReady) return;
+    sendTokenToChild();
+    const intervalId = window.setInterval(sendTokenToChild, SET_TOKEN_RETRY_MS);
+    return () => window.clearInterval(intervalId);
+  }, [isEmbedReady, isIframeDomLoaded, sendTokenToChild, viewerToken]);
 
   useEffect(() => {
     if (
+      !isIframeDomLoaded ||
       tokenLoading ||
       tokenError ||
       handshakeError ||
@@ -171,16 +174,16 @@ const InsightsEmbedConfigured: FC<
 
     const timeoutId = window.setTimeout(() => {
       setHandshakeError(
-        'Moesif Insights did not finish loading in time. Check your network connection and try again.'
+        'Moesif Insights did not finish loading in time. If prompted, accept cookies in the panel and click Retry.'
       );
     }, EMBED_HANDSHAKE_TIMEOUT_MS);
 
     return () => window.clearTimeout(timeoutId);
   }, [
-    embedAttempt,
     handshakeError,
     iframeSrc,
     isEmbedReady,
+    isIframeDomLoaded,
     tokenError,
     tokenLoading,
     viewerToken,
@@ -188,28 +191,24 @@ const InsightsEmbedConfigured: FC<
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== embeddingOrigin) return;
-      const iframeWindow = iframeRef.current?.contentWindow;
-      if (!iframeWindow || event.source !== iframeWindow) return;
+      if (!ALLOWED_MOESIF_ORIGINS.has(event.origin)) return;
 
-      switch (event.data?.type) {
-        case MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SCHEMA_GEN_FINISHED:
-        case MOESIF_EMBEDDED_POST_MESSAGE_TYPES.ORG_LOAD_FINISHED:
-          setHandshakeError(null);
-          setIsEmbedReady(true);
-          break;
-        case MOESIF_EMBEDDED_POST_MESSAGE_TYPES.REFRESH_TOKEN:
-          mintToken()
-            .then((token) => setViewerToken(token))
-            .catch(() => undefined);
-          break;
-        default:
-          break;
+      const type = event.data?.type;
+      if (isMoesifHandshakeDone(type)) {
+        setHandshakeError(null);
+        setIsEmbedReady(true);
+        return;
+      }
+      if (type === MOESIF_EMBEDDED_POST_MESSAGE_TYPES.REFRESH_TOKEN) {
+        mintToken()
+          .then((token) => setViewerToken(token))
+          .catch(() => undefined);
       }
     };
+
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [embeddingOrigin, mintToken]);
+  }, [mintToken]);
 
   const showLoader =
     tokenLoading ||
@@ -293,18 +292,10 @@ const InsightsEmbedConfigured: FC<
               src={iframeSrc}
               title="Moesif Insights"
               allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
               onLoad={() => {
                 setIsIframeDomLoaded(true);
-                const currentToken = tokenRef.current;
-                if (currentToken && iframeRef.current?.contentWindow) {
-                  iframeRef.current.contentWindow.postMessage(
-                    {
-                      type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SET_TOKEN,
-                      token: currentToken,
-                    },
-                    embeddingOrigin
-                  );
-                }
+                if (tokenRef.current) sendTokenToChild();
               }}
               style={iframeStyle}
             />

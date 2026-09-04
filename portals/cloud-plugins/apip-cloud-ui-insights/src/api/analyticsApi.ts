@@ -30,29 +30,31 @@ type ViewerTokenResponse = {
   token: string;
 };
 
-type ApiErrorPayload = {
-  error?: string;
-};
-
 const cloudApiBase = () =>
   insightsRuntimeConfig.platformApiBaseUrl.replace(/\/$/, '');
 
-const readJson = async <T>(response: Response): Promise<T> => {
-  const payload = (await response.json().catch(() => ({}))) as T &
-    ApiErrorPayload & { message?: string };
-  if (!response.ok) {
-    const detail =
-      payload.error ||
-      payload.message ||
-      `Cloud analytics request failed (${response.status})`;
-    if (response.status === 404) {
-      throw new Error(
-        'Insights is not available for this organization. Contact your administrator if you believe this is an error.'
-      );
-    }
-    throw new Error(detail);
+/** User-facing copy only. */
+const userFacingRequestError = (status: number): string => {
+  if (status === 401 || status === 403) {
+    return 'You do not have permission to view Insights for this organization.';
   }
-  return payload;
+  if (status === 404) {
+    return 'Insights are not available for this organization. Contact your administrator if you believe this is an error.';
+  }
+  if (status === 408 || status === 504) {
+    return 'Insights took too long to respond. Please try again.';
+  }
+  if (status >= 500) {
+    return 'Insights are temporarily unavailable. Please try again in a few minutes.';
+  }
+  return 'Unable to load Insights right now. Please try again.';
+};
+
+const readJson = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    throw new Error(userFacingRequestError(response.status));
+  }
+  return (await response.json().catch(() => ({}))) as T;
 };
 
 const fetchJson = async <T>(
@@ -72,11 +74,18 @@ const fetchJson = async <T>(
 
 /** GET /cloud/analytics/id-token — Moesif dashboard-viewer token for the caller org. */
 export async function fetchViewerToken(): Promise<string> {
-  const payload = await fetchJson<ViewerTokenResponse>(
-    `${cloudApiBase()}/cloud/analytics/id-token`
-  );
+  const response = await fetch(`${cloudApiBase()}/cloud/analytics/id-token`, {
+    credentials: 'include',
+    headers: { accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(userFacingRequestError(response.status));
+  }
+  const payload = (await response.json().catch(() => ({}))) as ViewerTokenResponse;
   if (!payload.token?.trim()) {
-    throw new Error('Viewer token missing from cloud analytics response');
+    throw new Error(
+      'Unable to load Insights right now. Please try again.'
+    );
   }
   return payload.token;
 }
@@ -135,20 +144,24 @@ export async function resolveProjectScope(
     // Fall back to list lookup below.
   }
 
-  const response = await fetchJson<{ list?: unknown[] }>(
-    `${platformApiRoot()}/projects`,
-    { headers }
-  );
-  for (const item of response.list ?? []) {
-    const project = asRecord(item) as ProjectRecord;
-    if (pickProjectHandle(project) === trimmedHandle) {
-      const projectId = pickProjectId(project);
-      if (!projectId) break;
-      return {
-        projectId,
-        projectName: pickProjectName(project, trimmedHandle),
-      };
+  try {
+    const response = await fetchJson<{ list?: unknown[] }>(
+      `${platformApiRoot()}/projects`,
+      { headers }
+    );
+    for (const item of response.list ?? []) {
+      const project = asRecord(item) as ProjectRecord;
+      if (pickProjectHandle(project) === trimmedHandle) {
+        const projectId = pickProjectId(project);
+        if (!projectId) break;
+        return {
+          projectId,
+          projectName: pickProjectName(project, trimmedHandle),
+        };
+      }
     }
+  } catch {
+    // Treat failed project resolution as not found — do not surface proxy/status noise.
   }
   throw new Error(`Project "${trimmedHandle}" was not found`);
 }

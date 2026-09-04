@@ -19,8 +19,11 @@
 import { PageTitle } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
+import { ComingSoon } from '@/components/ComingSoon';
 import { ExternalToolPanel } from '@/components/common/ExternalToolPanel';
 import { runtimeConfig } from '@/config/runtime';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 
 const messages = defineMessages({
   action: {
@@ -28,6 +31,10 @@ const messages = defineMessages({
     defaultMessage: 'Open Moesif Insights',
     description:
       'Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated.',
+  },
+  cloudFeature: {
+    id: 'appShell.insightsPage.feature',
+    defaultMessage: 'API insights',
   },
   panelDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelDescription',
@@ -49,6 +56,21 @@ const messages = defineMessages({
 });
 
 export function InsightsPage() {
+  // Cloud ships org/project Moesif embeds via the insights plugin; API-scoped
+  // analytics is not ready yet, so show Coming Soon when the cloud proxy is on
+  // (same signal that gates those sidebar extensions).
+  if (runtimeConfig.cloudProxyEnabled) {
+    return (
+      <ScopeGate
+        prompt="Insights are reported per API."
+        requires="api"
+        to={routes.apiInsightsApi}
+      >
+        <ComingSoon feature={<FormattedMessage {...messages.cloudFeature} />} />
+      </ScopeGate>
+    );
+  }
+
   return (
     <>
       <PageTitle>
