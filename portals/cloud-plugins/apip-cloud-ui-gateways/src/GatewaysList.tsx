@@ -47,11 +47,14 @@ import { Edit, Plus, Search, Settings, Trash2 } from '@wso2/oxygen-ui-icons-reac
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
 import { gatewayTypeLabel } from './utils/gateway';
 import NoGatewaysImage from './assets/images/NoGW.svg';
+import type { AIWorkspaceHostPort } from './hostPort';
 import type { Environment, Gateway } from './types';
 
 export type GatewaysListProps = {
   gateways: Gateway[];
   environments: Environment[];
+  /** Passed through to the configuration drawer, which calls platform-api itself. */
+  port: AIWorkspaceHostPort;
   onAddClick: () => void;
   onEditClick: (gatewayId: string) => void;
   onDelete: (gatewayId: string, name: string) => void;
@@ -65,6 +68,7 @@ function truncateText(text: string, maxLength: number): string {
 const GatewaysList: FC<GatewaysListProps> = ({
   gateways,
   environments,
+  port,
   onAddClick,
   onEditClick,
   onDelete,
@@ -270,11 +274,13 @@ const GatewaysList: FC<GatewaysListProps> = ({
         </DialogActions>
       </Dialog>
 
+      {/* Keyed by gateway so the form's draft state belongs to one gateway and cannot outlive it. */}
       <GatewaySettingsDrawer
+        key={settingsGateway?.id ?? 'none'}
         open={settingsGateway !== null}
         onClose={() => setSettingsGateway(null)}
         gateway={settingsGateway}
-        environments={environments}
+        port={port}
       />
     </PageContent>
   );

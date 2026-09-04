@@ -193,6 +193,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     <GatewaysList
       gateways={gateways}
       environments={environments}
+      port={port}
       onAddClick={() => setView('create')}
       onEditClick={(gatewayId) => {
         setEditingGatewayId(gatewayId);
