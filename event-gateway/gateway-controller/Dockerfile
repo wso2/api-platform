@@ -104,8 +104,17 @@ FROM ubuntu:24.04 AS production
 ARG VERSION=0.0.1-SNAPSHOT
 ARG ENABLE_COVERAGE=false
 
+# Retry transient mirror failures and disable HTTP pipelining (some Ubuntu
+# mirrors serve it badly): a single connection reset or half-synced index here
+# otherwise fails the whole build. The apt lists cache mount is cleared first,
+# because a partial index left in it resurfaces as "File has unexpected size
+# ... Mirror sync in progress?" on a later build. `apt-get upgrade` is kept on
+# purpose — this image is Trivy-scanned for fixable OS vulnerabilities, and
+# upgrading in this layer is what clears them.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    printf 'Acquire::Retries "5";\nAcquire::http::Pipeline-Depth "0";\n' > /etc/apt/apt.conf.d/99-retries && \
+    rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \

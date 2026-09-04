@@ -78,9 +78,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM golang:1.26.5-bookworm
 
-# Install runtime dependencies (upgrade first to pull in Debian security fixes)
+# Install runtime dependencies (upgrade first to pull in Debian security fixes,
+# which this image is Trivy-scanned for — so the upgrade stays).
+#
+# Retry transient mirror failures and disable HTTP pipelining, which some Debian
+# mirrors serve badly: a single connection reset or half-synced index here
+# otherwise fails the whole build. The apt lists cache mount is cleared first,
+# because a partial index left in it resurfaces as "File has unexpected size
+# ... Mirror sync in progress?" on a later build.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    printf 'Acquire::Retries "5";\nAcquire::http::Pipeline-Depth "0";\n' > /etc/apt/apt.conf.d/99-retries && \
+    rm -rf /var/lib/apt/lists/* && \
     apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
     git \

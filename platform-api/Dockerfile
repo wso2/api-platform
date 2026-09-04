@@ -87,7 +87,19 @@ ARG USER_GID=$USER_UID
 
 LABEL org.opencontainers.image.experimental="${EXPERIMENTAL}"
 
-RUN apt-get update && apt-get upgrade -y \
+# A single transient mirror failure otherwise fails the whole image build. CI
+# has hit both "Connection failed" fetching security.ubuntu.com and "File has
+# unexpected size ... Mirror sync in progress?" at this step, so retry
+# acquisitions and disable HTTP pipelining, which some Ubuntu mirrors serve
+# badly.
+#
+# `apt-get upgrade` is deliberately not run: it downloads every upgradable
+# package in the base image in order to install two, which is a large amount of
+# extra network for no benefit this image relies on. The `ubuntu:24.04` tag is
+# itself rebuilt with security fixes, so OS patching comes from refreshing the
+# base image rather than upgrading in this layer.
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Pipeline-Depth "0";\n' > /etc/apt/apt.conf.d/99-retries \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
