@@ -247,8 +247,8 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		}
 	}
 	if err := utils.ValidateHandle(name); err != nil {
-		s.slogger.Warn("Invalid API key id for LLM provider API key creation", "providerId", providerID)
-		return nil, err
+		s.slogger.Error("Invalid API key id for LLM provider API key creation", "providerId", providerID)
+		return nil, fmt.Errorf("invalid API key id: %w", err)
 	}
 
 	displayName := req.DisplayName
