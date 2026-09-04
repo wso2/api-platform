@@ -265,6 +265,8 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 -- time. It is stored at the platform's own data version and translated to the
 -- target gateway's version when it is deployed.
 CREATE TABLE IF NOT EXISTS builds (
+    -- Globally unique identity, and what a deployment references.
+    uuid VARCHAR(40) PRIMARY KEY,
     -- A readable id, unique per API: a date and that day's index, e.g. 2026-09-04-1.
     build_id VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
@@ -276,7 +278,9 @@ CREATE TABLE IF NOT EXISTS builds (
     properties BLOB,
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (artifact_uuid, build_id),
+    -- One readable id per API: this is also what settles two prepares racing
+    -- for the same day's index.
+    UNIQUE (artifact_uuid, build_id),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
@@ -290,16 +294,27 @@ CREATE TABLE IF NOT EXISTS deployments (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     base_deployment_uuid VARCHAR(40),
+    -- The build this deployment was made from, when it came from one. NULL for a
+    -- deployment rendered directly from the API definition, and for one whose
+    -- build has since been pruned; metadata.buildId keeps the readable origin.
+    build_uuid VARCHAR(40),
     content BLOB NOT NULL,
     metadata BLOB,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    -- NO ACTION, with references cleared explicitly before a build is pruned:
+    -- cleanup here is done in code, in dependency order, rather than left to the
+    -- database (SQL Server also forbids further cascade paths onto this table).
+    FOREIGN KEY (build_uuid) REFERENCES builds(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
     FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE SET NULL
 );
+
+-- Resolving which deployments a build is the origin of.
+CREATE INDEX IF NOT EXISTS idx_deployments_build ON deployments(build_uuid);
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
 CREATE TABLE IF NOT EXISTS deployment_status (

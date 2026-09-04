@@ -677,6 +677,9 @@ type BuildResponse struct {
 
 	// Properties Properties recorded with the build, such as the commit it was prepared from
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+
+	// Uuid Globally unique identifier for the build, and what a deployment references
+	Uuid *openapi_types.UUID `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 // Channel Defines a single channel within the Async API

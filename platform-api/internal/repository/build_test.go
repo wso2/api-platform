@@ -18,7 +18,9 @@
 package repository
 
 import (
+	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -196,15 +198,15 @@ func insertBuildTestArtifact(t *testing.T, db *database.DB, artifactUUID, orgUUI
 
 // deployFromBuild makes one gateway's CURRENT deployment come from a build, which
 // is what makes that build in use: a status row is what marks a deployment as the
-// one a gateway is serving.
-func deployFromBuild(t *testing.T, db *database.DB, gatewayUUID, deploymentID, buildID string) {
+// one a gateway is serving, and build_uuid is what says where it came from.
+func deployFromBuild(t *testing.T, db *database.DB, gatewayUUID, deploymentID string, build *model.Build) {
 	t.Helper()
-	metadata := fmt.Sprintf(`{"buildId":%q}`, buildID)
+	metadata := fmt.Sprintf(`{"buildId":%q}`, build.BuildID)
 	_, err := db.Exec(`
-		INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, build_uuid, content, metadata, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		deploymentID, deploymentID, buildRepoAPIUUID, buildRepoOrgUUID, gatewayUUID,
-		[]byte("content"), metadata, time.Now().UTC())
+		build.UUID, []byte("content"), metadata, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Failed to insert deployment: %v", err)
 	}
@@ -231,19 +233,19 @@ func storedBuildIDs(t *testing.T, repo DeploymentRepository) []string {
 	return out
 }
 
-// prepareBuilds adds n builds an hour apart, oldest first, and returns their ids.
-func prepareBuilds(t *testing.T, repo DeploymentRepository, n, hardLimit int) []string {
+// prepareBuilds adds n builds an hour apart, oldest first.
+func prepareBuilds(t *testing.T, repo DeploymentRepository, n, hardLimit int) []*model.Build {
 	t.Helper()
 	day := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
-	ids := make([]string, 0, n)
+	builds := make([]*model.Build, 0, n)
 	for i := 0; i < n; i++ {
 		build := buildOn(day.Add(time.Duration(i) * time.Hour))
 		if err := repo.CreateBuildWithLimitEnforcement(build, hardLimit); err != nil {
 			t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
 		}
-		ids = append(ids, build.BuildID)
+		builds = append(builds, build)
 	}
-	return ids
+	return builds
 }
 
 // Reaching the limit prunes a batch of the API's oldest builds, so preparing
@@ -284,10 +286,10 @@ func TestCreateBuild_KeepsBuildsAGatewayIsDeployedFrom(t *testing.T) {
 	createTestGateway(t, db, "gw-2", buildRepoOrgUUID)
 	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
-	prepareBuilds(t, repo, 10, 0)
+	builds := prepareBuilds(t, repo, 10, 0)
 	// The two oldest builds are what the gateways are serving.
-	deployFromBuild(t, db, "gw-1", "dep-1", "2026-01-31-1")
-	deployFromBuild(t, db, "gw-2", "dep-2", "2026-01-31-2")
+	deployFromBuild(t, db, "gw-1", "dep-1", builds[0])
+	deployFromBuild(t, db, "gw-2", "dep-2", builds[1])
 
 	eleventh := buildOn(time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC))
 	if err := repo.CreateBuildWithLimitEnforcement(eleventh, 10); err != nil {
@@ -323,11 +325,11 @@ func TestCreateBuild_AnArchivedDeploymentDoesNotHoldABuild(t *testing.T) {
 	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
 	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
-	prepareBuilds(t, repo, 10, 0)
+	builds := prepareBuilds(t, repo, 10, 0)
 	// Deployed from the oldest build, then superseded: the status row moves to the
 	// newer deployment, leaving the first one archived.
-	deployFromBuild(t, db, "gw-1", "dep-old", "2026-01-31-1")
-	deployFromBuild(t, db, "gw-1", "dep-new", "2026-01-31-10")
+	deployFromBuild(t, db, "gw-1", "dep-old", builds[0])
+	deployFromBuild(t, db, "gw-1", "dep-new", builds[9])
 
 	eleventh := buildOn(time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC))
 	if err := repo.CreateBuildWithLimitEnforcement(eleventh, 10); err != nil {
@@ -354,11 +356,11 @@ func TestCreateBuild_KeepsEverythingWhenNothingIsFreeToGo(t *testing.T) {
 	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
 	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
-	ids := prepareBuilds(t, repo, 3, 0)
-	for i, buildID := range ids {
+	builds := prepareBuilds(t, repo, 3, 0)
+	for i, build := range builds {
 		gatewayID := fmt.Sprintf("gw-%d", i+1)
 		createTestGateway(t, db, gatewayID, buildRepoOrgUUID)
-		deployFromBuild(t, db, gatewayID, fmt.Sprintf("dep-%d", i+1), buildID)
+		deployFromBuild(t, db, gatewayID, fmt.Sprintf("dep-%d", i+1), build)
 	}
 
 	fourth := buildOn(time.Date(2026, 1, 31, 3, 0, 0, 0, time.UTC))
@@ -396,5 +398,41 @@ func TestCreateBuild_PruningIsScopedToOneAPI(t *testing.T) {
 	}
 	if len(otherBuilds) != 2 {
 		t.Errorf("the other API kept %d builds, want its own 2 untouched", len(otherBuilds))
+	}
+}
+
+// Pruning a build clears the references to it rather than leaving them dangling,
+// and the deployment keeps the readable build id in its metadata — so the origin
+// stays legible after the snapshot itself is gone.
+func TestCreateBuild_PruningClearsTheReferenceAndLeavesTheReadableID(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 10, 0)
+	// Deployed from the oldest build, then superseded, so that build is free to go
+	// while a deployment still points at it.
+	deployFromBuild(t, db, "gw-1", "dep-old", builds[0])
+	deployFromBuild(t, db, "gw-1", "dep-new", builds[9])
+
+	eleventh := buildOn(time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(eleventh, 10); err != nil {
+		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+	}
+
+	var buildUUID sql.NullString
+	var metadata []byte
+	err := db.QueryRow(`SELECT build_uuid, metadata FROM deployments WHERE uuid = ?`, "dep-old").
+		Scan(&buildUUID, &metadata)
+	if err != nil {
+		t.Fatalf("read deployment: %v", err)
+	}
+	if buildUUID.Valid {
+		t.Errorf("build_uuid = %q, want NULL once the build is pruned", buildUUID.String)
+	}
+	if !strings.Contains(string(metadata), builds[0].BuildID) {
+		t.Errorf("metadata = %s, want the readable build id kept", metadata)
 	}
 }

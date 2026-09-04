@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // Build persistence lives on DeploymentRepo: a build is the deploy path's own
@@ -48,6 +49,13 @@ const buildIDAttempts = 5
 func (r *DeploymentRepo) CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error {
 	if err := r.pruneBuilds(build.ArtifactID, build.OrganizationID, hardLimit); err != nil {
 		return err
+	}
+	if build.UUID == "" {
+		buildUUID, err := utils.GenerateUUID()
+		if err != nil {
+			return fmt.Errorf("failed to generate build UUID: %w", err)
+		}
+		build.UUID = buildUUID
 	}
 	if build.CreatedAt.IsZero() {
 		build.CreatedAt = time.Now().UTC()
@@ -125,11 +133,11 @@ func (r *DeploymentRepo) insertBuild(build *model.Build) error {
 	}
 
 	const query = `
-		INSERT INTO builds (build_id, artifact_uuid, organization_uuid, content, data_version, properties, created_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO builds (uuid, build_id, artifact_uuid, organization_uuid, content, data_version, properties, created_by, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
-		build.BuildID, build.ArtifactID, build.OrganizationID,
+		build.UUID, build.BuildID, build.ArtifactID, build.OrganizationID,
 		build.Content, build.DataVersion, propertyBytes, build.CreatedBy, build.CreatedAt,
 	)
 	if err != nil {
@@ -156,7 +164,7 @@ func applyBuildProperties(build *model.Build, propertyBytes []byte) error {
 // another organization — resolving here.
 func (r *DeploymentRepo) GetBuild(buildID, artifactUUID, orgUUID string) (*model.Build, error) {
 	const query = `
-		SELECT build_id, artifact_uuid, organization_uuid, content, data_version, properties, created_by, created_at
+		SELECT uuid, build_id, artifact_uuid, organization_uuid, content, data_version, properties, created_by, created_at
 		FROM builds
 		WHERE build_id = ? AND artifact_uuid = ? AND organization_uuid = ?
 	`
@@ -164,7 +172,7 @@ func (r *DeploymentRepo) GetBuild(buildID, artifactUUID, orgUUID string) (*model
 	var createdBy sql.NullString
 	var propertyBytes []byte
 	err := r.db.QueryRow(r.db.Rebind(query), buildID, artifactUUID, orgUUID).Scan(
-		&build.BuildID, &build.ArtifactID, &build.OrganizationID,
+		&build.UUID, &build.BuildID, &build.ArtifactID, &build.OrganizationID,
 		&build.Content, &build.DataVersion, &propertyBytes, &createdBy, &build.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -187,7 +195,7 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 		limit = 50
 	}
 	const query = `
-		SELECT build_id, artifact_uuid, organization_uuid, data_version, properties, created_by, created_at
+		SELECT uuid, build_id, artifact_uuid, organization_uuid, data_version, properties, created_by, created_at
 		FROM builds
 		WHERE artifact_uuid = ? AND organization_uuid = ?
 		ORDER BY created_at DESC, build_id DESC
@@ -205,7 +213,7 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 		var createdBy sql.NullString
 		var propertyBytes []byte
 		if err := rows.Scan(
-			&build.BuildID, &build.ArtifactID, &build.OrganizationID,
+			&build.UUID, &build.BuildID, &build.ArtifactID, &build.OrganizationID,
 			&build.DataVersion, &propertyBytes, &createdBy, &build.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan build: %w", err)
@@ -263,7 +271,7 @@ func (r *DeploymentRepo) pruneBuilds(artifactUUID, orgUUID string, hardLimit int
 	}
 
 	const oldestQuery = `
-		SELECT build_id
+		SELECT uuid
 		FROM builds
 		WHERE artifact_uuid = ? AND organization_uuid = ?
 		ORDER BY created_at ASC, build_id ASC
@@ -274,15 +282,15 @@ func (r *DeploymentRepo) pruneBuilds(artifactUUID, orgUUID string, hardLimit int
 	}
 	var expendable []string
 	for rows.Next() {
-		var buildID string
-		if err := rows.Scan(&buildID); err != nil {
+		var buildUUID string
+		if err := rows.Scan(&buildUUID); err != nil {
 			rows.Close()
-			return fmt.Errorf("failed to scan build id for cleanup: %w", err)
+			return fmt.Errorf("failed to scan build for cleanup: %w", err)
 		}
-		if inUse[buildID] {
+		if inUse[buildUUID] {
 			continue
 		}
-		expendable = append(expendable, buildID)
+		expendable = append(expendable, buildUUID)
 		if len(expendable) == constants.BuildCleanupBatch {
 			break
 		}
@@ -292,34 +300,38 @@ func (r *DeploymentRepo) pruneBuilds(artifactUUID, orgUUID string, hardLimit int
 		return fmt.Errorf("failed to read builds for cleanup: %w", err)
 	}
 
-	const deleteQuery = `
-		DELETE FROM builds
-		WHERE artifact_uuid = ? AND organization_uuid = ? AND build_id = ?
-	`
-	for _, buildID := range expendable {
-		if _, err := r.db.Exec(r.db.Rebind(deleteQuery), artifactUUID, orgUUID, buildID); err != nil {
-			return fmt.Errorf("failed to delete build %s: %w", buildID, err)
+	// The reference is cleared before the row goes: deployments outlive the build
+	// they came from, and their readable build id in metadata is what keeps the
+	// origin legible once the snapshot itself is gone.
+	const clearQuery = `UPDATE deployments SET build_uuid = NULL WHERE build_uuid = ?`
+	const deleteQuery = `DELETE FROM builds WHERE uuid = ?`
+	for _, buildUUID := range expendable {
+		if _, err := r.db.Exec(r.db.Rebind(clearQuery), buildUUID); err != nil {
+			return fmt.Errorf("failed to clear references to build %s: %w", buildUUID, err)
+		}
+		if _, err := r.db.Exec(r.db.Rebind(deleteQuery), buildUUID); err != nil {
+			return fmt.Errorf("failed to delete build %s: %w", buildUUID, err)
 		}
 	}
 	return nil
 }
 
-// buildsInUse returns the builds an API's gateways are currently deployed from.
+// buildsInUse returns the builds an API's gateways are currently deployed from,
+// by uuid.
 //
 // One deployment per gateway is current — the one deployment_status names — and its
-// metadata records the build it was made from. Only those rows are read (a handful,
-// one per gateway the API is on), rather than every archived deployment: an
-// archived deployment carries its own rendered content and does not need its build
-// to be restorable, so it is not a reason to keep one.
+// build_uuid says which build it came from. Only those rows count: an archived
+// deployment carries its own rendered content and never needs its build back, so it
+// is not a reason to keep one.
 func (r *DeploymentRepo) buildsInUse(artifactUUID, orgUUID string) (map[string]bool, error) {
 	const query = `
-		SELECT d.metadata
+		SELECT DISTINCT d.build_uuid
 		FROM deployments d
 		JOIN deployment_status s ON d.uuid = s.deployment_uuid
 			AND d.artifact_uuid = s.artifact_uuid
 			AND d.organization_uuid = s.organization_uuid
 			AND d.gateway_uuid = s.gateway_uuid
-		WHERE d.artifact_uuid = ? AND d.organization_uuid = ?
+		WHERE d.artifact_uuid = ? AND d.organization_uuid = ? AND d.build_uuid IS NOT NULL
 	`
 	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID)
 	if err != nil {
@@ -329,23 +341,11 @@ func (r *DeploymentRepo) buildsInUse(artifactUUID, orgUUID string) (map[string]b
 
 	inUse := map[string]bool{}
 	for rows.Next() {
-		var metadataBytes []byte
-		if err := rows.Scan(&metadataBytes); err != nil {
-			return nil, fmt.Errorf("failed to scan deployment metadata: %w", err)
+		var buildUUID string
+		if err := rows.Scan(&buildUUID); err != nil {
+			return nil, fmt.Errorf("failed to scan deployed build: %w", err)
 		}
-		if len(metadataBytes) == 0 {
-			continue
-		}
-		var metadata map[string]interface{}
-		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			// A deployment whose metadata cannot be read is treated as using no
-			// build rather than failing the prepare; its content is intact either
-			// way, and the build it came from is at worst pruned early.
-			continue
-		}
-		if buildID, ok := metadata[constants.MetadataKeyBuildID].(string); ok && buildID != "" {
-			inUse[buildID] = true
-		}
+		inUse[buildUUID] = true
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to read deployed builds: %w", err)

@@ -36,6 +36,7 @@ const (
 	buildTestAPIUUID     = "11111111-1111-1111-1111-1111111111aa"
 	buildTestGatewayUUID = "22222222-2222-2222-2222-2222222222aa"
 	buildTestBuildID     = "2026-01-31-2"
+	buildTestBuildUUID   = "55555555-5555-5555-5555-5555555555aa"
 )
 
 // buildTestAPIRepo serves one API and accepts gateway associations.
@@ -225,6 +226,7 @@ func TestDeployAPI_FromABuild_SendsTheStoredSnapshot(t *testing.T) {
 	const snapshot = "apiVersion: gateway.wso2.com/v1\nkind: RestApi\nmetadata:\n  name: orders-api\nspec:\n  context: /orders\n"
 	depRepo := &buildTestDeploymentRepo{
 		build: &model.Build{
+			UUID:        buildTestBuildUUID,
 			BuildID:     buildTestBuildID,
 			ArtifactID:  buildTestAPIUUID,
 			Content:     []byte(snapshot),
@@ -252,6 +254,11 @@ func TestDeployAPI_FromABuild_SendsTheStoredSnapshot(t *testing.T) {
 	if depRepo.created.Metadata[constants.MetadataKeyBuildID] != buildTestBuildID {
 		t.Errorf("buildId metadata = %v, want %q",
 			depRepo.created.Metadata[constants.MetadataKeyBuildID], buildTestBuildID)
+	}
+	// It also references the build row itself, which is what makes "which
+	// deployments came from this build" answerable without reading metadata.
+	if depRepo.created.BuildUUID == nil || *depRepo.created.BuildUUID != buildTestBuildUUID {
+		t.Errorf("buildUuid = %v, want %q", depRepo.created.BuildUUID, buildTestBuildUUID)
 	}
 	// A build is not a deployment, so it is not recorded as the base deployment.
 	if depRepo.created.BaseDeploymentID != nil {
@@ -287,6 +294,7 @@ func TestDeployAPI_PromotionCarriesTheBuildIDForward(t *testing.T) {
 			ArtifactID:   buildTestAPIUUID,
 			GatewayID:    buildTestGatewayUUID,
 			Content:      []byte(snapshot),
+			BuildUUID:    ptr(buildTestBuildUUID),
 			Metadata:     map[string]any{constants.MetadataKeyBuildID: buildTestBuildID},
 		},
 	}
@@ -303,6 +311,9 @@ func TestDeployAPI_PromotionCarriesTheBuildIDForward(t *testing.T) {
 	if depRepo.created.Metadata[constants.MetadataKeyBuildID] != buildTestBuildID {
 		t.Errorf("promoted deployment lost the build id: %v",
 			depRepo.created.Metadata[constants.MetadataKeyBuildID])
+	}
+	if depRepo.created.BuildUUID == nil || *depRepo.created.BuildUUID != buildTestBuildUUID {
+		t.Errorf("promoted deployment lost the build reference: %v", depRepo.created.BuildUUID)
 	}
 	if depRepo.created.BaseDeploymentID == nil {
 		t.Error("a promotion should record the deployment it came from")

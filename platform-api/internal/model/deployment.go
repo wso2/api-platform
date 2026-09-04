@@ -25,16 +25,21 @@ import (
 // Status and UpdatedAt are populated from deployment_status table via JOIN
 // If Status is nil, the deployment is ARCHIVED (not currently active or undeployed)
 type Deployment struct {
-	DeploymentID     string         `json:"deploymentId" db:"uuid"`
-	Name             string         `json:"name" db:"name"`
-	ArtifactID       string         `json:"artifactId" db:"artifact_uuid"`
-	OrganizationID   string         `json:"organizationId" db:"organization_uuid"`
-	GatewayID        string         `json:"gatewayId" db:"gateway_uuid"`
-	BaseDeploymentID *string        `json:"baseDeploymentId,omitempty" db:"base_deployment_uuid"`
-	Content          []byte         `json:"-" db:"content"`
-	Metadata         map[string]any `json:"metadata,omitempty" db:"metadata"`
-	CreatedBy        string         `json:"createdBy,omitempty" db:"created_by"`
-	CreatedAt        time.Time      `json:"createdAt" db:"created_at"`
+	DeploymentID     string  `json:"deploymentId" db:"uuid"`
+	Name             string  `json:"name" db:"name"`
+	ArtifactID       string  `json:"artifactId" db:"artifact_uuid"`
+	OrganizationID   string  `json:"organizationId" db:"organization_uuid"`
+	GatewayID        string  `json:"gatewayId" db:"gateway_uuid"`
+	BaseDeploymentID *string `json:"baseDeploymentId,omitempty" db:"base_deployment_uuid"`
+	// BuildUUID is the build this deployment was made from, when it came from one.
+	// Nil for a deployment rendered straight from the API definition, and for one
+	// whose build has since been pruned — Metadata keeps the readable build id
+	// either way, so the origin survives the reference.
+	BuildUUID *string        `json:"buildUuid,omitempty" db:"build_uuid"`
+	Content   []byte         `json:"-" db:"content"`
+	Metadata  map[string]any `json:"metadata,omitempty" db:"metadata"`
+	CreatedBy string         `json:"createdBy,omitempty" db:"created_by"`
+	CreatedAt time.Time      `json:"createdAt" db:"created_at"`
 
 	// Lifecycle state fields (from deployment_status table via JOIN)
 	// nil values indicate ARCHIVED state (no record in status table)
@@ -58,6 +63,9 @@ func (Deployment) TableName() string {
 // Content is stored at the platform's own DataVersion, untranslated: the target
 // gateway's version is only known at deploy time, so translation happens there.
 type Build struct {
+	// UUID is the build's globally unique identity, and what a deployment
+	// references. BuildID is the readable id people use, unique within the API.
+	UUID           string `json:"uuid" db:"uuid"`
 	BuildID        string `json:"buildId" db:"build_id"`
 	ArtifactID     string `json:"artifactId" db:"artifact_uuid"`
 	OrganizationID string `json:"organizationId" db:"organization_uuid"`

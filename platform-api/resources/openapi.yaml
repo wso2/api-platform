@@ -6830,6 +6830,10 @@ components:
             Identifier for the build, used as a deployment's `base`. It is the date the build
             was prepared followed by that day's index for the API, and is unique per API.
           example: "2026-01-31-2"
+        uuid:
+          type: string
+          format: uuid
+          description: Globally unique identifier for the build, and what a deployment references
         dataVersion:
           type: string
           description: Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed

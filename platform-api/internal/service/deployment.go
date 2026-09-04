@@ -229,6 +229,9 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	var contentBytes []byte
 	var baseDeployment *model.Deployment
 	var baseBuild *model.Build
+	// The build this deployment comes from, when it comes from one; nil when the
+	// artifact is rendered straight from the API definition.
+	var buildUUID *string
 
 	// Determine the source: "current" (render from the API's definition now), a
 	// build (a snapshot rendered earlier, by far the common case once a caller
@@ -364,8 +367,10 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				return nil, fmt.Errorf("failed to parse build YAML: %w", err)
 			}
 			sourceDataVersion = gatewaytranslator.PlatformDataVersion(baseBuild.DataVersion)
-			// Record which build this deployment runs, so a deployment can be traced
-			// back to the snapshot it came from.
+			// Record which build this deployment runs, so it can be traced back to
+			// the snapshot it came from: the reference to the build row, and the
+			// readable id in metadata, which outlives the row if it is ever pruned.
+			buildUUID = &baseBuild.UUID
 			metadata[constants.MetadataKeyBuildID] = baseBuild.BuildID
 		} else {
 			var err error
@@ -448,11 +453,16 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	}
 
 	// A promoted deployment runs the base's artifact, so it runs the base's build:
-	// carry that id forward, or the trace back to the snapshot would stop at the
-	// first promotion.
-	if baseDeployment != nil && baseDeployment.Metadata != nil {
-		if buildID, ok := baseDeployment.Metadata[constants.MetadataKeyBuildID].(string); ok && buildID != "" {
-			metadata[constants.MetadataKeyBuildID] = buildID
+	// carry both the reference and the readable id forward, or the trace back to
+	// the snapshot would stop at the first promotion.
+	if baseDeployment != nil {
+		if baseDeployment.BuildUUID != nil {
+			buildUUID = baseDeployment.BuildUUID
+		}
+		if baseDeployment.Metadata != nil {
+			if buildID, ok := baseDeployment.Metadata[constants.MetadataKeyBuildID].(string); ok && buildID != "" {
+				metadata[constants.MetadataKeyBuildID] = buildID
+			}
 		}
 	}
 
@@ -473,6 +483,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		OrganizationID:   orgUUID,
 		GatewayID:        gatewayID,
 		BaseDeploymentID: baseDeploymentID,
+		BuildUUID:        buildUUID,
 		Content:          contentBytes,
 		Metadata:         metadata,
 		CreatedBy:        createdBy,
