@@ -30,10 +30,11 @@ import {
 import { fetchViewerToken } from './api/analyticsApi';
 import { ErrorState, LoadingState } from './components/StateViews';
 import { insightsRuntimeConfig } from './config/runtimeConfig';
-import type { InsightsEmbedScope } from './types';
+import type { InsightsEmbedProfile, InsightsEmbedScope } from './types';
 import {
   ALLOWED_MOESIF_ORIGINS,
   MOESIF_EMBEDDED_POST_MESSAGE_TYPES,
+  buildAiWorkspaceIframeSrc,
   buildBasicIframeSrc,
   buildBasicProjectIframeSrc,
   resolveMoesifEmbeddingOrigin,
@@ -52,21 +53,26 @@ const isMoesifHandshakeDone = (type: unknown) =>
 
 export type InsightsEmbedProps = {
   scope: InsightsEmbedScope;
+  /** Host-chosen Moesif iframe path profile. Defaults to API Control Plane. */
+  embedProfile?: InsightsEmbedProfile;
 };
 
 const InsightsEmbedConfigured: FC<
   InsightsEmbedProps & { moesifAppUrl: string }
-> = ({ moesifAppUrl, scope }) => {
+> = ({ moesifAppUrl, scope, embedProfile = 'api-control-plane' }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tokenRef = useRef<string | null>(null);
   const embeddingOrigin = resolveMoesifEmbeddingOrigin(moesifAppUrl);
 
   const iframeSrc = useMemo(() => {
+    if (embedProfile === 'ai-workspace') {
+      return buildAiWorkspaceIframeSrc(moesifAppUrl);
+    }
     if (scope.level === 'project') {
       return buildBasicProjectIframeSrc(moesifAppUrl, scope.projectId || '');
     }
     return buildBasicIframeSrc(moesifAppUrl);
-  }, [moesifAppUrl, scope.level, scope.projectId]);
+  }, [embedProfile, moesifAppUrl, scope.level, scope.projectId]);
 
   const [viewerToken, setViewerToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
@@ -174,7 +180,7 @@ const InsightsEmbedConfigured: FC<
 
     const timeoutId = window.setTimeout(() => {
       setHandshakeError(
-        'Moesif Insights did not finish loading in time. If prompted, accept cookies in the panel and click Retry.'
+        'Moesif Insights did not finish loading in time. Please try again.'
       );
     }, EMBED_HANDSHAKE_TIMEOUT_MS);
 

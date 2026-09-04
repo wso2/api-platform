@@ -84,6 +84,14 @@ export const buildBasicProjectIframeSrc = (
   )}#auth=post`;
 };
 
+/**
+ * AI Workspace Insights iframe — same URL at organization and project scope
+ * (no project_id filtering). Matches choreo / AIW Main.tsx:
+ * `{origin}/wrap/basic/ai-overview?embedded_ui=true&isolated_section=true#auth=post`
+ */
+export const buildAiWorkspaceIframeSrc = (embeddingOrigin: string) =>
+  `${embeddingOrigin.replace(/\/$/, '')}/wrap/basic/ai-overview?embedded_ui=true&isolated_section=true#auth=post`;
+
 export const resolveInsightsScopeLevel = (params: {
   projectHandle?: string;
 }): InsightsScopeLevel =>

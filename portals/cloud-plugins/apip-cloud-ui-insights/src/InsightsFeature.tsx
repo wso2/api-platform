@@ -16,20 +16,40 @@
  * under the License.
  */
 
-import { useEffect, useMemo, useState, type FC } from 'react';
+import { PageContent } from '@wso2/oxygen-ui';
+import { useEffect, useMemo, useState, type FC, type ReactNode } from 'react';
 
 import { resolveProjectScope } from './api/analyticsApi';
 import { ErrorState, LoadingState } from './components/StateViews';
 import type { InsightsHostPort } from './hostPort';
 import InsightsEmbed from './InsightsEmbed';
-import type { InsightsScopeLevel } from './types';
+import type { InsightsEmbedProfile, InsightsScopeLevel } from './types';
 import { resolveInsightsScopeLevel } from './utils/moesifEmbed';
 import { parseInsightsRouteParams } from './utils/routeParams';
+
+/**
+ * AI Workspace pages own their PageContent (the shell does not wrap the outlet).
+ * ACP already wraps the outlet in PageContent — do not nest another here.
+ */
+function withHostPageChrome(
+  embedProfile: InsightsEmbedProfile,
+  children: ReactNode
+): ReactNode {
+  if (embedProfile === 'ai-workspace') {
+    return <PageContent fullWidth>{children}</PageContent>;
+  }
+  return children;
+}
 
 export type InsightsFeatureProps = {
   port: InsightsHostPort;
   /** When set, overrides URL-derived scope. */
   forcedScopeLevel?: InsightsScopeLevel;
+  /**
+   * Host-chosen Moesif iframe path. AI Workspace uses the same ai-overview
+   * URL at org and project (no project_id filtering).
+   */
+  embedProfile?: InsightsEmbedProfile;
 };
 
 /**
@@ -44,6 +64,7 @@ export type InsightsFeatureProps = {
 const InsightsFeature: FC<InsightsFeatureProps> = ({
   port,
   forcedScopeLevel,
+  embedProfile = 'api-control-plane',
 }) => {
   const routeParams = parseInsightsRouteParams(window.location.pathname);
   const orgHandle = port.orgHandle || routeParams.orgHandle || '';
@@ -55,9 +76,16 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
       projectHandle,
     });
 
+  // AI Workspace: same iframe at org and project — skip project_id resolve.
+  const needsProjectResolve =
+    embedProfile === 'api-control-plane' && requestedScopeLevel === 'project';
+
   const scopeKey = useMemo(
-    () => [orgHandle, projectHandle ?? '', requestedScopeLevel].join('|'),
-    [orgHandle, projectHandle, requestedScopeLevel]
+    () =>
+      [orgHandle, projectHandle ?? '', requestedScopeLevel, embedProfile].join(
+        '|'
+      ),
+    [embedProfile, orgHandle, projectHandle, requestedScopeLevel]
   );
 
   const [embedScopeLevel, setEmbedScopeLevel] =
@@ -65,18 +93,18 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [scopeError, setScopeError] = useState<string | null>(null);
-  const [scopeLoading, setScopeLoading] = useState(
-    requestedScopeLevel === 'project'
-  );
+  const [scopeLoading, setScopeLoading] = useState(needsProjectResolve);
   const [resolvedScopeKey, setResolvedScopeKey] = useState<string | null>(() =>
-    requestedScopeLevel === 'project' ? null : scopeKey
+    needsProjectResolve ? null : scopeKey
   );
 
   const isScopeReady = resolvedScopeKey === scopeKey;
 
   useEffect(() => {
-    if (requestedScopeLevel !== 'project') {
-      setEmbedScopeLevel('organization');
+    if (!needsProjectResolve) {
+      setEmbedScopeLevel(
+        embedProfile === 'ai-workspace' ? 'organization' : requestedScopeLevel
+      );
       setScopeLoading(false);
       setScopeError(null);
       setProjectId(null);
@@ -99,7 +127,6 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
           throw new Error('Organization context is unavailable.');
         }
         if (!projectHandle) {
-          // No project context — use org embed until Moesif project support is ready.
           if (!cancelled) {
             setEmbedScopeLevel('organization');
             setProjectId(null);
@@ -115,8 +142,6 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
         setProjectName(project.projectName);
         setResolvedScopeKey(scopeKey);
       } catch {
-        // Project-level Insights unavailable (resolve failed / Moesif not ready) —
-        // fall back to organization wrap/basic.
         if (!cancelled) {
           setEmbedScopeLevel('organization');
           setProjectId(null);
@@ -132,10 +157,18 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [orgHandle, projectHandle, scopeKey, requestedScopeLevel]);
+  }, [
+    embedProfile,
+    needsProjectResolve,
+    orgHandle,
+    projectHandle,
+    requestedScopeLevel,
+    scopeKey,
+  ]);
 
   if (!orgHandle) {
-    return (
+    return withHostPageChrome(
+      embedProfile,
       <ErrorState
         message="Organization context is unavailable."
         title="Unable to load Insights"
@@ -144,17 +177,23 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
   }
 
   if (scopeError) {
-    return (
+    return withHostPageChrome(
+      embedProfile,
       <ErrorState message={scopeError} title="Unable to load Insights" />
     );
   }
 
   if (scopeLoading || !isScopeReady) {
-    return <LoadingState label="Preparing Insights" />;
+    return withHostPageChrome(
+      embedProfile,
+      <LoadingState label="Preparing Insights" />
+    );
   }
 
-  return (
+  return withHostPageChrome(
+    embedProfile,
     <InsightsEmbed
+      embedProfile={embedProfile}
       scope={{
         level: embedScopeLevel,
         projectId,

@@ -146,7 +146,11 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
             );
           },
           render: (port) => (
-            <InsightsFeature port={port} forcedScopeLevel="organization" />
+            <InsightsFeature
+              port={port}
+              forcedScopeLevel="organization"
+              embedProfile="api-control-plane"
+            />
           ),
         },
         {
@@ -166,7 +170,11 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
             return Boolean(typed.isProjectScope) && !typed.isApiScope;
           },
           render: (port) => (
-            <InsightsFeature port={port} forcedScopeLevel="project" />
+            <InsightsFeature
+              port={port}
+              forcedScopeLevel="project"
+              embedProfile="api-control-plane"
+            />
           ),
         },
       ],

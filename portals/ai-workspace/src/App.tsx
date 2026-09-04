@@ -87,6 +87,7 @@ import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
 import {
   AI_WORKSPACE_GATEWAYS_SLOT,
+  AI_WORKSPACE_INSIGHTS_SLOT,
   AI_WORKSPACE_SIDEBAR_SLOT,
   ExtensionsProvider,
   type AIWorkspaceCloudEntry,
@@ -95,6 +96,43 @@ import {
 } from './extensions';
 import { Hideable, useSlot } from './slots';
 import { usePort } from './hostPort';
+
+/** Moesif wrap hosts the cloud Insights embed trusts (keep in sync with the plugin allowlist). */
+const ALLOWED_MOESIF_ORIGINS = new Set([
+  'https://www.moesif.com',
+  'https://web-dev.moesif.com',
+]);
+
+/**
+ * Whether cloud Insights can embed Moesif. Kept in App (not imported from the
+ * plugin) so the OSS portal builds without `@wso2-enterprise/apip-cloud-ui-insights`.
+ * When false, InsightsRoute keeps the built-in page even if a cloud override is registered.
+ */
+function isCloudInsightsMoesifConfigured(): boolean {
+  const runtimeWindow = window as Window & {
+    __RUNTIME_CONFIG__?: Record<string, string | undefined>;
+    config?: Record<string, string | undefined>;
+  };
+  const configured =
+    runtimeWindow.__RUNTIME_CONFIG__?.APIP_AIW_MOESIF_WEB_URL ||
+    runtimeWindow.__RUNTIME_CONFIG__?.moesifAppUrl ||
+    runtimeWindow.__RUNTIME_CONFIG__?.MOESIF_APP_URL ||
+    runtimeWindow.config?.APIP_AIW_MOESIF_WEB_URL ||
+    runtimeWindow.config?.moesifAppUrl ||
+    import.meta.env.APIP_AIW_MOESIF_WEB_URL ||
+    import.meta.env.VITE_MOESIF_APP_URL ||
+    '';
+  const trimmed = String(configured).trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return (
+      parsed.protocol === 'https:' && ALLOWED_MOESIF_ORIGINS.has(parsed.origin)
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -306,6 +344,23 @@ function GatewaysRoute() {
   return (
     <Hideable name={AI_WORKSPACE_GATEWAYS_SLOT}>
       <GatewaysLayout />
+    </Hideable>
+  );
+}
+
+// Same Slot/Hideable pattern as GatewaysRoute for the built-in Insights page
+// (org + project `/insights`). Cloud registers embedProfile="ai-workspace".
+// If the Moesif origin is not configured, keep the built-in page instead of
+// replacing it with "Insights is not configured for this deployment."
+function InsightsRoute() {
+  const port = usePort();
+  const [override] = useSlot<AIWorkspacePageOverride>(AI_WORKSPACE_INSIGHTS_SLOT);
+  if (override && isCloudInsightsMoesifConfigured()) {
+    return <>{override.render(port)}</>;
+  }
+  return (
+    <Hideable name={AI_WORKSPACE_INSIGHTS_SLOT}>
+      <Insights />
     </Hideable>
   );
 }
@@ -583,7 +638,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
               path="insights"
               element={
                 <WithPageBoundary>
-                  <Insights />
+                  <InsightsRoute />
                 </WithPageBoundary>
               }
             />
@@ -836,7 +891,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 path="insights"
                 element={
                   <WithPageBoundary>
-                    <Insights />
+                    <InsightsRoute />
                   </WithPageBoundary>
                 }
               />

@@ -19,6 +19,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  buildAiWorkspaceIframeSrc,
   buildBasicIframeSrc,
   buildBasicProjectIframeSrc,
   resolveInsightsScopeLevel,
@@ -43,6 +44,12 @@ describe('moesifEmbed helpers', () => {
       buildBasicProjectIframeSrc('https://web-dev.moesif.com', 'proj-1')
     ).toBe(
       'https://web-dev.moesif.com/wrap/basic?project_id=proj-1#auth=post'
+    );
+  });
+
+  it('builds the AI Workspace ai-overview iframe src', () => {
+    expect(buildAiWorkspaceIframeSrc('https://web-dev.moesif.com')).toBe(
+      'https://web-dev.moesif.com/wrap/basic/ai-overview?embedded_ui=true&isolated_section=true#auth=post'
     );
   });
 

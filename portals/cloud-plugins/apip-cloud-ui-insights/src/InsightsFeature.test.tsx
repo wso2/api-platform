@@ -17,6 +17,7 @@
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InsightsEmbedScope } from './types';
@@ -38,6 +39,12 @@ vi.mock('./components/StateViews', () => ({
     <div data-testid="error-state">
       {title}: {message}
     </div>
+  ),
+}));
+
+vi.mock('@wso2/oxygen-ui', () => ({
+  PageContent: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="page-content">{children}</div>
   ),
 }));
 
@@ -77,6 +84,7 @@ describe('InsightsFeature', () => {
       <InsightsFeature
         port={{ ...basePort, projectHandle: 'project-a' }}
         forcedScopeLevel="project"
+        embedProfile="api-control-plane"
       />
     );
 
@@ -97,6 +105,7 @@ describe('InsightsFeature', () => {
       <InsightsFeature
         port={{ ...basePort, projectHandle: 'missing' }}
         forcedScopeLevel="project"
+        embedProfile="api-control-plane"
       />
     );
 
@@ -111,6 +120,23 @@ describe('InsightsFeature', () => {
       projectId: null,
       projectName: null,
     });
+  });
+
+  it('uses ai-overview embed for AI Workspace without resolving project_id', async () => {
+    render(
+      <InsightsFeature
+        port={{ ...basePort, projectHandle: 'orders' }}
+        forcedScopeLevel="project"
+        embedProfile="ai-workspace"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+        'organization:none'
+      );
+    });
+    expect(mockResolveProjectScope).not.toHaveBeenCalled();
   });
 
   it('shows loading instead of stale project metadata when switching projects', async () => {
@@ -142,6 +168,7 @@ describe('InsightsFeature', () => {
       <InsightsFeature
         port={{ ...basePort, projectHandle: 'project-a' }}
         forcedScopeLevel="project"
+        embedProfile="api-control-plane"
       />
     );
 
@@ -156,6 +183,7 @@ describe('InsightsFeature', () => {
       <InsightsFeature
         port={{ ...basePort, projectHandle: 'project-b' }}
         forcedScopeLevel="project"
+        embedProfile="api-control-plane"
       />
     );
 
@@ -177,5 +205,37 @@ describe('InsightsFeature', () => {
       projectId: 'id-b',
       projectName: 'Project B',
     });
+  });
+
+  it('wraps AI Workspace Insights in PageContent for shell padding', async () => {
+    render(
+      <InsightsFeature
+        port={basePort}
+        forcedScopeLevel="organization"
+        embedProfile="ai-workspace"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('insights-embed')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('page-content')).toContainElement(
+      screen.getByTestId('insights-embed')
+    );
+  });
+
+  it('does not nest PageContent for API Control Plane', async () => {
+    render(
+      <InsightsFeature
+        port={basePort}
+        forcedScopeLevel="organization"
+        embedProfile="api-control-plane"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('insights-embed')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('page-content')).not.toBeInTheDocument();
   });
 });

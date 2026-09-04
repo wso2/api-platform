@@ -56,4 +56,19 @@ describe('insightsRuntimeConfig', () => {
 
     expect(config.moesifAppUrl).toBeUndefined();
   });
+
+  it('reports configured when an allowlisted Moesif origin is present', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      APIP_AIW_MOESIF_WEB_URL: 'https://web-dev.moesif.com',
+    };
+    vi.resetModules();
+    const { isInsightsMoesifConfigured } = await import('./runtimeConfig');
+    expect(isInsightsMoesifConfigured()).toBe(true);
+  });
+
+  it('reports unconfigured when Moesif origin is missing', async () => {
+    vi.resetModules();
+    const { isInsightsMoesifConfigured } = await import('./runtimeConfig');
+    expect(isInsightsMoesifConfigured()).toBe(false);
+  });
 });

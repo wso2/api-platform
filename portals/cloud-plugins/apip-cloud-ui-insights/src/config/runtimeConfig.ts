@@ -37,6 +37,8 @@ type LegacyWindowConfig = Partial<{
   MOESIF_BASIC_INSIGHTS_URL: string;
   moesifAppUrl: string;
   moesifBasicInsightsUrl: string;
+  /** AI Workspace BFF runtime key (`moesif_web_url` → APIP_AIW_MOESIF_WEB_URL). */
+  APIP_AIW_MOESIF_WEB_URL: string;
 }>;
 
 const fromWindow = (): LegacyWindowConfig => {
@@ -55,8 +57,10 @@ const configuredMoesifAppUrl = () =>
   fromWindow().MOESIF_BASIC_INSIGHTS_URL ||
   fromWindow().moesifAppUrl ||
   fromWindow().moesifBasicInsightsUrl ||
+  fromWindow().APIP_AIW_MOESIF_WEB_URL ||
   import.meta.env.VITE_MOESIF_APP_URL ||
   import.meta.env.VITE_MOESIF_BASIC_INSIGHTS_URL ||
+  import.meta.env.APIP_AIW_MOESIF_WEB_URL ||
   '';
 
 const resolveInsightsMoesifAppUrl = (): string | undefined => {
@@ -65,12 +69,24 @@ const resolveInsightsMoesifAppUrl = (): string | undefined => {
   return pickAllowlistedMoesifAppUrl(configured);
 };
 
+/** True when a trusted Moesif wrap origin is available (runtime or Vite env). */
+export const isInsightsMoesifConfigured = (): boolean =>
+  Boolean(resolveInsightsMoesifAppUrl());
+
+/** Same-origin BFF proxy prefix from Vite `base` (`/` → `/proxy`, `/ai-workspace/` → `/ai-workspace/proxy`). */
+export const defaultPlatformApiBaseUrl = (
+  viteBase = import.meta.env.BASE_URL
+): string => {
+  const base = String(viteBase ?? '/').replace(/\/$/, '');
+  return `${base}/proxy`;
+};
+
 export const insightsRuntimeConfig: InsightsRuntimeConfig = {
   platformApiBaseUrl:
     fromWindow().PLATFORM_API_BASE_URL ||
     fromWindow().platformApiBaseUrl ||
     import.meta.env.VITE_PLATFORM_API_BASE_URL ||
-    '/proxy',
+    defaultPlatformApiBaseUrl(),
   platformApiVersion:
     fromWindow().PLATFORM_API_VERSION ||
     fromWindow().platformApiVersion ||

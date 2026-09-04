@@ -1,6 +1,8 @@
 # APIP Cloud UI — Insights
 
 Shared Moesif Insights embed for **API Control Plane** and **AI Workspace**.
+The plugin is the same; each host registry picks an `embedProfile` so the
+iframe *path* differs. The Moesif *origin* is runtime config; the path is not.
 
 ## Layout
 
@@ -9,7 +11,7 @@ src/
   InsightsFeature.tsx      # extension entry (scope resolution)
   InsightsEmbed.tsx        # Moesif wrap/basic iframe handshake
   hostPort.ts              # host port contract
-  types.ts                 # shared types
+  types.ts                 # shared types (includes InsightsEmbedProfile)
   api/
     analyticsApi.ts        # WSO2 Cloud analytics endpoints
   config/
@@ -24,37 +26,18 @@ overlays/
     InsightsPage.tsx       # cloud Docker overlay (API scope Coming soon)
 ```
 
-## Cloud backend integration
+## Embed modes (`embedProfile`)
 
-Production deployments must **not** mint Moesif viewer tokens in the browser. This plugin calls WSO2 Cloud platform-api-service through the portal BFF same-origin proxy:
+| Profile | Org iframe | Project iframe |
+|---------|------------|----------------|
+| `api-control-plane` (default) | `/wrap/basic#auth=post` | `/wrap/basic?project_id=…` (falls back to org if resolve fails) |
+| `ai-workspace` | `/wrap/basic/ai-overview?embedded_ui=true&isolated_section=true#auth=post` | **same URL** (no project_id filter) |
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /proxy/cloud/analytics/id-token` | Dashboard-viewer token for the authenticated org |
-
-These map to `wso2cloud/backend/core/internal/moesifmapping/handler/handler.go`.
-
-Org context for the viewer token is resolved server-side from the BFF session.
-
-## Runtime configuration
-
-Inject via BFF runtime config (`window.__RUNTIME_CONFIG__`) or Vite env:
-
-| Key | Description |
-|-----|-------------|
-| `moesifAppUrl` | Moesif wrap iframe origin |
-| `platformApiBaseUrl` | BFF proxy prefix (default `/proxy`) |
-| `platformApiVersion` | Platform API version segment (default `v0.9`) |
+Do **not** put `/wrap/basic` or `/ai-overview` in env — only the Moesif origin.
 
 ## Host registration
 
-- **API Control Plane** — org/project sidebar extensions via `apip-cloud-ui/src/hosts/api-control-plane.tsx`; API Insights route shows Coming soon (same as Compliance)
-- **AI Workspace** — sidebar extension via `apip-cloud-ui/src/hosts/ai-workspace.tsx`
-
-## Embed modes
-
-| Scope | Iframe |
-|-------|--------|
-| Organization | `{moesifAppUrl}/wrap/basic#auth=post` |
-| Project | `{moesifAppUrl}/wrap/basic?project_id=...#auth=post` |
-| API | Coming soon (built-in ACP route; not embedded by this plugin) |
+- **API Control Plane** — org/project sidebar via `apip-cloud-ui/src/hosts/api-control-plane.tsx`
+- **AI Workspace** — `page.insights` override (like gateways) via `hosts/ai-workspace.tsx`.
+  If Moesif origin is not in runtime config, `InsightsRoute` keeps the built-in
+  Insights page instead of showing a configuration error.

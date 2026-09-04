@@ -20,6 +20,7 @@ import { defineConfig } from 'vite'
 import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import fs from 'node:fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -29,6 +30,17 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const repoRoot = path.resolve(__dirname, '../../..')
+const cloudPluginsRoot = path.resolve(__dirname, '../cloud-plugins')
+const insightsLocalEntry = path.resolve(
+  cloudPluginsRoot,
+  'apip-cloud-ui-insights/src/index.ts'
+)
+// Monorepo: alias to the sibling plugin source. Docker SaaS images only copy
+// portals/ai-workspace into /web and install Insights into node_modules — the
+// sibling path is absent there, so skip the alias and let Node resolve the package.
+const insightsAlias = fs.existsSync(insightsLocalEntry)
+  ? { '@wso2-enterprise/apip-cloud-ui-insights': insightsLocalEntry }
+  : {}
 const rushTemp = path.resolve(repoRoot, 'common/temp')
 const aiTemp = path.resolve(rushTemp, 'ai-workspace')
 const aiNodeModules = path.resolve(aiTemp, 'node_modules')
@@ -133,12 +145,16 @@ export default defineConfig({
   envPrefix: browserSafeEnvVars,
   resolve: {
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    alias: {
+      ...insightsAlias,
+    },
   },
   server: {
     port: 9643,
     fs: {
       allow: [
         path.resolve(__dirname),
+        ...(fs.existsSync(cloudPluginsRoot) ? [cloudPluginsRoot] : []),
         repoRoot,
         rushTemp,
         aiTemp,
