@@ -318,9 +318,9 @@ func (s *APIServer) CreateAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 	result, err := s.apiKeyService.CreateAPIKey(params)
 	if err != nil {
 		logAgentAPIKeyFailure(log, "create agent api key", handle, "", correlationID, err)
-		if strings.Contains(err.Error(), "not found") {
+		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentNotFound})
-		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+		} else if storage.IsConflictError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyConflict})
 		} else {
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyCreateFailed})
@@ -354,7 +354,7 @@ func (s *APIServer) ListAgentAPIKeys(w http.ResponseWriter, r *http.Request, id 
 	result, err := s.apiKeyService.ListAPIKeys(params)
 	if err != nil {
 		logAgentAPIKeyFailure(log, "list agent api keys", handle, "", correlationID, err)
-		if strings.Contains(err.Error(), "not found") {
+		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentNotFound})
 		} else {
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyListFailed})
@@ -396,7 +396,7 @@ func (s *APIServer) RegenerateAgentAPIKey(w http.ResponseWriter, r *http.Request
 	result, err := s.apiKeyService.RegenerateAPIKey(params)
 	if err != nil {
 		logAgentAPIKeyFailure(log, "regenerate agent api key", handle, apiKeyName, correlationID, err)
-		if strings.Contains(err.Error(), "not found") {
+		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotFound})
 		} else {
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyRegenFailed})
@@ -445,9 +445,9 @@ func (s *APIServer) UpdateAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 		logAgentAPIKeyFailure(log, "update agent api key", handle, apiKeyName, correlationID, err)
 		if storage.IsOperationNotAllowedError(err) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotAllowed})
-		} else if strings.Contains(err.Error(), "not found") {
+		} else if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotFound})
-		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+		} else if storage.IsConflictError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyConflict})
 		} else {
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyUpdateFailed})
@@ -482,7 +482,7 @@ func (s *APIServer) RevokeAgentAPIKey(w http.ResponseWriter, r *http.Request, id
 	result, err := s.apiKeyService.RevokeAPIKey(params)
 	if err != nil {
 		logAgentAPIKeyFailure(log, "revoke agent api key", handle, apiKeyName, correlationID, err)
-		if strings.Contains(err.Error(), "not found") {
+		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyNotFound})
 		} else {
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: msgAgentAPIKeyRevokeFailed})

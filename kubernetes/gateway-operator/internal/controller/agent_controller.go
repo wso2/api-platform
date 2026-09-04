@@ -147,6 +147,22 @@ func (a *agentAdapter) onExternalDepsApplied(ctx context.Context, c client.Clien
 func (a *agentAdapter) Deploy(ctx context.Context, k8sClient client.Client, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) (DeployResult, error) {
 	cr := obj.(*apiv1.Agent)
 
+	// Fingerprint the external dependencies before anything below reads them.
+	// This covers the same two sources the resolution steps consume — the
+	// upstream auth credential and every policy-params valueFrom ref — so
+	// computing it first means the annotation onExternalDepsApplied writes can
+	// only ever name a revision at or older than what was deployed. Computing it
+	// after the reads inverts that: a concurrent Secret/ConfigMap write landing
+	// between a read and the fingerprint would record a revision that was never
+	// deployed, and needsRedeployForExternalDeps would then match it and skip the
+	// redeploy, losing the update. The worst case in this order is a redundant
+	// redeploy, which converges. A failure here aborts before anything is
+	// resolved or deployed.
+	fp, err := agentExternalDepsFingerprint(ctx, k8sClient, cr)
+	if err != nil {
+		return DeployResult{}, err
+	}
+
 	// Resolve against a copy: the resolved plaintext must reach the gateway
 	// payload only, never be written back onto the CR.
 	spec := *cr.Spec.DeepCopy()
@@ -182,14 +198,6 @@ func (a *agentAdapter) Deploy(ctx context.Context, k8sClient client.Client, gate
 		}, specPayload)
 	if err != nil {
 		return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("build payload: %w", err)}
-	}
-	// Compute the fingerprint of the state about to be deployed, before the
-	// deployment starts, so onExternalDepsApplied records exactly what went to
-	// the gateway rather than a racy post-deploy re-computation. A failure here
-	// aborts before anything is deployed.
-	fp, err := agentExternalDepsFingerprint(ctx, k8sClient, cr)
-	if err != nil {
-		return DeployResult{}, err
 	}
 	if err := deployEnvelopeResource(ctx, gatewayEndpoint, gatewayclient.AgentsPath(), cr.Name, body, authFn); err != nil {
 		return DeployResult{}, err
