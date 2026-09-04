@@ -20,26 +20,19 @@ import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
-  InputAdornment,
-  MenuItem,
-  PageTitle,
+  Divider,
+  SearchBar,
   Stack,
   TablePagination,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import { LayoutGrid, List, Plus, Search } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
+import { LayoutGrid, List, Plus } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import {
-  useDeleteRestApi,
-  useRestApis,
-  type RestApi,
-  type RestApiListFilters,
-} from '@/api/resources/restApis';
+import { useDeleteRestApi, useRestApis, type RestApi } from '@/api/resources/restApis';
 import { ApiGridView } from './ApiGridView';
 import { ApiListView } from './ApiListView';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -48,6 +41,7 @@ import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
+import { matchesApiType, type ApiTypeFilter } from './apiTypeFilter';
 
 type ViewMode = 'grid' | 'list';
 
@@ -55,16 +49,7 @@ type ViewMode = 'grid' | 'list';
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 const SEARCH_DEBOUNCE_MS = 300;
 
-/** Server-side sort is limited to `name | createdAt` and `asc | desc`. */
-type SortBy = NonNullable<RestApiListFilters['sortBy']>;
-type SortOrder = NonNullable<RestApiListFilters['sortOrder']>;
-
 const messages = defineMessages({
-  apiCount: {
-    id: 'apiListPage.count',
-    defaultMessage: '{count, plural, one {# API} other {# APIs}}',
-    description: 'Heading above the listing, counting every match, not the page.',
-  },
   createApiButton: {
     id: 'apiListPage.createApiButton',
     defaultMessage: 'Create API',
@@ -131,7 +116,7 @@ const messages = defineMessages({
   },
   noMatchesDescription: {
     id: 'apiListPage.noMatches.description',
-    defaultMessage: 'Try a different API name or clear the search.',
+    defaultMessage: 'Try a different API name or clear the active filter.',
   },
   noMatchesTitle: {
     id: 'apiListPage.noMatches.title',
@@ -145,69 +130,9 @@ const messages = defineMessages({
     id: 'apiListPage.searchPlaceholder',
     defaultMessage: 'Search APIs',
   },
-  sortLabel: {
-    id: 'apiListPage.sortLabel',
-    defaultMessage: 'Sort by',
-    description: 'Label for the control choosing the API list order.',
-  },
-  sortNameAscending: {
-    id: 'apiListPage.sort.nameAscending',
-    defaultMessage: 'Name (A–Z)',
-    description: 'Sort option: alphabetical by API name, ascending.',
-  },
-  sortNameDescending: {
-    id: 'apiListPage.sort.nameDescending',
-    defaultMessage: 'Name (Z–A)',
-    description: 'Sort option: alphabetical by API name, descending.',
-  },
-  sortNewest: {
-    id: 'apiListPage.sort.newest',
-    defaultMessage: 'Newest first',
-    description: 'Sort option: by creation date, most recent API first.',
-  },
-  sortOldest: {
-    id: 'apiListPage.sort.oldest',
-    defaultMessage: 'Oldest first',
-    description: 'Sort option: by creation date, earliest API first.',
-  },
 });
 
-/** Sort options combine field + order to avoid invalid combinations. */
-const SORT_OPTIONS = [
-  {
-    label: messages.sortNewest,
-    sortBy: 'createdAt',
-    sortOrder: 'desc',
-    value: 'createdAt:desc',
-  },
-  {
-    label: messages.sortOldest,
-    sortBy: 'createdAt',
-    sortOrder: 'asc',
-    value: 'createdAt:asc',
-  },
-  {
-    label: messages.sortNameAscending,
-    sortBy: 'name',
-    sortOrder: 'asc',
-    value: 'name:asc',
-  },
-  {
-    label: messages.sortNameDescending,
-    sortBy: 'name',
-    sortOrder: 'desc',
-    value: 'name:desc',
-  },
-] as const satisfies readonly {
-  label: MessageDescriptor;
-  sortBy: SortBy;
-  sortOrder: SortOrder;
-  value: string;
-}[];
-
-type SortOption = (typeof SORT_OPTIONS)[number];
-
-export function ApiList() {
+export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | null }) {
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();
@@ -217,34 +142,41 @@ export function ApiList() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
-  const [sort, setSort] = useState<SortOption>(SORT_OPTIONS[0]);
   const [view, setView] = useState<ViewMode>('grid');
   const [toDelete, setToDelete] = useState<RestApi | null>(null);
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
 
   // Reset to page 1 when the filter or sort changes.
-  useEffect(() => setPage(0), [debouncedSearch, sort.value]);
+  useEffect(() => setPage(0), [debouncedSearch, typeFilter]);
 
   // Server-side, so search and pagination agree: `query` is a substring match
   // on the API handle, applied across the whole collection rather than to the
   // page already in cache.
   const apisQuery = useRestApis({
-    limit: rowsPerPage,
-    offset: page * rowsPerPage,
+    limit: typeFilter ? 100 : rowsPerPage,
+    offset: typeFilter ? 0 : page * rowsPerPage,
     query: debouncedSearch || undefined,
-    sortBy: sort.sortBy,
-    sortOrder: sort.sortOrder,
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
   });
 
-  const apis = apisQuery.data?.list ?? [];
-  const total = apisQuery.data?.pagination?.total ?? apis.length;
+  const responseApis = apisQuery.data?.list ?? [];
+  const filteredApis = typeFilter
+    ? responseApis.filter((api) => matchesApiType(api.kind, typeFilter))
+    : responseApis;
+  const total = typeFilter
+    ? filteredApis.length
+    : (apisQuery.data?.pagination?.total ?? responseApis.length);
   const lastPage = Math.max(0, Math.ceil(total / rowsPerPage) - 1);
+  const apis = typeFilter
+    ? filteredApis.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+    : filteredApis;
   // Deleting the last card of the last page leaves `page` past the end. Render
   // the clamped value (an out-of-range `page` makes TablePagination complain),
   // and correct the state so the next request asks for a window that exists.
   const currentPage = Math.min(page, lastPage);
-  const isSearching = debouncedSearch.length > 0;
+  const isSearching = debouncedSearch.length > 0 || typeFilter !== null;
   // Show the create prompt only for an empty project, not an empty search.
   const isFirstRun = total === 0 && !isSearching;
 
@@ -283,24 +215,6 @@ export function ApiList() {
 
   return (
     <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage
-            defaultMessage="APIs"
-            description="Page title for the API list page"
-            id="apiListPage.title"
-          />
-        </PageTitle.Header>
-        {/* Hidden on first run to avoid duplicate create actions. */}
-        {!isFirstRun && (
-          <PageTitle.Actions>
-            <Button onClick={createApi} startIcon={<Plus />} variant="contained">
-              <FormattedMessage {...messages.createApiButton} />
-            </Button>
-          </PageTitle.Actions>
-        )}
-      </PageTitle>
-
       {isFirstRun ? (
         <EmptyState
           actionIcon={<Plus />}
@@ -311,25 +225,7 @@ export function ApiList() {
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (
-        <Stack spacing={2} sx={{ flexGrow: 1 }}>
-          {/* Full-bleed search: the field owns its own row across the page. */}
-          <TextField
-            fullWidth
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={intl.formatMessage(messages.searchPlaceholder)}
-            size="small"
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search size={18} />
-                  </InputAdornment>
-                ),
-              },
-            }}
-            value={search}
-          />
-
+        <Stack spacing={2.5} sx={{ flexGrow: 1 }}>
           <Box
             sx={{
               alignItems: 'center',
@@ -339,29 +235,34 @@ export function ApiList() {
               justifyContent: 'space-between',
             }}
           >
-            {/* Counts every match, not the cards on screen — which is why it
-                reads from `pagination.total` rather than `list.length`. */}
-            <Typography variant="h6">
-              <FormattedMessage {...messages.apiCount} values={{ count: total }} />
-            </Typography>
+            <Stack
+              alignItems="center"
+              direction="row"
+              divider={<Divider flexItem orientation="vertical" />}
+              spacing={1.25}
+            >
+              <Typography sx={{ fontWeight: 800 }} variant="h4">
+                <FormattedMessage
+                  defaultMessage="APIs"
+                  description="Page title for the API list page"
+                  id="apiListPage.title"
+                />
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                <FormattedNumber value={total} />
+              </Typography>
+            </Stack>
             <Stack alignItems="center" direction="row" spacing={1.5}>
-              <TextField
-                label={intl.formatMessage(messages.sortLabel)}
-                onChange={(event) => {
-                  const next = SORT_OPTIONS.find((option) => option.value === event.target.value);
-                  if (next) setSort(next);
-                }}
-                select
+              <SearchBar
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={intl.formatMessage(messages.searchPlaceholder)}
                 size="small"
-                sx={{ minWidth: 200 }}
-                value={sort.value}
-              >
-                {SORT_OPTIONS.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {intl.formatMessage(option.label)}
-                  </MenuItem>
-                ))}
-              </TextField>
+                sx={{ minWidth: 320 }}
+                value={search}
+              />
+              <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
+                <FormattedMessage {...messages.createApiButton} />
+              </Button>
               <ToggleButtonGroup
                 exclusive
                 onChange={(_event, value: ViewMode | null) => {

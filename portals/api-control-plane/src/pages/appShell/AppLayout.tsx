@@ -31,10 +31,7 @@ import { Suspense } from 'react';
 import { matchPath, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
-import {
-  PageErrorFallback,
-  SidebarErrorFallback,
-} from '../../components/errors/ErrorFallback';
+import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { routes } from '../../routes/paths';
@@ -44,7 +41,7 @@ import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostP
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 
 /**
  * Full-page creation flows, which the shell renders without a breadcrumb trail.
@@ -57,13 +54,14 @@ import { FormattedMessage } from 'react-intl';
 const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway()];
 
 export default function AppLayout() {
+  const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
-  const { organization, project, component, params } = useConsoleScope();
+  const { project, component, params } = useConsoleScope();
   const { notify } = useNotifications();
 
   const hidesBreadcrumbs = BREADCRUMB_FREE_ROUTES.some(
-    (path) => matchPath(path, location.pathname) !== null
+    (path) => matchPath(path, location.pathname) !== null,
   );
 
   // Built once per render from this portal's own hooks, then handed down as
@@ -82,7 +80,10 @@ export default function AppLayout() {
   if (params.orgHandle) {
     crumbs.push({
       key: 'org',
-      label: organization?.displayName || params.orgHandle,
+      label: intl.formatMessage({
+        id: 'appLayout.breadcrumb.home',
+        defaultMessage: 'Home',
+      }),
       onClick: () => navigate(routes.organizationHome(params.orgHandle!)),
     });
   }
@@ -90,8 +91,7 @@ export default function AppLayout() {
     crumbs.push({
       key: 'project',
       label: project?.displayName || params.projectHandler,
-      onClick: () =>
-        navigate(routes.projectHome(params.orgHandle!, params.projectHandler!)),
+      onClick: () => navigate(routes.projectHome(params.orgHandle!, params.projectHandler!)),
     });
   }
   if (params.orgHandle && params.projectHandler && params.apiHandler) {
@@ -99,18 +99,12 @@ export default function AppLayout() {
       key: 'api',
       label: component?.displayName || params.apiHandler,
       onClick: () =>
-        navigate(
-          routes.api(
-            params.orgHandle!,
-            params.projectHandler!,
-            params.apiHandler!
-          )
-        ),
+        navigate(routes.api(params.orgHandle!, params.projectHandler!, params.apiHandler!)),
     });
   }
   // The final crumb is the current page — render it as plain text (no nav).
   const breadcrumbItems = crumbs.map((crumb, index) =>
-    index === crumbs.length - 1 ? { ...crumb, onClick: undefined } : crumb
+    index === crumbs.length - 1 ? { ...crumb, onClick: undefined } : crumb,
   );
 
   return (
@@ -122,83 +116,92 @@ export default function AppLayout() {
 
         <AppShell.Sidebar>
           {/* Keep this outside <Sidebar> so Sidebar.Category can inspect children */}
-          <ErrorBoundary
-            fallback={() => <SidebarErrorFallback />}
-            resetKeys={[location.pathname]}
-          >
+          <ErrorBoundary fallback={() => <SidebarErrorFallback />} resetKeys={[location.pathname]}>
             <AppSidebar />
           </ErrorBoundary>
         </AppShell.Sidebar>
 
-      <AppShell.Main>
-        <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
-          <PageContent fullWidth>
-            <Stack spacing={1}>
-              {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
-                <AppBreadcrumbs items={breadcrumbItems} />
-              )}
-              {/* Error boundary scoped to routed page only; resets on pathname change */}
-              <ErrorBoundary
-                fallback={(error, reset) => (
-                  <PageErrorFallback error={error} reset={reset} />
+        <AppShell.Main>
+          <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
+            <PageContent fullWidth>
+              <Stack spacing={1}>
+                {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
+                  <AppBreadcrumbs
+                    items={breadcrumbItems}
+                    sx={(theme) => ({
+                      '& .MuiBreadcrumbs-li .MuiTypography-root': {
+                        fontSize: theme.typography.body2.fontSize,
+                        opacity: 0.55,
+                      },
+                      '& .MuiBreadcrumbs-li:last-of-type .MuiTypography-root': {
+                        color: 'text.primary',
+                        fontWeight: theme.typography.fontWeightMedium,
+                        opacity: 1,
+                      },
+                      '& .MuiBreadcrumbs-separator': {
+                        opacity: 0.45,
+                      },
+                    })}
+                  />
                 )}
-                resetKeys={[location.pathname]}
-              >
-                <Suspense fallback={<LoadingState label="Loading" />}>
-                  <Outlet />
-                </Suspense>
-              </ErrorBoundary>
-            </Stack>
-          </PageContent>
-        </Box>
-      </AppShell.Main>
+                {/* Error boundary scoped to routed page only; resets on pathname change */}
+                <ErrorBoundary
+                  fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
+                  resetKeys={[location.pathname]}
+                >
+                  <Suspense fallback={<LoadingState label="Loading" />}>
+                    <Outlet />
+                  </Suspense>
+                </ErrorBoundary>
+              </Stack>
+            </PageContent>
+          </Box>
+        </AppShell.Main>
 
-      <AppShell.Footer>
-        {/* id is an anchor for measuring the footer height so sticky action
+        <AppShell.Footer>
+          {/* id is an anchor for measuring the footer height so sticky action
             bars (develop tabs' SaveBar) can offset above it — see SaveBar. */}
-        <Box id={APP_FOOTER_ID}>
-          <Footer>
-            <Footer.Copyright>
-              © {new Date().getFullYear()} WSO2 LLC.
-            </Footer.Copyright>
-            <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
-            <Footer.Link href={runtimeConfig.termsOfUseLink}>
-              <FormattedMessage
-                id="appLayout.footer.termsOfUse"
-                defaultMessage="Terms of Use"
-                description="Footer link to the Terms of Use page"
-              />
-            </Footer.Link>
-            <Footer.Link href={runtimeConfig.privacyPolicyLink}>
-              <FormattedMessage
-                id="appLayout.footer.privacyPolicy"
-                defaultMessage="Privacy Policy"
-                description="Footer link to the Privacy Policy page"
-              />
-            </Footer.Link>
-          </Footer>
-        </Box>
-      </AppShell.Footer>
+          <Box id={APP_FOOTER_ID}>
+            <Footer>
+              <Footer.Copyright>© {new Date().getFullYear()} WSO2 LLC.</Footer.Copyright>
+              <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
+              <Footer.Link href={runtimeConfig.termsOfUseLink}>
+                <FormattedMessage
+                  id="appLayout.footer.termsOfUse"
+                  defaultMessage="Terms of Use"
+                  description="Footer link to the Terms of Use page"
+                />
+              </Footer.Link>
+              <Footer.Link href={runtimeConfig.privacyPolicyLink}>
+                <FormattedMessage
+                  id="appLayout.footer.privacyPolicy"
+                  defaultMessage="Privacy Policy"
+                  description="Footer link to the Privacy Policy page"
+                />
+              </Footer.Link>
+            </Footer>
+          </Box>
+        </AppShell.Footer>
 
-      <AppShell.NotificationPanel>
-        <NotificationPanel>
-          <NotificationPanel.Header>
-            <NotificationPanel.HeaderIcon>
-              <Bell size={18} />
-            </NotificationPanel.HeaderIcon>
-            <NotificationPanel.HeaderTitle>
-              <FormattedMessage
-                id="appLayout.notificationPanel.headerTitle"
-                defaultMessage="Notifications"
-                description="Header title for the notification panel"
-              />
-            </NotificationPanel.HeaderTitle>
-            <NotificationPanel.HeaderClose />
-          </NotificationPanel.Header>
-          <NotificationPanel.EmptyState message="You're all caught up." />
-        </NotificationPanel>
-      </AppShell.NotificationPanel>
-    </AppShell>
+        <AppShell.NotificationPanel>
+          <NotificationPanel>
+            <NotificationPanel.Header>
+              <NotificationPanel.HeaderIcon>
+                <Bell size={18} />
+              </NotificationPanel.HeaderIcon>
+              <NotificationPanel.HeaderTitle>
+                <FormattedMessage
+                  id="appLayout.notificationPanel.headerTitle"
+                  defaultMessage="Notifications"
+                  description="Header title for the notification panel"
+                />
+              </NotificationPanel.HeaderTitle>
+              <NotificationPanel.HeaderClose />
+            </NotificationPanel.Header>
+            <NotificationPanel.EmptyState message="You're all caught up." />
+          </NotificationPanel>
+        </AppShell.NotificationPanel>
+      </AppShell>
     </PortProvider>
   );
 }

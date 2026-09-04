@@ -26,7 +26,7 @@ import {
   Form,
   FormControl,
   FormHelperText,
-  InputLabel,
+  FormLabel,
   OutlinedInput,
 } from '@wso2/oxygen-ui';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -149,27 +149,26 @@ export function NewProjectDialog({ open, orgHandle, onClose }: NewProjectDialogP
     }
   };
 
-  const nameLabel = intl.formatMessage(messages.nameLabel);
-  const descriptionLabel = intl.formatMessage(messages.descriptionLabel);
-
   return (
-    <Dialog fullWidth maxWidth="sm" onClose={mutation.isPending ? undefined : onClose} open={open}>
+    <Dialog fullWidth maxWidth="xs" onClose={mutation.isPending ? undefined : onClose} open={open}>
       <DialogTitle>
         <FormattedMessage {...messages.title} />
       </DialogTitle>
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <DialogContent>
-          <Form.Stack spacing={2.5} sx={{ mt: 1 }}>
+          <Form.Stack spacing={2} sx={{ mt: 1 }}>
             <FormControl error={isTooLong} fullWidth required>
-              <InputLabel htmlFor={NAME_FIELD}>{nameLabel}</InputLabel>
+              <FormLabel htmlFor={NAME_FIELD}>
+                <FormattedMessage {...messages.nameLabel} />
+              </FormLabel>
               <OutlinedInput
                 aria-describedby={`${NAME_FIELD}-helper-text`}
                 autoFocus
                 id={NAME_FIELD}
-                label={nameLabel}
                 name="name"
                 onChange={(event) => setName(event.target.value)}
                 placeholder={intl.formatMessage(messages.namePlaceholder)}
+                size="small"
                 value={name}
               />
               <FormHelperText id={`${NAME_FIELD}-helper-text`}>
@@ -182,22 +181,24 @@ export function NewProjectDialog({ open, orgHandle, onClose }: NewProjectDialogP
             </FormControl>
 
             <FormControl fullWidth>
-              <InputLabel htmlFor={DESCRIPTION_FIELD}>{descriptionLabel}</InputLabel>
+              <FormLabel htmlFor={DESCRIPTION_FIELD}>
+                <FormattedMessage {...messages.descriptionLabel} />
+              </FormLabel>
               <OutlinedInput
                 id={DESCRIPTION_FIELD}
-                label={descriptionLabel}
                 multiline
                 name="description"
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder={intl.formatMessage(messages.descriptionPlaceholder)}
                 rows={3}
+                size="small"
                 value={description}
               />
             </FormControl>
           </Form.Stack>
         </DialogContent>
         <DialogActions>
-          <Button color="inherit" disabled={mutation.isPending} onClick={onClose}>
+          <Button disabled={mutation.isPending} onClick={onClose} variant="outlined">
             <FormattedMessage {...messages.cancel} />
           </Button>
           <Button disabled={!canSubmit} type="submit" variant="contained">

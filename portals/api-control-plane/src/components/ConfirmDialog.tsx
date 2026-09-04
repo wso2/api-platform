@@ -24,6 +24,7 @@ import {
   DialogActions,
   DialogContent,
   DialogContentText,
+  type DialogProps,
   DialogTitle,
   Form,
   OutlinedInput,
@@ -45,6 +46,7 @@ export type ConfirmDialogProps = {
   /** Label for the type-to-confirm field; defaults to a generic prompt. */
   confirmInputLabel?: string;
   loading?: boolean;
+  maxWidth?: DialogProps['maxWidth'];
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -60,6 +62,7 @@ export function ConfirmDialog({
   confirmPhrase,
   confirmInputLabel,
   loading,
+  maxWidth = 'xs',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -85,7 +88,7 @@ export function ConfirmDialog({
   };
 
   return (
-    <Dialog fullWidth maxWidth="xs" onClose={onCancel} open={open}>
+    <Dialog fullWidth maxWidth={maxWidth} onClose={onCancel} open={open}>
       <DialogTitle>{title}</DialogTitle>
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <DialogContent>

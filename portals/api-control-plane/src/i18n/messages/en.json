@@ -545,13 +545,13 @@
   "api.create.specSourceEditor.notAnObject": {
     "defaultMessage": "A definition has to be an object at the top level, not a list or a value."
   },
-  "apiCard.delete": {
-    "defaultMessage": "Delete {apiName}",
-    "description": "Accessible label for deleting an API from API card"
+  "apiCard.deleteAction": {
+    "defaultMessage": "Delete API",
+    "description": "Delete action shown in an API card or row actions menu."
   },
-  "apiCard.deleteTooltip": {
-    "defaultMessage": "Delete",
-    "description": "Tooltip on the delete button of an API card or list row."
+  "apiCard.deleteAriaLabel": {
+    "defaultMessage": "Delete {apiName}",
+    "description": "Accessible label for the API delete button."
   },
   "apiCard.gatewayManaged.label": {
     "defaultMessage": "Gateway-managed",
@@ -1527,36 +1527,106 @@
     "defaultMessage": "Govern and Monitor",
     "description": "Section heading. \"Govern\" means applying organization-wide rules to APIs."
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerAction": {
-    "defaultMessage": "View projects",
-    "description": "Button on the welcome banner that opens the project listing."
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.apiAction": {
+    "defaultMessage": "Create an API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.apiDescription": {
+    "defaultMessage": "Design, proxy, and version the APIs your organization builds."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.apiTitle": {
+    "defaultMessage": "APIs"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerDescription": {
-    "defaultMessage": "Projects organize the APIs you build."
+    "defaultMessage": "Design and build APIs inside projects, run them on gateways, and publish them to developer portals for your consumers."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle": {
     "defaultMessage": "Welcome to {organizationName}",
     "description": "{organizationName} is the display name of the organization. Never translated."
   },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteAriaLabel": {
+    "defaultMessage": "Delete {name}",
+    "description": "Accessible label for the project row delete button."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteConfirm": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteConfirmInputLabel": {
+    "defaultMessage": "Project name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteFailed": {
+    "defaultMessage": "Delete failed"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteMessage": {
+    "defaultMessage": "This action is irreversible and all related project details will be lost. Type the project name below to confirm."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteSucceeded": {
+    "defaultMessage": "Deleted “{name}”."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteTitle": {
+    "defaultMessage": "Are you sure you want to delete the project “{name}”?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalAction": {
+    "defaultMessage": "Create a portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalDescription": {
+    "defaultMessage": "Publish APIs so consumers can discover them and request access."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalTitle": {
+    "defaultMessage": "Developer portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
+    "defaultMessage": "Connect a gateway"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription": {
+    "defaultMessage": "Run your APIs on a managed gateway or a self-hosted one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle": {
+    "defaultMessage": "Gateways"
+  },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading": {
     "defaultMessage": "Loading organization"
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd": {
-    "defaultMessage": "New project",
-    "description": "Action that opens the create-project dialog from the section header."
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectApiCount": {
+    "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmptyAction": {
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorCancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorContinue": {
+    "defaultMessage": "Continue"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorCreateProject": {
     "defaultMessage": "Create project"
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmptyDescription": {
-    "defaultMessage": "Create a project to organize and manage your APIs."
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorDescription": {
+    "defaultMessage": "Select the project where you want to create the API."
   },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmptyTitle": {
-    "defaultMessage": "Get started with a project"
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorEmpty": {
+    "defaultMessage": "Create a project before creating an API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorLabel": {
+    "defaultMessage": "Project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectSelectorTitle": {
+    "defaultMessage": "Choose a project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd": {
+    "defaultMessage": "New project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmpty": {
+    "defaultMessage": "No projects match your search."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsNone": {
+    "defaultMessage": "No projects yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsSearch": {
+    "defaultMessage": "Search projects"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsTitle": {
-    "defaultMessage": "Projects",
-    "description": "Heading of the projects summary section. Noun, not a command."
+    "defaultMessage": "Projects"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsViewAll": {
+    "defaultMessage": "View all"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.unresolvedOrganization": {
     "defaultMessage": "Unable to resolve organization context. The organization API returned no usable organizations for this session."
@@ -1599,6 +1669,24 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.title": {
     "defaultMessage": "Create project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.created": {
+    "defaultMessage": "<muted>Created</muted> {date}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.descriptionFallback": {
+    "defaultMessage": "Add an API to this project."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.memberCount": {
+    "defaultMessage": "{count} <muted>{count, plural, one {member} other {members}}</muted>"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.owner": {
+    "defaultMessage": "<muted>Owned by</muted> {owner}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.settings": {
+    "defaultMessage": "Project settings"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.unknown": {
+    "defaultMessage": "Unknown"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.mvpScope": {
     "defaultMessage": "Advanced organization admin settings, governance, marketplace, and developer portal configuration are intentionally excluded from the MVP replacement app.",
@@ -1691,9 +1779,38 @@
     "defaultMessage": "Test {apiName}",
     "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
   },
-  "apiListPage.count": {
-    "defaultMessage": "{count, plural, one {# API} other {# APIs}}",
-    "description": "Heading above the listing, counting every match, not the page."
+  "apiControlPlane.projects.ProjectQuickActions.importApi": {
+    "defaultMessage": "Import an OpenAPI definition"
+  },
+  "apiControlPlane.projects.ProjectQuickActions.inviteMember": {
+    "defaultMessage": "Invite a team member"
+  },
+  "apiControlPlane.projects.ProjectQuickActions.title": {
+    "defaultMessage": "Quick actions"
+  },
+  "apiControlPlane.projects.ProjectStatistics.apis": {
+    "defaultMessage": "APIs"
+  },
+  "apiControlPlane.projects.ProjectStatistics.async": {
+    "defaultMessage": "Async / events"
+  },
+  "apiControlPlane.projects.ProjectStatistics.deployments": {
+    "defaultMessage": "Deployments"
+  },
+  "apiControlPlane.projects.ProjectStatistics.graphql": {
+    "defaultMessage": "GraphQL"
+  },
+  "apiControlPlane.projects.ProjectStatistics.grpc": {
+    "defaultMessage": "gRPC"
+  },
+  "apiControlPlane.projects.ProjectStatistics.rest": {
+    "defaultMessage": "REST"
+  },
+  "apiControlPlane.projects.ProjectStatistics.selectType": {
+    "defaultMessage": "Filter APIs by {type}"
+  },
+  "apiControlPlane.projects.ProjectStatistics.statusSummary": {
+    "defaultMessage": "{published} published · {created} created"
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",
@@ -1736,7 +1853,7 @@
     "defaultMessage": "Loading APIs"
   },
   "apiListPage.noMatches.description": {
-    "defaultMessage": "Try a different API name or clear the search."
+    "defaultMessage": "Try a different API name or clear the active filter."
   },
   "apiListPage.noMatches.title": {
     "defaultMessage": "No matching APIs"
@@ -1746,26 +1863,6 @@
   },
   "apiListPage.searchPlaceholder": {
     "defaultMessage": "Search APIs"
-  },
-  "apiListPage.sort.nameAscending": {
-    "defaultMessage": "Name (A–Z)",
-    "description": "Sort option: alphabetical by API name, ascending."
-  },
-  "apiListPage.sort.nameDescending": {
-    "defaultMessage": "Name (Z–A)",
-    "description": "Sort option: alphabetical by API name, descending."
-  },
-  "apiListPage.sort.newest": {
-    "defaultMessage": "Newest first",
-    "description": "Sort option: by creation date, most recent API first."
-  },
-  "apiListPage.sort.oldest": {
-    "defaultMessage": "Oldest first",
-    "description": "Sort option: by creation date, earliest API first."
-  },
-  "apiListPage.sortLabel": {
-    "defaultMessage": "Sort by",
-    "description": "Label for the control choosing the API list order."
   },
   "apiListPage.title": {
     "defaultMessage": "APIs",
@@ -1778,6 +1875,21 @@
   "apiListPage.view.list": {
     "defaultMessage": "List view",
     "description": "Accessible label for the button switching to compact rows."
+  },
+  "apiListView.column.api": {
+    "defaultMessage": "API"
+  },
+  "apiListView.column.type": {
+    "defaultMessage": "Type"
+  },
+  "apiListView.column.updated": {
+    "defaultMessage": "Updated"
+  },
+  "apiListView.column.version": {
+    "defaultMessage": "Version"
+  },
+  "appLayout.breadcrumb.home": {
+    "defaultMessage": "Home"
   },
   "appLayout.footer.privacyPolicy": {
     "defaultMessage": "Privacy Policy",

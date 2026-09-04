@@ -17,20 +17,35 @@
  */
 
 import { Box, Card, Stack, Typography } from '@wso2/oxygen-ui';
+import { defineMessages, FormattedMessage } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
 import {
   apiDescriptionSx,
+  ApiDeleteButton,
   ApiKindAvatar,
-  DeleteApiButton,
-  GatewayManagedChip,
-  revealApiDeleteOnHoverSx,
-  TransportChips,
+  ApiKindChip,
   UpdatedLabel,
-  VersionChip,
 } from './components/RestApiChips';
 
 const AVATAR_SIZE = 40;
+
+const messages = defineMessages({
+  api: { id: 'apiListView.column.api', defaultMessage: 'API' },
+  type: { id: 'apiListView.column.type', defaultMessage: 'Type' },
+  updated: { id: 'apiListView.column.updated', defaultMessage: 'Updated' },
+  version: { id: 'apiListView.column.version', defaultMessage: 'Version' },
+});
+
+const rowGridSx = {
+  alignItems: 'center',
+  display: 'grid',
+  gap: 2,
+  gridTemplateColumns: {
+    xs: 'minmax(0, 1fr) auto',
+    md: 'minmax(0, 1fr) 120px 100px 180px',
+  },
+} as const;
 
 type ApiRowProps = {
   api: RestApi;
@@ -43,65 +58,69 @@ type ApiRowProps = {
  */
 function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
   const updated = api.updatedAt || api.createdAt;
-  const transports = api.transport ?? [];
 
   return (
     <Box
       onClick={() => onOpen(api)}
       sx={(theme) => ({
-        ...revealApiDeleteOnHoverSx,
-        alignItems: 'center',
         borderBottom: `${theme.border.width} ${theme.border.style}`,
         borderColor: 'divider',
         cursor: 'pointer',
-        display: 'flex',
-        gap: 2,
         px: 2.5,
         py: 1.75,
         transition: theme.transitions.create('background-color'),
+        ...rowGridSx,
+        '&:focus-within .api-delete-action, &:hover .api-delete-action': {
+          opacity: 1,
+        },
         '&:hover': { bgcolor: 'action.hover' },
         '&:last-of-type': { borderBottom: 0 },
       })}
     >
-      <ApiKindAvatar kind={api.kind} size={AVATAR_SIZE} />
-
       {/* `minWidth: 0` lets long names truncate. */}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack alignItems="center" direction="row" spacing={1} sx={{ minWidth: 0 }}>
+      <Stack alignItems="center" direction="row" spacing={1.5} sx={{ minWidth: 0 }}>
+        <ApiKindAvatar kind={api.kind} size={AVATAR_SIZE} />
+        <Box sx={{ minWidth: 0 }}>
           <Typography component="div" noWrap sx={{ fontWeight: 600 }} variant="subtitle2">
             {api.displayName}
           </Typography>
-          <VersionChip version={api.version} />
-        </Stack>
-        {api.description && (
-          <Typography color="text.secondary" sx={apiDescriptionSx(1)} variant="body2">
-            {api.description}
+          <Typography color="text.secondary" sx={apiDescriptionSx(1)} variant="caption">
+            {api.description || ''}
           </Typography>
-        )}
-      </Box>
-
-      {/* Dropped first as the row narrows: the card's own subheader marks. */}
-      <Stack
-        direction="row"
-        spacing={1}
-        sx={{
-          display: { sm: 'flex', xs: 'none' },
-          flexShrink: 0,
-          flexWrap: 'wrap',
-          gap: 1,
-          justifyContent: 'flex-end',
-        }}
-        useFlexGap
-      >
-        <TransportChips transports={transports} />
-        {api.readOnly && <GatewayManagedChip />}
+        </Box>
       </Stack>
 
-      <Box sx={{ display: { md: 'flex', xs: 'none' }, ml: 'auto' }}>
-        <UpdatedLabel timestamp={updated} />
+      <Box sx={{ display: { md: 'block', xs: 'none' } }}>
+        <Typography sx={{ fontFamily: 'monospace' }} variant="body2">
+          {api.version}
+        </Typography>
       </Box>
-
-      {onDelete && <DeleteApiButton apiName={api.displayName} onDelete={() => onDelete(api)} />}
+      <Box sx={{ display: { md: 'block', xs: 'none' } }}>
+        <ApiKindChip kind={api.kind} />
+      </Box>
+      <Stack
+        alignItems="center"
+        direction="row"
+        justifyContent="flex-end"
+        spacing={0.5}
+        sx={{ display: { md: 'flex', xs: 'none' } }}
+      >
+        <UpdatedLabel timestamp={updated} />
+        {onDelete && (
+          <Box sx={{ mr: -1 }}>
+            <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
+          </Box>
+        )}
+      </Stack>
+      <Stack
+        alignItems="center"
+        direction="row"
+        spacing={0.5}
+        sx={{ display: { md: 'none', xs: 'flex' } }}
+      >
+        <UpdatedLabel timestamp={updated} />
+        {onDelete && <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />}
+      </Stack>
     </Box>
   );
 }
@@ -116,6 +135,39 @@ type ApiListViewProps = {
 export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
   return (
     <Card data-testid="api-list-view" variant="outlined">
+      <Box
+        sx={{
+          ...rowGridSx,
+          bgcolor: 'action.hover',
+          px: 2.5,
+          py: 1.25,
+        }}
+      >
+        <Typography color="text.secondary" sx={{ fontWeight: 700 }} variant="caption">
+          <FormattedMessage {...messages.api} />
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700 }}
+          variant="caption"
+        >
+          <FormattedMessage {...messages.version} />
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700 }}
+          variant="caption"
+        >
+          <FormattedMessage {...messages.type} />
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700, textAlign: 'right' }}
+          variant="caption"
+        >
+          <FormattedMessage {...messages.updated} />
+        </Typography>
+      </Box>
       {apis.map((api) => (
         <ApiRow api={api} key={api.id} onDelete={onDelete} onOpen={onOpen} />
       ))}
