@@ -22,6 +22,6 @@
  * features, without ever touching App.tsx/main.tsx/extensions.tsx.
  */
 
-import type { ApiControlPlaneExtension } from '../extensions';
+import type { ApiControlPlaneCloudEntry } from '../extensions';
 
-export const cloudExtensions: ApiControlPlaneExtension[] = [];
+export const cloudExtensions: ApiControlPlaneCloudEntry[] = [];

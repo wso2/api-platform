@@ -28,7 +28,7 @@ import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './contexts/auth/AuthProvider';
 import { ProductActivation } from './hooks/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
-import { ExtensionsProvider, type ApiControlPlaneExtension } from './extensions';
+import { ExtensionsProvider, type ApiControlPlaneCloudEntry } from './extensions';
 import { I18nProvider } from './i18n';
 
 /**
@@ -71,7 +71,7 @@ function AppQueryProvider({ children }: { children: ReactNode }) {
 }
 
 export type AppProps = {
-  extensions?: readonly ApiControlPlaneExtension[];
+  extensions?: readonly ApiControlPlaneCloudEntry[];
 };
 
 export default function App({ extensions = [] }: AppProps) {

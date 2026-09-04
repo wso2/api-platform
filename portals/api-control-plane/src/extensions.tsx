@@ -52,8 +52,32 @@ export type ApiControlPlaneExtension = SlotEntry & {
 };
 
 /**
- * Slot names core knows about. Both live here rather than being spelled out at
- * each use site, so the sidebar route builder and the nav pipeline (and the
+ * A host-injected replacement for one specific built-in page. Unlike
+ * `ApiControlPlaneExtension` this is not a new nav item and deliberately
+ * carries no `routePath`, `label`, `level` or `icon`: the built-in page keeps
+ * its own route and its own sidebar entry, and only what renders at that route
+ * changes. That also means it can never reach the nav pipeline or a Settings
+ * tab — both filter on `slot` (and `level`) first, and this entry has neither
+ * a `sidebar.` slot nor a level.
+ */
+export type ApiControlPlanePageOverride = SlotEntry & {
+  render: (port: CloudHostPort) => ReactNode;
+};
+
+/**
+ * Every registered cloud entry. Sidebar items, Settings tabs and page
+ * overrides share one slot registry (see `slots/index.tsx`) and are told apart
+ * by `slot` at each consumption site, so this union — not
+ * `ApiControlPlaneExtension` — is what `App`, `AppRoutes` and the registry
+ * accept.
+ */
+export type ApiControlPlaneCloudEntry =
+  | ApiControlPlaneExtension
+  | ApiControlPlanePageOverride;
+
+/**
+ * The slot names core knows about. They live here rather than being spelled out
+ * at each use site, so the sidebar route builder and the nav pipeline (and the
  * Settings tab list and its routes) can never drift apart on a string literal.
  */
 const SIDEBAR_SLOT_PREFIX = 'sidebar.';
@@ -62,10 +86,27 @@ const SIDEBAR_SLOT_PREFIX = 'sidebar.';
 export const settingsTabSlot = (level: NavigationLevel): string =>
   `settings.${level}.tabs`;
 
-/** Whether this entry is a top-level sidebar item rather than a nested one. */
+/**
+ * Slot for overriding the built-in API Gateways pages (list, create, detail)
+ * without changing anything under `pages/appShell/appShellPages/gateways`.
+ * Pairs with the `Hideable name={API_CONTROL_PLANE_GATEWAYS_SLOT}` wrapping
+ * those pages in `AppRoutes` — Slot supplies the replacement, Hideable
+ * suppresses the built-in, the same split the header comment in
+ * `slots/index.tsx` describes.
+ */
+export const API_CONTROL_PLANE_GATEWAYS_SLOT = 'page.gateways';
+
+/**
+ * Whether this entry is a top-level sidebar item rather than a nested one.
+ *
+ * A type predicate, not a plain boolean: the registry holds the
+ * `ApiControlPlaneCloudEntry` union, and only a `sidebar.`-slotted entry
+ * carries the `routePath`/`level` the route and nav passes go on to read.
+ */
 export const isSidebarExtension = (
-  extension: ApiControlPlaneExtension
-): boolean => extension.slot.startsWith(SIDEBAR_SLOT_PREFIX);
+  entry: ApiControlPlaneCloudEntry
+): entry is ApiControlPlaneExtension =>
+  entry.slot.startsWith(SIDEBAR_SLOT_PREFIX);
 
 /**
  * Entries for `settingsTabSlot(level)`, sorted by `order`.
@@ -76,13 +117,15 @@ export const isSidebarExtension = (
  * in the matching route pass rather than half-honoured.
  */
 export const settingsTabExtensions = (
-  extensions: readonly ApiControlPlaneExtension[],
+  extensions: readonly ApiControlPlaneCloudEntry[],
   level: NavigationLevel
 ): ApiControlPlaneExtension[] =>
   extensions
     .filter(
-      (extension) =>
-        extension.slot === settingsTabSlot(level) && extension.level === level
+      (entry): entry is ApiControlPlaneExtension =>
+        entry.slot === settingsTabSlot(level) &&
+        'level' in entry &&
+        entry.level === level
     )
     .sort((left, right) => left.order - right.order);
 
@@ -90,7 +133,7 @@ export function ExtensionsProvider({
   extensions,
   children,
 }: {
-  extensions: readonly ApiControlPlaneExtension[];
+  extensions: readonly ApiControlPlaneCloudEntry[];
   children: ReactNode;
 }) {
   return (
@@ -98,8 +141,8 @@ export function ExtensionsProvider({
   );
 }
 
-export function useExtensions(): readonly ApiControlPlaneExtension[] {
-  return useSlotEntries<ApiControlPlaneExtension>();
+export function useExtensions(): readonly ApiControlPlaneCloudEntry[] {
+  return useSlotEntries<ApiControlPlaneCloudEntry>();
 }
 
 /**

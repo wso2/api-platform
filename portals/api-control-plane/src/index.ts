@@ -25,5 +25,12 @@
 export { default as App } from './App';
 export type { AppProps } from './App';
 export { loadRuntimeConfigScripts } from './config/loadRuntimeConfigScripts';
-export type { ApiControlPlaneExtension } from './extensions';
-export { buildScopedExtensionPath } from './extensions';
+export type {
+  ApiControlPlaneCloudEntry,
+  ApiControlPlaneExtension,
+  ApiControlPlanePageOverride,
+} from './extensions';
+export {
+  API_CONTROL_PLANE_GATEWAYS_SLOT,
+  buildScopedExtensionPath,
+} from './extensions';

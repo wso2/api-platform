@@ -16,7 +16,8 @@
  * under the License.
  */
 
-export type GatewayType = 'ai' | 'event';
+/** The wire vocabulary: `GatewayResponse.functionalityType`, which defaults to `regular`. */
+export type GatewayType = 'regular' | 'ai' | 'event';
 
 export type GatewayStatus = 'active' | 'inactive';
 
@@ -34,6 +35,12 @@ export type Gateway = {
   url: string;
   status: GatewayStatus;
   updatedAt: string;
+  /**
+   * Whether the gateway has a WSO2-managed environment binding. Only a managed
+   * gateway has a cloud-managed configuration — the endpoint answers 404 for
+   * anything else — so this gates the configuration action.
+   */
+  isManaged?: boolean;
 };
 
 /** Fields the create/edit form collects — everything else (`id`, `status`, `updatedAt`) is store-assigned. */
@@ -43,4 +50,71 @@ export type GatewayInput = {
   type: GatewayType;
   environmentId: string;
   url: string;
+};
+
+/* ── gateway configuration ─────────────────────────────────────────────────── */
+
+/**
+ * `applying` is the expected state immediately after ANY write and can persist
+ * for minutes. It is not a failure and not an unfinished save.
+ */
+export type ConfigPhase = 'applying' | 'healthy' | 'failed';
+
+export type ConfigStatus = {
+  phase: ConfigPhase;
+  /** Platform detail, present when the phase is not healthy. Prose, not a code. */
+  message?: string;
+};
+
+export type ConfigFieldType =
+  | 'enum'
+  | 'boolean'
+  | 'integer'
+  | 'duration'
+  | 'quantity'
+  | 'string';
+
+/**
+ * One setting the organization may change. The platform reads its allowlist at
+ * request time, so this array is the form definition — never a client-side copy
+ * of it — and `label`/`description` are the platform's own user-facing copy.
+ */
+export type EditableField = {
+  path: string;
+  type: ConfigFieldType;
+  label?: string;
+  description?: string;
+  /** Permitted values, present when `type` is `enum`. */
+  values?: string[];
+  /**
+   * Inclusive bounds. STRINGS for every type — `Number('50m')` is `NaN`. For
+   * `string`, `max` is a length in characters and `min` is absent.
+   */
+  min?: string;
+  max?: string;
+};
+
+/**
+ * A rule between two settings. Evaluated by the platform against the document a
+ * write would PRODUCE, so a client checks it across the whole form.
+ */
+export type ConfigConstraint = {
+  type: 'notGreaterThan';
+  path: string;
+  than: string;
+  /** The platform's own sentence for the violation. Surface it verbatim. */
+  message?: string;
+};
+
+export type ConfigValues = Record<string, unknown>;
+
+export type GatewayConfiguration = {
+  id: string;
+  name?: string;
+  environment?: string;
+  /** Current value of every editable setting, keyed exactly as a request body is. */
+  values: ConfigValues;
+  editable: EditableField[];
+  constraints?: ConfigConstraint[];
+  status: ConfigStatus;
 };

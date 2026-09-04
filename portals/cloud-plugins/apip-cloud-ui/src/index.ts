@@ -14,7 +14,6 @@ export {
   cloudExtensions as apiControlPlaneCloudExtensions,
   cloudPluginFeatures as apiControlPlaneCloudPluginFeatures,
 } from './hosts/api-control-plane';
-export type { ApiControlPlaneExtension } from './hosts/api-control-plane';
 
 export {
   cloudExtensions as aiWorkspaceCloudExtensions,
