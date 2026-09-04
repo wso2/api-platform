@@ -30,7 +30,8 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * what renders at the host's existing, built-in `gateways` route/sidebar item
  * — see `GatewaysRoute` in `ai-workspace/src/App.tsx` — rather than adding a
  * new one. Nothing under `ai-workspace/src/pages/appShell/appShellPages/gateways`
- * is touched by this.
+ * is touched by this. Every gateway in this workspace is an AI gateway, so it
+ * registers `ai` as the only type and the create form shows no type picker.
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = [
   defineCloudPlugin({
@@ -93,7 +94,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         id: 'gateways',
         slot: AI_WORKSPACE_GATEWAYS_SLOT,
         order: 0,
-        render: (port) => <GatewaysFeature port={port} />,
+        render: (port) => <GatewaysFeature gatewayTypes={['ai']} port={port} />,
       },
     ],
   }),

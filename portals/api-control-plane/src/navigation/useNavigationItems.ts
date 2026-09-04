@@ -26,6 +26,7 @@ import {
 } from '../scope/ConsoleScopeProvider';
 import {
   buildScopedExtensionPath,
+  isPageOverride,
   isSidebarExtension,
   useExtensions,
 } from '../extensions';
@@ -106,7 +107,26 @@ export const useNavigationItems = (): NavigationItem[] => {
           to: () => destination,
         };
       });
-    const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
+    // A `page.*` override renders in place of a built-in page (see the
+    // `gateways/*` route wrapper); it may also carry the nav placement
+    // (`group`/`order`) for the built-in item it replaces, keyed by shared `id`.
+    // With no override registered (the open-source build), the built-in item
+    // keeps its own placement untouched.
+    const overridePlacements = new Map(
+      extensions
+        .filter(isPageOverride)
+        .map((extension) => [extension.id, extension])
+    );
+    const registryWithOverrides = navigationRegistry.map((definition) => {
+      const override = overridePlacements.get(definition.id);
+      // `group` is optional on an override — one that only repositions within
+      // its existing cluster sets `order` alone — so fall back to the built-in
+      // group rather than clearing it and moving the item out of its cluster.
+      return override
+        ? { ...definition, group: override.group ?? definition.group, order: override.order }
+        : definition;
+    });
+    const combinedRegistry = [...registryWithOverrides, ...extensionDefinitions];
 
     // A definition becomes an item unless it has no target at all. Children go
     // through the very same resolution — feature flag, visibility, `to`,

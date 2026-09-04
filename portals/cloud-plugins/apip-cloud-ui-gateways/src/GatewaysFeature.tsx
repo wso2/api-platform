@@ -16,52 +16,189 @@
  * under the License.
  */
 
-import type { FC } from 'react';
-import { Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
+import { Box, Button, CircularProgress, Typography } from '@wso2/oxygen-ui';
 import GatewayForm from './GatewayForm';
 import GatewaysList from './GatewaysList';
+import { createGatewaysClient } from './gatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
+import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
 export type GatewaysFeatureProps = {
   port: AIWorkspaceHostPort;
+  /**
+   * The gateway types this host lets a user create, in the order they are
+   * offered. Each host declares its own set — the API console offers API and
+   * event gateways, while the AI workspace only ever creates AI gateways and so
+   * shows no type picker at all. Required rather than defaulted so a new host
+   * has to state which kinds of gateway it is for.
+   */
+  gatewayTypes: GatewayType[];
 };
 
 /**
- * The extension's `render(port)` result for the `page.gateways` override
- * slot: a self-contained list/create/edit flow with its own nested routes
- * (`index`, `create`, `edit/:gatewayId`), mounted wherever the host's
- * `gateways/*` route places it — see `App.tsx`'s `GatewaysRoute`. Mirrors
- * the URL shape the built-in `GatewaysLayout` uses, so this is a drop-in
- * swap rather than a new navigation pattern.
+ * The extension's `render(port)` result: a self-contained list/create/edit flow
+ * that switches view with local state rather than nested routes (so the plugin
+ * never depends on the host's router instance — the same shape as the pipelines
+ * feature). It owns the data: it loads `/managed-gateways` and `/environments`
+ * through the host-injected `apiFetch` and feeds the presentational list/form.
  */
-const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port }) => (
-  <Routes>
-    <Route index element={<GatewaysListRoute port={port} />} />
-    <Route path="create" element={<GatewaysFormRoute port={port} mode="create" />} />
-    <Route path="edit/:gatewayId" element={<GatewaysFormRoute port={port} mode="edit" />} />
-  </Routes>
-);
+const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
+  const { apiFetch, notify } = port;
+  const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
 
-const GatewaysListRoute: FC<{ port: AIWorkspaceHostPort }> = ({ port }) => {
-  const navigate = useNavigate();
+  const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
+  const [editingGatewayId, setEditingGatewayId] = useState<string | null>(null);
+  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Guards against a save being issued twice (the form also disables its button).
+  const submittingRef = useRef(false);
+  const deletingRef = useRef(false);
+  // Refreshes are fired from several places (mount, after save, after each
+  // delete) and can overlap. Only the newest one may write state, or a slower
+  // earlier response could land last and restore a gateway that was deleted
+  // since.
+  const loadSeqRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const [gatewayList, environmentList] = await Promise.all([
+        client.listGateways(),
+        client.listEnvironments(),
+      ]);
+      if (seq !== loadSeqRef.current) return;
+      setGateways(gatewayList);
+      setEnvironments(environmentList);
+    } catch (loadError) {
+      if (seq !== loadSeqRef.current) return;
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load gateways.');
+    } finally {
+      if (seq === loadSeqRef.current) setLoading(false);
+    }
+  }, [client]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const submitGateway = useCallback(
+    async (input: GatewayInput, gatewayId?: string): Promise<boolean> => {
+      if (submittingRef.current) return false;
+      submittingRef.current = true;
+      try {
+        if (gatewayId) {
+          await client.updateGateway(gatewayId, input);
+          notify(`Gateway "${input.name}" updated.`, 'success');
+        } else {
+          await client.createGateway(input);
+          notify(`Gateway "${input.name}" created.`, 'success');
+        }
+        await load();
+        return true;
+      } catch (submitError) {
+        notify(
+          submitError instanceof Error ? submitError.message : 'Unable to save the gateway.',
+          'error'
+        );
+        return false;
+      } finally {
+        submittingRef.current = false;
+      }
+    },
+    [client, load, notify]
+  );
+
+  const removeGateway = useCallback(
+    async (id: string, name: string) => {
+      // One delete at a time: the confirm dialog closes on confirm, so a second
+      // gateway can otherwise be deleted while the first is still in flight.
+      if (deletingRef.current) return;
+      deletingRef.current = true;
+      try {
+        await client.deleteGateway(id);
+        notify(`Gateway "${name}" deleted.`, 'success');
+        await load();
+      } catch (deleteError) {
+        notify(
+          deleteError instanceof Error ? deleteError.message : 'Unable to delete the gateway.',
+          'error'
+        );
+      } finally {
+        deletingRef.current = false;
+      }
+    },
+    [client, load, notify]
+  );
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box
+        sx={{
+          border: '1px dashed',
+          borderColor: 'divider',
+          borderRadius: 1.5,
+          py: 6,
+          px: 3,
+          textAlign: 'center',
+        }}
+      >
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {error}
+        </Typography>
+        <Button variant="outlined" size="small" onClick={() => void load()}>
+          Retry
+        </Button>
+      </Box>
+    );
+  }
+
+  if (view === 'create' || view === 'edit') {
+    const editingGateway =
+      view === 'edit' ? gateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
+    return (
+      <GatewayForm
+        mode={view}
+        gateway={editingGateway}
+        types={gatewayTypes}
+        environments={environments}
+        onBack={() => {
+          setView('list');
+          setEditingGatewayId(null);
+        }}
+        onSubmit={async (input) => {
+          const saved = await submitGateway(input, view === 'edit' ? editingGatewayId ?? undefined : undefined);
+          if (saved) {
+            setView('list');
+            setEditingGatewayId(null);
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <GatewaysList
-      onAddClick={() => navigate('create')}
-      onEditClick={(gatewayId) => navigate(`edit/${gatewayId}`)}
-      notify={port.notify}
-    />
-  );
-};
-
-const GatewaysFormRoute: FC<{ port: AIWorkspaceHostPort; mode: 'create' | 'edit' }> = ({ port, mode }) => {
-  const navigate = useNavigate();
-  const { gatewayId } = useParams<{ gatewayId: string }>();
-  return (
-    <GatewayForm
-      mode={mode}
-      gatewayId={mode === 'edit' ? gatewayId : undefined}
-      onBack={() => navigate('..')}
-      notify={port.notify}
+      gateways={gateways}
+      environments={environments}
+      onAddClick={() => setView('create')}
+      onEditClick={(gatewayId) => {
+        setEditingGatewayId(gatewayId);
+        setView('edit');
+      }}
+      onDelete={removeGateway}
     />
   );
 };

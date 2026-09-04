@@ -10,12 +10,13 @@
 import { Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
+import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
-  settingsTabSlot,
+  PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
@@ -27,15 +28,17 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * apim-saas — never patched into it), so `ApiControlPlaneExtension` is
  * imported directly from core rather than hand-mirrored.
  *
- * `environments` is nested under Settings via the `settings.project.tabs`
- * slot. It shares the same `apip-cloud-ui-environments-new` package the
- * ai-workspace host uses (`hosts/ai-workspace.tsx`) rather than a
- * control-plane-specific package, but ships in the same branch/release as the
- * rest of this repo — no independent version tag, no separate fetch stage.
- * Backed by an in-memory mock port (`createMockEnvironmentPort`, constructed
- * internally by `EnvironmentsFeature`) until a real backend exists — swap
- * that in without touching `EnvironmentsList`/`EnvironmentForm`, which only
- * ever see the `EnvironmentPort` interface.
+ * `environments` is an organization-level sidebar item (environments are
+ * org-scoped resources), sharing the same `apip-cloud-ui-environments-new`
+ * package the ai-workspace host uses (`hosts/ai-workspace.tsx`). Its data flows
+ * through the host port's `apiFetch` to platform-api's `/environments` endpoints.
+ *
+ * `gateways` overrides the built-in Gateways page via the `page.gateways` slot
+ * (consumed by `AppRoutes`' `gateways/*` route wrapper) rather than adding a
+ * sidebar item — the native nav entry and route stay in place; only what renders
+ * there changes. Data flows through `apiFetch` to `/managed-gateways`. This
+ * console manages API and event gateways; AI gateways belong to the AI
+ * workspace host, which registers the same feature with only that type.
  *
  * `pipelines` ships one plugin with two extensions from the same feature
  * package: an organization-level list/create/edit view, and a project-level
@@ -52,13 +55,34 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
     extensions: [
       {
         id: 'environments',
-        routePath: 'settings/environments',
+        slot: 'sidebar.organization',
+        order: 40,
+        routePath: 'environments',
         render: (port) => <EnvironmentsFeature port={port} />,
         label: 'Environments',
-        icon: <Layers />,
-        level: 'project',
-        slot: settingsTabSlot('project'),
-        order: 10,
+        icon: <Layers size={20} />,
+        level: 'organization',
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'gateways',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'gateways',
+        slot: PAGE_GATEWAYS_SLOT,
+        // Cloud-only nav placement for the built-in Gateways item (matched by
+        // `id`): between Environments (40) and Pipelines (50). The open-source
+        // console registers no override, so its Gateways item keeps its own
+        // built-in placement. `routePath`/`level` are inert (the page override
+        // is consumed by the `gateways/*` route wrapper in `AppRoutes`, not the
+        // nav/Settings-tab pipeline) but required by the shared extension type.
+        order: 45,
+        routePath: 'gateways',
+        render: (port) => <GatewaysFeature gatewayTypes={['regular', 'event']} port={port} />,
+        label: 'Gateways',
+        level: 'organization',
       },
     ],
   }),

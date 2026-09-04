@@ -20,15 +20,15 @@ import { useMemo, useState, type FC } from 'react';
 import EnvironmentForm from './EnvironmentForm';
 import EnvironmentsList from './EnvironmentsList';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { createMockEnvironmentPort } from './mockPort';
+import { createApiEnvironmentPort } from './apiPort';
 
 export type EnvironmentsFeatureProps = { port: AIWorkspaceHostPort };
 
 const EnvironmentsFeature: FC<EnvironmentsFeatureProps> = ({ port }) => {
   const readOnly = Boolean(port.projectHandle);
   const [view, setView] = useState<'list' | 'create'>('list');
-  // No real backend exists yet, so each mount gets its own in-memory port.
-  const environmentPort = useMemo(() => createMockEnvironmentPort(), []);
+  // Backed by platform-api's /environments endpoints through the host-injected apiFetch.
+  const environmentPort = useMemo(() => createApiEnvironmentPort(port.apiFetch), [port.apiFetch]);
 
   if (!readOnly && view === 'create') {
     return <EnvironmentForm port={environmentPort} onBack={() => setView('list')} notify={port.notify} />;

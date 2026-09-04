@@ -16,8 +16,20 @@
  * under the License.
  */
 
-export type GatewayType = 'ai' | 'event';
+/**
+ * The gateway's functionality type, mirroring platform-api's
+ * `functionalityType`: `regular` is an API gateway, `event` an event gateway,
+ * `ai` an AI gateway. Which of them a host offers on create is the host's own
+ * choice (see `GatewaysFeature`'s `gatewayTypes`), but any of the three can come
+ * back from the API, so the type covers them all.
+ */
+export type GatewayType = 'regular' | 'ai' | 'event';
 
+/**
+ * Whether the gateway's controller is currently connected to the control plane.
+ * A newly created gateway is `inactive` until its data-plane gateway finishes
+ * provisioning and dials in.
+ */
 export type GatewayStatus = 'active' | 'inactive';
 
 export type Environment = {
@@ -31,16 +43,23 @@ export type Gateway = {
   description?: string;
   type: GatewayType;
   environmentId: string;
+  /** The external host the gateway is exposed on — server-assigned, not a create input. */
   url: string;
   status: GatewayStatus;
+  isCritical: boolean;
+  version?: string;
+  createdAt: string;
   updatedAt: string;
 };
 
-/** Fields the create/edit form collects — everything else (`id`, `status`, `updatedAt`) is store-assigned. */
+/**
+ * Fields the create/edit form collects. `id`/`url` (host) are server-assigned;
+ * on edit only `name`/`description` are mutable (`type`/`environmentId` are
+ * fixed at creation).
+ */
 export type GatewayInput = {
   name: string;
   description?: string;
   type: GatewayType;
   environmentId: string;
-  url: string;
 };
