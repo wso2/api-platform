@@ -50,11 +50,11 @@ The API Platform covers the complete API lifecycle:
 
 Refer to the documentation for setup guides, component-specific quick starts, and usage details.
 
-- [Gateway Documentation](docs/gateway/README.md)
-- [Gateway Quick Start](docs/gateway/quick-start-guide.md)
-- [AI Gateway Documentation](docs/ai-gateway/README.md)
-- [AI Gateway LLM Quick Start](docs/ai-gateway/llm/quick-start-guide.md)
-- [AI Gateway MCP Quick Start](docs/ai-gateway/mcp/quick-start-guide.md)
+- [Gateway Documentation](gateway/README.md)
+- [Gateway Quick Start](gateway/distribution/README.md)
+- [AI Gateway LLM Quick Start](samples/ai-gw-llm-proxy/README.md)
+- [AI Gateway MCP Quick Start](samples/ai-gw-mcp-claude-desktop/README.md)
+- [CLI Documentation](docs/cli/README.md)
 - [CLI Quick Start](docs/cli/quick-start-guide.md)
 
 ## Platform Components
