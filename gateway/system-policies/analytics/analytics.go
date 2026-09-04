@@ -264,13 +264,13 @@ type A2ARequestAnalyticsProperties struct {
 // groups by.
 //
 // PayloadType and TaskState are bounded enums and safe to group by. The two
-// identifiers are not, and they stay in this block rather than being folded into the
-// request one: an agent generates a task id and a context id the caller never sent, so
-// overwriting the request's values would hide the moment correlation actually begins,
-// and a mismatch between what was asked for and what came back would stop being
-// diagnosable. Being in the response block is what records the direction, so they are
-// named plainly — a downstream consumer reads them as response.taskId and
-// response.contextId and derives effectiveTaskId itself.
+// identifiers are not, and they are reported separately from the request's rather than
+// folded into them: an agent generates a task id and a context id the caller never
+// sent, so overwriting the request's values would hide the moment correlation actually
+// begins, and a mismatch between what was asked for and what came back would stop
+// being diagnosable. The published model is one flat object, so they carry a `response`
+// prefix — the only two fields here that need one, since no other response fact has a
+// request-side counterpart.
 //
 // The field names here are the published names. This struct is serialized at the Envoy
 // metadata boundary and unmarshalled on the other side into the collector's
@@ -283,10 +283,10 @@ type A2AResponseAnalyticsProperties struct {
 	StreamDurationMs   *int64 `json:"streamDurationMs,omitempty"`
 	IsStreaming        *bool  `json:"isStreaming,omitempty"`
 
-	PayloadType string `json:"payloadType,omitempty"`
-	TaskID      string `json:"taskId,omitempty"`
-	ContextID   string `json:"contextId,omitempty"`
-	TaskState   string `json:"taskState,omitempty"`
+	PayloadType       string `json:"payloadType,omitempty"`
+	ResponseTaskID    string `json:"responseTaskId,omitempty"`
+	ResponseContextID string `json:"responseContextId,omitempty"`
+	TaskState         string `json:"taskState,omitempty"`
 }
 
 // LLMProviderAnalyticsInfo holds extracted token-related information from LLM provider responses
@@ -1374,8 +1374,8 @@ func populateA2AResponseMetadata(
 	}
 
 	props.PayloadType = a2aPayloadTypeFor(observation, responseBody, responseStatus)
-	props.TaskID = observation.taskID
-	props.ContextID = observation.contextID
+	props.ResponseTaskID = observation.taskID
+	props.ResponseContextID = observation.contextID
 	props.TaskState = observation.taskState
 
 	if streamed && shared != nil {

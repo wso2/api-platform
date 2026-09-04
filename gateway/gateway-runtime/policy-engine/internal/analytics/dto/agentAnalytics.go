@@ -17,54 +17,39 @@
 
 package dto
 
-// The published Agent analytics model.
+// The published Agent analytics model — the external contract a downstream consumer
+// (Moesif, the analytics pipeline, AI Workspace) reads off an Agent event.
 //
-// This is the external contract: what a downstream consumer — Moesif, the analytics
-// pipeline, AI Workspace — reads off an Agent event. It is a typed structure rather
-// than the collector's scratch map because it is a contract, and a map is only ever a
-// contract by convention: a renamed key or a value that quietly changes type is
-// invisible until a dashboard goes blank.
+// The envelope is keyed by domain (agentAnalytics.a2a) so a later Agent analytics
+// domain can be added as a sibling of `a2a`. Inside that section every dimension is
+// one flat level: there is no `request` or `response` object. Only the two response
+// identifiers that would collide with a request field are renamed, to responseTaskId
+// and responseContextId; a consumer derives effectiveTaskId = responseTaskId ?? taskId
+// itself, so no effective-id field is published.
 //
-// Two shaping rules, both deliberate:
+// The Go type keeps the two directions as embedded field groups, which JSON flattens.
+// That is a decode concern: each group is exactly what one side of the pipeline
+// serializes, so a policy-supplied block cannot reach a field the kernel owns.
 //
-// The envelope is keyed by domain (agentAnalytics.a2a), not flat. An Agent may later
-// carry analytics for something other than A2A, and a sibling section can be added
-// without its fields having to be distinguishable from A2A's by name alone.
-//
-// The request and response objects are flat inside that. Nesting already records which
-// direction produced a value, so a response identifier is response.taskId — it does not
-// also need a name that says "observed". The two are kept apart rather than merged so a
-// disagreement between what a caller asked for and what an agent answered with stays
-// diagnosable; a consumer wanting one value derives
-// effectiveTaskId = response.taskId ?? request.taskId itself, which is why no such
-// field is published.
-//
-// There is deliberately no schema-version property. Every shape-dependent field is
-// optional and omitted when the request or response did not carry it, so a consumer
-// reads what is present rather than branching on a version; and a version number that
-// nothing enforces is a claim, not a guarantee.
-//
-// Generic facts stay outside this envelope: API and Agent identity, organization,
-// project, environment, consumer and credential identity, correlation id, HTTP status,
-// sizes and the common latency fields are all published as they are for every other API
-// kind. Only what is specific to A2A lives here.
+// Every shape-dependent field is optional and omitted when it was not carried; there is
+// deliberately no schema-version property. Generic facts — API and Agent identity,
+// organization, project, environment, consumer and credential identity, correlation id,
+// HTTP status, sizes, latencies — stay outside this envelope.
 
 // AgentAnalytics is the published analytics envelope for one Agent event.
 type AgentAnalytics struct {
-	// A2A carries the A2A protocol's own dimensions. A pointer so an Agent event
-	// that somehow produced none publishes an empty envelope rather than an
-	// object full of zero values.
+	// A2A is a pointer so an Agent event that produced no A2A dimensions publishes
+	// an empty envelope rather than an object full of zero values.
 	A2A *A2AAnalytics `json:"a2a,omitempty"`
 }
 
-// A2AAnalytics is the A2A section of the envelope.
+// A2AAnalytics is the A2A section of the envelope, published as one flat object.
 //
-// The four scalars above the two objects are the dimensions a dashboard groups by, and
-// every one of them is drawn from a closed set: the operation from the protocol
-// version's own operation table (or `unknown`), the transport from a two-valued enum,
-// the version from the registry, the outcome and failure origin from the vocabularies
-// in this package. The identifiers that are not bounded live inside Request and
-// Response, where they are event and trace data and never a metric label.
+// The dimensions safe to group by are drawn from closed sets: the operation from the
+// protocol version's operation table (or `unknown`), the transport from a two-valued
+// enum, the version from the registry, the outcome and failure origin from the
+// vocabularies in this package, and payloadType/taskState from bounded enums. The
+// identifiers are unbounded and are event and trace data, never metric labels.
 type A2AAnalytics struct {
 	// RequestType separates the three shapes of traffic an Agent serves on one
 	// context: `operation`, `agentCard`, and `preflight`. A card fetch and a
@@ -82,12 +67,8 @@ type A2AAnalytics struct {
 	Transport       string `json:"transport,omitempty"`
 	ProtocolVersion string `json:"protocolVersion,omitempty"`
 
-	// Request is what the caller asked for; Response is what the gateway observed
-	// coming back. Both are pointers and both are omitted entirely when nothing
-	// was extracted, so an absent object means "not applicable to this operation"
-	// rather than "every field was empty".
-	Request  *A2ARequestAnalytics  `json:"request,omitempty"`
-	Response *A2AResponseAnalytics `json:"response,omitempty"`
+	A2ARequestAnalytics
+	A2AResponseAnalytics
 
 	// Outcome is SUCCESS, FAILURE or UNKNOWN, derived from the A2A result rather
 	// than the HTTP status. FailureOrigin names the answerable layer and is
@@ -96,16 +77,12 @@ type A2AAnalytics struct {
 	FailureOrigin string `json:"failureOrigin,omitempty"`
 }
 
-// A2ARequestAnalytics is what the caller asked for.
+// A2ARequestAnalytics is what the caller asked for: three opaque caller-owned
+// identifiers and three content-free measures of the request's shape.
 //
-// The three identifiers are the caller's own and opaque; the three summaries are
-// content-free measures of the request's shape. None of them belongs on a metric label
-// — the identifiers because they are unbounded, the summaries because they are
-// measures, which is what a histogram takes rather than what a dimension names.
-//
-// The summaries are pointers because each of their zero values is a real answer: a
-// message can carry no parts, a history length of zero asks for no history at all, and
-// returnImmediately false is the protocol's own default rather than an absent field.
+// The measures are pointers because each zero value is a real answer — a message can
+// carry no parts, a history length of zero asks for no history, and returnImmediately
+// false is the protocol's own default rather than an absent field.
 type A2ARequestAnalytics struct {
 	MessageID string `json:"messageId,omitempty"`
 	TaskID    string `json:"taskId,omitempty"`
@@ -116,33 +93,23 @@ type A2ARequestAnalytics struct {
 	HistoryLength     *int  `json:"historyLength,omitempty"`
 }
 
-// IsEmpty reports whether nothing was extracted, so the object can be omitted rather
-// than published as `{}`.
-func (r *A2ARequestAnalytics) IsEmpty() bool {
-	if r == nil {
-		return true
-	}
-	return r.MessageID == "" && r.TaskID == "" && r.ContextID == "" &&
-		r.InputPartCount == nil && r.ReturnImmediately == nil && r.HistoryLength == nil
-}
-
 // A2AResponseAnalytics is what the gateway observed coming back.
 //
 // IsError is what makes an A2A success rate correct rather than plausible: a JSON-RPC
 // error travels inside a 200, so a rate computed from the HTTP status counts failed
 // invocations as successes. It is omitted — never defaulted to false — when no response
-// body could be read, because false is a positive claim of success and an undetermined
-// outcome is not one.
-//
-// The error *message* is deliberately absent throughout: it is agent-authored free text
-// of unbounded length and unknown sensitivity. The numeric code is what a dashboard
-// groups by after mapping it into a bounded category.
+// body could be read, because false is a positive claim of success. The error *message*
+// is deliberately absent throughout: it is agent-authored free text of unbounded length
+// and unknown sensitivity, and the numeric code is what a dashboard groups by.
 //
 // The two timings are measured by the analytics policy from the gateway's own clock,
 // because the access-log timepoints the generic latency fields come from cannot express
-// them: a streaming response's last upstream byte arrives when the stream ends, so its
-// backend latency is its whole duration and says nothing about when the first event
-// reached the client.
+// them: a streaming response's last upstream byte arrives when the stream ends.
+//
+// ResponseTaskID and ResponseContextID carry the `response` prefix because a request
+// taskId and contextId share this flat object. That is the point of publishing them: a
+// caller that sends a bare message gets back a task id it never supplied, and without
+// these that invocation correlates to nothing.
 type A2AResponseAnalytics struct {
 	IsError   *bool `json:"isError,omitempty"`
 	ErrorCode *int  `json:"errorCode,omitempty"`
@@ -151,23 +118,8 @@ type A2AResponseAnalytics struct {
 	TimeToFirstEventMs *int64 `json:"timeToFirstEventMs,omitempty"`
 	StreamDurationMs   *int64 `json:"streamDurationMs,omitempty"`
 
-	// PayloadType and TaskState are bounded enums and safe to group by. TaskID and
-	// ContextID are the agent's own identifiers — which is the point of publishing
-	// them: a caller that sends a bare message gets back a task id it never
-	// supplied, and without these that invocation correlates to nothing.
-	PayloadType string `json:"payloadType,omitempty"`
-	TaskID      string `json:"taskId,omitempty"`
-	ContextID   string `json:"contextId,omitempty"`
-	TaskState   string `json:"taskState,omitempty"`
-}
-
-// IsEmpty reports whether nothing was observed, so the object can be omitted rather
-// than published as `{}`.
-func (r *A2AResponseAnalytics) IsEmpty() bool {
-	if r == nil {
-		return true
-	}
-	return r.IsError == nil && r.ErrorCode == nil &&
-		r.IsStreaming == nil && r.TimeToFirstEventMs == nil && r.StreamDurationMs == nil &&
-		r.PayloadType == "" && r.TaskID == "" && r.ContextID == "" && r.TaskState == ""
+	PayloadType       string `json:"payloadType,omitempty"`
+	ResponseTaskID    string `json:"responseTaskId,omitempty"`
+	ResponseContextID string `json:"responseContextId,omitempty"`
+	TaskState         string `json:"taskState,omitempty"`
 }

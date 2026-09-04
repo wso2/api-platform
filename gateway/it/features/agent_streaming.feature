@@ -308,7 +308,7 @@ Feature: Agent streaming operations
     When I wait 5 seconds for analytics to be published
     Then the latest analytics event should have request URI "/agent-stream-analytics/v1/message:stream"
     And the latest analytics event should have A2A field "operation" with value "SendStreamingMessage"
-    And the latest analytics event should have A2A field "response.isStreaming" with value "true"
+    And the latest analytics event should have A2A field "isStreaming" with value "true"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-stream-analytics"
