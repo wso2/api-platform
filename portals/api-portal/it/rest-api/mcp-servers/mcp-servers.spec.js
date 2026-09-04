@@ -192,7 +192,7 @@ describe('MCP servers', () => {
 
     it('generates an API key scoped to an MCP server', async () => {
         const mcp = await createMcpServer();
-        const keyId = uniqueHandle('mcp-key').toLowerCase();
+        const keyId = uniqueHandle('key').toLowerCase();
         const res = await client.as('publisher').post(`/mcp-servers/${mcp.id}/api-keys/generate`, { id: keyId });
         expect(res.status).toBe(201);
         expect(res.body.id).toBe(keyId);

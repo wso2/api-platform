@@ -72,6 +72,7 @@ import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import { buildApiKeyResourceName, validateApiKeyName } from '../../../../utils/apiKeyName';
 
 type FormState = {
   name: string;
@@ -99,15 +100,6 @@ const toProxyId = (name: string): string =>
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-
-const buildApiKeyResourceName = (displayName: string): string => {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
-};
 
 type LLMProxyNewContentProps = {
   selectedProviderId: string;
@@ -538,6 +530,12 @@ function LLMProxyNewContent({
       setApiKeyError('Display name is required.');
       return;
     }
+    const keyName = buildApiKeyResourceName(trimmedDisplayName);
+    const nameError = validateApiKeyName(keyName);
+    if (nameError) {
+      setApiKeyError(nameError);
+      return;
+    }
 
     try {
       setIsGeneratingApiKey(true);
@@ -550,7 +548,7 @@ function LLMProxyNewContent({
         formState.providerId,
         currentOrganization.uuid,
         {
-          id: buildApiKeyResourceName(trimmedDisplayName),
+          id: keyName,
           displayName: trimmedDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',

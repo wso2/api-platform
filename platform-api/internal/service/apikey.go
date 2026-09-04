@@ -24,7 +24,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
@@ -37,17 +36,8 @@ import (
 )
 
 const (
-	apiKeyNameMinLength     = 3
-	apiKeyNameMaxLength     = 63
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
-)
-
-var (
-	// invalidAPIKeyNameCharsRegex removes any character that is not lowercase alphanumeric or hyphen
-	invalidAPIKeyNameCharsRegex = regexp.MustCompile(`[^a-z0-9\-]`)
-	// consecutiveHyphensRegex collapses runs of hyphens into a single hyphen
-	consecutiveHyphensRegex = regexp.MustCompile(`-+`)
 )
 
 // APIKeyService handles API key management operations for external API key injection
@@ -253,45 +243,9 @@ func randomHexString(n int) (string, error) {
 	return hex.EncodeToString(bytes)[:n], nil
 }
 
-// generateAPIKeyName derives a URL-safe, slug-style name from a display name using the
-// same algorithm as the gateway controller:
-//   - Lowercase
-//   - Spaces and underscores → hyphens
-//   - Remove all non-[a-z0-9-] characters
-//   - Collapse consecutive hyphens
-//   - Trim leading/trailing hyphens
-//   - Enforce length [3, 63]; pad with random hex if too short
-func generateAPIKeyName(displayName string) (string, error) {
-	name := strings.ToLower(strings.TrimSpace(displayName))
-	name = strings.ReplaceAll(name, " ", "-")
-	name = strings.ReplaceAll(name, "_", "-")
-	name = invalidAPIKeyNameCharsRegex.ReplaceAllString(name, "")
-	name = consecutiveHyphensRegex.ReplaceAllString(name, "-")
-	name = strings.Trim(name, "-")
-
-	if len(name) > apiKeyNameMaxLength {
-		name = strings.TrimRight(name[:apiKeyNameMaxLength], "-")
-	}
-	if len(name) < apiKeyNameMinLength {
-		padding, err := randomHexString(apiKeyNameMinLength - len(name))
-		if err != nil {
-			return "", err
-		}
-		if name == "" {
-			name = padding
-		} else {
-			name = name + "-" + padding
-		}
-		if len(name) > apiKeyNameMaxLength {
-			name = strings.TrimRight(name[:apiKeyNameMaxLength], "-")
-		}
-	}
-	return name, nil
-}
-
 // resolveUniqueKeyName uses the caller-supplied name if present, otherwise derives one
-// from the display name (or the API handle as a fallback) using the same slug algorithm
-// as the gateway controller. Either way, it retries with a short random suffix on collision.
+// from the display name (or the API handle as a fallback). Either way, the resolved name
+// is validated and it retries with a short random suffix on collision.
 func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.CreateAPIKeyRequest, apiHandle string) (string, error) {
 	var baseName string
 	if req.Id != nil && strings.TrimSpace(*req.Id) != "" {
@@ -311,10 +265,14 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 		}
 
 		var err error
-		baseName, err = generateAPIKeyName(displayName)
+		baseName, err = utils.GenerateHandle(displayName, nil)
 		if err != nil {
 			return "", fmt.Errorf("failed to generate API key name: %w", err)
 		}
+	}
+
+	if err := utils.ValidateHandle(baseName); err != nil {
+		return "", fmt.Errorf("invalid API key id: %w", err)
 	}
 
 	// Check for collision and retry with a short suffix (up to 5 attempts)
@@ -332,8 +290,8 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 		if err != nil {
 			return "", err
 		}
-		if len(baseName)+1+len(suffix) > apiKeyNameMaxLength {
-			name = strings.TrimRight(baseName[:apiKeyNameMaxLength-1-len(suffix)], "-") + "-" + suffix
+		if len(baseName)+1+len(suffix) > constants.HandleMaxLength {
+			name = strings.TrimRight(baseName[:constants.HandleMaxLength-1-len(suffix)], "-") + "-" + suffix
 		} else {
 			name = baseName + "-" + suffix
 		}
