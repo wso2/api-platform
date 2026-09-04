@@ -8985,7 +8985,7 @@ components:
       in: query
       required: false
       description: >-
-        Case-insensitive substring filter matched against the resource id
+        Case-insensitive substring filter matched against the resource display name and id
         (handle).
       schema:
         type: string
