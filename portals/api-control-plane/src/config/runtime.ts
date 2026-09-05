@@ -69,6 +69,13 @@ export type RuntimeConfig = {
    * not a hardcoded link.
    */
   moesifWebUrl: string;
+  /**
+   * API Designer for VS Code. The wizard's "design from scratch" step hands
+   * off to the extension rather than hosting a canvas here, so the
+   * deployment's own marketplace and docs links are config, not hardcoded.
+   */
+  apiDesignerVsCodeUrl: string;
+  apiDesignerDocsUrl: string;
   privacyPolicyLink: string;
   projectApiBaseUrl: string;
   termsOfUseLink: string;
@@ -93,6 +100,8 @@ type LegacyWindowConfig = Partial<{
   POLICY_HUB_BASE_URL: string;
   POLICY_HUB_WEB_URL: string;
   MOESIF_WEB_URL: string;
+  API_DESIGNER_VSCODE_URL: string;
+  API_DESIGNER_DOCS_URL: string;
   PRIVACY_POLICY_LINK: string;
   PROJECT_API_BASE_URL: string;
   TERMS_OF_USE_LINK: string;
@@ -214,6 +223,14 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().MOESIF_WEB_URL ||
     import.meta.env.VITE_MOESIF_WEB_URL ||
     'https://www.moesif.com/wrap/basic',
+  apiDesignerVsCodeUrl:
+    fromWindow().API_DESIGNER_VSCODE_URL ||
+    import.meta.env.VITE_API_DESIGNER_VSCODE_URL ||
+    'https://marketplace.visualstudio.com/items?itemName=WSO2.api-designer',
+  apiDesignerDocsUrl:
+    fromWindow().API_DESIGNER_DOCS_URL ||
+    import.meta.env.VITE_API_DESIGNER_DOCS_URL ||
+    'https://wso2.com/api-platform/docs/tools/vscode-api-design/getting-started/',
   privacyPolicyLink:
     fromWindow().PRIVACY_POLICY_LINK ||
     fromWindow().privacyPolicyLink ||

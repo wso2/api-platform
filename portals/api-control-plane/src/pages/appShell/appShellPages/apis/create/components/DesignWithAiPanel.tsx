@@ -16,23 +16,36 @@
  * under the License.
  */
 
-import { Box, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Link, Stack, Typography } from '@wso2/oxygen-ui';
+import { ExternalLink } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
-import { ComingSoon } from '../../../../../../components/ComingSoon';
+import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDesignerCanvasIllustration';
+import { runtimeConfig } from '@/config/runtime';
 
 const messages = defineMessages({
-  detail: {
-    id: 'api.create.designWithAi.detail',
-    defaultMessage:
-      'The skeleton on the right is a starting point — carry on and edit its operations by hand.',
+  action: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.action',
+    defaultMessage: 'Open API Designer',
+    description:
+      'Button opening the API Designer VS Code extension listing in a new tab. "API Designer" is a product name — leave it untranslated.',
   },
-  feature: {
-    id: 'api.create.designWithAi.feature',
-    defaultMessage: 'Designing an API by chatting with AI',
+  body: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.body',
+    defaultMessage:
+      'Draw operations on a canvas, check them against governance rules, and design with AI in VS Code.',
+  },
+  docs: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.docs',
+    defaultMessage: 'How to get started',
+  },
+  skeletonHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.skeletonHint',
+    defaultMessage:
+      'Or carry on here - the skeleton on the right is a starting point you can edit by hand.',
   },
   title: {
-    id: 'api.create.designWithAi.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.title',
     defaultMessage: 'Design with AI',
   },
 });
@@ -40,9 +53,11 @@ const messages = defineMessages({
 /**
  * Left-hand panel of the "design from scratch" approach.
  *
- * A placeholder for now: the definition the step carries forward is the
- * skeleton the panel beside it already shows, and this is where the chat that
- * refines it will live.
+ * The visual designer is not hosted in the console; it ships as the API
+ * Designer VS Code extension. So rather than promising a canvas here, this
+ * shows what that canvas looks like and hands the user straight to it — while
+ * the skeleton in the pane beside it stays editable for anyone who would
+ * rather not leave the wizard.
  */
 export const DesignWithAiPanel = () => (
   <Box>
@@ -50,13 +65,53 @@ export const DesignWithAiPanel = () => (
       <FormattedMessage {...messages.title} />
     </Typography>
 
-    {/* `ComingSoon` sizes itself for a whole page (60vh); inside a panel it
-        takes the height it is given instead. */}
-    <Box sx={{ '& > *': { minHeight: 0, py: 4 } }}>
-      <ComingSoon
-        detail={<FormattedMessage {...messages.detail} />}
-        feature={<FormattedMessage {...messages.feature} />}
-      />
-    </Box>
+    <Stack alignItems="center" spacing={2} sx={{ pt: 3, textAlign: 'center' }}>
+      {/* The illustration is the backdrop and the button sits on top of it, so
+          the canvas sets the scene without competing with the call to action. */}
+      <Box sx={{ position: 'relative', width: '100%' }}>
+        <Box sx={{ opacity: 0.5 }}>
+          <ApiDesignerCanvasIllustration />
+        </Box>
+        <Box
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            inset: 0,
+            justifyContent: 'center',
+            position: 'absolute',
+          }}
+        >
+          <Button
+            component="a"
+            endIcon={<ExternalLink size={16} />}
+            href={runtimeConfig.apiDesignerVsCodeUrl}
+            // `noopener` keeps the opened tab from reaching back through
+            // `window.opener`; `noreferrer` withholds the console URL from it.
+            rel="noopener noreferrer"
+            target="_blank"
+            variant="contained"
+          >
+            <FormattedMessage {...messages.action} />
+          </Button>
+        </Box>
+      </Box>
+
+      <Typography color="text.secondary" variant="body2">
+        <FormattedMessage {...messages.body} />
+      </Typography>
+
+      <Link
+        href={runtimeConfig.apiDesignerDocsUrl}
+        rel="noopener noreferrer"
+        target="_blank"
+        variant="body2"
+      >
+        <FormattedMessage {...messages.docs} />
+      </Link>
+
+      <Typography color="text.secondary" sx={{ pt: 1 }} variant="body2">
+        <FormattedMessage {...messages.skeletonHint} />
+      </Typography>
+    </Stack>
   </Box>
 );
