@@ -87,46 +87,26 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 			WithLogMessage(fmt.Sprintf("invalid API key creation request for user %s", userId))
 	}
 
-	if req.ApiKey == "" {
-		return apperror.ValidationFailed.New("API key value is required")
-	}
-
-	// If user has provided an id, use it. Otherwise, generate one from the display name.
-	var name string
-	if req.Id != nil && *req.Id != "" {
-		name = *req.Id
-	} else {
-		generatedName, err := utils.GenerateHandle(req.DisplayName, nil)
-		if err != nil {
-			return apperror.ValidationFailed.Wrap(err, "Failed to generate API key name")
-		}
-		name = generatedName
-		req.Id = &name
-	}
-
 	// Create the API key and broadcast to gateways
-	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, userId, &req); err != nil {
+	resp, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, userId, &req)
+	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
 		}
 		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to create API key %q for API %s in org %s by user %s", name, apiHandle, orgId, userId))
+			WithLogMessage(fmt.Sprintf("failed to create API key for API %s in org %s by user %s", apiHandle, orgId, userId))
 	}
 
 	keyName := ""
-	if req.Id != nil {
-		keyName = *req.Id
+	if resp.KeyId != nil {
+		keyName = *resp.KeyId
 	}
 	h.slogger.Info("Successfully created API key", "userId", userId, "apiHandle", apiHandle, "orgId", orgId, "keyName", keyName)
 
 	// Return success response
-	setLocation(w, "rest-apis", apiHandle, "api-keys", name)
-	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
-		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Id,
-		Message: "API key created and broadcasted to gateways successfully",
-	})
+	setLocation(w, "rest-apis", apiHandle, "api-keys", keyName)
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }
 

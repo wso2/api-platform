@@ -682,8 +682,8 @@ type CostRateLimitDimension struct {
 
 // CreateAPIKeyRequest defines model for CreateAPIKeyRequest.
 type CreateAPIKeyRequest struct {
-	// ApiKey The plain text API key value that will be hashed before storage
-	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
+	// ApiKey Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
+	ApiKey string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
 
 	// DisplayName Human-readable name for the API key
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
@@ -705,6 +705,12 @@ type CreateAPIKeyRequest struct {
 
 // CreateAPIKeyResponse defines model for CreateAPIKeyResponse.
 type CreateAPIKeyResponse struct {
+	// ApiKey The generated API key value. Present only when the server generated
+	// the key (no `apiKey` in the request); returned only in this
+	// creation response and never retrievable afterwards. The example value is
+	// a non-functional placeholder.
+	ApiKey *string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
+
 	// KeyId The internal ID generated for tracking
 	KeyId *string `json:"keyId,omitempty" yaml:"keyId,omitempty"`
 

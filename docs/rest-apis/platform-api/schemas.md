@@ -2113,7 +2113,7 @@ Time unit for API key expiration duration
 |---|---|---|---|---|
 |id|string|false|none|Unique identifier for this API key within the API (optional; if omitted,<br>generated from displayName)|
 |displayName|string|true|none|Human-readable name for the API key|
-|apiKey|string|true|none|The plain text API key value that will be hashed before storage|
+|apiKey|string|false|none|Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.|
 |externalRefId|string¦null|false|none|Optional reference ID for tracing purposes (from external platforms)|
 |expiresAt|string(date-time)¦null|false|none|Optional expiration time in ISO 8601 format|
 |expiresIn|[ExpirationDuration](#schemaexpirationduration)|false|none|Optional expiration duration|
@@ -2130,7 +2130,8 @@ Time unit for API key expiration duration
 {
   "status": "success",
   "message": "API key created and broadcasted to gateways successfully",
-  "keyId": "production-key-01"
+  "keyId": "production-key-01",
+  "apiKey": "REDACTED_API_KEY"
 }
 
 ```
@@ -2142,6 +2143,7 @@ Time unit for API key expiration duration
 |status|string|true|none|Status of the operation|
 |message|string|true|none|Additional details about the operation result|
 |keyId|string|false|none|The internal ID generated for tracking|
+|apiKey|string|false|none|The generated API key value. Present only when the server generated <br>the key (no `apiKey` in the request); returned only in this <br>creation response and never retrievable afterwards. The example value is<br>a non-functional placeholder.|
 
 ##### Enumerated Values
 
