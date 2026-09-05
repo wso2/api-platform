@@ -17,7 +17,7 @@
  */
 
 import { useMemo } from 'react';
-import { Box, Typography } from '@wso2/oxygen-ui';
+import { Box, Card, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
@@ -77,12 +77,8 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
           title={intl.formatMessage(messages.empty)}
         />
       ) : (
-        <Box
+        <Card
           sx={{
-            bgcolor: 'background.paper',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1,
             maxHeight: { md: 520, xs: 320 },
             overflowY: 'auto',
             px: 2,
@@ -110,7 +106,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
             hideTagHeaders
             spec={spec}
           />
-        </Box>
+        </Card>
       )}
     </Box>
   );

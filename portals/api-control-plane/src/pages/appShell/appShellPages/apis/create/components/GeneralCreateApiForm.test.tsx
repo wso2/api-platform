@@ -22,17 +22,35 @@ import { resetHttpClient } from '@/api/core/http';
 import { server } from '@/test/server';
 import { collection } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
-import { renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GeneralCreateApiForm } from './GeneralCreateApiForm';
 
 const scope = makeConsoleScope();
 const route = '/organizations/api-platform-demo/projects/retail-apis/apis/create';
 
-const renderForm = (initialValues?: Parameters<typeof GeneralCreateApiForm>[0]['initialValues']) =>
+type FormProps = Parameters<typeof GeneralCreateApiForm>[0];
+
+const renderForm = (
+  initialValues?: FormProps['initialValues'],
+  serverErrors?: FormProps['serverErrors'],
+) =>
   renderWithProviders(
-    <GeneralCreateApiForm initialValues={initialValues} onBack={() => {}} onSubmit={() => {}} />,
+    <GeneralCreateApiForm
+      initialValues={initialValues}
+      onBack={() => {}}
+      onSubmit={() => {}}
+      serverErrors={serverErrors}
+    />,
     { route, scope },
   );
+
+/** What the wizard hands back after a rejected create. */
+const submitted = {
+  context: '/retail-apis/orders-api/v1.0',
+  displayName: 'Orders API',
+  id: 'orders-api',
+  version: '1.0',
+} as const;
 
 /**
  * The identifier field probes availability as it settles, so the listing that
@@ -49,7 +67,7 @@ describe('GeneralCreateApiForm — initial values', () => {
 
     expect(screen.getByLabelText(/Identifier/)).toHaveValue('orders-api');
     // The platform's own base path shape, not anything read off a document.
-    expect(screen.getByLabelText(/Base Path/)).toHaveValue(
+    expect(screen.getByLabelText(/Context/)).toHaveValue(
       `/${scope.activeScope.projectHandler}/orders-api/v2.1`,
     );
   });
@@ -65,7 +83,7 @@ describe('GeneralCreateApiForm — initial values', () => {
     });
 
     expect(screen.getByLabelText(/Identifier/)).toHaveValue('orders-v2');
-    expect(screen.getByLabelText(/Base Path/)).toHaveValue('/public/orders');
+    expect(screen.getByLabelText(/Context/)).toHaveValue('/public/orders');
   });
 
   it('leaves a restored base path alone when the display name is edited afterwards', async () => {
@@ -76,9 +94,77 @@ describe('GeneralCreateApiForm — initial values', () => {
       version: '2.1',
     });
 
-    await user.type(screen.getByLabelText(/Display name/), ' v2');
+    await user.type(screen.getByLabelText(/^Name/), ' v2');
 
     expect(screen.getByLabelText(/Identifier/)).toHaveValue('orders-v2');
-    expect(screen.getByLabelText(/Base Path/)).toHaveValue('/public/orders');
+    expect(screen.getByLabelText(/Context/)).toHaveValue('/public/orders');
+  });
+});
+
+describe('GeneralCreateApiForm — a rejected submission', () => {
+  it('shows the server’s reason on the field it names', async () => {
+    renderForm(submitted, {
+      fields: { id: 'An API with this identifier already exists.' },
+      unmapped: [],
+    });
+
+    expect(
+      await screen.findByText('An API with this identifier already exists.'),
+    ).toBeInTheDocument();
+    // Pinned to the input, not just announced: the message is what the
+    // identifier field describes itself with.
+    expect(screen.getByLabelText(/Identifier/)).toHaveAccessibleDescription(
+      'An API with this identifier already exists.',
+    );
+  });
+
+  it('moves focus to the first field the server named', async () => {
+    renderForm(submitted, {
+      fields: { context: 'This base path is already in use.' },
+      unmapped: [],
+    });
+
+    await waitFor(() => expect(screen.getByLabelText(/Context/)).toHaveFocus());
+  });
+
+  it('retracts the message once that value is edited', async () => {
+    const { user } = renderForm(submitted, {
+      fields: { id: 'An API with this identifier already exists.' },
+      unmapped: [],
+    });
+
+    await user.type(screen.getByLabelText(/Identifier/), '-v2');
+
+    // The server judged what was sent; it has no opinion on what is being
+    // typed now, so the objection goes with the value that caused it.
+    expect(
+      screen.queryByText('An API with this identifier already exists.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('summarises a rejection that names no field at all', () => {
+    // A conflict arrives as prose with no `errors[]`, and there is nothing to
+    // pin it to — so the form says it once, at the top, and keeps saying it.
+    renderForm(submitted, {
+      fields: {},
+      message: 'An API with context /orders and version 1.0 already exists.',
+      unmapped: [],
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'An API with context /orders and version 1.0 already exists.',
+    );
+  });
+
+  it('lists a field error that belongs to no input on this form', () => {
+    renderForm(submitted, { fields: {}, unmapped: ['Unknown project.'] });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Unknown project.');
+  });
+
+  it('says nothing when the last submission was not rejected', () => {
+    renderForm(submitted);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

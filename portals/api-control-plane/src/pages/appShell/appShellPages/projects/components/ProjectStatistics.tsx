@@ -120,6 +120,10 @@ export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectS
     onTypeFilterChange(selectedType === type ? null : type);
   const filterLabel = (label: string) => intl.formatMessage(messages.selectType, { type: label });
 
+  if (!apisQuery.isPending && total === 0) {
+    return null;
+  }
+
   return (
     <Grid alignItems="center" container sx={{ minHeight: 80, py: 1.5 }}>
       <Grid size={{ md: 2, xs: 12 }}>

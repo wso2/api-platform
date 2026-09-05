@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import {
   Avatar,
   Box,
@@ -25,21 +25,19 @@ import {
   Chip,
   IconButton,
   Stack,
-  TextField,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Boxes, Lock, Pencil } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Edit, Lock } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
-import { useRestApi, useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
-import { useNotifications } from '@/components/Notifications';
+import { useRestApi } from '@/api/resources/restApis';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useFormatters } from '@/i18n/useFormatters';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { LifecycleChip, TransportChips, VersionChip } from '../listing/components/RestApiChips';
+import { VersionChip } from '../listing/components/RestApiChips';
 import { apiInitials } from '../utils/restApiDisplay';
 import { OverviewTab } from './OverviewTab';
 
@@ -60,31 +58,11 @@ const messages = defineMessages({
     description:
       'Shown in place of the API description when the API has none. Rendered in italics as an absence, not as a value.',
   },
-  descriptionSaved: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.saved',
-    defaultMessage: 'Description updated.',
-    description: 'Confirmation shown after the API description is saved.',
-  },
-  editCancel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.cancel',
-    defaultMessage: 'Cancel',
-    description: 'Discards an unsaved edit to the API description.',
-  },
-  editDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.edit',
-    defaultMessage: 'Edit description',
+  editApi: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.editApi',
+    defaultMessage: 'Edit API details',
     description:
-      'Accessible label and tooltip for the pencil button that opens the description for editing.',
-  },
-  editFieldLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.fieldLabel',
-    defaultMessage: 'Description',
-    description: 'Label of the text box used to edit the API description.',
-  },
-  editSave: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.save',
-    defaultMessage: 'Save',
-    description: 'Commits an edit to the API description.',
+      'Accessible label and tooltip for the button beside the API name, which opens the edit page.',
   },
   gatewayManaged: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged',
@@ -117,101 +95,36 @@ const AVATAR_ICON_SIZE = 32;
 /** Label column of the metadata rows, wide enough to align their values. */
 const LABEL_COLUMN = 88;
 
-/** Keeps the description editor from stretching the full width of the header. */
-const EDIT_FIELD_MAX_WIDTH = 560;
-
-/** Inline API description editor.
- * Read mode clamps to two lines, shows an italic placeholder when empty,
- * and hides editing for `readOnly` APIs.
+/**
+ * The API description, read-only.
+ *
+ * Clamped to two lines, with an italic placeholder standing in for an absent
+ * description so the row reads as an absence rather than as a value. Editing
+ * lives on the dedicated edit page, reached from the button beside the title.
  */
-function DescriptionField({ api, restApiId }: { api: RestApi; restApiId: string }) {
-  const intl = useIntl();
-  const { notify } = useNotifications();
-  const updateApi = useUpdateRestApi();
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const isEditing = draft !== null;
-  const description = api.description?.trim() ?? '';
-
-  const save = () => {
-    const next = (draft ?? '').trim();
-    // Nothing to persist: close rather than spend a PUT on an identical value.
-    if (next === description) {
-      setDraft(null);
-      return;
-    }
-    // The spec's update body is the whole `RESTAPI`, so the fetched object is
-    // spread back with the edit applied.
-    updateApi.mutate(
-      { restApiId, body: { ...api, description: next } },
-      {
-        onSuccess: () => {
-          setDraft(null);
-          notify(intl.formatMessage(messages.descriptionSaved), 'success');
-        },
-      },
-    );
-  };
-
-  if (isEditing) {
+function DescriptionField({ description }: { description: string }) {
+  if (!description) {
     return (
-      <Stack spacing={1} sx={{ maxWidth: EDIT_FIELD_MAX_WIDTH }}>
-        <TextField
-          autoFocus
-          disabled={updateApi.isPending}
-          fullWidth
-          label={intl.formatMessage(messages.editFieldLabel)}
-          maxRows={6}
-          multiline
-          onChange={(event) => setDraft(event.target.value)}
-          size="small"
-          value={draft}
-        />
-        <Stack direction="row" spacing={1}>
-          <Button disabled={updateApi.isPending} onClick={save} size="small" variant="contained">
-            <FormattedMessage {...messages.editSave} />
-          </Button>
-          <Button disabled={updateApi.isPending} onClick={() => setDraft(null)} size="small">
-            <FormattedMessage {...messages.editCancel} />
-          </Button>
-        </Stack>
-      </Stack>
+      <Typography color="text.disabled" sx={{ fontStyle: 'italic' }} variant="body2">
+        <FormattedMessage {...messages.descriptionPlaceholder} />
+      </Typography>
     );
   }
 
   return (
-    <Stack alignItems="flex-start" direction="row" spacing={0.5} sx={{ minWidth: 0 }}>
-      {description ? (
-        <Typography
-          color="text.secondary"
-          sx={{
-            display: '-webkit-box',
-            overflow: 'hidden',
-            WebkitBoxOrient: 'vertical',
-            WebkitLineClamp: 2,
-          }}
-          variant="body2"
-        >
-          {description}
-        </Typography>
-      ) : (
-        <Typography color="text.disabled" sx={{ fontStyle: 'italic' }} variant="body2">
-          <FormattedMessage {...messages.descriptionPlaceholder} />
-        </Typography>
-      )}
-      {!api.readOnly && (
-        <Tooltip title={intl.formatMessage(messages.editDescription)}>
-          <IconButton
-            aria-label={intl.formatMessage(messages.editDescription)}
-            onClick={() => setDraft(description)}
-            size="small"
-            sx={{ flexShrink: 0 }}
-          >
-            <Pencil size={14} />
-          </IconButton>
-        </Tooltip>
-      )}
-    </Stack>
+    <Typography
+      color="text.secondary"
+      sx={{
+        display: '-webkit-box',
+        minWidth: 0,
+        overflow: 'hidden',
+        WebkitBoxOrient: 'vertical',
+        WebkitLineClamp: 2,
+      }}
+      variant="body2"
+    >
+      {description}
+    </Typography>
   );
 }
 
@@ -265,8 +178,15 @@ export function ApiDetailPage() {
     params.apiHandler ?? null,
   );
 
+  // Same reasoning: the page only mounts fully scoped, so the edit page's path
+  // is always the fully-scoped one.
+  const editPath = routes.apiEdit(
+    params.orgHandle ?? '',
+    params.projectHandler ?? '',
+    params.apiHandler ?? '',
+  );
+
   const displayName = api.displayName || restApiId;
-  const transports = api.transport ?? [];
   // `updatedAt` is absent until the first edit, so a fresh API reads its
   // creation time rather than showing an empty row.
   const updated = api.updatedAt || api.createdAt;
@@ -320,7 +240,21 @@ export function ApiDetailPage() {
                   </Typography>
                 </Tooltip>
                 <VersionChip version={api.version} />
-                {api.lifeCycleStatus && <LifecycleChip status={api.lifeCycleStatus} />}
+                {/* Gateway-managed APIs are read-only in this console, so they
+                    get no way in to the edit form at all. */}
+                {!api.readOnly && (
+                  <Tooltip title={intl.formatMessage(messages.editApi)}>
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.editApi)}
+                      component={RouterLink}
+                      size="small"
+                      sx={{ flexShrink: 0 }}
+                      to={editPath}
+                    >
+                      <Edit size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 {api.readOnly && (
                   <Tooltip title={intl.formatMessage(messages.gatewayManagedHint)}>
                     <Chip
@@ -334,7 +268,7 @@ export function ApiDetailPage() {
                 )}
               </Stack>
 
-              <DescriptionField api={api} restApiId={restApiId} />
+              <DescriptionField description={api.description?.trim() ?? ''} />
 
               <Stack spacing={0.5}>
                 <MetaItem label={<FormattedMessage {...messages.context} />}>
@@ -342,14 +276,6 @@ export function ApiDetailPage() {
                     {api.context || '/'}
                   </Typography>
                 </MetaItem>
-
-                {transports.length > 0 && (
-                  <MetaItem label={<FormattedMessage {...messages.transports} />}>
-                    <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }} useFlexGap>
-                      <TransportChips transports={transports} />
-                    </Stack>
-                  </MetaItem>
-                )}
 
                 {updated && (
                   <MetaItem label={<FormattedMessage {...messages.lastUpdated} />}>
@@ -370,9 +296,6 @@ export function ApiDetailPage() {
         </Box>
       </Card>
 
-      {/* Policy, Routing and Documents used to be tabs here; each is now its own
-          page under the sidebar's Develop menu, leaving Overview as the whole of
-          this page — so no tab bar. */}
       <OverviewTab api={api} />
     </>
   );

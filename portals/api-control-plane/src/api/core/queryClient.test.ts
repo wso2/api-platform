@@ -19,7 +19,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from './errors';
-import { createQueryClient, retryDelay, shouldRetry, staleTimes } from './queryClient';
+import {
+  createQueryClient,
+  HANDLED_LOCALLY,
+  retryDelay,
+  shouldRetry,
+  staleTimes,
+} from './queryClient';
 
 /**
  * The retry policy is where a wrong answer is expensive in both directions:
@@ -172,6 +178,26 @@ describe('query defaults', () => {
 
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(seen).toHaveLength(1);
+  });
+
+  it('stays quiet for a mutation that reports its own failures', async () => {
+    // The creation wizard binds a rejection onto the form fields that caused
+    // it. Without the opt-out the same failure would also fly past as a
+    // snackbar, which reads as two unrelated problems rather than one.
+    const seen: ApiError[] = [];
+    const client = createQueryClient({ onMutationError: (error) => seen.push(error) });
+
+    await client
+      .getMutationCache()
+      .build(client, {
+        meta: HANDLED_LOCALLY,
+        mutationFn: () => Promise.reject(httpError(409)),
+        retry: false,
+      })
+      .execute(undefined)
+      .catch(() => undefined);
+
+    expect(seen).toHaveLength(0);
   });
 
   it('keeps unused data in memory longer than it stays fresh, so back-navigation is instant', () => {

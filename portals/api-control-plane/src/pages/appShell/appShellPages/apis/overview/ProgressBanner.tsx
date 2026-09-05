@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, ButtonBase, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, ButtonBase, Card, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import {
   Check,
   FilePlus2,
@@ -52,9 +52,9 @@ const messages = defineMessages({
   },
   stepPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish',
-    defaultMessage: 'Publish to Devportal',
+    defaultMessage: 'Publish to API Portal',
     description:
-      'Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name "Devportal".',
+      'Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name "API Portal".',
   },
   stepTest: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test',
@@ -148,13 +148,8 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   };
 
   return (
-    <Box
+    <Card
       sx={{
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 1,
-        mb: 3,
         p: 2,
       }}
     >
@@ -188,7 +183,7 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
           </Stack>
         ))}
       </Stack>
-    </Box>
+    </Card>
   );
 }
 
@@ -225,6 +220,8 @@ function StepPill({ state, step }: { state: StepState; step: ProgressStep }) {
       onClick={onClick}
       sx={{
         border: '1px solid',
+        minWidth: 120,
+        justifyContent: 'flex-start',
         borderColor: complete ? 'success.main' : active ? 'primary.main' : 'divider',
         borderRadius: 5,
         gap: 1,

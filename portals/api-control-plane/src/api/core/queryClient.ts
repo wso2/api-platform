@@ -71,6 +71,17 @@ export const retryDelay = (attemptIndex: number): number => {
   return Math.round(ceiling * (0.5 + Math.random() * 0.5));
 };
 
+/**
+ * Marks a mutation whose failures its own caller already puts on screen —
+ * bound onto form fields, shown in a panel. The global snackbar skips these,
+ * because a failure that has a home on screen reported *twice* reads worse
+ * than either report alone.
+ *
+ * Opt-in on purpose: a mutation that says nothing still gets the snackbar, so
+ * forgetting to handle an error can never mean swallowing it.
+ */
+export const HANDLED_LOCALLY = { handlesErrors: true } as const;
+
 export type QueryClientHandlers = {
   /** Called for every unhandled *mutation* error — wire to the snackbar. */
   onMutationError?: (error: ApiError) => void;
@@ -87,10 +98,12 @@ export const createQueryClient = (handlers: QueryClientHandlers = {}) =>
      * rather than running alongside it; so putting the global handler there
      * would silence it for exactly the mutations that define one, which is
      * every mutation doing an optimistic rollback. `MutationCache.onError`
-     * fires for all of them regardless.
+     * fires for all of them regardless — except the ones that opted out with
+     * `HANDLED_LOCALLY`, which surface the failure themselves.
      */
     mutationCache: new MutationCache({
-      onError: (error) => {
+      onError: (error, _variables, _onMutateResult, mutation) => {
+        if (mutation.meta?.handlesErrors === true) return;
         if (isApiError(error)) handlers.onMutationError?.(error);
       },
     }),

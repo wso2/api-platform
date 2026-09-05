@@ -147,14 +147,15 @@
     "description": "Returns to the previous step of the API creation wizard."
   },
   "api.create.defineApi.action.next": {
-    "defaultMessage": "Next"
+    "defaultMessage": "Continue",
+    "description": "Carries the definition in the preview pane on to the next step."
   },
   "api.create.defineApi.approach.label": {
     "defaultMessage": "How do you want to define this API?",
     "description": "Accessible name for the pair of approach tabs at the top of the step."
   },
   "api.create.defineApi.contract.description": {
-    "defaultMessage": "Import from a URL, file, or SwaggerHub."
+    "defaultMessage": "Import from a URL or a file."
   },
   "api.create.defineApi.contract.title": {
     "defaultMessage": "Start with a contract"
@@ -164,19 +165,6 @@
   },
   "api.create.defineApi.scratch.title": {
     "defaultMessage": "Design from scratch"
-  },
-  "api.create.designWithAi.detail": {
-    "defaultMessage": "The skeleton on the right is a starting point — carry on and edit its operations by hand."
-  },
-  "api.create.designWithAi.feature": {
-    "defaultMessage": "Designing an API by chatting with AI"
-  },
-  "api.create.designWithAi.title": {
-    "defaultMessage": "Design with AI"
-  },
-  "api.create.fromContract.action.fetch": {
-    "defaultMessage": "Fetch Contract",
-    "description": "Reads the contract from the chosen source and previews its resources, without leaving the step."
   },
   "api.create.fromContract.action.sampleUrl": {
     "defaultMessage": "Try with Sample URL",
@@ -260,6 +248,10 @@
   "api.create.fromContract.spec.unsupportedSource": {
     "defaultMessage": "Importing from this source is not available yet."
   },
+  "api.create.fromContract.status.fetching": {
+    "defaultMessage": "Reading the contract…",
+    "description": "Shown while the chosen contract is being read and checked, which starts on its own."
+  },
   "api.create.fromContract.swaggerHub.apiLabel": {
     "defaultMessage": "API"
   },
@@ -313,23 +305,29 @@
     "defaultMessage": "Create API Proxy from Contract"
   },
   "api.create.fromContract.upload.accepted": {
-    "defaultMessage": "Accepted file types: {extensions}"
+    "defaultMessage": "Accepted: {extensions} · up to {maxSize}",
+    "description": "Neutral helper line under the drop zone. {maxSize} is a formatted size such as \"10 MB\"."
   },
   "api.create.fromContract.upload.action": {
-    "defaultMessage": "Upload"
+    "defaultMessage": "Select file"
   },
   "api.create.fromContract.upload.hint": {
-    "defaultMessage": "Drag & Drop your files or click to select files"
+    "defaultMessage": "One file · {extensions}",
+    "description": "Sits under the drop-zone heading; {extensions} is a list such as \".json, .yaml\"."
   },
   "api.create.fromContract.upload.remove": {
     "defaultMessage": "Remove {fileName}",
     "description": "Accessible name for the button that discards the chosen file."
   },
+  "api.create.fromContract.upload.replace": {
+    "defaultMessage": "Replace file",
+    "description": "Reopens the file picker so the chosen contract can be swapped for another."
+  },
   "api.create.fromContract.upload.required": {
     "defaultMessage": "Select an API contract file to continue"
   },
   "api.create.fromContract.upload.title": {
-    "defaultMessage": "Upload API Contract"
+    "defaultMessage": "Drag and drop your contract here"
   },
   "api.create.fromContract.upload.unsupported": {
     "defaultMessage": "That file type is not supported. Accepted types: {extensions}"
@@ -352,26 +350,20 @@
   "api.create.generalForm.action.create": {
     "defaultMessage": "Create"
   },
-  "api.create.generalForm.basePath.error.pattern": {
+  "api.create.generalForm.context.error.pattern": {
     "defaultMessage": "Start with / and use only letters, numbers, hyphens, dots and slashes."
   },
-  "api.create.generalForm.basePath.error.required": {
-    "defaultMessage": "Enter a base path."
+  "api.create.generalForm.context.error.required": {
+    "defaultMessage": "Enter a context."
   },
-  "api.create.generalForm.basePath.helper": {
+  "api.create.generalForm.context.helper": {
     "defaultMessage": "Built from the project, identifier and version. Edit it to route this API somewhere else."
   },
-  "api.create.generalForm.basePath.label": {
-    "defaultMessage": "Base Path"
+  "api.create.generalForm.context.label": {
+    "defaultMessage": "Context"
   },
   "api.create.generalForm.description.label": {
     "defaultMessage": "Description"
-  },
-  "api.create.generalForm.displayName.error.required": {
-    "defaultMessage": "Enter a display name."
-  },
-  "api.create.generalForm.displayName.label": {
-    "defaultMessage": "Display name"
   },
   "api.create.generalForm.identifier.error.pattern": {
     "defaultMessage": "Use lowercase letters and numbers, separated by single hyphens."
@@ -400,6 +392,16 @@
   },
   "api.create.generalForm.identifier.status.checking": {
     "defaultMessage": "Checking whether this identifier is free…"
+  },
+  "api.create.generalForm.name.error.required": {
+    "defaultMessage": "Enter a name."
+  },
+  "api.create.generalForm.name.label": {
+    "defaultMessage": "Name"
+  },
+  "api.create.generalForm.rejected.title": {
+    "defaultMessage": "We could not create this API proxy",
+    "description": "Heading of the summary shown when the server rejected the submitted form."
   },
   "api.create.generalForm.section.backendEndpoint": {
     "defaultMessage": "Backend endpoint"
@@ -658,29 +660,13 @@
     "defaultMessage": "Deploy to Gateway",
     "description": "Button on the API overview header that opens the API's deployment page."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.cancel": {
-    "defaultMessage": "Cancel",
-    "description": "Discards an unsaved edit to the API description."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.edit": {
-    "defaultMessage": "Edit description",
-    "description": "Accessible label and tooltip for the pencil button that opens the description for editing."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.fieldLabel": {
-    "defaultMessage": "Description",
-    "description": "Label of the text box used to edit the API description."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.placeholder": {
     "defaultMessage": "No description",
     "description": "Shown in place of the API description when the API has none. Rendered in italics as an absence, not as a value."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.save": {
-    "defaultMessage": "Save",
-    "description": "Commits an edit to the API description."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.saved": {
-    "defaultMessage": "Description updated.",
-    "description": "Confirmation shown after the API description is saved."
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.editApi": {
+    "defaultMessage": "Edit API details",
+    "description": "Accessible label and tooltip for the button beside the API name, which opens the edit page."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged": {
     "defaultMessage": "Gateway-managed",
@@ -697,6 +683,22 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
     "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.action": {
+    "defaultMessage": "Open API Designer",
+    "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.body": {
+    "defaultMessage": "Draw operations on a canvas, check them against governance rules, and design with AI in VS Code."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.docs": {
+    "defaultMessage": "How to get started"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.skeletonHint": {
+    "defaultMessage": "Or carry on here - the skeleton on the right is a starting point you can edit by hand."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.title": {
+    "defaultMessage": "Design with AI"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.subtitle": {
     "defaultMessage": "Documentation for {apiName}",
@@ -718,6 +720,99 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.title": {
     "defaultMessage": "Routing"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.back": {
+    "defaultMessage": "Back to API",
+    "description": "Back button above the edit form, returning to the API overview."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading": {
+    "defaultMessage": "Loading API",
+    "description": "Shown while the API being edited is fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.notFound": {
+    "defaultMessage": "API not found",
+    "description": "Shown when the API to edit could not be loaded."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.readOnly": {
+    "defaultMessage": "This API cannot be edited here",
+    "description": "Title shown when the edit page is opened for a gateway-managed API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.readOnlyDetail": {
+    "defaultMessage": "It was discovered from a data-plane gateway, so it is read-only in this console.",
+    "description": "Explains why a gateway-managed API cannot be edited."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.saved": {
+    "defaultMessage": "API updated.",
+    "description": "Confirmation shown after the API details are saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.subtitle": {
+    "defaultMessage": "Change the name, description, context, version and backend of this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.title": {
+    "defaultMessage": "Edit API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.action.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Discards the unsaved edits and returns to the API overview."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.action.save": {
+    "defaultMessage": "Save changes",
+    "description": "Commits the edits to the API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.context.error.pattern": {
+    "defaultMessage": "Start with / and use only letters, numbers, hyphens, dots and slashes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.context.error.required": {
+    "defaultMessage": "Enter a context."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.context.label": {
+    "defaultMessage": "Context"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.description.label": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.identifier.helper": {
+    "defaultMessage": "Fixed once the API is created.",
+    "description": "Helper text under the disabled identifier field on the API edit form."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.identifier.label": {
+    "defaultMessage": "Identifier"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.name.error.required": {
+    "defaultMessage": "Enter a name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.name.label": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.section.backendEndpoint": {
+    "defaultMessage": "Backend endpoint",
+    "description": "Heading of the field group holding the target URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.section.basicInformation": {
+    "defaultMessage": "Basic information",
+    "description": "Heading of the field group holding name, identifier, version, context."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.error.required": {
+    "defaultMessage": "Enter a target URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.label": {
+    "defaultMessage": "Target URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.sharedUpstream": {
+    "defaultMessage": "Routed through the shared upstream “{ref}”, so there is no URL to edit here.",
+    "description": "Helper text shown instead of an editable target URL when the API points at a named upstream definition. {ref} is that definition’s name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.version.error.pattern": {
+    "defaultMessage": "Use letters, numbers, dots, hyphens and underscores — no spaces or slashes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.version.error.required": {
+    "defaultMessage": "Enter a version."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.version.label": {
+    "defaultMessage": "Version"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.add": {
     "defaultMessage": "Add",
@@ -856,8 +951,8 @@
     "description": "Second step of the API progress stepper — the API runs on a gateway. A stage name, not a button command."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
-    "defaultMessage": "Publish to Devportal",
-    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name \"Devportal\"."
+    "defaultMessage": "Publish to API Portal",
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name \"API Portal\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
     "defaultMessage": "Test",
@@ -1778,6 +1873,107 @@
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.title": {
     "defaultMessage": "Test {apiName}",
     "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.auth.LoginPage.brandLockup": {
+    "defaultMessage": "<brand>WSO2</brand> API Platform",
+    "description": "Compact brand lockup shown above the sign-in card on narrow screens. WSO2 is the company name and stays as-is; the brand tag only styles it."
+  },
+  "apiControlPlane.pages.auth.LoginPage.brandName": {
+    "defaultMessage": "WSO2",
+    "description": "Company name in the brand lockup. Do not translate."
+  },
+  "apiControlPlane.pages.auth.LoginPage.browserUnsupported": {
+    "defaultMessage": "This console is optimized for Google Chrome and Mozilla Firefox."
+  },
+  "apiControlPlane.pages.auth.LoginPage.continueToConsole": {
+    "defaultMessage": "Continue to your API Platform console."
+  },
+  "apiControlPlane.pages.auth.LoginPage.eyebrow": {
+    "defaultMessage": "AI-NATIVE · SCALABLE SAAS",
+    "description": "Marketing label above the headline, set in upper case. Keep it short — it renders inside a small pill."
+  },
+  "apiControlPlane.pages.auth.LoginPage.featureDeploy": {
+    "defaultMessage": "Deploy and manage with zero friction"
+  },
+  "apiControlPlane.pages.auth.LoginPage.featureDesign": {
+    "defaultMessage": "Design API proxies or MCP servers"
+  },
+  "apiControlPlane.pages.auth.LoginPage.featureMonitor": {
+    "defaultMessage": "Monitor, test, and analyze performance"
+  },
+  "apiControlPlane.pages.auth.LoginPage.featurePublish": {
+    "defaultMessage": "Publish faster with AI-powered capabilities"
+  },
+  "apiControlPlane.pages.auth.LoginPage.featureSecure": {
+    "defaultMessage": "Secure and govern traffic"
+  },
+  "apiControlPlane.pages.auth.LoginPage.headline": {
+    "defaultMessage": "Manage, secure, and scale your <accent>APIs & MCP servers</accent>",
+    "description": "Marketing headline. The accent tag marks the phrase painted in the brand gradient — keep it around the equivalent phrase in the translation."
+  },
+  "apiControlPlane.pages.auth.LoginPage.homePageLink": {
+    "defaultMessage": "More details at <link>wso2.com/api-platform</link>",
+    "description": "Footer line under the sign-in form. The link tag wraps the product home page address, which stays as-is."
+  },
+  "apiControlPlane.pages.auth.LoginPage.invitationVerified": {
+    "defaultMessage": "Invitation verified for {organization}. Sign in to accept it."
+  },
+  "apiControlPlane.pages.auth.LoginPage.oidcAccessDenied": {
+    "defaultMessage": "Access was denied."
+  },
+  "apiControlPlane.pages.auth.LoginPage.oidcAuthFailed": {
+    "defaultMessage": "Unable to complete sign in. Please try again."
+  },
+  "apiControlPlane.pages.auth.LoginPage.oidcGenericError": {
+    "defaultMessage": "Unable to complete sign in.",
+    "description": "Shown when the identity provider returned a failure code this console does not recognise."
+  },
+  "apiControlPlane.pages.auth.LoginPage.oidcSessionFailed": {
+    "defaultMessage": "Unable to establish a session. Please try again."
+  },
+  "apiControlPlane.pages.auth.LoginPage.passwordHide": {
+    "defaultMessage": "Hide",
+    "description": "Toggle that masks the password again. Command, not a noun."
+  },
+  "apiControlPlane.pages.auth.LoginPage.passwordLabel": {
+    "defaultMessage": "Password"
+  },
+  "apiControlPlane.pages.auth.LoginPage.passwordPlaceholder": {
+    "defaultMessage": "Enter your password"
+  },
+  "apiControlPlane.pages.auth.LoginPage.passwordShow": {
+    "defaultMessage": "Show",
+    "description": "Toggle that reveals the typed password. Command, not a noun."
+  },
+  "apiControlPlane.pages.auth.LoginPage.privacyPolicy": {
+    "defaultMessage": "Privacy policy"
+  },
+  "apiControlPlane.pages.auth.LoginPage.productName": {
+    "defaultMessage": "<emphasis>API</emphasis> Platform",
+    "description": "Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight."
+  },
+  "apiControlPlane.pages.auth.LoginPage.sessionExpired": {
+    "defaultMessage": "Your session has expired. Sign in again to continue."
+  },
+  "apiControlPlane.pages.auth.LoginPage.signInAction": {
+    "defaultMessage": "Sign in",
+    "description": "Label of the button that submits the sign-in form. A command."
+  },
+  "apiControlPlane.pages.auth.LoginPage.tagline": {
+    "defaultMessage": "A comprehensive platform for designing, deploying, governing, and optimizing APIs and MCP servers — end to end."
+  },
+  "apiControlPlane.pages.auth.LoginPage.termsOfUse": {
+    "defaultMessage": "Terms of use"
+  },
+  "apiControlPlane.pages.auth.LoginPage.title": {
+    "defaultMessage": "Sign in",
+    "description": "Heading of the sign-in card. A noun phrase naming the page."
+  },
+  "apiControlPlane.pages.auth.LoginPage.usernameLabel": {
+    "defaultMessage": "Username"
+  },
+  "apiControlPlane.pages.auth.LoginPage.usernamePlaceholder": {
+    "defaultMessage": "Enter your username"
   },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"

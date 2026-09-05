@@ -24,6 +24,35 @@ import { ContractSourceForm, fetchContractForPreview } from './ContractSourceFor
 const yamlFile = (name: string) =>
   new File(['openapi: 3.0.0'], name, { type: 'application/x-yaml' });
 
+/** The smallest document the step accepts: a dialect, a title, an operation. */
+const VALID_SPEC = [
+  'openapi: 3.0.0',
+  'info:',
+  '  title: Orders',
+  "  version: '1.0'",
+  'servers:',
+  '  - url: https://example.com',
+  'paths:',
+  '  /orders:',
+  '    get:',
+  '      responses:',
+  "        '200':",
+  '          description: ok',
+].join('\n');
+
+/** Serves `VALID_SPEC` to every request, and counts them. */
+const stubSpecHost = () => {
+  const fetchMock = vi.fn(() =>
+    Promise.resolve({
+      headers: new Headers(),
+      ok: true,
+      text: () => Promise.resolve(VALID_SPEC),
+    }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+};
+
 /** The hidden `<input type="file">` inside the drop zone. */
 const filePicker = (): HTMLInputElement => {
   const input = document.querySelector('input[type="file"]');
@@ -65,46 +94,96 @@ describe('ContractSourceForm — file upload', () => {
 
     await waitFor(() => expect(screen.queryByText('openapi.yaml')).not.toBeInTheDocument());
     // Removing is not an error, so the neutral line comes back.
-    expect(screen.getByText(/Accepted file types:/)).toBeInTheDocument();
+    expect(screen.getByText(/Accepted: /)).toBeInTheDocument();
     expect(screen.queryByText(/is not supported/)).not.toBeInTheDocument();
   });
 });
 
-describe('ContractSourceForm — unwired controls', () => {
-  it('renders no GitHub authorize button when no handler was given', async () => {
-    const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
+describe('ContractSourceForm — offered sources', () => {
+  it('offers URL and Upload only, while the other flows are undecided', () => {
+    renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
 
-    await user.click(screen.getByRole('button', { name: 'GitHub' }));
+    expect(screen.getByRole('button', { name: 'URL' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument();
+    // Both imports are held back until their flow is settled; everything
+    // behind them is still in the module.
+    expect(screen.queryByRole('button', { name: 'GitHub' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'SwaggerHub' })).not.toBeInTheDocument();
+  });
+});
 
-    // A button with nothing behind it is a dead end, so it isn't rendered at
-    // all until the OAuth flow is wired.
-    expect(
-      screen.queryByRole('button', { name: /Authorize With GitHub/i }),
-    ).not.toBeInTheDocument();
+describe('ContractSourceForm — automatic fetch', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it('renders no SwaggerHub refresh button when no handler was given', async () => {
-    const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
-
-    await user.click(screen.getByRole('button', { name: 'SwaggerHub' }));
-
-    expect(screen.queryByRole('button', { name: /Refresh/i })).not.toBeInTheDocument();
-  });
-
-  it('renders both once handlers are supplied', async () => {
+  it('reads the URL when the field is left, not while it is being typed', async () => {
+    const fetchMock = stubSpecHost();
+    const onContractChange = vi.fn();
     const { user } = renderWithProviders(
-      <ContractSourceForm
-        onAuthorizeGitHub={() => {}}
-        onContractChange={() => {}}
-        onRefreshSwaggerHubOrganizations={() => {}}
-      />,
+      <ContractSourceForm onContractChange={onContractChange} />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'GitHub' }));
-    expect(screen.getByRole('button', { name: /Authorize With GitHub/i })).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText(/URL for API Contract/),
+      'https://example.com/openapi.yaml',
+    );
+    // A URL passes through many invalid prefixes on the way in; none of them
+    // is worth a request.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Fetch/i })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'SwaggerHub' }));
-    expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument();
+    await user.tab();
+
+    await waitFor(() =>
+      expect(onContractChange).toHaveBeenCalledWith(
+        expect.objectContaining({ dialect: 'openapi-3.0' }),
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not read it again when the field is left untouched', async () => {
+    const fetchMock = stubSpecHost();
+    const onContractChange = vi.fn();
+    const { user } = renderWithProviders(
+      <ContractSourceForm onContractChange={onContractChange} />,
+    );
+
+    const field = screen.getByLabelText(/URL for API Contract/);
+    await user.type(field, 'https://example.com/openapi.yaml');
+    await user.tab();
+    await waitFor(() =>
+      expect(onContractChange).toHaveBeenCalledWith(
+        expect.objectContaining({ dialect: 'openapi-3.0' }),
+      ),
+    );
+
+    // Focusing and leaving again would re-download the same document — and
+    // discard whatever has been edited in the preview since.
+    await user.click(field);
+    await user.tab();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads an uploaded file as soon as it is chosen', async () => {
+    const onContractChange = vi.fn();
+    const { user } = renderWithProviders(
+      <ContractSourceForm onContractChange={onContractChange} />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.upload(
+      filePicker(),
+      new File([VALID_SPEC], 'openapi.yaml', { type: 'application/x-yaml' }),
+    );
+
+    await waitFor(() =>
+      expect(onContractChange).toHaveBeenCalledWith(
+        expect.objectContaining({ dialect: 'openapi-3.0' }),
+      ),
+    );
   });
 });
 
