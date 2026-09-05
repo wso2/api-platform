@@ -91,6 +91,11 @@ const ApiDetailPage = lazy(() =>
     default: m.ApiDetailPage,
   })),
 );
+const ApiEditPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apis/edit').then((m) => ({
+    default: m.ApiEditPage,
+  })),
+);
 const DeployPage = lazy(() =>
   import('../pages/appShell/appShellPages/deploy/DeployPage').then((m) => ({
     default: m.DeployPage,
@@ -304,6 +309,12 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.api()} element={<ApiDetailPage />} />
           {scopedRoutes(projectScopedPaths(routes.apis), <ApiListPage />)}
           <Route path={routes.newApi()} element={<ApiCreatePage />} />
+          {/*
+            Editing basic information is reached from the detail page's own edit
+            button, so — like the create page — it takes the fully-scoped path
+            alone.
+          */}
+          <Route path={routes.apiEdit()} element={<ApiEditPage />} />
           {/*
             Test, Observability and Manage are sidebar parents with no page of
             their own — only their children are routed. Out of API scope a parent
