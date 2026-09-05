@@ -25,6 +25,7 @@ import {
 } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
+import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
 import {
   createRestApi,
@@ -210,12 +211,19 @@ const useInvalidateRestApis = (orgId?: string) => {
   };
 };
 
-export const useCreateRestApi = (overrides: { orgId?: string } = {}) => {
+/**
+ * When `handlesErrors` is true, errors are handled locally and won't trigger
+ * the global snackbar. Otherwise, errors reach the snackbar by default.
+ */
+export const useCreateRestApi = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateRestApis(orgId);
 
   return useMutation<RestApi, ApiError, CreateRestApiBody>({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: (body) => createRestApi(body, { orgId }),
     onSuccess: (created) => {
       // Seed the detail cache from the create response so navigating straight

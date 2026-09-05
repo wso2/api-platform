@@ -133,6 +133,20 @@ const ART = {
 } as const;
 
 /**
+ * Rendered width of the illustration, in px. The drawing scales to it from the
+ * viewBox, so this is the only knob for how large it appears on screen.
+ */
+const ART_DISPLAY_WIDTH = 720;
+
+/**
+ * Tooth counts of the two gears, which double as their turn durations in
+ * seconds. Meshing gears turn at a ratio set by their tooth counts, so one
+ * second per tooth keeps the pair honest — and is slow enough not to nag.
+ */
+const GEAR_TEETH_LARGE = 9;
+const GEAR_TEETH_SMALL = 8;
+
+/**
  * Points of a regular pointy-top hexagon, as an SVG `points` string.
  */
 const hexagonPoints = (cx: number, cy: number, radius: number): string =>
@@ -198,12 +212,41 @@ const ApiProxyAssemblyArt = () => {
   const centreY = ART.height / 2;
   const outline = theme.palette.primary.main;
   const cog = theme.palette.primary.contrastText;
+  // Pivots are stated in viewBox units rather than left to `fill-box`: a gear's
+  // bounding box isn't centred on its axle for odd tooth counts, so the default
+  // origin would make it wobble instead of spin.
+  const largeGear = { cx: centreX + 6, cy: centreY - 6 };
+  const smallGear = { cx: centreX - 14, cy: centreY + 14 };
 
   return (
     <Box
       aria-hidden
       component="svg"
-      sx={{ display: 'block', maxWidth: '100%', width: ART.width }}
+      sx={{
+        // The spin lives here rather than in a `style` prop, so the
+        // reduced-motion rule below can actually override it.
+        '& .gear--large': { animation: `apicpGearSpin ${GEAR_TEETH_LARGE}s linear infinite` },
+        '& .gear--small': {
+          // Meshed with the larger gear, so it has to turn the other way.
+          animation: `apicpGearSpinReverse ${GEAR_TEETH_SMALL}s linear infinite`,
+        },
+        '@keyframes apicpGearSpin': {
+          from: { transform: 'rotate(0deg)' },
+          to: { transform: 'rotate(360deg)' },
+        },
+        '@keyframes apicpGearSpinReverse': {
+          from: { transform: 'rotate(0deg)' },
+          to: { transform: 'rotate(-360deg)' },
+        },
+        // Motion here is decorative; anyone who has asked for less gets the
+        // same illustration, held still.
+        '@media (prefers-reduced-motion: reduce)': {
+          '& .gear--large, & .gear--small': { animation: 'none' },
+        },
+        display: 'block',
+        maxWidth: '100%',
+        width: ART_DISPLAY_WIDTH,
+      }}
       viewBox={`0 0 ${ART.width} ${ART.height}`}
     >
       {/* Client, left: a diamond. */}
@@ -244,14 +287,22 @@ const ApiProxyAssemblyArt = () => {
         </g>
       ))}
 
-      {/* The proxy itself. */}
+      {/* The proxy itself, with its two gears turning against each other. */}
       <polygon fill={outline} points={hexagonPoints(centreX, centreY, ART.hexRadius)} />
-      <path d={gearPath(centreX + 6, centreY - 6, 17, 13, 7, 9)} fill={cog} fillRule="evenodd" />
-      <circle cx={centreX + 6} cy={centreY - 6} fill={cog} r={3.5} />
       <path
-        d={gearPath(centreX - 14, centreY + 14, 10, 7.5, 3.5, 8)}
+        className="gear--large"
+        d={gearPath(largeGear.cx, largeGear.cy, 17, 13, 7, GEAR_TEETH_LARGE)}
         fill={cog}
         fillRule="evenodd"
+        style={{ transformOrigin: `${largeGear.cx}px ${largeGear.cy}px` }}
+      />
+      <circle cx={largeGear.cx} cy={largeGear.cy} fill={cog} r={3.5} />
+      <path
+        className="gear--small"
+        d={gearPath(smallGear.cx, smallGear.cy, 10, 7.5, 3.5, GEAR_TEETH_SMALL)}
+        fill={cog}
+        fillRule="evenodd"
+        style={{ transformOrigin: `${smallGear.cx}px ${smallGear.cy}px` }}
       />
     </Box>
   );

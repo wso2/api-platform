@@ -29,6 +29,7 @@ import { useCreateRestApi } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
 import { toCreateRestApiBody } from './utils/createRestApiBody';
+import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
 import {
   ApiCreationProgress,
   type ApiCreationProgressStatus,
@@ -129,7 +130,9 @@ export const ApiCreationWizard = () => {
   };
 
   const navigate = useNavigate();
-  const createRestApiMutation = useCreateRestApi();
+  // `handlesErrors`: a rejection this screen puts back on the form must not
+  // also arrive as a snackbar that has faded by the time the user looks up.
+  const createRestApiMutation = useCreateRestApi({ handlesErrors: true });
   // `projectId` on the request body is the project handle from the route, not
   // something the form collects.
   const { activeScope, params } = useConsoleScope();
@@ -143,6 +146,12 @@ export const ApiCreationWizard = () => {
   const [submittedValues, setSubmittedValues] = useState<GeneralApiCreationFormState | null>(null);
   /** Whether the progress screen stands in for the form. */
   const [creationStarted, setCreationStarted] = useState(false);
+  /**
+   * Why the last attempt was rejected, when the form is where it belongs.
+   * Cleared on the next submission, not on the way back — the form is what
+   * renders it, and it has to survive being returned to.
+   */
+  const [formErrors, setFormErrors] = useState<CreateApiFormErrors | null>(null);
 
   const createApi = (values: GeneralApiCreationFormState) => {
     const projectId = activeScope.projectHandler;
@@ -151,7 +160,25 @@ export const ApiCreationWizard = () => {
       return;
     }
 
-    createRestApiMutation.mutate(toCreateRestApiBody(values, { projectId }));
+    setFormErrors(null);
+    // Clears the previous attempt's error before the next one starts: the
+    // progress screen reads its status from this mutation, and a stale
+    // `isError` would show it as failed for the frame before the retry
+    // registers as pending.
+    createRestApiMutation.reset();
+    createRestApiMutation.mutate(toCreateRestApiBody(values, { projectId }), {
+      onError: (error) => {
+        // A rejection the user can fix by editing goes straight back to the
+        // form with the reason attached. Standing on a screen that says only
+        // "we could not create this" would hide the one thing they need —
+        // which value to change — behind a second click.
+        const rejection = toCreateApiFormErrors(error);
+        if (!rejection) return; // Not the form's to fix: the progress screen keeps it.
+
+        setFormErrors(rejection);
+        setCreationStarted(false);
+      },
+    });
   };
 
   const onGeneralFormSumit = (finalData: GeneralApiCreationFormState) => {
@@ -249,6 +276,7 @@ export const ApiCreationWizard = () => {
                 initialValues={submittedValues ?? prefilledData}
                 onSubmit={onGeneralFormSumit}
                 onBack={() => setStep('source')}
+                serverErrors={formErrors ?? undefined}
               />
             </Box>
           )}
