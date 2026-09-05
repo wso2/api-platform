@@ -517,7 +517,9 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   const pinnedFieldCount = Object.keys(props.serverErrors?.fields ?? {}).length;
   const showRejection =
     props.serverErrors !== undefined &&
-    (pinnedFieldCount === 0 || FIELD_ORDER.some((field) => serverErrorFor(field) !== undefined));
+    (pinnedFieldCount === 0 ||
+      props.serverErrors.unmapped.length > 0 ||
+      FIELD_ORDER.some((field) => serverErrorFor(field) !== undefined));
 
   const nameLabel = intl.formatMessage(messages.nameLabel);
   const identifierLabel = intl.formatMessage(messages.identifierLabel);

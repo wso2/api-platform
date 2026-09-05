@@ -166,15 +166,6 @@
   "api.create.defineApi.scratch.title": {
     "defaultMessage": "Design from scratch"
   },
-  "api.create.designWithAi.detail": {
-    "defaultMessage": "The skeleton on the right is a starting point — carry on and edit its operations by hand."
-  },
-  "api.create.designWithAi.feature": {
-    "defaultMessage": "Designing an API by chatting with AI"
-  },
-  "api.create.designWithAi.title": {
-    "defaultMessage": "Design with AI"
-  },
   "api.create.fromContract.action.sampleUrl": {
     "defaultMessage": "Try with Sample URL",
     "description": "Fills the field with a ready-made example to try the import with."
@@ -693,6 +684,22 @@
     "defaultMessage": "Transports",
     "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.action": {
+    "defaultMessage": "Open API Designer",
+    "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.body": {
+    "defaultMessage": "Draw operations on a canvas, check them against governance rules, and design with AI in VS Code."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.docs": {
+    "defaultMessage": "How to get started"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.skeletonHint": {
+    "defaultMessage": "Or carry on here - the skeleton on the right is a starting point you can edit by hand."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.title": {
+    "defaultMessage": "Design with AI"
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.subtitle": {
     "defaultMessage": "Documentation for {apiName}",
     "description": "Sub-header under the section name; {apiName} is the API display name."
@@ -945,7 +952,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
     "defaultMessage": "Publish to API Portal",
-    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name \"Devportal\"."
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name \"API Portal\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
     "defaultMessage": "Test",

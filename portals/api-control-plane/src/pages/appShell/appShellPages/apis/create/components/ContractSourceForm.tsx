@@ -1335,7 +1335,7 @@ export const ContractSourceForm = ({
    * since it was read.
    */
   const requestFetch = (values: ContractValues) => {
-    if (fetching || isSameContractSource(fetched?.values, values)) {
+    if (isSameContractSource(fetched?.values, values)) {
       return;
     }
     setRequest(values);
