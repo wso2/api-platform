@@ -68,7 +68,7 @@ const messages = defineMessages({
   },
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
-    defaultMessage: 'Import from a URL, file, or SwaggerHub.',
+    defaultMessage: 'Import from a URL or a file.',
   },
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
@@ -76,7 +76,8 @@ const messages = defineMessages({
   },
   next: {
     id: 'api.create.defineApi.action.next',
-    defaultMessage: 'Next',
+    defaultMessage: 'Continue',
+    description: 'Carries the definition in the preview pane on to the next step.',
   },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
@@ -307,11 +308,9 @@ export const DefineApiPanel = ({
         </Stack>
       </Card>
 
-      <Stack
-        direction="row"
-        spacing={2}
-        sx={{ alignItems: 'center', justifyContent: 'space-between' }}
-      >
+      {/* Both buttons on the trailing edge, Back beside the action it steps
+          away from rather than at the opposite corner of the step. */}
+      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
         <Button onClick={onBack} type="button" variant="text">
           <FormattedMessage {...messages.back} />
         </Button>

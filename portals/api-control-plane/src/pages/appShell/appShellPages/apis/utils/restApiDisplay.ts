@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import type { RestApi } from '../../../../../api/resources/restApis';
-import { useDeployments } from '../../../../../api/resources/restApis/deployments/deployments.hooks';
+import type { RestApi } from '@/api/resources/restApis';
+import { useDeployments } from '@/api/resources/restApis/deployments/deployments.hooks';
 
 /**
  * Display helpers for the spec's `RESTAPI` shape — the presentation half of

@@ -63,9 +63,9 @@ export function MonitorIllustration() {
       <rect fill="primary" height={5} rx={2} width={28} x={126} y={82} />
       <rect fill="muted" height={4} rx={2} width={52} x={126} y={92} />
 
-      {/* Stand, and the surface it rests on. */}
+      {/* Stand and surface use `muted` so the line stays visible in both themes. */}
       <rect fill="text-disabled" height={12} rx={1} width={24} x={98} y={118} />
-      <path d="M62 132h96" stroke="border" strokeLinecap="round" strokeWidth={2} />
+      <path d="M62 132h96" stroke="muted" strokeLinecap="round" strokeWidth={2} />
     </ColorSchemeSVG>
   );
 }

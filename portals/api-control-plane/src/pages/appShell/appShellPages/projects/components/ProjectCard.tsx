@@ -21,7 +21,6 @@ import {
   alpha,
   Box,
   Card,
-  Chip,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -121,7 +120,6 @@ export function ProjectCard({ project, orgHandle, onOpen, onDelete }: ProjectCar
     event?.stopPropagation();
     setMenuAnchor(null);
   };
-  const isDefault = project.id === 'default' || project.displayName.toLowerCase() === 'default';
 
   // Scoped to this card's project rather than the route's, so the counts belong
   // to the card the user is looking at and not the project they are currently in.
@@ -165,15 +163,6 @@ export function ProjectCard({ project, orgHandle, onOpen, onDelete }: ProjectCar
               <Typography noWrap sx={{ fontWeight: 600 }} variant="subtitle1">
                 {project.displayName}
               </Typography>
-              {isDefault && (
-                <Chip
-                  color="info"
-                  label={intl.formatMessage(messages.defaultBadge)}
-                  size="small"
-                  sx={{ fontSize: 10, fontWeight: 600, height: 20 }}
-                  variant="outlined"
-                />
-              )}
             </Stack>
             <Typography
               color="text.secondary"

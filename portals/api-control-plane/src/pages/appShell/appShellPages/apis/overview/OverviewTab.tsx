@@ -60,14 +60,12 @@ export function OverviewTab({ api }: { api: RestApi }) {
     return gateways
       .filter((gateway) => latestByGateway.has(gateway.id ?? ''))
       .sort(
-        (a, b) =>
-          (latestByGateway.get(b.id ?? '') || 0) -
-          (latestByGateway.get(a.id ?? '') || 0)
+        (a, b) => (latestByGateway.get(b.id ?? '') || 0) - (latestByGateway.get(a.id ?? '') || 0),
       );
   }, [gatewaysQuery.data, deploymentsQuery.data]);
 
   return (
-    <>
+    <Stack spacing={3}>
       <ProgressBanner api={api} deployed={deployedGateways.length > 0} />
       <Stack direction={{ md: 'row', xs: 'column' }} spacing={2}>
         <ResourcesPanel api={api} />
@@ -94,6 +92,6 @@ export function OverviewTab({ api }: { api: RestApi }) {
           </>
         )}
       </Stack>
-    </>
+    </Stack>
   );
 }

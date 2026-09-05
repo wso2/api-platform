@@ -85,7 +85,7 @@ describe('DefineApiPanel — editing the definition', () => {
       },
     });
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(onDataFetched).toHaveBeenCalledTimes(1);
     expect(onDataFetched.mock.calls[0][0]).toMatchObject({
