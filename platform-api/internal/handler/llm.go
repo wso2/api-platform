@@ -341,8 +341,15 @@ func (h *LLMHandler) ListLLMProviders(w http.ResponseWriter, r *http.Request) er
 	}
 
 	limit, offset := parsePagination(r)
+	customPolicyUUID := strings.TrimSpace(r.URL.Query().Get("customPolicyUuid"))
 
-	resp, err := h.providerService.List(orgID, limit, offset)
+	var resp *api.LLMProviderListResponse
+	var err error
+	if customPolicyUUID != "" {
+		resp, err = h.providerService.ListByCustomPolicy(orgID, customPolicyUUID, limit, offset)
+	} else {
+		resp, err = h.providerService.List(orgID, limit, offset)
+	}
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to list LLM providers in org %s", orgID))
 	}

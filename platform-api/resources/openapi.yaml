@@ -1474,6 +1474,7 @@ paths:
       tags:
         - LLM Providers
       parameters:
+        - $ref: '#/components/parameters/customPolicyUuid-Q'
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
       responses:
@@ -8870,6 +8871,17 @@ components:
       schema:
         type: string
         example: "default-project"
+
+    customPolicyUuid-Q:
+      name: customPolicyUuid
+      in: query
+      required: false
+      description: |
+        Filter the returned LLM providers to only those referencing the custom policy with this UUID.
+      schema:
+        type: string
+        format: uuid
+        example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
     gatewayId-Q:
       name: gatewayId

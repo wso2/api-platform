@@ -1083,6 +1083,71 @@ func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
 	return r.artifactRepo.CountByKindAndOrg(constants.LLMProvider, orgUUID)
 }
 
+func (r *LLMProviderRepo) ListByCustomPolicy(orgUUID, policyUUID string, limit, offset int) ([]*model.LLMProvider, error) {
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append([]any{orgUUID, policyUUID}, pageArgs...)
+	query := `
+		SELECT
+			p.uuid, p.handle, p.display_name, p.version, p.organization_uuid, p.origin, p.data_version, p.created_at, p.updated_at,
+			p.description, p.created_by, p.updated_by, p.template_uuid, p.openapi_spec, p.model_list, p.configuration
+		FROM llm_providers p
+		INNER JOIN gateway_custom_policy_usages u ON u.artifact_uuid = p.uuid
+		WHERE p.organization_uuid = ? AND u.policy_uuid = ?
+		ORDER BY p.created_at DESC
+		` + pageClause
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []*model.LLMProvider
+	for rows.Next() {
+		var p model.LLMProvider
+		var createdBy, updatedBy sql.NullString
+		var openAPISpec, modelProvidersRaw []byte
+		var configurationJSON []byte
+		err := rows.Scan(
+			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
+			&p.Description, &createdBy, &updatedBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
+		)
+		if err != nil {
+			return nil, err
+		}
+		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
+		if len(openAPISpec) > 0 {
+			p.OpenAPISpec = string(openAPISpec)
+		}
+		if len(modelProvidersRaw) > 0 {
+			if err := json.Unmarshal(modelProvidersRaw, &p.ModelProviders); err != nil {
+				return nil, fmt.Errorf("unmarshal modelProviders for provider %s: %w", p.ID, err)
+			}
+		}
+		if len(configurationJSON) > 0 {
+			if config, err := deserializeLLMProviderConfiguration(configurationJSON); err != nil {
+				return nil, fmt.Errorf("unmarshal configuration for provider %s: %w", p.ID, err)
+			} else if config != nil {
+				p.Configuration = *config
+			}
+		}
+		res = append(res, &p)
+	}
+	return res, rows.Err()
+}
+
+func (r *LLMProviderRepo) CountByCustomPolicy(orgUUID, policyUUID string) (int, error) {
+	var count int
+	query := `
+		SELECT COUNT(*) FROM llm_providers p
+		INNER JOIN gateway_custom_policy_usages u ON u.artifact_uuid = p.uuid
+		WHERE p.organization_uuid = ? AND u.policy_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, policyUUID).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	return r.update(p, nil, false)
 }

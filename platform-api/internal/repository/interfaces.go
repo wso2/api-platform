@@ -252,6 +252,8 @@ type LLMProviderRepository interface {
 	GetByID(providerID, orgUUID string) (*model.LLMProvider, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error)
 	Count(orgUUID string) (int, error)
+	ListByCustomPolicy(orgUUID, policyUUID string, limit, offset int) ([]*model.LLMProvider, error)
+	CountByCustomPolicy(orgUUID, policyUUID string) (int, error)
 	Update(p *model.LLMProvider) error
 	UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	Delete(providerID, orgUUID string) error
