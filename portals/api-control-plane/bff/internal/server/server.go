@@ -152,6 +152,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			RedirectURL:           cfg.Auth.OIDC.RedirectURL,
 			PostLogoutRedirectURL: cfg.Auth.OIDC.PostLogoutRedirectURL,
 			Scopes:                cfg.Auth.OIDC.Scopes,
+			Resource:              cfg.Auth.OIDC.Resource,
 		}, claims, cfg.Session.AbsoluteTTL)
 		if err != nil {
 			return nil, err

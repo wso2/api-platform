@@ -167,6 +167,21 @@ func (s *ProjectService) GetProjectByHandle(handle, orgId string) (*api.Project,
 	return s.modelToAPI(projectModel, orgHandle)
 }
 
+// GetProjectInternalID resolves a project handle inside an organization to its
+// internal UUID. It is intentionally narrow so external plugins can enforce a
+// project boundary without receiving repository access or accepting an
+// organization identifier from request input.
+func (s *ProjectService) GetProjectInternalID(handle, orgID string) (string, error) {
+	projectModel, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgID)
+	if err != nil {
+		return "", err
+	}
+	if projectModel == nil {
+		return "", apperror.ProjectNotFound.New()
+	}
+	return projectModel.ID, nil
+}
+
 func (s *ProjectService) GetProjectsByOrganization(organizationID string, opts repository.ListOptions) ([]api.Project, int, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(organizationID)
 	if err != nil {

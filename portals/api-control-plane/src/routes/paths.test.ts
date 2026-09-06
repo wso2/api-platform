@@ -46,6 +46,7 @@ const API_LEVEL: [string, ApiPathBuilder][] = [
   ['apiObservabilityAlerts', routes.apiObservabilityAlerts],
   ['apiObservabilityMetrics', routes.apiObservabilityMetrics],
   ['apiObservabilityLogs', routes.apiObservabilityLogs],
+  ['apiObservabilityTraces', routes.apiObservabilityTraces],
   ['apiManageMonetize', routes.apiManageMonetize],
   ['apiManageLifecycle', routes.apiManageLifecycle],
   ['apiAdmin', routes.apiAdmin],

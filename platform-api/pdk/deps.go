@@ -36,13 +36,31 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways Gateways
-	Projects Projects
+	Gateways      Gateways
+	Projects      Projects
+	RestAPIs      RestAPIs
+	Organizations Organizations
 	// add more capability groups as external plugins need them
 	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
+}
+
+// Organizations exposes the minimum read-only organization identity capability
+// needed by external plugins. The returned external ID is the identity-provider
+// organization reference stored when the platform organization is registered;
+// callers must continue to use the internal orgID for platform authorization.
+type Organizations interface {
+	GetOrganizationExternalID(orgID string) (string, error)
+}
+
+// RestAPIs exposes the minimum read-only API capability external plugins need
+// to validate that a resource belongs to the authenticated organization. It
+// intentionally does not expose repositories or mutation methods.
+type RestAPIs interface {
+	// GetAPIByHandle returns an API only when handle belongs to orgID.
+	GetAPIByHandle(handle, orgID string) (*api.RESTAPI, error)
 }
 
 // Gateways exposes CRUD access to the platform's gateways, scoped by organization.
@@ -69,6 +87,8 @@ type Gateways interface {
 // and takes the organization id explicitly — handlers MUST pass the org resolved
 // from the request context, never one from request input (GO-AUTH-005).
 type Projects interface {
+	GetProjectInternalID(handle, orgID string) (string, error)
+
 	// CreateProject creates a project in an organization (Create).
 	CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error)
 
