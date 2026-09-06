@@ -61,7 +61,7 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.subtitle',
-    defaultMessage: 'Change the name, description, context, version and backend of this API.',
+    defaultMessage: 'Change the name, description, context and version of this API.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.title',
@@ -70,15 +70,11 @@ const messages = defineMessages({
 });
 
 /**
- * Applies the form's five fields to the fetched API.
+ * Applies the form's four fields to the fetched API.
  *
  * The spec's update body is the whole `RESTAPI`, so the original is spread back
- * with the edits laid over it — anything the form does not collect (operations,
- * policies, transports) has to survive the round trip untouched.
- *
- * `upstream` is only rewritten when the API routes to a direct URL. An API
- * pointing at a shared upstream `ref` keeps it: `url` and `ref` are mutually
- * exclusive, so writing both would be rejected.
+ * with the edits laid over it — anything the form does not collect (upstream,
+ * operations, policies, transports) has to survive the round trip untouched.
  */
 const toUpdateBody = (api: RestApi, values: ApiBasicInfoFormValues): RestApi => ({
   ...api,
@@ -86,12 +82,6 @@ const toUpdateBody = (api: RestApi, values: ApiBasicInfoFormValues): RestApi => 
   description: values.description,
   displayName: values.displayName,
   version: values.version,
-  upstream: api.upstream?.main?.ref
-    ? api.upstream
-    : {
-        ...api.upstream,
-        main: { ...api.upstream?.main, url: values.targetUrl },
-      },
 });
 
 // No `ScopeGate`: this page is only reachable from the API detail page's own
@@ -147,15 +137,21 @@ export function ApiEditPage() {
   return (
     <>
       <PageTitle>
-        <Link to={detailPath}>
-          <PageTitle.BackButton>
-            <FormattedMessage {...messages.back} />
-          </PageTitle.BackButton>
-        </Link>
+        <PageTitle.BackButton
+          component={<Link to={detailPath} />}
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            marginLeft: '-10px',
+            textDecoration: 'none',
+          }}
+        >
+          <FormattedMessage {...messages.back} />
+        </PageTitle.BackButton>
         <PageTitle.Header>
           <FormattedMessage {...messages.title} />
         </PageTitle.Header>
-        <PageTitle.SubHeader>
+        <PageTitle.SubHeader variant="caption">
           <FormattedMessage {...messages.subtitle} />
         </PageTitle.SubHeader>
       </PageTitle>

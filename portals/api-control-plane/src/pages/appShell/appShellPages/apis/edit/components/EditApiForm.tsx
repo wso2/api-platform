@@ -18,34 +18,27 @@
 
 import {
   Button,
-  Divider,
   Form,
   FormControl,
   FormHelperText,
+  FormLabel,
   Grid,
-  InputLabel,
   OutlinedInput,
   Paper,
   Stack,
 } from '@wso2/oxygen-ui';
 import type { FormEvent, ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
-import { CONTEXT_PATTERN, isHttpUrl, VERSION_PATTERN } from '../../utils/basicInfoRules';
+import { CONTEXT_PATTERN, VERSION_PATTERN } from '../../utils/basicInfoRules';
 
-/**
- * The five fields this form edits, flattened. `targetUrl` is
- * `upstream.main.url` — the page puts it back on the API object, because the
- * spec's update body is the whole `RESTAPI` and only the page holds the
- * fetched original to merge into.
- */
+/** The four fields this form edits. */
 export type ApiBasicInfoFormValues = {
   context: string;
   description: string;
   displayName: string;
-  targetUrl: string;
   version: string;
 };
 
@@ -63,11 +56,6 @@ export type EditApiFormProps = {
 };
 
 const messages = defineMessages({
-  basicInformation: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.section.basicInformation',
-    defaultMessage: 'Basic information',
-    description: 'Heading of the field group holding name, identifier, version, context.',
-  },
   cancel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.action.cancel',
     defaultMessage: 'Cancel',
@@ -89,20 +77,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.description.label',
     defaultMessage: 'Description',
   },
-  endpointSection: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.section.backendEndpoint',
-    defaultMessage: 'Backend endpoint',
-    description: 'Heading of the field group holding the target URL.',
-  },
-  identifierHelper: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.identifier.helper',
-    defaultMessage: 'Fixed once the API is created.',
-    description: 'Helper text under the disabled identifier field on the API edit form.',
-  },
-  identifierLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.identifier.label',
-    defaultMessage: 'Identifier',
-  },
   nameErrorRequired: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.name.error.required',
     defaultMessage: 'Enter a name.',
@@ -115,24 +89,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.action.save',
     defaultMessage: 'Save changes',
     description: 'Commits the edits to the API.',
-  },
-  targetUrlErrorInvalid: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.error.invalid',
-    defaultMessage: 'Enter a full URL, for example https://api.example.com.',
-  },
-  targetUrlErrorRequired: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.error.required',
-    defaultMessage: 'Enter a target URL.',
-  },
-  targetUrlLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.label',
-    defaultMessage: 'Target URL',
-  },
-  targetUrlSharedUpstream: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.targetUrl.sharedUpstream',
-    defaultMessage: 'Routed through the shared upstream “{ref}”, so there is no URL to edit here.',
-    description:
-      'Helper text shown instead of an editable target URL when the API points at a named upstream definition. {ref} is that definition’s name.',
   },
   versionErrorPattern: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.version.error.pattern',
@@ -148,42 +104,27 @@ const messages = defineMessages({
   },
 });
 
-/**
- * Small uppercase rule above a group of fields, matching the create form.
- * `Form.Header` is fixed at `h4`, so the size comes from the theme's `overline`
- * typography rather than a font-size literal.
- */
-const SECTION_LABEL_SX = {
-  color: 'text.secondary',
-  typography: 'overline',
-} as const;
-
 /** The fields that carry a validation rule — description has none. */
-type ValidatedField = 'context' | 'displayName' | 'targetUrl' | 'version';
+type ValidatedField = 'context' | 'displayName' | 'version';
 
 type FieldErrors = Partial<Record<ValidatedField, MessageDescriptor>>;
 
 /**
  * Which spec field name a server-side field error binds to. The server names
- * the wire field, which is nested for the upstream URL, so the mapping is
- * spelled out rather than guessed from the input's own name.
+ * the wire field, so the mapping is spelled out rather than guessed from the
+ * input's own name.
  */
 const SERVER_FIELD_NAMES: Record<ValidatedField, string[]> = {
   context: ['context'],
   displayName: ['displayName'],
-  targetUrl: ['upstream.main.url', 'upstream'],
   version: ['version'],
 };
 
 /**
  * Every rule in one pure pass, so the same answer drives the field errors and
  * the submit gate — there is no second, drifting copy of the rules.
- *
- * `targetUrl` is only validated when the API carries a URL to begin with: an
- * API routed through a shared upstream `ref` has no URL, and requiring one
- * would make its form unsubmittable.
  */
-const validate = (values: ApiBasicInfoFormValues, hasEditableUrl: boolean): FieldErrors => {
+const validate = (values: ApiBasicInfoFormValues): FieldErrors => {
   const errors: FieldErrors = {};
 
   if (values.displayName.trim() === '') {
@@ -204,15 +145,6 @@ const validate = (values: ApiBasicInfoFormValues, hasEditableUrl: boolean): Fiel
     errors.context = messages.contextErrorPattern;
   }
 
-  if (hasEditableUrl) {
-    const targetUrl = values.targetUrl.trim();
-    if (targetUrl === '') {
-      errors.targetUrl = messages.targetUrlErrorRequired;
-    } else if (!isHttpUrl(targetUrl)) {
-      errors.targetUrl = messages.targetUrlErrorInvalid;
-    }
-  }
-
   return errors;
 };
 
@@ -221,13 +153,12 @@ const toFormValues = (api: RestApi): ApiBasicInfoFormValues => ({
   context: api.context ?? '',
   description: api.description ?? '',
   displayName: api.displayName ?? '',
-  targetUrl: api.upstream?.main?.url ?? '',
   version: api.version ?? '',
 });
 
 /**
- * Edit form for an API's basic information: name, description, context, version
- * and target URL.
+ * Edit form for an API's basic information: name, description, context and
+ * version. The backend endpoint is not editable here.
  *
  * It owns the draft and the validation only. The mutation, the merge back onto
  * the fetched `RESTAPI` and the navigation belong to `ApiEditPage`, so this
@@ -240,17 +171,20 @@ export const EditApiForm = (props: EditApiFormProps) => {
   // is seeded once rather than recomputed on every render.
   const [values, setValues] = useState<ApiBasicInfoFormValues>(() => toFormValues(props.api));
 
+  // Captured once, alongside `values` — the baseline the Save button compares
+  // the live draft against, so editing a field back to its original value
+  // disables Save again instead of latching "dirty" on the first keystroke.
+  const initialValues = useRef(values).current;
+
   // Errors are recomputed from state on every render; `touched` decides which
   // of them the user is ready to see, so nothing shouts before it is typed in.
   const [touched, setTouched] = useState<Partial<Record<ValidatedField, boolean>>>({});
 
-  // An upstream carries `url` or `ref`, never both. A `ref` names a shared
-  // upstream definition this form does not own, so the URL field goes
-  // read-only rather than silently converting the API to a direct URL.
-  const upstreamRef = props.api.upstream?.main?.ref;
-  const hasEditableUrl = !upstreamRef;
+  const errors = validate(values);
 
-  const errors = validate(values, hasEditableUrl);
+  const isDirty = (Object.keys(initialValues) as (keyof ApiBasicInfoFormValues)[]).some(
+    (field) => values[field] !== initialValues[field],
+  );
 
   /** Whatever the server said about this field on the last rejected save. */
   const serverErrorFor = (field: ValidatedField): string | undefined => {
@@ -279,7 +213,7 @@ export const EditApiForm = (props: EditApiFormProps) => {
 
     if (Object.keys(errors).length > 0) {
       // Reveal every rule at once rather than one field per attempt.
-      setTouched({ context: true, displayName: true, targetUrl: true, version: true });
+      setTouched({ context: true, displayName: true, version: true });
       return;
     }
 
@@ -287,7 +221,6 @@ export const EditApiForm = (props: EditApiFormProps) => {
       context: values.context.trim(),
       description: values.description.trim(),
       displayName: values.displayName.trim(),
-      targetUrl: values.targetUrl.trim(),
       version: values.version.trim(),
     });
   };
@@ -318,28 +251,21 @@ export const EditApiForm = (props: EditApiFormProps) => {
 
   const contextLabel = intl.formatMessage(messages.contextLabel);
   const descriptionLabel = intl.formatMessage(messages.descriptionLabel);
-  const identifierLabel = intl.formatMessage(messages.identifierLabel);
   const nameLabel = intl.formatMessage(messages.nameLabel);
-  const targetUrlLabel = intl.formatMessage(messages.targetUrlLabel);
   const versionLabel = intl.formatMessage(messages.versionLabel);
 
   return (
     <Stack component="form" noValidate spacing={3} onSubmit={onFormSubmit}>
       <Paper component="section" sx={{ p: 3 }}>
-        <Form.Header sx={SECTION_LABEL_SX}>
-          <FormattedMessage {...messages.basicInformation} />
-        </Form.Header>
-
-        <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
+        <Form.Stack spacing={2}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <FormControl error={hasError('displayName')} fullWidth required>
-                <InputLabel htmlFor="displayName">{nameLabel}</InputLabel>
+                <FormLabel htmlFor="displayName">{nameLabel}</FormLabel>
                 <OutlinedInput
                   autoFocus
                   disabled={props.isSaving}
                   id="displayName"
-                  label={nameLabel}
                   name="displayName"
                   onBlur={() => markTouched('displayName')}
                   onChange={(event) => setField('displayName', event.target.value)}
@@ -349,32 +275,12 @@ export const EditApiForm = (props: EditApiFormProps) => {
               </FormControl>
             </Grid>
 
-            {/* The handle addresses the resource: `PUT /rest-apis/{restApiId}`
-                rejects a body whose `id` differs from the path, and there is no
-                rename operation — so it is shown for reference, not for edit. */}
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl disabled fullWidth>
-                <InputLabel htmlFor="identifier">{identifierLabel}</InputLabel>
-                <OutlinedInput
-                  id="identifier"
-                  label={identifierLabel}
-                  name="identifier"
-                  readOnly
-                  value={props.api.id ?? ''}
-                />
-                <FormHelperText>
-                  <FormattedMessage {...messages.identifierHelper} />
-                </FormHelperText>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <FormControl error={hasError('version')} fullWidth required>
-                <InputLabel htmlFor="version">{versionLabel}</InputLabel>
+                <FormLabel htmlFor="version">{versionLabel}</FormLabel>
                 <OutlinedInput
                   disabled={props.isSaving}
                   id="version"
-                  label={versionLabel}
                   name="version"
                   onBlur={() => markTouched('version')}
                   onChange={(event) => setField('version', event.target.value)}
@@ -386,11 +292,10 @@ export const EditApiForm = (props: EditApiFormProps) => {
           </Grid>
 
           <FormControl error={hasError('context')} fullWidth required>
-            <InputLabel htmlFor="context">{contextLabel}</InputLabel>
+            <FormLabel htmlFor="context">{contextLabel}</FormLabel>
             <OutlinedInput
               disabled={props.isSaving}
               id="context"
-              label={contextLabel}
               name="context"
               onBlur={() => markTouched('context')}
               onChange={(event) => setField('context', event.target.value)}
@@ -400,11 +305,10 @@ export const EditApiForm = (props: EditApiFormProps) => {
           </FormControl>
 
           <FormControl fullWidth>
-            <InputLabel htmlFor="description">{descriptionLabel}</InputLabel>
+            <FormLabel htmlFor="description">{descriptionLabel}</FormLabel>
             <OutlinedInput
               disabled={props.isSaving}
               id="description"
-              label={descriptionLabel}
               multiline
               name="description"
               onChange={(event) => setField('description', event.target.value)}
@@ -414,52 +318,13 @@ export const EditApiForm = (props: EditApiFormProps) => {
           </FormControl>
         </Form.Stack>
       </Paper>
-
-      <Paper component="section" sx={{ mt: 1, p: 3 }}>
-        <Form.Header sx={SECTION_LABEL_SX}>
-          <FormattedMessage {...messages.endpointSection} />
-        </Form.Header>
-
-        <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
-          <FormControl
-            disabled={!hasEditableUrl}
-            error={hasError('targetUrl')}
-            fullWidth
-            required={hasEditableUrl}
-          >
-            <InputLabel htmlFor="targetUrl">{targetUrlLabel}</InputLabel>
-            <OutlinedInput
-              disabled={props.isSaving || !hasEditableUrl}
-              id="targetUrl"
-              label={targetUrlLabel}
-              name="targetUrl"
-              onBlur={() => markTouched('targetUrl')}
-              onChange={(event) => setField('targetUrl', event.target.value)}
-              readOnly={!hasEditableUrl}
-              value={values.targetUrl}
-            />
-            {helperFor(
-              'targetUrl',
-              hasEditableUrl ? null : (
-                <FormattedMessage
-                  {...messages.targetUrlSharedUpstream}
-                  values={{ ref: upstreamRef }}
-                />
-              ),
-            )}
-          </FormControl>
-        </Form.Stack>
-      </Paper>
-
-      <Divider />
-
       {/* Both buttons on the trailing edge, the same pairing as the create
           form's last step. */}
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
         <Button disabled={props.isSaving} variant="text" onClick={props.onCancel}>
           <FormattedMessage {...messages.cancel} />
         </Button>
-        <Button disabled={props.isSaving} type="submit" variant="contained">
+        <Button disabled={props.isSaving || !isDirty} type="submit" variant="contained">
           <FormattedMessage {...messages.save} />
         </Button>
       </Stack>

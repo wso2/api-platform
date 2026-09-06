@@ -121,25 +121,6 @@ describe('ApiEditPage', () => {
     expect(await screen.findByText('API overview')).toBeInTheDocument();
   });
 
-  it('keeps a shared upstream `ref` intact instead of writing a url beside it', async () => {
-    server.use(
-      resource(`/rest-apis/${API}`, anApi({ upstream: { main: { ref: 'retail-backend' } } })),
-    );
-    server.use(accepts('put', `/rest-apis/${API}`, anApi(), { record: requests }));
-
-    const { user } = renderPage();
-
-    const name = await screen.findByDisplayValue('Pizza Shack');
-    await user.clear(name);
-    await user.type(name, 'Pizza Palace');
-    await user.click(screen.getByRole('button', { name: /Save changes/ }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    const body = JSON.parse(requests.last()!.body) as RestApiFixture;
-
-    expect(body.upstream).toEqual({ main: { ref: 'retail-backend' } });
-  });
-
   it('refuses a gateway-managed API, even when reached by URL', async () => {
     server.use(resource(`/rest-apis/${API}`, anApi({ readOnly: true })));
 

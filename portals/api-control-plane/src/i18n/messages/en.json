@@ -652,9 +652,21 @@
   "apiControlPlane.pages.appShell.ProjectQuickSelector.projects": {
     "defaultMessage": "Projects"
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label": {
+    "defaultMessage": "by",
+    "description": "Label between the API creation time and creator."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label": {
     "defaultMessage": "Context",
     "description": "Label for the API base path shown in the API detail header, e.g. \"/orders\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.copyContext": {
+    "defaultMessage": "Copy API context",
+    "description": "Accessible label for the button that copies the API context."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.created.label": {
+    "defaultMessage": "Created",
+    "description": "Label before the API creation time in the API detail header."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway": {
     "defaultMessage": "Deploy to Gateway",
@@ -675,10 +687,6 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint": {
     "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
     "description": "Tooltip explaining the gateway-managed chip."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.lastUpdated.label": {
-    "defaultMessage": "Last updated",
-    "description": "Label for when the API definition last changed, shown in the API detail header."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
@@ -940,7 +948,11 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.progress": {
     "defaultMessage": "{completed} of {total} completed",
-    "description": "Counter beside the progress bar, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
+    "description": "Counter beside the lifecycle steps, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.next": {
+    "defaultMessage": "Next: {step}",
+    "description": "The next incomplete lifecycle step shown beside the progress counter."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create": {
     "defaultMessage": "Create",
@@ -951,20 +963,20 @@
     "description": "Second step of the API progress stepper — the API runs on a gateway. A stage name, not a button command."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
-    "defaultMessage": "Publish to API Portal",
-    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name \"API Portal\"."
+    "defaultMessage": "Publish to Devportal",
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
     "defaultMessage": "Test",
     "description": "Third step of the API progress stepper — the API has been called from the test console. A stage name, not a button command."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.title": {
-    "defaultMessage": "Track your progress here",
-    "description": "Heading of the banner that walks the user through creating, deploying, testing and publishing an API."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty": {
     "defaultMessage": "No available resources.",
     "description": "Shown in place of the operation list when the API definition exposes none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.count": {
+    "defaultMessage": "Showing {count} of {count} resources",
+    "description": "Number of API operations displayed in the resources panel."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.emptyDescription": {
     "defaultMessage": "This API’s definition does not expose any operations yet.",

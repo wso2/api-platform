@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { type ReactNode } from 'react';
+import { useMemo } from 'react';
 import {
   Avatar,
   Box,
@@ -28,24 +28,43 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Boxes, Edit, Lock } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
 import { useRestApi } from '@/api/resources/restApis';
+import type { Gateway } from '@/api/resources/gateways';
+import { useDeployments } from '@/api/resources/restApis/deployments';
+import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useFormatters } from '@/i18n/useFormatters';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { VersionChip } from '../listing/components/RestApiChips';
+import { ApiKindChip, VersionChip } from '../listing/components/RestApiChips';
 import { apiInitials } from '../utils/restApiDisplay';
 import { OverviewTab } from './OverviewTab';
+import { ProgressBanner } from './ProgressBanner';
 
 const messages = defineMessages({
   context: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label',
     defaultMessage: 'Context',
     description: 'Label for the API base path shown in the API detail header, e.g. "/orders".',
+  },
+  copyContext: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.copyContext',
+    defaultMessage: 'Copy API context',
+    description: 'Accessible label for the button that copies the API context.',
+  },
+  created: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.created.label',
+    defaultMessage: 'Created',
+    description: 'Label before the API creation time in the API detail header.',
+  },
+  by: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label',
+    defaultMessage: 'by',
+    description: 'Label between the API creation time and creator.',
   },
   deployToGateway: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway',
@@ -75,11 +94,6 @@ const messages = defineMessages({
     defaultMessage: 'Discovered from a data-plane gateway, so it is read-only in this console.',
     description: 'Tooltip explaining the gateway-managed chip.',
   },
-  lastUpdated: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.lastUpdated.label',
-    defaultMessage: 'Last updated',
-    description: 'Label for when the API definition last changed, shown in the API detail header.',
-  },
   transports: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label',
     defaultMessage: 'Transports',
@@ -88,12 +102,9 @@ const messages = defineMessages({
 });
 
 /** Edge of the square kind tile, the monogram inside it, and the fallback icon. */
-const AVATAR_SIZE = 70;
+const AVATAR_SIZE = 72;
 const AVATAR_FONT_SIZE = 32;
 const AVATAR_ICON_SIZE = 32;
-
-/** Label column of the metadata rows, wide enough to align their values. */
-const LABEL_COLUMN = 88;
 
 /**
  * The API description, read-only.
@@ -116,7 +127,12 @@ function DescriptionField({ description }: { description: string }) {
       color="text.secondary"
       sx={{
         display: '-webkit-box',
+        fontSize: '0.875rem',
+        fontWeight: 400,
+        lineHeight: 1.5,
+        maxWidth: 860,
         minWidth: 0,
+        opacity: 0.8,
         overflow: 'hidden',
         WebkitBoxOrient: 'vertical',
         WebkitLineClamp: 2,
@@ -128,38 +144,33 @@ function DescriptionField({ description }: { description: string }) {
   );
 }
 
-/**
- * One `label: value` row in the header's metadata block.
- *
- * A single component for all of them is what keeps the rows aligned: the label
- * always takes the theme's `caption` scale and secondary tone, the value always
- * `body2`, so adding a field cannot introduce a fourth type treatment.
- */
-function MetaItem({ children, label }: { children: ReactNode; label: ReactNode }) {
-  return (
-    <Stack alignItems="center" direction="row" spacing={2} sx={{ minWidth: 0 }}>
-      {/* `minWidth` rather than a fixed width: it lines the values up into a
-          column for the labels we ship, and a longer translation pushes its own
-          row wider instead of clipping. */}
-      <Typography
-        color="text.secondary"
-        sx={{ flexShrink: 0, minWidth: LABEL_COLUMN }}
-        variant="caption"
-      >
-        {label}
-      </Typography>
-      {children}
-    </Stack>
-  );
-}
-
 // No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
 // degrades to a shallower tier rather than linking here without an API.
 export function ApiDetailPage() {
   const { params } = useConsoleScope();
   const apiQuery = useRestApi(params.apiHandler);
+  const apiGatewaysQuery = useRestApiGateways(apiQuery.data?.id);
+  const deploymentsQuery = useDeployments(apiQuery.data?.id);
   const { dateTime, relativeTime } = useFormatters();
   const intl = useIntl();
+  const deployedGateways = useMemo((): Gateway[] => {
+    const gateways = apiGatewaysQuery.data?.list ?? [];
+    const deployments = deploymentsQuery.data?.list ?? [];
+    const latestByGateway = new Map<string, number>();
+    deployments
+      .filter((deployment) => deployment.status === 'DEPLOYED')
+      .forEach((deployment) => {
+        const time = new Date(deployment.createdAt || 0).getTime();
+        const current = latestByGateway.get(deployment.gatewayId);
+        if (current === undefined || time > current)
+          latestByGateway.set(deployment.gatewayId, time);
+      });
+    return gateways
+      .filter((gateway) => gateway.isDeployed || latestByGateway.has(gateway.id ?? ''))
+      .sort(
+        (a, b) => (latestByGateway.get(b.id ?? '') || 0) - (latestByGateway.get(a.id ?? '') || 0),
+      );
+  }, [apiGatewaysQuery.data, deploymentsQuery.data]);
 
   if (apiQuery.isLoading) return <LoadingState label="Loading API" />;
   if (apiQuery.error || !apiQuery.data) {
@@ -187,20 +198,18 @@ export function ApiDetailPage() {
   );
 
   const displayName = api.displayName || restApiId;
-  // `updatedAt` is absent until the first edit, so a fresh API reads its
-  // creation time rather than showing an empty row.
-  const updated = api.updatedAt || api.createdAt;
-
+  const context = api.context || '/';
   return (
     <>
       <Card sx={{ mb: 3 }}>
         <Box
           sx={{
             display: 'flex',
+            flexDirection: { sm: 'row', xs: 'column' },
             alignItems: 'flex-start',
-            gap: 2,
+            gap: 3,
             justifyContent: 'space-between',
-            p: 2,
+            p: { sm: 2.5, xs: 2 },
           }}
         >
           <Box
@@ -225,78 +234,135 @@ export function ApiDetailPage() {
               {apiInitials(displayName) || <Boxes size={AVATAR_ICON_SIZE} />}
             </Avatar>
 
-            <Stack spacing={1} sx={{ minWidth: 0 }}>
+            <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               {/* Identity: name, version, lifecycle, and whether this console
                   may edit the API at all. */}
-              <Stack
-                alignItems="center"
-                direction="row"
-                sx={{ flexWrap: 'wrap', gap: 1, minWidth: 0 }}
-                useFlexGap
-              >
-                <Tooltip title={displayName}>
-                  <Typography noWrap variant="h3">
-                    {displayName}
-                  </Typography>
-                </Tooltip>
-                <VersionChip version={api.version} />
-                {/* Gateway-managed APIs are read-only in this console, so they
-                    get no way in to the edit form at all. */}
-                {!api.readOnly && (
-                  <Tooltip title={intl.formatMessage(messages.editApi)}>
-                    <IconButton
-                      aria-label={intl.formatMessage(messages.editApi)}
-                      component={RouterLink}
-                      size="small"
-                      sx={{ flexShrink: 0 }}
-                      to={editPath}
-                    >
-                      <Edit size={16} />
-                    </IconButton>
+              <Stack alignItems="flex-start" spacing={1}>
+                <Stack alignItems="center" direction="row" spacing={1} sx={{ minWidth: 0 }}>
+                  <Tooltip title={displayName}>
+                    <Typography noWrap sx={{ fontWeight: 700, lineHeight: 1.2 }} variant="h3">
+                      {displayName}
+                    </Typography>
                   </Tooltip>
-                )}
-                {api.readOnly && (
-                  <Tooltip title={intl.formatMessage(messages.gatewayManagedHint)}>
-                    <Chip
-                      icon={<Lock size={12} />}
-                      label={intl.formatMessage(messages.gatewayManaged)}
-                      size="small"
-                      sx={{ flexShrink: 0, typography: 'caption' }}
-                      variant="outlined"
-                    />
-                  </Tooltip>
-                )}
+                  {api.readOnly && (
+                    <Tooltip title={intl.formatMessage(messages.gatewayManagedHint)}>
+                      <Chip
+                        icon={<Lock size={12} />}
+                        label={intl.formatMessage(messages.gatewayManaged)}
+                        size="small"
+                        sx={{ flexShrink: 0, typography: 'caption' }}
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  )}
+                </Stack>
+                <Stack alignItems="center" direction="row" spacing={0.75}>
+                  <VersionChip version={api.version} />
+                  <ApiKindChip kind={api.kind} />
+                </Stack>
               </Stack>
 
               <DescriptionField description={api.description?.trim() ?? ''} />
 
-              <Stack spacing={0.5}>
-                <MetaItem label={<FormattedMessage {...messages.context} />}>
-                  <Typography noWrap variant="body2">
-                    {api.context || '/'}
-                  </Typography>
-                </MetaItem>
-
-                {updated && (
-                  <MetaItem label={<FormattedMessage {...messages.lastUpdated} />}>
-                    {/* Relative reads faster; the exact stamp is one hover
-                        away for anyone auditing a change. */}
-                    <Tooltip title={dateTime(updated)}>
-                      <Typography variant="body2">{relativeTime(updated)}</Typography>
-                    </Tooltip>
-                  </MetaItem>
+              <Stack
+                alignItems="center"
+                direction="row"
+                divider={<Box sx={{ bgcolor: 'divider', height: 24, width: '1px' }} />}
+                spacing={1.5}
+                sx={{ flexWrap: 'wrap', rowGap: 1 }}
+              >
+                {api.createdAt && (
+                  <Tooltip title={dateTime(api.createdAt)}>
+                    <Stack alignItems="center" direction="row" spacing={0.5}>
+                      <Box
+                        sx={{
+                          alignItems: 'center',
+                          color: 'text.secondary',
+                          display: 'flex',
+                          flexShrink: 0,
+                          opacity: 0.75,
+                        }}
+                      >
+                        <Clock color="currentColor" size={16} />
+                      </Box>
+                      <Typography color="text.secondary" sx={{ opacity: 0.75 }} variant="body2">
+                        <FormattedMessage {...messages.created} />
+                      </Typography>
+                      <Typography variant="body2">{relativeTime(api.createdAt)}</Typography>
+                      <Typography color="text.secondary" sx={{ opacity: 0.75 }} variant="body2">
+                        <FormattedMessage {...messages.by} />
+                      </Typography>
+                      <Typography variant="body2">{api.createdBy || '—'}</Typography>
+                    </Stack>
+                  </Tooltip>
                 )}
+                <Stack alignItems="center" direction="row" spacing={1}>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ fontWeight: 400, opacity: 0.75 }}
+                    variant="body2"
+                  >
+                    <FormattedMessage {...messages.context} />:
+                  </Typography>
+                  <Typography noWrap variant="body2">
+                    {context}
+                  </Typography>
+                  <Tooltip title={intl.formatMessage(messages.copyContext)}>
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.copyContext)}
+                      onClick={() => void navigator.clipboard?.writeText(context)}
+                      size="small"
+                    >
+                      <Copy size={16} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
               </Stack>
             </Stack>
           </Box>
 
-          <Button component={RouterLink} sx={{ flexShrink: 0 }} to={deployPath} variant="contained">
-            <FormattedMessage {...messages.deployToGateway} />
-          </Button>
+          <Stack
+            alignItems="center"
+            direction="row"
+            spacing={1.5}
+            sx={{ alignSelf: { sm: 'flex-start', xs: 'stretch' }, flexShrink: 0 }}
+          >
+            {!api.readOnly && (
+              <Tooltip title={intl.formatMessage(messages.editApi)}>
+                <IconButton
+                  aria-label={intl.formatMessage(messages.editApi)}
+                  component={RouterLink}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    height: 52,
+                    width: 52,
+                  }}
+                  to={editPath}
+                >
+                  <Edit size={22} />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Button
+              component={RouterLink}
+              startIcon={<Rocket size={18} />}
+              sx={{ flexShrink: 0 }}
+              to={deployPath}
+              variant="contained"
+            >
+              <FormattedMessage {...messages.deployToGateway} />
+            </Button>
+          </Stack>
         </Box>
+        <ProgressBanner api={api} deployed={deployedGateways.length > 0} />
       </Card>
 
-      <OverviewTab api={api} />
+      <OverviewTab
+        api={api}
+        deployedGateways={deployedGateways}
+        deployments={deploymentsQuery.data?.list ?? []}
+      />
     </>
   );
 }
