@@ -265,6 +265,22 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
+-- Builds table (immutable rendered snapshots of an API's definition)
+CREATE TABLE IF NOT EXISTS builds (
+    uuid VARCHAR(40) PRIMARY KEY,
+    build_id VARCHAR(40) NOT NULL,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    content BLOB NOT NULL,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    metadata BLOB,
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (artifact_uuid, build_id),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -273,11 +289,13 @@ CREATE TABLE IF NOT EXISTS deployments (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     base_deployment_uuid VARCHAR(40),
+    build_uuid VARCHAR(40),
     content BLOB NOT NULL,
     metadata BLOB,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (build_uuid) REFERENCES builds(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
@@ -488,6 +506,8 @@ CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(s
 CREATE INDEX IF NOT EXISTS idx_subscription_plan_limits_plan ON subscription_plan_limits(subscription_plan_uuid);
 
 CREATE INDEX IF NOT EXISTS idx_artifact_subscription_plans_plan ON artifact_subscription_plans(subscription_plan_uuid);
+CREATE INDEX IF NOT EXISTS idx_builds_artifact ON builds(artifact_uuid, organization_uuid, created_at);
+CREATE INDEX IF NOT EXISTS idx_deployments_build ON deployments(build_uuid);
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (

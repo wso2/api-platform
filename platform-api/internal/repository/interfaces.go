@@ -128,8 +128,15 @@ type APIRepository interface {
 
 // DeploymentRepository defines the interface for deployment data operations
 type DeploymentRepository interface {
+	// Build methods (immutable rendered snapshots, not bound to a gateway)
+	CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error
+	GetBuild(buildID, artifactUUID, orgUUID string) (*model.Build, error)
+	GetBuilds(artifactUUID, orgUUID string, limit int) ([]*model.Build, error)
+
 	// Deployment artifact methods (immutable deployments)
 	CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error // Atomic: count, cleanup if needed, create
+	// Atomic, and restores the build if it was pruned between being resolved and recorded
+	CreateFromBuildWithLimitEnforcement(deployment *model.Deployment, build *model.Build, hardLimit int) error
 	GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error)
 	GetWithState(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error)
 	GetDeploymentsWithState(artifactUUID, orgUUID string, gatewayID *string, status *string, maxPerAPIGW int) ([]*model.Deployment, error)

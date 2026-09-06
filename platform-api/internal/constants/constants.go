@@ -135,6 +135,11 @@ const DeletedUser = "deleted_user"
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement
 	DeploymentLimitBuffer = 100
+
+	// BuildCleanupBatch is how many of an API's unused builds are removed when
+	// preparing another one reaches the limit. A batch rather than one keeps the
+	// cleanup from running on every single prepare.
+	BuildCleanupBatch = 5
 )
 
 // Gateway artifact apiVersion (the `apiVersion:` field on deployment artifacts).

@@ -121,6 +121,7 @@ var (
 // MCP proxy deployment operations. DeploymentNotActive's verb is the artifact
 // kind, e.g. "API", "LLM provider".
 var (
+	BuildNotFound             = def(CodeBuildNotFound, http.StatusNotFound, "The specified build could not be found.")
 	DeploymentBaseNotFound    = def(CodeDeploymentBaseNotFound, http.StatusNotFound, "The specified base deployment could not be found.")
 	DeploymentRestoreConflict = def(CodeDeploymentRestoreConflict, http.StatusConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid.")
 	DeploymentNotFound        = def(CodeDeploymentNotFound, http.StatusNotFound, "The specified deployment could not be found.")

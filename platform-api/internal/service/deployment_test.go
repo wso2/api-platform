@@ -235,6 +235,11 @@ func (m *mockDeploymentAPIRepository) Delete(deploymentID, artifactUUID, orgUUID
 	return m.deleteError
 }
 
+func (m *mockDeploymentAPIRepository) CreateFromBuildWithLimitEnforcement(deployment *model.Deployment,
+	_ *model.Build, hardLimit int) error {
+	return m.CreateWithLimitEnforcement(deployment, hardLimit)
+}
+
 func (m *mockDeploymentAPIRepository) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
 	return m.createWithLimitError
 }
@@ -332,6 +337,11 @@ func (m *mockDeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewa
 func (m *mockDeploymentRepo) Delete(deploymentID, artifactUUID, orgUUID string) error {
 	m.deleteCalled = true
 	return m.deleteError
+}
+
+func (m *mockDeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *model.Deployment,
+	_ *model.Build, hardLimit int) error {
+	return m.CreateWithLimitEnforcement(deployment, hardLimit)
 }
 
 func (m *mockDeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
@@ -1344,6 +1354,7 @@ func strPtr(s string) *string {
 var testConfig = config.Server{
 	Deployments: config.Deployments{
 		MaxPerAPIGateway: 20,
+		MaxBuildsPerAPI:  50,
 	},
 }
 
@@ -1930,6 +1941,20 @@ func TestApplyStructOverrides(t *testing.T) {
 	})
 }
 
+// applyBaseOverridesYAML round-trips deployment YAML bytes through the base-flow
+// override applier (unmarshal -> applyBaseStructOverrides -> marshal), the same way
+// the promote path does. It lets the table below assert override behaviour on YAML.
+func applyBaseOverridesYAML(content []byte, endpointURL, vhostMain, vhostSandbox *string, vhostMainOverridden, vhostSandboxOverridden bool) ([]byte, error) {
+	var d dto.APIDeploymentYAML
+	if err := yaml.Unmarshal(content, &d); err != nil {
+		return nil, err
+	}
+	applyBaseStructOverrides(&d, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
+	return yaml.Marshal(&d)
+}
+
+// TestApplyDeploymentOverrides covers the base-flow override applier: endpoint and
+// selective vhost overrides, preserving the fields that were not overridden.
 func TestApplyDeploymentOverrides(t *testing.T) {
 	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
@@ -1949,7 +1974,7 @@ spec:
 
 	t.Run("endpoint only preserves vhosts", func(t *testing.T) {
 		eu := "https://new.example.com/api"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, nil, nil, false, false)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), &eu, nil, nil, false, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1973,7 +1998,7 @@ spec:
 
 	t.Run("vhost main only preserves sandbox", func(t *testing.T) {
 		main := "api.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, &main, nil, true, false)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), nil, &main, nil, true, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1994,7 +2019,7 @@ spec:
 
 	t.Run("vhost sandbox only preserves main", func(t *testing.T) {
 		sandbox := "sandbox.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, &sandbox, false, true)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), nil, nil, &sandbox, false, true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2017,7 +2042,7 @@ spec:
 		eu := "https://new.example.com/api"
 		main := "api.example.com"
 		sandbox := "sandbox.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, &main, &sandbox, true, true)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), &eu, &main, &sandbox, true, true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2037,7 +2062,7 @@ spec:
 	})
 
 	t.Run("neither override is no-op", func(t *testing.T) {
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, nil, false, false)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), nil, nil, nil, false, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2058,7 +2083,7 @@ spec:
 
 	t.Run("invalid YAML returns error", func(t *testing.T) {
 		eu := "https://new.example.com/api"
-		_, err := applyDeploymentOverrides([]byte("not: valid: yaml: :::"), &eu, nil, nil, false, false)
+		_, err := applyBaseOverridesYAML([]byte("not: valid: yaml: :::"), &eu, nil, nil, false, false)
 		if err == nil {
 			t.Fatal("expected error for invalid YAML")
 		}

@@ -293,6 +293,26 @@ CREATE TABLE dbo.gateway_tokens (
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
+-- Builds table (immutable rendered snapshots of an API's definition)
+IF OBJECT_ID(N'dbo.builds', N'U') IS NULL
+CREATE TABLE dbo.builds (
+    uuid VARCHAR(40) PRIMARY KEY,
+    build_id VARCHAR(40) NOT NULL,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    content VARBINARY(MAX) NOT NULL,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    metadata VARBINARY(MAX),
+    created_by VARCHAR(200),
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    UNIQUE (artifact_uuid, build_id),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
+    -- (error 1785); organization deletes still reach builds through
+    -- organizations -> artifacts -> builds.
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
+);
+
 -- Artifact Deployments table (immutable deployment artifacts)
 IF OBJECT_ID(N'dbo.deployments', N'U') IS NULL
 CREATE TABLE dbo.deployments (
@@ -302,11 +322,16 @@ CREATE TABLE dbo.deployments (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     base_deployment_uuid VARCHAR(40),
+    build_uuid VARCHAR(40),
     content VARBINARY(MAX) NOT NULL,
     metadata VARBINARY(MAX),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    -- NO ACTION, with references cleared explicitly before a build is pruned:
+    -- cleanup here is done in code, in dependency order, rather than left to the
+    -- database (SQL Server also forbids further cascade paths onto this table).
+    FOREIGN KEY (build_uuid) REFERENCES builds(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
     -- (error 1785). Organization deletes still reach deployments through
@@ -585,6 +610,10 @@ CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(s
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_subscription_plans_plan' AND object_id = OBJECT_ID(N'dbo.artifact_subscription_plans'))
 CREATE INDEX idx_artifact_subscription_plans_plan ON dbo.artifact_subscription_plans(subscription_plan_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_builds_artifact' AND object_id = OBJECT_ID(N'dbo.builds'))
+CREATE INDEX idx_builds_artifact ON dbo.builds(artifact_uuid, organization_uuid, created_at);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_deployments_build' AND object_id = OBJECT_ID(N'dbo.deployments'))
+CREATE INDEX idx_deployments_build ON dbo.deployments(build_uuid);
 
 -- EventHub tables for multi-replica HA sync and gateway event propagation.
 -- Keyed columns are bounded NVARCHAR to stay within SQL Server index-key limits.
