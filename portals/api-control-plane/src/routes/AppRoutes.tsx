@@ -33,6 +33,7 @@ import AppLayout from '@/pages/appShell/AppLayout';
 import {
   extensionScopedPaths,
   isSidebarExtension,
+  PAGE_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   settingsTabExtensions,
   type ApiControlPlaneExtension,
@@ -251,6 +252,23 @@ function GatewaysRoute() {
   );
 }
 
+/**
+ * The API's Deploy page. Renders a cloud override registered against
+ * `PAGE_API_DEPLOY_SLOT` when one is present, otherwise the built-in page.
+ * Unlike gateways this is a single route rather than a subtree, so there are no
+ * nested paths to redirect.
+ */
+function ApiDeployRoute() {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_API_DEPLOY_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={PAGE_API_DEPLOY_SLOT}>
+      <DeployPage />
+    </Hideable>
+  );
+}
+
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   // Extensions registered against a `settings.<level>.tabs` slot render nested
   // under the matching Settings layout, at a path relative to it — so the tab's
@@ -327,7 +345,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestCurl), <TestPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestChat), <ApiChatPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiDeploy), <DeployPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDeploy), <ApiDeployRoute />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}

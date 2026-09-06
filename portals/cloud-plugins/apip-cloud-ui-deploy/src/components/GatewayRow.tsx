@@ -20,8 +20,6 @@ import { useState, type FC } from 'react';
 import { Box, Button, Card, CardContent, Collapse, Typography } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronUp, Eye } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import DeploymentStatusBar from './DeploymentStatusBar';
 import EndpointUrlDrawer from './EndpointUrlDrawer';
 import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
@@ -33,19 +31,34 @@ export type GatewayRowProps = {
   gateway: Gateway;
   /** Used only to label the scope of this gateway's drawers, e.g. "Development · EU Gateway". */
   environmentName: string;
+  busy: boolean;
   onRetry: () => void;
   onStop: () => void;
 };
 
-const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, onStop }) => {
+const GatewayRow: FC<GatewayRowProps> = ({
+  gateway,
+  environmentName,
+  busy,
+  onRetry,
+  onStop,
+}) => {
   const [expanded, setExpanded] = useState(false);
   const [endpointUrlOpen, setEndpointUrlOpen] = useState(false);
   const tone = gatewayStatusTone(gateway.status);
   const scopeLabel = `${environmentName} · ${gateway.name}`;
 
-  const actionLabel = gateway.status === 'failed' ? 'Re deploy' : 'Stop deployment';
-  const actionDisabled = gateway.status === 'none' || gateway.status === 'deploying';
-  const handleActionClick = gateway.status === 'failed' ? onRetry : onStop;
+  // A failed deployment is retried; a live one is stopped. Nothing to do while a
+  // deployment is still settling, or where there is none at all.
+  const failed = gateway.status === 'FAILED';
+  const actionLabel = failed ? 'Re deploy' : 'Stop deployment';
+  const actionDisabled =
+    busy ||
+    gateway.status === 'NOT_DEPLOYED' ||
+    gateway.status === 'DEPLOYING' ||
+    gateway.status === 'UNDEPLOYING' ||
+    (!failed && !gateway.deploymentId);
+  const handleActionClick = failed ? onRetry : onStop;
 
   return (
     <Card>
@@ -70,6 +83,11 @@ const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, on
             <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
               {gateway.name}
             </Typography>
+            {gateway.host ? (
+              <Typography variant="caption" color="text.secondary" noWrap display="block">
+                {gateway.host}
+              </Typography>
+            ) : null}
           </Box>
           <StatusPill tone={tone} variant="outlined" />
           <Box sx={{ display: 'flex', color: 'text.secondary' }}>
@@ -79,9 +97,13 @@ const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, on
 
         <Collapse in={expanded}>
           <Box sx={{ pt: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {/* <DeploymentStatusBar tone={tone} /> */}
+            {gateway.statusReason ? (
+              <Typography variant="caption" color="error">
+                {gateway.statusReason}
+              </Typography>
+            ) : null}
 
-            {gateway.status !== 'none' ? (
+            {gateway.status !== 'NOT_DEPLOYED' ? (
               <Card>
                 <CardContent
                   sx={{
@@ -105,7 +127,7 @@ const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, on
             ) : null}
 
             <ActionRow
-              label="Environment Variables"
+              label="Endpoint URL"
               icon={<Eye size={14} />}
               onClick={() => setEndpointUrlOpen(true)}
             />

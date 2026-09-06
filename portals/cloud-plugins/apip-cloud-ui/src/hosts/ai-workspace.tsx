@@ -7,9 +7,8 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Boxes, Network, Rocket, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Network, Workflow } from '@wso2/oxygen-ui-icons-react';
 
-import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { PipelinesFeature, ProjectPipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
@@ -35,6 +34,13 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * registers `ai` as the only type and the create form shows no type picker.
  * It also carries nav placement so the entry sits between Environments and
  * Pipelines, suppressing the built-in item via `hides`.
+ *
+ * The deploy feature is deliberately NOT registered here. Deploying is scoped to
+ * one API — the page reads and writes that API's deployments — and this host has
+ * no API-scoped placement, so its Port carries no `apiHandle`. Registered here
+ * the page could only tell the user to open an API. The feature package is shared
+ * and unchanged; adding it back is a matter of giving this host an API scope, not
+ * of changing the feature.
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = [
   defineCloudPlugin({
@@ -71,21 +77,6 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
           ) : (
             <PipelinesFeature port={port} />
           ),
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'deploy',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'deploy',
-        slot: 'sidebar.main',
-        order: 70,
-        path: 'deploy',
-        label: 'Deploy',
-        icon: <Rocket size={20} />,
-        render: (port) => <DeployFeature port={port} />,
       },
     ],
   }),

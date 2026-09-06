@@ -39,6 +39,12 @@ const SAMPLE_NAMES = [
   'DEBUG_MODE',
 ];
 
+/*
+ * NOT WIRED YET. Kept for the design it already carries: nothing renders this,
+ * because the deployment API exposes no environment variables and the names below
+ * are placeholders. Wire it — and drop SAMPLE_NAMES — once there is an endpoint to
+ * read them from.
+ */
 /** Reused for both environment-level and gateway-level "Environment Variables" links — only the scope and count differ. */
 const EnvironmentVariablesDrawer: FC<EnvironmentVariablesDrawerProps> = ({ open, onClose, scopeLabel, count }) => {
   const variables = Array.from({ length: count }, (_, index) => SAMPLE_NAMES[index % SAMPLE_NAMES.length]);

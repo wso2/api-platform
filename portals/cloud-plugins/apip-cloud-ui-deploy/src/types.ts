@@ -16,41 +16,70 @@
  * under the License.
  */
 
-export type GatewayStatus = 'active' | 'failed' | 'deploying' | 'none';
+/**
+ * The API's deployment state on one gateway, in the API's own vocabulary so
+ * nothing has to be translated on the way in. `NOT_DEPLOYED` is a real answer
+ * from the server for a gateway the API has never been deployed to, which is how
+ * an environment can list every gateway it has rather than only the deployed
+ * ones.
+ */
+export type DeploymentStatus =
+  | 'DEPLOYED'
+  | 'DEPLOYING'
+  | 'UNDEPLOYED'
+  | 'UNDEPLOYING'
+  | 'FAILED'
+  | 'ARCHIVED'
+  | 'NOT_DEPLOYED';
 
-export type Deployment = {
-  result: 'Success' | 'Failed';
-  buildId: string;
-  when: string;
-};
+/**
+ * Whether the gateway itself is up and able to receive a deployment. This is the
+ * gateway's own health, reported by the gateways resource, and is a different
+ * fact from `DeploymentStatus`: a perfectly healthy gateway has nothing deployed
+ * on it until someone deploys, and a gateway that has gone away still shows the
+ * deployment it last ran.
+ */
+export type GatewayHealth = 'active' | 'inactive';
 
+/** One gateway of an environment, with the API's deployment on it. */
 export type Gateway = {
   id: string;
+  /** Display name from the gateways resource; the handle when it has none. */
   name: string;
-  region: string;
-  status: GatewayStatus;
-  /** Preselected in the deploy/promote gateway picker when an environment has more than one gateway. */
+  /** The host this gateway serves on, shown as its subtitle. */
+  host?: string;
+  health: GatewayHealth;
+  status: DeploymentStatus;
+  /** Preselected in the deploy/promote picker when an environment has several. */
   isDefault?: boolean;
+  /** Needed to stop what is running; absent when nothing is. */
+  deploymentId?: string;
+  /** The build this gateway is running. */
   buildId?: string;
   deployedAt?: string;
-  /** The endpoint URL this gateway currently serves the build on, if it has ever been deployed. */
+  /** Backend URL this gateway was last deployed with, and the form's starting value. */
   endpointUrl?: string;
-  envVars: number;
-  history: Deployment[];
+  /** Error code explaining a FAILED deployment. */
+  statusReason?: string;
 };
 
+/**
+ * One environment of the project's deployment pipeline, in promotion order.
+ * Environments are named, not numbered: the name is what the pipeline, the
+ * gateway bindings and every deploy request agree on, so there is no separate id.
+ */
 export type Environment = {
-  id: string;
   name: string;
-  envVars: number;
   gateways: Gateway[];
 };
 
-export type BuildRecord = {
-  id: string;
+/**
+ * An immutable snapshot of the API's definition. Deploying to the pipeline's
+ * first environment prepares one and sends it; promoting carries an existing one
+ * forward. The id is the date it was prepared and that day's index.
+ */
+export type Build = {
   buildId: string;
-  result: 'Success' | 'Failed';
-  when: string;
-  targetEnvironmentId: string;
-  targetGatewayCount: number;
+  createdAt?: string;
+  createdBy?: string;
 };

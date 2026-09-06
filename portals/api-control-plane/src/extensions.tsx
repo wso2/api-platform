@@ -73,6 +73,14 @@ export const settingsTabSlot = (level: NavigationLevel): string =>
  */
 export const PAGE_GATEWAYS_SLOT = 'page.gateways';
 
+/**
+ * Slot for overriding the built-in API Deploy page. Same arrangement as
+ * `PAGE_GATEWAYS_SLOT`: consumed by the `apiDeploy` route wrapper in
+ * `AppRoutes`, with `routePath`/`level` inert. The override needs the API in
+ * scope, which the Port carries as `apiHandle`.
+ */
+export const PAGE_API_DEPLOY_SLOT = 'page.apiDeploy';
+
 /** Whether this entry is a top-level sidebar item rather than a nested one. */
 export const isSidebarExtension = (
   extension: ApiControlPlaneExtension
