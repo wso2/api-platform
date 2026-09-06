@@ -102,6 +102,23 @@ const messages = defineMessages({
     defaultMessage: 'Add an API key to authenticate requests through the deployed gateways.',
     description: 'Explains what an API key is for, above the button that adds one.',
   },
+  createdMetadata: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.createdMetadata',
+    defaultMessage: 'Created {time} by {creator}',
+    description: 'Creation time and creator shown beside an API key.',
+  },
+  closeDrawer: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.closeDrawer',
+    defaultMessage: 'Close API keys',
+  },
+  seeMore: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.seeMore',
+    defaultMessage: 'See more',
+  },
+  separator: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.separator',
+    defaultMessage: '·',
+  },
   keyNameLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyNameLabel',
     defaultMessage: 'Key Name',
@@ -298,22 +315,19 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
                       {key.maskedApiKey || EMPTY_VALUE}
                     </Typography>
                     <Typography color="text.secondary" variant="caption">
-                      ·
+                      <FormattedMessage {...messages.separator} />
                     </Typography>
                     <Tooltip title={dateTime(key.createdAt)}>
                       <Stack alignItems="center" direction="row" spacing={0.5} sx={{ minWidth: 0 }}>
                         <Clock color="currentColor" size={13} />
                         <Typography color="text.secondary" noWrap variant="caption">
-                          Created
-                        </Typography>
-                        <Typography noWrap variant="caption">
-                          {relativeTime(key.createdAt)}
-                        </Typography>
-                        <Typography color="text.secondary" variant="caption">
-                          by
-                        </Typography>
-                        <Typography noWrap variant="caption">
-                          {key.createdBy || '—'}
+                          <FormattedMessage
+                            {...messages.createdMetadata}
+                            values={{
+                              creator: key.createdBy || '—',
+                              time: relativeTime(key.createdAt),
+                            }}
+                          />
                         </Typography>
                       </Stack>
                     </Tooltip>
@@ -337,7 +351,7 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
             {keys.length > 5 && (
               <Box sx={{ textAlign: 'center' }}>
                 <Button onClick={() => setDrawerOpen(true)} size="small" variant="text">
-                  See more
+                  <FormattedMessage {...messages.seeMore} />
                 </Button>
               </Box>
             )}
@@ -359,14 +373,14 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
             sx={{ borderBottom: '1px solid', borderColor: 'divider', p: 2 }}
           >
             <IconButton
-              aria-label="Close API keys"
+              aria-label={intl.formatMessage(messages.closeDrawer)}
               onClick={() => setDrawerOpen(false)}
               size="small"
             >
               <ChevronLeft size={20} />
             </IconButton>
             <Typography sx={{ fontWeight: 600 }} variant="h6">
-              API keys
+              <FormattedMessage {...messages.title} />
             </Typography>
           </Stack>
           <Stack spacing={1} sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
@@ -387,20 +401,17 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
                       {key.maskedApiKey || EMPTY_VALUE}
                     </Typography>
                     <Typography color="text.secondary" variant="caption">
-                      ·
+                      <FormattedMessage {...messages.separator} />
                     </Typography>
                     <Clock color="currentColor" size={13} />
                     <Typography color="text.secondary" noWrap variant="caption">
-                      Created
-                    </Typography>
-                    <Typography noWrap variant="caption">
-                      {relativeTime(key.createdAt)}
-                    </Typography>
-                    <Typography color="text.secondary" variant="caption">
-                      by
-                    </Typography>
-                    <Typography noWrap variant="caption">
-                      {key.createdBy || '—'}
+                      <FormattedMessage
+                        {...messages.createdMetadata}
+                        values={{
+                          creator: key.createdBy || '—',
+                          time: relativeTime(key.createdAt),
+                        }}
+                      />
                     </Typography>
                   </Stack>
                 </Box>

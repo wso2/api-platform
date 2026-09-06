@@ -5,18 +5,35 @@
 
 import { Box, Card, Chip, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { FileText } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage } from 'react-intl';
 
 import documents from './mockDocuments.json';
+
+const messages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.title',
+    defaultMessage: 'Documents',
+  },
+  description: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.description',
+    defaultMessage: 'Guides, references, and specifications published with this API.',
+  },
+  updated: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.updated',
+    defaultMessage: '2 days ago',
+    description: 'Temporary relative update time for demo document data.',
+  },
+});
 
 export function DocumentsPanel() {
   return (
     <Card>
       <Box sx={{ px: 2, py: 1.5 }}>
         <Typography sx={{ fontWeight: 600 }} variant="h6">
-          Documents
+          <FormattedMessage {...messages.title} />
         </Typography>
         <Typography color="text.secondary" variant="caption">
-          Guides, references, and specifications published with this API.
+          <FormattedMessage {...messages.description} />
         </Typography>
       </Box>
       <Divider />
@@ -44,7 +61,7 @@ export function DocumentsPanel() {
               sx={{ display: { sm: 'block', xs: 'none' } }}
               variant="caption"
             >
-              2 days ago
+              <FormattedMessage {...messages.updated} />
             </Typography>
           </Stack>
         ))}

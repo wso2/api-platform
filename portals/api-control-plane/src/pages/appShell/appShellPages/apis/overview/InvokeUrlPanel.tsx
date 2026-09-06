@@ -36,7 +36,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import type { Gateway } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
 import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
-import { environmentForGateway } from '../../gateways/utils/gatewayEnvironments';
+import { MOCK_ENVIRONMENTS } from '../../gateways/utils/gatewayEnvironments';
 
 const messages = defineMessages({
   copy: {
@@ -97,6 +97,15 @@ type InvokeUrlPanelProps = {
   context?: string;
 };
 
+const recordedEnvironmentName = (gateway: Gateway): string | undefined =>
+  MOCK_ENVIRONMENTS.find((environment) => environment.id === gateway.properties?.environment)?.name;
+
+const gatewayOptionLabel = (gateway: Gateway): string => {
+  const name = gateway.displayName || gateway.id || '';
+  const environment = recordedEnvironmentName(gateway);
+  return environment ? `${name} — ${environment}` : name;
+};
+
 /**
  * Invoke URL section of the Overview tab (ai-workspace): pick a deployed
  * gateway, get the gateway-specific invoke URL with a copy affordance.
@@ -137,13 +146,14 @@ export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
           <FormControl fullWidth>
             <Select
               disabled={gateways.length === 0}
+              inputProps={{ 'aria-label': intl.formatMessage(messages.gatewaysLabel) }}
               onChange={(event) => setSelectedGatewayId(String(event.target.value))}
               size="small"
               value={selectedGateway?.id || ''}
             >
               {gateways.map((gateway) => (
                 <MenuItem key={gateway.id} value={gateway.id ?? ''}>
-                  {gateway.displayName || gateway.id} — {environmentForGateway(gateway).name}
+                  {gatewayOptionLabel(gateway)}
                 </MenuItem>
               ))}
             </Select>
@@ -155,6 +165,9 @@ export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
               fullWidth
               size="small"
               slotProps={{
+                htmlInput: {
+                  'aria-label': intl.formatMessage(messages.urlLabel),
+                },
                 input: {
                   readOnly: true,
                   endAdornment: (

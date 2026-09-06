@@ -5,6 +5,7 @@
 
 import { Box, Button, Card, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { Server } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 
 import type { Gateway } from '@/api/resources/gateways';
@@ -13,11 +14,35 @@ import { routes } from '@/routes/paths';
 
 type Props = { gateways: Gateway[]; deployments: Deployment[] };
 
+const messages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.title',
+    defaultMessage: 'Deployed gateways',
+  },
+  seeMore: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.seeMore',
+    defaultMessage: 'See more',
+  },
+  status: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.status',
+    defaultMessage:
+      '{status, select, DEPLOYED {Deployed} UNDEPLOYED {Undeployed} DEPLOYING {Deploying} UNDEPLOYING {Undeploying} FAILED {Failed} ARCHIVED {Archived} other {{status}}}',
+  },
+});
+
 export function DeployedGatewaysPanel({ gateways, deployments }: Props) {
   const { orgHandle = '', projectHandler = '', apiHandler = '' } = useParams();
-  const latestDeployments = [...deployments]
+  const intl = useIntl();
+  const latestByGateway = new Map<string, Deployment>();
+  [...deployments]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
+    .forEach((deployment) => {
+      if (!latestByGateway.has(deployment.gatewayId)) {
+        latestByGateway.set(deployment.gatewayId, deployment);
+      }
+    });
+  const gatewayDeployments = [...latestByGateway.values()];
+  const latestDeployments = gatewayDeployments.slice(0, 5);
   const rows =
     latestDeployments.length > 0
       ? latestDeployments.map((deployment) => ({
@@ -37,7 +62,7 @@ export function DeployedGatewaysPanel({ gateways, deployments }: Props) {
     <Card>
       <Box sx={{ px: 2, py: 1.5 }}>
         <Typography sx={{ fontWeight: 600 }} variant="h6">
-          Deployed gateways
+          <FormattedMessage {...messages.title} />
         </Typography>
       </Box>
       <Divider />
@@ -81,21 +106,21 @@ export function DeployedGatewaysPanel({ gateways, deployments }: Props) {
                   }}
                 />
                 <Typography color={successful ? 'success.main' : 'warning.main'} variant="caption">
-                  {status}
+                  {intl.formatMessage(messages.status, { status })}
                 </Typography>
               </Stack>
             </Stack>
           );
         })}
       </Stack>
-      {deployments.length > 5 && (
+      {gatewayDeployments.length > 5 && (
         <Box sx={{ borderTop: '1px solid', borderColor: 'divider', p: 1, textAlign: 'center' }}>
           <Button
             component={RouterLink}
             size="small"
             to={routes.apiDeploy(orgHandle, projectHandler, apiHandler)}
           >
-            See more
+            <FormattedMessage {...messages.seeMore} />
           </Button>
         </Box>
       )}

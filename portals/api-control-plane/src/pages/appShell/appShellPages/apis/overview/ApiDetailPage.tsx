@@ -48,7 +48,7 @@ import { ProgressBanner } from './ProgressBanner';
 const messages = defineMessages({
   context: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label',
-    defaultMessage: 'Context',
+    defaultMessage: 'Context:',
     description: 'Label for the API base path shown in the API detail header, e.g. "/orders".',
   },
   copyContext: {
@@ -60,6 +60,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.created.label',
     defaultMessage: 'Created',
     description: 'Label before the API creation time in the API detail header.',
+  },
+  unknownCreator: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator',
+    defaultMessage: '—',
   },
   by: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label',
@@ -292,7 +296,9 @@ export function ApiDetailPage() {
                       <Typography color="text.secondary" sx={{ opacity: 0.75 }} variant="body2">
                         <FormattedMessage {...messages.by} />
                       </Typography>
-                      <Typography variant="body2">{api.createdBy || '—'}</Typography>
+                      <Typography variant="body2">
+                        {api.createdBy || intl.formatMessage(messages.unknownCreator)}
+                      </Typography>
                     </Stack>
                   </Tooltip>
                 )}
@@ -302,7 +308,7 @@ export function ApiDetailPage() {
                     sx={{ fontWeight: 400, opacity: 0.75 }}
                     variant="body2"
                   >
-                    <FormattedMessage {...messages.context} />:
+                    <FormattedMessage {...messages.context} />
                   </Typography>
                   <Typography noWrap variant="body2">
                     {context}

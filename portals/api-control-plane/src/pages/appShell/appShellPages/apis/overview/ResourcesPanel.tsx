@@ -45,7 +45,7 @@ const messages = defineMessages({
   },
   count: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.count',
-    defaultMessage: 'Showing {count} of {count} resources',
+    defaultMessage: 'Showing {count, plural, one {# resource} other {# resources}}',
     description: 'Number of API operations displayed in the resources panel.',
   },
 });
