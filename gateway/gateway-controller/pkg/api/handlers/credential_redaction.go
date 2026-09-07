@@ -62,6 +62,13 @@ func buildDeploymentListItem(log *slog.Logger, cfg *models.StoredConfig) (any, e
 		}
 		return buildResourceResponseFromStored(proxy, cfg), nil
 
+	case string(api.AgentConfigurationKindAgent):
+		agentConfig, err := rematerializeAgentConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+		if err != nil {
+			return nil, err
+		}
+		return buildResourceResponseFromStored(agentConfig, cfg), nil
+
 	default:
 		// Kinds whose schema has no upstream auth block. A credential-carrying
 		// field added to one of these needs a case above, not this passthrough.
@@ -104,6 +111,15 @@ func redactLLMProxyCredentials(cfg *api.LLMProxyConfiguration) {
 // redactMCPProxyCredentials clears the upstream credential from an MCP proxy
 // configuration bound for a response body.
 func redactMCPProxyCredentials(cfg *api.MCPProxyConfiguration) {
+	if cfg == nil || cfg.Spec.Upstream.Auth == nil {
+		return
+	}
+	cfg.Spec.Upstream.Auth.Value = nil
+}
+
+// redactAgentCredentials clears the upstream credential from an Agent
+// configuration bound for a response body.
+func redactAgentCredentials(cfg *api.AgentConfiguration) {
 	if cfg == nil || cfg.Spec.Upstream.Auth == nil {
 		return
 	}

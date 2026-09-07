@@ -36,6 +36,13 @@ import (
 const (
 	anonymous         = "anonymous"
 	userIDPropertyKey = "x-wso2-user-id"
+
+	// agentAnalyticsProperty is both the event property the collector assembles the
+	// Agent envelope under and the metadata key it is published as — the same name
+	// on both sides on purpose, so the published contract is greppable from the
+	// place that builds it. Spelled here rather than imported from the collector
+	// package because publishers deliberately do not depend on it.
+	agentAnalyticsProperty = "agentAnalytics"
 )
 
 // Moesif represents a Moesif publisher.
@@ -293,6 +300,24 @@ func (m *Moesif) Publish(event *dto.Event) {
 		}
 	}
 
+	// Agent Analytics. Gated on the API kind for the same reason the MCP block above
+	// is: an Agent's dimensions are meaningless on any other kind, and forwarding
+	// the key unconditionally would put an empty object on every event.
+	//
+	// Published as the typed agentAnalytics envelope, with A2A's dimensions under
+	// its `a2a` section. The earlier flat `a2aAnalytics` key is not published at
+	// all, not even alongside: a consumer reading both would see two shapes of the
+	// same event depending on which gateway version produced it.
+	if event.API.APIType == "Agent" {
+		if agentAnalytics, ok := event.Properties[agentAnalyticsProperty]; ok && agentAnalytics != nil {
+			if typed, ok := agentAnalytics.(*dto.AgentAnalytics); ok {
+				metadataMap[agentAnalyticsProperty] = typed
+			} else {
+				slog.Warn("Agent analytics property cannot be converted to the required format")
+			}
+		}
+	}
+
 	// Attach request/response payloads to metadata when present in event properties.
 	if requestPayload, ok := event.Properties["request_payload"]; ok && requestPayload != nil {
 		metadataMap["request_payload"] = requestPayload
@@ -322,6 +347,10 @@ func (m *Moesif) Publish(event *dto.Event) {
 		metadataMap["requestMediationLatency"] = event.Latencies.RequestMediationLatency
 		metadataMap["responseLatency"] = event.Latencies.ResponseLatency
 		metadataMap["responseMediationLatency"] = event.Latencies.ResponseMediationLatency
+		// Total request duration. The other four are all partial spans, so a
+		// latency-distribution percentile computed from them measures a phase rather
+		// than what the caller waited.
+		metadataMap["duration"] = event.Latencies.Duration
 	}
 
 	// commonName

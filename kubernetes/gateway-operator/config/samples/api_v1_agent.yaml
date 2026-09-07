@@ -1,0 +1,115 @@
+---
+# A2A Agent — the worked example from the Agent schema, as an Agent CR.
+#
+# The operator is a pure client of the gateway-controller management API: this CR
+# is flattened into an `apiVersion/kind/metadata/spec` envelope and POSTed (or
+# PUT on update) to /api/management/v1/agents. Deleting the CR undeploys the
+# Agent through the finalizer.
+#
+# `spec.context` is optional. Omit it to serve the Agent at the root of its
+# virtual host, which is where a conformant A2A client probes for
+# /.well-known/agent-card.json during cold discovery.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Agent
+metadata:
+  name: weather-agent-v1-0
+spec:
+  displayName: Weather Agent
+  version: v1.0
+  context: /weather
+  vhost: agents.example.com
+  upstream:
+    url: https://weather.internal
+    # Upstream credentials may be inline or sourced from a Secret in this
+    # namespace. The operator resolves the reference at deploy time and sends
+    # only the plaintext to the gateway-controller; the CR keeps the reference.
+    # auth:
+    #   type: api-key
+    #   header: Authorization
+    #   value:
+    #     valueFrom:
+    #       secretKeyRef:
+    #         name: weather-agent-secrets
+    #         key: upstream-credential
+  # A2A streaming operations are long-lived, so the route timeout defaults to
+  # disabled for the JSON-RPC route and for streaming HTTP+JSON routes. The idle
+  # timeout is the liveness guard those routes rely on.
+  resilience:
+    timeout: 30s
+    idleTimeout: 5m
+  a2a:
+    protocolVersion: "1.0"
+    operationConfigs:
+      transports:
+        - protocolBinding: JSONRPC
+          pathPrefix: /rpc
+        - protocolBinding: HTTP+JSON
+          pathPrefix: /rest
+      # Applied to every A2A operation, before operation-level policies.
+      policies:
+        # - name: jwt-auth
+        #   version: v1
+        #   params:
+        #     issuer: https://idp.example.com
+        #     requiredScopes:
+        #       - a2a.invoke
+      # Not an allowlist: unlisted operations still get the policies above.
+      operations:
+        - name: SendMessage
+          policies:
+            - name: advanced-ratelimit
+              version: v1
+              params:
+                quotas:
+                  - name: send-message-limit
+                    limits:
+                      - limit: 100
+                        duration: 1m
+    agentCard:
+      public:
+        # `managed`: the gateway validates, stores, and serves this card.
+        # `passthrough`: the upstream's own card is proxied unchanged, and
+        # neither `content` nor `signing` may be set.
+        mode: managed
+        path: /.well-known/agent-card.json
+        policies:
+          # - name: cors
+          #   version: v1
+        # Served as supplied — the gateway never rewrites the card, so
+        # extension fields are preserved.
+        content:
+          name: Weather Agent
+          description: Provides weather information
+          version: 1.0.0
+          supportedInterfaces:
+            - protocolBinding: JSONRPC
+              protocolVersion: "1.0"
+              url: https://agents.example.com/weather/rpc
+            - protocolBinding: HTTP+JSON
+              protocolVersion: "1.0"
+              url: https://agents.example.com/weather/rest
+          capabilities:
+            streaming: true
+          securitySchemes:
+            gateway-jwt:
+              openIdConnectSecurityScheme:
+                openIdConnectUrl: https://idp.example.com/.well-known/openid-configuration
+          securityRequirements:
+            - schemes:
+                gateway-jwt:
+                  list:
+                    - a2a.invoke
+          defaultInputModes:
+            - text/plain
+          defaultOutputModes:
+            - text/plain
+          skills:
+            - id: get_weather
+              name: Get weather
+              description: Gets weather information
+              tags:
+                - weather
+        # The active signing key, its `kid`, and the JWS algorithm come from
+        # administrator-owned gateway configuration, never from this CR.
+        signing:
+          enabled: false

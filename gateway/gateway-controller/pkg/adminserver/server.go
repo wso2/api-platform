@@ -19,7 +19,11 @@ import (
 const AdminAPIBasePath = "/api/admin/v1"
 
 type apiServer interface {
-	BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigDumpResponse, error)
+	// ConfigDumpJSON returns the configuration dump with resolved secret values
+	// redacted. The admin server must not marshal the response struct itself:
+	// the dump carries rendered configuration, so a plaintext upstream
+	// credential would be served verbatim.
+	ConfigDumpJSON(log *slog.Logger) ([]byte, error)
 	GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse
 }
 
@@ -134,7 +138,7 @@ func (s *Server) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.apiServer.BuildConfigDumpResponse(s.logger)
+	body, err := s.apiServer.ConfigDumpJSON(s.logger)
 	if err != nil {
 		http.Error(w, "Failed to retrieve configuration dump", http.StatusInternalServerError)
 		return
@@ -142,7 +146,7 @@ func (s *Server) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(resp)
+	_, _ = w.Write(body)
 }
 
 // GetXDSSyncStatus implements adminapi.ServerInterface.

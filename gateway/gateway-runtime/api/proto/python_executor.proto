@@ -170,6 +170,33 @@ message SharedContext {
   string api_context = 8;
   string operation_path = 9;
   AuthContext auth_context = 10;
+
+  // The canonical protocol operation this request resolved to, on an API kind
+  // whose operation cannot be read off the route. operation_path above is not a
+  // substitute: a multiplexed transport puts every operation on one path, so it
+  // is identical for all of them.
+  //
+  // Empty for a route whose chain is fixed by the route itself, which is every
+  // API kind that shipped before Agent — a policy reads that as "not
+  // applicable", never as a failure to resolve.
+  string resolved_operation = 11;
+
+  // Protocol-derived facts the route's resolver captured in the same pass that
+  // identified the operation — an A2A message's contextId and taskId, for
+  // instance. They exist so the request payload is parsed once, and they are the
+  // only way a body-sourced value can reach a request-header-phase policy, which
+  // is handed no body of its own.
+  //
+  // A plain map rather than a read-only wrapper, unlike the Go SDK's
+  // ResolutionAttributes. That wrapper guards against a route resolved at deploy
+  // time sharing one live map with every request on it; here deserialization
+  // already gives each request its own copy, and nothing a policy does to it
+  // travels back, since SharedContext only ever crosses in this direction.
+  //
+  // Values are attacker-controlled in the general case — they come out of a
+  // request body — and the gateway bounds them in count and length before
+  // sending them.
+  map<string, string> resolution_attributes = 12;
 }
 
 message Headers {

@@ -1228,8 +1228,33 @@ type SharedContext struct {
 	ApiContext    string                 `protobuf:"bytes,8,opt,name=api_context,json=apiContext,proto3" json:"api_context,omitempty"`
 	OperationPath string                 `protobuf:"bytes,9,opt,name=operation_path,json=operationPath,proto3" json:"operation_path,omitempty"`
 	AuthContext   *AuthContext           `protobuf:"bytes,10,opt,name=auth_context,json=authContext,proto3" json:"auth_context,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// The canonical protocol operation this request resolved to, on an API kind
+	// whose operation cannot be read off the route. operation_path above is not a
+	// substitute: a multiplexed transport puts every operation on one path, so it
+	// is identical for all of them.
+	//
+	// Empty for a route whose chain is fixed by the route itself, which is every
+	// API kind that shipped before Agent — a policy reads that as "not
+	// applicable", never as a failure to resolve.
+	ResolvedOperation string `protobuf:"bytes,11,opt,name=resolved_operation,json=resolvedOperation,proto3" json:"resolved_operation,omitempty"`
+	// Protocol-derived facts the route's resolver captured in the same pass that
+	// identified the operation — an A2A message's contextId and taskId, for
+	// instance. They exist so the request payload is parsed once, and they are the
+	// only way a body-sourced value can reach a request-header-phase policy, which
+	// is handed no body of its own.
+	//
+	// A plain map rather than a read-only wrapper, unlike the Go SDK's
+	// ResolutionAttributes. That wrapper guards against a route resolved at deploy
+	// time sharing one live map with every request on it; here deserialization
+	// already gives each request its own copy, and nothing a policy does to it
+	// travels back, since SharedContext only ever crosses in this direction.
+	//
+	// Values are attacker-controlled in the general case — they come out of a
+	// request body — and the gateway bounds them in count and length before
+	// sending them.
+	ResolutionAttributes map[string]string `protobuf:"bytes,12,rep,name=resolution_attributes,json=resolutionAttributes,proto3" json:"resolution_attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SharedContext) Reset() {
@@ -1328,6 +1353,20 @@ func (x *SharedContext) GetOperationPath() string {
 func (x *SharedContext) GetAuthContext() *AuthContext {
 	if x != nil {
 		return x.AuthContext
+	}
+	return nil
+}
+
+func (x *SharedContext) GetResolvedOperation() string {
+	if x != nil {
+		return x.ResolvedOperation
+	}
+	return ""
+}
+
+func (x *SharedContext) GetResolutionAttributes() map[string]string {
+	if x != nil {
+		return x.ResolutionAttributes
 	}
 	return nil
 }
@@ -4580,7 +4619,7 @@ const file_proto_python_executor_proto_rawDesc = "" +
 	"route_name\x18\x04 \x01(\tR\trouteName\"C\n" +
 	"\rTraceMetadata\x12\x19\n" +
 	"\btrace_id\x18\x01 \x01(\tR\atraceId\x12\x17\n" +
-	"\aspan_id\x18\x02 \x01(\tR\x06spanId\"\x86\x03\n" +
+	"\aspan_id\x18\x02 \x01(\tR\x06spanId\"\xfa\x04\n" +
 	"\rSharedContext\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1d\n" +
@@ -4596,7 +4635,12 @@ const file_proto_python_executor_proto_rawDesc = "" +
 	"apiContext\x12%\n" +
 	"\x0eoperation_path\x18\t \x01(\tR\roperationPath\x12L\n" +
 	"\fauth_context\x18\n" +
-	" \x01(\v2).wso2.gateway.python.v1alpha2.AuthContextR\vauthContext\"\xb9\x01\n" +
+	" \x01(\v2).wso2.gateway.python.v1alpha2.AuthContextR\vauthContext\x12-\n" +
+	"\x12resolved_operation\x18\v \x01(\tR\x11resolvedOperation\x12z\n" +
+	"\x15resolution_attributes\x18\f \x03(\v2E.wso2.gateway.python.v1alpha2.SharedContext.ResolutionAttributesEntryR\x14resolutionAttributes\x1aG\n" +
+	"\x19ResolutionAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb9\x01\n" +
 	"\aHeaders\x12I\n" +
 	"\x06values\x18\x01 \x03(\v21.wso2.gateway.python.v1alpha2.Headers.ValuesEntryR\x06values\x1ac\n" +
 	"\vValuesEntry\x12\x10\n" +
@@ -4947,7 +4991,7 @@ func file_proto_python_executor_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_python_executor_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_proto_python_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 74)
+var file_proto_python_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 75)
 var file_proto_python_executor_proto_goTypes = []any{
 	(HeaderProcessingMode)(0),                     // 0: wso2.gateway.python.v1alpha2.HeaderProcessingMode
 	(BodyProcessingMode)(0),                       // 1: wso2.gateway.python.v1alpha2.BodyProcessingMode
@@ -5009,32 +5053,33 @@ var file_proto_python_executor_proto_goTypes = []any{
 	(*ExecutionError)(nil),                        // 57: wso2.gateway.python.v1alpha2.ExecutionError
 	(*HealthCheckRequest)(nil),                    // 58: wso2.gateway.python.v1alpha2.HealthCheckRequest
 	(*HealthCheckResponse)(nil),                   // 59: wso2.gateway.python.v1alpha2.HealthCheckResponse
-	nil,                                           // 60: wso2.gateway.python.v1alpha2.Headers.ValuesEntry
-	nil,                                           // 61: wso2.gateway.python.v1alpha2.AuthContext.ScopesEntry
-	nil,                                           // 62: wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntry
-	nil,                                           // 63: wso2.gateway.python.v1alpha2.ImmediateResponse.HeadersEntry
-	nil,                                           // 64: wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry
-	nil,                                           // 65: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.HeadersToSetEntry
-	nil,                                           // 66: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry
-	nil,                                           // 67: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry
-	nil,                                           // 68: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.HeadersToSetEntry
-	nil,                                           // 69: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry
-	nil,                                           // 70: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry
-	nil,                                           // 71: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.HeadersToSetEntry
-	nil,                                           // 72: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry
-	nil,                                           // 73: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.HeadersToSetEntry
-	nil,                                           // 74: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry
-	nil,                                           // 75: wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry
-	nil,                                           // 76: wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry
-	nil,                                           // 77: wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry
-	(*structpb.Struct)(nil),                       // 78: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),                 // 79: google.protobuf.Timestamp
-	(*wrapperspb.BytesValue)(nil),                 // 80: google.protobuf.BytesValue
-	(*wrapperspb.StringValue)(nil),                // 81: google.protobuf.StringValue
-	(*wrapperspb.Int32Value)(nil),                 // 82: google.protobuf.Int32Value
+	nil,                                           // 60: wso2.gateway.python.v1alpha2.SharedContext.ResolutionAttributesEntry
+	nil,                                           // 61: wso2.gateway.python.v1alpha2.Headers.ValuesEntry
+	nil,                                           // 62: wso2.gateway.python.v1alpha2.AuthContext.ScopesEntry
+	nil,                                           // 63: wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntry
+	nil,                                           // 64: wso2.gateway.python.v1alpha2.ImmediateResponse.HeadersEntry
+	nil,                                           // 65: wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry
+	nil,                                           // 66: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.HeadersToSetEntry
+	nil,                                           // 67: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry
+	nil,                                           // 68: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry
+	nil,                                           // 69: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.HeadersToSetEntry
+	nil,                                           // 70: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry
+	nil,                                           // 71: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry
+	nil,                                           // 72: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.HeadersToSetEntry
+	nil,                                           // 73: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry
+	nil,                                           // 74: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.HeadersToSetEntry
+	nil,                                           // 75: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry
+	nil,                                           // 76: wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry
+	nil,                                           // 77: wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry
+	nil,                                           // 78: wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry
+	(*structpb.Struct)(nil),                       // 79: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),                 // 80: google.protobuf.Timestamp
+	(*wrapperspb.BytesValue)(nil),                 // 81: google.protobuf.BytesValue
+	(*wrapperspb.StringValue)(nil),                // 82: google.protobuf.StringValue
+	(*wrapperspb.Int32Value)(nil),                 // 83: google.protobuf.Int32Value
 }
 var file_proto_python_executor_proto_depIdxs = []int32{
-	78,  // 0: wso2.gateway.python.v1alpha2.StreamRequest.params:type_name -> google.protobuf.Struct
+	79,  // 0: wso2.gateway.python.v1alpha2.StreamRequest.params:type_name -> google.protobuf.Struct
 	14,  // 1: wso2.gateway.python.v1alpha2.StreamRequest.shared_context:type_name -> wso2.gateway.python.v1alpha2.SharedContext
 	12,  // 2: wso2.gateway.python.v1alpha2.StreamRequest.execution_metadata:type_name -> wso2.gateway.python.v1alpha2.ExecutionMetadata
 	31,  // 3: wso2.gateway.python.v1alpha2.StreamRequest.request_headers:type_name -> wso2.gateway.python.v1alpha2.RequestHeadersPayload
@@ -5046,7 +5091,7 @@ var file_proto_python_executor_proto_depIdxs = []int32{
 	37,  // 9: wso2.gateway.python.v1alpha2.StreamRequest.needs_more_response_data:type_name -> wso2.gateway.python.v1alpha2.NeedsMoreResponseDataPayload
 	38,  // 10: wso2.gateway.python.v1alpha2.StreamRequest.response_chunk:type_name -> wso2.gateway.python.v1alpha2.ResponseChunkPayload
 	39,  // 11: wso2.gateway.python.v1alpha2.StreamRequest.cancel_execution:type_name -> wso2.gateway.python.v1alpha2.CancelExecutionPayload
-	78,  // 12: wso2.gateway.python.v1alpha2.StreamResponse.updated_metadata:type_name -> google.protobuf.Struct
+	79,  // 12: wso2.gateway.python.v1alpha2.StreamResponse.updated_metadata:type_name -> google.protobuf.Struct
 	50,  // 13: wso2.gateway.python.v1alpha2.StreamResponse.request_header_action:type_name -> wso2.gateway.python.v1alpha2.RequestHeaderActionPayload
 	51,  // 14: wso2.gateway.python.v1alpha2.StreamResponse.request_action:type_name -> wso2.gateway.python.v1alpha2.RequestActionPayload
 	52,  // 15: wso2.gateway.python.v1alpha2.StreamResponse.response_header_action:type_name -> wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload
@@ -5060,137 +5105,138 @@ var file_proto_python_executor_proto_depIdxs = []int32{
 	0,   // 23: wso2.gateway.python.v1alpha2.ProcessingMode.response_header_mode:type_name -> wso2.gateway.python.v1alpha2.HeaderProcessingMode
 	1,   // 24: wso2.gateway.python.v1alpha2.ProcessingMode.response_body_mode:type_name -> wso2.gateway.python.v1alpha2.BodyProcessingMode
 	40,  // 25: wso2.gateway.python.v1alpha2.InitPolicyRequest.policy_metadata:type_name -> wso2.gateway.python.v1alpha2.PolicyMetadata
-	78,  // 26: wso2.gateway.python.v1alpha2.InitPolicyRequest.params:type_name -> google.protobuf.Struct
+	79,  // 26: wso2.gateway.python.v1alpha2.InitPolicyRequest.params:type_name -> google.protobuf.Struct
 	6,   // 27: wso2.gateway.python.v1alpha2.InitPolicyResponse.processing_mode:type_name -> wso2.gateway.python.v1alpha2.ProcessingMode
 	7,   // 28: wso2.gateway.python.v1alpha2.InitPolicyResponse.capabilities:type_name -> wso2.gateway.python.v1alpha2.PolicyCapabilities
 	2,   // 29: wso2.gateway.python.v1alpha2.ExecutionMetadata.phase:type_name -> wso2.gateway.python.v1alpha2.Phase
-	79,  // 30: wso2.gateway.python.v1alpha2.ExecutionMetadata.deadline:type_name -> google.protobuf.Timestamp
+	80,  // 30: wso2.gateway.python.v1alpha2.ExecutionMetadata.deadline:type_name -> google.protobuf.Timestamp
 	13,  // 31: wso2.gateway.python.v1alpha2.ExecutionMetadata.trace:type_name -> wso2.gateway.python.v1alpha2.TraceMetadata
-	78,  // 32: wso2.gateway.python.v1alpha2.SharedContext.metadata:type_name -> google.protobuf.Struct
+	79,  // 32: wso2.gateway.python.v1alpha2.SharedContext.metadata:type_name -> google.protobuf.Struct
 	24,  // 33: wso2.gateway.python.v1alpha2.SharedContext.auth_context:type_name -> wso2.gateway.python.v1alpha2.AuthContext
-	60,  // 34: wso2.gateway.python.v1alpha2.Headers.values:type_name -> wso2.gateway.python.v1alpha2.Headers.ValuesEntry
-	15,  // 35: wso2.gateway.python.v1alpha2.DownstreamRequest.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	19,  // 36: wso2.gateway.python.v1alpha2.DownstreamContext.request:type_name -> wso2.gateway.python.v1alpha2.DownstreamRequest
-	15,  // 37: wso2.gateway.python.v1alpha2.UpstreamResponse.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	22,  // 38: wso2.gateway.python.v1alpha2.UpstreamResponseContext.response:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponse
-	61,  // 39: wso2.gateway.python.v1alpha2.AuthContext.scopes:type_name -> wso2.gateway.python.v1alpha2.AuthContext.ScopesEntry
-	62,  // 40: wso2.gateway.python.v1alpha2.AuthContext.properties:type_name -> wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntry
-	24,  // 41: wso2.gateway.python.v1alpha2.AuthContext.previous:type_name -> wso2.gateway.python.v1alpha2.AuthContext
-	78,  // 42: wso2.gateway.python.v1alpha2.AuthContext.typed_properties:type_name -> google.protobuf.Struct
-	15,  // 43: wso2.gateway.python.v1alpha2.RequestHeaderContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	20,  // 44: wso2.gateway.python.v1alpha2.RequestHeaderContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
-	21,  // 45: wso2.gateway.python.v1alpha2.RequestHeaderContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestContext
-	15,  // 46: wso2.gateway.python.v1alpha2.RequestContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	17,  // 47: wso2.gateway.python.v1alpha2.RequestContext.body:type_name -> wso2.gateway.python.v1alpha2.Body
-	20,  // 48: wso2.gateway.python.v1alpha2.RequestContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
-	21,  // 49: wso2.gateway.python.v1alpha2.RequestContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestContext
-	15,  // 50: wso2.gateway.python.v1alpha2.ResponseHeaderContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	17,  // 51: wso2.gateway.python.v1alpha2.ResponseHeaderContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
-	15,  // 52: wso2.gateway.python.v1alpha2.ResponseHeaderContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	20,  // 53: wso2.gateway.python.v1alpha2.ResponseHeaderContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
-	23,  // 54: wso2.gateway.python.v1alpha2.ResponseHeaderContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponseContext
-	15,  // 55: wso2.gateway.python.v1alpha2.ResponseContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	17,  // 56: wso2.gateway.python.v1alpha2.ResponseContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
-	15,  // 57: wso2.gateway.python.v1alpha2.ResponseContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	17,  // 58: wso2.gateway.python.v1alpha2.ResponseContext.response_body:type_name -> wso2.gateway.python.v1alpha2.Body
-	20,  // 59: wso2.gateway.python.v1alpha2.ResponseContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
-	23,  // 60: wso2.gateway.python.v1alpha2.ResponseContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponseContext
-	15,  // 61: wso2.gateway.python.v1alpha2.RequestStreamContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	20,  // 62: wso2.gateway.python.v1alpha2.RequestStreamContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
-	21,  // 63: wso2.gateway.python.v1alpha2.RequestStreamContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestContext
-	15,  // 64: wso2.gateway.python.v1alpha2.ResponseStreamContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	17,  // 65: wso2.gateway.python.v1alpha2.ResponseStreamContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
-	15,  // 66: wso2.gateway.python.v1alpha2.ResponseStreamContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
-	20,  // 67: wso2.gateway.python.v1alpha2.ResponseStreamContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
-	23,  // 68: wso2.gateway.python.v1alpha2.ResponseStreamContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponseContext
-	25,  // 69: wso2.gateway.python.v1alpha2.RequestHeadersPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestHeaderContext
-	26,  // 70: wso2.gateway.python.v1alpha2.RequestBodyPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestContext
-	27,  // 71: wso2.gateway.python.v1alpha2.ResponseHeadersPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseHeaderContext
-	28,  // 72: wso2.gateway.python.v1alpha2.ResponseBodyPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseContext
-	29,  // 73: wso2.gateway.python.v1alpha2.RequestChunkPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestStreamContext
-	18,  // 74: wso2.gateway.python.v1alpha2.RequestChunkPayload.chunk:type_name -> wso2.gateway.python.v1alpha2.StreamBody
-	30,  // 75: wso2.gateway.python.v1alpha2.ResponseChunkPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseStreamContext
-	18,  // 76: wso2.gateway.python.v1alpha2.ResponseChunkPayload.chunk:type_name -> wso2.gateway.python.v1alpha2.StreamBody
-	2,   // 77: wso2.gateway.python.v1alpha2.CancelExecutionPayload.target_phase:type_name -> wso2.gateway.python.v1alpha2.Phase
-	3,   // 78: wso2.gateway.python.v1alpha2.DropHeaderAction.action:type_name -> wso2.gateway.python.v1alpha2.DropHeaderActionType
-	63,  // 79: wso2.gateway.python.v1alpha2.ImmediateResponse.headers:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse.HeadersEntry
-	80,  // 80: wso2.gateway.python.v1alpha2.ImmediateResponse.body:type_name -> google.protobuf.BytesValue
-	78,  // 81: wso2.gateway.python.v1alpha2.ImmediateResponse.analytics_metadata:type_name -> google.protobuf.Struct
-	64,  // 82: wso2.gateway.python.v1alpha2.ImmediateResponse.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry
-	41,  // 83: wso2.gateway.python.v1alpha2.ImmediateResponse.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
-	65,  // 84: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.HeadersToSetEntry
-	81,  // 85: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.upstream_name:type_name -> google.protobuf.StringValue
-	81,  // 86: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.path:type_name -> google.protobuf.StringValue
-	81,  // 87: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.host:type_name -> google.protobuf.StringValue
-	81,  // 88: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.method:type_name -> google.protobuf.StringValue
-	66,  // 89: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.query_parameters_to_add:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry
-	78,  // 90: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.analytics_metadata:type_name -> google.protobuf.Struct
-	67,  // 91: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry
-	41,  // 92: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
-	80,  // 93: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.body:type_name -> google.protobuf.BytesValue
-	68,  // 94: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.HeadersToSetEntry
-	81,  // 95: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.upstream_name:type_name -> google.protobuf.StringValue
-	81,  // 96: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.path:type_name -> google.protobuf.StringValue
-	81,  // 97: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.host:type_name -> google.protobuf.StringValue
-	81,  // 98: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.method:type_name -> google.protobuf.StringValue
-	69,  // 99: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.query_parameters_to_add:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry
-	78,  // 100: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.analytics_metadata:type_name -> google.protobuf.Struct
-	70,  // 101: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry
-	41,  // 102: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
-	71,  // 103: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.HeadersToSetEntry
-	78,  // 104: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.analytics_metadata:type_name -> google.protobuf.Struct
-	72,  // 105: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry
-	41,  // 106: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
-	80,  // 107: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.body:type_name -> google.protobuf.BytesValue
-	82,  // 108: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.status_code:type_name -> google.protobuf.Int32Value
-	73,  // 109: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications.HeadersToSetEntry
-	78,  // 110: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.analytics_metadata:type_name -> google.protobuf.Struct
-	74,  // 111: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry
-	41,  // 112: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
-	80,  // 113: wso2.gateway.python.v1alpha2.ForwardRequestChunk.body:type_name -> google.protobuf.BytesValue
-	78,  // 114: wso2.gateway.python.v1alpha2.ForwardRequestChunk.analytics_metadata:type_name -> google.protobuf.Struct
-	75,  // 115: wso2.gateway.python.v1alpha2.ForwardRequestChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry
-	80,  // 116: wso2.gateway.python.v1alpha2.ForwardResponseChunk.body:type_name -> google.protobuf.BytesValue
-	78,  // 117: wso2.gateway.python.v1alpha2.ForwardResponseChunk.analytics_metadata:type_name -> google.protobuf.Struct
-	76,  // 118: wso2.gateway.python.v1alpha2.ForwardResponseChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry
-	80,  // 119: wso2.gateway.python.v1alpha2.TerminateResponseChunk.body:type_name -> google.protobuf.BytesValue
-	78,  // 120: wso2.gateway.python.v1alpha2.TerminateResponseChunk.analytics_metadata:type_name -> google.protobuf.Struct
-	77,  // 121: wso2.gateway.python.v1alpha2.TerminateResponseChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry
-	43,  // 122: wso2.gateway.python.v1alpha2.RequestHeaderActionPayload.upstream_request_header_modifications:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications
-	42,  // 123: wso2.gateway.python.v1alpha2.RequestHeaderActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
-	44,  // 124: wso2.gateway.python.v1alpha2.RequestActionPayload.upstream_request_modifications:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications
-	42,  // 125: wso2.gateway.python.v1alpha2.RequestActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
-	45,  // 126: wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload.downstream_response_header_modifications:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications
-	42,  // 127: wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
-	46,  // 128: wso2.gateway.python.v1alpha2.ResponseActionPayload.downstream_response_modifications:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications
-	42,  // 129: wso2.gateway.python.v1alpha2.ResponseActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
-	47,  // 130: wso2.gateway.python.v1alpha2.StreamingRequestActionPayload.forward_request_chunk:type_name -> wso2.gateway.python.v1alpha2.ForwardRequestChunk
-	48,  // 131: wso2.gateway.python.v1alpha2.StreamingResponseActionPayload.forward_response_chunk:type_name -> wso2.gateway.python.v1alpha2.ForwardResponseChunk
-	49,  // 132: wso2.gateway.python.v1alpha2.StreamingResponseActionPayload.terminate_response_chunk:type_name -> wso2.gateway.python.v1alpha2.TerminateResponseChunk
-	16,  // 133: wso2.gateway.python.v1alpha2.Headers.ValuesEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
-	78,  // 134: wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	16,  // 135: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
-	78,  // 136: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	16,  // 137: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
-	78,  // 138: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	78,  // 139: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	78,  // 140: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	78,  // 141: wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	78,  // 142: wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	78,  // 143: wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
-	4,   // 144: wso2.gateway.python.v1alpha2.PythonExecutorService.ExecuteStream:input_type -> wso2.gateway.python.v1alpha2.StreamRequest
-	58,  // 145: wso2.gateway.python.v1alpha2.PythonExecutorService.HealthCheck:input_type -> wso2.gateway.python.v1alpha2.HealthCheckRequest
-	8,   // 146: wso2.gateway.python.v1alpha2.PythonExecutorService.InitPolicy:input_type -> wso2.gateway.python.v1alpha2.InitPolicyRequest
-	10,  // 147: wso2.gateway.python.v1alpha2.PythonExecutorService.DestroyPolicy:input_type -> wso2.gateway.python.v1alpha2.DestroyPolicyRequest
-	5,   // 148: wso2.gateway.python.v1alpha2.PythonExecutorService.ExecuteStream:output_type -> wso2.gateway.python.v1alpha2.StreamResponse
-	59,  // 149: wso2.gateway.python.v1alpha2.PythonExecutorService.HealthCheck:output_type -> wso2.gateway.python.v1alpha2.HealthCheckResponse
-	9,   // 150: wso2.gateway.python.v1alpha2.PythonExecutorService.InitPolicy:output_type -> wso2.gateway.python.v1alpha2.InitPolicyResponse
-	11,  // 151: wso2.gateway.python.v1alpha2.PythonExecutorService.DestroyPolicy:output_type -> wso2.gateway.python.v1alpha2.DestroyPolicyResponse
-	148, // [148:152] is the sub-list for method output_type
-	144, // [144:148] is the sub-list for method input_type
-	144, // [144:144] is the sub-list for extension type_name
-	144, // [144:144] is the sub-list for extension extendee
-	0,   // [0:144] is the sub-list for field type_name
+	60,  // 34: wso2.gateway.python.v1alpha2.SharedContext.resolution_attributes:type_name -> wso2.gateway.python.v1alpha2.SharedContext.ResolutionAttributesEntry
+	61,  // 35: wso2.gateway.python.v1alpha2.Headers.values:type_name -> wso2.gateway.python.v1alpha2.Headers.ValuesEntry
+	15,  // 36: wso2.gateway.python.v1alpha2.DownstreamRequest.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	19,  // 37: wso2.gateway.python.v1alpha2.DownstreamContext.request:type_name -> wso2.gateway.python.v1alpha2.DownstreamRequest
+	15,  // 38: wso2.gateway.python.v1alpha2.UpstreamResponse.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	22,  // 39: wso2.gateway.python.v1alpha2.UpstreamResponseContext.response:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponse
+	62,  // 40: wso2.gateway.python.v1alpha2.AuthContext.scopes:type_name -> wso2.gateway.python.v1alpha2.AuthContext.ScopesEntry
+	63,  // 41: wso2.gateway.python.v1alpha2.AuthContext.properties:type_name -> wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntry
+	24,  // 42: wso2.gateway.python.v1alpha2.AuthContext.previous:type_name -> wso2.gateway.python.v1alpha2.AuthContext
+	79,  // 43: wso2.gateway.python.v1alpha2.AuthContext.typed_properties:type_name -> google.protobuf.Struct
+	15,  // 44: wso2.gateway.python.v1alpha2.RequestHeaderContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	20,  // 45: wso2.gateway.python.v1alpha2.RequestHeaderContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
+	21,  // 46: wso2.gateway.python.v1alpha2.RequestHeaderContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestContext
+	15,  // 47: wso2.gateway.python.v1alpha2.RequestContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 48: wso2.gateway.python.v1alpha2.RequestContext.body:type_name -> wso2.gateway.python.v1alpha2.Body
+	20,  // 49: wso2.gateway.python.v1alpha2.RequestContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
+	21,  // 50: wso2.gateway.python.v1alpha2.RequestContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestContext
+	15,  // 51: wso2.gateway.python.v1alpha2.ResponseHeaderContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 52: wso2.gateway.python.v1alpha2.ResponseHeaderContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 53: wso2.gateway.python.v1alpha2.ResponseHeaderContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	20,  // 54: wso2.gateway.python.v1alpha2.ResponseHeaderContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
+	23,  // 55: wso2.gateway.python.v1alpha2.ResponseHeaderContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponseContext
+	15,  // 56: wso2.gateway.python.v1alpha2.ResponseContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 57: wso2.gateway.python.v1alpha2.ResponseContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 58: wso2.gateway.python.v1alpha2.ResponseContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 59: wso2.gateway.python.v1alpha2.ResponseContext.response_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	20,  // 60: wso2.gateway.python.v1alpha2.ResponseContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
+	23,  // 61: wso2.gateway.python.v1alpha2.ResponseContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponseContext
+	15,  // 62: wso2.gateway.python.v1alpha2.RequestStreamContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	20,  // 63: wso2.gateway.python.v1alpha2.RequestStreamContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
+	21,  // 64: wso2.gateway.python.v1alpha2.RequestStreamContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestContext
+	15,  // 65: wso2.gateway.python.v1alpha2.ResponseStreamContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 66: wso2.gateway.python.v1alpha2.ResponseStreamContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 67: wso2.gateway.python.v1alpha2.ResponseStreamContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	20,  // 68: wso2.gateway.python.v1alpha2.ResponseStreamContext.downstream:type_name -> wso2.gateway.python.v1alpha2.DownstreamContext
+	23,  // 69: wso2.gateway.python.v1alpha2.ResponseStreamContext.upstream:type_name -> wso2.gateway.python.v1alpha2.UpstreamResponseContext
+	25,  // 70: wso2.gateway.python.v1alpha2.RequestHeadersPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestHeaderContext
+	26,  // 71: wso2.gateway.python.v1alpha2.RequestBodyPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestContext
+	27,  // 72: wso2.gateway.python.v1alpha2.ResponseHeadersPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseHeaderContext
+	28,  // 73: wso2.gateway.python.v1alpha2.ResponseBodyPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseContext
+	29,  // 74: wso2.gateway.python.v1alpha2.RequestChunkPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestStreamContext
+	18,  // 75: wso2.gateway.python.v1alpha2.RequestChunkPayload.chunk:type_name -> wso2.gateway.python.v1alpha2.StreamBody
+	30,  // 76: wso2.gateway.python.v1alpha2.ResponseChunkPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseStreamContext
+	18,  // 77: wso2.gateway.python.v1alpha2.ResponseChunkPayload.chunk:type_name -> wso2.gateway.python.v1alpha2.StreamBody
+	2,   // 78: wso2.gateway.python.v1alpha2.CancelExecutionPayload.target_phase:type_name -> wso2.gateway.python.v1alpha2.Phase
+	3,   // 79: wso2.gateway.python.v1alpha2.DropHeaderAction.action:type_name -> wso2.gateway.python.v1alpha2.DropHeaderActionType
+	64,  // 80: wso2.gateway.python.v1alpha2.ImmediateResponse.headers:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse.HeadersEntry
+	81,  // 81: wso2.gateway.python.v1alpha2.ImmediateResponse.body:type_name -> google.protobuf.BytesValue
+	79,  // 82: wso2.gateway.python.v1alpha2.ImmediateResponse.analytics_metadata:type_name -> google.protobuf.Struct
+	65,  // 83: wso2.gateway.python.v1alpha2.ImmediateResponse.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry
+	41,  // 84: wso2.gateway.python.v1alpha2.ImmediateResponse.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	66,  // 85: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.HeadersToSetEntry
+	82,  // 86: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.upstream_name:type_name -> google.protobuf.StringValue
+	82,  // 87: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.path:type_name -> google.protobuf.StringValue
+	82,  // 88: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.host:type_name -> google.protobuf.StringValue
+	82,  // 89: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.method:type_name -> google.protobuf.StringValue
+	67,  // 90: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.query_parameters_to_add:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry
+	79,  // 91: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	68,  // 92: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry
+	41,  // 93: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	81,  // 94: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.body:type_name -> google.protobuf.BytesValue
+	69,  // 95: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.HeadersToSetEntry
+	82,  // 96: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.upstream_name:type_name -> google.protobuf.StringValue
+	82,  // 97: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.path:type_name -> google.protobuf.StringValue
+	82,  // 98: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.host:type_name -> google.protobuf.StringValue
+	82,  // 99: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.method:type_name -> google.protobuf.StringValue
+	70,  // 100: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.query_parameters_to_add:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry
+	79,  // 101: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	71,  // 102: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry
+	41,  // 103: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	72,  // 104: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.HeadersToSetEntry
+	79,  // 105: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	73,  // 106: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry
+	41,  // 107: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	81,  // 108: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.body:type_name -> google.protobuf.BytesValue
+	83,  // 109: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.status_code:type_name -> google.protobuf.Int32Value
+	74,  // 110: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications.HeadersToSetEntry
+	79,  // 111: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	75,  // 112: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry
+	41,  // 113: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	81,  // 114: wso2.gateway.python.v1alpha2.ForwardRequestChunk.body:type_name -> google.protobuf.BytesValue
+	79,  // 115: wso2.gateway.python.v1alpha2.ForwardRequestChunk.analytics_metadata:type_name -> google.protobuf.Struct
+	76,  // 116: wso2.gateway.python.v1alpha2.ForwardRequestChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry
+	81,  // 117: wso2.gateway.python.v1alpha2.ForwardResponseChunk.body:type_name -> google.protobuf.BytesValue
+	79,  // 118: wso2.gateway.python.v1alpha2.ForwardResponseChunk.analytics_metadata:type_name -> google.protobuf.Struct
+	77,  // 119: wso2.gateway.python.v1alpha2.ForwardResponseChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry
+	81,  // 120: wso2.gateway.python.v1alpha2.TerminateResponseChunk.body:type_name -> google.protobuf.BytesValue
+	79,  // 121: wso2.gateway.python.v1alpha2.TerminateResponseChunk.analytics_metadata:type_name -> google.protobuf.Struct
+	78,  // 122: wso2.gateway.python.v1alpha2.TerminateResponseChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry
+	43,  // 123: wso2.gateway.python.v1alpha2.RequestHeaderActionPayload.upstream_request_header_modifications:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications
+	42,  // 124: wso2.gateway.python.v1alpha2.RequestHeaderActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	44,  // 125: wso2.gateway.python.v1alpha2.RequestActionPayload.upstream_request_modifications:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications
+	42,  // 126: wso2.gateway.python.v1alpha2.RequestActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	45,  // 127: wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload.downstream_response_header_modifications:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications
+	42,  // 128: wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	46,  // 129: wso2.gateway.python.v1alpha2.ResponseActionPayload.downstream_response_modifications:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications
+	42,  // 130: wso2.gateway.python.v1alpha2.ResponseActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	47,  // 131: wso2.gateway.python.v1alpha2.StreamingRequestActionPayload.forward_request_chunk:type_name -> wso2.gateway.python.v1alpha2.ForwardRequestChunk
+	48,  // 132: wso2.gateway.python.v1alpha2.StreamingResponseActionPayload.forward_response_chunk:type_name -> wso2.gateway.python.v1alpha2.ForwardResponseChunk
+	49,  // 133: wso2.gateway.python.v1alpha2.StreamingResponseActionPayload.terminate_response_chunk:type_name -> wso2.gateway.python.v1alpha2.TerminateResponseChunk
+	16,  // 134: wso2.gateway.python.v1alpha2.Headers.ValuesEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
+	79,  // 135: wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	16,  // 136: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
+	79,  // 137: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	16,  // 138: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
+	79,  // 139: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	79,  // 140: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	79,  // 141: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	79,  // 142: wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	79,  // 143: wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	79,  // 144: wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	4,   // 145: wso2.gateway.python.v1alpha2.PythonExecutorService.ExecuteStream:input_type -> wso2.gateway.python.v1alpha2.StreamRequest
+	58,  // 146: wso2.gateway.python.v1alpha2.PythonExecutorService.HealthCheck:input_type -> wso2.gateway.python.v1alpha2.HealthCheckRequest
+	8,   // 147: wso2.gateway.python.v1alpha2.PythonExecutorService.InitPolicy:input_type -> wso2.gateway.python.v1alpha2.InitPolicyRequest
+	10,  // 148: wso2.gateway.python.v1alpha2.PythonExecutorService.DestroyPolicy:input_type -> wso2.gateway.python.v1alpha2.DestroyPolicyRequest
+	5,   // 149: wso2.gateway.python.v1alpha2.PythonExecutorService.ExecuteStream:output_type -> wso2.gateway.python.v1alpha2.StreamResponse
+	59,  // 150: wso2.gateway.python.v1alpha2.PythonExecutorService.HealthCheck:output_type -> wso2.gateway.python.v1alpha2.HealthCheckResponse
+	9,   // 151: wso2.gateway.python.v1alpha2.PythonExecutorService.InitPolicy:output_type -> wso2.gateway.python.v1alpha2.InitPolicyResponse
+	11,  // 152: wso2.gateway.python.v1alpha2.PythonExecutorService.DestroyPolicy:output_type -> wso2.gateway.python.v1alpha2.DestroyPolicyResponse
+	149, // [149:153] is the sub-list for method output_type
+	145, // [145:149] is the sub-list for method input_type
+	145, // [145:145] is the sub-list for extension type_name
+	145, // [145:145] is the sub-list for extension extendee
+	0,   // [0:145] is the sub-list for field type_name
 }
 
 func init() { file_proto_python_executor_proto_init() }
@@ -5245,7 +5291,7 @@ func file_proto_python_executor_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_python_executor_proto_rawDesc), len(file_proto_python_executor_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   74,
+			NumMessages:   75,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
