@@ -33,10 +33,15 @@ export type ConsoleRouteParams = {
 
 /**
  * Scope identifiers the data hooks default to when called with no args.
- * `orgHandle` is only populated once the route's `:orgHandle` has been
- * confirmed to match the signed-in session's own organization (see
+ *
+ * For a session with a known organization claim, `orgHandle` is only
+ * populated once the route's `:orgHandle` has been confirmed to match it (see
  * `orgAccessDenied` below), so context-aware queries never fire against an
- * organization the session isn't actually scoped to.
+ * organization the session isn't actually scoped to. The one exception: a
+ * session with *no* organization claim at all (basic/file-based auth, which
+ * has no notion of multiple organizations) has nothing to confirm against, so
+ * `orgHandle` here is the route param passed through unconfirmed — treat it
+ * as session-scoped only when a session organization is actually known.
  */
 export type ActiveScope = {
   orgHandle?: string;

@@ -206,11 +206,20 @@ export function UnauthorizedPage() {
  * is no per-org token exchange in this console (the BFF forwards one bearer
  * token per session, see `AuthProvider`), so a mismatch here can never be
  * resolved client-side; the only way in is signing in to that organization.
+ *
+ * `myOrgHandle` is passed in rather than independently read from `useAuth()`
+ * here: `ConsoleScopeProvider` already read `user.org.handle` once to decide
+ * `orgAccessDenied` in the first place, and the recovery link must point at
+ * that exact same value — a second, independent read of "the session's own
+ * org handle" is only guaranteed to agree with the first by convention, not
+ * by anything the type system enforces.
  */
-export function OrganizationAccessDeniedPage() {
+export function OrganizationAccessDeniedPage({
+  myOrgHandle,
+}: {
+  myOrgHandle?: string;
+}) {
   const navigate = useNavigate();
-  const auth = useAuth();
-  const myOrgHandle = auth.user?.org?.handle;
 
   return (
     <PageContent>

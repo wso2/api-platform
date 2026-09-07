@@ -96,14 +96,56 @@ describe('ConsoleScopeProvider — organization access boundary', () => {
     expect(projectRequests.count()).toBe(0);
   });
 
-  it('offers a way back to the signed-in user\'s own organization', async () => {
-    renderWithProviders(<AppRoutes />, {
+  it('navigates back to the signed-in user\'s own organization, not just anywhere', async () => {
+    const { user } = renderWithProviders(<AppRoutes />, {
       route: '/organizations/apip-anusha/home',
       authState: authStateForOwnOrg(),
     });
 
-    const link = await screen.findByRole('button', { name: /go to my organization/i });
-    expect(link).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole('button', { name: /go to my organization/i })
+    );
+
+    // A wrong destination would land back on the access-denied page (it
+    // gates every organization route, including a bad recovery target) —
+    // so finding the app shell here proves the button's target was correct,
+    // not merely present.
+    expect(await screen.findByText(/WSO2 LLC/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/You do not have access to this organization/)
+    ).not.toBeInTheDocument();
+  });
+
+  it('keys the access decision and recovery target on the session claim alone, independent of the organizations API list', async () => {
+    // The organizations list (platform-api's own canonical `Organization.id`
+    // records) doesn't even contain the session's own org here — simulating
+    // it disagreeing with, or simply not yet corroborating, the session claim.
+    // The access check must still follow the session claim by itself, not
+    // silently depend on the list agreeing with it.
+    server.use(
+      collection('/organizations', [
+        anOrganization({ id: 'someone-elses-org', displayName: 'Someone Else' }),
+      ])
+    );
+
+    const { user } = renderWithProviders(<AppRoutes />, {
+      route: '/organizations/apip-anusha/home',
+      authState: authStateForOwnOrg(),
+    });
+
+    expect(
+      await screen.findByText(/You do not have access to this organization/)
+    ).toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole('button', { name: /go to my organization/i })
+    );
+
+    // Recovers to the session's own org handle ("lasanthas"), not anything
+    // sourced from the (non-corroborating) organizations list.
+    expect(
+      screen.queryByText(/You do not have access to this organization/)
+    ).not.toBeInTheDocument();
   });
 
   it('does not gate a session with no organization claim (basic/file-based auth)', async () => {

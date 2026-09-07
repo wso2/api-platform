@@ -92,11 +92,22 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     ]
   );
 
+  const organizationsQuery = useOrganizations();
+
+  // `user.org.handle` (a JWT claim resolved server-side, see
+  // `bff/internal/session/claims.go`) is read exactly once, here, and used
+  // for both the access check below and the recovery destination passed to
+  // `OrganizationAccessDeniedPage` — never re-derived independently in a
+  // second place. Two independent reads of "the session's own org handle"
+  // are only guaranteed to agree by convention, not by anything the type
+  // system enforces; a page that read it separately could silently drift
+  // from what this check actually verified.
+  const sessionOrgHandle = user?.org?.handle;
+
   // A session with no `org` claim at all (basic/file-based auth, which has no
   // notion of multiple organizations — see `AuthProvider`) has nothing to
   // mismatch against, so it isn't gated here. Only a *known* session org that
   // disagrees with the route is treated as denied.
-  const sessionOrgHandle = user?.org?.handle;
   const orgAccessDenied = Boolean(
     params.orgHandle && sessionOrgHandle && params.orgHandle !== sessionOrgHandle
   );
@@ -107,7 +118,6 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   const queryOrgHandle = orgAccessDenied ? undefined : params.orgHandle;
 
   const apiQuery = useRestApi(params.apiHandler, {orgId: queryOrgHandle });
-  const organizationsQuery = useOrganizations();
   const projectsQuery = useProjects({}, {orgId: queryOrgHandle });
   const projectQuery = useProject(params.projectHandler, {orgId: queryOrgHandle });
 
@@ -171,7 +181,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   );
 
   if (orgAccessDenied) {
-    return <OrganizationAccessDeniedPage />;
+    return <OrganizationAccessDeniedPage myOrgHandle={sessionOrgHandle} />;
   }
 
   return (
