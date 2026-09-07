@@ -177,11 +177,11 @@ func TestRunGoBuild_WithCoverage(t *testing.T) {
 	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	options := &types.CompilationOptions{
-		OutputPath:     filepath.Join(tmpDir, "binary"),
-		EnableCoverage: true,
-		CGOEnabled:     false,
-		TargetOS:       "linux",
-		TargetArch:     "amd64",
+		OutputPath: filepath.Join(tmpDir, "binary"),
+		Coverage:   types.CoverageOptions{Enabled: true},
+		CGOEnabled: false,
+		TargetOS:   "linux",
+		TargetArch: "amd64",
 	}
 
 	err := runGoBuild(tmpDir, options)

@@ -20,6 +20,9 @@ import { defineConfig } from 'vite'
 import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+// Pinned to 7.1.0: its peer range is vite >=4 <=7. Newer major releases (8.x, 9.x)
+// require vite >=7, incompatible with this project's vite@5.4.21.
+import istanbul from 'vite-plugin-istanbul'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -121,6 +124,17 @@ const plugins: PluginOption[] = [
   readyLogPlugin,
   runtimeConfigScriptPlugin,
 ]
+
+if (process.env.VITE_COVERAGE === 'true') {
+  plugins.push(istanbul({
+    checkProd: false,
+    forceBuildInstrument: true,
+    cwd: __dirname,
+    include: ['src/**/*'],
+    exclude: ['**/*.test.*', '**/node_modules/**'],
+    requireEnv: false,
+  }) as unknown as PluginOption)
+}
 
 export default defineConfig({
   plugins,
