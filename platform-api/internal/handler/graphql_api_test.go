@@ -165,3 +165,43 @@ func TestDecodeUpdateGraphQLAPIRequest_Multipart_MissingMetadata(t *testing.T) {
 		t.Fatal("expected an error when the metadata field is missing")
 	}
 }
+
+// TestDecodeValidateGraphQLSchemaRequest_JSON_Rejected mirrors
+// TestDecodeCreateGraphQLAPIRequest_JSON_Rejected — the validate endpoint is
+// multipart-only too, for the same "every schemaSource variant expressed the
+// same way" reason.
+func TestDecodeValidateGraphQLSchemaRequest_JSON_Rejected(t *testing.T) {
+	body := `{"sdl":"type Query { x: String }"}`
+	req := httptest.NewRequest(http.MethodPost, "/graphql-apis/validate-schema", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	var out api.ValidateGraphQLSchemaRequest
+	if err := decodeValidateGraphQLSchemaRequest(req, &out); err == nil {
+		t.Fatal("expected application/json to be rejected now that multipart/form-data is the only accepted content type")
+	}
+}
+
+// TestDecodeValidateGraphQLSchemaRequest_Multipart_FileContentLandsInSdl
+// mirrors TestDecodeCreateGraphQLAPIRequest_Multipart_FileContentAndMetadataSDLUrlBothSurvive
+// for the validate endpoint's lightweight request type.
+func TestDecodeValidateGraphQLSchemaRequest_Multipart_FileContentLandsInSdl(t *testing.T) {
+	metadata := `{"schemaSource":"file"}`
+	req := newGraphQLAPIMultipartHandlerRequest(t, metadata, graphQLHandlerTestSDL, true)
+
+	var out api.ValidateGraphQLSchemaRequest
+	if err := decodeValidateGraphQLSchemaRequest(req, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Sdl == nil || *out.Sdl != graphQLHandlerTestSDL {
+		t.Errorf("expected sdl to carry the uploaded file's content, got %v", out.Sdl)
+	}
+}
+
+func TestDecodeValidateGraphQLSchemaRequest_Multipart_MissingMetadata(t *testing.T) {
+	req := newGraphQLAPIMultipartHandlerRequest(t, "", graphQLHandlerTestSDL, true)
+
+	var out api.ValidateGraphQLSchemaRequest
+	if err := decodeValidateGraphQLSchemaRequest(req, &out); err == nil {
+		t.Fatal("expected an error when the metadata field is missing")
+	}
+}
