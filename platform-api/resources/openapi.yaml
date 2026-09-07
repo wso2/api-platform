@@ -1275,6 +1275,51 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /graphql-apis/validate-schema:
+    post:
+      summary: Dry-run GraphQL schema resolution
+      description: |
+        Attempts to resolve a schema exactly as `POST`/`PUT /graphql-apis`
+        would — the same `schemaSource`-driven structural validation, the
+        same best-effort resolution (§5.2) — without persisting anything. A
+        request-shape mismatch (`schemaSource` inconsistent with the fields
+        supplied) is a `400` (`VALIDATION_FAILED`), same as create/update. An
+        actual resolution failure (bad SDL, an unreachable `sdlUrl`, a failed
+        introspection query) is **not** an error here either — the response
+        reports `resolved: false` so the caller can decide what to do, rather
+        than having to create a real API just to find out.
+      operationId: ValidateGraphQLSchema
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:create
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      requestBody:
+        description: |
+          As `multipart/form-data` only, following the same convention as
+          `POST /graphql-apis` — see `GraphQLAPIMultipartRequest`.
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateGraphQLSchemaMultipartRequest'
+      responses:
+        '200':
+          description: Schema resolution attempted — see `resolved` for the outcome.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateGraphQLSchemaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /graphql-apis/{graphqlApiId}/gateways:
     get:
       summary: Get gateways for GraphQL API
@@ -7460,6 +7505,79 @@ components:
             $ref: '#/components/schemas/GraphQLAPIListItem'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    ValidateGraphQLSchemaRequest:
+      title: GraphQL schema validation request
+      type: object
+      properties:
+        schemaSource:
+          type: string
+          enum: [inline, url, file, introspection]
+          default: introspection
+          description: |
+            Same semantics as `GraphQLAPI.schemaSource` — declares which of
+            `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+            supplies the schema to resolve.
+          example: introspection
+        sdl:
+          type: string
+          description: The GraphQL schema in SDL form, when `schemaSource` is `inline` (or the uploaded file's content, when `file`).
+        sdlUrl:
+          type: string
+          format: uri
+          writeOnly: true
+          description: A URL to fetch the SDL from, when `schemaSource` is `url`.
+        upstream:
+          $ref: '#/components/schemas/Upstream'
+          description: |
+            Only relevant when `schemaSource` is `introspection` (explicit or
+            inferred) — unlike `GraphQLAPI.upstream`, this is not required,
+            since a validation request for `inline`/`url`/`file` has no use
+            for it.
+
+    ValidateGraphQLSchemaMultipartRequest:
+      title: GraphQL schema validation request with SDL file upload
+      type: object
+      required:
+        - metadata
+      properties:
+        metadata:
+          type: string
+          description: JSON-encoded ValidateGraphQLSchemaRequest.
+          example: |
+            {"schemaSource":"introspection","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
+        sdlFile:
+          type: string
+          format: binary
+          description: |
+            The GraphQL SDL document as a file upload. Required when
+            `schemaSource` is `file`; must be omitted otherwise.
+
+    ValidateGraphQLSchemaResponse:
+      title: GraphQL schema validation result
+      type: object
+      required:
+        - resolved
+        - sdl
+      properties:
+        resolved:
+          type: boolean
+          description: Whether the declared schemaSource actually resolved to a usable schema.
+          example: true
+        sdl:
+          type: string
+          description: The resolved SDL text when `resolved` is `true`; empty otherwise.
+        introspectionMode:
+          $ref: '#/components/schemas/GraphQLIntrospectionMode'
+          description: Only set when `resolved` is `true`.
+        message:
+          type: string
+          description: |
+            A generic explanation, set only when `resolved` is `false`. Never
+            the specific parser/fetch/introspection failure reason — reuses
+            the same sterile message `GraphQLAPISchemaResolveFailed` uses
+            elsewhere (`error-handling.md`).
+          example: The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.
 
     TimeUnit:
       type: string

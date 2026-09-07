@@ -269,6 +269,24 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 	return s.Get(orgUUID, handle)
 }
 
+// ValidateSchema is the non-mutating dry-run counterpart to resolveSchema,
+// backing POST /graphql-apis/validate-schema. It shares the exact same
+// structural-vs-best-effort semantics Create/Update use (see resolveSchema's
+// doc comment) but never persists anything and takes no org/handle — there
+// is nothing org-scoped to check here, only the caller-supplied
+// schema-source fields themselves.
+func (s *GraphQLAPIService) ValidateSchema(req api.ValidateGraphQLSchemaRequest) (graphQLSchemaResolution, error) {
+	var schemaSource string
+	if req.SchemaSource != nil {
+		schemaSource = string(*req.SchemaSource)
+	}
+	var upstream *model.UpstreamConfig
+	if req.Upstream != nil {
+		upstream = mapUpstreamAPIToModel(*req.Upstream)
+	}
+	return s.resolveSchema(schemaSource, utils.ValueOrEmpty(req.Sdl), utils.ValueOrEmpty(req.SdlUrl), upstream)
+}
+
 // graphQLSchemaResolution is resolveSchema's outcome. Resolved is false when
 // the declared schemaSource was structurally valid but the actual content
 // couldn't be turned into a usable schema (bad SDL text, an unreachable

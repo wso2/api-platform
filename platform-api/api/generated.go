@@ -358,6 +358,14 @@ const (
 	Revoked UserAPIKeyItemStatus = "revoked"
 )
 
+// Defines values for ValidateGraphQLSchemaRequestSchemaSource.
+const (
+	File          ValidateGraphQLSchemaRequestSchemaSource = "file"
+	Inline        ValidateGraphQLSchemaRequestSchemaSource = "inline"
+	Introspection ValidateGraphQLSchemaRequestSchemaSource = "introspection"
+	Url           ValidateGraphQLSchemaRequestSchemaSource = "url"
+)
+
 // Defines values for DeploymentStatusQ.
 const (
 	DeploymentStatusQARCHIVED    DeploymentStatusQ = "ARCHIVED"
@@ -3007,6 +3015,55 @@ type UserAPIKeyListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ValidateGraphQLSchemaMultipartRequest defines model for ValidateGraphQLSchemaMultipartRequest.
+type ValidateGraphQLSchemaMultipartRequest struct {
+	// Metadata JSON-encoded ValidateGraphQLSchemaRequest.
+	Metadata string `binding:"required" json:"metadata" yaml:"metadata"`
+
+	// SdlFile The GraphQL SDL document as a file upload. Required when
+	// `schemaSource` is `file`; must be omitted otherwise.
+	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequest defines model for ValidateGraphQLSchemaRequest.
+type ValidateGraphQLSchemaRequest struct {
+	// SchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+	// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+	// supplies the schema to resolve.
+	SchemaSource *ValidateGraphQLSchemaRequestSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form, when `schemaSource` is `inline` (or the uploaded file's content, when `file`).
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to fetch the SDL from, when `schemaSource` is `url`.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequestSchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+// supplies the schema to resolve.
+type ValidateGraphQLSchemaRequestSchemaSource string
+
+// ValidateGraphQLSchemaResponse defines model for ValidateGraphQLSchemaResponse.
+type ValidateGraphQLSchemaResponse struct {
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Message A generic explanation, set only when `resolved` is `false`. Never
+	// the specific parser/fetch/introspection failure reason — reuses
+	// the same sterile message `GraphQLAPISchemaResolveFailed` uses
+	// elsewhere (`error-handling.md`).
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+
+	// Resolved Whether the declared schemaSource actually resolved to a usable schema.
+	Resolved bool `binding:"required" json:"resolved" yaml:"resolved"`
+
+	// Sdl The resolved SDL text when `resolved` is `true`; empty otherwise.
+	Sdl string `binding:"required" json:"sdl" yaml:"sdl"`
+}
+
 // ApiId defines model for apiId.
 type ApiId = string
 
@@ -3643,6 +3700,9 @@ type UpdateGatewayJSONRequestBody = GatewayResponse
 
 // CreateGraphQLAPIMultipartRequestBody defines body for CreateGraphQLAPI for multipart/form-data ContentType.
 type CreateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// ValidateGraphQLSchemaMultipartRequestBody defines body for ValidateGraphQLSchema for multipart/form-data ContentType.
+type ValidateGraphQLSchemaMultipartRequestBody = ValidateGraphQLSchemaMultipartRequest
 
 // UpdateGraphQLAPIMultipartRequestBody defines body for UpdateGraphQLAPI for multipart/form-data ContentType.
 type UpdateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest

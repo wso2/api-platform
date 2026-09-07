@@ -1005,6 +1005,146 @@ func TestGraphQLCreate_MissingSDLAndUpstream_ValidationFailed(t *testing.T) {
 	}
 }
 
+// TestGraphQLValidateSchema_Inline_Success guards ValidateSchema's happy path
+// for schemaSource "inline" — it should behave identically to Create's own
+// resolution, just without persisting anything.
+func TestGraphQLValidateSchema_Inline_Success(t *testing.T) {
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	req := api.ValidateGraphQLSchemaRequest{
+		Sdl: graphQLStrPtr(validCountriesGraphQLSDL),
+	}
+
+	resolution, err := svc.ValidateSchema(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resolution.Resolved {
+		t.Fatal("expected the schema to resolve")
+	}
+	if resolution.SDL != validCountriesGraphQLSDL {
+		t.Errorf("expected the resolved sdl to match the supplied sdl verbatim, got %q", resolution.SDL)
+	}
+	if resolution.IntrospectionMode != "SDL" {
+		t.Errorf("expected introspectionMode SDL, got %q", resolution.IntrospectionMode)
+	}
+}
+
+// TestGraphQLValidateSchema_Introspection_Success guards the schemaSource
+// "introspection" (default) happy path via a real httptest introspection
+// endpoint.
+func TestGraphQLValidateSchema_Introspection_Success(t *testing.T) {
+	introspectionJSON := `{
+		"data": {
+			"__schema": {
+				"queryType": {"name": "Query"},
+				"mutationType": null,
+				"subscriptionType": null,
+				"types": [
+					{
+						"kind": "OBJECT",
+						"name": "Query",
+						"description": "",
+						"fields": [
+							{
+								"name": "hello",
+								"description": "",
+								"args": [],
+								"type": {"kind": "SCALAR", "name": "String", "ofType": null}
+							}
+						]
+					}
+				]
+			}
+		}
+	}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(introspectionJSON))
+	}))
+	defer server.Close()
+
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	req := api.ValidateGraphQLSchemaRequest{
+		Upstream: &api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
+	}
+
+	resolution, err := svc.ValidateSchema(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resolution.Resolved {
+		t.Fatal("expected the schema to resolve via introspection")
+	}
+	if resolution.IntrospectionMode != "ENDPOINT" {
+		t.Errorf("expected introspectionMode ENDPOINT, got %q", resolution.IntrospectionMode)
+	}
+	if !strings.Contains(resolution.SDL, "type Query") || !strings.Contains(resolution.SDL, "hello") {
+		t.Errorf("expected derived SDL to contain a Query type and the introspected field, got: %s", resolution.SDL)
+	}
+}
+
+// TestGraphQLValidateSchema_ResolutionFailure_ReturnsUnresolved guards
+// ValidateSchema's best-effort posture: a resolution-quality failure (here,
+// malformed SDL) is never an error — it comes back as Resolved: false, the
+// same shape Create/Update treat as "no schema, but the request succeeds."
+func TestGraphQLValidateSchema_ResolutionFailure_ReturnsUnresolved(t *testing.T) {
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	req := api.ValidateGraphQLSchemaRequest{
+		Sdl: graphQLStrPtr("type Query { countries: [Country "), // unterminated brace
+	}
+
+	resolution, err := svc.ValidateSchema(req)
+	if err != nil {
+		t.Fatalf("expected no error for a resolution-quality failure, got: %v", err)
+	}
+	if resolution.Resolved {
+		t.Fatal("expected the malformed SDL to fail to resolve")
+	}
+	if resolution.SDL != "" {
+		t.Errorf("expected an empty sdl when resolution fails, got %q", resolution.SDL)
+	}
+}
+
+// TestGraphQLValidateSchema_StructuralMismatch_ValidationFailed guards the
+// structural side of resolveSchema still applying to ValidateSchema — a
+// schemaSource/field mismatch is a real error, not a soft "unresolved"
+// outcome, mirroring TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive.
+func TestGraphQLValidateSchema_StructuralMismatch_ValidationFailed(t *testing.T) {
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	req := api.ValidateGraphQLSchemaRequest{
+		Sdl:    graphQLStrPtr(validCountriesGraphQLSDL),
+		SdlUrl: graphQLStrPtr("https://example.com/schema.graphql"),
+	}
+
+	_, err := svc.ValidateSchema(req)
+	if err == nil {
+		t.Fatal("expected an error when both sdl and sdlUrl are supplied")
+	}
+	if code := graphQLCatalogCode(t, err); code != apperror.CodeCommonValidationFailed {
+		t.Errorf("expected %s, got %s", apperror.CodeCommonValidationFailed, code)
+	}
+}
+
+// TestGraphQLValidateSchema_NoFieldsSupplied_ValidationFailed covers the case
+// where nothing is supplied at all: schemaSource infers "introspection" (the
+// default), which then has no upstream.main.url to call — a structural
+// problem, not a resolution-quality one, matching Create's equivalent check.
+func TestGraphQLValidateSchema_NoFieldsSupplied_ValidationFailed(t *testing.T) {
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	_, err := svc.ValidateSchema(api.ValidateGraphQLSchemaRequest{})
+	if err == nil {
+		t.Fatal("expected an error when no schema-source fields are supplied at all")
+	}
+	if code := graphQLCatalogCode(t, err); code != apperror.CodeCommonValidationFailed {
+		t.Errorf("expected %s, got %s", apperror.CodeCommonValidationFailed, code)
+	}
+}
+
 // TestGraphQLCreate_MissingContext_ValidationFailed covers the
 // displayName/version/context required-fields check with context specifically
 // omitted, matching the test-scenarios sheet's "context omitted" case.
