@@ -33,7 +33,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
 
 // =============================================================================
@@ -160,21 +159,20 @@ func TestInitTracer_DisabledWithEndpoint(t *testing.T) {
 // ExtractTraceContext Tests
 // =============================================================================
 
-func TestExtractTraceContext_NoMetadata(t *testing.T) {
+func TestExtractTraceContext_NilCarrier(t *testing.T) {
 	setupPropagator()
 	ctx := context.Background()
-	newCtx := ExtractTraceContext(ctx)
+	newCtx := ExtractTraceContext(ctx, propagation.MapCarrier(nil))
 
-	// Should return a valid context even without metadata
+	// Should return a valid context even without a carrier
 	assert.NotNil(t, newCtx)
+	span := trace.SpanContextFromContext(newCtx)
+	assert.False(t, span.IsValid())
 }
 
-func TestExtractTraceContext_EmptyMetadata(t *testing.T) {
+func TestExtractTraceContext_EmptyCarrier(t *testing.T) {
 	setupPropagator()
-	md := metadata.MD{}
-	ctx := metadata.NewIncomingContext(context.Background(), md)
-
-	newCtx := ExtractTraceContext(ctx)
+	newCtx := ExtractTraceContext(context.Background(), propagation.MapCarrier{})
 	assert.NotNil(t, newCtx)
 
 	// Should have no valid trace context
@@ -186,14 +184,11 @@ func TestExtractTraceContext_WithTraceparent(t *testing.T) {
 	setupPropagator()
 	// Valid W3C traceparent header
 	// Format: version-trace_id-parent_id-flags
-	traceparent := "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-
-	md := metadata.MD{
-		"traceparent": []string{traceparent},
+	carrier := propagation.MapCarrier{
+		"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 	}
-	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	newCtx := ExtractTraceContext(ctx)
+	newCtx := ExtractTraceContext(context.Background(), carrier)
 	assert.NotNil(t, newCtx)
 
 	span := trace.SpanContextFromContext(newCtx)
@@ -203,16 +198,12 @@ func TestExtractTraceContext_WithTraceparent(t *testing.T) {
 
 func TestExtractTraceContext_WithTracestate(t *testing.T) {
 	setupPropagator()
-	traceparent := "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-	tracestate := "vendor1=value1,vendor2=value2"
-
-	md := metadata.MD{
-		"traceparent": []string{traceparent},
-		"tracestate":  []string{tracestate},
+	carrier := propagation.MapCarrier{
+		"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		"tracestate":  "vendor1=value1,vendor2=value2",
 	}
-	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	newCtx := ExtractTraceContext(ctx)
+	newCtx := ExtractTraceContext(context.Background(), carrier)
 	assert.NotNil(t, newCtx)
 
 	span := trace.SpanContextFromContext(newCtx)
@@ -234,38 +225,15 @@ func TestExtractTraceContext_InvalidTraceparent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			md := metadata.MD{
-				"traceparent": []string{tc.traceparent},
-			}
-			ctx := metadata.NewIncomingContext(context.Background(), md)
+			carrier := propagation.MapCarrier{"traceparent": tc.traceparent}
 
-			newCtx := ExtractTraceContext(ctx)
+			newCtx := ExtractTraceContext(context.Background(), carrier)
 			assert.NotNil(t, newCtx)
 
 			span := trace.SpanContextFromContext(newCtx)
 			assert.False(t, span.IsValid())
 		})
 	}
-}
-
-func TestExtractTraceContext_MultipleValues(t *testing.T) {
-	setupPropagator()
-	// When multiple values are present, only the first should be used
-	traceparent1 := "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-	traceparent2 := "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
-
-	md := metadata.MD{
-		"traceparent": []string{traceparent1, traceparent2},
-	}
-	ctx := metadata.NewIncomingContext(context.Background(), md)
-
-	newCtx := ExtractTraceContext(ctx)
-	assert.NotNil(t, newCtx)
-
-	span := trace.SpanContextFromContext(newCtx)
-	assert.True(t, span.IsValid())
-	// Should use the first value
-	assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", span.TraceID().String())
 }
 
 func TestExtractTraceContext_SampledFlag(t *testing.T) {
@@ -289,12 +257,9 @@ func TestExtractTraceContext_SampledFlag(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			md := metadata.MD{
-				"traceparent": []string{tc.traceparent},
-			}
-			ctx := metadata.NewIncomingContext(context.Background(), md)
+			carrier := propagation.MapCarrier{"traceparent": tc.traceparent}
 
-			newCtx := ExtractTraceContext(ctx)
+			newCtx := ExtractTraceContext(context.Background(), carrier)
 			span := trace.SpanContextFromContext(newCtx)
 
 			assert.True(t, span.IsValid())
@@ -303,20 +268,16 @@ func TestExtractTraceContext_SampledFlag(t *testing.T) {
 	}
 }
 
-func TestExtractTraceContext_OtherMetadata(t *testing.T) {
+func TestExtractTraceContext_OtherHeaders(t *testing.T) {
 	setupPropagator()
-	traceparent := "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-
-	md := metadata.MD{
-		"traceparent":   []string{traceparent},
-		"authorization": []string{"Bearer token123"},
-		"content-type":  []string{"application/json"},
-		"x-custom":      []string{"value"},
-		"grpc-timeout":  []string{"5s"},
+	carrier := propagation.MapCarrier{
+		"traceparent":   "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		"authorization": "Bearer token123",
+		"content-type":  "application/json",
+		"x-custom":      "value",
 	}
-	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	newCtx := ExtractTraceContext(ctx)
+	newCtx := ExtractTraceContext(context.Background(), carrier)
 	span := trace.SpanContextFromContext(newCtx)
 
 	assert.True(t, span.IsValid())
