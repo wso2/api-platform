@@ -60,6 +60,32 @@ type Session struct {
 	AccessExpiry   time.Time // from exp claim / expires_in (read, not verified)
 	AbsoluteExpiry time.Time // hard cap
 	User           User
+	Exchanged      ExchangedToken
+}
+
+// ExchangedToken is a cached token-exchange result; the zero value is a cache miss.
+// Scopes is what /api/session reports in exchange mode, since the exchanged token is
+// what the Platform API authorizes.
+type ExchangedToken struct {
+	// Token, not AccessToken: Session.AccessToken is the login token, and confusing
+	// the two is precisely what this feature exists to prevent.
+	Token             string
+	Expiry            time.Time
+	Scopes            []string
+	ConfigFingerprint string
+}
+
+// Usable reports whether the cached token can still be forwarded upstream. An unknown
+// expiry is never usable: freshness cannot be checked, so reusing it would risk
+// forwarding an expired credential.
+func (e ExchangedToken) Usable(now time.Time, minValidity time.Duration, fingerprint string) bool {
+	if e.Token == "" || e.Expiry.IsZero() {
+		return false
+	}
+	if e.ConfigFingerprint != fingerprint {
+		return false
+	}
+	return now.Add(minValidity).Before(e.Expiry)
 }
 
 // Expired reports whether the session has passed its absolute lifetime.

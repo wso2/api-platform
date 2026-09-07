@@ -113,6 +113,14 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false})
 		return
 	}
+	// Not fatal: the session is genuinely authenticated, and the next proxied request
+	// surfaces the failure with the right status.
+	if s.exchanger != nil {
+		if _, err := s.exchangedToken(r.Context(), jwt); err != nil {
+			slog.Warn("token exchange failed while hydrating session", "err", err)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
 		"user":          s.userFromToken(r.Context(), jwt),
@@ -172,6 +180,18 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, s.path("/login")+"?error=session_failed", http.StatusFound)
 		return
 	}
+	// Eager, so a misconfiguration surfaces as a failed login rather than as a 502 on
+	// the SPA's first API call, and the first /api/session already has scopes.
+	if s.exchanger != nil {
+		if _, err := s.exchangedToken(r.Context(), sess.AccessToken); err != nil {
+			slog.Error("token exchange failed at login", "err", err)
+			_ = s.store.Delete(r.Context(), sess.AccessToken)
+			s.clearSessionCookie(w)
+			http.Redirect(w, r, s.path("/login")+"?error=token_exchange_failed", http.StatusFound)
+			return
+		}
+	}
+
 	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
 	http.Redirect(w, r, s.sanitizeReturn(ret), http.StatusFound)
 }
@@ -209,7 +229,14 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.proxy.ServeHTTP(w, proxy.WithToken(r, jwt))
+	upstream, err := s.upstreamToken(r.Context(), jwt)
+	if err != nil {
+		slog.Warn("token exchange failed for proxied request", "err", err, "path", r.URL.Path)
+		s.writeExchangeError(w, r, err)
+		return
+	}
+
+	s.proxy.ServeHTTP(w, proxy.WithToken(r, upstream))
 }
 
 // ---------------------------------------------------------------------------
@@ -253,11 +280,26 @@ func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
 func (s *Server) userFromToken(ctx context.Context, jwt string) session.User {
 	if s.oidc != nil {
 		if sess, ok, _ := s.store.Get(ctx, jwt); ok {
-			return sess.User
+			return s.withExchangedScopes(sess.User, sess.Exchanged)
 		}
 		return s.oidc.UserFromAccessToken(jwt)
 	}
 	return session.UserFromClaims(session.DecodeJWTClaims(jwt), nil, s.claims)
+}
+
+// withExchangedScopes reports what the Platform API will authorize, which in exchange
+// mode the exchanged token decides. This is what lets an IDP that cannot mint ap:*
+// scopes run with [auth.authorization] mode = "scope" instead of mirroring a grant
+// table across two services.
+//
+// An empty set is left alone: a freshly restored session has not exchanged yet, and
+// blanking scopes would show nothing as permitted for a fully authorized session.
+func (s *Server) withExchangedScopes(u session.User, ex session.ExchangedToken) session.User {
+	if s.exchanger == nil || len(ex.Scopes) == 0 {
+		return u
+	}
+	u.Scopes = ex.Scopes
+	return u
 }
 
 // putRefreshState stores the OIDC refresh/id tokens keyed by the access JWT so
@@ -333,6 +375,8 @@ func (s *Server) doRefresh(ctx context.Context, jwt string) (*session.Session, e
 	}
 	updated := s.oidc.SessionFromToken(tok, cur)
 	updated.ID = updated.AccessToken
+	// SessionFromToken returns a fresh record, so Exchanged is already zero. Do not
+	// copy cur.Exchanged forward: it was derived from the token that just rotated.
 	// Preserve the original absolute deadline: the hard cap must bound total
 	// session lifetime, not slide forward on every refresh (which would let an
 	// active session live indefinitely and disagree with the cookie's MaxAge).
@@ -390,4 +434,122 @@ func (s *Server) sanitizeReturn(p string) string {
 		return home
 	}
 	return p
+}
+
+// ---------------------------------------------------------------------------
+// Token exchange
+// ---------------------------------------------------------------------------
+
+// upstreamToken resolves the token to forward to the Platform API. With an exchange
+// configured there is no fallback to the subject token: forwarding it would carry the
+// wrong audience and, on an IDP that mints no ap:* scopes, no authorization at all.
+func (s *Server) upstreamToken(ctx context.Context, subjectToken string) (string, error) {
+	if s.exchanger == nil {
+		return subjectToken, nil
+	}
+	res, err := s.exchangedToken(ctx, subjectToken)
+	if err != nil {
+		return "", err
+	}
+	return res.AccessToken, nil
+}
+
+// exchangedToken returns a cached exchanged token when one is still usable, and
+// performs an exchange otherwise.
+func (s *Server) exchangedToken(ctx context.Context, subjectToken string) (*auth.Result, error) {
+	fingerprint := s.exchanger.ConfigFingerprint()
+
+	if s.exchanger.CacheEnabled() {
+		if sess, ok, _ := s.store.Get(ctx, subjectToken); ok {
+			if sess.Exchanged.Usable(time.Now(), s.exchanger.MinValidity(), fingerprint) {
+				return &auth.Result{
+					AccessToken: sess.Exchanged.Token,
+					Expiry:      sess.Exchanged.Expiry,
+					Scopes:      sess.Exchanged.Scopes,
+				}, nil
+			}
+		}
+	}
+	return s.exchangeSingleFlight(ctx, subjectToken, fingerprint)
+}
+
+// exchangeSingleFlight performs one exchange per subject token at a time, mirroring
+// refreshByToken's structure.
+func (s *Server) exchangeSingleFlight(ctx context.Context, subjectToken, fingerprint string) (*auth.Result, error) {
+	s.exchangeMu.Lock()
+	mu := s.exchangeLocks[subjectToken]
+	if mu == nil {
+		mu = &exchangeLock{}
+		s.exchangeLocks[subjectToken] = mu
+	}
+	s.exchangeMu.Unlock()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if mu.done {
+		return mu.result, mu.err
+	}
+
+	mu.result, mu.err = s.doExchange(ctx, subjectToken, fingerprint)
+	mu.done = true
+
+	// The owner drops the entry on every exit path; waiters hold the pointer and read
+	// the cached result above even after it is gone.
+	s.exchangeMu.Lock()
+	delete(s.exchangeLocks, subjectToken)
+	s.exchangeMu.Unlock()
+
+	return mu.result, mu.err
+}
+
+// doExchange performs the exchange and caches the result on the session record.
+func (s *Server) doExchange(ctx context.Context, subjectToken, fingerprint string) (*auth.Result, error) {
+	res, err := s.exchanger.Exchange(ctx, subjectToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if !s.exchanger.CacheEnabled() {
+		return res, nil
+	}
+
+	if res.Expiry.IsZero() {
+		slog.Warn("exchanged token has no expiry (no expires_in and no exp claim) — " +
+			"caching skipped, so every upstream request will perform its own exchange")
+		return res, nil
+	}
+
+	// Best-effort: a missing entry (BFF restarted mid-session) only costs a
+	// re-exchange next request, so it must not fail this one.
+	if sess, ok, _ := s.store.Get(ctx, subjectToken); ok {
+		sess.Exchanged = session.ExchangedToken{
+			Token:             res.AccessToken,
+			Expiry:            res.Expiry,
+			Scopes:            res.Scopes,
+			ConfigFingerprint: fingerprint,
+		}
+		if err := s.store.Put(ctx, sess); err != nil {
+			slog.Warn("failed to cache exchanged token on the session", "err", err)
+		}
+	}
+	return res, nil
+}
+
+// writeExchangeError destroys the session on a rejection (it can never produce an
+// upstream token) but keeps it on an unavailable IDP, which may recover — logging the
+// user out over a transient blip would be self-inflicted. Neither response carries the
+// IDP's reason; the exchanger already logged it.
+func (s *Server) writeExchangeError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, auth.ErrExchangeRejected) {
+		if s.store != nil {
+			if tok, ok := s.tokenFromCookie(r); ok {
+				_ = s.store.Delete(r.Context(), tok)
+			}
+		}
+		s.clearSessionCookie(w)
+		writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
+		return
+	}
+	writeErrorJSON(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "upstream temporarily unavailable")
 }

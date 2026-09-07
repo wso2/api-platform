@@ -141,6 +141,15 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Reaches the Platform API directly, not through handleProxy, so it must resolve
+	// the upstream token the same way.
+	upstreamJWT, exchErr := s.upstreamToken(r.Context(), jwt)
+	if exchErr != nil {
+		slog.Warn("token exchange failed for composite request", "path", resourcePath, "err", exchErr)
+		s.writeExchangeError(w, r, exchErr)
+		return
+	}
+
 	const maxBodyBytes = 1 << 20 // 1 MiB — ample for any LLM provider or MCP server payload
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	body, err := io.ReadAll(r.Body)
@@ -154,7 +163,7 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 	if q := r.URL.RawQuery; q != "" {
 		path += "?" + q
 	}
-	resp, err := s.platformDo(r.Context(), jwt, http.MethodPost, path, r.Header, body)
+	resp, err := s.platformDo(r.Context(), upstreamJWT, http.MethodPost, path, r.Header, body)
 	if err != nil {
 		slog.Error("bff: platform API call failed", "path", resourcePath, "err", err)
 		writeServerErrorJSON(w, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "upstream request failed", w.Header().Get("X-Request-Id"))
@@ -165,7 +174,7 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 	// On failure, compensate by deleting every secret that was already created.
 	if resp.StatusCode >= 400 {
 		for _, handle := range extractSecretHandles(body) {
-			s.deleteSecretAsync(jwt, handle, apiBasePath)
+			s.deleteSecretAsync(upstreamJWT, handle, apiBasePath)
 		}
 	}
 

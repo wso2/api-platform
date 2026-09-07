@@ -84,8 +84,22 @@ func defaultConfig() *Config {
 		},
 		Auth: AuthConfig{
 			Mode: "basic",
+			// Token exchange is off by default, so a deployment that omits the
+			// [auth.oidc.token_exchange] table forwards the login token exactly as
+			// before. The token-type defaults suit WSO2 IS / Asgardeo, which accepts
+			// JWT-typed subject tokens only and requires requested_token_type; Okta and
+			// Keycloak deployments override the subject type. Scopes stays empty so
+			// normalize can inherit the login scopes.
 			OIDC: OIDCConfig{
 				Scopes: defaultOIDCScopes,
+				TokenExchange: TokenExchangeConfig{
+					Enabled:            false,
+					GrantType:          GrantTokenExchange,
+					SubjectTokenType:   "urn:ietf:params:oauth:token-type:jwt",
+					RequestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+					CacheEnabled:       true,
+					MinValidity:        60 * time.Second,
+				},
 			},
 			// Defaults mirror the Platform API's own claim_mappings defaults so the two
 			// agree out of the box; override on both sides together when an IDP uses
