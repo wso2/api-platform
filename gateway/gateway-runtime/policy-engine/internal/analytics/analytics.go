@@ -63,6 +63,8 @@ const (
 	DefaultAnalyticsPublisher = "default"
 	// MoesifAnalyticsPublisher represents the Moesif analytics publisher.
 	MoesifAnalyticsPublisher = "moesif"
+	// OTelAnalyticsPublisher represents the OpenTelemetry analytics publisher
+	OTelAnalyticsPublisher = "otel"
 
 	// HeaderKeys represents the header keys.
 	RequestHeadersKey  = "request_headers"
@@ -81,6 +83,10 @@ const (
 	AIProviderNameMetadataKey string = "ai:providername"
 	// AIProviderAPIVersionMetadataKey represents the AI provider API version metadata key.
 	AIProviderAPIVersionMetadataKey string = "ai:providerversion"
+
+	// RequestModelIDMetadataKey represents the model named in the request
+	// (Separate from ModelIDMetadataKey (which resolves to the response model).
+	RequestModelIDMetadataKey string = "aitoken:requestmodelid"
 
 	// UserIDMetadataKey represents the user ID metadata key for analytics.
 	UserIDMetadataKey string = "x-wso2-user-id"
@@ -122,6 +128,16 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 					publishers = append(publishers, publisher)
 					slog.Info("Moesif publisher added")
 				}
+			case OTelAnalyticsPublisher:
+				publisher, err := analytics_publisher.NewOTel(&analyticsCfg.Publishers.OTel)
+				if err != nil {
+					// Fail closed on invalid TLS material to avoid a healthy-looking gateway
+					// silently exporting nothing. Validation already confirms the material loads.
+					slog.Error("Failed to initialize the OTel analytics publisher; refusing to start", "error", err)
+					panic(fmt.Sprintf("otel analytics publisher configuration is unusable: %v", err))
+				}
+				publishers = append(publishers, publisher)
+				slog.Info("OTel publisher added")
 			default:
 				slog.Warn("Unknown publisher type", "type", publisherName)
 			}
@@ -527,6 +543,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			aiMetadata.LLMCost = parsedLLMCost
 		}
 		event.Properties["aiMetadata"] = aiMetadata
+		if requestModel := keyValuePairsFromMetadata[RequestModelIDMetadataKey]; requestModel != "" {
+			event.Properties[constants.RequestModelPropertyKey] = requestModel
+		}
 
 		aiTokenUsage := dto.AITokenUsage{}
 		// Prompt tokens

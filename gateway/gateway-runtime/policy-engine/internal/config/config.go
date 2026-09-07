@@ -134,6 +134,53 @@ type AnalyticsConfig struct {
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
 type AnalyticsPublishersConfig struct {
 	Moesif MoesifPublisherConfig `koanf:"moesif"`
+	OTel   OTelPublisherConfig   `koanf:"otel"`
+}
+
+// OTelPublisherConfig configures the OpenTelemetry analytics publisher, which
+// exports each event as an OTLP log record over OTLP/HTTP.
+type OTelPublisherConfig struct {
+	// Endpoint is the full OTLP/HTTP logs URL, including the /v1/logs path.
+	Endpoint string `koanf:"endpoint"`
+	// Headers are sent on every export request. Use for a vendor's OTLP intake
+	// that authenticates by header. Values are secrets and are never logged.
+	Headers map[string]string `koanf:"headers"`
+	// ServiceName / ServiceVersion populate the OTLP resource.
+	ServiceName    string `koanf:"service_name"`
+	ServiceVersion string `koanf:"service_version"`
+	// ResourceAttributes are added to the OTLP resource, alongside service.*.
+	ResourceAttributes map[string]string `koanf:"resource_attributes"`
+	// BatchSize is the record count that triggers an export before FlushInterval.
+	BatchSize int `koanf:"batch_size"`
+	// FlushInterval bounds how long a record waits when traffic is too slow to
+	// fill a batch.
+	FlushInterval time.Duration `koanf:"flush_interval"`
+	// QueueSize bounds records held in memory when the endpoint is slow. Records
+	// are dropped and counted once it is full.
+	QueueSize int `koanf:"queue_size"`
+	// Timeout bounds a single export attempt.
+	Timeout time.Duration `koanf:"timeout"`
+	// TLS configures the client side of an https endpoint. Ignored for http.
+	TLS OTelTLSConfig `koanf:"tls"`
+}
+
+// OTelTLSConfig configures TLS to the OTLP endpoint
+// ([analytics.publishers.otel.tls]). Deliberately a separate type from
+// TrafficLogHTTPTLSConfig despite the identical keys: the two config blocks are
+// independent, and sharing one type would couple them.
+type OTelTLSConfig struct {
+	// CAFile is a PEM bundle used to verify the endpoint's certificate. Empty
+	// means the system trust store, which is correct for a vendor's OTLP intake
+	// and usually wrong for an in-cluster collector fronted by a private CA.
+	CAFile string `koanf:"ca_file"`
+	// CertFile / KeyFile enable mTLS. Both must be set, or neither.
+	CertFile string `koanf:"cert_file"`
+	KeyFile  string `koanf:"key_file"`
+	// InsecureSkipVerify disables endpoint certificate verification. Off by
+	// default; when on, startup logs a warning naming the endpoint, because
+	// analytics records carry request metadata and, when body capture is
+	// enabled, request and response bodies.
+	InsecureSkipVerify bool `koanf:"insecure_skip_verify"`
 }
 
 // Traffic-log sink names accepted in traffic_logging.outputs.
@@ -1170,6 +1217,15 @@ func defaultConfig() *Config {
 					BatchSize:          50,
 					TimerWakeupSeconds: 3,
 				},
+				OTel: OTelPublisherConfig{
+					Endpoint:       "http://otel-collector:4318/v1/logs",
+					ServiceName:    "policy-engine",
+					ServiceVersion: "",
+					BatchSize:      100,
+					FlushInterval:  5 * time.Second,
+					QueueSize:      10000,
+					Timeout:        10 * time.Second,
+				},
 			},
 			GRPCEventServerCfg: map[string]interface{}{
 				"server_port":           18090,
@@ -1454,6 +1510,72 @@ func (c *Config) validateXDSConfig() error {
 	return nil
 }
 
+// validateOTelPublisherConfig validates [analytics.publishers.otel].
+func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
+	if cfg.Endpoint == "" {
+		return fmt.Errorf("analytics.publishers.otel.endpoint is required when otel is enabled")
+	}
+	u, err := url.Parse(cfg.Endpoint)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("analytics.publishers.otel.endpoint must be a valid URL (e.g. http://otel-collector:4318/v1/logs), got %q", cfg.Endpoint)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("analytics.publishers.otel.endpoint scheme must be http or https, got %q", u.Scheme)
+	}
+	if cfg.ServiceName == "" {
+		return fmt.Errorf("analytics.publishers.otel.service_name is required")
+	}
+	if cfg.BatchSize <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.batch_size must be > 0, got %d", cfg.BatchSize)
+	}
+	if cfg.QueueSize <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.queue_size must be > 0, got %d", cfg.QueueSize)
+	}
+	// A queue smaller than a batch can never fill one, so every export would be
+	// interval-driven regardless of load.
+	if cfg.QueueSize < cfg.BatchSize {
+		return fmt.Errorf("analytics.publishers.otel.queue_size (%d) must be >= batch_size (%d)", cfg.QueueSize, cfg.BatchSize)
+	}
+	if cfg.FlushInterval <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.flush_interval must be > 0, got %s", cfg.FlushInterval)
+	}
+	if cfg.Timeout <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.timeout must be > 0, got %s", cfg.Timeout)
+	}
+	if err := validateOTelTLS(cfg.TLS, u.Host); err != nil {
+		return fmt.Errorf("analytics.publishers.otel.tls: %w", err)
+	}
+	return nil
+}
+
+// validateOTelTLS checks that any referenced TLS material exists and parses, so a
+// bad path fails at startup rather than on the first export.
+func validateOTelTLS(cfg OTelTLSConfig, host string) error {
+	if cfg.InsecureSkipVerify {
+		slog.Warn("analytics.publishers.otel.tls.insecure_skip_verify is true: the endpoint's "+
+			"certificate is not verified, so analytics records are exposed to anyone able to "+
+			"intercept this connection", "host", host)
+	}
+	if cfg.CAFile != "" {
+		pem, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return fmt.Errorf("cannot read ca_file %q: %w", cfg.CAFile, err)
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(pem) {
+			return fmt.Errorf("ca_file %q contains no usable PEM certificate", cfg.CAFile)
+		}
+	}
+	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
+		return fmt.Errorf("cert_file and key_file must be set together for mTLS (one is set, the other is not)")
+	}
+	if cfg.CertFile != "" {
+		if _, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile); err != nil {
+			return fmt.Errorf("cannot load client certificate/key pair: %w", err)
+		}
+	}
+	return nil
+}
+
 // validateCollectorConfig migrates deprecated analytics capture aliases onto the
 // collector and enforces the collector prerequisite: a consumer (analytics or
 // traffic logging) requires the collector that feeds it. The collector has no
@@ -1564,6 +1686,10 @@ func (c *Config) validateAnalyticsConfig() error {
 					if u, err := url.Parse(moesifCfg.BaseURL); err != nil || u.Scheme == "" || u.Host == "" {
 						return fmt.Errorf("analytics.publishers.moesif.moesif_base_url must be a valid URL (e.g. https://api.moesif.net), got %q", moesifCfg.BaseURL)
 					}
+				}
+			case "otel":
+				if err := validateOTelPublisherConfig(c.Analytics.Publishers.OTel); err != nil {
+					return err
 				}
 			default:
 				return fmt.Errorf("unknown publisher type in enabled_publishers: %s", publisherName)

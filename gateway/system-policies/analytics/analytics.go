@@ -24,6 +24,7 @@ const (
 	CompletionTokenCountMetadataKey  = "aitoken:completiontokencount"
 	TotalTokenCountMetadataKey       = "aitoken:totaltokencount"
 	ModelIDMetadataKey               = "aitoken:modelid"
+	RequestModelIDMetadataKey        = "aitoken:requestmodelid"
 	AIProviderNameMetadataKey        = "ai:providername"
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
 	ApplicationIDMetadataKey         = "x-wso2-application-id"
@@ -76,6 +77,7 @@ const (
 var (
 	// JSON Path expressions to extract MCP analytics properties from response body
 	JsonRpcMethodJsonPath     = "$.method"
+	JsonRpcIDJsonPath         = "$.id"
 	McpCapabilityNameJsonPath = "$.params.name"
 	McpResourceUriJsonPath    = "$.params.uri"
 	ProtocolVersionJsonPath   = "$.params.protocolVersion"
@@ -94,6 +96,7 @@ type AnalyticsPolicy struct{}
 
 type McpRequestAnalyticsProperties struct {
 	JsonRpcMethod  string         `json:"jsonRpcMethod,omitempty"`
+	JsonRpcID      string         `json:"jsonRpcId,omitempty"`
 	Capability     string         `json:"capability,omitempty"`
 	CapabilityName string         `json:"capabilityName,omitempty"`
 	ClientInfo     *McpClientInfo `json:"clientInfo,omitempty"`
@@ -400,6 +403,15 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 			}
 
 			props.JsonRpcMethod = extractString(JsonRpcMethodJsonPath)
+			// A JSON-RPC id may be a string or a number.
+			if raw, err := utils.ExtractValueFromJsonpath(mcpPayload, JsonRpcIDJsonPath); err == nil && raw != nil {
+				switch id := raw.(type) {
+				case string:
+					props.JsonRpcID = id
+				case float64:
+					props.JsonRpcID = strconv.FormatInt(int64(id), 10)
+				}
+			}
 			props.CapabilityName = extractString(McpCapabilityNameJsonPath)
 			props.Capability = deriveMCPCapability(props.JsonRpcMethod)
 
@@ -881,6 +893,9 @@ func populateTokenAnalyticsMetadata(analyticsMetadata map[string]any, tokenInfo 
 		analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.ResponseModel
 	} else if tokenInfo.RequestModel != nil {
 		analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.RequestModel
+	}
+	if tokenInfo.RequestModel != nil {
+		analyticsMetadata[RequestModelIDMetadataKey] = *tokenInfo.RequestModel
 	}
 	if tokenInfo.ProviderName != nil {
 		analyticsMetadata[AIProviderNameMetadataKey] = *tokenInfo.ProviderName

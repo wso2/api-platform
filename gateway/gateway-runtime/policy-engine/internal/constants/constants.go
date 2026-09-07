@@ -128,4 +128,5 @@ const (
 	GuardrailNameMetadataKey = "guardrailName"
 	LLMCostMetadataKey       = "x-llm-cost"
 	LLMCostPropertyKey       = "llmCost"
+	RequestModelPropertyKey = "requestModel" // Holds the model named in the request
 )

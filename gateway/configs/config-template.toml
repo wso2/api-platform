@@ -789,6 +789,18 @@ allow_payloads = false
 # during validation (with a warning). Prefer setting [collector] directly.
 send_request_body = false
 send_response_body = false
+# Publishers each enabled event is delivered to. Any combination of:
+#
+#   moesif  maps the event onto Moesif's event model and posts it with the Moesif
+#           SDK. Configured under [analytics.publishers.moesif] below.
+#   otel    exports the event to an OpenTelemetry collector as an OTLP log record
+#           (one record per transaction, event.name=wso2.api.transaction) over
+#           OTLP/HTTP. From the collector, any OTLP-capable backend — Datadog,
+#           Splunk, Elastic, Dynatrace, Grafana — is one exporter block away.
+#           Configured under [analytics.publishers.otel] below.
+#
+# Publishers are additive and independent: ["moesif", "otel"] delivers every event
+# to both. An unknown name is a startup error, not a silent no-op.
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
@@ -798,6 +810,53 @@ publish_interval = 5
 event_queue_size = 10000
 batch_size = 50
 timer_wakeup_seconds = 3
+
+[analytics.publishers.otel]
+# Full OTLP/HTTP logs URL, including the /v1/logs path. Point it at a collector
+# you run, or directly at a vendor's OTLP intake.
+endpoint = "http://otel-collector:4318/v1/logs"
+# service.name / service.version on the OTLP resource.
+service_name = "policy-engine"
+service_version = ""
+# Record count that triggers an export before flush_interval elapses.
+batch_size = 100
+# How long a record waits when traffic is too slow to fill a batch.
+flush_interval = "5s"
+# Records held in memory when the endpoint is slow. Must be >= batch_size.
+# Once full, records are dropped and counted rather than growing unbounded.
+queue_size = 10000
+# Bounds a single export attempt.
+timeout = "10s"
+
+# ==== UNCOMMENT WHEN REQUIRED ================================
+# Headers sent on every export, for a vendor OTLP intake that authenticates by
+# header. Values are secrets: they are never logged.
+#   [analytics.publishers.otel.headers]
+#   X-Moesif-Application-Id = '{{ env "MOESIF_APP_ID" "" }}'
+# Extra OTLP resource attributes, e.g. deployment.environment.name.
+#   [analytics.publishers.otel.resource_attributes]
+#   "deployment.environment.name" = "prod"
+
+# TLS to the OTLP endpoint. Ignored when `endpoint` is http.
+[analytics.publishers.otel.tls]
+# PEM bundle used to verify the endpoint's certificate. Empty means the system
+# trust store — correct for a vendor's OTLP intake, usually wrong for an
+# in-cluster collector fronted by a private CA.
+ca_file = ""
+# Client certificate and key for mTLS, in PEM form. Both or neither: setting one
+# without the other is a startup error rather than a silently unauthenticated
+# connection. Both files are read and parsed at startup, so a wrong path or a
+# mismatched pair fails immediately instead of at the first export.
+#
+# cert_file = "/secrets/gateway-runtime/otel-client.crt"
+# key_file  = "/secrets/gateway-runtime/otel-client.key"
+cert_file = ""
+key_file = ""
+# Disables verification of the endpoint's certificate. Off by default; when on,
+# startup logs a warning naming the endpoint, because analytics records carry
+# request metadata and, with collector body capture enabled, payloads.
+insecure_skip_verify = false
+
 
 # =============================================================================
 # TRAFFIC LOGGING (consumer — enabling it activates the collector)
