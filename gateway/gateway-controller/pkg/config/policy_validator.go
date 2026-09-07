@@ -20,8 +20,8 @@ package config
 
 import (
 	"fmt"
-	"regexp"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -119,34 +119,70 @@ func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfigurati
 
 // validateLLMPolicyRefs validates the three policy collections shared by LLM providers and
 // proxies: api-level (global) policies, operation-level policies, and the deprecated policies
-// list. An empty version resolves to the latest available version (handled by ResolvePolicyVersion).
+// list. Every collection gets its name/version reference resolved and its params validated
+// against the definition's declared parameter schema. An empty version resolves to the latest
+// available version (handled by ResolvePolicyVersion).
 func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) []ValidationError {
 	var errors []ValidationError
 
-	// Global (api-level) policies carry params, so reuse validatePolicy to also validate them.
+	// Global (api-level) policies carry params on the policy itself, so reuse validatePolicy.
 	if globalPolicies != nil {
 		for i, policy := range *globalPolicies {
 			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("spec.globalPolicies[%d]", i))...)
 		}
 	}
 
-	// Operation-level policies: validate name + version existence.
+	// Operation-level policies: name + version existence, then each path's params.
 	if operationPolicies != nil {
 		for i, policy := range *operationPolicies {
-			_, errs := pv.validatePolicyRef(policy.Name, policy.Version, fmt.Sprintf("spec.operationPolicies[%d]", i))
-			errors = append(errors, errs...)
+			fieldPath := fmt.Sprintf("spec.operationPolicies[%d]", i)
+			policyDef, errs := pv.validatePolicyRef(policy.Name, policy.Version, fieldPath)
+			if len(errs) > 0 {
+				errors = append(errors, errs...)
+				continue
+			}
+			for j := range policy.Paths {
+				errors = append(errors, pv.validateAttachedPolicyParams(policyDef, policy.Paths[j].Params,
+					fmt.Sprintf("%s.paths[%d]", fieldPath, j))...)
+			}
 		}
 	}
 
-	// Deprecated policies list (still honoured): validate name + version existence.
+	// Deprecated policies list (still honoured): same as operation-level policies.
 	if legacyPolicies != nil {
 		for i, policy := range *legacyPolicies {
-			_, errs := pv.validatePolicyRef(policy.Name, policy.Version, fmt.Sprintf("spec.policies[%d]", i))
-			errors = append(errors, errs...)
+			fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+			policyDef, errs := pv.validatePolicyRef(policy.Name, policy.Version, fieldPath)
+			if len(errs) > 0 {
+				errors = append(errors, errs...)
+				continue
+			}
+			for j := range policy.Paths {
+				errors = append(errors, pv.validateAttachedPolicyParams(policyDef, policy.Paths[j].Params,
+					fmt.Sprintf("%s.paths[%d]", fieldPath, j))...)
+			}
 		}
 	}
 
 	return errors
+}
+
+// validateAttachedPolicyParams validates one per-path params map from an LLM operation-level
+// or deprecated policy attachment against the resolved definition's parameter schema. Params
+// are coerced first, since template rendering always yields strings ({{ env "X" }} -> "100"
+// even for an integer param) — mirroring validatePolicy's handling of api-level params.
+func (pv *PolicyValidator) validateAttachedPolicyParams(policyDef *models.PolicyDefinition, params map[string]interface{}, fieldPath string) []ValidationError {
+	if policyDef == nil || policyDef.Parameters == nil {
+		return nil
+	}
+	if params == nil {
+		// A missing params map still has to be validated: the schema may declare
+		// required properties, and an empty object must fail the same way.
+		params = map[string]interface{}{}
+	} else {
+		coerceParamsBySchema(params, *policyDef.Parameters)
+	}
+	return pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params")
 }
 
 // validatePolicy validates a single policy reference (name + version existence) and, when the
