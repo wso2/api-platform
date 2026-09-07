@@ -1,0 +1,3 @@
+# Trust the platform-api certificate for control-plane HTTPS connections.
+[ai_workspace.control_plane]
+ca_file = "/etc/ai-workspace/tls/cp-cert.pem"

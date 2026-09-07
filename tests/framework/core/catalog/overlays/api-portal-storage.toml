@@ -1,0 +1,37 @@
+# Storage and control-plane configuration for api-portal.
+
+[api_portal.server]
+port = '{{ env "APIP_AP_SERVER_PORT" "9543" }}'
+
+# The test client reaches the portal through the mapped HTTP endpoint.
+[api_portal.server.https]
+enabled = false
+
+[api_portal.logging]
+console_only = true
+
+[api_portal.database]
+driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "postgres" }}'
+host     = '{{ env "APIP_AP_DATABASE_HOST" "" }}'
+port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
+name     = '{{ env "APIP_AP_DATABASE_NAME" "" }}'
+user     = '{{ env "APIP_AP_DATABASE_USER" "" }}'
+password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
+
+# Use the organization shared with platform-api.
+[api_portal.organization]
+handle       = "default"
+display_name = "Default"
+# Plans are created and synchronized by platform-api.
+auto_create_subscription_plans = false
+
+[api_portal.auth.local]
+platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
+# Verify platform-api tokens with its mounted public signing key.
+public_key_path  = "/etc/api-portal/keys/jwt_public.pem"
+# The test certificate is self-signed.
+tls_skip_verify  = true
+
+[api_portal.security]
+encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+session_secret = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
