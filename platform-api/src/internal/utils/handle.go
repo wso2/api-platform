@@ -28,7 +28,7 @@ import (
 
 const (
 	handleMinLength = 3
-	handleMaxLength = 63
+	handleMaxLength = 40
 	maxRetries      = 5
 	suffixLength    = 4
 )
@@ -49,7 +49,7 @@ var (
 // - No special characters
 // - No consecutive hyphens
 // - Cannot start or end with hyphen
-// - Length between 3 and 63 characters
+// - Length between 3 and 40 characters
 func ValidateHandle(handle string) error {
 	if handle == "" {
 		return constants.ErrHandleEmpty

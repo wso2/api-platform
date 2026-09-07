@@ -24,7 +24,7 @@ var (
 	ErrHandleDoesNotExist     = errors.New("handle does not exist")
 	ErrHandleEmpty            = errors.New("handle cannot be empty")
 	ErrHandleTooShort         = errors.New("handle must be at least 3 characters")
-	ErrHandleTooLong          = errors.New("handle must be at most 63 characters")
+	ErrHandleTooLong          = errors.New("handle must be at most 40 characters")
 	ErrInvalidHandle          = errors.New("handle must be lowercase alphanumeric with hyphens only (no consecutive hyphens, cannot start or end with hyphen)")
 	ErrHandleGenerationFailed = errors.New("failed to generate unique handle after maximum retries")
 	ErrHandleSourceEmpty      = errors.New("source string cannot be empty for handle generation")
