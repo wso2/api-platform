@@ -24,7 +24,9 @@
 # The provider must already be deployed (see bedrock-provider.yaml) with its
 # Bearer key on upstream.auth (the policy does NOT inject the Bedrock key).
 # The provider example's api-key-auth policy expects the proxy to send the
-# issued provider loopback key in X-API-Key.
+# issued provider loopback key as "Authorization: Bearer <key>" -- matching
+# the provider's own client-facing convention. LLMUpstreamAuth has no
+# separate valuePrefix field, so "Bearer " must be included in value here.
 # --------------------------------------------------------------------
 
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -39,8 +41,8 @@ spec:
     id: bedrock-provider
     auth:
       type: api-key
-      header: X-API-Key
-      value: REPLACE_WITH_BEDROCK_PROVIDER_LOOPBACK_KEY
+      header: Authorization
+      value: Bearer REPLACE_WITH_BEDROCK_PROVIDER_LOOPBACK_KEY
   policies:
     - name: openai-to-bedrock-transformer
       version: v1
