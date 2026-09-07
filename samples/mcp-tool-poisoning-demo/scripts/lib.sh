@@ -33,8 +33,49 @@ require_cmd() {
 mcp_request() {
   local url="$1" body="$2" token="${3:-}"
   local -a headers=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
+  local cfg="" out status meta http_code content_type
+
   if [[ -n "$token" ]]; then
-    headers+=(-H "Authorization: Bearer $token")
+    # Pass the bearer token via a 0600 curl config file instead of -H, so it
+    # never appears in `ps`/`/proc/<pid>/cmdline` output while the request is
+    # in flight. Removed again right after the request completes.
+    cfg=$(mktemp) || { log_err "mcp_request: failed to create temp file for auth header"; return 1; }
+    chmod 600 "$cfg"
+    printf 'header = "Authorization: Bearer %s"\n' "$token" > "$cfg"
+    headers+=(--config "$cfg")
   fi
-  curl -sS --max-time 10 -X POST "$url" "${headers[@]}" -d "$body"
+
+  out=$(mktemp)
+  meta=$(curl -sS --max-time 10 -X POST "$url" "${headers[@]}" -d "$body" \
+    -o "$out" -w '%{http_code} %{content_type}')
+  status=$?
+  [[ -n "$cfg" ]] && rm -f "$cfg"
+  if [[ $status -ne 0 ]]; then
+    rm -f "$out"
+    return $status
+  fi
+
+  http_code="${meta%% *}"
+  content_type="${meta#* }"
+
+  # This helper is not a spec-complete MCP transport (see header comment) --
+  # it only ever speaks plain application/json responses, so a non-2xx status
+  # or an SSE/other content type is rejected here rather than handed to jq,
+  # which would otherwise silently parse as "no tools" further downstream.
+  if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+    log_err "mcp_request: $url returned HTTP $http_code"
+    rm -f "$out"
+    return 22
+  fi
+  # A notification (e.g. notifications/initialized) legitimately gets back an
+  # empty 202 with no Content-Type -- only enforce the content-type check when
+  # there's an actual body a caller might hand to jq.
+  if [[ -s "$out" && "$content_type" != application/json* ]]; then
+    log_err "mcp_request: $url returned unsupported content type '${content_type:-<none>}' (expected application/json)"
+    rm -f "$out"
+    return 22
+  fi
+
+  cat "$out"
+  rm -f "$out"
 }

@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/scripts/lib.sh"
 
 log_header "MCP Tool Poisoning Demo -- Teardown"
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+if docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
   docker rm -f "${CONTAINER_NAME}" >/dev/null
   log_ok "Removed ${CONTAINER_NAME}"
 else

@@ -19,7 +19,7 @@ else
   log_info ".env already exists -- leaving it as-is"
 fi
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+if docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
   log_warn "Container ${CONTAINER_NAME} already exists -- removing it first"
   docker rm -f "${CONTAINER_NAME}" >/dev/null
 fi

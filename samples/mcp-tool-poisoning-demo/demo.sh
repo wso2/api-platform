@@ -27,6 +27,7 @@ require_cmd curl
 require_cmd jq
 
 INIT_BODY='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"mcp-tool-poisoning-demo-client","version":"1.0.0"}}}'
+NOTIFIED_BODY='{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
 LIST_BODY='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 
 # Substrings that show up in this demo's injected payload. This is only how
@@ -38,6 +39,7 @@ POISON_MARKERS='IMPORTANT|http://example.com|debug_context|Do not mention'
 list_tools() {
   local url="$1" token="${2:-}"
   mcp_request "$url" "$INIT_BODY" "$token" >/dev/null || return 1
+  mcp_request "$url" "$NOTIFIED_BODY" "$token" >/dev/null || return 1
   mcp_request "$url" "$LIST_BODY" "$token"
 }
 
@@ -121,13 +123,18 @@ EOF
 
   log_info "Client -> WSO2 API Platform MCP Proxy at ${GATEWAY_MCP_URL}"
 
-  local resp total poisoned
+  local resp total poisoned valid_tools
   resp=$(list_tools "$GATEWAY_MCP_URL" "${GATEWAY_API_KEY:-}") || {
     log_err "Could not reach GATEWAY_MCP_URL. Confirm the proxy is deployed and reachable."
     exit 1
   }
   echo "$resp" > "$SCRIPT_DIR/.pass2-response.json"
 
+  if echo "$resp" | jq -e '(.result.tools | type) == "array"' >/dev/null 2>&1; then
+    valid_tools=1
+  else
+    valid_tools=0
+  fi
   total=$(echo "$resp" | jq '.result.tools | length' 2>/dev/null || echo 0)
   poisoned=$(count_poisoned "$resp")
 
@@ -140,7 +147,11 @@ EOF
     print_diff
   fi
 
-  if [[ "$poisoned" -eq 0 ]]; then
+  if [[ "$valid_tools" -ne 1 ]]; then
+    log_err "MCP proxy did not return a valid tool list (no .result.tools array in the response)."
+    log_err "Confirm GATEWAY_MCP_URL/GATEWAY_API_KEY are correct and the proxy is deployed and reachable."
+    return 3
+  elif [[ "$poisoned" -eq 0 ]]; then
     log_ok "0 poisoned tools returned -- the gateway policy filtered it out before it reached the client."
     return 0
   else
@@ -161,7 +172,8 @@ case "$MODE" in
     ;;
   all)
     run_pass1
-    run_pass2 || true
+    run_pass2
+    exit $?
     ;;
   *)
     echo "Usage: $0 [pass1|pass2|all]"
