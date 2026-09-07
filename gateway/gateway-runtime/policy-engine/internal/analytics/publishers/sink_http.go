@@ -156,7 +156,7 @@ func newHTTPSink(cfg config.TrafficLogHTTPConfig) (*httpSink, error) {
 		authHeaderValue: value,
 		queue:           make(chan []byte, cfg.QueueCapacity),
 		dropOldest: strings.EqualFold(strings.TrimSpace(cfg.OnQueueFull),
-			config.TrafficLogQueueDropOldest),
+			config.QueueDropOldest),
 		done:    make(chan struct{}),
 		stopped: make(chan struct{}),
 		// Below this, retrying is free — nothing is being lost

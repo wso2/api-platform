@@ -155,9 +155,11 @@ type OTelPublisherConfig struct {
 	// FlushInterval bounds how long a record waits when traffic is too slow to
 	// fill a batch.
 	FlushInterval time.Duration `koanf:"flush_interval"`
-	// QueueSize bounds records held in memory when the endpoint is slow. Records
-	// are dropped and counted once it is full.
-	QueueSize int `koanf:"queue_size"`
+	// QueueCapacity bounds records held in memory when the endpoint is slow.
+	// Once full, OnQueueFull decides which record is dropped.
+	QueueCapacity int `koanf:"queue_capacity"`
+	// OnQueueFull is QueueDropNew (default) or QueueDropOldest. 
+	OnQueueFull string `koanf:"on_queue_full"`
 	// Timeout bounds a single export attempt.
 	Timeout time.Duration `koanf:"timeout"`
 	// TLS configures the client side of an https endpoint. Ignored for http.
@@ -209,12 +211,14 @@ const (
 	TrafficLogAuthHeader = "header"
 )
 
-// Behavior when the HTTP sink's queue is full (traffic_logging.http.on_queue_full).
+// Behavior when a bounded publisher queue is full. Shared vocabulary: both
+// traffic_logging.http.on_queue_full and analytics.publishers.otel.on_queue_full
+// accept exactly these values, so the two must never diverge.
 const (
-	// TrafficLogQueueDropNew discards the incoming line, preserving older ones.
-	TrafficLogQueueDropNew = "drop_new"
-	// TrafficLogQueueDropOldest evicts the oldest queued line to make room.
-	TrafficLogQueueDropOldest = "drop_oldest"
+	// QueueDropNew discards the incoming item, preserving older queued ones.
+	QueueDropNew = "drop_new"
+	// QueueDropOldest evicts the oldest queued item to make room for the new one.
+	QueueDropOldest = "drop_oldest"
 )
 
 // TrafficLoggingConfig holds configuration for the traffic-logging feature, which
@@ -1054,7 +1058,7 @@ func defaultTrafficLogHTTPConfig() TrafficLogHTTPConfig {
 		// ride out a short receiver blip without letting a long outage grow the
 		// heap without bound.
 		QueueCapacity:  10000,
-		OnQueueFull:    TrafficLogQueueDropNew,
+		OnQueueFull:    QueueDropNew,
 		RequestTimeout: 10 * time.Second,
 		MaxRetries:     3,
 		RetryBackoff:   time.Second,
@@ -1223,7 +1227,8 @@ func defaultConfig() *Config {
 					ServiceVersion: "",
 					BatchSize:      100,
 					FlushInterval:  5 * time.Second,
-					QueueSize:      10000,
+					QueueCapacity:  10000,
+					OnQueueFull:    QueueDropNew,
 					Timeout:        10 * time.Second,
 				},
 			},
@@ -1528,13 +1533,20 @@ func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
 	if cfg.BatchSize <= 0 {
 		return fmt.Errorf("analytics.publishers.otel.batch_size must be > 0, got %d", cfg.BatchSize)
 	}
-	if cfg.QueueSize <= 0 {
-		return fmt.Errorf("analytics.publishers.otel.queue_size must be > 0, got %d", cfg.QueueSize)
+	if cfg.QueueCapacity <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.queue_capacity must be > 0, got %d; an unbounded "+
+			"queue in front of a bounded exporter is deferred unbounded memory growth", cfg.QueueCapacity)
 	}
 	// A queue smaller than a batch can never fill one, so every export would be
 	// interval-driven regardless of load.
-	if cfg.QueueSize < cfg.BatchSize {
-		return fmt.Errorf("analytics.publishers.otel.queue_size (%d) must be >= batch_size (%d)", cfg.QueueSize, cfg.BatchSize)
+	if cfg.QueueCapacity < cfg.BatchSize {
+		return fmt.Errorf("analytics.publishers.otel.queue_capacity (%d) must be >= batch_size (%d)", cfg.QueueCapacity, cfg.BatchSize)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.OnQueueFull)) {
+	case QueueDropNew, QueueDropOldest:
+	default:
+		return fmt.Errorf("analytics.publishers.otel.on_queue_full must be %q or %q, got %q",
+			QueueDropNew, QueueDropOldest, cfg.OnQueueFull)
 	}
 	if cfg.FlushInterval <= 0 {
 		return fmt.Errorf("analytics.publishers.otel.flush_interval must be > 0, got %s", cfg.FlushInterval)
@@ -1996,10 +2008,10 @@ func validateTrafficLogHTTPConfig(cfg TrafficLogHTTPConfig) error {
 			"bounded sender is deferred unbounded memory growth", cfg.QueueCapacity)
 	}
 	switch strings.ToLower(strings.TrimSpace(cfg.OnQueueFull)) {
-	case TrafficLogQueueDropNew, TrafficLogQueueDropOldest:
+	case QueueDropNew, QueueDropOldest:
 	default:
 		return fmt.Errorf("on_queue_full must be %q or %q, got %q",
-			TrafficLogQueueDropNew, TrafficLogQueueDropOldest, cfg.OnQueueFull)
+			QueueDropNew, QueueDropOldest, cfg.OnQueueFull)
 	}
 	if cfg.RequestTimeout <= 0 {
 		return fmt.Errorf("request_timeout must be positive, got %s", cfg.RequestTimeout)

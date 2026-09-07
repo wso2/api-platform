@@ -92,9 +92,9 @@ func TestValidate_OTelPublisher(t *testing.T) {
 		"non-http scheme":       func(o *OTelPublisherConfig) { o.Endpoint = "grpc://collector:4317" },
 		"missing service name":  func(o *OTelPublisherConfig) { o.ServiceName = "" },
 		"zero batch size":       func(o *OTelPublisherConfig) { o.BatchSize = 0 },
-		"zero queue size":       func(o *OTelPublisherConfig) { o.QueueSize = 0 },
+		"zero queue capacity":   func(o *OTelPublisherConfig) { o.QueueCapacity = 0 },
 		// A queue smaller than a batch can never fill one.
-		"queue smaller than batch": func(o *OTelPublisherConfig) { o.QueueSize = 10; o.BatchSize = 100 },
+		"queue smaller than batch": func(o *OTelPublisherConfig) { o.QueueCapacity = 10; o.BatchSize = 100 },
 		"zero flush interval":      func(o *OTelPublisherConfig) { o.FlushInterval = 0 },
 		"negative timeout":         func(o *OTelPublisherConfig) { o.Timeout = -time.Second },
 	}
@@ -105,6 +105,26 @@ func TestValidate_OTelPublisher(t *testing.T) {
 			assert.Contains(t, err.Error(), "analytics.publishers.otel")
 		})
 	}
+
+	// The two accepted values are shared with traffic_logging.http via
+	// QueueDropNew/QueueDropOldest, so both blocks must keep accepting both.
+	t.Run("both drop policies are accepted", func(t *testing.T) {
+		for _, policy := range []string{QueueDropNew, QueueDropOldest, " DROP_OLDEST "} {
+			cfg := otelConfig(func(o *OTelPublisherConfig) { o.OnQueueFull = policy })
+			assert.NoError(t, cfg.Validate(), "policy %q", policy)
+		}
+	})
+
+	// Silently defaulting an unrecognised value would give an operator who asked
+	// for drop_oldest the opposite behaviour.
+	t.Run("unknown drop policy is an error", func(t *testing.T) {
+		for _, policy := range []string{"", "drop", "evict_oldest", "drop_newest"} {
+			cfg := otelConfig(func(o *OTelPublisherConfig) { o.OnQueueFull = policy })
+			err := cfg.Validate()
+			require.Error(t, err, "policy %q", policy)
+			assert.Contains(t, err.Error(), "on_queue_full")
+		}
+	})
 
 	// An unknown publisher name must fail rather than be silently skipped.
 	t.Run("unknown publisher name is an error", func(t *testing.T) {

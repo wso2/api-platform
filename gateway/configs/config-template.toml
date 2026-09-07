@@ -823,8 +823,18 @@ batch_size = 100
 # How long a record waits when traffic is too slow to fill a batch.
 flush_interval = "5s"
 # Records held in memory when the endpoint is slow. Must be >= batch_size.
-# Once full, records are dropped and counted rather than growing unbounded.
-queue_size = 10000
+# Once full, on_queue_full decides which record is dropped — the queue never
+# grows unbounded.
+queue_capacity = 10000
+# Which record is discarded once the queue is full. Analytics is strictly
+# downstream of request handling, so one of the two always happens; the choice is
+# whether a slow endpoint costs the newest records or the oldest.
+#   "drop_new"    — discard the incoming record, preserving older queued ones.
+#                   Keeps the earliest view of an incident.
+#   "drop_oldest" — evict the oldest queued record to make room. Keeps the most
+#                   recent traffic, at the cost of the start of the backlog.
+# Same two values as traffic_logging.http.on_queue_full.
+on_queue_full = "drop_new"
 # Bounds a single export attempt.
 timeout = "10s"
 

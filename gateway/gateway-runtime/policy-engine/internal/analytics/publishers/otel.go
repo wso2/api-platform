@@ -94,6 +94,8 @@ type OTel struct {
 
 	droppedMu sync.Mutex
 	dropped   int
+	// dropOldest is resolved once at construction rather than per record.
+	dropOldest bool
 }
 
 // NewOTel creates the OTLP-logs publisher and starts its exporting worker.
@@ -126,9 +128,10 @@ func NewOTel(cfg *config.OTelPublisherConfig) (*OTel, error) {
 				return http.ErrUseLastResponse
 			},
 		},
-		queue:      make(chan *otelLogRecord, cfg.QueueSize),
+		queue:      make(chan *otelLogRecord, cfg.QueueCapacity),
 		stop:       make(chan struct{}),
 		workerDone: make(chan struct{}),
+		dropOldest: strings.EqualFold(strings.TrimSpace(cfg.OnQueueFull), config.QueueDropOldest),
 	}
 	go o.run()
 
@@ -139,7 +142,8 @@ func NewOTel(cfg *config.OTelPublisherConfig) (*OTel, error) {
 	// Headers are deliberately omitted: they carry credentials.
 	slog.Info("OTel analytics publisher started",
 		"endpoint", cfg.Endpoint, "batchSize", cfg.BatchSize,
-		"flushInterval", cfg.FlushInterval, "queueSize", cfg.QueueSize)
+		"flushInterval", cfg.FlushInterval, "queueCapacity", cfg.QueueCapacity,
+		"onQueueFull", cfg.OnQueueFull)
 	return o, nil
 }
 
@@ -191,24 +195,51 @@ func isLoopbackHost(host string) bool {
 }
 
 // Publish converts the event to an OTLP log record and enqueues it.
+//
+// Never blocks: analytics is strictly downstream of request handling, so a full
+// queue costs a record and never a request.
 func (o *OTel) Publish(event *dto.Event) {
 	if event == nil {
 		return
 	}
+	record := o.buildRecord(event)
+
 	select {
-	case o.queue <- o.buildRecord(event):
+	case o.queue <- record:
+		return
 	default:
-		// The collector is not keeping up. Dropping the newest record preserves
-		// the queued older ones; analytics is strictly downstream of request
-		// handling, so a drop must never surface to the client.
-		o.droppedMu.Lock()
-		o.dropped++
-		count := o.dropped
-		o.droppedMu.Unlock()
-		if count == 1 || count%100 == 0 {
-			slog.Warn("OTel publisher queue full; dropping analytics event",
-				"droppedTotal", count, "queueSize", o.cfg.QueueSize)
+	}
+
+	if o.dropOldest {
+		// Evict one old record and retry once. A single attempt is deliberate: a
+		// loop could spin while producers keep the queue full, turning a
+		// non-blocking Publish into an unbounded one.
+		select {
+		case <-o.queue:
+			o.countDrop()
+		default:
 		}
+		select {
+		case o.queue <- record:
+			return
+		default:
+		}
+	}
+
+	o.countDrop()
+}
+
+// countDrop records one dropped record, warning on the first and then every
+// hundredth so a sustained outage cannot flood the log.
+func (o *OTel) countDrop() {
+	o.droppedMu.Lock()
+	o.dropped++
+	count := o.dropped
+	o.droppedMu.Unlock()
+	if count == 1 || count%100 == 0 {
+		slog.Warn("OTel publisher queue full; dropping analytics event",
+			"droppedTotal", count, "queueCapacity", o.cfg.QueueCapacity,
+			"onQueueFull", o.cfg.OnQueueFull)
 	}
 }
 

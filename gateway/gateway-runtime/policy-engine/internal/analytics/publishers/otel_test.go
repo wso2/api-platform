@@ -33,6 +33,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -52,7 +53,8 @@ func testOTelConfig(endpoint string) config.OTelPublisherConfig {
 		ServiceName:   "policy-engine",
 		BatchSize:     100,
 		FlushInterval: 50 * time.Millisecond,
-		QueueSize:     100,
+		QueueCapacity: 100,
+		OnQueueFull:   config.QueueDropNew,
 		Timeout:       2 * time.Second,
 	}
 }
@@ -475,30 +477,102 @@ func TestExportPayloadAndHeaders(t *testing.T) {
 	}
 }
 
-// A full queue must drop rather than block the ALS ingest path.
-func TestPublishDropsWhenQueueFull(t *testing.T) {
-	cfg := testOTelConfig("http://127.0.0.1:1/v1/logs")
-	cfg.QueueSize = 1
-	cfg.BatchSize = 1
-	cfg.FlushInterval = time.Hour // keep the worker parked so the queue fills
+// correlatedEvent returns the REST fixture with a distinguishable correlation id,
+// so a queue's surviving record can be identified.
+func correlatedEvent(id string) *dto.Event {
+	event := restEvent()
+	event.MetaInfo.CorrelationID = id
+	return event
+}
 
-	o := &OTel{
+// newUndrainedOTel builds a publisher with no worker goroutine, so nothing
+// consumes the queue and Publish sees it full. NewOTel cannot be used here: it
+// starts the worker.
+func newUndrainedOTel(t *testing.T, capacity int, onQueueFull string) *OTel {
+	t.Helper()
+	cfg := testOTelConfig("http://127.0.0.1:1/v1/logs")
+	cfg.QueueCapacity = capacity
+	cfg.BatchSize = capacity
+	cfg.OnQueueFull = onQueueFull
+	return &OTel{
 		cfg:        cfg,
 		client:     &http.Client{Timeout: cfg.Timeout},
-		queue:      make(chan *otelLogRecord, cfg.QueueSize),
+		queue:      make(chan *otelLogRecord, cfg.QueueCapacity),
 		stop:       make(chan struct{}),
 		workerDone: make(chan struct{}),
+		dropOldest: strings.EqualFold(onQueueFull, config.QueueDropOldest),
 	}
-	// No worker started: nothing drains the queue.
-	for i := 0; i < 10; i++ {
-		o.Publish(restEvent())
-	}
+}
 
-	o.droppedMu.Lock()
-	dropped := o.dropped
-	o.droppedMu.Unlock()
-	if dropped != 9 {
-		t.Errorf("dropped = %d, want 9 (queue holds 1)", dropped)
+// A full queue must drop rather than block the ALS ingest path — under either
+// policy, and Publish must never block.
+func TestPublishDropsWhenQueueFull(t *testing.T) {
+	for _, policy := range []string{config.QueueDropNew, config.QueueDropOldest} {
+		t.Run(policy, func(t *testing.T) {
+			o := newUndrainedOTel(t, 1, policy)
+			for i := 0; i < 10; i++ {
+				o.Publish(restEvent())
+			}
+
+			o.droppedMu.Lock()
+			dropped := o.dropped
+			o.droppedMu.Unlock()
+			if dropped != 9 {
+				t.Errorf("dropped = %d, want 9 (queue holds 1)", dropped)
+			}
+			if len(o.queue) != 1 {
+				t.Errorf("queue holds %d records, want 1", len(o.queue))
+			}
+		})
+	}
+}
+
+// The policy decides *which* record survives, which is the whole point of the
+// setting: drop_new keeps the oldest queued record, drop_oldest keeps the newest.
+func TestPublishQueueFullKeepsPolicysRecord(t *testing.T) {
+	cases := []struct {
+		policy   string
+		survivor string
+	}{
+		{config.QueueDropNew, "first"},
+		{config.QueueDropOldest, "last"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.policy, func(t *testing.T) {
+			o := newUndrainedOTel(t, 1, tc.policy)
+			o.Publish(correlatedEvent("first"))
+			o.Publish(correlatedEvent("middle"))
+			o.Publish(correlatedEvent("last"))
+
+			if len(o.queue) != 1 {
+				t.Fatalf("queue holds %d records, want 1", len(o.queue))
+			}
+			got := attrMap(t, <-o.queue)["wso2.correlation.id"]
+			if got != tc.survivor {
+				t.Errorf("surviving record = %v, want %q", got, tc.survivor)
+			}
+		})
+	}
+}
+
+// drop_oldest evicts exactly once per Publish. A retry loop would spin while
+// producers keep the queue full, turning a non-blocking Publish into a blocking
+// one; a single eviction bounds the work per call.
+func TestPublishDropOldestEvictsOncePerCall(t *testing.T) {
+	o := newUndrainedOTel(t, 2, config.QueueDropOldest)
+	o.Publish(correlatedEvent("a"))
+	o.Publish(correlatedEvent("b"))
+	o.Publish(correlatedEvent("c")) // evicts "a", enqueues "c"
+
+	if len(o.queue) != 2 {
+		t.Fatalf("queue holds %d records, want 2", len(o.queue))
+	}
+	var got []interface{}
+	for len(o.queue) > 0 {
+		got = append(got, attrMap(t, <-o.queue)["wso2.correlation.id"])
+	}
+	if len(got) != 2 || got[0] != "b" || got[1] != "c" {
+		t.Errorf("queue = %v, want [b c]", got)
 	}
 }
 
