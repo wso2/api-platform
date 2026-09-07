@@ -45,7 +45,7 @@ const RoutePath = "/api/internal/" + constants.APIVersion + "/webhook/events"
 // CreateAPIKey/UpdateAPIKey/RevokeAPIKey already hash an externally provisioned key, persist it,
 // and broadcast to the gateways where the API is deployed — exactly what the webhook needs.
 type apiKeyService interface {
-	CreateAPIKey(ctx context.Context, apiHandle, kind, orgID, userID string, req *api.CreateAPIKeyRequest) error
+	CreateAPIKey(ctx context.Context, apiHandle, kind, orgID, userID string, req *api.CreateAPIKeyRequest) (*api.CreateAPIKeyResponse, error)
 	UpdateAPIKey(ctx context.Context, apiHandle, kind, orgID, keyName, userID string, keyAdmin, trustedOrigin bool, req *api.UpdateAPIKeyRequest) error
 	RevokeAPIKey(ctx context.Context, apiHandle, kind, orgID, keyName, userID string, keyAdmin, trustedOrigin bool) error
 }

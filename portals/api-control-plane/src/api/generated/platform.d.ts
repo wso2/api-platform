@@ -2665,10 +2665,10 @@ export interface components {
              */
             displayName: string;
             /**
-             * @description The plain text API key value that will be hashed before storage
+             * @description Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
              * @example sk_example_1234567890abcdef
              */
-            apiKey: string;
+            apiKey?: string;
             /**
              * @description Optional reference ID for tracing purposes (from external platforms)
              * @example ext-ref-12345
@@ -2705,6 +2705,14 @@ export interface components {
              * @example production-key-01
              */
             keyId?: string;
+            /**
+             * @description The generated API key value. Present only when the server generated
+             *     the key (no `apiKey` in the request); returned only in this
+             *     creation response and never retrievable afterwards. The example value is
+             *     a non-functional placeholder.
+             * @example REDACTED_API_KEY
+             */
+            apiKey?: string;
         };
         UpdateAPIKeyRequest: {
             /**
@@ -4708,7 +4716,7 @@ export interface components {
         "sortBy-Q": "name" | "createdAt";
         /** @description Sort direction applied to `sortBy`. */
         "sortOrder-Q": "asc" | "desc";
-        /** @description Case-insensitive substring filter matched against the resource id (handle). */
+        /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
         "query-Q": string;
     };
     requestBodies: never;
@@ -4837,7 +4845,7 @@ export interface operations {
                 sortBy?: components["parameters"]["sortBy-Q"];
                 /** @description Sort direction applied to `sortBy`. */
                 sortOrder?: components["parameters"]["sortOrder-Q"];
-                /** @description Case-insensitive substring filter matched against the resource id (handle). */
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
                 query?: components["parameters"]["query-Q"];
             };
             header?: never;
@@ -4994,7 +5002,7 @@ export interface operations {
                 sortBy?: components["parameters"]["sortBy-Q"];
                 /** @description Sort direction applied to `sortBy`. */
                 sortOrder?: components["parameters"]["sortOrder-Q"];
-                /** @description Case-insensitive substring filter matched against the resource id (handle). */
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
                 query?: components["parameters"]["query-Q"];
             };
             header?: never;
@@ -7120,7 +7128,7 @@ export interface operations {
                 sortBy?: components["parameters"]["sortBy-Q"];
                 /** @description Sort direction applied to `sortBy`. */
                 sortOrder?: components["parameters"]["sortOrder-Q"];
-                /** @description Case-insensitive substring filter matched against the resource id (handle). */
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
                 query?: components["parameters"]["query-Q"];
             };
             header?: never;
@@ -7547,7 +7555,7 @@ export interface operations {
                 sortBy?: components["parameters"]["sortBy-Q"];
                 /** @description Sort direction applied to `sortBy`. */
                 sortOrder?: components["parameters"]["sortOrder-Q"];
-                /** @description Case-insensitive substring filter matched against the resource id (handle). */
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
                 query?: components["parameters"]["query-Q"];
             };
             header?: never;

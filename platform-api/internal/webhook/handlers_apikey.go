@@ -174,13 +174,13 @@ func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) err
 	req := &api.CreateAPIKeyRequest{
 		// Id is the key's Platform API handle (its stable name); DisplayName is the human-readable name.
 		Id:            d.handlePtr(),
-		ApiKey:        plaintext,
+		ApiKey:        &plaintext,
 		DisplayName:   d.displayName(),
 		ExternalRefId: d.externalRefPtr(),
 		ExpiresAt:     expiresAt,
 	}
 	// userID is empty: webhook events are system-originated, not tied to an interactive user.
-	if err := r.apiKeys.CreateAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, "", req); err != nil {
+	if _, err := r.apiKeys.CreateAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, "", req); err != nil {
 		// Domain-level idempotency: a key already injected under this (api, handle) means a prior
 		// delivery succeeded. The underlying Create surfaces a raw unique-constraint error, so match
 		// on the constraint phrasing rather than a typed error.
