@@ -19,7 +19,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetHttpClient } from '@/api/core/http';
-import { collection, failure } from '@/test/msw';
+import { accepts, collection, failure, recorder } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -51,9 +51,9 @@ vi.mock('./components/ApiTypeSelector', () => ({
 }));
 
 vi.mock('./components/DefineApiPanel', () => ({
-  DefineApiPanel: ({ onDataFetched }: { onDataFetched: (draft: unknown) => void }) => (
+  DefineApiPanel: ({ onDraftChange }: { onDraftChange: (draft: unknown) => void }) => (
     <button
-      onClick={() => onDataFetched({ displayName: 'Orders API', version: '1.0' })}
+      onClick={() => onDraftChange({ displayName: 'Orders API', version: '1.0' })}
       type="button"
     >
       Use this contract
@@ -75,12 +75,36 @@ const submitCreate = async () => {
   const { user } = rendered;
 
   await user.click(screen.getByRole('button', { name: 'Choose REST' }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.click(screen.getByRole('button', { name: 'Use this contract' }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(screen.getByLabelText(/Target URL/), 'https://orders.example.com');
   await user.click(screen.getByRole('button', { name: 'Create' }));
 
   return rendered;
 };
+
+describe('ApiCreationWizard — explicit creation boundary', () => {
+  it('shows Step 3 without posting when Continue is clicked, then posts on Create', async () => {
+    const createRequests = recorder();
+    server.use(accepts('post', '/rest-apis', { id: 'orders-api' }, { record: createRequests }));
+    const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
+
+    await user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Use this contract' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('Step 3 of 3')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Target URL/)).toBeInTheDocument();
+    expect(createRequests.count()).toBe(0);
+
+    await user.type(screen.getByLabelText(/Target URL/), 'https://orders.example.com');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(createRequests.count()).toBe(1);
+  });
+});
 
 describe('ApiCreationWizard — a rejected create', () => {
   it('returns to the form with the reason on the field, when the user can fix it', async () => {

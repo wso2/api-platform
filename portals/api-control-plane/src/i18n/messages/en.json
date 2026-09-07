@@ -33,12 +33,12 @@
   "api.create.ApiCreationProgress.stage.validating": {
     "defaultMessage": "Validating configuration"
   },
-  "api.create.ApiCreationProgress.subtitle": {
-    "defaultMessage": "“{name}” will be ready in a moment.",
-    "description": "{name} is the display name the user gave the API. Never translated."
-  },
   "api.create.ApiCreationProgress.title": {
     "defaultMessage": "We are in the process of creating your API Proxy"
+  },
+  "api.create.ApiCreationProgress.titleWithName": {
+    "defaultMessage": "We are in the process of creating your {name} API Proxy",
+    "description": "{name} is the display name the user gave the API. Never translated."
   },
   "api.create.ApiCreationSteps.step.apiType": {
     "defaultMessage": "API type",
@@ -52,18 +52,24 @@
     "defaultMessage": "Source",
     "description": "Progress step where the user supplies a contract or a backend endpoint."
   },
+  "api.create.ApiCreationWizard.action.back": {
+    "defaultMessage": "Back"
+  },
+  "api.create.ApiCreationWizard.action.continue": {
+    "defaultMessage": "Continue"
+  },
   "api.create.ApiCreationWizard.apiType.generic": {
     "defaultMessage": "API",
     "description": "Stands in for the chosen API type when the wizard is opened straight at a later step."
   },
   "api.create.ApiCreationWizard.apiType.subtitle": {
-    "defaultMessage": "This decides how the gateway exposes your backend. Only REST is available today."
+    "defaultMessage": "Choose how the gateway should expose your backend."
   },
   "api.create.ApiCreationWizard.apiType.title": {
     "defaultMessage": "What kind of API are you exposing?"
   },
   "api.create.ApiCreationWizard.configure.subtitle": {
-    "defaultMessage": "Name it, set where it routes, and create it."
+    "defaultMessage": "Review the API details, configure its backend endpoint, and create it."
   },
   "api.create.ApiCreationWizard.configure.title": {
     "defaultMessage": "Configure and create"
@@ -74,6 +80,16 @@
   "api.create.ApiCreationWizard.source.title": {
     "defaultMessage": "How do you want to define your {apiType}?",
     "description": "{apiType} is the type picked in the first step, e.g. \"REST API\". Reads as one sentence."
+  },
+  "api.create.ApiCreationWizard.stepCount": {
+    "defaultMessage": "Step {current} of 3"
+  },
+  "api.create.ApiCreationWizard.title": {
+    "defaultMessage": "Create an API"
+  },
+  "api.create.ApiTypeSelector.badge.available": {
+    "defaultMessage": "Available",
+    "description": "Badge on an API type that can be selected now."
   },
   "api.create.ApiTypeSelector.badge.comingSoon": {
     "defaultMessage": "Coming soon",
@@ -88,7 +104,7 @@
     "description": "Accessible name for the group of API type cards. Noun, not a command."
   },
   "api.create.ApiTypeSelector.subtitle": {
-    "defaultMessage": "This decides how the gateway exposes your backend. Only REST is available today.",
+    "defaultMessage": "Choose how the gateway should expose your backend.",
     "description": "Supporting line under the API type selector heading."
   },
   "api.create.ApiTypeSelector.title": {
@@ -165,6 +181,10 @@
   },
   "api.create.defineApi.scratch.title": {
     "defaultMessage": "Design from scratch"
+  },
+  "api.create.fromContract.action.clearUrl": {
+    "defaultMessage": "Clear URL",
+    "description": "Clears the API contract URL field and its loaded preview."
   },
   "api.create.fromContract.action.sampleUrl": {
     "defaultMessage": "Try with Sample URL",
@@ -309,25 +329,25 @@
     "description": "Neutral helper line under the drop zone. {maxSize} is a formatted size such as \"10 MB\"."
   },
   "api.create.fromContract.upload.action": {
-    "defaultMessage": "Select file"
+    "defaultMessage": "Upload"
   },
   "api.create.fromContract.upload.hint": {
-    "defaultMessage": "One file · {extensions}",
+    "defaultMessage": "Drag & drop your file or click to select · Accepted file types: {extensions}",
     "description": "Sits under the drop-zone heading; {extensions} is a list such as \".json, .yaml\"."
   },
   "api.create.fromContract.upload.remove": {
     "defaultMessage": "Remove {fileName}",
     "description": "Accessible name for the button that discards the chosen file."
   },
-  "api.create.fromContract.upload.replace": {
-    "defaultMessage": "Replace file",
-    "description": "Reopens the file picker so the chosen contract can be swapped for another."
-  },
   "api.create.fromContract.upload.required": {
     "defaultMessage": "Select an API contract file to continue"
   },
   "api.create.fromContract.upload.title": {
-    "defaultMessage": "Drag and drop your contract here"
+    "defaultMessage": "Upload API Contract"
+  },
+  "api.create.fromContract.upload.uploadedFile": {
+    "defaultMessage": "Uploaded file",
+    "description": "Heading above the selected API contract file."
   },
   "api.create.fromContract.upload.unsupported": {
     "defaultMessage": "That file type is not supported. Accepted types: {extensions}"
@@ -409,9 +429,6 @@
   "api.create.generalForm.section.basicInformation": {
     "defaultMessage": "Basic information"
   },
-  "api.create.generalForm.subtitle": {
-    "defaultMessage": "Provide the details to configure and expose your API proxy."
-  },
   "api.create.generalForm.targetUrl.error.invalid": {
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
@@ -423,9 +440,6 @@
   },
   "api.create.generalForm.targetUrl.label": {
     "defaultMessage": "Target URL"
-  },
-  "api.create.generalForm.title": {
-    "defaultMessage": "Create an API Proxy"
   },
   "api.create.generalForm.version.error.pattern": {
     "defaultMessage": "Use letters, numbers, dots, hyphens and underscores — no spaces or slashes."
@@ -700,13 +714,10 @@
     "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.body": {
-    "defaultMessage": "Draw operations on a canvas, check them against governance rules, and design with AI in VS Code."
+    "defaultMessage": "Design, edit, and validate OpenAPI 3.x APIs directly in VS Code. Includes Spectral governance checks and AI-readiness assessment."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.docs": {
     "defaultMessage": "How to get started"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.skeletonHint": {
-    "defaultMessage": "Or carry on here - the skeleton on the right is a starting point you can edit by hand."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.title": {
     "defaultMessage": "Design with AI"
@@ -942,6 +953,12 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.title": {
     "defaultMessage": "Deployed gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
+    "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.title": {
+    "defaultMessage": "Endpoints"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.description": {
     "defaultMessage": "Guides, references, and specifications published with this API."

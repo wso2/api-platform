@@ -93,8 +93,8 @@ describe('ContractSourceForm — file upload', () => {
     await user.click(screen.getByRole('button', { name: /Remove openapi\.yaml/ }));
 
     await waitFor(() => expect(screen.queryByText('openapi.yaml')).not.toBeInTheDocument());
-    // Removing is not an error, so the neutral line comes back.
-    expect(screen.getByText(/Accepted: /)).toBeInTheDocument();
+    // Removing is not an error, so the neutral guidance in the card comes back.
+    expect(screen.getByText(/Accepted file types:/)).toBeInTheDocument();
     expect(screen.queryByText(/is not supported/)).not.toBeInTheDocument();
   });
 });
@@ -141,6 +141,27 @@ describe('ContractSourceForm — automatic fetch', () => {
       ),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the URL and loaded contract from the field action', async () => {
+    stubSpecHost();
+    const onContractChange = vi.fn();
+    const { user } = renderWithProviders(
+      <ContractSourceForm onContractChange={onContractChange} />,
+    );
+    const field = screen.getByLabelText(/URL for API Contract/);
+
+    await user.type(field, 'https://example.com/openapi.yaml');
+    await user.tab();
+    await waitFor(() =>
+      expect(onContractChange).toHaveBeenCalledWith(
+        expect.objectContaining({ dialect: 'openapi-3.0' }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Clear URL' }));
+
+    expect(field).toHaveValue('');
+    await waitFor(() => expect(onContractChange).toHaveBeenLastCalledWith(null));
   });
 
   it('does not read it again when the field is left untouched', async () => {

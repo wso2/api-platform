@@ -23,7 +23,8 @@ import type { RestApi } from '@/api/resources/restApis';
 import type { Deployment } from '@/api/resources/restApis/deployments';
 import { ApiKeysPanel } from './ApiKeysPanel';
 import { DeployedGatewaysPanel } from './DeployedGatewaysPanel';
-import { DocumentsPanel } from './DocumentsPanel';
+import { EndpointsPanel } from './EndpointsPanel';
+// import { DocumentsPanel } from './DocumentsPanel';
 import { InvokeUrlPanel } from './InvokeUrlPanel';
 import { ResourcesPanel } from './ResourcesPanel';
 
@@ -33,9 +34,7 @@ import { ResourcesPanel } from './ResourcesPanel';
  * spec's ceiling on `limit`.
  */
 /**
- * Overview tab: resources on the left; invoke URL and
- * API keys on the right; the right column only appears once the API is
- * deployed on at least one gateway.
+ * Overview tab: resources on the left and API connectivity details on the right.
  */
 export function OverviewTab({
   api,
@@ -50,29 +49,33 @@ export function OverviewTab({
 
   return (
     <Grid container spacing={2}>
-      <Grid size={{ lg: deployed ? 8 : 12, xs: 12 }}>
+      <Grid size={{ lg: 8, xs: 12 }}>
         <Stack spacing={2} marginTop={1}>
           <ResourcesPanel api={api} />
-          <DocumentsPanel />
+          {/* Uncomment DocumentsPanel when documents should be shown on the overview. */}
+          {/* <DocumentsPanel /> */}
         </Stack>
       </Grid>
-      {deployed && (
-        <Grid size={{ lg: 4, xs: 12 }}>
-          <Stack spacing={2} marginTop={1}>
-            <Card sx={{ p: 2 }}>
-              <Stack spacing={2}>
-                <InvokeUrlPanel context={api.context} gateways={deployedGateways} />
-                {api.kind === 'RestApi' && (
-                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
-                    <ApiKeysPanel restApiId={api.id ?? ''} />
-                  </Box>
-                )}
-              </Stack>
-            </Card>
-            <DeployedGatewaysPanel deployments={deployments} gateways={deployedGateways} />
-          </Stack>
-        </Grid>
-      )}
+      <Grid size={{ lg: 4, xs: 12 }}>
+        <Stack spacing={2} marginTop={1}>
+          {deployed && (
+            <>
+              <Card sx={{ p: 2 }}>
+                <Stack spacing={2}>
+                  <InvokeUrlPanel context={api.context} gateways={deployedGateways} />
+                  {api.kind === 'RestApi' && (
+                    <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+                      <ApiKeysPanel restApiId={api.id ?? ''} />
+                    </Box>
+                  )}
+                </Stack>
+              </Card>
+              <DeployedGatewaysPanel deployments={deployments} gateways={deployedGateways} />
+            </>
+          )}
+          <EndpointsPanel url={api.upstream?.main?.url} />
+        </Stack>
+      </Grid>
     </Grid>
   );
 }

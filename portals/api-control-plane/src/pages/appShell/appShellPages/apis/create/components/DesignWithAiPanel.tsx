@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, Button, Link, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import { ExternalLink } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
@@ -33,16 +33,11 @@ const messages = defineMessages({
   body: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.body',
     defaultMessage:
-      'Draw operations on a canvas, check them against governance rules, and design with AI in VS Code.',
+      'Design, edit, and validate OpenAPI 3.x APIs directly in VS Code. Includes Spectral governance checks and AI-readiness assessment.',
   },
   docs: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.docs',
     defaultMessage: 'How to get started',
-  },
-  skeletonHint: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.skeletonHint',
-    defaultMessage:
-      'Or carry on here - the skeleton on the right is a starting point you can edit by hand.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.title',
@@ -100,18 +95,17 @@ export const DesignWithAiPanel = () => (
         <FormattedMessage {...messages.body} />
       </Typography>
 
-      <Link
+      <Button
+        component="a"
+        endIcon={<ExternalLink size={16} />}
         href={runtimeConfig.apiDesignerDocsUrl}
         rel="noopener noreferrer"
+        size="small"
         target="_blank"
-        variant="body2"
+        variant="text"
       >
         <FormattedMessage {...messages.docs} />
-      </Link>
-
-      <Typography color="text.secondary" sx={{ pt: 1 }} variant="body2">
-        <FormattedMessage {...messages.skeletonHint} />
-      </Typography>
+      </Button>
     </Stack>
   </Box>
 );

@@ -17,8 +17,8 @@
  */
 
 import {
+  alpha,
   Box,
-  Button,
   Card,
   Divider,
   Stack,
@@ -26,11 +26,10 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Download, Sparkles } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useState, type ReactNode } from 'react';
+import { FileCode2, Pencil } from '@wso2/oxygen-ui-icons-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
-import { hairline } from '@/theme/receipes';
 import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
 import type { ApiCreationWizardDraftState, ApiType } from '../types';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
@@ -61,11 +60,6 @@ const messages = defineMessages({
     defaultMessage: 'How do you want to define this API?',
     description: 'Accessible name for the pair of approach tabs at the top of the step.',
   },
-  back: {
-    id: 'api.create.defineApi.action.back',
-    defaultMessage: 'Back',
-    description: 'Returns to the previous step of the API creation wizard.',
-  },
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
     defaultMessage: 'Import from a URL or a file.',
@@ -73,11 +67,6 @@ const messages = defineMessages({
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
     defaultMessage: 'Start with a contract',
-  },
-  next: {
-    id: 'api.create.defineApi.action.next',
-    defaultMessage: 'Continue',
-    description: 'Carries the definition in the preview pane on to the next step.',
   },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
@@ -99,13 +88,13 @@ type Approach = {
 const APPROACHES: Approach[] = [
   {
     description: messages.contractDescription,
-    icon: <Download size={18} />,
+    icon: <FileCode2 size={18} />,
     key: 'contract',
     title: messages.contractTitle,
   },
   {
     description: messages.scratchDescription,
-    icon: <Sparkles size={18} />,
+    icon: <Pencil size={18} />,
     key: 'scratch',
     title: messages.scratchTitle,
   },
@@ -118,10 +107,8 @@ export type DefineApiPanelProps = {
   initialApiTypeKey?: string;
   /** Starts the GitHub OAuth flow. The button renders either way, inert until wired. */
   onAuthorizeGitHub?: () => void;
-  /** Called by Back. */
-  onBack?: () => void;
-  /** Called by Next, with the draft the wizard collects. */
-  onDataFetched: (data: ApiCreationWizardDraftState) => void;
+  /** Keeps the wizard footer supplied with the definition currently on screen. */
+  onDraftChange: (data: ApiCreationWizardDraftState | null) => void;
   /** Re-fetches the SwaggerHub organizations. Inert until the import is wired. */
   onRefreshSwaggerHubOrganizations?: () => void;
 };
@@ -138,8 +125,7 @@ export const DefineApiPanel = ({
   apiTypes,
   initialApiTypeKey,
   onAuthorizeGitHub,
-  onBack,
-  onDataFetched,
+  onDraftChange,
   onRefreshSwaggerHubOrganizations,
 }: DefineApiPanelProps) => {
   const intl = useIntl();
@@ -178,24 +164,19 @@ export const DefineApiPanel = ({
   const edit = approach === 'scratch' ? scratchEdit : contractEdit;
   const spec = edit?.spec ?? (approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec);
 
-  const handleProceed = () => {
-    // The draft the wizard collects — display name, version, context — is read
-    // off the definition, which is the next piece of work; advancing with an
-    // empty draft keeps this step's contract with the wizard until then.
-    // get the basic informarion from the spec and pass it to the onDataFetched callback
-    let draft: ApiCreationWizardDraftState = {};
-    if (spec) {
-      draft = extractApiDetails(spec);
-    }
-    onDataFetched(draft);
-  };
+  const draft = useMemo(() => (spec === undefined ? null : extractApiDetails(spec)), [spec]);
+
+  useEffect(() => {
+    onDraftChange(draft);
+    return () => onDraftChange(null);
+  }, [draft, onDraftChange]);
 
   return (
     <Stack spacing={3}>
       {/* One surface for the whole step: the two approaches sit flush on top of
           the panels they open, like tabs on their own body, rather than
           floating above as separate cards. */}
-      <Card variant="outlined">
+      <Card sx={{ border: 0, overflow: 'visible' }} variant="outlined">
         <ToggleButtonGroup
           aria-label={intl.formatMessage(messages.approachLabel)}
           exclusive
@@ -208,22 +189,25 @@ export const DefineApiPanel = ({
             }
           }}
           sx={(theme) => ({
-            // The buttons are the card's own header row, so they give up the
-            // borders and radii a standalone group would draw.
+            p: 0,
             '& .MuiToggleButtonGroup-grouped': {
-              border: 0,
-              borderRadius: 0,
+              border: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
+              borderBottom: 0,
+              borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
+              flex: 1,
               justifyContent: 'flex-start',
               p: 2,
               textTransform: 'none',
               '&:not(:first-of-type)': {
-                border: hairline(theme),
-                borderBottom: 0,
-                borderColor: 'divider',
-                borderRight: 0,
-                borderTop: 0,
+                borderLeft: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
+                marginLeft: 0,
               },
-              '&.Mui-selected': { bgcolor: 'action.selected' },
+              '&.Mui-selected, &.Mui-selected:hover': {
+                bgcolor: 'action.selected',
+                border: `1px solid ${theme.palette.primary.main}`,
+                borderBottom: 0,
+                borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
+              },
             },
           })}
           value={approach}
@@ -263,8 +247,6 @@ export const DefineApiPanel = ({
           })}
         </ToggleButtonGroup>
 
-        <Divider />
-
         <Stack
           direction={{ lg: 'row', xs: 'column' }}
           divider={
@@ -280,6 +262,22 @@ export const DefineApiPanel = ({
               }}
             />
           }
+          sx={(theme) => ({
+            border: 1,
+            borderColor: 'primary.main',
+            borderRadius: `0 0 ${theme.shape.borderRadius}px ${theme.shape.borderRadius}px`,
+            borderTop: 0,
+            position: 'relative',
+            '&::before': {
+              bgcolor: 'primary.main',
+              content: '""',
+              height: '1px',
+              left: approach === 'contract' ? '50%' : 0,
+              position: 'absolute',
+              top: 0,
+              width: '50%',
+            },
+          })}
         >
           <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
             {approach === 'contract' ? (
@@ -307,23 +305,6 @@ export const DefineApiPanel = ({
           </Box>
         </Stack>
       </Card>
-
-      {/* Both buttons on the trailing edge, Back beside the action it steps
-          away from rather than at the opposite corner of the step. */}
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <Button onClick={onBack} type="button" variant="text">
-          <FormattedMessage {...messages.back} />
-        </Button>
-        <Button
-          // Nothing to carry forward until the pane has a definition in it.
-          disabled={spec === undefined}
-          onClick={handleProceed}
-          type="button"
-          variant="contained"
-        >
-          {intl.formatMessage(messages.next)}
-        </Button>
-      </Stack>
     </Stack>
   );
 };

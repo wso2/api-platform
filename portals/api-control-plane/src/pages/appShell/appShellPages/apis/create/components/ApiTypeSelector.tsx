@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, Chip, Form, Stack, Tooltip } from '@wso2/oxygen-ui';
+import { alpha, Box, Chip, Form, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { CircleCheck } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
@@ -25,7 +25,7 @@ import { selectableCardSx } from '@/theme/receipes';
 import type { ApiType } from '../types';
 import { API_TYPES } from '../uiConfig';
 
-const CARD_WIDTH = 260;
+const CARD_WIDTH = 264;
 
 const messages = defineMessages({
   comingSoon: {
@@ -37,6 +37,11 @@ const messages = defineMessages({
     id: 'api.create.ApiTypeSelector.tooltip.comingSoon',
     defaultMessage: 'Not available yet.',
     description: 'Tooltip explaining why an unreleased API type card cannot be clicked.',
+  },
+  available: {
+    id: 'api.create.ApiTypeSelector.badge.available',
+    defaultMessage: 'Available',
+    description: 'Badge on an API type that can be selected now.',
   },
   groupLabel: {
     id: 'api.create.ApiTypeSelector.groupLabel',
@@ -50,8 +55,7 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'api.create.ApiTypeSelector.subtitle',
-    defaultMessage:
-      'This decides how the gateway exposes your backend. Only REST is available today.',
+    defaultMessage: 'Choose how the gateway should expose your backend.',
     description: 'Supporting line under the API type selector heading.',
   },
   title: {
@@ -98,20 +102,18 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
   };
 
   return (
-    // Centered, max-width layout; the cards keep a fixed width and wrap.
+    // The compact, left-aligned grid is deliberately bounded to three columns.
     <Stack
       spacing={3}
       sx={{
-        maxWidth: (theme) => theme.breakpoints.values.md,
-        mx: 'auto',
-        px: { md: 4, xs: 2 },
+        maxWidth: CARD_WIDTH * 3 + 32,
         width: '100%',
       }}
     >
       <Box
         aria-label={intl.formatMessage(messages.groupLabel)}
         role="group"
-        sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center' }}
+        sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'flex-start' }}
       >
         {API_TYPES.map((apiType) => {
           const disabled = !apiType.enabled;
@@ -126,63 +128,65 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
                   tooltip needs a plain element of its own to hang off. */}
               <Box sx={{ display: 'flex' }}>
                 <Form.CardButton
-                  alignItems="center"
+                  alignItems="flex-start"
                   aria-disabled={disabled || undefined}
                   disabled={disabled}
                   onClick={disabled ? undefined : () => handleSelect(apiType)}
                   selected={selected}
                   sx={(theme) => ({
                     ...selectableCardSx(theme, { disabled, selected }),
-                    height: '100%',
-                    justifyContent: 'flex-start',
+                    height: 142,
+                    justifyContent: 'space-between',
+                    p: 2,
                     width: CARD_WIDTH,
-                    ...(disabled && { cursor: 'default', pointerEvents: 'none' }),
+                    '& > *': { width: '100%' },
+                    ...(selected && {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                    }),
+                    ...(disabled && {
+                      borderColor: alpha(theme.palette.text.primary, 0.55),
+                      cursor: 'default',
+                      pointerEvents: 'none',
+                    }),
                   })}
                   tabIndex={disabled ? -1 : undefined}
                   variant="outlined"
                 >
-                  <Form.CardHeader
-                    subheader={<FormattedMessage {...apiType.description} />}
-                    subheaderTypographyProps={{ variant: 'caption' }}
-                    // CardButton left-aligns its content; the header is the one
-                    // part that reads better centred under the mark. `caption`
-                    // maps to a `span`, so it has to become a block before
-                    // `textAlign` has anything to centre.
-                    sx={{
-                      '& .MuiCardHeader-subheader': {
-                        display: 'block',
-                        textAlign: 'center',
-                      },
-                    }}
-                    title={
-                      <Form.Stack
-                        direction="column"
-                        spacing={1}
-                        sx={{ alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        {apiType.icon}
-                        <Form.Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                          <Form.Body sx={{ fontWeight: 600 }}>
-                            <FormattedMessage {...apiType.title} />
-                          </Form.Body>
-                          {selected ? (
-                            <Box
-                              aria-label={intl.formatMessage(messages.selected)}
-                              role="img"
-                              sx={{ color: 'primary.main', display: 'flex' }}
-                            >
-                              <CircleCheck size={16} />
-                            </Box>
-                          ) : null}
-                        </Form.Stack>
-                      </Form.Stack>
-                    }
-                  />
-                  {disabled ? (
-                    <Form.CardContent sx={{ pt: 0 }}>
-                      <Chip label={<FormattedMessage {...messages.comingSoon} />} size="small" />
-                    </Form.CardContent>
-                  ) : null}
+                  <Stack
+                    direction="row"
+                    sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
+                  >
+                    {apiType.icon}
+                    <Chip
+                      color={disabled ? 'default' : 'primary'}
+                      label={
+                        <FormattedMessage
+                          {...(disabled ? messages.comingSoon : messages.available)}
+                        />
+                      }
+                      size="small"
+                      variant="outlined"
+                    />
+                  </Stack>
+                  <Stack spacing={0.25} sx={{ textAlign: 'left' }}>
+                    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                      <Form.Body sx={{ fontWeight: 700 }}>
+                        <FormattedMessage {...apiType.title} />
+                      </Form.Body>
+                      {selected ? (
+                        <Box
+                          aria-label={intl.formatMessage(messages.selected)}
+                          role="img"
+                          sx={{ color: 'primary.main', display: 'flex' }}
+                        >
+                          <CircleCheck size={16} />
+                        </Box>
+                      ) : null}
+                    </Stack>
+                    <Typography color="text.secondary" variant="caption">
+                      <FormattedMessage {...apiType.description} />
+                    </Typography>
+                  </Stack>
                 </Form.CardButton>
               </Box>
             </Tooltip>
