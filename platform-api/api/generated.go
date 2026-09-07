@@ -662,8 +662,9 @@ type BuildRequest struct {
 
 // BuildResponse An immutable, rendered snapshot of an API's definition, not bound to any gateway.
 type BuildResponse struct {
-	// BuildId Identifier for the build, used as a deployment's `base`. It is the date the build
-	// was prepared followed by that day's index for the API, and is unique per API.
+	// BuildId Identifier for the build, supplied as `buildId` when a deployment's `base` is
+	// `build`. It is the date the build was prepared followed by that day's index for
+	// the API, and is unique per API.
 	BuildId string `binding:"required" json:"buildId" yaml:"buildId"`
 
 	// CreatedAt Timestamp when the build was prepared
@@ -1107,12 +1108,15 @@ type DeploymentResponse struct {
 	// BaseDeploymentId UUID of the base deployment this was created from
 	BaseDeploymentId *openapi_types.UUID `json:"baseDeploymentId" yaml:"baseDeploymentId"`
 
-	// BuildId Build this deployment was made from, such as `2026-01-31-2`. Null unless the
-	// deploy named a build: a deployment rendered from the API definition has none,
-	// and so does one promoted from another deployment, which reuses that
-	// deployment's rendered artifact rather than a build. Also null once the build
-	// it came from has been pruned. Null means only that no build can be named —
-	// the deployment is still promotable by `deploymentId`.
+	// BuildId Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
+	// has one: `base: build` runs the build it names, and `base: current` stores what
+	// it renders as a build and runs that.
+	//
+	// Null for artifact kinds that have no builds — MCP proxy, LLM and event API
+	// deployments — including one promoted from another deployment, which reuses that
+	// deployment's rendered artifact. Also null once the build it ran has been pruned.
+	// Null means only that no build can be named; the deployment keeps its own
+	// rendered artifact either way.
 	BuildId *string `json:"buildId" yaml:"buildId"`
 
 	// CreatedAt Timestamp when the deployment artifact was created

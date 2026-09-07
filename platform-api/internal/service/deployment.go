@@ -388,7 +388,10 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
 	}
 	if endpointURL != nil {
-		s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+		// The URL itself is not logged: it comes from the request and is validated
+		// only for scheme and host, so it can carry userinfo or a credential in its
+		// query. It is stored on the deployment, which is where to read it back from.
+		s.slogger.Debug("Endpoint URL overridden", "deploymentID", deploymentID)
 	}
 	if vhostMainOverridden {
 		s.slogger.Debug("Vhost main overridden", "vhostMain", *vhostMain, "deploymentID", deploymentID)

@@ -138,7 +138,8 @@ type DeploymentRepository interface {
 	// is refused if that build has been pruned since it was resolved
 	CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error
 	// Atomic: stores the build this deployment runs alongside the deployment itself,
-	// enforcing both the build and the deployment limits
+	// enforcing both the build and the deployment limits. The build is stored under
+	// the deployment's own API and organization
 	CreateWithBuild(deployment *model.Deployment, build *model.Build, buildHardLimit, hardLimit int) error
 	GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error)
 	GetWithState(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error)

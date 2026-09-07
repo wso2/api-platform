@@ -65,6 +65,13 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 // The deployment's build reference is filled in from the stored build.
 func (r *DeploymentRepo) CreateWithBuild(deployment *model.Deployment, build *model.Build,
 	buildHardLimit, hardLimit int) error {
+	// The build belongs to the deployment being recorded, so it takes that
+	// deployment's API and organization rather than carrying its own copy of them.
+	// There is then nothing for the two to disagree about, and no way to store a
+	// deployment whose recorded origin is another API's build — which the foreign
+	// key alone would accept.
+	build.ArtifactID = deployment.ArtifactID
+	build.OrganizationID = deployment.OrganizationID
 	if err := initBuild(build); err != nil {
 		return err
 	}
