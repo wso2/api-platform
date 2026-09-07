@@ -38,6 +38,18 @@ const UNIT_SECONDS = new Map<string, number>([
   ['h', 3600],
 ]);
 
+/**
+ * Go's `time.Duration` is int64 NANOSECONDS, so it tops out just under 292
+ * years and `time.ParseDuration` rejects anything past that. So must this: the
+ * contract of this module is that whatever it accepts, the platform accepts.
+ *
+ * Approximate on purpose. A float64 count of seconds cannot resolve the last
+ * few nanoseconds of the int64 range, so a value within an ULP of the ceiling
+ * may pass here and be settled by the server. The reachable mistake is orders
+ * of magnitude out ("10000000000s"), and that is caught exactly.
+ */
+const MAX_SECONDS = 2 ** 63 / 1e9;
+
 /** Sticky, so the loop below can require that the WHOLE string was consumed. */
 const TOKEN = /(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|μs|ms|s|m|h)/y;
 
@@ -68,7 +80,12 @@ export function parseDurationSeconds(text: string): number | null {
     const seconds = UNIT_SECONDS.get(match[2]);
     if (seconds === undefined) return null;
     total += Number(match[1]) * seconds;
-    if (TOKEN.lastIndex === rest.length) return sign * total;
+    if (TOKEN.lastIndex === rest.length) {
+      // Out of Go's range, or a digit string long enough that `Number` already
+      // overflowed to Infinity. `time.ParseDuration` refuses both.
+      if (!Number.isFinite(total) || total > MAX_SECONDS) return null;
+      return sign * total;
+    }
   }
   // Ran out of matches before the end: there is trailing junk, or a unit this
   // does not know. Either way it is not a duration.

@@ -72,6 +72,20 @@ describe('parseDurationSeconds', () => {
     expect(parseDurationSeconds('5m junk')).toBeNull();
   });
 
+  it("rejects a duration past Go's int64 nanosecond range", () => {
+    // `time.Duration` is int64 nanoseconds, so ~292 years is the ceiling and
+    // `time.ParseDuration` errors above it. Accepting one here would put a
+    // value in the request that the platform answers 400 to -- the outcome this
+    // parser exists to prevent. Unreachable through the one duration field the
+    // allowlist declares today (bounded 30s - 1h, and core requires both
+    // bounds), so this holds the contract rather than a live path.
+    expect(parseDurationSeconds('10000000000s')).toBeNull();
+    // Enough digits that Number() itself overflows to Infinity.
+    expect(parseDurationSeconds(`${'9'.repeat(400)}s`)).toBeNull();
+    // Still inside the range, so still a duration: ~292 years in hours.
+    expect(parseDurationSeconds('2562047h')).toBe(2562047 * 3600);
+  });
+
   it('rejects surrounding whitespace, which Go rejects too', () => {
     // The drawer sends the text verbatim, so accepting padding here would turn
     // a catchable typo into a 400 from the platform.
