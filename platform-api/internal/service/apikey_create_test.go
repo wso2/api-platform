@@ -151,30 +151,54 @@ func assertPersistedKeyMaterial(t *testing.T, keyRepo *recordingAPIKeyRepo, plai
 // https://github.com/wso2/api-platform/issues/3252: omitting apiKey used to be rejected with
 // "API key value is required". The server now mints one with the same primitive the LLM
 // proxy/provider key paths use, persists only its hash, and returns the plaintext once.
+// Omission is a nil ApiKey — the field is a *string precisely so "not supplied" stays
+// distinguishable from "supplied as blank", which directive-wise is a caller error
+// (see TestCreateAPIKey_RejectsBlankSuppliedKey) rather than a request to generate.
 func TestCreateAPIKey_GeneratesKeyWhenOmitted(t *testing.T) {
+	svc, keyRepo := newCreateAPIKeyTestService(t, nil)
+
+	resp, err := svc.CreateAPIKey(context.Background(), testAPIHandle, constants.RestApi, testOrgID, testUserID,
+		&api.CreateAPIKeyRequest{DisplayName: "Production Key"})
+	if err != nil {
+		t.Fatalf("CreateAPIKey returned an unexpected error: %v", err)
+	}
+
+	if resp.ApiKey == nil {
+		t.Fatal("response omitted apiKey, but the server generated the key — it is unrecoverable after this response")
+	}
+	if !generatedKeyRegex.MatchString(*resp.ApiKey) {
+		t.Errorf("generated key %q is not 64 lowercase hex characters", *resp.ApiKey)
+	}
+	assertPersistedKeyMaterial(t, keyRepo, *resp.ApiKey)
+}
+
+// TestCreateAPIKey_RejectsBlankSuppliedKey covers the other half of the pointer contract: a
+// caller that sent the field but left it blank is turned away rather than silently having a
+// key minted for it, so an integration pushing an empty variable finds out instead of ending
+// up with a key value it never chose. Nothing may be persisted on that path.
+func TestCreateAPIKey_RejectsBlankSuppliedKey(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		supplied string
 	}{
-		{name: "absent", supplied: ""},
+		{name: "empty string", supplied: ""},
 		{name: "whitespace only", supplied: "   "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, keyRepo := newCreateAPIKeyTestService(t, nil)
 
+			supplied := tc.supplied
 			resp, err := svc.CreateAPIKey(context.Background(), testAPIHandle, constants.RestApi, testOrgID, testUserID,
-				&api.CreateAPIKeyRequest{DisplayName: "Production Key", ApiKey: tc.supplied})
-			if err != nil {
-				t.Fatalf("CreateAPIKey returned an unexpected error: %v", err)
+				&api.CreateAPIKeyRequest{DisplayName: "Production Key", ApiKey: &supplied})
+			if err == nil {
+				t.Fatalf("CreateAPIKey accepted a blank supplied apiKey (%q)", tc.supplied)
 			}
-
-			if resp.ApiKey == nil {
-				t.Fatal("response omitted apiKey, but the server generated the key — it is unrecoverable after this response")
+			if resp != nil {
+				t.Errorf("expected a nil response alongside the error, got %+v", resp)
 			}
-			if !generatedKeyRegex.MatchString(*resp.ApiKey) {
-				t.Errorf("generated key %q is not 64 lowercase hex characters", *resp.ApiKey)
+			if len(keyRepo.created) != 0 {
+				t.Errorf("persisted %d key(s) despite the blank supplied apiKey", len(keyRepo.created))
 			}
-			assertPersistedKeyMaterial(t, keyRepo, *resp.ApiKey)
 		})
 	}
 }
@@ -183,12 +207,12 @@ func TestCreateAPIKey_GeneratesKeyWhenOmitted(t *testing.T) {
 // use. The supplied value must be what gets hashed, and must NOT come back in the response —
 // echoing a caller's secret adds a disclosure surface for no benefit.
 func TestCreateAPIKey_UsesSuppliedKeyAndNeverEchoesIt(t *testing.T) {
-	const injected = "sk_example_1234567890abcdef"
+	injected := "sk_example_1234567890abcdef"
 
 	svc, keyRepo := newCreateAPIKeyTestService(t, nil)
 
 	resp, err := svc.CreateAPIKey(context.Background(), testAPIHandle, constants.RestApi, testOrgID, testUserID,
-		&api.CreateAPIKeyRequest{DisplayName: "Injected Key", ApiKey: injected})
+		&api.CreateAPIKeyRequest{DisplayName: "Injected Key", ApiKey: &injected})
 	if err != nil {
 		t.Fatalf("CreateAPIKey returned an unexpected error: %v", err)
 	}
@@ -200,9 +224,10 @@ func TestCreateAPIKey_UsesSuppliedKeyAndNeverEchoesIt(t *testing.T) {
 }
 
 // TestCreateAPIKey_DerivesNameWhenIdAndDisplayNameOmitted covers the fallback branch in
-// resolveUniqueKeyName. The handlers used to pre-derive the name via utils.GenerateHandle,
-// which errors on an empty source — so a body carrying neither id nor displayName returned
-// 400 even though nothing enforces displayName at runtime. Naming now belongs to the service.
+// resolveUniqueKeyName. The REST handlers reject a body with no displayName up front, but the
+// service is reached by callers that don't go through them (the API Portal webhook receiver,
+// deploy-time backfill), so the fallback is what keeps a nameless request from failing on the
+// api_keys name uniqueness constraint instead of getting "<handle>-key-<8 hex>".
 func TestCreateAPIKey_DerivesNameWhenIdAndDisplayNameOmitted(t *testing.T) {
 	svc, keyRepo := newCreateAPIKeyTestService(t, nil)
 

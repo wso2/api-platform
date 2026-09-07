@@ -220,27 +220,34 @@ func TestAPIKeyHandler_CreateWithSuppliedValueOmitsApiKey(t *testing.T) {
 }
 
 // TestAPIKeyHandler_CreateWithEmptyBody covers a body carrying neither id nor displayName.
-// The handlers used to pre-derive the name via utils.GenerateHandle, which errors on an
-// empty source, so this returned 400 — even though nothing enforces displayName at runtime.
-// Naming now belongs to the service, which falls back to "<handle>-key-<8 hex>".
+// displayName is required by the spec, and the handler enforces it explicitly rather than
+// leaning on the binding tag, so the caller gets a named validation failure instead of a key
+// whose name the server picked for it. The service-level fallback that derives
+// "<handle>-key-<8 hex>" stays for the non-REST callers (see
+// internal/service/apikey_create_test.go), and is deliberately not reachable from here.
 func TestAPIKeyHandler_CreateWithEmptyBody(t *testing.T) {
-	r, _, cleanup := setupAPIKeyHandlerTestEnv(t)
+	r, db, cleanup := setupAPIKeyHandlerTestEnv(t)
 	t.Cleanup(cleanup)
 
 	rec := postAPIKey(t, r, `{}`)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	keyID, _ := body["keyId"].(string)
-	if want := regexp.MustCompile(`^` + apiKeyITAPIHandle + `-key-[0-9a-f]{8}$`); !want.MatchString(keyID) {
-		t.Errorf("derived keyId = %q, want the <handle>-key-<8 hex> fallback shape", keyID)
+	if code, _ := body["code"].(string); code != "VALIDATION_FAILED" {
+		t.Errorf("error code = %q, want VALIDATION_FAILED: %s", code, rec.Body.String())
 	}
-	if _, ok := body["apiKey"].(string); !ok {
-		t.Errorf("response carried no generated apiKey: %s", rec.Body.String())
+	// A rejected request must not have cost a row — the name is resolved before any key
+	// material is minted, so a 400 here means nothing was persisted.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE artifact_uuid = ?`, apiKeyITAPIUUID).Scan(&count); err != nil {
+		t.Fatalf("count persisted keys: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("persisted %d key(s) despite the rejected request", count)
 	}
 }

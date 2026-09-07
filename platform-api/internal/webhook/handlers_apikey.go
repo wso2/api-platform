@@ -174,7 +174,7 @@ func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) err
 	req := &api.CreateAPIKeyRequest{
 		// Id is the key's Platform API handle (its stable name); DisplayName is the human-readable name.
 		Id:            d.handlePtr(),
-		ApiKey:        plaintext,
+		ApiKey:        &plaintext,
 		DisplayName:   d.displayName(),
 		ExternalRefId: d.externalRefPtr(),
 		ExpiresAt:     expiresAt,

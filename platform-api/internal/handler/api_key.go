@@ -87,6 +87,24 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 			WithLogMessage(fmt.Sprintf("invalid API key creation request for user %s", userId))
 	}
 
+	if req.DisplayName == "" {
+		return apperror.ValidationFailed.New("Display name is required").
+			WithLogMessage(fmt.Sprintf("missing display name in API key creation request for user %s", userId))
+	}
+
+	// If user has provided an id, use it. Otherwise, generate one from the display name.
+	var name string
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
+	} else {
+		generatedName, err := utils.GenerateHandle(req.DisplayName, nil)
+		if err != nil {
+			return apperror.ValidationFailed.Wrap(err, "Failed to generate API key name")
+		}
+		name = generatedName
+		req.Id = &name
+	}
+
 	// Create the API key and broadcast to gateways
 	resp, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, userId, &req)
 	if err != nil {
@@ -99,8 +117,8 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 	}
 
 	keyName := ""
-	if resp.KeyId != nil {
-		keyName = *resp.KeyId
+	if req.Id != nil {
+		keyName = *req.Id
 	}
 	h.slogger.Info("Successfully created API key", "userId", userId, "apiHandle", apiHandle, "orgId", orgId, "keyName", keyName)
 

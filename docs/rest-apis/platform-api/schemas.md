@@ -2131,7 +2131,7 @@ Time unit for API key expiration duration
   "status": "success",
   "message": "API key created and broadcasted to gateways successfully",
   "keyId": "production-key-01",
-  "apiKey": "REDACTED_API_KEY"
+  "apiKey": "sk_example_1234567890abcdef"
 }
 
 ```

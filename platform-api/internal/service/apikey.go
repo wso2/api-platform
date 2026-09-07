@@ -480,15 +480,22 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	// already-minted key to hybrid gateways). When absent, generate one with the
 	// same primitive the LLM proxy/provider key paths use; utils.GenerateAPIKey,
 	// 32 crypto/rand bytes hex-encoded.
-	plainAPIKey := strings.TrimSpace(req.ApiKey)
+	var plainAPIKey string
 	generated := false
-	if plainAPIKey == "" {
+
+	if req.ApiKey == nil {
+		var err error
 		plainAPIKey, err = utils.GenerateAPIKey()
 		if err != nil {
 			s.slogger.Error("Failed to generate API key", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 			return nil, fmt.Errorf("failed to generate API key: %w", err)
 		}
 		generated = true
+	} else {
+		plainAPIKey = strings.TrimSpace(*req.ApiKey)
+		if plainAPIKey == "" {
+			return nil, fmt.Errorf("provided API key cannot be empty")
+		}
 	}
 
 	// Hash the API key with all configured algorithms before storage and broadcast

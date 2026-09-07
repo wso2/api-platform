@@ -627,6 +627,34 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateAPIKeyRequest'
+            examples:
+              generatedKey:
+                summary: Let the server generate the key value
+                description: "`apiKey` is omitted, so the server generates the key value and returns it once in the 201 response."
+                value:
+                  id: "production-key-01"
+                  displayName: "Production API Key"
+                  externalRefId: "ext-ref-12345"
+                  expiresAt: "2026-12-31T23:59:59Z"
+                  expiresIn:
+                    duration: 30
+                    unit: days
+                  issuer: "api-platform-devportal"
+              suppliedKey:
+                summary: Inject a pre-minted key value
+                description: |
+                  `apiKey` carries a pre-minted key value, so the server stores its
+                  hash and the 201 response omits the `apiKey` field.
+                value:
+                  id: "production-key-01"
+                  displayName: "Production API Key"
+                  apiKey: "sk_example_1234567890abcdef"
+                  externalRefId: "ext-ref-12345"
+                  expiresAt: "2026-12-31T23:59:59Z"
+                  expiresIn:
+                    duration: 30
+                    unit: days
+                  issuer: "api-platform-devportal"
       responses:
         '201':
           description: API key created successfully
@@ -6229,7 +6257,6 @@ components:
           example: "Production API Key"
         apiKey:
           type: string
-          x-go-type-skip-optional-pointer: true
           description: Optional. A pre-minted plain text API key to inject (used by external
             platforms pushing a key to hybrid gateways). Omit it to have the server
             generate one, the generated value is returned once in the response and
@@ -6281,7 +6308,7 @@ components:
             the key (no `apiKey` in the request); returned only in this 
             creation response and never retrievable afterwards. The example value is
             a non-functional placeholder.
-          example: "REDACTED_API_KEY"
+          example: "sk_example_1234567890abcdef"
 
     UpdateAPIKeyRequest:
       type: object

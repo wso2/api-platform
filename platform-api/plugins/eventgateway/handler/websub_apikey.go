@@ -100,6 +100,24 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if req.DisplayName == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "Display name is required"))
+		return
+	}
+
+	var name string
+	if req.Id != nil && *req.Id != "" {
+		name = *req.Id
+	} else {
+		generatedName, err := utils.GenerateHandle(req.DisplayName, nil)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "Failed to generate API key name"))
+			return
+		}
+		name = generatedName
+		req.Id = &name
+	}
+
 	resp, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, userId, &req)
 	if err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
