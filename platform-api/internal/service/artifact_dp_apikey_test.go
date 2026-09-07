@@ -223,3 +223,41 @@ func TestCreateLLMProxyAPIKey_AssociationScoped(t *testing.T) {
 		t.Fatalf("expected 0 broadcasts for an unassociated proxy, got %d", len(hub.published))
 	}
 }
+
+// TestCreateLLMProviderAPIKey_RejectsShortId pins issue #3163: a caller-supplied id
+// under 3 characters must be rejected here, not silently accepted and left for the
+// gateway to reject later.
+func TestCreateLLMProviderAPIKey_RejectsShortId(t *testing.T) {
+	provider := &model.LLMProvider{UUID: "prov-uuid", ID: "prov", OrganizationUUID: "org-1", Name: "Prov", Version: "v1.0"}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(string, string) (*model.LLMProvider, error) { return provider, nil },
+	}
+	svc := NewLLMProviderAPIKeyService(providerRepo, dpKeyAPIRepo{}, &dpCapturingAPIKeyRepo{},
+		newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
+
+	shortID := "ab"
+	_, err := svc.CreateLLMProviderAPIKey(context.Background(), "prov", "org-1", "",
+		&api.CreateLLMProviderAPIKeyRequest{DisplayName: "x", Id: &shortID})
+	if err == nil {
+		t.Fatal("CreateLLMProviderAPIKey() = nil error, want rejection for a 2-char id")
+	}
+	assertBadRequest(t, err)
+}
+
+// TestCreateLLMProxyAPIKey_RejectsShortId is the LLM-proxy counterpart.
+func TestCreateLLMProxyAPIKey_RejectsShortId(t *testing.T) {
+	proxy := &model.LLMProxy{UUID: "proxy-uuid", ID: "proxy", OrganizationUUID: "org-1", Name: "Proxy", Version: "v1.0"}
+	proxyRepo := &mockLLMProxyRepo{
+		getByIDFunc: func(string, string) (*model.LLMProxy, error) { return proxy, nil },
+	}
+	svc := NewLLMProxyAPIKeyService(proxyRepo, dpKeyAPIRepo{}, &dpCapturingAPIKeyRepo{},
+		newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
+
+	shortID := "ab"
+	_, err := svc.CreateLLMProxyAPIKey(context.Background(), "proxy", "org-1", "",
+		&api.CreateLLMProxyAPIKeyRequest{DisplayName: "x", Id: &shortID})
+	if err == nil {
+		t.Fatal("CreateLLMProxyAPIKey() = nil error, want rejection for a 2-char id")
+	}
+	assertBadRequest(t, err)
+}
