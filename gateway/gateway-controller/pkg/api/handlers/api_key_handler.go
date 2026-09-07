@@ -19,6 +19,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -27,6 +28,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -397,63 +399,45 @@ func (s *APIServer) ListAPIKeys(w http.ResponseWriter, r *http.Request, id strin
 }
 
 // resolveAPIIDByHandle resolves an API identifier (deployment ID or handle) to the internal deployment ID.
-// It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
 // Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
-func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request, handle string, log *slog.Logger) (string, error) {
-	// First, try treating the input as a deployment ID.
-	cfgByID, err := s.db.GetConfig(handle)
-	if err != nil {
-		if !storage.IsNotFoundError(err) {
-			log.Error("Failed to look up API configuration by ID",
-				slog.String("id", handle),
-				slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to resolve API identifier",
-			})
-			return "", fmt.Errorf("database error")
-		}
-	} else if cfgByID != nil {
-		if cfgByID.Kind != string(api.RestAPIKindRestApi) {
-			log.Warn("Configuration is not a REST API",
-				slog.String("id", handle),
-				slog.String("kind", cfgByID.Kind))
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
-			})
-			return "", fmt.Errorf("invalid api kind")
-		}
-		return cfgByID.UUID, nil
+//
+// The resolution itself lives in the subscription service so a caller without an
+// http.ResponseWriter can perform it too; this wrapper only maps that service's
+// errors onto the responses the REST API has always returned.
+func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, handle string, log *slog.Logger) (string, error) {
+	apiID, err := s.getSubscriptionService().ResolveAPIID(handle)
+	if err == nil {
+		return apiID, nil
 	}
 
-	// Fallback: resolve by handle (metadata.name)
-	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			log.Warn("API configuration not found", slog.String("handle_or_id", handle))
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
-			})
-			return "", fmt.Errorf("api not found")
-		}
-		log.Error("Failed to look up API configuration by handle",
-			slog.String("handle", handle),
-			slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+	var notRestAPI *subscription.NotRestAPIError
+	if errors.As(err, &notRestAPI) {
+		log.Warn("Configuration is not a REST API",
+			slog.String("id", handle),
+			slog.String("kind", notRestAPI.Kind))
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "Failed to resolve API identifier",
+			Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
 		})
-		return "", fmt.Errorf("database error")
+		return "", err
 	}
-	if cfg == nil {
+
+	if errors.Is(err, subscription.ErrAPINotFound) {
 		log.Warn("API configuration not found", slog.String("handle_or_id", handle))
 		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
 		})
-		return "", fmt.Errorf("api not found")
+		return "", err
 	}
-	return cfg.UUID, nil
+
+	log.Error("Failed to look up API configuration",
+		slog.String("handle_or_id", handle),
+		slog.Any("error", err))
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		Status:  "error",
+		Message: "Failed to resolve API identifier",
+	})
+
+	return "", err
 }

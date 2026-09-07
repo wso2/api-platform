@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 )
 
 // Valid test certificate (generated with openssl)
@@ -91,11 +93,7 @@ RMVr21DnDN4l9BDDs8384GT2VOkW+6+Xl6co6gwNYSVRhsdOlDe8NkFtpe4BFg9H
 // These tests don't require mocking the snapshot manager
 
 func TestExtractCertificateMetadata_Success(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
-	subject, issuer, notBefore, notAfter, err := server.extractCertificateMetadata([]byte(validTestCert))
+	subject, issuer, notBefore, notAfter, err := certificate.ExtractMetadata([]byte(validTestCert))
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, subject)
@@ -106,12 +104,8 @@ func TestExtractCertificateMetadata_Success(t *testing.T) {
 }
 
 func TestExtractCertificateMetadata_MultipleCerts(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
 	// Should extract from first cert in chain
-	subject, issuer, notBefore, notAfter, err := server.extractCertificateMetadata([]byte(certChain))
+	subject, issuer, notBefore, notAfter, err := certificate.ExtractMetadata([]byte(certChain))
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, subject)
@@ -121,74 +115,50 @@ func TestExtractCertificateMetadata_MultipleCerts(t *testing.T) {
 }
 
 func TestExtractCertificateMetadata_InvalidPEM(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
-	_, _, _, _, err := server.extractCertificateMetadata([]byte("not a PEM"))
+	_, _, _, _, err := certificate.ExtractMetadata([]byte("not a PEM"))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no valid certificate found")
 }
 
 func TestExtractCertificateMetadata_NoCertificate(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
 	pemWithoutCert := `-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA...
 -----END RSA PRIVATE KEY-----`
 
-	_, _, _, _, err := server.extractCertificateMetadata([]byte(pemWithoutCert))
+	_, _, _, _, err := certificate.ExtractMetadata([]byte(pemWithoutCert))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no valid certificate found")
 }
 
 func TestValidateCertificate_SingleCert(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
-	count, err := server.validateCertificate([]byte(validTestCert))
+	count, err := certificate.ValidateChain([]byte(validTestCert))
 
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
 }
 
 func TestValidateCertificate_CertChain(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
-	count, err := server.validateCertificate([]byte(certChain))
+	count, err := certificate.ValidateChain([]byte(certChain))
 
 	assert.NoError(t, err)
 	assert.Equal(t, 2, count)
 }
 
 func TestValidateCertificate_InvalidPEM(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
-	_, err := server.validateCertificate([]byte("not valid PEM"))
+	_, err := certificate.ValidateChain([]byte("not valid PEM"))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no valid certificates found")
 }
 
 func TestValidateCertificate_NoCerts(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
 	pemWithoutCert := `-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA...
 -----END RSA PRIVATE KEY-----`
 
-	_, err := server.validateCertificate([]byte(pemWithoutCert))
+	_, err := certificate.ValidateChain([]byte(pemWithoutCert))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no valid certificates found")
@@ -483,10 +453,6 @@ func TestDeleteCertificate_EmptyID(t *testing.T) {
 
 // TestUploadCertificate_LargeCertificate tests handling of a very large certificate file
 func TestUploadCertificate_LargeCertificate(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
 	// Create a large certificate by repeating the valid cert multiple times
 	largeCert := ""
 	for i := 0; i < 10; i++ {
@@ -494,7 +460,7 @@ func TestUploadCertificate_LargeCertificate(t *testing.T) {
 	}
 
 	// Test validation of large cert (doesn't require snapshot manager)
-	_, err := server.validateCertificate([]byte(largeCert))
+	_, err := certificate.ValidateChain([]byte(largeCert))
 
 	// A chain of 10 identical valid certs should parse successfully
 	assert.NoError(t, err)
@@ -705,10 +671,6 @@ func TestDeleteCertificate_SpecialCharactersInID(t *testing.T) {
 
 // TestValidateCertificate_BoundaryConditions tests certificate validation edge cases
 func TestValidateCertificate_BoundaryConditions(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
 	tests := []struct {
 		name        string
 		certData    []byte
@@ -743,7 +705,7 @@ func TestValidateCertificate_BoundaryConditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := server.validateCertificate(tt.certData)
+			_, err := certificate.ValidateChain(tt.certData)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -755,10 +717,6 @@ func TestValidateCertificate_BoundaryConditions(t *testing.T) {
 
 // TestExtractCertificateMetadata_EdgeCases tests metadata extraction edge cases
 func TestExtractCertificateMetadata_EdgeCases(t *testing.T) {
-	mockDB := NewMockStorage()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := &APIServer{db: mockDB, logger: logger}
-
 	tests := []struct {
 		name        string
 		certData    []byte
@@ -783,7 +741,7 @@ func TestExtractCertificateMetadata_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, _, _, err := server.extractCertificateMetadata(tt.certData)
+			_, _, _, _, err := certificate.ExtractMetadata(tt.certData)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -871,4 +829,133 @@ func TestUploadCertificate_JSONBoundaries(t *testing.T) {
 			}
 		})
 	}
+}
+
+// stubCertStore and stubSnapshot stand in for the router-side collaborators the
+// certificate service reaches through its XDSResolver. Injecting them is what
+// makes the upload success path reachable from a handler test at all: the real
+// resolver needs a concrete *xds.SnapshotManager, which these fixtures do not have.
+type stubCertStore struct {
+	reloadErr error
+	combined  []byte
+}
+
+func (c *stubCertStore) Reload() error                   { return c.reloadErr }
+func (c *stubCertStore) GetCombinedCertificates() []byte { return c.combined }
+
+type stubSnapshot struct {
+	err error
+}
+
+func (s *stubSnapshot) UpdateSnapshot(_ context.Context, _ string) error { return s.err }
+
+// withCertXDS gives the server a certificate service whose router side is
+// stubbed, so the handler runs its full success path.
+func withCertXDS(server *APIServer, store *stubCertStore, snapshot *stubSnapshot) {
+	server.certificateService = certificate.NewCertificateService(
+		server.db,
+		func() *certificate.XDSTargets {
+			return &certificate.XDSTargets{Store: store, Snapshot: snapshot}
+		},
+		server.logger,
+	)
+}
+
+func TestUploadCertificate_Success(t *testing.T) {
+	mockDB := NewMockStorage()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := &APIServer{db: mockDB, logger: logger}
+	withCertXDS(server, &stubCertStore{combined: []byte("bundle")}, &stubSnapshot{})
+
+	bodyBytes, _ := json.Marshal(UploadCertificateRequest{Name: "success-cert", Certificate: validTestCert})
+	req := httptest.NewRequest(http.MethodPost, "/certificates", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	newUploadCertHandler(server).ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "success", resp["status"])
+	assert.Equal(t, "success-cert", resp["name"])
+	assert.Equal(t, float64(1), resp["count"])
+	assert.NotEmpty(t, resp["id"])
+	assert.NotEmpty(t, resp["subject"])
+	assert.NotEmpty(t, resp["issuer"])
+	// The endpoint has always emitted this layout rather than RFC 3339.
+	notAfter, err := time.Parse("2006-01-02 15:04:05", resp["notAfter"].(string))
+	require.NoError(t, err)
+	assert.False(t, notAfter.IsZero())
+
+	stored, err := mockDB.GetCertificate(resp["id"].(string))
+	require.NoError(t, err)
+	assert.Equal(t, "success-cert", stored.Name)
+}
+
+// A gateway started without router.upstream.tls.customCertsPath has no cert
+// store. The row is still written and the request fails with this specific
+// message, which is what it reported before the service layer existed.
+func TestUploadCertificate_CertStoreNotConfigured(t *testing.T) {
+	mockDB := NewMockStorage()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := &APIServer{db: mockDB, logger: logger}
+
+	bodyBytes, _ := json.Marshal(UploadCertificateRequest{Name: "no-store-cert", Certificate: validTestCert})
+	req := httptest.NewRequest(http.MethodPost, "/certificates", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	newUploadCertHandler(server).ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "error", resp["status"])
+	assert.Equal(t, "Certificate store not configured", resp["message"])
+}
+
+func TestUploadCertificate_ReloadFailureKeepsTheRow(t *testing.T) {
+	mockDB := NewMockStorage()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := &APIServer{db: mockDB, logger: logger}
+	withCertXDS(server, &stubCertStore{reloadErr: errors.New("reload boom")}, &stubSnapshot{})
+
+	bodyBytes, _ := json.Marshal(UploadCertificateRequest{Name: "reload-fail-cert", Certificate: validTestCert})
+	req := httptest.NewRequest(http.MethodPost, "/certificates", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	newUploadCertHandler(server).ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "Certificate saved but failed to reload", resp["message"])
+
+	certs, err := mockDB.ListCertificates()
+	require.NoError(t, err)
+	assert.Len(t, certs, 1, "the certificate is not rolled back when the router cannot be updated")
+}
+
+func TestReloadCertificates_Success(t *testing.T) {
+	mockDB := NewMockStorage()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := &APIServer{db: mockDB, logger: logger}
+	withCertXDS(server, &stubCertStore{combined: []byte("0123456789")}, &stubSnapshot{})
+
+	req := httptest.NewRequest(http.MethodPost, "/certificates/reload", bytes.NewReader([]byte("{}")))
+	w := httptest.NewRecorder()
+	middleware.CorrelationIDMiddleware(logger)(http.HandlerFunc(server.ReloadCertificates)).ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "success", resp["status"])
+	assert.Contains(t, resp["message"], "reload")
+	assert.Equal(t, float64(10), resp["totalBytes"])
 }
