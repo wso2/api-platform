@@ -3,6 +3,8 @@
 ###########################
 FROM node:20-alpine AS web
 
+ARG ENABLE_COVERAGE=false
+
 RUN apk --no-cache add python3 build-base git
 
 WORKDIR /web
@@ -12,12 +14,18 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
 COPY . .
-RUN npm run build
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        NODE_OPTIONS=--max-old-space-size=8192 VITE_COVERAGE=true npm run build -- --sourcemap hidden; \
+    else \
+        npm run build; \
+    fi
 
 ###########################
 # Stage 2 — BFF build      #
 ###########################
 FROM golang:1.26-alpine AS bff
+ARG ENABLE_COVERAGE=false
+ARG COVERAGE_PACKAGES=""
 
 # The BFF depends on the shared common module (configinterpolate) via a relative
 # replace directive, so the module tree is reproduced under /src and common /
@@ -37,7 +45,12 @@ RUN go mod download
 COPY --from=common . /src/common
 COPY --from=httpkit . /src/httpkit
 COPY bff/ ./
-RUN go build -trimpath -ldflags "-s -w" -o /bff .
+RUN COVER_FLAGS=""; \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        COVER_FLAGS="-cover -covermode=atomic"; \
+        if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
+    fi; \
+    go build $COVER_FLAGS -trimpath -ldflags "-s -w" -o /bff .
 
 ###########################
 # Stage 3 — Runtime        #
@@ -47,6 +60,7 @@ FROM alpine:3.24
 ARG USERNAME=aiworkspace
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
+ARG ENABLE_COVERAGE=false
 
 RUN addgroup -g $USER_GID $USERNAME && \
     adduser -D -u $USER_UID -G $USERNAME $USERNAME && \
@@ -58,6 +72,11 @@ WORKDIR /app
 # Built SPA (served by the BFF as static files) and the BFF binary.
 COPY --chown=$USER_UID:$USER_GID --from=web /web/dist /app
 COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
+
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:$USER_GID" /coverage; fi
+
+# Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
+ENV GOCOVERDIR=/coverage
 
 USER $USER_UID
 
