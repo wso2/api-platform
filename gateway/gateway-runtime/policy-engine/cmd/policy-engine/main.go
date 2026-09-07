@@ -22,6 +22,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -438,14 +439,48 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 
 	opts := &slog.HandlerOptions{Level: level}
 
+	// Tagging is per logger, never process-wide on stdout: the traffic-log
+	// publisher writes bare JSON to os.Stdout on the same descriptor, and a
+	// process-wide prefix would corrupt it.
 	var handler slog.Handler
 	if cfg.PolicyEngine.Logging.Format == "json" {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
+		return slog.New(handler).With(slog.String(logComponentField, logComponentValue))
 	}
+	handler = slog.NewTextHandler(newComponentPrefixWriter(os.Stdout, logComponentPrefix), opts)
 
 	return slog.New(handler)
+}
+
+const (
+	logComponentPrefix = "[pol] "
+	logComponentField  = "component"
+	logComponentValue  = "pol"
+)
+
+// componentPrefixWriter prepends a tag to every write. slog emits one complete
+// record per Write, so this yields one tag per line. slog serializes writes, so
+// no lock is needed here.
+type componentPrefixWriter struct {
+	w      io.Writer
+	prefix []byte
+}
+
+func newComponentPrefixWriter(w io.Writer, prefix string) *componentPrefixWriter {
+	return &componentPrefixWriter{w: w, prefix: []byte(prefix)}
+}
+
+// Write emits the tag and p in one underlying Write so another writer sharing
+// the descriptor cannot interleave between them. The returned count excludes
+// the tag, which is framing rather than bytes consumed from the caller.
+func (c *componentPrefixWriter) Write(p []byte) (int, error) {
+	buf := make([]byte, 0, len(c.prefix)+len(p))
+	buf = append(buf, c.prefix...)
+	buf = append(buf, p...)
+	if _, err := c.w.Write(buf); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 // initializeXDSClient initializes and starts the xDS client
