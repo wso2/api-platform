@@ -111,11 +111,9 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
     /**
      * Deploys to one gateway of an environment with the endpoint it should serve.
      *
-     * Deploying to the pipeline's first environment ships the API as it stands:
-     * the server snapshots it and deploys that snapshot, so there is no separate
-     * build step to perform first. `fromEnvironment` promotes instead, carrying
-     * that environment's build forward untouched. `buildId` redeploys a gateway
-     * onto the exact build it is already running.
+     * Deploying without a `buildId` snapshots the API and deploys the new build.
+     * Supplying `buildId` deploys that existing build. `fromEnvironment` promotes
+     * instead, carrying that environment's build forward untouched.
      */
     async deploy(input: {
       environment: string;

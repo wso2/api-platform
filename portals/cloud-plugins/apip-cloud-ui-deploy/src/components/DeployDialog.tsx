@@ -35,17 +35,21 @@ import {
 import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
-import type { Environment, Gateway } from '../types';
+import type { Build, Environment, Gateway } from '../types';
 
 export type DeployDialogProps = {
   open: boolean;
   mode: 'deploy' | 'promote';
   environment: Environment | null;
   /** The environment a promotion carries the build out of. */
-  sourceEnvironmentName?: string;
+  sourceEnvironment?: Environment;
+  builds: Build[];
+  initialBuildId?: string;
+  /** A new build will be created on confirmation; the latest build is informational. */
+  createBuild: boolean;
   submitting: boolean;
   onClose: () => void;
-  onConfirm: (gatewayId: string, endpointUrl: string) => void;
+  onConfirm: (gatewayId: string, endpointUrl: string, buildId?: string) => void;
 };
 
 const sectionLabelSx = {
@@ -66,7 +70,10 @@ const DeployDialog: FC<DeployDialogProps> = ({
   open,
   mode,
   environment,
-  sourceEnvironmentName,
+  sourceEnvironment,
+  builds,
+  initialBuildId,
+  createBuild,
   submitting,
   onClose,
   onConfirm,
@@ -77,12 +84,14 @@ const DeployDialog: FC<DeployDialogProps> = ({
   // opened dialog with nothing selected, since the effect that filled them ran
   // after it, and would let a background refresh overwrite a half-typed URL.
   const [gatewayId, setGatewayId] = useState('');
+  const [buildId, setBuildId] = useState('');
   const [endpointDraft, setEndpointDraft] = useState<string | null>(null);
   const [urlTouched, setUrlTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setGatewayId('');
+    setBuildId('');
     setEndpointDraft(null);
     setUrlTouched(false);
   }, [open]);
@@ -90,6 +99,15 @@ const DeployDialog: FC<DeployDialogProps> = ({
   if (!environment) return null;
 
   const actionLabel = mode === 'deploy' ? 'Deploy' : 'Promote';
+  const availableBuilds =
+    mode === 'promote'
+      ? builds.filter((build) =>
+          sourceEnvironment?.gateways.some((gateway) => gateway.buildId === build.buildId)
+        )
+      : builds;
+  const selectedBuildId = createBuild
+    ? (builds[0]?.buildId ?? '')
+    : (buildId || initialBuildId || availableBuilds[0]?.buildId || '');
   const selectedGateway =
     environment.gateways.find((gateway) => gateway.id === gatewayId) ??
     pickDefaultGateway(environment.gateways);
@@ -100,7 +118,11 @@ const DeployDialog: FC<DeployDialogProps> = ({
   // what a first deployment targets.
   const isSelectedInactive = selectedGateway ? selectedGateway.health !== 'active' : false;
   const urlMissing = endpointUrl.trim().length === 0;
-  const canConfirm = !!selectedGateway && !isSelectedInactive && !urlMissing;
+  const canConfirm =
+    !!selectedGateway &&
+    !isSelectedInactive &&
+    !urlMissing &&
+    (createBuild || selectedBuildId.length > 0);
 
   const handleSelectGateway = (id: string) => {
     setGatewayId(id);
@@ -117,7 +139,7 @@ const DeployDialog: FC<DeployDialogProps> = ({
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {mode === 'deploy'
             ? `Deploys this API as it stands now to ${environment.name}. Select the gateway to deploy to.`
-            : `Carries the build running in ${sourceEnvironmentName ?? 'the previous environment'} forward to ${environment.name}, with the endpoint you give here.`}
+            : `Carries a build running in ${sourceEnvironment?.name ?? 'the previous environment'} forward to ${environment.name}, with the endpoint you give here.`}
         </Typography>
 
         {isSelectedInactive ? (
@@ -189,6 +211,40 @@ const DeployDialog: FC<DeployDialogProps> = ({
           </Box>
         )}
 
+        <Box sx={{ mb: 2.5 }}>
+          <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Build</FormLabel>
+          {createBuild ? (
+            <TextField
+              fullWidth
+              size="small"
+              value={selectedBuildId || 'New build'}
+              slotProps={{ input: { readOnly: true } }}
+              // helperText="A new build will be created when you deploy."
+            />
+          ) : (
+            <FormControl fullWidth size="small">
+              <Select
+                value={selectedBuildId}
+                onChange={(event) => setBuildId(event.target.value as string)}
+                displayEmpty
+                disabled={availableBuilds.length === 0}
+              >
+                {availableBuilds.length === 0 ? (
+                  <MenuItem value="" disabled>
+                    No deployed builds available
+                  </MenuItem>
+                ) : (
+                  availableBuilds.map((build) => (
+                    <MenuItem key={build.buildId} value={build.buildId}>
+                      {build.buildId}
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+          )}
+        </Box>
+
         <Box>
           <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Endpoint URL</FormLabel>
           <TextField
@@ -212,7 +268,13 @@ const DeployDialog: FC<DeployDialogProps> = ({
           variant="contained"
           disabled={!canConfirm || submitting}
           onClick={() => {
-            if (selectedGateway) onConfirm(selectedGateway.id, endpointUrl.trim());
+            if (selectedGateway) {
+              onConfirm(
+                selectedGateway.id,
+                endpointUrl.trim(),
+                createBuild ? undefined : selectedBuildId
+              );
+            }
           }}
         >
           {submitting ? `${actionLabel}ing...` : actionLabel}
