@@ -16,220 +16,162 @@
  * under the License.
  */
 
-import { Fragment, useRef, useState, type FC } from "react";
-import { Box, PageContent, PageTitle } from "@wso2/oxygen-ui";
-import BuildAreaCard from "./components/BuildAreaCard";
-import EnvironmentCard from "./components/EnvironmentCard";
-import PipelineConnector from "./components/PipelineConnector";
-import DeployDialog from "./components/DeployDialog";
-import { seedBuildHistory, seedEnvironments } from "./mocks/deploy.mock";
-import type { BuildRecord, Environment, Gateway } from "./types";
-
-/** How long a gateway stays in `deploying` before the mock flips it to `active`. */
-const DEPLOY_DURATION_MS = 1100;
+import { Fragment, useState, type FC } from 'react';
+import { Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import BuildAreaCard from './components/BuildAreaCard';
+import EnvironmentCard from './components/EnvironmentCard';
+import PipelineConnector from './components/PipelineConnector';
+import DeployDialog from './components/DeployDialog';
+import type { Build, Environment } from './types';
 
 export type DeployPageProps = {
-  notify?: (message: string) => void;
+  /** Pipeline environments in promotion order, as the server returns them. */
+  environments: Environment[];
+  /** The API's builds, newest first. */
+  builds: Build[];
+  busy: boolean;
+  /** Deploys to `target`; `from` is set when this is a promotion. */
+  onDeploy: (
+    target: Environment,
+    gatewayId: string,
+    endpointUrl: string,
+    from?: Environment
+  ) => void;
+  onStopGateway: (environment: Environment, gatewayId: string) => void;
+  onRetryGateway: (environment: Environment, gatewayId: string) => void;
 };
 
-type DialogState = { mode: "deploy" | "promote"; environmentId: string } | null;
+/**
+ * The pipeline laid out left to right: the build area, then one card per
+ * environment in promotion order. That order comes from the server rather than
+ * being arranged here, so the view cannot imply a promotion the pipeline does
+ * not allow.
+ */
+type DialogState = { targetIndex: number; sourceIndex?: number } | null;
 
-const findEnvironmentById = (environments: Environment[], id: string) =>
-  environments.find((environment) => environment.id === id);
-
-const DeployPage: FC<DeployPageProps> = ({ notify }) => {
-  const [environments, setEnvironments] = useState<Environment[]>(() =>
-    seedEnvironments(),
-  );
-  const [buildHistory, setBuildHistory] = useState<BuildRecord[]>(() =>
-    seedBuildHistory(),
-  );
+const DeployPage: FC<DeployPageProps> = ({
+  environments,
+  builds,
+  busy,
+  onDeploy,
+  onStopGateway,
+  onRetryGateway,
+}) => {
   const [dialog, setDialog] = useState<DialogState>(null);
-  const buildCounter = useRef(1043);
 
-  const dialogEnvironment = dialog
-    ? (findEnvironmentById(environments, dialog.environmentId) ?? null)
-    : null;
+  const target = dialog ? (environments[dialog.targetIndex] ?? null) : null;
+  const source =
+    dialog?.sourceIndex !== undefined ? environments[dialog.sourceIndex] : undefined;
 
-  const updateGateways = (
-    environmentId: string,
-    gatewayIds: readonly string[],
-    updater: (gateway: Gateway) => Gateway,
-  ) => {
-    setEnvironments((prev) =>
-      prev.map((environment) => {
-        if (environment.id !== environmentId) return environment;
-        return {
-          ...environment,
-          gateways: environment.gateways.map((gateway) =>
-            gatewayIds.includes(gateway.id) ? updater(gateway) : gateway,
-          ),
-        };
-      }),
-    );
-  };
-
-  const runDeployment = (environmentId: string, gatewayId: string, endpointUrl: string) => {
-    updateGateways(environmentId, [gatewayId], (gateway) => ({
-      ...gateway,
-      status: "deploying",
-    }));
-
-    setTimeout(() => {
-      const buildId = `b-${buildCounter.current++}`;
-      const when = new Date().toISOString();
-
-      updateGateways(environmentId, [gatewayId], (gateway) => ({
-        ...gateway,
-        status: "active",
-        buildId,
-        deployedAt: when,
-        endpointUrl,
-        history: [{ result: "Success", buildId, when }, ...gateway.history],
-      }));
-
-      setBuildHistory((prev) => [
-        {
-          id: `build-${buildId}-${environmentId}`,
-          buildId,
-          result: "Success",
-          when,
-          targetEnvironmentId: environmentId,
-          targetGatewayCount: 1,
-        },
-        ...prev,
-      ]);
-
-      const environmentName =
-        findEnvironmentById(environments, environmentId)?.name ?? environmentId;
-      notify?.(`Deployed build ${buildId} to ${environmentName}.`);
-    }, DEPLOY_DURATION_MS);
-  };
-
-  const handleDeployClick = () => {
-    const first = environments[0];
-    if (!first) return;
-    setDialog({ mode: "deploy", environmentId: first.id });
-  };
-
-  const handlePromoteClick = (environmentIndex: number) => {
-    const next = environments[environmentIndex + 1];
-    if (!next) return;
-    setDialog({ mode: "promote", environmentId: next.id });
-  };
-
-  const handleConfirmDialog = (gatewayId: string, endpointUrl: string) => {
-    if (!dialog) return;
-    runDeployment(dialog.environmentId, gatewayId, endpointUrl);
+  const handleConfirm = (gatewayId: string, endpointUrl: string) => {
+    if (target) onDeploy(target, gatewayId, endpointUrl, source);
     setDialog(null);
-  };
-
-  const handleStop = (environmentId: string, gatewayId: string) => {
-    setEnvironments((prev) =>
-      prev.map((environment) => {
-        if (environment.id !== environmentId) return environment;
-        return {
-          ...environment,
-          gateways: environment.gateways.map((gateway) =>
-            gateway.id === gatewayId
-              ? { ...gateway, status: "none" as const }
-              : gateway,
-          ),
-        };
-      }),
-    );
-    const environmentName =
-      findEnvironmentById(environments, environmentId)?.name ?? environmentId;
-    notify?.(`Stopped gateway in ${environmentName}.`);
-  };
-
-  const handleRetry = (environmentId: string, gatewayId: string) => {
-    const gateway = findEnvironmentById(environments, environmentId)?.gateways.find(
-      (candidate) => candidate.id === gatewayId,
-    );
-    runDeployment(environmentId, gatewayId, gateway?.endpointUrl ?? "");
   };
 
   return (
     <PageContent
       fullWidth
       sx={{
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-        width: { xs: "calc(100dvw - 64px)", md: "calc(100dvw - 250px)" },
-        maxWidth: { xs: "calc(100dvw - 64px)", md: "calc(100dvw - 250px)" },
-        height: "100%",
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        width: { xs: 'calc(100dvw - 64px)', md: 'calc(100dvw - 250px)' },
+        maxWidth: { xs: 'calc(100dvw - 64px)', md: 'calc(100dvw - 250px)' },
+        height: '100%',
         minWidth: 0,
         minHeight: 0,
-        overflow: "hidden",
+        overflow: 'hidden',
       }}
     >
       <PageTitle sx={{ mb: 2, flexShrink: 0 }}>
         <PageTitle.Header>Deploy</PageTitle.Header>
       </PageTitle>
 
-      <Box
-        sx={{
-          flex: 1,
-          width: "100%",
-          maxWidth: "100%",
-          minWidth: 0,
-          minHeight: 0,
-          overflow: "auto",
-          overscrollBehavior: "contain",
-          scrollbarGutter: "stable",
-          WebkitOverflowScrolling: "touch",
-          pb: 2,
-          "&::-webkit-scrollbar": {
-            width: 10,
-            height: 10,
-          },
-          "&::-webkit-scrollbar-thumb": {
-            bgcolor: "action.disabled",
-            borderRadius: 5,
-          },
-          "&::-webkit-scrollbar-track": {
-            bgcolor: "action.hover",
-            borderRadius: 5,
-          },
-        }}
-      >
+      {environments.length === 0 ? (
         <Box
           sx={{
-            display: "flex",
-            alignItems: "flex-start",
-            width: "max-content",
-            minWidth: "100%",
+            border: '1px dashed',
+            borderColor: 'divider',
+            borderRadius: 1.5,
+            py: 6,
+            px: 3,
+            textAlign: 'center',
           }}
         >
-          <BuildAreaCard
-            buildHistory={buildHistory}
-            targetEnvironment={environments[0]}
-            onDeployClick={handleDeployClick}
-          />
-
-          {environments.map((env, index) => (
-            <Fragment key={env.id}>
-              <PipelineConnector />
-              <EnvironmentCard
-                environment={env}
-                nextEnvironment={environments[index + 1]}
-                onPromoteClick={() => handlePromoteClick(index)}
-                onStopGateway={(gatewayId) => handleStop(env.id, gatewayId)}
-                onRetryGateway={(gatewayId) => handleRetry(env.id, gatewayId)}
-              />
-            </Fragment>
-          ))}
+          <Typography variant="body2" color="text.secondary">
+            This project&apos;s deployment pipeline has no environments yet. Add environments to
+            the pipeline to deploy this API.
+          </Typography>
         </Box>
-      </Box>
+      ) : (
+        <Box
+          sx={{
+            flex: 1,
+            width: '100%',
+            maxWidth: '100%',
+            minWidth: 0,
+            minHeight: 0,
+            overflow: 'auto',
+            overscrollBehavior: 'contain',
+            scrollbarGutter: 'stable',
+            WebkitOverflowScrolling: 'touch',
+            pb: 2,
+            '&::-webkit-scrollbar': {
+              width: 10,
+              height: 10,
+            },
+            '&::-webkit-scrollbar-thumb': {
+              bgcolor: 'action.disabled',
+              borderRadius: 5,
+            },
+            '&::-webkit-scrollbar-track': {
+              bgcolor: 'action.hover',
+              borderRadius: 5,
+            },
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              width: 'max-content',
+              minWidth: '100%',
+            }}
+          >
+            <BuildAreaCard
+              builds={builds}
+              targetEnvironment={environments[0]}
+              busy={busy}
+              onDeployClick={() => setDialog({ targetIndex: 0 })}
+            />
+
+            {environments.map((environment, index) => (
+              <Fragment key={environment.name}>
+                <PipelineConnector />
+                <EnvironmentCard
+                  environment={environment}
+                  nextEnvironment={environments[index + 1]}
+                  busy={busy}
+                  onPromoteClick={() =>
+                    setDialog({ targetIndex: index + 1, sourceIndex: index })
+                  }
+                  onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
+                  onRetryGateway={(gatewayId) => onRetryGateway(environment, gatewayId)}
+                />
+              </Fragment>
+            ))}
+          </Box>
+        </Box>
+      )}
 
       <DeployDialog
         open={dialog !== null}
-        mode={dialog?.mode ?? "deploy"}
-        environment={dialogEnvironment}
+        mode={source ? 'promote' : 'deploy'}
+        environment={target}
+        sourceEnvironmentName={source?.name}
+        submitting={busy}
         onClose={() => setDialog(null)}
-        onConfirm={handleConfirmDialog}
+        onConfirm={handleConfirm}
       />
     </PageContent>
   );

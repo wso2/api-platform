@@ -21,16 +21,29 @@ import { Box, Button, Card, CardContent, Divider, Tooltip, Typography } from '@w
 import StatusDot from './StatusDot';
 import { relativeTime } from '../utils/time';
 import { activeGatewayCount } from '../utils/status';
-import type { BuildRecord, Environment } from '../types';
+import type { Build, Environment } from '../types';
 
 export type BuildAreaCardProps = {
-  buildHistory: BuildRecord[];
+  /** The API's builds, newest first. */
+  builds: Build[];
   targetEnvironment: Environment;
+  busy: boolean;
   onDeployClick: () => void;
 };
 
-const BuildAreaCard: FC<BuildAreaCardProps> = ({ buildHistory, targetEnvironment, onDeployClick }) => {
-  const latestBuild = buildHistory[0] ?? null;
+/**
+ * The head of the pipeline. Deploying from here ships the API as it stands: the
+ * server snapshots it and deploys that snapshot, so there is no build step to
+ * perform first and the card reports what was last built rather than asking for
+ * one.
+ */
+const BuildAreaCard: FC<BuildAreaCardProps> = ({
+  builds,
+  targetEnvironment,
+  busy,
+  onDeployClick,
+}) => {
+  const latestBuild = builds[0] ?? null;
   const canDeploy = activeGatewayCount(targetEnvironment.gateways) > 0;
   const deployDisabledReason = canDeploy
     ? ''
@@ -55,7 +68,7 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({ buildHistory, targetEnvironment
               <Button
                 fullWidth
                 variant="contained"
-                disabled={!canDeploy}
+                disabled={!canDeploy || busy}
                 onClick={onDeployClick}
                 sx={{ fontWeight: 600 }}
               >
@@ -69,13 +82,15 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({ buildHistory, targetEnvironment
               {latestBuild ? (
                 <>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <StatusDot tone={latestBuild.result === 'Success' ? 'success' : 'error'} />
+                    <StatusDot tone="success" />
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {latestBuild.result}
+                      Latest build
                     </Typography>
-                    <Typography variant="caption" color="text.disabled">
-                      · {relativeTime(latestBuild.when)}
-                    </Typography>
+                    {latestBuild.createdAt ? (
+                      <Typography variant="caption" color="text.disabled">
+                        · {relativeTime(latestBuild.createdAt)}
+                      </Typography>
+                    ) : null}
                   </Box>
                   <Typography variant="caption" color="text.secondary" display="block" sx={{ pl: 2.25, mt: 0.5 }}>
                     ID {latestBuild.buildId}
@@ -83,7 +98,7 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({ buildHistory, targetEnvironment
                 </>
               ) : (
                 <Typography variant="body2" color="text.disabled">
-                  No builds yet.
+                  No builds yet. Deploying prepares one.
                 </Typography>
               )}
             </CardContent>

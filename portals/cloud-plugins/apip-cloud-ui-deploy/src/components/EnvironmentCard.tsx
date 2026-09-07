@@ -16,11 +16,9 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
+import type { FC } from 'react';
 import { Box, Button, Card, CardContent, Chip, Divider, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { MoveRight, Wrench } from '@wso2/oxygen-ui-icons-react';
-import ActionRow from './ActionRow';
-import EnvironmentVariablesDrawer from './EnvironmentVariablesDrawer';
+import { MoveRight } from '@wso2/oxygen-ui-icons-react';
 import GatewayRow from './GatewayRow';
 import { activeGatewayCount, hasAnyDeployment } from '../utils/status';
 import type { Environment } from '../types';
@@ -28,6 +26,7 @@ import type { Environment } from '../types';
 export type EnvironmentCardProps = {
   environment: Environment;
   nextEnvironment?: Environment;
+  busy: boolean;
   onPromoteClick: () => void;
   onStopGateway: (gatewayId: string) => void;
   onRetryGateway: (gatewayId: string) => void;
@@ -44,12 +43,11 @@ const sectionLabelSx = {
 const EnvironmentCard: FC<EnvironmentCardProps> = ({
   environment,
   nextEnvironment,
+  busy,
   onPromoteClick,
   onStopGateway,
   onRetryGateway,
 }) => {
-  const [envVarsOpen, setEnvVarsOpen] = useState(false);
-
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
   const deployed = hasAnyDeployment(gateways);
@@ -73,7 +71,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
         <Box>
           <Typography sx={{ fontSize: 16, fontWeight: 600 }}>{environment.name}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {activeCount} of {gateways.length} gateways active
+            {activeCount} of {gateways.length} gateway{gateways.length === 1 ? '' : 's'} active
           </Typography>
         </Box>
 
@@ -84,23 +82,26 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
           <Chip label={gateways.length} size="small" sx={{ height: 18, fontSize: 11 }} />
         </Box>
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {gateways.map((gateway) => (
-            <GatewayRow
-              key={gateway.id}
-              gateway={gateway}
-              environmentName={environment.name}
-              onRetry={() => onRetryGateway(gateway.id)}
-              onStop={() => onStopGateway(gateway.id)}
-            />
-          ))}
-        </Box>
+        {gateways.length === 0 ? (
+          <Typography variant="caption" color="text.disabled">
+            No gateway is bound to this environment yet.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {gateways.map((gateway) => (
+              <GatewayRow
+                key={gateway.id}
+                gateway={gateway}
+                environmentName={environment.name}
+                busy={busy}
+                onRetry={() => onRetryGateway(gateway.id)}
+                onStop={() => onStopGateway(gateway.id)}
+              />
+            ))}
+          </Box>
+        )}
 
         <Divider />
-
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <ActionRow label="Environment Variables" icon={<Wrench size={14} />} onClick={() => setEnvVarsOpen(true)} />
-        </Box>
 
         {nextEnvironment ? (
           deployed ? (
@@ -110,7 +111,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
                   fullWidth
                   variant="contained"
                   startIcon={<MoveRight size={16} />}
-                  disabled={!canPromote}
+                  disabled={!canPromote || busy}
                   onClick={onPromoteClick}
                 >
                   Promote to {nextEnvironment.name}
@@ -132,13 +133,6 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
             </Box>
           )
         ) : null}
-
-        <EnvironmentVariablesDrawer
-          open={envVarsOpen}
-          onClose={() => setEnvVarsOpen(false)}
-          scopeLabel={environment.name}
-          count={environment.envVars}
-        />
       </CardContent>
     </Card>
   );

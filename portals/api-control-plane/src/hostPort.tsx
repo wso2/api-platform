@@ -52,6 +52,8 @@ export type ApiFetch = <T = unknown>(
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
+  /** The API in scope, on the API-scoped routes. Absent elsewhere. */
+  apiHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;

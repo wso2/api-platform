@@ -41,6 +41,9 @@ export type DeployDialogProps = {
   open: boolean;
   mode: 'deploy' | 'promote';
   environment: Environment | null;
+  /** The environment a promotion carries the build out of. */
+  sourceEnvironmentName?: string;
+  submitting: boolean;
   onClose: () => void;
   onConfirm: (gatewayId: string, endpointUrl: string) => void;
 };
@@ -55,37 +58,53 @@ const sectionLabelSx = {
 
 const pickDefaultGateway = (gateways: Gateway[]): Gateway | null =>
   gateways.find((gateway) => gateway.isDefault) ??
-  gateways.find((gateway) => gateway.status === 'active') ??
+  gateways.find((gateway) => gateway.health === 'active') ??
   gateways[0] ??
   null;
 
-const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose, onConfirm }) => {
+const DeployDialog: FC<DeployDialogProps> = ({
+  open,
+  mode,
+  environment,
+  sourceEnvironmentName,
+  submitting,
+  onClose,
+  onConfirm,
+}) => {
+  // Only what the user has chosen themselves is held here: an empty gateway id
+  // and a null draft both mean "whatever this environment says", resolved below.
+  // Holding the resolved values instead would leave the first render of a freshly
+  // opened dialog with nothing selected, since the effect that filled them ran
+  // after it, and would let a background refresh overwrite a half-typed URL.
   const [gatewayId, setGatewayId] = useState('');
-  const [endpointUrl, setEndpointUrl] = useState('');
+  const [endpointDraft, setEndpointDraft] = useState<string | null>(null);
   const [urlTouched, setUrlTouched] = useState(false);
 
   useEffect(() => {
-    if (open && environment) {
-      const defaultGateway = pickDefaultGateway(environment.gateways);
-      setGatewayId(defaultGateway?.id ?? '');
-      setEndpointUrl(defaultGateway?.endpointUrl ?? '');
-      setUrlTouched(false);
-    }
-  }, [open, environment]);
+    if (!open) return;
+    setGatewayId('');
+    setEndpointDraft(null);
+    setUrlTouched(false);
+  }, [open]);
 
   if (!environment) return null;
 
   const actionLabel = mode === 'deploy' ? 'Deploy' : 'Promote';
-  const selectedGateway = environment.gateways.find((gateway) => gateway.id === gatewayId) ?? null;
+  const selectedGateway =
+    environment.gateways.find((gateway) => gateway.id === gatewayId) ??
+    pickDefaultGateway(environment.gateways);
+  const endpointUrl = endpointDraft ?? selectedGateway?.endpointUrl ?? '';
   const isSingleGateway = environment.gateways.length === 1;
-  const isSelectedInactive = selectedGateway ? selectedGateway.status !== 'active' : false;
+  // Whether the gateway can receive a deployment is its own health, not the state
+  // of what is deployed on it: a healthy gateway with nothing deployed is exactly
+  // what a first deployment targets.
+  const isSelectedInactive = selectedGateway ? selectedGateway.health !== 'active' : false;
   const urlMissing = endpointUrl.trim().length === 0;
   const canConfirm = !!selectedGateway && !isSelectedInactive && !urlMissing;
 
   const handleSelectGateway = (id: string) => {
     setGatewayId(id);
-    const gateway = environment.gateways.find((candidate) => candidate.id === id);
-    setEndpointUrl(gateway?.endpointUrl ?? '');
+    setEndpointDraft(null);
     setUrlTouched(false);
   };
 
@@ -97,8 +116,8 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {mode === 'deploy'
-            ? `Initial deployment goes to ${environment.name}. Select the gateway to deploy to.`
-            : `Select which gateway in ${environment.name} should receive this build.`}
+            ? `Deploys this API as it stands now to ${environment.name}. Select the gateway to deploy to.`
+            : `Carries the build running in ${sourceEnvironmentName ?? 'the previous environment'} forward to ${environment.name}, with the endpoint you give here.`}
         </Typography>
 
         {isSelectedInactive ? (
@@ -107,7 +126,7 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
           </Alert>
         ) : null}
 
-        {isSingleGateway ? (
+        {isSingleGateway && selectedGateway ? (
           <Box sx={{ mb: 2.5 }}>
             <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateway</FormLabel>
             <Box
@@ -122,16 +141,18 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
                 borderRadius: 1.5,
               }}
             >
-              <StatusDot tone={gatewayStatusTone(selectedGateway!.status).tone} />
+              <StatusDot tone={selectedGateway.health === 'active' ? 'success' : 'default'} />
               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                 <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                  {selectedGateway!.name}
+                  {selectedGateway.name}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap display="block">
-                  {selectedGateway!.region}
-                </Typography>
+                {selectedGateway.host ? (
+                  <Typography variant="caption" color="text.secondary" noWrap display="block">
+                    {selectedGateway.host}
+                  </Typography>
+                ) : null}
               </Box>
-              <StatusPill tone={gatewayStatusTone(selectedGateway!.status)} />
+              <StatusPill tone={gatewayStatusTone(selectedGateway.status)} />
             </Box>
           </Box>
         ) : (
@@ -139,14 +160,14 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
             <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateway</FormLabel>
             <FormControl fullWidth size="small">
               <Select
-                value={gatewayId}
+                value={selectedGateway?.id ?? ''}
                 onChange={(event) => handleSelectGateway(event.target.value as string)}
                 renderValue={(value) => {
                   const gateway = environment.gateways.find((candidate) => candidate.id === value);
                   if (!gateway) return null;
                   return (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <StatusDot tone={gatewayStatusTone(gateway.status).tone} />
+                      <StatusDot tone={gateway.health === 'active' ? 'success' : 'default'} />
                       <Typography variant="body2">{gateway.name}</Typography>
                     </Box>
                   );
@@ -155,7 +176,7 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
                 {environment.gateways.map((gateway) => (
                   <MenuItem key={gateway.id} value={gateway.id}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <StatusDot tone={gatewayStatusTone(gateway.status).tone} />
+                      <StatusDot tone={gateway.health === 'active' ? 'success' : 'default'} />
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
                         {gateway.name}
                         {gateway.isDefault ? ' · Default' : ''}
@@ -176,7 +197,7 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
             required
             placeholder="https://api.example.com"
             value={endpointUrl}
-            onChange={(event) => setEndpointUrl(event.target.value)}
+            onChange={(event) => setEndpointDraft(event.target.value)}
             onBlur={() => setUrlTouched(true)}
             error={urlTouched && urlMissing}
             helperText={urlTouched && urlMissing ? 'Endpoint URL is required.' : ' '}
@@ -184,13 +205,17 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} disabled={submitting}>
+          Cancel
+        </Button>
         <Button
           variant="contained"
-          disabled={!canConfirm}
-          onClick={() => onConfirm(gatewayId, endpointUrl.trim())}
+          disabled={!canConfirm || submitting}
+          onClick={() => {
+            if (selectedGateway) onConfirm(selectedGateway.id, endpointUrl.trim());
+          }}
         >
-          {actionLabel}
+          {submitting ? `${actionLabel}ing...` : actionLabel}
         </Button>
       </DialogActions>
     </Dialog>

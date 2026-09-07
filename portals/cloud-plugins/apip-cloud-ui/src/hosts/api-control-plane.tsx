@@ -9,6 +9,7 @@
 
 import { Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
 
+import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import {
@@ -16,6 +17,7 @@ import {
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
+  PAGE_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
@@ -47,6 +49,11 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * scope, so each is gated by `isVisible` on whether a project is in scope, and
  * exactly one is shown at a time. Data flows through the host port's `apiFetch`
  * to the platform-api REST endpoints.
+ *
+ * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
+ * the same way `gateways` does: the nav entry and route stay native, and only
+ * what renders there changes. It is the one API-scoped feature here, so it needs
+ * the API in scope, which the Port carries as `apiHandle`.
  */
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
   defineCloudPlugin({
@@ -91,6 +98,24 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         render: (port) => <GatewaysFeature gatewayTypes={['regular', 'event']} port={port} />,
         label: 'Gateways',
         level: 'organization',
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'deploy',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'api-deploy',
+        slot: PAGE_API_DEPLOY_SLOT,
+        // Inert here, as for the gateways override: the page override is consumed
+        // by the `apiDeploy` route wrapper in `AppRoutes`, not by the nav or
+        // Settings-tab pipeline, which only match `sidebar.*` / `settings.*.tabs`.
+        order: 0,
+        routePath: 'deploy',
+        render: (port) => <DeployFeature port={port} />,
+        label: 'Deploy',
+        level: 'api',
       },
     ],
   }),
