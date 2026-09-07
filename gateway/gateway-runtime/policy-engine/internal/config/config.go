@@ -158,12 +158,54 @@ type OTelPublisherConfig struct {
 	// QueueCapacity bounds records held in memory when the endpoint is slow.
 	// Once full, OnQueueFull decides which record is dropped.
 	QueueCapacity int `koanf:"queue_capacity"`
-	// OnQueueFull is QueueDropNew (default) or QueueDropOldest. 
+	// OnQueueFull is QueueDropNew (default) or QueueDropOldest.
 	OnQueueFull string `koanf:"on_queue_full"`
 	// Timeout bounds a single export attempt.
 	Timeout time.Duration `koanf:"timeout"`
+	// MaxRetries is the number of retry attempts after the initial one. Only
+	// transport errors, 429 and 5xx are retried; any other 4xx means the endpoint
+	// rejected the payload's shape, which retrying can only amplify.
+	MaxRetries int `koanf:"max_retries"`
+	// RetryBackoff is the base delay for exponential backoff, with full jitter
+	// applied per attempt so replicas retrying after a shared outage do not
+	// resynchronize into a thundering herd.
+	RetryBackoff time.Duration `koanf:"retry_backoff"`
+	// RetryAbortQueueRatio is the fraction of QueueCapacity at which a retrying
+	// batch abandons its remaining budget and returns to draining. One worker
+	// exports, so nothing drains the queue while a batch retries: past this
+	// depth, retrying to save one batch costs more records than it rescues. 0
+	// disables the check and lets every batch use its full budget.
+	RetryAbortQueueRatio float64 `koanf:"retry_abort_queue_ratio"`
+	// Compression is "none" (default, the OTLP spec's own default) or "gzip".
+	// gzip trades CPU on the export worker for a large egress reduction — these
+	// records are verbose JSON — and every OTLP/HTTP receiver must support it.
+	Compression string `koanf:"compression"`
 	// TLS configures the client side of an https endpoint. Ignored for http.
 	TLS OTelTLSConfig `koanf:"tls"`
+}
+
+// Accepted values for analytics.publishers.otel.compression.
+const (
+	// OTelCompressionNone sends the OTLP-JSON payload uncompressed.
+	OTelCompressionNone = "none"
+	// OTelCompressionGzip sends it gzip-encoded with Content-Encoding: gzip.
+	OTelCompressionGzip = "gzip"
+)
+
+// DefaultOTelRetryAbortQueueRatio is the fraction of the OTel publisher's queue at
+// which a retrying batch gives up, matching the traffic-log sink's midpoint: high
+// enough that an ordinary blip still gets its full retry budget, low enough that a
+// hung endpoint cannot consume the whole queue before exporting resumes.
+const DefaultOTelRetryAbortQueueRatio = 0.5
+
+// EffectiveRetryAbortDepth returns the queue depth at which a retrying batch stops
+// retrying. Zero means the check is disabled.
+func (c OTelPublisherConfig) EffectiveRetryAbortDepth() int {
+	depth := int(float64(c.QueueCapacity) * c.RetryAbortQueueRatio)
+	if depth < 1 && c.RetryAbortQueueRatio > 0 {
+		depth = 1
+	}
+	return depth
 }
 
 // OTelTLSConfig configures TLS to the OTLP endpoint
@@ -1230,6 +1272,11 @@ func defaultConfig() *Config {
 					QueueCapacity:  10000,
 					OnQueueFull:    QueueDropNew,
 					Timeout:        10 * time.Second,
+					MaxRetries:     3,
+					RetryBackoff:   time.Second,
+					// Half: retry freely while the queue is shallow, stop once it fills.
+					RetryAbortQueueRatio: DefaultOTelRetryAbortQueueRatio,
+					Compression:          OTelCompressionNone,
 				},
 			},
 			GRPCEventServerCfg: map[string]interface{}{
@@ -1553,6 +1600,23 @@ func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
 	}
 	if cfg.Timeout <= 0 {
 		return fmt.Errorf("analytics.publishers.otel.timeout must be > 0, got %s", cfg.Timeout)
+	}
+	if cfg.MaxRetries < 0 {
+		return fmt.Errorf("analytics.publishers.otel.max_retries must be >= 0, got %d", cfg.MaxRetries)
+	}
+	if cfg.MaxRetries > 0 && cfg.RetryBackoff <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.retry_backoff must be positive when max_retries > 0, got %s",
+			cfg.RetryBackoff)
+	}
+	if cfg.RetryAbortQueueRatio < 0 || cfg.RetryAbortQueueRatio > 1 {
+		return fmt.Errorf("analytics.publishers.otel.retry_abort_queue_ratio must be between 0 and 1, got %v",
+			cfg.RetryAbortQueueRatio)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Compression)) {
+	case "", OTelCompressionNone, OTelCompressionGzip:
+	default:
+		return fmt.Errorf("analytics.publishers.otel.compression must be %q or %q, got %q",
+			OTelCompressionNone, OTelCompressionGzip, cfg.Compression)
 	}
 	if err := validateOTelTLS(cfg.TLS, u.Host); err != nil {
 		return fmt.Errorf("analytics.publishers.otel.tls: %w", err)

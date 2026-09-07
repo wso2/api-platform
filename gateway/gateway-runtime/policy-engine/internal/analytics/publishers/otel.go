@@ -19,13 +19,16 @@ package publishers
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -59,6 +62,10 @@ const (
 	// otelCloseFlushTimeout bounds the shutdown flush when the caller's context
 	// carries no deadline.
 	otelCloseFlushTimeout = 5 * time.Second
+	// otelMaxResponseBytes caps how much of the endpoint's response is read. A
+	// 2xx body carries partialSuccess and a failure body carries an error
+	// message; neither may be allowed to grow the heap.
+	otelMaxResponseBytes int64 = 4 << 10
 )
 
 // ns qualifies an attribute name with the WSO2 namespace.
@@ -96,6 +103,11 @@ type OTel struct {
 	dropped   int
 	// dropOldest is resolved once at construction rather than per record.
 	dropOldest bool
+	// gzip is resolved once at construction from cfg.Compression.
+	gzip bool
+	// retryAbortDepth is the queue depth at which a retrying batch gives up so
+	// the worker can resume draining. 0 disables the check. See export.
+	retryAbortDepth int
 }
 
 // NewOTel creates the OTLP-logs publisher and starts its exporting worker.
@@ -132,6 +144,9 @@ func NewOTel(cfg *config.OTelPublisherConfig) (*OTel, error) {
 		stop:       make(chan struct{}),
 		workerDone: make(chan struct{}),
 		dropOldest: strings.EqualFold(strings.TrimSpace(cfg.OnQueueFull), config.QueueDropOldest),
+		gzip: strings.EqualFold(strings.TrimSpace(cfg.Compression),
+			config.OTelCompressionGzip),
+		retryAbortDepth: cfg.EffectiveRetryAbortDepth(),
 	}
 	go o.run()
 
@@ -216,7 +231,7 @@ func (o *OTel) Publish(event *dto.Event) {
 		// non-blocking Publish into an unbounded one.
 		select {
 		case <-o.queue:
-			o.countDrop()
+			o.countQueueDrop()
 		default:
 		}
 		select {
@@ -226,16 +241,13 @@ func (o *OTel) Publish(event *dto.Event) {
 		}
 	}
 
-	o.countDrop()
+	o.countQueueDrop()
 }
 
-// countDrop records one dropped record, warning on the first and then every
-// hundredth so a sustained outage cannot flood the log.
-func (o *OTel) countDrop() {
-	o.droppedMu.Lock()
-	o.dropped++
-	count := o.dropped
-	o.droppedMu.Unlock()
+// countQueueDrop records one record dropped for a full queue, warning on the
+// first and then every hundredth so a sustained outage cannot flood the log.
+func (o *OTel) countQueueDrop() {
+	count := o.countDrops(1)
 	if count == 1 || count%100 == 0 {
 		slog.Warn("OTel publisher queue full; dropping analytics event",
 			"droppedTotal", count, "queueCapacity", o.cfg.QueueCapacity,
@@ -312,7 +324,10 @@ func (o *OTel) Close(ctx context.Context) error {
 	return o.closeErr
 }
 
-// export POSTs one batch as a single OTLP/HTTP logs request.
+// export builds the OTLP payload for one batch and delivers it, retrying
+// transport errors, 429 and 5xx with jittered exponential backoff. Any other 4xx
+// means the endpoint rejected the payload's shape, so retrying would only amplify
+// a permanent failure.
 func (o *OTel) export(batch []*otelLogRecord) {
 	records := make([]otelLogRecord, 0, len(batch))
 	for _, r := range batch {
@@ -337,36 +352,213 @@ func (o *OTel) export(batch []*otelLogRecord) {
 	})
 	if err != nil {
 		slog.Error("OTel publisher failed to marshal OTLP payload", "error", err, "records", len(records))
+		o.countDrops(len(records))
 		return
 	}
+	if o.gzip {
+		compressed, err := gzipBytes(body)
+		if err != nil {
+			slog.Error("OTel publisher failed to compress OTLP payload", "error", err, "records", len(records))
+			o.countDrops(len(records))
+			return
+		}
+		body = compressed
+	}
 
+	var lastErr error
+	// Delay before the NEXT attempt. A Retry-After replaces our own backoff
+	// rather than adding to it, so the endpoint's own pacing is what applies.
+	var nextDelay time.Duration
+	for attempt := 0; attempt <= o.cfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			// Head-of-line check, before committing to another wait. One worker
+			// exports, so nothing drains the queue while this batch retries. Past
+			// the abort depth, retrying to save this batch costs more newer records
+			// to queue-full than it rescues — so abandon it and resume draining.
+			if depth := len(o.queue); o.retryAbortDepth > 0 && depth >= o.retryAbortDepth {
+				o.countDrops(len(records))
+				slog.Error("OTel publisher abandoning batch retries to resume draining; the endpoint "+
+					"is reachable but too slow to keep up",
+					"records", len(records), "attempts", attempt,
+					"queueDepth", depth, "queueCapacity", o.cfg.QueueCapacity, "error", lastErr)
+				return
+			}
+			if !o.sleep(nextDelay, attempt) {
+				break // shutting down: stop retrying rather than hold shutdown open
+			}
+		}
+
+		retryAfter, err := o.post(body, len(records))
+		if err == nil {
+			return
+		}
+		lastErr = err
+
+		var perm *otelPermanentExportError
+		if errors.As(err, &perm) {
+			break // 4xx other than 429 — retrying cannot help
+		}
+		nextDelay = retryAfter // 0 unless the endpoint asked for a specific delay
+	}
+
+	o.countDrops(len(records))
+	slog.Error("OTel publisher failed to export analytics batch; dropping records",
+		"records", len(records), "attempts", o.cfg.MaxRetries+1,
+		"endpoint", o.cfg.Endpoint, "error", lastErr)
+}
+
+// otelPermanentExportError marks a response that must not be retried.
+type otelPermanentExportError struct{ status int }
+
+func (e *otelPermanentExportError) Error() string {
+	return fmt.Sprintf("endpoint rejected the batch with status %d", e.status)
+}
+
+// post performs one export attempt, returning the endpoint's requested
+// Retry-After when it supplies one so the caller can honor it over its own
+// backoff.
+func (o *OTel) post(body []byte, records int) (time.Duration, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), o.cfg.Timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.cfg.Endpoint, bytes.NewReader(body))
 	if err != nil {
-		slog.Error("OTel publisher failed to build OTLP request", "error", err)
-		return
+		return 0, fmt.Errorf("building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if o.gzip {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
 	for k, v := range o.cfg.Headers {
 		req.Header.Set(k, v)
 	}
 
 	resp, err := o.client.Do(req)
 	if err != nil {
-		slog.Error("OTel publisher export failed", "error", err, "endpoint", o.cfg.Endpoint, "records", len(records))
-		return
+		return 0, fmt.Errorf("posting batch: %w", err)
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		slog.Error("OTel collector rejected the export",
-			"status", resp.StatusCode, "records", len(records), "response", string(respBody))
+	// Read a bounded prefix: enough for the partialSuccess field or an error
+	// message, and capped so a hostile endpoint cannot grow the heap.
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, otelMaxResponseBytes))
+	_, _ = io.Copy(io.Discard, resp.Body) // drain the rest so the connection is reusable
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		o.logPartialSuccess(respBody, records)
+		return 0, nil
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return parseRetryAfter(resp.Header.Get("Retry-After")),
+			fmt.Errorf("endpoint is rate limiting (429)")
+	}
+	if resp.StatusCode >= 500 {
+		return 0, fmt.Errorf("endpoint returned status %d: %s", resp.StatusCode, otelResponseExcerpt(respBody))
+	}
+	return 0, &otelPermanentExportError{status: resp.StatusCode}
+}
+
+// logPartialSuccess reports records the endpoint accepted the request for but
+// rejected. Without this a 200 carrying rejectedLogRecords looks like a clean
+// export, and the records are silently gone.
+func (o *OTel) logPartialSuccess(respBody []byte, records int) {
+	if len(respBody) == 0 {
 		return
 	}
-	slog.Debug("OTel publisher exported analytics events", "records", len(records), "status", resp.StatusCode)
+	var parsed otelExportResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return // a non-JSON 2xx body is not an error; nothing to report
+	}
+	// Proto3 JSON encodes int64 as a string, but some receivers emit a bare
+	// number, so the field is json.Number to accept either.
+	rejected, err := parsed.PartialSuccess.RejectedLogRecords.Int64()
+	if err != nil || rejected <= 0 {
+		return
+	}
+	o.countDrops(int(rejected))
+	slog.Error("OTel endpoint accepted the export but rejected records",
+		"rejected", rejected, "records", records,
+		"endpointMessage", parsed.PartialSuccess.ErrorMessage)
+}
+
+// sleep waits out the backoff before a retry, returning false if shutdown was
+// requested first. delay is the endpoint's Retry-After when it supplied one,
+// otherwise the jittered exponential backoff for this attempt.
+func (o *OTel) sleep(delay time.Duration, attempt int) bool {
+	if delay <= 0 {
+		delay = o.backoff(attempt)
+	}
+	if delay <= 0 {
+		return true
+	}
+	t := time.NewTimer(delay)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-o.stop:
+		return false
+	}
+}
+
+// backoff returns the delay before the given retry attempt (1-based), growing
+// exponentially with full jitter. Jitter matters because every replica retries
+// against the same endpoint after a shared outage; without it they reconverge
+// into a synchronized herd on the first recovery.
+func (o *OTel) backoff(attempt int) time.Duration {
+	base := o.cfg.RetryBackoff
+	if base <= 0 {
+		base = time.Second
+	}
+	// Cap the exponent so a large max_retries cannot overflow the shift.
+	shift := attempt - 1
+	if shift > 10 {
+		shift = 10
+	}
+	delay := base << shift
+	if half := delay / 2; half > 0 {
+		delay = half + time.Duration(rand.Int64N(int64(half)))
+	}
+	return delay
+}
+
+// countDrops adds n to the dropped total and returns the new total. It does not
+// log: every caller has something more specific to say than "a record was lost".
+func (o *OTel) countDrops(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	o.droppedMu.Lock()
+	o.dropped += n
+	total := o.dropped
+	o.droppedMu.Unlock()
+	return total
+}
+
+// otelResponseExcerpt renders a bounded, single-line excerpt of an endpoint's
+// error body for the log. The body is the endpoint's own text, never ours.
+func otelResponseExcerpt(body []byte) string {
+	const maxExcerpt = 256
+	excerpt := strings.TrimSpace(string(body))
+	if len(excerpt) > maxExcerpt {
+		excerpt = excerpt[:maxExcerpt] + "..."
+	}
+	return strings.ReplaceAll(excerpt, "\n", " ")
+}
+
+// gzipBytes compresses the payload for Content-Encoding: gzip.
+func gzipBytes(body []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(body); err != nil {
+		zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // buildRecord maps the canonical analytics event onto one OTLP log record.
@@ -654,6 +846,20 @@ type otelLogRecord struct {
 	EventName            string         `json:"eventName,omitempty"`
 	Body                 otelAnyValue   `json:"body"`
 	Attributes           []otelKeyValue `json:"attributes"`
+}
+
+// otelExportResponse is the OTLP ExportLogsServiceResponse. A 2xx can still
+// report records the endpoint refused, which is otherwise indistinguishable from
+// a clean export.
+type otelExportResponse struct {
+	PartialSuccess otelPartialSuccess `json:"partialSuccess"`
+}
+
+type otelPartialSuccess struct {
+	// json.Number because proto3 JSON encodes int64 as a string while some
+	// receivers emit a bare number; either must parse.
+	RejectedLogRecords json.Number `json:"rejectedLogRecords"`
+	ErrorMessage       string      `json:"errorMessage"`
 }
 
 type otelKeyValue struct {

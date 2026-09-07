@@ -190,3 +190,62 @@ func TestValidate_OTelPublisherTLS(t *testing.T) {
 		assert.NoError(t, cfg.Validate())
 	})
 }
+
+func TestValidate_OTelPublisherRetry(t *testing.T) {
+	t.Run("defaults are retry-enabled", func(t *testing.T) {
+		cfg := defaultConfig().Analytics.Publishers.OTel
+		assert.Equal(t, 3, cfg.MaxRetries)
+		assert.Equal(t, time.Second, cfg.RetryBackoff)
+		assert.Equal(t, DefaultOTelRetryAbortQueueRatio, cfg.RetryAbortQueueRatio)
+		assert.Equal(t, OTelCompressionNone, cfg.Compression)
+	})
+
+	// Retries off is a legitimate choice, so 0 must pass while negative fails.
+	t.Run("zero retries is allowed", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) { o.MaxRetries = 0; o.RetryBackoff = 0 })
+		assert.NoError(t, cfg.Validate())
+	})
+
+	rejected := map[string]func(*OTelPublisherConfig){
+		"negative retries":        func(o *OTelPublisherConfig) { o.MaxRetries = -1 },
+		"retries without backoff": func(o *OTelPublisherConfig) { o.MaxRetries = 3; o.RetryBackoff = 0 },
+		"negative backoff":        func(o *OTelPublisherConfig) { o.MaxRetries = 3; o.RetryBackoff = -time.Second },
+		"abort ratio above one":   func(o *OTelPublisherConfig) { o.RetryAbortQueueRatio = 1.5 },
+		"negative abort ratio":    func(o *OTelPublisherConfig) { o.RetryAbortQueueRatio = -0.1 },
+		"unknown compression":     func(o *OTelPublisherConfig) { o.Compression = "zstd" },
+	}
+	for name, mutate := range rejected {
+		t.Run(name, func(t *testing.T) {
+			err := otelConfig(mutate).Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "analytics.publishers.otel")
+		})
+	}
+
+	t.Run("compression values accepted", func(t *testing.T) {
+		for _, c := range []string{"", OTelCompressionNone, OTelCompressionGzip, " GZIP "} {
+			cfg := otelConfig(func(o *OTelPublisherConfig) { o.Compression = c })
+			assert.NoError(t, cfg.Validate(), "compression %q", c)
+		}
+	})
+
+	// The abort depth is a fraction of capacity, and must never round down to
+	// zero for a non-zero ratio: that would silently disable the check.
+	t.Run("abort depth", func(t *testing.T) {
+		cases := []struct {
+			capacity int
+			ratio    float64
+			want     int
+		}{
+			{10000, 0.5, 5000},
+			{4, 0.5, 2},
+			{1, 0.5, 1},   // rounds to 0, floored to 1
+			{10000, 0, 0}, // explicitly disabled
+		}
+		for _, tc := range cases {
+			cfg := OTelPublisherConfig{QueueCapacity: tc.capacity, RetryAbortQueueRatio: tc.ratio}
+			assert.Equal(t, tc.want, cfg.EffectiveRetryAbortDepth(),
+				"capacity %d ratio %v", tc.capacity, tc.ratio)
+		}
+	})
+}

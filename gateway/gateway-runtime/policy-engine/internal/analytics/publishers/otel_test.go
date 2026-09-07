@@ -18,6 +18,7 @@
 package publishers
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -485,23 +486,38 @@ func correlatedEvent(id string) *dto.Event {
 	return event
 }
 
-// newUndrainedOTel builds a publisher with no worker goroutine, so nothing
-// consumes the queue and Publish sees it full. NewOTel cannot be used here: it
-// starts the worker.
+// newTestOTel builds a publisher with no worker goroutine, mirroring the derived
+// fields NewOTel computes. NewOTel cannot be used where a test drives export or
+// the queue directly, because it starts the worker that would drain them.
+func newTestOTel(t *testing.T, cfg config.OTelPublisherConfig) *OTel {
+	t.Helper()
+	return &OTel{
+		cfg:             cfg,
+		client:          &http.Client{Timeout: cfg.Timeout},
+		queue:           make(chan *otelLogRecord, cfg.QueueCapacity),
+		stop:            make(chan struct{}),
+		workerDone:      make(chan struct{}),
+		dropOldest:      strings.EqualFold(cfg.OnQueueFull, config.QueueDropOldest),
+		gzip:            strings.EqualFold(cfg.Compression, config.OTelCompressionGzip),
+		retryAbortDepth: cfg.EffectiveRetryAbortDepth(),
+	}
+}
+
+// newUndrainedOTel builds a publisher whose queue nothing consumes, so Publish
+// sees it full.
 func newUndrainedOTel(t *testing.T, capacity int, onQueueFull string) *OTel {
 	t.Helper()
 	cfg := testOTelConfig("http://127.0.0.1:1/v1/logs")
 	cfg.QueueCapacity = capacity
 	cfg.BatchSize = capacity
 	cfg.OnQueueFull = onQueueFull
-	return &OTel{
-		cfg:        cfg,
-		client:     &http.Client{Timeout: cfg.Timeout},
-		queue:      make(chan *otelLogRecord, cfg.QueueCapacity),
-		stop:       make(chan struct{}),
-		workerDone: make(chan struct{}),
-		dropOldest: strings.EqualFold(onQueueFull, config.QueueDropOldest),
-	}
+	return newTestOTel(t, cfg)
+}
+
+func (o *OTel) droppedCount() int {
+	o.droppedMu.Lock()
+	defer o.droppedMu.Unlock()
+	return o.dropped
 }
 
 // A full queue must drop rather than block the ALS ingest path — under either
@@ -514,10 +530,7 @@ func TestPublishDropsWhenQueueFull(t *testing.T) {
 				o.Publish(restEvent())
 			}
 
-			o.droppedMu.Lock()
-			dropped := o.dropped
-			o.droppedMu.Unlock()
-			if dropped != 9 {
+			if dropped := o.droppedCount(); dropped != 9 {
 				t.Errorf("dropped = %d, want 9 (queue holds 1)", dropped)
 			}
 			if len(o.queue) != 1 {
@@ -751,5 +764,336 @@ func TestNewOTelFailsClosedOnBadTLSMaterial(t *testing.T) {
 	cfg.TLS = config.OTelTLSConfig{CAFile: filepath.Join(t.TempDir(), "absent.pem")}
 	if _, err := NewOTel(&cfg); err == nil {
 		t.Error("expected NewOTel to fail on an unreadable ca_file")
+	}
+}
+
+// --- retry and export-failure handling -------------------------------------
+
+// scriptedEndpoint serves the given statuses in order, repeating the last one
+// once the script is exhausted, and records every request it received.
+type scriptedEndpoint struct {
+	mu       sync.Mutex
+	statuses []int
+	requests []*http.Request
+	bodies   [][]byte
+	headers  http.Header
+}
+
+func newScriptedEndpoint(t *testing.T, statuses ...int) (*scriptedEndpoint, string) {
+	t.Helper()
+	e := &scriptedEndpoint{statuses: statuses, headers: http.Header{}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		e.mu.Lock()
+		attempt := len(e.requests)
+		e.requests = append(e.requests, r)
+		e.bodies = append(e.bodies, body)
+		status := e.statuses[len(e.statuses)-1]
+		if attempt < len(e.statuses) {
+			status = e.statuses[attempt]
+		}
+		e.mu.Unlock()
+
+		for k, vs := range e.headers {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(server.Close)
+	return e, server.URL + "/v1/logs"
+}
+
+func (e *scriptedEndpoint) attempts() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.requests)
+}
+
+// retryConfig enables retries with a short backoff so tests stay fast.
+func retryConfig(endpoint string, maxRetries int) config.OTelPublisherConfig {
+	cfg := testOTelConfig(endpoint)
+	cfg.MaxRetries = maxRetries
+	cfg.RetryBackoff = 5 * time.Millisecond
+	return cfg
+}
+
+func (o *OTel) exportOne(t *testing.T) {
+	t.Helper()
+	o.export([]*otelLogRecord{o.buildRecord(restEvent())})
+}
+
+// A 5xx is transient: retry until it clears, and lose nothing when it does.
+func TestExportRetriesOn5xxThenSucceeds(t *testing.T) {
+	endpoint, url := newScriptedEndpoint(t, 503, 500, 200)
+	o := newTestOTel(t, retryConfig(url, 3))
+	o.exportOne(t)
+
+	if got := endpoint.attempts(); got != 3 {
+		t.Errorf("attempts = %d, want 3 (two failures then success)", got)
+	}
+	if dropped := o.droppedCount(); dropped != 0 {
+		t.Errorf("dropped = %d, want 0: the batch was delivered", dropped)
+	}
+}
+
+// A 4xx other than 429 means the payload's shape was rejected. Retrying cannot
+// fix that, and would multiply a permanent failure by the retry budget.
+func TestExportDoesNotRetryPermanentRejection(t *testing.T) {
+	for _, status := range []int{400, 401, 404, 422} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			endpoint, url := newScriptedEndpoint(t, status)
+			o := newTestOTel(t, retryConfig(url, 3))
+			o.exportOne(t)
+
+			if got := endpoint.attempts(); got != 1 {
+				t.Errorf("attempts = %d, want 1 (no retry on %d)", got, status)
+			}
+			if dropped := o.droppedCount(); dropped != 1 {
+				t.Errorf("dropped = %d, want 1", dropped)
+			}
+		})
+	}
+}
+
+// 429 is retryable, and the endpoint's Retry-After replaces our own backoff
+// rather than adding to it.
+func TestExportHonoursRetryAfterOn429(t *testing.T) {
+	endpoint, url := newScriptedEndpoint(t, 429, 200)
+	endpoint.headers.Set("Retry-After", "1")
+
+	cfg := retryConfig(url, 3)
+	cfg.RetryBackoff = time.Millisecond // far shorter than Retry-After
+	o := newTestOTel(t, cfg)
+
+	start := time.Now()
+	o.exportOne(t)
+	elapsed := time.Since(start)
+
+	if got := endpoint.attempts(); got != 2 {
+		t.Errorf("attempts = %d, want 2", got)
+	}
+	// The wait must come from Retry-After, not the 1ms backoff.
+	if elapsed < 900*time.Millisecond {
+		t.Errorf("elapsed = %s, want >= ~1s from Retry-After", elapsed)
+	}
+	if dropped := o.droppedCount(); dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+}
+
+// Exhausting the budget drops the batch exactly once, counting every record.
+func TestExportDropsBatchAfterBudgetExhausted(t *testing.T) {
+	endpoint, url := newScriptedEndpoint(t, 503)
+	o := newTestOTel(t, retryConfig(url, 2))
+
+	batch := []*otelLogRecord{
+		o.buildRecord(restEvent()), o.buildRecord(restEvent()), o.buildRecord(restEvent()),
+	}
+	o.export(batch)
+
+	if got := endpoint.attempts(); got != 3 {
+		t.Errorf("attempts = %d, want 3 (initial + 2 retries)", got)
+	}
+	if dropped := o.droppedCount(); dropped != 3 {
+		t.Errorf("dropped = %d, want 3 (every record in the batch)", dropped)
+	}
+}
+
+// One worker exports, so nothing drains the queue while a batch retries. Past
+// the abort depth, retrying to save this batch costs more newer records than it
+// rescues — so it must abandon its budget and return to draining.
+func TestExportAbandonsRetriesUnderQueuePressure(t *testing.T) {
+	endpoint, url := newScriptedEndpoint(t, 503)
+	cfg := retryConfig(url, 5)
+	cfg.RetryBackoff = time.Millisecond
+	cfg.QueueCapacity = 4
+	cfg.RetryAbortQueueRatio = 0.5 // abort depth 2
+	o := newTestOTel(t, cfg)
+
+	if o.retryAbortDepth != 2 {
+		t.Fatalf("retryAbortDepth = %d, want 2", o.retryAbortDepth)
+	}
+	// Fill past the abort depth; nothing drains it.
+	for i := 0; i < 3; i++ {
+		o.queue <- o.buildRecord(restEvent())
+	}
+
+	o.exportOne(t)
+
+	// The first attempt happens unconditionally; the depth check runs before the
+	// second, so exactly one attempt is made instead of the budgeted six.
+	if got := endpoint.attempts(); got != 1 {
+		t.Errorf("attempts = %d, want 1 (abandoned before the first retry)", got)
+	}
+	if dropped := o.droppedCount(); dropped != 1 {
+		t.Errorf("dropped = %d, want 1", dropped)
+	}
+}
+
+// A ratio of 0 disables the check, so every batch gets its full budget.
+func TestExportZeroAbortRatioUsesFullBudget(t *testing.T) {
+	endpoint, url := newScriptedEndpoint(t, 503)
+	cfg := retryConfig(url, 2)
+	cfg.QueueCapacity = 2
+	cfg.RetryAbortQueueRatio = 0
+	o := newTestOTel(t, cfg)
+
+	if o.retryAbortDepth != 0 {
+		t.Fatalf("retryAbortDepth = %d, want 0 (check disabled)", o.retryAbortDepth)
+	}
+	o.queue <- o.buildRecord(restEvent())
+	o.queue <- o.buildRecord(restEvent())
+
+	o.exportOne(t)
+	if got := endpoint.attempts(); got != 3 {
+		t.Errorf("attempts = %d, want 3 despite a full queue", got)
+	}
+}
+
+// A 2xx carrying partialSuccess is not a clean export: those records are gone,
+// and must be counted rather than silently discarded.
+func TestExportCountsPartialSuccessRejections(t *testing.T) {
+	cases := map[string]string{
+		// Proto3 JSON encodes int64 as a string; some receivers emit a number.
+		"int64 as string": `{"partialSuccess":{"rejectedLogRecords":"2","errorMessage":"bad attribute"}}`,
+		"bare number":     `{"partialSuccess":{"rejectedLogRecords":2,"errorMessage":"bad attribute"}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+
+			o := newTestOTel(t, retryConfig(server.URL+"/v1/logs", 3))
+			o.exportOne(t)
+
+			if dropped := o.droppedCount(); dropped != 2 {
+				t.Errorf("dropped = %d, want 2 from partialSuccess", dropped)
+			}
+		})
+	}
+}
+
+// The ordinary success shapes must not be read as rejections.
+func TestExportCleanSuccessBodiesCountNoDrops(t *testing.T) {
+	bodies := map[string]string{
+		"empty":                  ``,
+		"empty object":           `{}`,
+		"empty partial success":  `{"partialSuccess":{}}`,
+		"explicit zero rejected": `{"partialSuccess":{"rejectedLogRecords":"0"}}`,
+		"not json":               `OK`,
+	}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+
+			o := newTestOTel(t, retryConfig(server.URL+"/v1/logs", 0))
+			o.exportOne(t)
+			if dropped := o.droppedCount(); dropped != 0 {
+				t.Errorf("dropped = %d, want 0", dropped)
+			}
+		})
+	}
+}
+
+// gzip must set Content-Encoding and produce a body the endpoint can inflate
+// back into the same OTLP payload.
+func TestExportGzipCompression(t *testing.T) {
+	type received struct {
+		encoding string
+		payload  otelExportRequest
+	}
+	got := make(chan received, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		zr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			t.Errorf("body is not gzip: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer zr.Close()
+		raw, err := io.ReadAll(zr)
+		if err != nil {
+			t.Errorf("inflate: %v", err)
+		}
+		var payload otelExportRequest
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Errorf("inflated body is not OTLP JSON: %v", err)
+		}
+		got <- received{encoding: r.Header.Get("Content-Encoding"), payload: payload}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := retryConfig(server.URL+"/v1/logs", 0)
+	cfg.Compression = config.OTelCompressionGzip
+	o := newTestOTel(t, cfg)
+	o.exportOne(t)
+
+	select {
+	case r := <-got:
+		if r.encoding != "gzip" {
+			t.Errorf("Content-Encoding = %q, want gzip", r.encoding)
+		}
+		if len(r.payload.ResourceLogs) != 1 || len(r.payload.ResourceLogs[0].ScopeLogs[0].LogRecords) != 1 {
+			t.Error("inflated payload did not carry the record")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no export received")
+	}
+}
+
+// Uncompressed is the default, and must not claim an encoding it did not apply.
+func TestExportUncompressedByDefault(t *testing.T) {
+	endpoint, url := newScriptedEndpoint(t, 200)
+	o := newTestOTel(t, retryConfig(url, 0))
+	o.exportOne(t)
+
+	endpoint.mu.Lock()
+	defer endpoint.mu.Unlock()
+	if enc := endpoint.requests[0].Header.Get("Content-Encoding"); enc != "" {
+		t.Errorf("Content-Encoding = %q, want empty", enc)
+	}
+	if !json.Valid(endpoint.bodies[0]) {
+		t.Error("body is not plain JSON")
+	}
+}
+
+// Shutdown must not wait out the remaining backoff: a retrying batch has to
+// notice the stop signal instead of holding shutdown open.
+func TestExportStopsRetryingOnShutdown(t *testing.T) {
+	endpoint, url := newScriptedEndpoint(t, 503)
+	cfg := retryConfig(url, 100)
+	cfg.RetryBackoff = 30 * time.Second // long enough that waiting it out would fail the test
+	o := newTestOTel(t, cfg)
+
+	done := make(chan struct{})
+	go func() {
+		o.exportOne(t)
+		close(done)
+	}()
+
+	// Wait for the first attempt to fail, then signal shutdown mid-backoff.
+	deadline := time.Now().Add(2 * time.Second)
+	for endpoint.attempts() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(o.stop)
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("export kept retrying through shutdown")
+	}
+	if got := endpoint.attempts(); got != 1 {
+		t.Errorf("attempts = %d, want 1 (stopped during the first backoff)", got)
 	}
 }

@@ -837,6 +837,24 @@ queue_capacity = 10000
 on_queue_full = "drop_new"
 # Bounds a single export attempt.
 timeout = "10s"
+# Retry attempts after the initial one. Only transport errors, 429 and 5xx are
+# retried — any other 4xx means the endpoint rejected the payload's shape, which
+# retrying can only amplify. 0 disables retries.
+max_retries = 3
+# Base delay for exponential backoff, with jitter applied per attempt so replicas
+# retrying after a shared outage do not resynchronize into a thundering herd. A
+# Retry-After from the endpoint replaces this rather than adding to it.
+retry_backoff = "1s"
+# Fraction of queue_capacity at which a retrying batch abandons its remaining
+# budget and returns to draining. One worker exports, so nothing drains the queue
+# while a batch retries: past this depth, retrying to save one batch costs more
+# records than it rescues. 0 lets every batch use its full budget.
+retry_abort_queue_ratio = 0.5
+# "none" (default, matching the OTLP specification's own default) or "gzip". gzip
+# trades CPU on the export worker for a large egress reduction — these records are
+# verbose JSON — and every OTLP/HTTP receiver is required to support it. Worth
+# enabling when the endpoint is across a network you pay for.
+compression = "none"
 
 # ==== UNCOMMENT WHEN REQUIRED ================================
 # Headers sent on every export, for a vendor OTLP intake that authenticates by
