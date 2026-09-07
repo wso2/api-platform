@@ -11,6 +11,7 @@ import { useState, type FC } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
   Collapse,
   Dialog,
   DialogActions,
@@ -41,7 +42,8 @@ export type PipelinesListPageProps = {
   environments: Environment[];
   onCreateClick: () => void;
   onEditClick: (id: string) => void;
-  onDelete: (id: string) => void;
+  /** Returning a promise lets the confirm dialog stay open, and busy, until the delete settles. */
+  onDelete: (id: string) => void | Promise<void>;
 };
 
 const findEnvironment = (environments: Environment[], name: string) =>
@@ -56,6 +58,7 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
 }) => {
   const [expandedIds, setExpandedIds] = useState<string[]>(() => pipelines.map((p) => p.id));
   const [pendingDelete, setPendingDelete] = useState<Pipeline | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const toggleExpanded = (id: string) => {
@@ -64,10 +67,18 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
     );
   };
 
-  const handleConfirmDelete = () => {
-    if (!pendingDelete || pendingDelete.isDefault) return;
-    onDelete(pendingDelete.id);
-    setPendingDelete(null);
+  const handleConfirmDelete = async () => {
+    // The dialog stays open, with its button busy, until the delete settles:
+    // closing first left the pipeline on screen with nothing to say a delete was
+    // running, and a second click could issue a second delete.
+    if (!pendingDelete || pendingDelete.isDefault || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(pendingDelete.id);
+      setPendingDelete(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -224,7 +235,7 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
         </Stack>
       )}
 
-      <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)}>
+      <Dialog open={!!pendingDelete} onClose={deleting ? undefined : () => setPendingDelete(null)}>
         <DialogTitle>Delete pipeline?</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
@@ -233,9 +244,17 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={handleConfirmDelete}>
-            Delete
+          <Button onClick={() => setPendingDelete(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmDelete}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

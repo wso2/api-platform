@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -54,7 +55,8 @@ export type GatewaysListProps = {
   environments: Environment[];
   onAddClick: () => void;
   onEditClick: (gatewayId: string) => void;
-  onDelete: (gatewayId: string, name: string) => void;
+  /** Returning a promise lets the confirm dialog stay open, and busy, until the delete settles. */
+  onDelete: (gatewayId: string, name: string) => void | Promise<void>;
 };
 
 function truncateText(text: string, maxLength: number): string {
@@ -71,6 +73,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
 
   // Environments are keyed by name, so a gateway that points at an environment
@@ -89,10 +92,18 @@ const GatewaysList: FC<GatewaysListProps> = ({
     );
   }, [gateways, searchQuery]);
 
-  const handleDeleteConfirm = () => {
-    if (!deleteTarget) return;
-    onDelete(deleteTarget.id, deleteTarget.name);
-    setDeleteTarget(null);
+  const handleDeleteConfirm = async () => {
+    // The dialog stays open, with its button busy, until the delete settles:
+    // closing first left the row on screen with nothing to say a delete was even
+    // running, and let a second gateway be deleted while the first was in flight.
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(deleteTarget.id, deleteTarget.name);
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -255,17 +266,22 @@ const GatewaysList: FC<GatewaysListProps> = ({
         )}
       </Grid>
 
-      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
+      <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)}>
         <DialogTitle>Delete Gateway</DialogTitle>
         <DialogContent>
           <DialogContentText>Are you sure you want to delete {deleteTarget?.name}?</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)} variant="outlined" color="secondary">
+          <Button onClick={() => setDeleteTarget(null)} variant="outlined" color="secondary" disabled={deleting}>
             Cancel
           </Button>
-          <Button color="error" onClick={handleDeleteConfirm}>
-            Delete
+          <Button
+            color="error"
+            onClick={handleDeleteConfirm}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

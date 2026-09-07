@@ -20,6 +20,7 @@ import { useState, type FC } from "react";
 import {
   Box,
   Button,
+  CircularProgress,
   FormControl,
   FormControlLabel,
   FormLabel,
@@ -124,7 +125,12 @@ const EnvironmentForm: FC<EnvironmentFormProps> = ({ port, onBack, notify }) => 
         </Box>
 
         <Stack direction="row" spacing={1.5}>
-          <Button variant="outlined" color="secondary" onClick={onBack}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            disabled={saving}
+            onClick={onBack}
+          >
             Cancel
           </Button>
           <Tooltip
@@ -139,6 +145,11 @@ const EnvironmentForm: FC<EnvironmentFormProps> = ({ port, onBack, notify }) => 
                 variant="contained"
                 disabled={!canSubmit}
                 onClick={handleSubmit}
+                startIcon={
+                  saving ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : undefined
+                }
               >
                 {saving ? "Creating…" : "Create"}
               </Button>

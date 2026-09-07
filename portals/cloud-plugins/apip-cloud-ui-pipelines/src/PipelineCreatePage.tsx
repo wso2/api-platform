@@ -11,6 +11,7 @@ import { useRef, useState, type FC } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
   IconButton,
   PageContent,
   PageTitle,
@@ -251,7 +252,7 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
         </Box>
 
         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
-          <Button variant="outlined" color="secondary" onClick={onBack}>
+          <Button variant="outlined" color="secondary" disabled={saving} onClick={onBack}>
             Cancel
           </Button>
           <Tooltip
@@ -262,8 +263,13 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
               : ''}
           >
             <span>
-              <Button variant="contained" disabled={!canSubmit || saving} onClick={handleSubmit}>
-                {isEdit ? 'Save Changes' : 'Create'}
+              <Button
+                variant="contained"
+                disabled={!canSubmit || saving}
+                onClick={handleSubmit}
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+              >
+                {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save Changes' : 'Create'}
               </Button>
             </span>
           </Tooltip>
