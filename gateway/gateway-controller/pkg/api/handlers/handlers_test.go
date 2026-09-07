@@ -1388,7 +1388,9 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, hub, gatewayID, nil, server.httpClient)
 	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
 	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
+	server.subscriptionService = nil
 	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID, nil, policyVersionResolver)
+
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		server.store,
 		server.db,

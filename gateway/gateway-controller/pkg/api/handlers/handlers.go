@@ -45,7 +45,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -82,6 +84,8 @@ type APIServer struct {
 	gatewayID                   string
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
+	subscriptionService         *subscription.SubscriptionService
+	certificateService          *certificate.CertificateService
 	mcpHandler                  *McpHandler
 }
 
@@ -172,6 +176,9 @@ func NewAPIServer(
 	// path (APIServer.waitForDeploymentAndPush / pushArtifactUndeploy) as all other kinds.
 	server.RestAPIHandler.pushArtifactUndeploy = server.pushArtifactUndeploy
 
+	server.subscriptionService = subscription.NewSubscriptionService(db, subscriptionResourceService)
+	server.certificateService = certificate.NewCertificateService(db, server.resolveCertXDS, logger)
+
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
 
@@ -186,6 +193,57 @@ func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResource
 	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater, s.eventHub, s.gatewayID)
 
 	return s.subscriptionResourceService
+}
+
+// getSubscriptionService returns the subscription business-logic service,
+// building it on first use so a hand-constructed APIServer (as in tests) works
+// without going through NewAPIServer. It delegates to
+// getSubscriptionResourceService so both services can never be built against
+// different event hubs.
+func (s *APIServer) getSubscriptionService() *subscription.SubscriptionService {
+	if s.subscriptionService != nil {
+		return s.subscriptionService
+	}
+
+	s.subscriptionService = subscription.NewSubscriptionService(s.db, s.getSubscriptionResourceService())
+
+	return s.subscriptionService
+}
+
+// resolveCertXDS returns the live cert store and snapshot manager, or nil when
+// this gateway has no custom cert store. It is handed to the certificate
+// service as a function so that service never has to know the snapshot manager
+// is a concrete type whose GetTranslator panics on a nil receiver — a shape
+// every hand-constructed APIServer in the tests has.
+func (s *APIServer) resolveCertXDS() *certificate.XDSTargets {
+	if s.snapshotManager == nil {
+		return nil
+	}
+	translator := s.snapshotManager.GetTranslator()
+	if translator == nil {
+		return nil
+	}
+	store := translator.GetCertStore()
+	if store == nil {
+		// Explicit nil: returning a typed-nil *certstore.CertStore inside the
+		// interface would make every nil check downstream wrongly succeed.
+		return nil
+	}
+
+	return &certificate.XDSTargets{Store: store, Snapshot: s.snapshotManager}
+}
+
+// getCertificateService returns the certificate service, building it on first
+// use so a hand-constructed APIServer (as in tests) works without going through
+// NewAPIServer.
+func (s *APIServer) getCertificateService() *certificate.CertificateService {
+	if s.certificateService != nil {
+		return s.certificateService
+	}
+
+	s.certificateService = certificate.NewCertificateService(s.db, s.resolveCertXDS, s.logger)
+
+	return s.certificateService
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
