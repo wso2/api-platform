@@ -160,11 +160,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  // Platform API calls are always routed through the same-origin proxy,
-  // which forwards the session's bearer token itself — there is no
-  // console-side org-token exchange to perform.
-  const exchangeOrgToken = useCallback(async () => true, []);
-
   const value = useMemo<AuthState>(
     () => ({
       mode: runtimeConfig.authMode,
@@ -175,10 +170,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       login,
       loginWithCredentials,
-      exchangeOrgToken,
       logout,
     }),
-    [error, exchangeOrgToken, login, loginWithCredentials, logout, status, user]
+    [error, login, loginWithCredentials, logout, status, user]
   );
 
   return (

@@ -16,11 +16,12 @@
  * under the License.
  */
 
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 
 import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
 import { useAuth } from '../contexts/auth/AuthProvider';
+import { OrganizationAccessDeniedPage } from '../pages/appShell/appShellPages/system/SystemPages';
 import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
 import {
   ConsoleScopeContext,
@@ -40,12 +41,29 @@ export {
   type ConsoleScope,
 } from './ConsoleScopeContext';
 
+/**
+ * This console's BFF forwards one bearer token per session (see
+ * `AuthProvider`) — there is no per-org token exchange, so a session is
+ * scoped to exactly one organization for its whole lifetime. That organization
+ * is resolved server-side from the token's own claims and exposed as
+ * `user.org` on `/api/session` (see `bff/internal/session/claims.go`).
+ *
+ * The route, however, carries its own `:orgHandle` segment — and nothing
+ * stops a link from naming a *different* organization than the session's own.
+ * Because `organizations`/`projects`/`environments` on platform-api don't
+ * accept an explicit org id (they implicitly answer "for whichever org this
+ * bearer token belongs to"), blindly trusting `params.orgHandle` to label
+ * whatever those calls return is what let the console show your own org's
+ * data under someone else's org handle. So this provider checks the route's
+ * org handle against `user.org.handle` *before* anything else, and renders an
+ * access-denied page in place of the whole app shell on a mismatch — never a
+ * per-page gate, since every org-scoped page's data ultimately traces back to
+ * this same session-bound org.
+ */
 export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   const routeParams = useParams<ConsoleRouteParams>();
   const location = useLocation();
-  const { exchangeOrgToken, isAuthenticated } = useAuth();
-  const [tokenReadyOrgHandle, setTokenReadyOrgHandle] = useState<string>();
-  const [orgTokenError, setOrgTokenError] = useState<Error>();
+  const { user } = useAuth();
   const pathnameParams = useMemo(
     () => getRouteParamsFromPathname(location.pathname),
     [location.pathname]
@@ -73,47 +91,20 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       routeParams.projectHandler,
     ]
   );
-  // `exchangeOrgToken` may not be referentially stable (it closes over Asgardeo
-  // SDK functions). Read it through a ref and key the effect on stable
-  // primitives only, so the exchange fires exactly once per org — never on
-  // every render, which would recurse into repeated token-exchange calls.
-  const exchangeOrgTokenRef = useRef(exchangeOrgToken);
-  exchangeOrgTokenRef.current = exchangeOrgToken;
 
-  useEffect(() => {
-    let isMounted = true;
+  // A session with no `org` claim at all (basic/file-based auth, which has no
+  // notion of multiple organizations — see `AuthProvider`) has nothing to
+  // mismatch against, so it isn't gated here. Only a *known* session org that
+  // disagrees with the route is treated as denied.
+  const sessionOrgHandle = user?.org?.handle;
+  const orgAccessDenied = Boolean(
+    params.orgHandle && sessionOrgHandle && params.orgHandle !== sessionOrgHandle
+  );
 
-    if (!params.orgHandle || !isAuthenticated) {
-      setTokenReadyOrgHandle(undefined);
-      setOrgTokenError(undefined);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    setTokenReadyOrgHandle(undefined);
-    setOrgTokenError(undefined);
-    exchangeOrgTokenRef
-      .current(params.orgHandle)
-      .then(() => {
-        if (isMounted) setTokenReadyOrgHandle(params.orgHandle);
-      })
-      .catch((error) => {
-        if (!isMounted) return;
-        setOrgTokenError(
-          error instanceof Error
-            ? error
-            : new Error('Unable to exchange organization token')
-        );
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isAuthenticated, params.orgHandle]);
-
-  const queryOrgHandle =
-    tokenReadyOrgHandle === params.orgHandle ? params.orgHandle : undefined;
+  // Only ever query with an org handle the session actually owns — never the
+  // raw route param — so a mismatched route can't leak a real request out
+  // under the wrong label.
+  const queryOrgHandle = orgAccessDenied ? undefined : params.orgHandle;
 
   const apiQuery = useRestApi(params.apiHandler, {orgId: queryOrgHandle });
   const organizationsQuery = useOrganizations();
@@ -138,9 +129,6 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ConsoleScope>(
     () => ({
-      // Token-ready identifiers the data hooks default to (orgHandle only set
-      // post token-exchange via queryOrgHandle), so context-aware queries never
-      // fire before their bearer token is ready.
       activeScope: {
         orgHandle: queryOrgHandle,
         projectHandler: params.projectHandler,
@@ -151,27 +139,27 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       isApiScope: Boolean(params.apiHandler),
       isLoading:
         organizationsQuery.isLoading ||
-        Boolean(params.orgHandle && !tokenReadyOrgHandle && !orgTokenError) ||
         projectsQuery.isLoading ||
         projectQuery.isLoading ||
         apiQuery.isLoading,
       isOrganizationScope: Boolean(params.orgHandle),
       isProjectScope: Boolean(params.projectHandler),
+      orgAccessDenied,
       organization,
       organizations: organizationsQuery.data?.list || [],
       params,
       project,
       projects: projectsQuery.data?.list || [],
-      projectsError: orgTokenError || projectsQuery.error || undefined,
+      projectsError: projectsQuery.error || undefined,
     }),
     [
       capabilities,
       component,
       apiQuery.isLoading,
+      orgAccessDenied,
       organization,
       organizationsQuery.data,
       organizationsQuery.isLoading,
-      orgTokenError,
       params,
       project,
       projectQuery.isLoading,
@@ -179,9 +167,12 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       projectsQuery.error,
       projectsQuery.isLoading,
       queryOrgHandle,
-      tokenReadyOrgHandle,
     ]
   );
+
+  if (orgAccessDenied) {
+    return <OrganizationAccessDeniedPage />;
+  }
 
   return (
     <ConsoleScopeContext.Provider value={value}>
@@ -194,10 +185,6 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
         once the contexts are split properly, `ApiScopeProvider` moves above
         this one and takes its ids straight from the router, and this nesting
         goes away.
-
-        Note the ids differ from the ones above deliberately — the API layer
-        wants the raw route params, not the token-gated `queryOrgHandle` the old
-        hooks need, because it has no token exchange to wait on.
       */}
       <ApiScopeProvider
         orgId={params.orgHandle}
