@@ -120,14 +120,16 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
 
   /**
    * Deploy and promote are the same call: what separates them is whether a source
-   * environment is named. Deploying to the first environment ships the API as it
-   * stands; promoting carries the source's build forward.
+   * environment is named. Deploying to the first environment either ships a
+   * selected build or creates a new one; promoting carries the source's build
+   * forward.
    */
   const handleDeploy = (
     target: Environment,
     gatewayId: string,
     endpointUrl: string,
-    from?: Environment
+    from?: Environment,
+    buildId?: string
   ) => {
     if (!client) return;
     void runAction(
@@ -137,6 +139,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
           gatewayId,
           endpointUrl,
           fromEnvironment: from?.name,
+          buildId,
         }),
       `${from ? 'Promoting to' : 'Deploying to'} ${target.name}.`,
       `Unable to ${from ? 'promote to' : 'deploy to'} ${target.name}.`

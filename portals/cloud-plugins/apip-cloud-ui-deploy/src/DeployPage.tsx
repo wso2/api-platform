@@ -35,7 +35,8 @@ export type DeployPageProps = {
     target: Environment,
     gatewayId: string,
     endpointUrl: string,
-    from?: Environment
+    from?: Environment,
+    buildId?: string
   ) => void;
   onStopGateway: (environment: Environment, gatewayId: string) => void;
   onRetryGateway: (environment: Environment, gatewayId: string) => void;
@@ -47,7 +48,12 @@ export type DeployPageProps = {
  * being arranged here, so the view cannot imply a promotion the pipeline does
  * not allow.
  */
-type DialogState = { targetIndex: number; sourceIndex?: number } | null;
+type DialogState = {
+  targetIndex: number;
+  sourceIndex?: number;
+  buildId?: string;
+  createBuild?: boolean;
+} | null;
 
 const DeployPage: FC<DeployPageProps> = ({
   environments,
@@ -63,8 +69,8 @@ const DeployPage: FC<DeployPageProps> = ({
   const source =
     dialog?.sourceIndex !== undefined ? environments[dialog.sourceIndex] : undefined;
 
-  const handleConfirm = (gatewayId: string, endpointUrl: string) => {
-    if (target) onDeploy(target, gatewayId, endpointUrl, source);
+  const handleConfirm = (gatewayId: string, endpointUrl: string, buildId?: string) => {
+    if (target) onDeploy(target, gatewayId, endpointUrl, source, buildId);
     setDialog(null);
   };
 
@@ -142,7 +148,9 @@ const DeployPage: FC<DeployPageProps> = ({
               builds={builds}
               targetEnvironment={environments[0]}
               busy={busy}
-              onDeployClick={() => setDialog({ targetIndex: 0 })}
+              onDeployClick={(buildId, createBuild) =>
+                setDialog({ targetIndex: 0, buildId, createBuild })
+              }
             />
 
             {environments.map((environment, index) => (
@@ -168,7 +176,10 @@ const DeployPage: FC<DeployPageProps> = ({
         open={dialog !== null}
         mode={source ? 'promote' : 'deploy'}
         environment={target}
-        sourceEnvironmentName={source?.name}
+        sourceEnvironment={source}
+        builds={builds}
+        initialBuildId={dialog?.buildId}
+        createBuild={dialog?.createBuild ?? false}
         submitting={busy}
         onClose={() => setDialog(null)}
         onConfirm={handleConfirm}

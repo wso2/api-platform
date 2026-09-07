@@ -16,9 +16,22 @@
  * under the License.
  */
 
-import type { FC } from 'react';
-import { Box, Button, Card, CardContent, Divider, Tooltip, Typography } from '@wso2/oxygen-ui';
-import StatusDot from './StatusDot';
+import { useState, type FC, type MouseEvent } from 'react';
+import {
+  Box,
+  Button,
+  ButtonGroup,
+  Card,
+  CardContent,
+  Divider,
+  Drawer,
+  IconButton,
+  Menu,
+  MenuItem,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { ChevronDown, Clock, X } from '@wso2/oxygen-ui-icons-react';
 import { relativeTime } from '../utils/time';
 import { activeGatewayCount } from '../utils/status';
 import type { Build, Environment } from '../types';
@@ -28,14 +41,16 @@ export type BuildAreaCardProps = {
   builds: Build[];
   targetEnvironment: Environment;
   busy: boolean;
-  onDeployClick: () => void;
+  /** Opens deployment using an existing build, or creates a build when omitted. */
+  onDeployClick: (buildId?: string, createBuild?: boolean) => void;
 };
 
+const VISIBLE_BUILD_COUNT = 5;
+type DeployAction = 'deploy' | 'build-and-deploy';
+
 /**
- * The head of the pipeline. Deploying from here ships the API as it stands: the
- * server snapshots it and deploys that snapshot, so there is no build step to
- * perform first and the card reports what was last built rather than asking for
- * one.
+ * The head of the pipeline. An existing build can be deployed as-is, or the API
+ * can be rebuilt before it is deployed to the first environment.
  */
 const BuildAreaCard: FC<BuildAreaCardProps> = ({
   builds,
@@ -43,11 +58,60 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
   busy,
   onDeployClick,
 }) => {
+  const [deployMenuAnchor, setDeployMenuAnchor] = useState<HTMLElement | null>(null);
+  const [buildsDrawerOpen, setBuildsDrawerOpen] = useState(false);
+  const [selectedDeployAction, setSelectedDeployAction] = useState<DeployAction>('deploy');
   const latestBuild = builds[0] ?? null;
+  const visibleBuilds = builds.slice(0, VISIBLE_BUILD_COUNT);
   const canDeploy = activeGatewayCount(targetEnvironment.gateways) > 0;
   const deployDisabledReason = canDeploy
     ? ''
     : `All gateways in ${targetEnvironment.name} are inactive. Activate a gateway before deploying.`;
+
+  const openDeployMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    setDeployMenuAnchor(event.currentTarget);
+  };
+
+  const chooseDeployAction = (action: DeployAction) => {
+    setSelectedDeployAction(action);
+    setDeployMenuAnchor(null);
+  };
+
+  const runSelectedDeployAction = () => {
+    onDeployClick(
+      selectedDeployAction === 'deploy' ? latestBuild?.buildId : undefined,
+      selectedDeployAction === 'build-and-deploy'
+    );
+  };
+
+  const renderBuilds = (items: Build[]) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {items.map((build) => (
+        <Card key={build.buildId} variant="outlined">
+          <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.primary',
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
+              {build.buildId}
+            </Typography>
+            {build.createdAt ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                <Clock size={13} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
+                  {relativeTime(build.createdAt)}
+                </Typography>
+              </Box>
+            ) : null}
+          </CardContent>
+        </Card>
+      ))}
+    </Box>
+  );
 
   return (
     <Card
@@ -63,48 +127,107 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1.5 }}>
           <Divider />
 
-          <Tooltip title={deployDisabledReason}>
-            <span style={{ display: 'block' }}>
-              <Button
-                fullWidth
-                variant="contained"
-                disabled={!canDeploy || busy}
-                onClick={onDeployClick}
-                sx={{ fontWeight: 600 }}
-              >
-                Deploy
-              </Button>
-            </span>
-          </Tooltip>
+          {latestBuild ? (
+            <Tooltip title={deployDisabledReason}>
+              <span style={{ display: 'block' }}>
+                <ButtonGroup
+                  variant="contained"
+                  disabled={!canDeploy || busy}
+                  sx={{ display: 'flex', width: '100%' }}
+                >
+                  <Button
+                    onClick={runSelectedDeployAction}
+                    sx={{ flex: '1 1 auto', width: 'auto', minWidth: 0, fontWeight: 600 }}
+                  >
+                    {selectedDeployAction === 'deploy' ? 'Deploy' : 'Build and Deploy'}
+                  </Button>
+                  <Button
+                    aria-label="Choose deploy action"
+                    aria-haspopup="menu"
+                    aria-expanded={Boolean(deployMenuAnchor)}
+                    onClick={openDeployMenu}
+                    sx={{ flex: '0 0 44px', width: 44, minWidth: 44, maxWidth: 44, px: 0 }}
+                  >
+                    <ChevronDown size={18} />
+                  </Button>
+                </ButtonGroup>
+              </span>
+            </Tooltip>
+          ) : (
+            <Tooltip title={deployDisabledReason}>
+              <span style={{ display: 'block' }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  disabled={!canDeploy || busy}
+                  onClick={() => onDeployClick(undefined, true)}
+                  sx={{ fontWeight: 600 }}
+                >
+                  Build and deploy
+                </Button>
+              </span>
+            </Tooltip>
+          )}
 
-          <Card>
-            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-              {latestBuild ? (
-                <>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <StatusDot tone="success" />
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      Latest build
-                    </Typography>
-                    {latestBuild.createdAt ? (
-                      <Typography variant="caption" color="text.disabled">
-                        · {relativeTime(latestBuild.createdAt)}
-                      </Typography>
-                    ) : null}
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ pl: 2.25, mt: 0.5 }}>
-                    ID {latestBuild.buildId}
-                  </Typography>
-                </>
-              ) : (
+          <Menu
+            anchorEl={deployMenuAnchor}
+            open={Boolean(deployMenuAnchor)}
+            onClose={() => setDeployMenuAnchor(null)}
+          >
+            <MenuItem onClick={() => chooseDeployAction('deploy')}>Deploy</MenuItem>
+            <MenuItem onClick={() => chooseDeployAction('build-and-deploy')}>
+              Build and Deploy
+            </MenuItem>
+          </Menu>
+
+          {visibleBuilds.length > 0 ? (
+            <Box>
+              {renderBuilds(visibleBuilds)}
+
+              {builds.length > VISIBLE_BUILD_COUNT ? (
+                <Button
+                  size="small"
+                  onClick={() => setBuildsDrawerOpen(true)}
+                  sx={{ mt: 1, px: 0 }}
+                >
+                  See more
+                </Button>
+              ) : null}
+            </Box>
+          ) : (
+            <Card variant="outlined">
+              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                 <Typography variant="body2" color="text.disabled">
                   No builds yet. Deploying prepares one.
                 </Typography>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </Box>
       </CardContent>
+
+      <Drawer anchor="right" open={buildsDrawerOpen} onClose={() => setBuildsDrawerOpen(false)}>
+        <Box sx={{ width: 360, p: 3 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              mb: 2,
+            }}
+          >
+            <Typography sx={{ fontSize: 16, fontWeight: 600 }}>All Builds</Typography>
+            <IconButton
+              size="small"
+              onClick={() => setBuildsDrawerOpen(false)}
+              aria-label="Close builds"
+            >
+              <X size={18} />
+            </IconButton>
+          </Box>
+          {renderBuilds(builds)}
+        </Box>
+      </Drawer>
     </Card>
   );
 };
