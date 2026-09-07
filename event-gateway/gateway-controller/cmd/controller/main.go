@@ -393,6 +393,22 @@ func main() {
 		}
 	}
 
+	// Build the transformer registry and wire it into the Envoy translator before
+	// the initial xDS snapshot below, so the first snapshot already uses the
+	// transformer-path cluster/route names ("upstream_<name>_<host>_<port>") that the
+	// policy engine's resources reference. WebSubApi is intentionally excluded so it keeps using the
+	// async-specific legacy translation path.
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+
+	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
+		"RestApi":     transformerRegistry,
+		"Mcp":         transformerRegistry,
+		"LlmProvider": transformerRegistry,
+		"LlmProxy":    transformerRegistry,
+	})
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
 		log.Warn("Failed to generate initial xDS snapshot", slog.Any("error", err))
@@ -431,17 +447,9 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	// Share the transformer registry (built before the initial xDS snapshot above)
+	// with the policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
-
-	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
-	})
 
 	loadedAPIs := configStore.GetAll()
 	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup); err != nil {
