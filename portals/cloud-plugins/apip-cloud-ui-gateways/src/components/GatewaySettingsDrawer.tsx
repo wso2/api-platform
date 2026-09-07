@@ -224,6 +224,18 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
     setServerErrors(({ [path]: _sent, ...rest }) => rest);
   };
 
+  /**
+   * Both user-initiated reads. Refused while a write is in flight: such a read
+   * carries pre-write values and yet owns the NEWER generation, so the PUT's
+   * response loses the check below while the drafts clear anyway -- the form
+   * then shows the pre-write configuration with nothing pending, which reads as
+   * "saved" and is not. The poll skips its tick for the same reason.
+   */
+  const refresh = () => {
+    if (savingRef.current || !gatewayId) return;
+    void load(gatewayId);
+  };
+
   const save = async () => {
     if (!config || !gatewayId) return;
     // Invalidates any read still in flight: what the write returns is newer
@@ -324,8 +336,8 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             {config ? (
               <ConfigStatusBar
                 status={config.status}
-                refreshing={loading}
-                onRefresh={() => gatewayId && void load(gatewayId)}
+                refreshing={loading || saving}
+                onRefresh={refresh}
               />
             ) : null}
           </Box>
@@ -345,7 +357,8 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
               action={
                 <Button
                   size="small"
-                  onClick={() => gatewayId && void load(gatewayId)}
+                  disabled={saving}
+                  onClick={refresh}
                 >
                   Retry
                 </Button>
