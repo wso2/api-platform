@@ -433,7 +433,19 @@ func main() {
 
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	// GraphQLApi's config validator/deploy parser (pkg/utils/graphql_deployment.go)
+	// self-register via init() and are therefore already active in this binary too
+	// (transitively imported via the shared transform/handlers packages) — the
+	// /graphql-apis CRUD and api-key routes are served here by the shared
+	// *handlers.APIServer, but (like /rest-apis) they are not listed in this
+	// binary's generateAuthConfig role map below, so they 403 when auth is
+	// enabled (see common/authenticators/authz.go's deny-on-unlisted-route
+	// behavior) — reachability here means routable, not authorized. Without a
+	// transformer wired in, a created GraphQLApi would accept and store but
+	// silently fail to ever deploy; build one exactly the way restTransformer
+	// is built above so it actually can.
+	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, graphqlTransformer)
 	policyManager.SetTransformers(transformerRegistry)
 
 	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
@@ -441,6 +453,7 @@ func main() {
 		"Mcp":         transformerRegistry,
 		"LlmProvider": transformerRegistry,
 		"LlmProxy":    transformerRegistry,
+		"GraphQLApi":  transformerRegistry,
 	})
 
 	loadedAPIs := configStore.GetAll()

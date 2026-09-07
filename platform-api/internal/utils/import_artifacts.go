@@ -134,6 +134,7 @@ var artifactImportOrder = map[string]int{
 	constants.RestApi:             4,
 	constants.WebSubApi:           5,
 	constants.WebBrokerApi:        6,
+	constants.GraphQLApi:          7,
 }
 
 // ArtifactImportRank returns the creation-order rank for a kind; unknown kinds sort last.

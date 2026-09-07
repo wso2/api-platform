@@ -43,6 +43,16 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
+// ErrAPIKeyExpirationInPast and ErrUnsupportedAPIKeyExpirationUnit are sentinel errors for the
+// two ways an API key expiry request can be invalid — a client input problem, not a server
+// fault. createAPIKeyFromRequest, updateAPIKeyFromRequest, and regenerateAPIKey wrap one of
+// these into every expiry-validation error they return (via fmt.Errorf's %w), so handlers can
+// map them to 400 with errors.Is instead of falling through to a generic 500.
+var (
+	ErrAPIKeyExpirationInPast          = errors.New("API key expiration time must be in the future")
+	ErrUnsupportedAPIKeyExpirationUnit = errors.New("unsupported expiration unit")
+)
+
 // APIKeyCreationParams contains parameters for API key creation operations.
 // Handles both local key generation and external key injection.
 type APIKeyCreationParams struct {
@@ -1067,7 +1077,7 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		case api.APIKeyCreationRequestExpiresInUnitMonths:
 			timeDuration *= 30 * 24 * time.Hour // Approximate month as 30 days
 		default:
-			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedAPIKeyExpirationUnit, request.ExpiresIn.Unit)
 		}
 		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
@@ -1075,8 +1085,8 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 
 	// Validate that expiresAt is in the future
 	if expiresAt != nil && expiresAt.Before(now) {
-		return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
-			expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		return nil, fmt.Errorf("%w, got: %s (current time: %s)",
+			ErrAPIKeyExpirationInPast, expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 	}
 
 	keyCreatedAt := now
@@ -1223,8 +1233,8 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 
 	if request.ExpiresAt != nil {
 		if request.ExpiresAt.Before(now) {
-			return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
-				request.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+			return nil, fmt.Errorf("%w, got: %s (current time: %s)",
+				ErrAPIKeyExpirationInPast, request.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 		}
 		expiresAt = request.ExpiresAt
 		logger.Info("Using provided expires_at for update", slog.Time("expires_at", *expiresAt))
@@ -1244,7 +1254,7 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 		case api.APIKeyCreationRequestExpiresInUnitMonths:
 			timeDuration *= 30 * 24 * time.Hour
 		default:
-			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedAPIKeyExpirationUnit, request.ExpiresIn.Unit)
 		}
 		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
@@ -1256,8 +1266,8 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 
 	// Validate that expiresAt is in the future (if set)
 	if expiresAt != nil && expiresAt.Before(now) {
-		return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
-			expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		return nil, fmt.Errorf("%w, got: %s (current time: %s)",
+			ErrAPIKeyExpirationInPast, expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 	}
 
 	keyUpdatedAt := now
@@ -1307,8 +1317,8 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 
 	if request.ExpiresAt != nil {
 		if request.ExpiresAt.Before(now) {
-			return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
-				request.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+			return nil, fmt.Errorf("%w, got: %s (current time: %s)",
+				ErrAPIKeyExpirationInPast, request.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 		}
 		expiresAt = request.ExpiresAt
 		logger.Info("Using provided expires_at for regeneration", slog.Time("expires_at", *expiresAt))
@@ -1328,7 +1338,7 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 		case api.APIKeyRegenerationRequestExpiresInUnitMonths:
 			timeDuration *= 30 * 24 * time.Hour
 		default:
-			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedAPIKeyExpirationUnit, request.ExpiresIn.Unit)
 		}
 		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
@@ -1346,8 +1356,8 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 
 	// Validate that expiresAt is in the future (if set)
 	if expiresAt != nil && expiresAt.Before(now) {
-		return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
-			expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		return nil, fmt.Errorf("%w, got: %s (current time: %s)",
+			ErrAPIKeyExpirationInPast, expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 	}
 
 	// Create the regenerated API key

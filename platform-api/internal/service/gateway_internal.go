@@ -39,6 +39,7 @@ type GatewayInternalAPIService struct {
 	providerRepo         repository.LLMProviderRepository
 	proxyRepo            repository.LLMProxyRepository
 	mcpProxyRepo         repository.MCPProxyRepository
+	graphqlAPIRepo       repository.GraphQLAPIRepository
 	websubAPIRepo        repository.WebSubAPIRepository
 	webbrokerAPIRepo     repository.WebBrokerAPIRepository
 	deploymentRepo       repository.DeploymentRepository
@@ -58,7 +59,7 @@ type GatewayInternalAPIService struct {
 // event-gateway plugin in experimental builds via SetEventArtifactRepos.
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
-	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
+	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, graphqlAPIRepo repository.GraphQLAPIRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
@@ -69,6 +70,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		providerRepo:         providerRepo,
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
+		graphqlAPIRepo:       graphqlAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -352,6 +354,31 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 		proxyID: proxyYaml,
 	}
 	return proxyYamlMap, nil
+}
+
+// GetActiveGraphQLAPIDeploymentByGateway retrieves the currently deployed GraphQL API artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveGraphQLAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	graphqlAPI, err := s.graphqlAPIRepo.GetByUUID(apiID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
+	}
+	if graphqlAPI == nil {
+		return nil, apperror.GraphQLAPINotFound.New()
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(graphqlAPI.ID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, apperror.DeploymentNotActive.New("GraphQL API")
+	}
+
+	apiYaml := string(deployment.Content)
+	apiYamlMap := map[string]string{
+		apiID: apiYaml,
+	}
+	return apiYamlMap, nil
 }
 
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway

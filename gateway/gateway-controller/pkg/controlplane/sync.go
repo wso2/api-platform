@@ -223,8 +223,8 @@ func computeSyncDiff(remote []models.ControlPlaneDeployment, local []*models.Sto
 // processSyncFetches fetches deployment artifacts in chunked batches, ordered by
 // dependency: LLM Providers first, then LLM Proxies, then REST APIs.
 func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment, gatewayID string) {
-	// Sort by dependency order: providers → proxies → REST APIs/MCP proxies
-	var providers, proxies, restAPIs, mcpProxies []models.ControlPlaneDeployment
+	// Sort by dependency order: providers → proxies → REST APIs/MCP proxies/GraphQL APIs
+	var providers, proxies, restAPIs, mcpProxies, graphqlAPIs []models.ControlPlaneDeployment
 	for _, dep := range deployments {
 		switch dep.Kind {
 		case models.KindLlmProvider:
@@ -235,6 +235,8 @@ func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment,
 			restAPIs = append(restAPIs, dep)
 		case models.KindMcp:
 			mcpProxies = append(mcpProxies, dep)
+		case models.KindGraphQLApi:
+			graphqlAPIs = append(graphqlAPIs, dep)
 		}
 	}
 
@@ -244,6 +246,7 @@ func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment,
 	ordered = append(ordered, proxies...)
 	ordered = append(ordered, restAPIs...)
 	ordered = append(ordered, mcpProxies...)
+	ordered = append(ordered, graphqlAPIs...)
 
 	batchSize := c.config.SyncBatchSize
 	if batchSize <= 0 {
@@ -341,6 +344,15 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 			}
 			_, err = c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.mcpDeploymentService)
+
+		case models.KindGraphQLApi:
+			// GraphQLApi has no dedicated deployment service — it self-registers into
+			// APIDeploymentService's generic kindDeployParsers extension point (see
+			// pkg/utils/graphql_deployment.go's init()), so it is deployed through the
+			// same generic deploymentService RestApi uses, keyed off the YAML's own
+			// "kind: GraphQLApi" field rather than a per-kind service reference.
+			_, err = c.apiUtilsService.CreateAPIFromYAML(yamlData, dep.ArtifactID,
+				dep.DeploymentID, &deployedAt, correlationID, c.deploymentService)
 		}
 
 		if err != nil {
@@ -451,7 +463,7 @@ func (c *Client) processSyncDeletions(artifactIDs []string, gatewayID string) {
 		kind string
 	}
 
-	var restAPIs, proxies, providers, mcpProxies, unknown []deletionEntry
+	var restAPIs, proxies, providers, mcpProxies, graphqlAPIs, unknown []deletionEntry
 
 	for _, id := range artifactIDs {
 		cfg, err := c.db.GetConfig(id)
@@ -476,13 +488,16 @@ func (c *Client) processSyncDeletions(artifactIDs []string, gatewayID string) {
 			restAPIs = append(restAPIs, entry)
 		case models.KindMcp:
 			mcpProxies = append(mcpProxies, entry)
+		case models.KindGraphQLApi:
+			graphqlAPIs = append(graphqlAPIs, entry)
 		}
 	}
 
-	// Reverse dependency order: MCP proxies/REST APIs → proxies → providers
+	// Reverse dependency order: MCP proxies/REST APIs/GraphQL APIs → proxies → providers
 	ordered := make([]deletionEntry, 0, len(artifactIDs))
 	ordered = append(ordered, mcpProxies...)
 	ordered = append(ordered, restAPIs...)
+	ordered = append(ordered, graphqlAPIs...)
 	ordered = append(ordered, unknown...)
 	ordered = append(ordered, proxies...)
 	ordered = append(ordered, providers...)
@@ -542,8 +557,12 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 			}
 		}
 
-	case models.KindRestApi:
-		// REST API / WebSub — follow the performFullAPIDeletion pattern
+	case models.KindRestApi, models.KindGraphQLApi:
+		// REST API / WebSub / GraphQL API — follow the performFullAPIDeletion pattern.
+		// GraphQLApi is stored as a generic StoredConfig artifact (no dedicated
+		// deployment/deletion service — see the KindGraphQLApi case in
+		// processSyncFetchBatch), so the same generic deletion path REST/WebSub use
+		// applies unmodified.
 		apiConfig, err := c.findAPIConfig(artifactID)
 		if err != nil {
 			if storage.IsNotFoundError(err) {

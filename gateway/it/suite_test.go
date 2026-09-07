@@ -128,6 +128,8 @@ func getFeaturePaths() []string {
 		"features/api-management.feature",
 		"features/api-error-responses.feature",
 		"features/api-keys.feature",
+		"features/graphql_deploy.feature",
+		"features/graphql-api-keys.feature",
 		"features/api-with-policies.feature",
 		"features/interceptor-service.feature",
 		"features/llm-proxies.feature",
@@ -351,6 +353,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterTimeoutSteps(ctx, testState)
 		RegisterMCPSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterGraphQLSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)

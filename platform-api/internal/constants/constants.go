@@ -81,6 +81,11 @@ const (
 	LLMProviderTemplate = "LlmProviderTemplate"
 	LLMProxy            = "LlmProxy"
 	MCPProxy            = "Mcp"
+	// GraphQLApi is a core artifact kind (like RestApi/LlmProvider/LlmProxy/Mcp) —
+	// always compiled in, pre-seeded in NewArtifactTableRegistry(), no build tag.
+	// This is a different axis from the APITypeGraphQL/APISubTypeGraphQL dev-portal
+	// content-type constants below — do not conflate the two.
+	GraphQLApi = "GraphQLApi"
 )
 
 // Artifact origin values. Origin distinguishes control-plane created artifacts
@@ -215,6 +220,7 @@ var ValidArtifactKinds = map[string]bool{
 	LLMProvider: true,
 	LLMProxy:    true,
 	MCPProxy:    true,
+	GraphQLApi:  true,
 }
 
 // Throttle limit unit constants

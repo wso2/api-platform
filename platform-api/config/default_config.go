@@ -64,6 +64,7 @@ func defaultConfig() *Server {
 				"/api/internal/v1/llm-proxies",
 				"/api/internal/v1/subscription-plans",
 				"/api/internal/v1/mcp-proxies",
+				"/api/internal/v1/graphql-apis",
 				"/api/internal/v1/gateways",
 				"/api/internal/v1/deployments",
 				"/api/internal/v1/artifacts",

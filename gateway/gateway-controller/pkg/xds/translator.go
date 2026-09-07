@@ -391,7 +391,20 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	// For a wildcard operation path like "/foo/*", strip only the context so the matched literal
 	// prefix ("/foo") is PRESERVED on the upstream — consistent with exact paths. The bare "/*"
 	// catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
-	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
+	//
+	// That "fullPath = context + operationPath" invariant holds for every RestAPITransformer
+	// route by construction, but GraphQLApi's single fixed route builds Path from context+version
+	// alone and never appends OperationPath — OperationPath there is a synthetic non-empty
+	// placeholder some policies require (see GraphQLAPITransformer), unrelated to fullPath's
+	// actual content. A string-based guard here (only trim when operationPath "is" a suffix) is
+	// not safe either: an API context an operator names e.g. "/sandbox-graphql" genuinely ends
+	// with the literal placeholder text, so the trim would fire and corrupt the rewrite anyway.
+	// Route the two cases on the one thing that's unambiguous — the route's own kind — rather
+	// than on any string relationship between fullPath and operationPath.
+	contextWithVersion := fullPath
+	if rdc.Metadata.Kind != string(models.KindGraphQLApi) {
+		contextWithVersion = strings.TrimSuffix(fullPath, operationPath)
+	}
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	if isMCPResourceRoute {

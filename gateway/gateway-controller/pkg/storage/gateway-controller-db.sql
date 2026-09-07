@@ -1,5 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 4
+-- Version: 5
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
 );
 
 CREATE TABLE IF NOT EXISTS mcp_proxies (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- GraphQL is not a separate product the way event-gateway is (see the websub_apis/
+-- webbroker_apis note above), so graphql_apis is defined directly here as a
+-- one-column-identical clone of rest_apis, instead of being owned by a separate
+-- supplemental-DDL module.
+CREATE TABLE IF NOT EXISTS graphql_apis (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
@@ -281,4 +293,4 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

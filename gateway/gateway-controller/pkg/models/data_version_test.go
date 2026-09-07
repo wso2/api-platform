@@ -69,6 +69,7 @@ func TestDataMinorVersionsExhaustive(t *testing.T) {
 		KindWebSubApi,
 		KindWebBrokerApi,
 		KindMcp,
+		KindGraphQLApi,
 		KindLlmProxy,
 		KindLlmProvider,
 	}

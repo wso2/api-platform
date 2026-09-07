@@ -309,6 +309,39 @@ type MCPProxyRepository interface {
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
 
+// GraphQLAPIRepository defines the interface for GraphQL API persistence.
+// GraphQL is a core artifact kind (like RestApi/LlmProvider/LlmProxy/Mcp). No
+// cross-service hooks are wired for it yet (unlike APIRepository, which
+// plugin.Deps exposes for
+// eventgateway to reference), so this interface is declared for the same
+// service/repo decoupling and testability every other core kind gets, without
+// also adding a plugin.Deps field until a real consumer needs one.
+type GraphQLAPIRepository interface {
+	Create(a *model.GraphQLAPI) error
+	GetByHandle(handle, orgUUID string) (*model.GraphQLAPI, error)
+	GetByUUID(uuid, orgUUID string) (*model.GraphQLAPI, error)
+	List(orgUUID, projectUUID string, opts ListOptions) ([]*model.GraphQLAPI, error)
+	Count(orgUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID, search string) (int, error)
+	Update(a *model.GraphQLAPI) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+
+	// API-Gateway association methods. These operate on the same
+	// artifact_gateway_mappings table as APIRepository's identically-named
+	// methods — the table is kind-agnostic (keyed on artifact_uuid), so both
+	// interfaces are backed by the same shared repository helpers
+	// (createArtifactGatewayAssociation et al. in repository/api.go) rather
+	// than duplicated SQL.
+	GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)
+	CreateAPIAssociation(association *model.APIAssociation) error
+	GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error)
+	UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID, updatedBy string) error
+	// EnsureGatewayAssociation creates a gateway association for the API if one
+	// does not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(apiUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
 type WebSubAPIHmacSecretRepository interface {
 	Create(secret *model.WebSubAPIHmacSecret) error

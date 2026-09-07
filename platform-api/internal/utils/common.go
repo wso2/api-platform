@@ -179,6 +179,25 @@ func CreateBatchDeploymentTarGz(deploymentContentMap map[string]*model.Deploymen
 	return buf.Bytes(), nil
 }
 
+// CreateGraphQLAPIYamlZip creates a ZIP file containing GraphQL API YAML files
+func CreateGraphQLAPIYamlZip(apiYamlMap map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+
+	for apiID, yamlContent := range apiYamlMap {
+		fileName := fmt.Sprintf("graphql-api-%s.yaml", apiID)
+		if err := addFileToZip(zipWriter, fileName, []byte(yamlContent)); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
 // CreateWebSubAPIYamlZip creates a ZIP file containing WebSub API YAML files
 func CreateWebSubAPIYamlZip(apiYamlMap map[string]string) ([]byte, error) {
 	var buf bytes.Buffer

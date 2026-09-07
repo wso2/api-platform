@@ -736,10 +736,32 @@ func TestGenerateAuthConfig(t *testing.T) {
 		// Check some expected resource roles (keys are prefixed with managementAPIBasePath)
 		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/rest-apis")
 		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/rest-apis")
+		// Regression guard: /graphql-apis routes were missing from this map
+		// entirely after GraphQL support was added — every request returned 403
+		// once basic auth was enabled, since an unlisted route is denied by
+		// default. GraphQL is a core kind like RestApi/Mcp and must carry the
+		// exact same [admin, developer] roles.
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/graphql-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/graphql-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/graphql-apis/{id}")
+		assert.Contains(t, authConfig.ResourceRoles, "PUT "+managementAPIBasePath+"/graphql-apis/{id}")
+		assert.Contains(t, authConfig.ResourceRoles, "DELETE "+managementAPIBasePath+"/graphql-apis/{id}")
+		assert.Equal(t, []string{"admin", "developer"}, authConfig.ResourceRoles["POST "+managementAPIBasePath+"/graphql-apis"])
+		assert.Contains(t, authConfig.ResourceRoles, "POST /graphql-apis") // legacy unprefixed key
 		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/llm-providers/{id}/api-keys")
 		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/llm-providers/{id}/api-keys")
 		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/llm-proxies/{id}/api-keys")
 		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/llm-proxies/{id}/api-keys")
+		// Regression guard: /graphql-apis/{id}/api-keys routes, same class of bug
+		// as the /graphql-apis routes above — a route present in the OpenAPI spec
+		// and ServerInterface but absent from this map is denied by default (404)
+		// once basic auth is enabled, never reaching the handler at all.
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/graphql-apis/{id}/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/graphql-apis/{id}/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "PUT "+managementAPIBasePath+"/graphql-apis/{id}/api-keys/{apiKeyName}")
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/graphql-apis/{id}/api-keys/{apiKeyName}/regenerate")
+		assert.Contains(t, authConfig.ResourceRoles, "DELETE "+managementAPIBasePath+"/graphql-apis/{id}/api-keys/{apiKeyName}")
+		assert.Equal(t, []string{"admin", "consumer"}, authConfig.ResourceRoles["POST "+managementAPIBasePath+"/graphql-apis/{id}/api-keys"])
 		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/policies")
 		// Admin API paths are served separately and must not leak into management auth config.
 		assert.NotContains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/config_dump")

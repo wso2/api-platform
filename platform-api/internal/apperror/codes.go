@@ -192,6 +192,14 @@ const (
 	CodeWebBrokerAPIExists   = "WEBBROKER_API_EXISTS"
 )
 
+// GraphQL API domain codes (GraphQL is a core artifact kind, not a plugin).
+const (
+	CodeGraphQLAPINotFound                   = "GRAPHQL_API_NOT_FOUND"
+	CodeGraphQLAPIExists                     = "GRAPHQL_API_EXISTS"
+	CodeGraphQLAPISchemaResolveFailed        = "GRAPHQL_API_SCHEMA_RESOLVE_FAILED"
+	CodeGraphQLAPIDeploymentValidationFailed = "GRAPHQL_API_DEPLOYMENT_VALIDATION_FAILED"
+)
+
 // HMAC secret domain codes (WebSub subscriber callback signing secrets).
 // HMAC_SECRET_NOT_CONFIGURED is a 503 rather than a 500: the encryption key is
 // a deployment-time setting, so the condition is transient from the client's

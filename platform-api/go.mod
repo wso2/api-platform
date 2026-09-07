@@ -17,6 +17,7 @@ require (
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/oapi-codegen/runtime v1.5.0
 	github.com/stretchr/testify v1.11.1
+	github.com/vektah/gqlparser/v2 v2.5.36
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/httpkit v0.0.0-local
 	golang.org/x/crypto v0.54.0
@@ -26,6 +27,7 @@ require (
 require (
 	github.com/MicahParks/jwkset v0.11.0 // indirect
 	github.com/MicahParks/keyfunc/v3 v3.7.0 // indirect
+	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect

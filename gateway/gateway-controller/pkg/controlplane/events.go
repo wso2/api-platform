@@ -285,6 +285,49 @@ type MCPProxyDeletedEvent struct {
 	CorrelationID string                      `json:"correlationId"`
 }
 
+// GraphQLAPIDeployedEventPayload represents the payload of a GraphQL API deployment event
+type GraphQLAPIDeployedEventPayload struct {
+	ApiId        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// GraphQLAPIDeployedEvent represents the complete GraphQL API deployment event
+type GraphQLAPIDeployedEvent struct {
+	Type          string                         `json:"type"`
+	Payload       GraphQLAPIDeployedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
+}
+
+// GraphQLAPIUndeployedEventPayload represents the payload of a GraphQL API undeployment event
+type GraphQLAPIUndeployedEventPayload struct {
+	ApiId        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// GraphQLAPIUndeployedEvent represents the complete GraphQL API undeployment event
+type GraphQLAPIUndeployedEvent struct {
+	Type          string                           `json:"type"`
+	Payload       GraphQLAPIUndeployedEventPayload `json:"payload"`
+	Timestamp     string                           `json:"timestamp"`
+	CorrelationID string                           `json:"correlationId"`
+}
+
+// GraphQLAPIDeletedEventPayload represents the payload of a GraphQL API deletion event
+type GraphQLAPIDeletedEventPayload struct {
+	ApiId string `json:"apiId"`
+}
+
+// GraphQLAPIDeletedEvent represents the complete GraphQL API deletion event
+type GraphQLAPIDeletedEvent struct {
+	Type          string                        `json:"type"`
+	Payload       GraphQLAPIDeletedEventPayload `json:"payload"`
+	Timestamp     string                        `json:"timestamp"`
+	CorrelationID string                        `json:"correlationId"`
+}
+
 // Note: WebSub/WebBroker deploy/undeploy/delete event payload types
 // (WebSubAPIDeployedEvent, WebBrokerAPIDeployedEvent, etc.) are NOT defined
 // here. They are event-gateway-specific and owned by the

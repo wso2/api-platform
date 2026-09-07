@@ -982,6 +982,54 @@ func TestTranslator_ExactPathUsesNativeMatcher(t *testing.T) {
 		"exact route must rank as Exact for SortRoutesByPriority")
 }
 
+// applyEnvoyRegexRewrite is applyEnvoyRewrite without the SafeRegex match-specifier
+// precondition, for routes matched via Envoy's native exact matcher (RouteMatch_Path)
+// instead of a safe_regex — the RegexRewrite route action applies independently of how
+// the route was matched.
+func applyEnvoyRegexRewrite(t *testing.T, r *route.Route, requestPath string) string {
+	t.Helper()
+	rw := r.GetRoute().GetRegexRewrite()
+	require.NotNil(t, rw, "route should have a RegexRewrite")
+	pattern := regexp.MustCompile(rw.GetPattern().GetRegex())
+	goSub := strings.ReplaceAll(rw.GetSubstitution(), `\1`, `${1}`)
+	return pattern.ReplaceAllString(requestPath, goSub)
+}
+
+// TestTranslator_GraphQLOperationPathNotAppendedToUpstream guards the fix for a
+// GraphQLApi route whose context coincidentally ends with the same text as its
+// synthetic OperationPath placeholder (GraphQLAPITransformer sets a fixed, non-empty
+// OperationPath so policies like api-key-auth that misread "" as "missing API details"
+// don't fail closed — see graphql.go). createRouteFromRDC previously derived the
+// route's context by blindly trimming OperationPath off the end of the full path,
+// an invariant that only genuinely holds for RestAPITransformer routes. For a context
+// like "/sandbox-graphql" with OperationPath "graphql", that trim fired anyway
+// (the text really is there, just not because of a real appended operation) and
+// doubled the upstream path segment: an upstream of ".../graphql" was rewritten to
+// ".../graphqlgraphql" instead of being passed through unchanged.
+func TestTranslator_GraphQLOperationPathNotAppendedToUpstream(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	rdc := &models.RuntimeDeployConfig{
+		Metadata: models.Metadata{Kind: string(models.KindGraphQLApi)},
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "/graphql", Endpoints: []models.Endpoint{{Host: "sample-backend", Port: 9080}}},
+		},
+	}
+	rdcRoute := &models.Route{
+		Method:          "POST",
+		Path:            "/sandbox-graphql",
+		OperationPath:   "graphql", // the synthetic placeholder, coincidentally a suffix of Path
+		PathMatchType:   "Exact",
+		AutoHostRewrite: true,
+		Upstream:        models.RouteUpstream{ClusterKey: "main"},
+	}
+	r := translator.createRouteFromRDC("POST|/sandbox-graphql|", rdcRoute, rdc)
+	require.NotNil(t, r)
+	assert.Equal(t, "/graphql", applyEnvoyRegexRewrite(t, r, "/sandbox-graphql"),
+		"upstream path must be passed through unchanged, not have OperationPath appended a second time")
+}
+
 // TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex reproduces the HTTPRoutePathMatchOrder
 // conformance shape: an exact /match must outrank the /match/ prefix even though the prefix's
 // regex string is longer. Before the fix the exact route was a safe_regex and lost on length.
