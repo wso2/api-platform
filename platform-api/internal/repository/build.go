@@ -47,6 +47,16 @@ const buildIDAttempts = 5
 // ticket or a log line, which a UUID is not. It is unique per API, so the artifact
 // is always part of resolving one.
 func (r *DeploymentRepo) CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error {
+	if err := initBuild(build); err != nil {
+		return err
+	}
+	return createWithDerivedBuildID(build, func() error {
+		return r.createBuild(build, hardLimit)
+	})
+}
+
+// initBuild fills in the identity and the timestamp a build is stored with.
+func initBuild(build *model.Build) error {
 	if build.UUID == "" {
 		buildUUID, err := utils.GenerateUUID()
 		if err != nil {
@@ -59,53 +69,70 @@ func (r *DeploymentRepo) CreateBuildWithLimitEnforcement(build *model.Build, har
 	} else {
 		build.CreatedAt = build.CreatedAt.UTC()
 	}
-	// An id the caller chose is used as given, so there is no race to settle.
-	if build.BuildID != "" {
-		return r.createBuild(build, hardLimit, false)
-	}
+	return nil
+}
 
+// createWithDerivedBuildID runs one attempt at a time until the id derived for the
+// build sticks: the loser of a race for the same index simply derives the next one
+// and tries again. An id the caller chose is used as given — there is no index to
+// re-derive, so a failure with one is final.
+func createWithDerivedBuildID(build *model.Build, attempt func() error) error {
+	if build.BuildID != "" {
+		return attempt()
+	}
 	var err error
-	for attempt := 0; attempt < buildIDAttempts; attempt++ {
-		attempted := build.BuildID
-		if err = r.createBuild(build, hardLimit, true); err == nil {
+	for i := 0; i < buildIDAttempts; i++ {
+		derived := build.BuildID
+		// Cleared so the attempt derives the next free index rather than reusing an
+		// id that has just been taken.
+		build.BuildID = ""
+		if err = attempt(); err == nil {
 			return nil
 		}
-		if attempt > 0 && build.BuildID == attempted {
-			// The id we just tried is still free, so the attempt failed on something
-			// other than a concurrent prepare and retrying cannot help.
+		if i > 0 && build.BuildID == derived {
+			// The index this attempt derived is the one the last attempt already
+			// tried, so nothing took it in between: the failure is not a concurrent
+			// prepare and retrying cannot help.
 			return err
 		}
 	}
 	return err
 }
 
-// createBuild is one attempt at storing a build: the prune, the id and the insert
-// all run in a single transaction. Deciding a build is expendable and referencing
-// one are the same judgement about what is still needed, so they are settled
-// together — otherwise a concurrent prepare could delete the build a deploy has
-// just resolved, or clear the reference a deploy has just written. A failed
-// attempt rolls all of it back, which is what leaves the caller free to retry.
-func (r *DeploymentRepo) createBuild(build *model.Build, hardLimit int, deriveID bool) error {
+// createBuild is one attempt at storing a build on a transaction of its own. A
+// failed attempt rolls all of it back, which is what leaves the caller free to
+// retry.
+func (r *DeploymentRepo) createBuild(build *model.Build, hardLimit int) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
+	if err := r.storeBuild(tx, build, hardLimit); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// storeBuild prunes, derives the id when the build has none, and inserts — the
+// whole of adding a build, on a transaction the caller owns. Deciding a build is
+// expendable and referencing one are the same judgement about what is still
+// needed, so they are settled together; a deploy from the API's definition runs
+// this on the transaction that records the deployment, so the build and the
+// deployment that names it commit as one.
+func (r *DeploymentRepo) storeBuild(tx *sql.Tx, build *model.Build, hardLimit int) error {
 	if err := r.pruneBuilds(tx, build.ArtifactID, build.OrganizationID, hardLimit); err != nil {
 		return err
 	}
-	if deriveID {
+	if build.BuildID == "" {
 		buildID, err := r.nextBuildID(tx, build.ArtifactID, build.OrganizationID, build.CreatedAt)
 		if err != nil {
 			return err
 		}
 		build.BuildID = buildID
 	}
-	if err := r.insertBuild(tx, build); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return r.insertBuild(tx, build)
 }
 
 // nextBuildID returns the next unused id for an API on the given day. Reading the

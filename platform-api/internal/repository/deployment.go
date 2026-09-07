@@ -49,57 +49,35 @@ func NewDeploymentRepo(db *database.DB, reg *ArtifactTableRegistry) DeploymentRe
 // If deployment count >= hardLimit, deletes oldest 5 ARCHIVED deployments before inserting new one
 // This entire operation is wrapped in a single transaction to ensure atomicity
 // and to leverage row-level locks during deletion to reduce race conditions.
+//
+// A deployment that names a build it runs has that build re-read inside the
+// transaction, so a deploy that lost its build to a prune between resolving it and
+// recording it is refused rather than committed with an origin it no longer has.
 func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
-	return r.createWithLimitEnforcement(deployment, nil, hardLimit)
+	return r.createOnce(deployment, nil, 0, hardLimit)
 }
 
-// CreateFromBuildWithLimitEnforcement records a deployment made from a build,
-// carrying the build itself so the write can put it back if it was pruned between
-// being resolved and being recorded here. Restoring is not a second copy: builds
-// are immutable, so the row goes back exactly as it was, id and timestamp included.
-// It is also not a way around the budget — the build is about to be one a gateway
-// is serving, which is the one kind pruning is never allowed to take.
-func (r *DeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *model.Deployment,
-	build *model.Build, hardLimit int) error {
-	return r.createWithLimitEnforcement(deployment, build, hardLimit)
-}
-
-func (r *DeploymentRepo) createWithLimitEnforcement(deployment *model.Deployment,
-	build *model.Build, hardLimit int) error {
-	err := r.createOnce(deployment, build, hardLimit)
-	if err == nil || deployment.BuildUUID == nil {
+// CreateWithBuild records a deployment together with the build it runs, storing
+// the build here rather than before: a committed deployment therefore always names
+// a build that exists, a failed deploy leaves no build behind, and no prune can get
+// between the two writes. The build takes its id and its place in the API's budget
+// exactly as one prepared on its own does, so buildHardLimit is enforced here too.
+// The deployment's build reference is filled in from the stored build.
+func (r *DeploymentRepo) CreateWithBuild(deployment *model.Deployment, build *model.Build,
+	buildHardLimit, hardLimit int) error {
+	if err := initBuild(build); err != nil {
 		return err
 	}
-	// The ownership check inside the attempt takes no lock, so a prune can delete
-	// the build in the window between that check and the insert that would have
-	// referenced it — the one case the check cannot catch itself, and one that
-	// surfaces as a foreign-key failure rather than as anything build-shaped. Ask
-	// whether the build is still there to tell that apart from an unrelated
-	// failure. Asked here rather than inside the attempt: a query issued while
-	// that transaction is still open waits for a connection the transaction is
-	// itself holding.
-	owned, checkErr := r.buildBelongsTo(r.db, *deployment.BuildUUID,
-		deployment.ArtifactID, deployment.OrganizationID)
-	if checkErr != nil || owned {
-		return err
-	}
-	if build == nil {
-		// Nothing in hand to put back, so this reads as arriving after the build
-		// was pruned rather than as a database fault.
-		return apperror.BuildNotFound.New()
-	}
-	// Nothing was recorded (the attempt rolled back whole) and the build is still
-	// in hand, so try once more: the ownership check now finds it gone and takes
-	// the restore path, where build and deployment commit together. That pair
-	// cannot lose the same race again — a restored build is visible only to the
-	// transaction that is about to reference it.
-	return r.createOnce(deployment, build, hardLimit)
+	return createWithDerivedBuildID(build, func() error {
+		return r.createOnce(deployment, build, buildHardLimit, hardLimit)
+	})
 }
 
-// createOnce is a single attempt at createWithLimitEnforcement. It either commits
-// the deployment or leaves the database untouched.
+// createOnce is a single attempt at recording a deployment: it either commits the
+// deployment — and the build it carries, when it carries one — or leaves the
+// database untouched.
 func (r *DeploymentRepo) createOnce(deployment *model.Deployment,
-	build *model.Build, hardLimit int) error {
+	build *model.Build, buildHardLimit, hardLimit int) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -190,40 +168,27 @@ func (r *DeploymentRepo) createOnce(deployment *model.Deployment,
 		}
 	}
 
-	// The build was resolved before this transaction opened, so a prepare running
-	// alongside this one may have pruned it since. It must also belong to the same
-	// API and organization as the deployment: the foreign key alone would accept any
-	// build, and a deployment carrying another API's build would report that build's
-	// id as its own origin.
-	if deployment.BuildUUID != nil {
+	// The build this deployment runs. One rendered for it is stored here, on the
+	// transaction that records the deployment, so the two cannot come apart. One
+	// prepared earlier was resolved before this transaction opened, so it is read
+	// again: a prepare running alongside this one may have pruned it since, and it
+	// must belong to the same API and organization as the deployment — the foreign
+	// key alone would accept any build, and a deployment carrying another API's
+	// build would report that build's id as its own origin.
+	switch {
+	case build != nil:
+		if err := r.storeBuild(tx, build, buildHardLimit); err != nil {
+			return err
+		}
+		deployment.BuildUUID = &build.UUID
+		deployment.BuildID = &build.BuildID
+	case deployment.BuildUUID != nil:
 		owned, err := r.buildBelongsTo(tx, *deployment.BuildUUID, deployment.ArtifactID, deployment.OrganizationID)
 		if err != nil {
 			return err
 		}
 		if !owned {
-			exists, err := r.buildExists(tx, *deployment.BuildUUID)
-			if err != nil {
-				return err
-			}
-			switch {
-			case exists:
-				// Present, but another API's. Nothing to do but refuse.
-				return apperror.BuildNotFound.New()
-			case build != nil:
-				// Pruned while this deploy was rendering, and we still hold it. Put it
-				// back alongside the deployment that needs it, so the two commit
-				// together and pruning cannot get between them again. A failure here is
-				// its id having been taken since, which leaves nothing to deploy from.
-				if err := r.insertBuild(tx, build); err != nil {
-					return apperror.BuildNotFound.New()
-				}
-			default:
-				// Gone, with no copy to put back. This should not be reachable: a
-				// reference is only ever set from a build the caller resolved and still
-				// holds, so there is always something to restore. Refuse rather than
-				// record a deployment that has silently lost the build it came from.
-				return apperror.BuildNotFound.New()
-			}
+			return apperror.BuildNotFound.New()
 		}
 	}
 
@@ -255,8 +220,6 @@ func (r *DeploymentRepo) createOnce(deployment *model.Deployment,
 	_, err = tx.Exec(r.db.Rebind(deploymentQuery), deployment.DeploymentID, deployment.Name, deployment.ArtifactID, deployment.OrganizationID,
 		deployment.GatewayID, baseDeploymentID, buildUUID, deployment.Content, metadataBytes, deployment.CreatedBy, deployment.CreatedAt)
 	if err != nil {
-		// A build pruned since the check above makes this a foreign-key failure;
-		// createWithLimitEnforcement sorts that out once this transaction is closed.
 		return err
 	}
 
@@ -288,31 +251,11 @@ func (r *DeploymentRepo) createOnce(deployment *model.Deployment,
 	return tx.Commit()
 }
 
-// buildQuerier is whatever the caller has to hand — the transaction while it is
-// still usable, the pool once it is not.
-type buildQuerier interface {
-	QueryRow(query string, args ...any) *sql.Row
-}
-
-// buildExists reports whether the build row is there at all, which is what tells a
-// build that has been pruned apart from one that belongs to somebody else.
-func (r *DeploymentRepo) buildExists(q buildQuerier, buildUUID string) (bool, error) {
-	var found int
-	err := q.QueryRow(r.db.Rebind(`SELECT 1 FROM builds WHERE uuid = ?`), buildUUID).Scan(&found)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("failed to check the build this deployment comes from: %w", err)
-	}
-	return true, nil
-}
-
 // buildBelongsTo reports whether the build exists under that API and organization.
-func (r *DeploymentRepo) buildBelongsTo(q buildQuerier, buildUUID, artifactUUID, orgUUID string) (bool, error) {
+func (r *DeploymentRepo) buildBelongsTo(tx *sql.Tx, buildUUID, artifactUUID, orgUUID string) (bool, error) {
 	const query = `SELECT 1 FROM builds WHERE uuid = ? AND artifact_uuid = ? AND organization_uuid = ?`
 	var found int
-	err := q.QueryRow(r.db.Rebind(query), buildUUID, artifactUUID, orgUUID).Scan(&found)
+	err := tx.QueryRow(r.db.Rebind(query), buildUUID, artifactUUID, orgUUID).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

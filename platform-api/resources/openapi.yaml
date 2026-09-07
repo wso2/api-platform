@@ -899,6 +899,10 @@ paths:
         Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
+
+        Every deployment runs a build: `base: build` deploys one prepared earlier, and
+        `base: current` renders the API's definition into a build and deploys that, both in
+        one atomic operation. The deployment reports the build it runs as `buildId`.
       operationId: DeployAPI
       security:
         - OAuth2Security:
@@ -6823,9 +6827,14 @@ components:
           description: |
             Where the artifact comes from:
 
-            - `current` — render the latest working copy now.
-            - `build` — deploy a prepared build, named by `buildId`.
-            - a `deploymentId` — promote that deployment, reusing its rendered artifact.
+            - `current` — render the artifact from the definition as it stands now.
+            - `build` — deploy a build prepared earlier, named by `buildId`.
+
+            REST API deployments accept only these two and always run a build: `current`
+            stores what it renders as one, so a running deployment is always traceable to
+            a stored snapshot. MCP proxy, LLM and event API deployments accept a
+            `deploymentId` here as well, to promote that deployment by reusing its
+            rendered artifact.
           example: "current"
         buildId:
           type: string

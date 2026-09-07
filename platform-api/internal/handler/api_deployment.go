@@ -75,7 +75,7 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) er
 		return apperror.RESTAPIDeploymentValidationFailed.New("name is required")
 	}
 	if req.Base == "" {
-		return apperror.RESTAPIDeploymentValidationFailed.New("base is required (use 'current', 'build', or a deploymentId)")
+		return apperror.RESTAPIDeploymentValidationFailed.New("base is required (use 'current' or 'build')")
 	}
 	if req.Base == "build" && utils.ValueOrEmpty(req.BuildId) == "" {
 		return apperror.RESTAPIDeploymentValidationFailed.New("buildId is required when base is 'build'")

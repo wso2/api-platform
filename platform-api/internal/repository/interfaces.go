@@ -134,9 +134,12 @@ type DeploymentRepository interface {
 	GetBuilds(artifactUUID, orgUUID string, limit int) ([]*model.Build, error)
 
 	// Deployment artifact methods (immutable deployments)
-	CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error // Atomic: count, cleanup if needed, create
-	// Atomic, and restores the build if it was pruned between being resolved and recorded
-	CreateFromBuildWithLimitEnforcement(deployment *model.Deployment, build *model.Build, hardLimit int) error
+	// Atomic: count, cleanup if needed, create. A deployment naming a build it runs
+	// is refused if that build has been pruned since it was resolved
+	CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error
+	// Atomic: stores the build this deployment runs alongside the deployment itself,
+	// enforcing both the build and the deployment limits
+	CreateWithBuild(deployment *model.Deployment, build *model.Build, buildHardLimit, hardLimit int) error
 	GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error)
 	GetWithState(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error)
 	GetDeploymentsWithState(artifactUUID, orgUUID string, gatewayID *string, status *string, maxPerAPIGW int) ([]*model.Deployment, error)

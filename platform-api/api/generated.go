@@ -1067,9 +1067,14 @@ type CustomPolicyResponse struct {
 type DeployRequest struct {
 	// Base Where the artifact comes from:
 	//
-	// - `current` — render the latest working copy now.
-	// - `build` — deploy a prepared build, named by `buildId`.
-	// - a `deploymentId` — promote that deployment, reusing its rendered artifact.
+	// - `current` — render the artifact from the definition as it stands now.
+	// - `build` — deploy a build prepared earlier, named by `buildId`.
+	//
+	// REST API deployments accept only these two and always run a build: `current`
+	// stores what it renders as one, so a running deployment is always traceable to
+	// a stored snapshot. MCP proxy, LLM and event API deployments accept a
+	// `deploymentId` here as well, to promote that deployment by reusing its
+	// rendered artifact.
 	Base string `binding:"required" json:"base" yaml:"base"`
 
 	// BuildId The build to deploy, such as `2026-01-31-2`. Required when `base` is `build`,

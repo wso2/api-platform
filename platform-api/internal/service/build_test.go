@@ -67,10 +67,11 @@ type buildTestDeploymentRepo struct {
 	builds         []*model.Build
 	getBuildCalls  int
 
-	// baseDeployment is what a base id resolves to as a DEPLOYMENT; nil means the
-	// id is not a deployment, which is what sends the lookup on to builds.
-	baseDeployment *model.Deployment
-	created        *model.Deployment
+	// baseDeployment is what a deployment id resolves to, for the tests that prove
+	// naming one is no longer a way to deploy.
+	baseDeployment      *model.Deployment
+	getWithContentCalls int
+	created             *model.Deployment
 }
 
 func (m *buildTestDeploymentRepo) CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error {
@@ -95,11 +96,24 @@ func (m *buildTestDeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit 
 }
 
 func (m *buildTestDeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error) {
+	m.getWithContentCalls++
 	return m.baseDeployment, nil
 }
 
-func (m *buildTestDeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *model.Deployment,
-	_ *model.Build, hardLimit int) error {
+func (m *buildTestDeploymentRepo) CreateWithBuild(deployment *model.Deployment, build *model.Build,
+	buildHardLimit, hardLimit int) error {
+	if build.UUID == "" {
+		build.UUID = buildTestBuildUUID
+	}
+	if build.BuildID == "" {
+		build.BuildID = buildTestBuildID
+	}
+	m.createdBuild = build
+	m.createdWithCap = buildHardLimit
+	// As the real write does: the deployment's reference comes from the build it
+	// has just stored.
+	deployment.BuildUUID = &build.UUID
+	deployment.BuildID = &build.BuildID
 	return m.CreateWithLimitEnforcement(deployment, hardLimit)
 }
 
@@ -280,11 +294,11 @@ func TestDeployAPI_FromABuild_SendsTheStoredSnapshot(t *testing.T) {
 	}
 }
 
-// Deploying is not conditional on builds: an API can still be shipped straight
-// from its definition, and that deployment simply has no build behind it. It must
-// come out whole — content, and no build reference to a snapshot that never
-// existed — without the builds table being consulted at all.
-func TestDeployAPI_FromTheDefinitionHasNoBuildReference(t *testing.T) {
+// Deploying from the definition is not deploying WITHOUT a build: the render is
+// stored as one and the deployment runs that, so what a gateway is serving is
+// always traceable to a snapshot, and the next environment has something to
+// promote. The build is written with the deployment, not before it.
+func TestDeployAPI_FromTheDefinitionStoresTheBuildItRuns(t *testing.T) {
 	depRepo := &buildTestDeploymentRepo{}
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
 
@@ -302,17 +316,57 @@ func TestDeployAPI_FromTheDefinitionHasNoBuildReference(t *testing.T) {
 	if len(depRepo.created.Content) == 0 {
 		t.Error("the deployment carries no artifact")
 	}
-	if depRepo.created.BuildUUID != nil {
-		t.Errorf("buildUuid = %q, want none for a deployment rendered from the definition",
-			*depRepo.created.BuildUUID)
+	if depRepo.createdBuild == nil {
+		t.Fatal("no build was stored for a deployment rendered from the definition")
 	}
-	if depRepo.created.BuildID != nil {
-		t.Errorf("buildId = %q, want none for a deployment rendered from the definition",
-			*depRepo.created.BuildID)
+	if depRepo.created.BuildUUID == nil || *depRepo.created.BuildUUID != depRepo.createdBuild.UUID {
+		t.Errorf("buildUuid = %v, want the stored build %q",
+			depRepo.created.BuildUUID, depRepo.createdBuild.UUID)
 	}
+	if deployment.BuildId == nil || *deployment.BuildId != depRepo.createdBuild.BuildID {
+		t.Errorf("response buildId = %v, want %q", deployment.BuildId, depRepo.createdBuild.BuildID)
+	}
+	// The build takes its place in the API's budget exactly as a prepared one does.
+	if depRepo.createdWithCap != testConfig.Deployments.MaxBuildsPerAPI {
+		t.Errorf("build limit = %d, want the configured %d",
+			depRepo.createdWithCap, testConfig.Deployments.MaxBuildsPerAPI)
+	}
+	// Nothing to look up: the build is the one this deploy just rendered.
 	if depRepo.getBuildCalls != 0 {
 		t.Errorf("builds were read %d time(s); deploying from the definition must not need them",
 			depRepo.getBuildCalls)
+	}
+}
+
+// The build is the definition as it stood, not one deployment's customization of
+// it: a deployment's overrides belong to that deployment, so the next environment
+// promoting this build is not silently given this gateway's endpoint.
+func TestDeployAPI_OverridesDoNotReachTheBuild(t *testing.T) {
+	apiModel := buildTestAPI()
+	apiModel.Configuration.Upstream.Main = &model.UpstreamEndpoint{URL: "http://orders.internal:8080"}
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: apiModel}, depRepo)
+
+	_, err := service.DeployAPI(buildTestAPIUUID, &api.DeployRequest{
+		Name:      "orders-dev",
+		Base:      "current",
+		GatewayId: "test-gateway",
+		Metadata:  &map[string]interface{}{"endpointUrl": "https://orders-dev.example.com"},
+	}, buildTestOrgUUID, "tester")
+	if err != nil {
+		t.Fatalf("DeployAPI: %v", err)
+	}
+	if depRepo.createdBuild == nil || depRepo.created == nil {
+		t.Fatal("the deploy stored no build")
+	}
+	if !strings.Contains(string(depRepo.created.Content), "orders-dev.example.com") {
+		t.Errorf("the deployment did not take the override: %s", depRepo.created.Content)
+	}
+	if strings.Contains(string(depRepo.createdBuild.Content), "orders-dev.example.com") {
+		t.Errorf("the override reached the build: %s", depRepo.createdBuild.Content)
+	}
+	if !strings.Contains(string(depRepo.createdBuild.Content), "orders.internal:8080") {
+		t.Errorf("the build is not the definition as it stood: %s", depRepo.createdBuild.Content)
 	}
 }
 
@@ -340,8 +394,8 @@ func TestDeployAPI_BuildIdNamesTheBuildDirectly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeployAPI: %v", err)
 	}
-	// Named the build, so it ships that snapshot rather than re-rendering the
-	// definition, even though base still says "current".
+	// Named the build, so it ships that snapshot rather than rendering the
+	// definition again.
 	if !strings.Contains(string(depRepo.created.Content), "/orders") {
 		t.Errorf("the deployment does not carry the build's artifact: %s", depRepo.created.Content)
 	}
@@ -364,9 +418,10 @@ func TestDeployAPI_BuildBaseRequiresABuildId(t *testing.T) {
 	}
 }
 
-// And the other way: a buildId sent with any other base would be silently ignored,
-// so the request is refused rather than quietly deploying something else.
-func TestDeployAPI_BuildIdIsRejectedWithAnotherBase(t *testing.T) {
+// And the other way: a buildId sent with base "current" would be silently ignored
+// — the deploy renders its own build — so the request is refused rather than
+// quietly deploying something else.
+func TestDeployAPI_BuildIdIsRejectedWithBaseCurrent(t *testing.T) {
 	depRepo := &buildTestDeploymentRepo{}
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
 
@@ -413,35 +468,17 @@ func TestDeployAPI_UnknownBuildIdIsRejected(t *testing.T) {
 	}
 }
 
-// A base that is neither a deployment nor a build must be rejected rather than
-// silently falling back to rendering the current definition.
-func TestDeployAPI_UnknownBaseIsRejected(t *testing.T) {
-	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, &buildTestDeploymentRepo{})
-
-	_, err := service.DeployAPI(buildTestAPIUUID, &api.DeployRequest{
-		Name:      "orders-dev",
-		Base:      "99999999-9999-9999-9999-999999999999",
-		GatewayId: "test-gateway",
-	}, buildTestOrgUUID, "tester")
-	if err == nil || !apperror.DeploymentBaseNotFound.Is(err) {
-		t.Fatalf("expected DeploymentBaseNotFound, got %v", err)
-	}
-}
-
-// Promoting a deployment is bound to that deployment, not to a build: it reuses the
-// artifact already rendered there and never reads the builds table. Naming a build
-// is its own base, and that is the path that records one — so a promotion records
-// the deployment it came from and no build reference, even when the base has one.
-func TestDeployAPI_PromotionRecordsNoBuildReference(t *testing.T) {
-	const snapshot = "apiVersion: gateway.wso2.com/v1\nkind: RestApi\nmetadata:\n  name: orders-api\nspec:\n  context: /orders\n"
+// base names one of two sources and nothing else. An id here used to mean "promote
+// that deployment"; it is now refused, so a caller that has not been updated is
+// told rather than quietly given a rendering of the current definition.
+func TestDeployAPI_ADeploymentIdIsNotABase(t *testing.T) {
 	depRepo := &buildTestDeploymentRepo{
+		// A real deployment, to show that even a resolvable id is not a base.
 		baseDeployment: &model.Deployment{
 			DeploymentID: "33333333-3333-3333-3333-3333333333aa",
 			ArtifactID:   buildTestAPIUUID,
 			GatewayID:    buildTestGatewayUUID,
-			Content:      []byte(snapshot),
-			BuildUUID:    ptr(buildTestBuildUUID),
-			BuildID:      ptr(buildTestBuildID),
+			Content:      []byte("apiVersion: gateway.wso2.com/v1\nkind: RestApi\n"),
 		},
 	}
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
@@ -451,21 +488,14 @@ func TestDeployAPI_PromotionRecordsNoBuildReference(t *testing.T) {
 		Base:      "33333333-3333-3333-3333-3333333333aa",
 		GatewayId: "test-gateway",
 	}, buildTestOrgUUID, "tester")
-	if err != nil {
-		t.Fatalf("DeployAPI: %v", err)
+	if err == nil || !apperror.RESTAPIDeploymentValidationFailed.Is(err) {
+		t.Fatalf("expected a validation failure, got %v", err)
 	}
-	if depRepo.created.BuildUUID != nil {
-		t.Errorf("buildUuid = %q, want none: a promotion is bound to the deployment, not a build",
-			*depRepo.created.BuildUUID)
+	if depRepo.created != nil {
+		t.Error("a deployment was created from a base that is no longer accepted")
 	}
-	if depRepo.created.BuildID != nil {
-		t.Errorf("buildId = %q, want none", *depRepo.created.BuildID)
-	}
-	if depRepo.created.BaseDeploymentID == nil {
-		t.Error("a promotion should record the deployment it came from")
-	}
-	if depRepo.getBuildCalls != 0 {
-		t.Errorf("builds were read %d time(s); promoting a deployment must not need them",
-			depRepo.getBuildCalls)
+	if depRepo.getWithContentCalls != 0 {
+		t.Errorf("deployments were read %d time(s); a deploymentId base is refused outright",
+			depRepo.getWithContentCalls)
 	}
 }

@@ -87,11 +87,11 @@ type Projects interface {
 // organization id explicitly — handlers MUST pass the org resolved from the
 // request context, never one from request input (GO-AUTH-005).
 //
-// A deployment is built from a base — "current", a buildId, or a prior
-// deploymentId — and an optional generic override document. That lets a caller
-// prepare a snapshot and deploy it (so a deploy cannot silently pick up edits made
-// since), promote an existing deployment forward, and customize any field of the
-// API config for the target gateway.
+// A deployment always runs a build: base "current" renders one from the API's
+// definition as part of the deploy, and base "build" deploys one prepared earlier,
+// named by buildId. That lets a caller fix WHAT will be deployed at a known moment
+// — so a deploy cannot silently pick up edits made since — and deploy that same
+// snapshot to any number of gateways, or onward to the next environment.
 type Deployments interface {
 	// CreateBuildByHandle renders the API's current definition into an immutable
 	// snapshot without deploying it, so a later deploy can name that snapshot
@@ -107,7 +107,7 @@ type Deployments interface {
 	GetBuildsByHandle(apiHandle, orgID string, limit int) (*api.BuildListResponse, error)
 
 	// DeployAPIByHandle creates a new immutable deployment of an API onto one
-	// gateway (Create/Promote).
+	// gateway, from a build (Create).
 	DeployAPIByHandle(apiHandle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error)
 
 	// GetDeploymentsByHandle lists an API's deployments, optionally filtered by

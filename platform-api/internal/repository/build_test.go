@@ -248,11 +248,90 @@ func prepareBuilds(t *testing.T, repo DeploymentRepository, n, hardLimit int) []
 	return builds
 }
 
-// A deploy resolves its build before the transaction that records the deployment
-// opens, so a prepare running alongside it can prune that build in between. When the
-// deploy still holds the build, the write puts it back and the deployment keeps its
-// origin — pruning it was only ever right while nothing was deploying it.
-func TestCreateDeployment_RestoresABuildPrunedMidDeploy(t *testing.T) {
+// A deploy from the API's definition renders the build and stores it with the
+// deployment that runs it, on one transaction. Nothing can prune a build the
+// deployment naming it does not yet exist to protect, and the deployment cannot end
+// up naming a build that was never recorded.
+func TestCreateDeployment_StoresTheBuildItRunsAlongsideIt(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	build := buildOn(time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC))
+	build.BuildID = ""
+	deployed := model.DeploymentStatusDeployed
+	deployment := &model.Deployment{
+		DeploymentID:   "dep-1",
+		Name:           "dep-1",
+		ArtifactID:     buildRepoAPIUUID,
+		GatewayID:      "gw-1",
+		OrganizationID: buildRepoOrgUUID,
+		Content:        []byte("content"),
+		Status:         &deployed,
+	}
+	if err := repo.CreateWithBuild(deployment, build, 0, 100); err != nil {
+		t.Fatalf("CreateWithBuild: %v", err)
+	}
+
+	// The build was given an id of its own and the deployment names it.
+	if build.BuildID != "2026-01-31-1" {
+		t.Errorf("buildId = %q, want %q", build.BuildID, "2026-01-31-1")
+	}
+	if deployment.BuildUUID == nil || *deployment.BuildUUID != build.UUID {
+		t.Errorf("deployment buildUuid = %v, want %q", deployment.BuildUUID, build.UUID)
+	}
+	stored, err := repo.GetBuild(build.BuildID, buildRepoAPIUUID, buildRepoOrgUUID)
+	if err != nil || stored == nil {
+		t.Fatalf("the build was not stored: %v", err)
+	}
+	dep, err := repo.GetWithContent("dep-1", buildRepoAPIUUID, buildRepoOrgUUID)
+	if err != nil {
+		t.Fatalf("GetWithContent: %v", err)
+	}
+	if dep.BuildID == nil || *dep.BuildID != build.BuildID {
+		t.Errorf("buildId = %v, want %q", dep.BuildID, build.BuildID)
+	}
+}
+
+// The other half of committing them together: a deploy that cannot be recorded
+// leaves no build behind either. A build nothing deployed would otherwise sit in the
+// API's budget and be offered as something to deploy.
+func TestCreateDeployment_AFailedDeployStoresNoBuild(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	build := buildOn(time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC))
+	build.BuildID = ""
+	deployed := model.DeploymentStatusDeployed
+	// The gateway does not exist, so recording the deployment fails.
+	err := repo.CreateWithBuild(&model.Deployment{
+		DeploymentID:   "dep-1",
+		Name:           "dep-1",
+		ArtifactID:     buildRepoAPIUUID,
+		GatewayID:      "gw-that-was-never-created",
+		OrganizationID: buildRepoOrgUUID,
+		Content:        []byte("content"),
+		Status:         &deployed,
+	}, build, 0, 100)
+	if err == nil {
+		t.Fatal("CreateWithBuild succeeded against a gateway that does not exist")
+	}
+
+	if kept := storedBuildIDs(t, repo); len(kept) != 0 {
+		t.Errorf("builds = %v, want none stored by a deploy that failed", kept)
+	}
+}
+
+// A deploy of a build prepared earlier resolves it before the transaction that
+// records the deployment opens, so a prepare running alongside can prune it in
+// between. The build is read again inside that transaction, so the deploy is refused
+// rather than committed with an origin it has lost — the next stage promotes what
+// this one is running, and a deployment that cannot name its build ends the pipeline.
+func TestCreateDeployment_RefusesABuildPrunedMidDeploy(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
@@ -269,7 +348,7 @@ func TestCreateDeployment_RestoresABuildPrunedMidDeploy(t *testing.T) {
 	}
 
 	deployed := model.DeploymentStatusDeployed
-	if err := repo.CreateFromBuildWithLimitEnforcement(&model.Deployment{
+	err := repo.CreateWithLimitEnforcement(&model.Deployment{
 		DeploymentID:   "dep-1",
 		Name:           "dep-1",
 		ArtifactID:     buildRepoAPIUUID,
@@ -278,32 +357,22 @@ func TestCreateDeployment_RestoresABuildPrunedMidDeploy(t *testing.T) {
 		Content:        []byte("content"),
 		Status:         &deployed,
 		BuildUUID:      &build.UUID,
-	}, build, 100); err != nil {
-		t.Fatalf("CreateFromBuildWithLimitEnforcement: %v", err)
+	}, 100)
+	if err == nil {
+		t.Fatal("expected a deploy of a pruned build to be refused")
 	}
-
-	// The build is back, unchanged, and the deployment names it.
-	restored, err := repo.GetBuild(build.BuildID, buildRepoAPIUUID, buildRepoOrgUUID)
-	if err != nil || restored == nil {
-		t.Fatalf("the build was not restored: %v", err)
+	if !apperror.BuildNotFound.Is(err) {
+		t.Errorf("error = %v, want BuildNotFound", err)
 	}
-	if restored.UUID != build.UUID || string(restored.Content) != string(build.Content) {
-		t.Errorf("restored build = %+v, want the same row back", restored)
-	}
-	dep, err := repo.GetWithContent("dep-1", buildRepoAPIUUID, buildRepoOrgUUID)
-	if err != nil {
-		t.Fatalf("GetWithContent: %v", err)
-	}
-	if dep.BuildID == nil || *dep.BuildID != build.BuildID {
-		t.Errorf("buildId = %v, want %q", dep.BuildID, build.BuildID)
+	if dep, err := repo.GetWithContent("dep-1", buildRepoAPIUUID, buildRepoOrgUUID); err == nil && dep != nil {
+		t.Error("the deployment was recorded anyway")
 	}
 }
 
 // A deploy that fails for a reason of its own must not be reported as a lost
-// build, and must not restore anything: the retry exists for a build that a prune
-// took, so it is gated on the build actually being gone. Here the build is intact
-// and the gateway does not exist, so the foreign-key failure belongs to the
-// gateway and is surfaced as itself.
+// build: only the build being gone means that. Here the build is intact and the
+// gateway does not exist, so the foreign-key failure belongs to the gateway and is
+// surfaced as itself.
 func TestCreateDeployment_KeepsAnUnrelatedFailureAsItself(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -316,7 +385,7 @@ func TestCreateDeployment_KeepsAnUnrelatedFailureAsItself(t *testing.T) {
 	}
 
 	deployed := model.DeploymentStatusDeployed
-	err := repo.CreateFromBuildWithLimitEnforcement(&model.Deployment{
+	err := repo.CreateWithLimitEnforcement(&model.Deployment{
 		DeploymentID:   "dep-1",
 		Name:           "dep-1",
 		ArtifactID:     buildRepoAPIUUID,
@@ -325,20 +394,18 @@ func TestCreateDeployment_KeepsAnUnrelatedFailureAsItself(t *testing.T) {
 		Content:        []byte("content"),
 		Status:         &deployed,
 		BuildUUID:      &build.UUID,
-	}, build, 100)
+	}, 100)
 	if err == nil {
-		t.Fatal("CreateFromBuildWithLimitEnforcement succeeded against a gateway that does not exist")
+		t.Fatal("CreateWithLimitEnforcement succeeded against a gateway that does not exist")
 	}
 	if apperror.BuildNotFound.Is(err) {
 		t.Errorf("err = %v, want the underlying failure rather than a lost build", err)
 	}
 }
 
-// A deployment must never be recorded having lost the build it came from: the next
-// stage promotes what the previous one is running, so a deployment that cannot name
-// its build ends the pipeline. A reference that cannot be resolved or restored is
-// therefore refused, not quietly cleared. Reaching this means an invariant broke
-// upstream, which is worth failing over rather than hiding.
+// A reference that cannot be resolved at all is refused, not quietly cleared:
+// reaching this means an invariant broke upstream, which is worth failing over
+// rather than hiding behind a deployment with no origin.
 func TestCreateDeployment_RefusesAnUnresolvableBuildReference(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
