@@ -41,6 +41,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
 // Identifiers with more than one reader. Individual attribute names are written
@@ -62,6 +63,9 @@ const (
 	// otelCloseFlushTimeout bounds the shutdown flush when the caller's context
 	// carries no deadline.
 	otelCloseFlushTimeout = 5 * time.Second
+	// otelPublisherName is this publisher's value for the `publisher` metric
+	// label. Kept local so metric call sites need no config import.
+	otelPublisherName = "otel"
 	// otelMaxResponseBytes caps how much of the endpoint's response is read. A
 	// 2xx body carries partialSuccess and a failure body carries an error
 	// message; neither may be allowed to grow the heap.
@@ -148,6 +152,7 @@ func NewOTel(cfg *config.OTelPublisherConfig) (*OTel, error) {
 			config.OTelCompressionGzip),
 		retryAbortDepth: cfg.EffectiveRetryAbortDepth(),
 	}
+	o.initMetrics()
 	go o.run()
 
 	if u, err := url.Parse(cfg.Endpoint); err == nil && u.Scheme == "http" && !isLoopbackHost(u.Hostname()) {
@@ -221,6 +226,7 @@ func (o *OTel) Publish(event *dto.Event) {
 
 	select {
 	case o.queue <- record:
+		mAnalyticsQueueDepth(otelPublisherName, len(o.queue))
 		return
 	default:
 	}
@@ -236,6 +242,7 @@ func (o *OTel) Publish(event *dto.Event) {
 		}
 		select {
 		case o.queue <- record:
+			mAnalyticsQueueDepth(otelPublisherName, len(o.queue))
 			return
 		default:
 		}
@@ -247,6 +254,7 @@ func (o *OTel) Publish(event *dto.Event) {
 // countQueueDrop records one record dropped for a full queue, warning on the
 // first and then every hundredth so a sustained outage cannot flood the log.
 func (o *OTel) countQueueDrop() {
+	mAnalyticsDropped(otelPublisherName, dropReasonQueueFull, 1)
 	count := o.countDrops(1)
 	if count == 1 || count%100 == 0 {
 		slog.Warn("OTel publisher queue full; dropping analytics event",
@@ -257,7 +265,12 @@ func (o *OTel) countQueueDrop() {
 
 // run drains the queue, exporting on a full batch or on the flush interval.
 func (o *OTel) run() {
-	defer close(o.workerDone)
+	defer func() {
+		// The queue is not drained further after this point, so leaving the last
+		// non-zero depth published would read as a permanently backed-up queue.
+		mAnalyticsQueueDepth(otelPublisherName, 0)
+		close(o.workerDone)
+	}()
 
 	ticker := time.NewTicker(o.cfg.FlushInterval)
 	defer ticker.Stop()
@@ -274,6 +287,7 @@ func (o *OTel) run() {
 	for {
 		select {
 		case record := <-o.queue:
+			mAnalyticsQueueDepth(otelPublisherName, len(o.queue))
 			batch = append(batch, record)
 			if len(batch) >= o.cfg.BatchSize {
 				flush()
@@ -285,6 +299,7 @@ func (o *OTel) run() {
 			for drained := true; drained; {
 				select {
 				case record := <-o.queue:
+					mAnalyticsQueueDepth(otelPublisherName, len(o.queue))
 					batch = append(batch, record)
 					if len(batch) >= o.cfg.BatchSize {
 						flush()
@@ -352,18 +367,23 @@ func (o *OTel) export(batch []*otelLogRecord) {
 	})
 	if err != nil {
 		slog.Error("OTel publisher failed to marshal OTLP payload", "error", err, "records", len(records))
-		o.countDrops(len(records))
+		o.dropRecords(dropReasonSerializeFailed, len(records))
 		return
 	}
 	if o.gzip {
 		compressed, err := gzipBytes(body)
 		if err != nil {
 			slog.Error("OTel publisher failed to compress OTLP payload", "error", err, "records", len(records))
-			o.countDrops(len(records))
+			o.dropRecords(dropReasonSerializeFailed, len(records))
 			return
 		}
 		body = compressed
 	}
+
+	// Covers every attempt and the waits between them: that total is what holds
+	// the worker, and therefore what lets the queue fill behind it.
+	start := time.Now()
+	defer func() { mAnalyticsExportDuration(otelPublisherName, time.Since(start).Seconds()) }()
 
 	var lastErr error
 	// Delay before the NEXT attempt. A Retry-After replaces our own backoff
@@ -376,7 +396,7 @@ func (o *OTel) export(batch []*otelLogRecord) {
 			// the abort depth, retrying to save this batch costs more newer records
 			// to queue-full than it rescues — so abandon it and resume draining.
 			if depth := len(o.queue); o.retryAbortDepth > 0 && depth >= o.retryAbortDepth {
-				o.countDrops(len(records))
+				o.dropRecords(dropReasonBackpressure, len(records))
 				slog.Error("OTel publisher abandoning batch retries to resume draining; the endpoint "+
 					"is reachable but too slow to keep up",
 					"records", len(records), "attempts", attempt,
@@ -390,6 +410,7 @@ func (o *OTel) export(batch []*otelLogRecord) {
 
 		retryAfter, err := o.post(body, len(records))
 		if err == nil {
+			mAnalyticsPublished(otelPublisherName, len(records))
 			return
 		}
 		lastErr = err
@@ -401,7 +422,7 @@ func (o *OTel) export(batch []*otelLogRecord) {
 		nextDelay = retryAfter // 0 unless the endpoint asked for a specific delay
 	}
 
-	o.countDrops(len(records))
+	o.dropRecords(dropReasonSendFailed, len(records))
 	slog.Error("OTel publisher failed to export analytics batch; dropping records",
 		"records", len(records), "attempts", o.cfg.MaxRetries+1,
 		"endpoint", o.cfg.Endpoint, "error", lastErr)
@@ -435,6 +456,9 @@ func (o *OTel) post(body []byte, records int) (time.Duration, error) {
 
 	resp, err := o.client.Do(req)
 	if err != nil {
+		mAnalyticsExportError(otelPublisherName, errCodeTransport, 1)
+		// The error can embed the endpoint URL but never the payload, so no
+		// request data can leak into the application log here.
 		return 0, fmt.Errorf("posting batch: %w", err)
 	}
 	defer resp.Body.Close()
@@ -448,6 +472,7 @@ func (o *OTel) post(body []byte, records int) (time.Duration, error) {
 		o.logPartialSuccess(respBody, records)
 		return 0, nil
 	}
+	mAnalyticsExportError(otelPublisherName, strconv.Itoa(resp.StatusCode), 1)
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return parseRetryAfter(resp.Header.Get("Retry-After")),
@@ -476,7 +501,7 @@ func (o *OTel) logPartialSuccess(respBody []byte, records int) {
 	if err != nil || rejected <= 0 {
 		return
 	}
-	o.countDrops(int(rejected))
+	o.dropRecords(dropReasonRejected, int(rejected))
 	slog.Error("OTel endpoint accepted the export but rejected records",
 		"rejected", rejected, "records", records,
 		"endpointMessage", parsed.PartialSuccess.ErrorMessage)
@@ -523,6 +548,16 @@ func (o *OTel) backoff(attempt int) time.Duration {
 	return delay
 }
 
+// dropRecords counts n records lost for the given reason, on both the local
+// total and the labelled metric.
+func (o *OTel) dropRecords(reason string, n int) {
+	if n <= 0 {
+		return
+	}
+	mAnalyticsDropped(otelPublisherName, reason, n)
+	o.countDrops(n)
+}
+
 // countDrops adds n to the dropped total and returns the new total. It does not
 // log: every caller has something more specific to say than "a record was lost".
 func (o *OTel) countDrops(n int) int {
@@ -534,6 +569,75 @@ func (o *OTel) countDrops(n int) int {
 	total := o.dropped
 	o.droppedMu.Unlock()
 	return total
+}
+
+// Metric helpers.
+//
+// Every analytics-publisher metric goes through these rather than touching the
+// package vars directly. The vars are nil until metrics.Init() runs — main()
+// calls it long before any publisher exists, but a constructor must not depend
+// on that ordering, and guarding only in the constructor while the export path
+// dereferences freely turns a startup panic into a first-request panic.
+
+func mAnalyticsPublished(publisher string, n int) {
+	if metrics.AnalyticsPublishedTotal != nil {
+		metrics.AnalyticsPublishedTotal.WithLabelValues(publisher).Add(float64(n))
+	}
+}
+
+func mAnalyticsDropped(publisher, reason string, n int) {
+	if metrics.AnalyticsDroppedTotal != nil {
+		metrics.AnalyticsDroppedTotal.WithLabelValues(publisher, reason).Add(float64(n))
+	}
+}
+
+func mAnalyticsQueueDepth(publisher string, depth int) {
+	if metrics.AnalyticsQueueDepth != nil {
+		metrics.AnalyticsQueueDepth.WithLabelValues(publisher).Set(float64(depth))
+	}
+}
+
+func mAnalyticsQueueCapacity(publisher string, capacity int) {
+	if metrics.AnalyticsQueueCapacity != nil {
+		metrics.AnalyticsQueueCapacity.WithLabelValues(publisher).Set(float64(capacity))
+	}
+}
+
+func mAnalyticsExportDuration(publisher string, seconds float64) {
+	if metrics.AnalyticsExportDurationSeconds != nil {
+		metrics.AnalyticsExportDurationSeconds.WithLabelValues(publisher).Observe(seconds)
+	}
+}
+
+func mAnalyticsExportError(publisher, code string, n int) {
+	if metrics.AnalyticsExportErrorsTotal != nil {
+		metrics.AnalyticsExportErrorsTotal.WithLabelValues(publisher, code).Add(float64(n))
+	}
+}
+
+// initOTelMetrics materializes this publisher's counters at zero.
+//
+// A labelled Prometheus counter does not exist in the scrape until it is first
+// incremented, so on a healthy gateway analytics_dropped_total is simply absent.
+// That makes a dashboard panel read "No data" rather than 0, and leaves an
+// operator unable to tell "nothing was dropped" from "the metrics path is
+// broken" — an unacceptable ambiguity for the one series that makes silent
+// analytics loss visible.
+//
+// Export-error codes are deliberately not pre-created: the label carries the
+// HTTP status, which is unbounded, and materializing every possible status would
+// be worse than the gap it closes.
+func (o *OTel) initMetrics() {
+	mAnalyticsPublished(otelPublisherName, 0)
+	for _, reason := range []string{
+		dropReasonQueueFull, dropReasonSendFailed, dropReasonBackpressure,
+		dropReasonRejected, dropReasonSerializeFailed,
+	} {
+		mAnalyticsDropped(otelPublisherName, reason, 0)
+	}
+	mAnalyticsExportError(otelPublisherName, errCodeTransport, 0)
+	mAnalyticsQueueCapacity(otelPublisherName, o.cfg.QueueCapacity)
+	mAnalyticsQueueDepth(otelPublisherName, 0)
 }
 
 // otelResponseExcerpt renders a bounded, single-line excerpt of an endpoint's

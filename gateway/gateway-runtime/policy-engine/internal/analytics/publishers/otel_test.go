@@ -34,14 +34,18 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
 // Attribute names are written as literals throughout this file: they are the
@@ -1095,5 +1099,244 @@ func TestExportStopsRetryingOnShutdown(t *testing.T) {
 	}
 	if got := endpoint.attempts(); got != 1 {
 		t.Errorf("attempts = %d, want 1 (stopped during the first backoff)", got)
+	}
+}
+
+// --- self-observability ----------------------------------------------------
+
+// The publishers package shares one process and one registry across tests, so
+// counters accumulate. Every assertion below is therefore on a delta.
+
+// scrapeMetrics renders the registry exactly as the policy-engine's /metrics
+// endpoint does, so these assertions also prove the series actually reach a
+// scrape — a metric that was never registered increments happily and is simply
+// absent from the endpoint.
+func scrapeMetrics(t *testing.T) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	promhttp.HandlerFor(metrics.Init(), promhttp.HandlerOpts{}).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/metrics returned %d", rec.Code)
+	}
+	return rec.Body.String()
+}
+
+// seriesKey builds the exposition-format identifier for one series. Prometheus
+// renders label pairs sorted by label NAME, not in the order the vec declared
+// them, so the pairs are sorted here to match: code="..." precedes
+// publisher="otel", while reason="..." follows it.
+func seriesKey(name string, labels ...string) string {
+	pairs := append([]string{`publisher="otel"`}, labels...)
+	sort.Strings(pairs)
+	return name + "{" + strings.Join(pairs, ",") + "}"
+}
+
+// metricValue reads a series out of a scrape, reporting whether it was present
+// at all — "absent" and "zero" are different answers and tests need both.
+func metricValue(t *testing.T, scrape, key string) (float64, bool) {
+	t.Helper()
+	for _, line := range strings.Split(scrape, "\n") {
+		rest, ok := strings.CutPrefix(line, key+" ")
+		if !ok {
+			continue
+		}
+		value, err := strconv.ParseFloat(strings.TrimSpace(rest), 64)
+		if err != nil {
+			t.Fatalf("unparseable value for %s: %q", key, rest)
+		}
+		return value, true
+	}
+	return 0, false
+}
+
+// delta reports how much a series moved, requiring it to exist afterwards.
+func delta(t *testing.T, before string, after string, key string) float64 {
+	t.Helper()
+	old, _ := metricValue(t, before, key)
+	current, ok := metricValue(t, after, key)
+	if !ok {
+		t.Fatalf("series %s is absent from the scrape", key)
+	}
+	return current - old
+}
+
+// A successful export must be counted, and its duration observed.
+func TestMetricsSuccessfulExport(t *testing.T) {
+	_, url := newScriptedEndpoint(t, 200)
+	o := newTestOTel(t, retryConfig(url, 0))
+
+	before := scrapeMetrics(t)
+	o.export([]*otelLogRecord{o.buildRecord(restEvent()), o.buildRecord(restEvent())})
+	after := scrapeMetrics(t)
+
+	published := seriesKey("policy_engine_analytics_published_total")
+	if got := delta(t, before, after, published); got != 2 {
+		t.Errorf("published delta = %v, want 2", got)
+	}
+	duration := seriesKey("policy_engine_analytics_export_duration_seconds_count")
+	if got := delta(t, before, after, duration); got != 1 {
+		t.Errorf("duration observation delta = %v, want 1", got)
+	}
+}
+
+// Each failure mode must land on its own reason, so an operator can tell them
+// apart: a slow endpoint (backpressure) is a different problem from a broken one
+// (send_failed) or a full queue.
+func TestMetricsDropReasons(t *testing.T) {
+	t.Run("queue_full", func(t *testing.T) {
+		key := seriesKey("policy_engine_analytics_dropped_total", `reason="`+dropReasonQueueFull+`"`)
+		before := scrapeMetrics(t)
+
+		o := newUndrainedOTel(t, 1, config.QueueDropNew)
+		for i := 0; i < 3; i++ {
+			o.Publish(restEvent())
+		}
+
+		if got := delta(t, before, scrapeMetrics(t), key); got != 2 {
+			t.Errorf("queue_full delta = %v, want 2", got)
+		}
+	})
+
+	t.Run("send_failed", func(t *testing.T) {
+		key := seriesKey("policy_engine_analytics_dropped_total", `reason="`+dropReasonSendFailed+`"`)
+		before := scrapeMetrics(t)
+
+		_, url := newScriptedEndpoint(t, 503)
+		o := newTestOTel(t, retryConfig(url, 1))
+		o.exportOne(t)
+
+		if got := delta(t, before, scrapeMetrics(t), key); got != 1 {
+			t.Errorf("send_failed delta = %v, want 1", got)
+		}
+	})
+
+	t.Run("backpressure", func(t *testing.T) {
+		key := seriesKey("policy_engine_analytics_dropped_total", `reason="`+dropReasonBackpressure+`"`)
+		before := scrapeMetrics(t)
+
+		_, url := newScriptedEndpoint(t, 503)
+		cfg := retryConfig(url, 5)
+		cfg.QueueCapacity = 2
+		cfg.RetryAbortQueueRatio = 0.5
+		o := newTestOTel(t, cfg)
+		o.queue <- o.buildRecord(restEvent())
+		o.exportOne(t)
+
+		if got := delta(t, before, scrapeMetrics(t), key); got != 1 {
+			t.Errorf("backpressure delta = %v, want 1", got)
+		}
+	})
+
+	t.Run("rejected", func(t *testing.T) {
+		key := seriesKey("policy_engine_analytics_dropped_total", `reason="`+dropReasonRejected+`"`)
+		before := scrapeMetrics(t)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"partialSuccess":{"rejectedLogRecords":"3"}}`))
+		}))
+		defer server.Close()
+
+		o := newTestOTel(t, retryConfig(server.URL+"/v1/logs", 0))
+		o.exportOne(t)
+
+		if got := delta(t, before, scrapeMetrics(t), key); got != 3 {
+			t.Errorf("rejected delta = %v, want 3", got)
+		}
+	})
+}
+
+// The error code distinguishes an unreachable endpoint from one that answered
+// with a status, which are diagnosed differently.
+func TestMetricsExportErrorCodes(t *testing.T) {
+	t.Run("transport", func(t *testing.T) {
+		key := seriesKey("policy_engine_analytics_export_errors_total", `code="`+errCodeTransport+`"`)
+		before := scrapeMetrics(t)
+
+		o := newTestOTel(t, retryConfig("http://127.0.0.1:1/v1/logs", 0))
+		o.exportOne(t)
+
+		if got := delta(t, before, scrapeMetrics(t), key); got != 1 {
+			t.Errorf("transport delta = %v, want 1", got)
+		}
+	})
+
+	t.Run("http status", func(t *testing.T) {
+		key := seriesKey("policy_engine_analytics_export_errors_total", `code="503"`)
+		before := scrapeMetrics(t)
+
+		_, url := newScriptedEndpoint(t, 503)
+		o := newTestOTel(t, retryConfig(url, 1))
+		o.exportOne(t)
+
+		// Both the initial attempt and the retry answered 503.
+		if got := delta(t, before, scrapeMetrics(t), key); got != 2 {
+			t.Errorf("503 delta = %v, want 2", got)
+		}
+	})
+}
+
+// Depth and capacity are published as a pair so an alert can express "the queue
+// is 80% full" rather than an absolute depth that means nothing without it.
+func TestMetricsQueueDepthAndCapacity(t *testing.T) {
+	_, url := newScriptedEndpoint(t, 200)
+	cfg := retryConfig(url, 0)
+	cfg.QueueCapacity = 8
+	cfg.BatchSize = 8
+	cfg.FlushInterval = time.Hour // park the worker so the queue holds
+
+	publisher, err := NewOTel(&cfg)
+	if err != nil {
+		t.Fatalf("NewOTel: %v", err)
+	}
+	defer publisher.Close(context.Background())
+
+	capacity, ok := metricValue(t, scrapeMetrics(t), seriesKey("policy_engine_analytics_queue_capacity"))
+	if !ok || capacity != 8 {
+		t.Errorf("capacity = %v (present=%v), want 8", capacity, ok)
+	}
+
+	for i := 0; i < 3; i++ {
+		publisher.Publish(restEvent())
+	}
+	// The worker consumes from the channel as records arrive, so depth is
+	// whatever is still buffered — assert it never exceeds capacity and was
+	// published at all rather than pinning an inherently racy exact value.
+	depth, ok := metricValue(t, scrapeMetrics(t), seriesKey("policy_engine_analytics_queue_depth"))
+	if !ok || depth < 0 || depth > 8 {
+		t.Errorf("depth = %v (present=%v), want within 0..8", depth, ok)
+	}
+}
+
+// A labelled counter is absent from a scrape until first incremented, so a
+// healthy gateway would show "No data" instead of 0 for the one series that
+// makes silent analytics loss visible.
+func TestMetricsPreInitializedAtZero(t *testing.T) {
+	_, url := newScriptedEndpoint(t, 200)
+	cfg := retryConfig(url, 0)
+	publisher, err := NewOTel(&cfg)
+	if err != nil {
+		t.Fatalf("NewOTel: %v", err)
+	}
+	defer publisher.Close(context.Background())
+
+	scrape := scrapeMetrics(t)
+	keys := []string{
+		seriesKey("policy_engine_analytics_published_total"),
+		seriesKey("policy_engine_analytics_queue_capacity"),
+		seriesKey("policy_engine_analytics_queue_depth"),
+		seriesKey("policy_engine_analytics_export_errors_total", `code="`+errCodeTransport+`"`),
+	}
+	for _, reason := range []string{
+		dropReasonQueueFull, dropReasonSendFailed, dropReasonBackpressure,
+		dropReasonRejected, dropReasonSerializeFailed,
+	} {
+		keys = append(keys, seriesKey("policy_engine_analytics_dropped_total", `reason="`+reason+`"`))
+	}
+	for _, key := range keys {
+		if _, ok := metricValue(t, scrape, key); !ok {
+			t.Errorf("%s is absent from the scrape; a healthy gateway must report a value, not No data", key)
+		}
 	}
 }
