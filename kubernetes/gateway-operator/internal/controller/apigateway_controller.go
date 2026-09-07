@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"sync"
@@ -62,6 +64,11 @@ const (
 	GatewayTrackingStatusRetrying      GatewayTrackingStatus = "Retrying"
 	GatewayTrackingStatusDeployed      GatewayTrackingStatus = "Deployed"
 	GatewayTrackingStatusConfigChanged GatewayTrackingStatus = "ConfigChanged"
+	// GatewayTrackingStatusFailed marks a deployment that exhausted its retry budget.
+	// It is deliberately distinct from Deployed: recording an exhausted deployment as
+	// deployed made the failure terminal, because every recovery path then treated the
+	// gateway as finished.
+	GatewayTrackingStatusFailed GatewayTrackingStatus = "Failed"
 )
 
 // GatewayTrackingEntry tracks the state of an APIGateway deployment
@@ -71,10 +78,15 @@ type GatewayTrackingEntry struct {
 	RetryCount    int
 	LastRetryTime time.Time
 	NextRetryTime time.Time
+	// InputHash fingerprints the inputs that decide what would be deployed. A change means
+	// the previous failure may no longer apply, so the retry budget is reset and the next
+	// reconcile deploys immediately instead of waiting out the retry window.
+	InputHash string
 }
 
-// GatewayTracker manages in-memory tracking of APIGateway deployment states
-// Entries persist until the APIGateway CR is deleted
+// GatewayTracker manages in-memory tracking of APIGateway deployment states.
+// Entries persist until the APIGateway CR is deleted, or until a status write fails and the
+// entry is dropped so the next reconcile re-derives state from the CR (see forgetTracking).
 type GatewayTracker struct {
 	mu      sync.RWMutex
 	entries map[string]*GatewayTrackingEntry // key: "namespace/name"
@@ -107,7 +119,9 @@ func (t *GatewayTracker) Set(key string, entry *GatewayTrackingEntry) {
 	t.entries[key] = entry
 }
 
-// Delete removes a tracking entry (only called when APIGateway CR is deleted)
+// Delete removes a tracking entry. Called when the APIGateway CR is deleted, and when a
+// status write fails so the next reconcile re-derives state from the CR instead of trusting
+// a tracker state whose owning reconcile has already returned.
 func (t *GatewayTracker) Delete(key string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -125,6 +139,44 @@ type GatewayReconciler struct {
 	Config         *config.OperatorConfig
 	gatewayTracker *GatewayTracker
 	Logger         *slog.Logger
+
+	// deployGateway performs a deployment. It defaults to processGatewayDeployment and is
+	// overridable so reconciliation decisions can be asserted without a cluster.
+	deployGateway func(ctx context.Context, gatewayConfig *apiv1.APIGateway, trackingKey string, generation int64, configHash, inputHash string) (ctrl.Result, error)
+}
+
+// deploy dispatches to the configured deployment function, falling back to the real one so a
+// directly constructed reconciler behaves normally.
+func (r *GatewayReconciler) deploy(ctx context.Context, gatewayConfig *apiv1.APIGateway, trackingKey string, generation int64, configHash, inputHash string) (ctrl.Result, error) {
+	if r.deployGateway != nil {
+		return r.deployGateway(ctx, gatewayConfig, trackingKey, generation, configHash, inputHash)
+	}
+	return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, generation, configHash, inputHash)
+}
+
+// forgetTracking drops the in-memory entry so the next reconcile re-derives state from the CR.
+//
+// It is used when a status write fails. No tracker state may mean "another operation will
+// complete this" once the reconcile that owned that operation has returned: states like
+// Processing and Deployed cause the next reconcile to skip and return nil, which ends the
+// requeue chain that the returned error would otherwise have driven.
+func (r *GatewayReconciler) forgetTracking(trackingKey, reason string) {
+	r.gatewayTracker.Delete(trackingKey)
+	if r.Logger != nil {
+		r.Logger.Info("Cleared APIGateway tracking so the next reconcile can retry",
+			slog.String("key", trackingKey),
+			slog.String("reason", reason))
+	}
+}
+
+// retryCountFor returns the retry count a new attempt starts from. The budget carries over
+// only while the same generation is retried against unchanged inputs, so a corrected input
+// does not inherit an already-exhausted count.
+func retryCountFor(existing *GatewayTrackingEntry, hasExisting bool, generation int64, inputHash string) int {
+	if hasExisting && existing != nil && existing.Generation == generation && existing.InputHash == inputHash {
+		return existing.RetryCount
+	}
+	return 0
 }
 
 // NewGatewayReconciler creates a new GatewayReconciler
@@ -208,17 +260,19 @@ func (r *GatewayReconciler) decideAndProcess(
 ) (ctrl.Result, error) {
 	log := r.Logger.With(slog.String("controller", "APIGateway"), slog.String("name", gatewayConfig.Name))
 
+	// Read the deployment inputs once: the ConfigMap values feed the persisted config hash,
+	// and their fingerprint (together with the CR infrastructure overlay) decides whether a
+	// previously failed deployment is worth retrying immediately.
+	values, inputHash, err := r.deploymentInputs(ctx, gatewayConfig)
+	if err != nil {
+		// If we can't read the config map, it might be transient or deleted.
+		// Treat it as an error so the reconcile is retried.
+		return ctrl.Result{}, fmt.Errorf("failed to get deployment inputs: %w", err)
+	}
+
 	// Calculate current config hash
 	currentConfigHash := ""
 	if gatewayConfig.Spec.ConfigRef != nil {
-		values, err := configMapValuesYAML(ctx, r.Client, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
-		if err != nil {
-			// If we can't read config map, it might be transient or deleted
-			// We should probably fail to deploy/reconcile
-			// But if we are already deployed, maybe we just log error?
-			// For now, let's treat it as error so we can retry
-			return ctrl.Result{}, fmt.Errorf("failed to get config map values: %w", err)
-		}
 		currentConfigHash = auth.CalculateConfigHash(values)
 	}
 
@@ -277,6 +331,56 @@ func (r *GatewayReconciler) decideAndProcess(
 		return ctrl.Result{}, nil
 	}
 
+	// Case 1b: the CR generation has already been observed but the gateway is not
+	// programmed. An exhausted deployment lands here, and this is where it used to become
+	// terminal: the branch above requires Programmed=True and the branch below requires a
+	// newer generation, so an equal-generation failure fell through to "nothing to do" and
+	// could only be revived by bumping the CR generation.
+	if crGeneration == statusObservedGen && (programmedCond == nil || programmedCond.Status != metav1.ConditionTrue) {
+		if hasTrackingEntry && trackingEntry.Generation == crGeneration {
+			switch trackingEntry.Status {
+			case GatewayTrackingStatusProcessing:
+				// Another reconcile is already deploying this generation.
+				log.Debug("Already processing this generation, skipping",
+					slog.String("name", gatewayConfig.Name),
+					slog.Int64("generation", crGeneration))
+				return ctrl.Result{}, nil
+
+			case GatewayTrackingStatusDeployed:
+				// The deployment finished; only the success status has not been observed yet.
+				log.Debug("Deployment completed but status not yet propagated, skipping",
+					slog.String("name", gatewayConfig.Name),
+					slog.Int64("generation", crGeneration))
+				return ctrl.Result{}, nil
+
+			case GatewayTrackingStatusFailed:
+				deployNow, requeueAfter, reason := r.decideFailedRecovery(trackingEntry, inputHash, time.Now())
+				if !deployNow {
+					// Requeue without deploying or writing status, so a status-driven
+					// reconcile cannot spin on a permanently failed gateway.
+					log.Debug("Failed APIGateway awaiting its retry window",
+						slog.String("name", gatewayConfig.Name),
+						slog.Int64("generation", crGeneration),
+						slog.Duration("retryIn", requeueAfter))
+					return ctrl.Result{RequeueAfter: requeueAfter}, nil
+				}
+				log.Info("Recovering failed APIGateway deployment",
+					slog.String("name", gatewayConfig.Name),
+					slog.Int64("generation", crGeneration),
+					slog.String("reason", reason))
+				return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
+			}
+		}
+
+		// Either the operator restarted and holds no entry for this generation, or the entry
+		// is mid-retry. Deploy so a persisted failure does not outlive the process that
+		// recorded it.
+		log.Info("Processing APIGateway that is not programmed at the observed generation",
+			slog.String("name", gatewayConfig.Name),
+			slog.Int64("generation", crGeneration))
+		return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
+	}
+
 	// Case 2: CR generation > status observed generation
 	// Need to deploy/update
 	if crGeneration > statusObservedGen {
@@ -298,7 +402,7 @@ func (r *GatewayReconciler) decideAndProcess(
 						slog.String("name", gatewayConfig.Name),
 						slog.Int64("generation", crGeneration),
 						slog.Int("retryCount", trackingEntry.RetryCount))
-					return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
+					return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
 				}
 				// If Deployed but status not updated yet, wait for status propagation
 				if trackingEntry.Status == GatewayTrackingStatusDeployed {
@@ -307,12 +411,30 @@ func (r *GatewayReconciler) decideAndProcess(
 						slog.Int64("generation", crGeneration))
 					return ctrl.Result{}, nil
 				}
+				// Retry budget exhausted for this generation. Reached when the failure was
+				// recorded but the status write has not been observed, so the same bounded
+				// recovery applies as when the failed condition is visible.
+				if trackingEntry.Status == GatewayTrackingStatusFailed {
+					deployNow, requeueAfter, reason := r.decideFailedRecovery(trackingEntry, inputHash, time.Now())
+					if !deployNow {
+						log.Debug("Failed APIGateway awaiting its retry window",
+							slog.String("name", gatewayConfig.Name),
+							slog.Int64("generation", crGeneration),
+							slog.Duration("retryIn", requeueAfter))
+						return ctrl.Result{RequeueAfter: requeueAfter}, nil
+					}
+					log.Info("Recovering failed APIGateway deployment",
+						slog.String("name", gatewayConfig.Name),
+						slog.Int64("generation", crGeneration),
+						slog.String("reason", reason))
+					return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
+				}
 				// If ConfigChanged, proceed to redeploy
 				if trackingEntry.Status == GatewayTrackingStatusConfigChanged {
 					log.Info("Processing APIGateway config change redeployment",
 						slog.String("name", gatewayConfig.Name),
 						slog.Int64("generation", crGeneration))
-					return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
+					return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
 				}
 			}
 
@@ -322,7 +444,7 @@ func (r *GatewayReconciler) decideAndProcess(
 					slog.String("name", gatewayConfig.Name),
 					slog.Int64("oldGeneration", trackingEntry.Generation),
 					slog.Int64("newGeneration", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
+				return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
 			}
 		} else {
 			// No tracking entry
@@ -331,7 +453,7 @@ func (r *GatewayReconciler) decideAndProcess(
 				log.Info("Processing new Gateway",
 					slog.String("name", gatewayConfig.Name),
 					slog.Int64("generation", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
+				return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
 			}
 
 			// Controller restart scenario:
@@ -343,7 +465,7 @@ func (r *GatewayReconciler) decideAndProcess(
 					slog.String("name", gatewayConfig.Name),
 					slog.Int64("statusObservedGen", statusObservedGen),
 					slog.Int64("crGeneration", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
+				return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
 			}
 
 			if statusObservedGen == 0 && crGeneration > 1 {
@@ -352,17 +474,12 @@ func (r *GatewayReconciler) decideAndProcess(
 				log.Info("Controller restart detected - retrying incomplete initial deployment",
 					slog.String("name", gatewayConfig.Name),
 					slog.Int64("crGeneration", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
+				return r.deploy(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash, inputHash)
 			}
 
-			// statusObservedGen == crGeneration but condition is not True
-			// Something failed before, retry
-			if statusObservedGen == crGeneration {
-				log.Info("Retrying previously failed deployment",
-					slog.String("name", gatewayConfig.Name),
-					slog.Int64("generation", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
-			}
+			// An equal-generation check used to live here, unreachable inside this
+			// crGeneration > statusObservedGen branch. Equal generations are now handled by
+			// case 1b above, which is where a persisted failure is actually observed.
 		}
 	}
 
@@ -381,27 +498,33 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	trackingKey string,
 	generation int64,
 	configHash string,
+	inputHash string,
 ) (ctrl.Result, error) {
 	log := r.Logger.With(slog.String("controller", "APIGateway"), slog.String("name", gatewayConfig.Name))
 
-	// Get existing entry to preserve retry count if retrying same generation
+	// Preserve the retry count only while the same generation is being retried against the
+	// same inputs. Changed inputs are a new attempt, so the retry budget starts again
+	// instead of the gateway inheriting an already-exhausted count.
 	existingEntry, hasExisting := r.gatewayTracker.Get(trackingKey)
-	retryCount := 0
-	if hasExisting && existingEntry.Generation == generation {
-		retryCount = existingEntry.RetryCount
-	}
+	retryCount := retryCountFor(existingEntry, hasExisting, generation, inputHash)
 
 	// Update tracker to Processing
 	entry := &GatewayTrackingEntry{
 		Generation: generation,
 		Status:     GatewayTrackingStatusProcessing,
 		RetryCount: retryCount,
+		InputHash:  inputHash,
 	}
 	r.gatewayTracker.Set(trackingKey, entry)
 
 	// Set initial conditions (Accepted=True, Programmed=False/Pending)
 	if retryCount == 0 {
 		if err := r.setGatewayInitialConditions(ctx, gatewayConfig, generation); err != nil {
+			// The tracker still says Processing, which tells the next reconcile that another
+			// operation owns this generation — but this reconcile is returning, so nothing
+			// will. That next reconcile would skip and return nil, ending the requeue chain
+			// the returned error starts. Forget the entry so it re-derives from the CR.
+			r.forgetTracking(trackingKey, "initial status patch failed")
 			return ctrl.Result{}, err
 		}
 	}
@@ -530,6 +653,12 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 		Message:            readinessMsg,
 		LastTransitionTime: metav1.Now(),
 	}, &selectedCount, configHash); err != nil {
+		// Programmed=True never landed, so the CR still reports failure while the tracker
+		// says Deployed. Every reconcile would then skip on "status not yet propagated" and
+		// the gateway would stay false forever. Forget the entry so the next reconcile
+		// re-drives the deployment and rewrites the status; the Helm operation is safe to
+		// repeat because it upgrades an already-deployed release.
+		r.forgetTracking(trackingKey, "success status patch failed")
 		return ctrl.Result{}, err
 	}
 
@@ -557,17 +686,24 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 	}
 
 	if entry.RetryCount >= maxRetries {
+		retryWindow := r.retryWindow()
+
 		log.Error("Max retries exceeded",
 			slog.Any("error", err),
 			slog.String("gateway", gatewayConfig.Name),
 			slog.Int("retryCount", entry.RetryCount),
-			slog.Int("maxRetries", maxRetries))
+			slog.Int("maxRetries", maxRetries),
+			slog.Duration("nextAttemptIn", retryWindow))
 
-		// Mark as deployed (failed) - keeps tracking but won't retry
-		entry.Status = GatewayTrackingStatusDeployed
+		// Record the exhaustion as a failure, not as a deployment. The entry keeps the
+		// input fingerprint so corrected inputs retry immediately, and a next-retry time so
+		// an unchanged gateway still gets a bounded attempt later rather than never.
+		entry.Status = GatewayTrackingStatusFailed
+		entry.NextRetryTime = time.Now().Add(retryWindow)
 		r.gatewayTracker.Set(trackingKey, entry)
 
-		// Update status with final failure
+		// Report the failure truthfully; the condition remains Programmed=False with
+		// DeploymentFailed against this generation.
 		if updateErr := r.updateGatewayProgrammedCondition(ctx, gatewayConfig, metav1.Condition{
 			Type:               apiv1.GatewayConditionProgrammed,
 			Status:             metav1.ConditionFalse,
@@ -576,10 +712,12 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 			Message:            fmt.Sprintf("Max retries (%d) exceeded. Last error: %s", maxRetries, err.Error()),
 			LastTransitionTime: metav1.Now(),
 		}, &selectedCount, ""); updateErr != nil {
+			// The tracker already holds the bounded retry, so recovery still happens even
+			// though this status write failed.
 			return ctrl.Result{}, updateErr
 		}
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: retryWindow}, nil
 	}
 
 	// Calculate backoff
@@ -607,6 +745,66 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 	}
 
 	return ctrl.Result{RequeueAfter: backoff}, nil
+}
+
+// deploymentInputHash fingerprints everything that decides what would be deployed: the
+// referenced ConfigMap's values and the overlay derived from the CR's infrastructure
+// labels/annotations. Both arguments are already-marshalled YAML with sorted keys, so the
+// result is stable across processes and does not depend on Go map iteration order.
+func deploymentInputHash(configMapValues, crOverlay string) string {
+	sum := sha256.Sum256([]byte(configMapValues + "\x00" + crOverlay))
+	return hex.EncodeToString(sum[:])
+}
+
+// deploymentInputs reads the inputs that feed a deployment and returns the ConfigMap values
+// (used for the persisted config hash) together with a fingerprint of every deployment
+// input (used for the retry decision).
+func (r *GatewayReconciler) deploymentInputs(ctx context.Context, gatewayConfig *apiv1.APIGateway) (values string, inputHash string, err error) {
+	if gatewayConfig.Spec.ConfigRef != nil {
+		values, err = configMapValuesYAML(ctx, r.Client, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	crOverlay, err := buildCRValuesOverlay(gatewayConfig)
+	if err != nil {
+		return "", "", err
+	}
+	return values, deploymentInputHash(values, crOverlay), nil
+}
+
+// retryWindow is how long an exhausted deployment waits before it is given another bounded
+// attempt. It follows the configured sync period so recovery happens on the same cadence as
+// the operator's periodic resync.
+func (r *GatewayReconciler) retryWindow() time.Duration {
+	if r.Config != nil && r.Config.Reconciliation.SyncPeriod > 0 {
+		return r.Config.Reconciliation.SyncPeriod
+	}
+	return 10 * time.Minute
+}
+
+// decideFailedRecovery decides what to do with a deployment that already exhausted its retry
+// budget. It returns whether to deploy now, and otherwise how long to wait.
+//
+// Without this, an exhausted deployment was unreachable: the persisted condition carried
+// Programmed=False with observedGeneration equal to the CR generation, so neither the
+// "already programmed" nor the "newer generation" path applied and reconciliation fell
+// through to "nothing to do". Recovery had to wait for the CR generation to change, which
+// no amount of fixing the referenced ConfigMap or restarting the operator achieves.
+func (r *GatewayReconciler) decideFailedRecovery(
+	entry *GatewayTrackingEntry,
+	currentInputHash string,
+	now time.Time,
+) (deployNow bool, requeueAfter time.Duration, reason string) {
+	if entry.InputHash != currentInputHash {
+		return true, 0, "deployment inputs changed since the failure"
+	}
+	if entry.NextRetryTime.IsZero() || !now.Before(entry.NextRetryTime) {
+		return true, 0, "retry window elapsed"
+	}
+	// Still inside the window. Requeue rather than deploy so a status-driven reconcile
+	// cannot spin: nothing is written and no deployment is attempted.
+	return false, entry.NextRetryTime.Sub(now), "waiting for the retry window"
 }
 
 // calculateBackoff calculates exponential backoff duration using operator configuration
