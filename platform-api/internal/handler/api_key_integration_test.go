@@ -219,6 +219,48 @@ func TestAPIKeyHandler_CreateWithSuppliedValueOmitsApiKey(t *testing.T) {
 	}
 }
 
+// Blank apiKey values are client errors and should return 400, not 500.
+func TestAPIKeyHandler_CreateWithBlankSuppliedValue(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "empty string", body: `{"displayName": "Blank Key", "apiKey": ""}`},
+		{name: "whitespace only", body: `{"displayName": "Blank Key", "apiKey": "   "}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, db, cleanup := setupAPIKeyHandlerTestEnv(t)
+			t.Cleanup(cleanup)
+
+			rec := postAPIKey(t, r, tc.body)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			var body map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if code, _ := body["code"].(string); code != "VALIDATION_FAILED" {
+				t.Errorf("error code = %q, want VALIDATION_FAILED: %s", code, rec.Body.String())
+			}
+			// A 4xx is a client outcome, so no tracking ID is exposed — its presence is the
+			// tell that the error was flattened into a 500 again.
+			if _, present := body["trackingId"]; present {
+				t.Errorf("response carried a trackingId, so this was served as a server fault: %s", rec.Body.String())
+			}
+
+			var count int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE artifact_uuid = ?`, apiKeyITAPIUUID).Scan(&count); err != nil {
+				t.Fatalf("count persisted keys: %v", err)
+			}
+			if count != 0 {
+				t.Errorf("persisted %d key(s) despite the rejected request", count)
+			}
+		})
+	}
+}
+
 // TestAPIKeyHandler_CreateWithEmptyBody covers a body carrying neither id nor displayName.
 // displayName is required by the spec, and the handler enforces it explicitly rather than
 // leaning on the binding tag, so the caller gets a named validation failure instead of a key

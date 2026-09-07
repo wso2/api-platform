@@ -128,6 +128,10 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
+		// Preserve catalog error status and message.
+		if respondCatalogError(w, h.slogger, err) {
+			return
+		}
 		h.slogger.Error("Failed to create API key for WebSub API", "apiHandle", apiHandle, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "Failed to create API key"))
 		return

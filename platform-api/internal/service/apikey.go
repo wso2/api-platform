@@ -492,9 +492,11 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		}
 		generated = true
 	} else {
+		// Blank is a caller mistake; return a validation error instead of a 500.
 		plainAPIKey = strings.TrimSpace(*req.ApiKey)
 		if plainAPIKey == "" {
-			return nil, fmt.Errorf("provided API key cannot be empty")
+			return nil, apperror.ValidationFailed.New("API key value cannot be empty. Omit the apiKey field to have one generated.").
+				WithLogMessage(fmt.Sprintf("blank apiKey supplied for API key creation on API %s in org %s", apiHandle, orgId))
 		}
 	}
 
