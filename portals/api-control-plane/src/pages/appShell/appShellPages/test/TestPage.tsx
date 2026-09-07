@@ -16,23 +16,52 @@
  * under the License.
  */
 
-import {
-  Card,
-  CardContent,
-  CodeBlock,
-  PageTitle,
-} from '@wso2/oxygen-ui';
+import { Card, CardContent, CodeBlock, PageTitle } from '@wso2/oxygen-ui';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useApiProxy, useApi } from '../../../../api/hooks/useMvpQueries';
-import { ErrorState, LoadingState } from '../../../../components/StateViews';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
-import { FormattedMessage } from 'react-intl';
+import { useRestApi } from '@/api/resources/restApis';
+import { ErrorState, LoadingState } from '@/components/StateViews';
+import { routes } from '@/routes/paths';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { ScopeGate } from '@/scope/ScopeGate';
+
+const messages = defineMessages({
+  apiNotFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.apiNotFound',
+    defaultMessage: 'API not found',
+  },
+  loading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading',
+    defaultMessage: 'Loading test console',
+    description: 'Shown while the API the curl command is built from is being fetched.',
+  },
+  scopePrompt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.scopePrompt',
+    defaultMessage: 'The curl console runs against a single API.',
+    description: 'Explains why an API must be picked before this page can render.',
+  },
+  subtitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle',
+    defaultMessage: 'Use the following curl command to test the API.',
+  },
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.title',
+    defaultMessage: 'Test {apiName}',
+    description:
+      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
+  },
+});
+
+/** Builds a curl command for testing an API. Uses $API_BASE_URL as unresolved shell variable. */
+const curlCommand = (context: string) =>
+  `curl -X GET "$API_BASE_URL${context}" \\\n  -H "Authorization: Bearer <token>"`;
 
 export function TestPage() {
+  const intl = useIntl();
+
   return (
     <ScopeGate
-      prompt="The curl console runs against a single API."
+      prompt={intl.formatMessage(messages.scopePrompt)}
       requires="api"
       to={routes.apiTestCurl}
     >
@@ -42,38 +71,30 @@ export function TestPage() {
 }
 
 function Test() {
-  const apiQuery = useApi();
-  const apiProxyQuery = useApiProxy(apiQuery.data?.id);
+  const intl = useIntl();
+  const { params } = useConsoleScope();
+  const apiQuery = useRestApi(params.apiHandler);
 
-  if (apiQuery.isLoading) return <LoadingState label="Loading test console" />;
-  if (!apiQuery.data) return <ErrorState title="API not found" />;
+  if (apiQuery.isPending) return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  if (apiQuery.error || !apiQuery.data) {
+    return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
+  }
 
-  const context = apiProxyQuery.data?.context || `/${apiQuery.data.name}`;
+  const api = apiQuery.data;
 
   return (
     <>
       <PageTitle>
         <PageTitle.Header>
-          <FormattedMessage
-            id="appShell.testPage.header"
-            defaultMessage="Test {apiName}"
-            values={{ apiName: apiQuery.data.displayName }}
-          /> 
+          <FormattedMessage {...messages.title} values={{ apiName: api.displayName }} />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          <FormattedMessage
-            id="appShell.testPage.subHeader"
-            defaultMessage="Use the following curl command to test the API."
-          />
+          <FormattedMessage {...messages.subtitle} />
         </PageTitle.SubHeader>
       </PageTitle>
       <Card variant="outlined">
         <CardContent>
-          <CodeBlock
-            language="bash"
-            code={`curl -X GET "$API_BASE_URL${context}" \\
-            -H "Authorization: Bearer <token>"`}
-          />
+          <CodeBlock code={curlCommand(api.context || '/')} language="bash" />
         </CardContent>
       </Card>
     </>

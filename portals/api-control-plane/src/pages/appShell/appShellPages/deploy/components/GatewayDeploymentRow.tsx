@@ -18,39 +18,89 @@
 
 import { Box, Chip, IconButton, Typography } from '@wso2/oxygen-ui';
 import { XCircle } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, useIntl } from 'react-intl';
 
-import type {
-  GatewayDeployment,
-  GatewayDeploymentStatus,
-} from '../../../../../types/domain';
-import { relativeTime } from '../../../../../utils/relativeTime';
+import type { Deployment, DeploymentStatus } from '@/api/resources/restApis/deployments';
+import { useFormatters } from '@/i18n/useFormatters';
 
-const STATUS_CHIP: Record<
-  GatewayDeploymentStatus,
-  { label: string; color: 'success' | 'warning' | 'error' | 'default' }
-> = {
-  DEPLOYED: { label: 'Deployed', color: 'success' },
-  DEPLOYING: { label: 'Deploying', color: 'warning' },
-  UNDEPLOYING: { label: 'Undeploying', color: 'warning' },
-  UNDEPLOYED: { label: 'Undeployed', color: 'warning' },
-  FAILED: { label: 'Failed', color: 'error' },
-  ARCHIVED: { label: 'Archived', color: 'default' },
+/**
+ * One descriptor per `DeploymentStatus`, keyed by the status itself so the map
+ * is exhaustive at compile time — a status added to the spec fails here rather
+ * than rendering a raw enum value.
+ */
+const statusMessages = defineMessages({
+  DEPLOYED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusDeployed',
+    defaultMessage: 'Deployed',
+    description: 'Deployment state: live on the gateway and serving traffic.',
+  },
+  DEPLOYING: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusDeploying',
+    defaultMessage: 'Deploying',
+    description: 'Deployment state: in progress, awaiting the gateway acknowledgement.',
+  },
+  UNDEPLOYING: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusUndeploying',
+    defaultMessage: 'Undeploying',
+    description: 'Deployment state: being taken out of service.',
+  },
+  UNDEPLOYED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusUndeployed',
+    defaultMessage: 'Undeployed',
+    description: 'Deployment state: out of service, but its record is kept.',
+  },
+  FAILED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusFailed',
+    defaultMessage: 'Failed',
+    description: 'Deployment state: the gateway rejected it or could not complete it.',
+  },
+  ARCHIVED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.statusArchived',
+    defaultMessage: 'Archived',
+    description: 'Deployment state: superseded by a newer deployment.',
+  },
+});
+
+const messages = defineMessages({
+  latest: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.latest',
+    defaultMessage: 'Latest',
+    description: 'Badge marking the most recent deployment on a gateway.',
+  },
+  deleteLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentRow.deleteLabel',
+    defaultMessage: 'Delete {deploymentName}',
+    description:
+      'Accessible label for the delete button on one deployment row. {deploymentName} is user-supplied; do not translate it.',
+  },
+});
+
+const STATUS_COLOR: Record<DeploymentStatus, 'success' | 'warning' | 'error' | 'default'> = {
+  DEPLOYED: 'success',
+  DEPLOYING: 'warning',
+  UNDEPLOYING: 'warning',
+  UNDEPLOYED: 'warning',
+  FAILED: 'error',
+  ARCHIVED: 'default',
 };
 
-export function DeploymentStatusChip({
-  status,
-}: {
-  status: GatewayDeploymentStatus;
-}) {
-  const { label, color } = STATUS_CHIP[status];
-  return <Chip color={color} label={label} size="small" variant="outlined" />;
+export function DeploymentStatusChip({ status }: { status: DeploymentStatus }) {
+  const intl = useIntl();
+  return (
+    <Chip
+      color={STATUS_COLOR[status]}
+      label={intl.formatMessage(statusMessages[status])}
+      size="small"
+      variant="outlined"
+    />
+  );
 }
 
 type GatewayDeploymentRowProps = {
-  deployment: GatewayDeployment;
+  deployment: Deployment;
   isCurrentDeployment: boolean;
   /** Delete is only offered inside the full-history drawer. */
-  onDelete?: (deployment: GatewayDeployment) => void;
+  onDelete?: (deployment: Deployment) => void;
   deleteDisabled?: boolean;
 };
 
@@ -61,6 +111,10 @@ export function GatewayDeploymentRow({
   onDelete,
   deleteDisabled,
 }: GatewayDeploymentRowProps) {
+  const intl = useIntl();
+  // `useFormatters`, not the module-scope `Intl.*` in `utils/relativeTime`:
+  // that one freezes its locale at import, so it never follows a locale switch.
+  const { dateTime, relativeTime } = useFormatters();
   const isSettled =
     deployment.status !== 'DEPLOYED' &&
     deployment.status !== 'DEPLOYING' &&
@@ -92,9 +146,20 @@ export function GatewayDeploymentRow({
             minWidth: 0,
           }}
         >
-          <Box component="span" sx={{ color: 'success.main', mr: 1, mt: 0.25 }}>
-            ●
-          </Box>
+          {/* Decorative marker. Drawn rather than typed: as the "●" character it
+              was untranslatable JSX text, and screen readers announced it. */}
+          <Box
+            component="span"
+            sx={{
+              bgcolor: 'success.main',
+              borderRadius: '50%',
+              flexShrink: 0,
+              height: 8,
+              mr: 1,
+              mt: 0.75,
+              width: 8,
+            }}
+          />
           <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <Box
               sx={{
@@ -104,18 +169,11 @@ export function GatewayDeploymentRow({
                 gap: 1,
               }}
             >
-              <Typography
-                component="span"
-                sx={{ fontSize: '0.875rem', fontWeight: 500 }}
-              >
+              <Typography component="span" sx={{ fontSize: '0.875rem', fontWeight: 500 }}>
                 {deployment.name}
               </Typography>
               {created && (
-                <Typography
-                  color="text.secondary"
-                  component="span"
-                  variant="caption"
-                >
+                <Typography color="text.secondary" component="span" variant="caption">
                   {relativeTime(created)}
                 </Typography>
               )}
@@ -127,7 +185,7 @@ export function GatewayDeploymentRow({
                 sx={{ mt: 0.5 }}
                 variant="caption"
               >
-                {new Date(created).toLocaleString()}
+                {dateTime(created)}
               </Typography>
             )}
           </Box>
@@ -143,12 +201,14 @@ export function GatewayDeploymentRow({
           }}
         >
           {isCurrentDeployment && (
-            <Chip label="Latest" size="small" variant="outlined" />
+            <Chip label={intl.formatMessage(messages.latest)} size="small" variant="outlined" />
           )}
           <DeploymentStatusChip status={deployment.status} />
           {onDelete && isSettled && (
             <IconButton
-              aria-label={`Delete ${deployment.name}`}
+              aria-label={intl.formatMessage(messages.deleteLabel, {
+                deploymentName: deployment.name,
+              })}
               color="error"
               disabled={deleteDisabled}
               onClick={() => onDelete(deployment)}

@@ -21,6 +21,7 @@ package xdsclient
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -47,6 +48,7 @@ func createValidTestConfig() *Config {
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
 		TLSEnabled:            false,
+		TLSEcdhCurves:         "X25519,P-256",
 	}
 }
 
@@ -328,6 +330,73 @@ func TestLoadTLSConfig_ValidCerts(t *testing.T) {
 	assert.Len(t, tlsConfig.Certificates, 1)
 	assert.NotNil(t, tlsConfig.RootCAs)
 	assert.Equal(t, uint16(0x0303), tlsConfig.MinVersion) // TLS 1.2
+}
+
+// TestLoadTLSConfig_PQCHybridCurveOptIn verifies that opting into the FIPS
+// 203 X25519MLKEM768 hybrid group via TLSEcdhCurves is actually reflected in
+// the tls.Config this client dials with -- not just accepted by config
+// validation.
+func TestLoadTLSConfig_PQCHybridCurveOptIn(t *testing.T) {
+	tmpDir := t.TempDir()
+	ca, caPrivKey := generateTestCA(t)
+	cert, certPrivKey := generateTestCert(t, ca, caPrivKey)
+
+	certPath := filepath.Join(tmpDir, "cert.pem")
+	keyPath := filepath.Join(tmpDir, "key.pem")
+	caPath := filepath.Join(tmpDir, "ca.pem")
+	writeCertToFile(t, cert, certPath)
+	writeKeyToFile(t, certPrivKey, keyPath)
+	writeCertToFile(t, ca, caPath)
+
+	k, reg := createTestKernelAndRegistry(t)
+	config := createValidTestConfig()
+	config.TLSEnabled = true
+	config.TLSCertPath = certPath
+	config.TLSKeyPath = keyPath
+	config.TLSCAPath = caPath
+	config.TLSEcdhCurves = "X25519MLKEM768,X25519,P-256"
+
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
+	require.NoError(t, err)
+
+	tlsConfig, err := client.loadTLSConfig()
+	require.NoError(t, err)
+	require.NotNil(t, tlsConfig)
+
+	require.NotEmpty(t, tlsConfig.CurvePreferences)
+	assert.Equal(t, tls.X25519MLKEM768, tlsConfig.CurvePreferences[0])
+}
+
+// TestLoadTLSConfig_InvalidEcdhCurve verifies an unrecognized curve name
+// surfaces as an error from loadTLSConfig rather than silently falling back
+// to Go's default curve preferences.
+func TestLoadTLSConfig_InvalidEcdhCurve(t *testing.T) {
+	tmpDir := t.TempDir()
+	ca, caPrivKey := generateTestCA(t)
+	cert, certPrivKey := generateTestCert(t, ca, caPrivKey)
+
+	certPath := filepath.Join(tmpDir, "cert.pem")
+	keyPath := filepath.Join(tmpDir, "key.pem")
+	caPath := filepath.Join(tmpDir, "ca.pem")
+	writeCertToFile(t, cert, certPath)
+	writeKeyToFile(t, certPrivKey, keyPath)
+	writeCertToFile(t, ca, caPath)
+
+	k, reg := createTestKernelAndRegistry(t)
+	config := createValidTestConfig()
+	config.TLSEnabled = true
+	config.TLSCertPath = certPath
+	config.TLSKeyPath = keyPath
+	config.TLSCAPath = caPath
+	config.TLSEcdhCurves = "not-a-curve"
+
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
+	require.NoError(t, err)
+
+	tlsConfig, err := client.loadTLSConfig()
+	assert.Error(t, err)
+	assert.Nil(t, tlsConfig)
+	assert.Contains(t, err.Error(), "ecdh_curves")
 }
 
 // TestLoadTLSConfig_InvalidCertPath tests error when cert file doesn't exist

@@ -33,13 +33,15 @@ const ORG_ASSETS_TABLE = 'organization_assets';
 
 const create = async (orgId, payload, createdBy, t) => {
     const exec = t || db;
+    const { getPortalId } = require('../utils/orgContext');
     const displayName = payload.displayName ? payload.displayName : payload.handle;
     const uuid = crypto.randomUUID();
+    const portalId = getPortalId();
 
     await exec.execute(
-        `INSERT INTO ${VIEWS_TABLE} (uuid, handle, display_name, org_uuid, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [uuid, payload.handle, displayName, orgId, createdBy, createdBy]
+        `INSERT INTO ${VIEWS_TABLE} (uuid, handle, display_name, org_uuid, portal_id, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, payload.handle, displayName, orgId, portalId, createdBy, createdBy]
     );
 
     return {
@@ -61,9 +63,11 @@ const create = async (orgId, payload, createdBy, t) => {
  */
 const update = async (orgId, handle, displayName, updatedBy, t) => {
     const exec = t || db;
+    const { getPortalId } = require('../utils/orgContext');
+    const portalId = getPortalId();
     const existing = await exec.queryOne(
-        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [handle, orgId]
+        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [handle, orgId, portalId]
     );
 
     let row = existing;
@@ -72,9 +76,9 @@ const update = async (orgId, handle, displayName, updatedBy, t) => {
         const initialDisplayName = displayName ? displayName : handle;
         try {
             await db.withSavepoint(exec, () => exec.execute(
-                `INSERT INTO ${VIEWS_TABLE} (uuid, handle, display_name, org_uuid, created_by, updated_by)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                [uuid, handle, initialDisplayName, orgId, updatedBy, updatedBy]
+                `INSERT INTO ${VIEWS_TABLE} (uuid, handle, display_name, org_uuid, portal_id, created_by, updated_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [uuid, handle, initialDisplayName, orgId, portalId, updatedBy, updatedBy]
             ));
             return {
                 uuid,
@@ -88,8 +92,8 @@ const update = async (orgId, handle, displayName, updatedBy, t) => {
             if (!db.isDuplicateKeyError(error)) throw error;
             // Lost a race to create this view — fall through to the update path below.
             row = await exec.queryOne(
-                `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-                [handle, orgId]
+                `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+                [handle, orgId, portalId]
             );
         }
     }
@@ -97,17 +101,18 @@ const update = async (orgId, handle, displayName, updatedBy, t) => {
     const updatedAt = new Date();
     const newDisplayName = displayName ? displayName : row.display_name;
     await exec.execute(
-        `UPDATE ${VIEWS_TABLE} SET display_name = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ?`,
-        [newDisplayName, updatedBy, updatedAt, row.uuid, orgId]
+        `UPDATE ${VIEWS_TABLE} SET display_name = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [newDisplayName, updatedBy, updatedAt, row.uuid, orgId, portalId]
     );
     return { ...row, display_name: newDisplayName, updated_by: updatedBy, updated_at: updatedAt };
 };
 
 const deleteView = async (orgId, handle, t) => {
     const exec = t || db;
+    const { getPortalId } = require('../utils/orgContext');
     const view = await exec.queryOne(
-        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [handle, orgId]
+        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [handle, orgId, getPortalId()]
     );
     if (!view) {
         return 0;
@@ -118,16 +123,17 @@ const deleteView = async (orgId, handle, t) => {
     await exec.execute(`DELETE FROM ${VIEW_LABELS_TABLE} WHERE view_uuid = ?`, [view.uuid]);
     await exec.execute(`DELETE FROM ${ORG_ASSETS_TABLE} WHERE view_uuid = ?`, [view.uuid]);
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [handle, orgId]
+        `DELETE FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [handle, orgId, getPortalId()]
     );
     return rowCount;
 };
 
 const get = async (orgId, handle) => {
+    const { getPortalId } = require('../utils/orgContext');
     const view = await db.queryOne(
-        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [handle, orgId]
+        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [handle, orgId, getPortalId()]
     );
     if (!view) {
         return null;
@@ -135,9 +141,9 @@ const get = async (orgId, handle) => {
     const labels = await db.query(
         `SELECT l.handle AS handle
          FROM ${LABELS_TABLE} l
-         INNER JOIN ${VIEW_LABELS_TABLE} vl ON vl.label_uuid = l.uuid
-         WHERE vl.view_uuid = ?`,
-        [view.uuid]
+         INNER JOIN ${VIEW_LABELS_TABLE} vl ON vl.label_uuid = l.uuid AND vl.portal_id = l.portal_id
+         WHERE vl.view_uuid = ? AND vl.portal_id = ?`,
+        [view.uuid, getPortalId()]
     );
     return { ...view, labels: labels };
 };
@@ -149,10 +155,11 @@ const getId = async (orgId, viewName, t) => {
     // short-circuit before ever building that query.
     if (!viewName) return undefined;
 
+    const { getPortalId } = require('../utils/orgContext');
     const exec = t || db;
     const view = await exec.queryOne(
-        `SELECT uuid FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [viewName, orgId]
+        `SELECT uuid FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [viewName, orgId, getPortalId()]
     );
     if (!view) {
         throw new CustomError(404, constants.ERROR_CODE[404], "View not found");
@@ -175,24 +182,30 @@ const getId = async (orgId, viewName, t) => {
 // API — a fresh org is seeded with one.
 const getFallbackHandle = async (orgId, t) => {
     const exec = t || db;
+    const { getPortalId } = require('../utils/orgContext');
+    const portalId = getPortalId();
     const preferred = await exec.queryOne(
-        `SELECT handle FROM ${VIEWS_TABLE} WHERE org_uuid = ? AND handle = ?`,
-        [orgId, DEFAULT_VIEW_HANDLE]
+        `SELECT handle FROM ${VIEWS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND handle = ?`,
+        [orgId, portalId, DEFAULT_VIEW_HANDLE]
     );
     if (preferred) {
         return preferred.handle;
     }
     const earliest = await exec.queryOne(
-        `SELECT handle FROM ${VIEWS_TABLE} WHERE org_uuid = ? ORDER BY created_at ASC, handle ASC`,
-        [orgId]
+        `SELECT handle FROM ${VIEWS_TABLE} WHERE org_uuid = ? AND portal_id = ? ORDER BY created_at ASC, handle ASC`,
+        [orgId, portalId]
     );
     return earliest ? earliest.handle : DEFAULT_VIEW_HANDLE;
 };
 
-// Number of views in the org — the last-view delete guard's input.
+// Number of views in the api portal — the last-view delete guard's input.
 const count = async (orgId, t) => {
     const exec = t || db;
-    const row = await exec.queryOne(`SELECT COUNT(*) AS total FROM ${VIEWS_TABLE} WHERE org_uuid = ?`, [orgId]);
+    const { getPortalId } = require('../utils/orgContext');
+    const row = await exec.queryOne(
+        `SELECT COUNT(*) AS total FROM ${VIEWS_TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]
+    );
     return Number(row?.total ?? 0);
 };
 
@@ -210,9 +223,11 @@ const count = async (orgId, t) => {
  */
 const rename = async (orgId, oldHandle, newHandle, updatedBy, t) => {
     const exec = t || db;
+    const { getPortalId } = require('../utils/orgContext');
+    const portalId = getPortalId();
     const existing = await exec.queryOne(
-        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [oldHandle, orgId]
+        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [oldHandle, orgId, portalId]
     );
     if (!existing) {
         return null;
@@ -223,8 +238,8 @@ const rename = async (orgId, oldHandle, newHandle, updatedBy, t) => {
     const updatedAt = new Date();
     try {
         await db.withSavepoint(exec, () => exec.execute(
-            `UPDATE ${VIEWS_TABLE} SET handle = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ?`,
-            [newHandle, updatedBy, updatedAt, existing.uuid, orgId]
+            `UPDATE ${VIEWS_TABLE} SET handle = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+            [newHandle, updatedBy, updatedAt, existing.uuid, orgId, portalId]
         ));
     } catch (error) {
         // uq_view_handle_org_uuid — another view already answers to this handle. Report
@@ -238,7 +253,8 @@ const rename = async (orgId, oldHandle, newHandle, updatedBy, t) => {
 };
 
 const list = async (orgId) => {
-    const views = await db.query(`SELECT * FROM ${VIEWS_TABLE} WHERE org_uuid = ?`, [orgId]);
+    const { getPortalId } = require('../utils/orgContext');
+    const views = await db.query(`SELECT * FROM ${VIEWS_TABLE} WHERE org_uuid = ? AND portal_id = ?`, [orgId, getPortalId()]);
     if (views.length === 0) return views;
 
     const viewIds = views.map((v) => v.uuid);
@@ -246,9 +262,9 @@ const list = async (orgId) => {
     const labelRows = await db.query(
         `SELECT vl.view_uuid AS view_uuid, l.handle AS handle
          FROM ${VIEW_LABELS_TABLE} vl
-         INNER JOIN ${LABELS_TABLE} l ON l.uuid = vl.label_uuid
-         WHERE vl.view_uuid IN (${placeholders})`,
-        viewIds
+         INNER JOIN ${LABELS_TABLE} l ON l.uuid = vl.label_uuid AND vl.portal_id = l.portal_id
+         WHERE vl.view_uuid IN (${placeholders}) AND vl.portal_id = ?`,
+        [...viewIds, getPortalId()]
     );
     const labelsByView = groupBy(labelRows, 'view_uuid');
 
@@ -260,13 +276,15 @@ const list = async (orgId) => {
 
 const addLabels = async (orgId, viewId, labels, createdBy, t) => {
     const exec = t || db;
+    const { getPortalId } = require('../utils/orgContext');
+    const portalId = getPortalId();
     const idList = await getLabelId(orgId, labels, t);
     const created = [];
     for (const labelId of idList) {
         const uuid = crypto.randomUUID();
         await exec.execute(
-            `INSERT INTO ${VIEW_LABELS_TABLE} (uuid, label_uuid, view_uuid, created_by) VALUES (?, ?, ?, ?)`,
-            [uuid, labelId, viewId, createdBy]
+            `INSERT INTO ${VIEW_LABELS_TABLE} (uuid, portal_id, label_uuid, view_uuid, created_by) VALUES (?, ?, ?, ?, ?)`,
+            [uuid, portalId, labelId, viewId, createdBy]
         );
         created.push({ uuid, label_uuid: labelId, view_uuid: viewId, created_by: createdBy });
     }

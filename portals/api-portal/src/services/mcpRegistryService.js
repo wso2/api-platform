@@ -28,6 +28,7 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const yaml = require('../utils/yaml');
 const { matchesAnyScope } = require('../middlewares/ensureAuthenticated');
+const { getPortalId } = require('../utils/orgContext');
 
 const MCP_STATUSES = ['active', 'deprecated', 'deleted'];
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
@@ -108,8 +109,8 @@ function unescapeParam(str) {
 
 async function findRowByServerIdentifier(orgId, serverIdentifier, version, transaction) {
     const exec = transaction || db;
-    const baseConditions = ['org_uuid = ?', 'type = ?', 'ref_id IS NULL'];
-    const baseParams = [orgId, constants.API_TYPE.MCP];
+    const baseConditions = ['org_uuid = ?', 'type = ?', 'ref_id IS NULL', 'portal_id = ?'];
+    const baseParams = [orgId, constants.API_TYPE.MCP, getPortalId()];
     if (version) { baseConditions.push('version = ?'); baseParams.push(version); }
     const baseWhere = baseConditions.join(' AND ');
 
@@ -314,8 +315,8 @@ const listServers = async (req, res) => {
             }
         }
 
-        const conditions = ['org_uuid = ?', 'type = ?'];
-        const params = [orgId, constants.API_TYPE.MCP];
+        const conditions = ['org_uuid = ?', 'type = ?', 'portal_id = ?'];
+        const params = [orgId, constants.API_TYPE.MCP, getPortalId()];
         if (!includeDeleted) {
             conditions.push("status != 'DELETED'");
         }
@@ -359,8 +360,8 @@ const listVersions = async (req, res) => {
         const serverIdentifier = unescapeParam(decodeURIComponent(req.params.serverName));
         const includeDeleted = parseBool(req.query.include_deleted, false);
 
-        const baseConditions = ['org_uuid = ?', 'type = ?'];
-        const baseParams = [orgId, constants.API_TYPE.MCP];
+        const baseConditions = ['org_uuid = ?', 'type = ?', 'portal_id = ?'];
+        const baseParams = [orgId, constants.API_TYPE.MCP, getPortalId()];
         if (!includeDeleted) {
             baseConditions.push("status != 'DELETED'");
         }
@@ -428,14 +429,14 @@ async function findExistingMcpVersion(exec, orgId, name, version, proxyId) {
     let existing = null;
     if (proxyId) {
         existing = await exec.queryOne(
-            `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND version = ? AND ${PROXY_ID_EXPR} = ?`,
-            [orgId, constants.API_TYPE.MCP, version, proxyId]
+            `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND version = ? AND ${PROXY_ID_EXPR} = ? AND portal_id = ?`,
+            [orgId, constants.API_TYPE.MCP, version, proxyId, getPortalId()]
         );
     }
     if (!existing) {
         existing = await exec.queryOne(
-            `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND name = ? AND version = ?`,
-            [orgId, constants.API_TYPE.MCP, name, version]
+            `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND name = ? AND version = ? AND portal_id = ?`,
+            [orgId, constants.API_TYPE.MCP, name, version, getPortalId()]
         );
     }
     return existing;
@@ -608,10 +609,10 @@ const deleteVersion = async (req, res) => {
         }
 
         await db.execute(
-            `UPDATE ${API_METADATA_TABLE} SET status = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ?`,
-            ['DELETED', util.resolveActor(req), new Date(), existing.uuid, orgId]
+            `UPDATE ${API_METADATA_TABLE} SET status = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+            ['DELETED', util.resolveActor(req), new Date(), existing.uuid, orgId, getPortalId()]
         );
-        const deleted = await db.queryOne(`SELECT * FROM ${API_METADATA_TABLE} WHERE uuid = ?`, [existing.uuid]);
+        const deleted = await db.queryOne(`SELECT * FROM ${API_METADATA_TABLE} WHERE uuid = ? AND portal_id = ?`, [existing.uuid, getPortalId()]);
         logger.info('MCP server deleted', { serverIdentifier, version, orgHandle });
         return res.status(200).json(new ServerResponseDTO(deleted));
     } catch (error) {
@@ -642,10 +643,10 @@ const updateVersionStatus = async (req, res) => {
         }
 
         await db.execute(
-            `UPDATE ${API_METADATA_TABLE} SET status = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ?`,
-            [dbStatus, util.resolveActor(req), new Date(), existing.uuid, orgId]
+            `UPDATE ${API_METADATA_TABLE} SET status = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+            [dbStatus, util.resolveActor(req), new Date(), existing.uuid, orgId, getPortalId()]
         );
-        const updated = await db.queryOne(`SELECT * FROM ${API_METADATA_TABLE} WHERE uuid = ?`, [existing.uuid]);
+        const updated = await db.queryOne(`SELECT * FROM ${API_METADATA_TABLE} WHERE uuid = ? AND portal_id = ?`, [existing.uuid, getPortalId()]);
         return res.status(200).json(new ServerResponseDTO(updated));
     } catch (error) {
         return handleUnexpectedError(res, error, 'updateVersionStatus', 'Failed to update server status');
@@ -674,14 +675,14 @@ const updateAllVersionsStatus = async (req, res) => {
             // (sqlite, which already serializes writes through a single connection).
             let existing = await t.query(
                 `SELECT * FROM ${LOCKABLE_METADATA_TABLE}
-                 WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND ${PROXY_ID_EXPR} = ?${FOR_UPDATE_SUFFIX}`,
-                [orgId, constants.API_TYPE.MCP, serverIdentifier]
+                 WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND ${PROXY_ID_EXPR} = ? AND portal_id = ?${FOR_UPDATE_SUFFIX}`,
+                [orgId, constants.API_TYPE.MCP, serverIdentifier, getPortalId()]
             );
             if (existing.length === 0) {
                 existing = await t.query(
                     `SELECT * FROM ${LOCKABLE_METADATA_TABLE}
-                     WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND name = ?${FOR_UPDATE_SUFFIX}`,
-                    [orgId, constants.API_TYPE.MCP, serverIdentifier]
+                     WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND name = ? AND portal_id = ?${FOR_UPDATE_SUFFIX}`,
+                    [orgId, constants.API_TYPE.MCP, serverIdentifier, getPortalId()]
                 );
             }
             if (existing.length === 0) return;
@@ -690,12 +691,12 @@ const updateAllVersionsStatus = async (req, res) => {
             const idPlaceholders = ids.map(() => '?').join(', ');
             await t.execute(
                 `UPDATE ${API_METADATA_TABLE} SET status = ?, updated_by = ?, updated_at = ?
-                 WHERE uuid IN (${idPlaceholders}) AND org_uuid = ?`,
-                [dbStatus, util.resolveActor(req), new Date(), ...ids, orgId]
+                 WHERE uuid IN (${idPlaceholders}) AND org_uuid = ? AND portal_id = ?`,
+                [dbStatus, util.resolveActor(req), new Date(), ...ids, orgId, getPortalId()]
             );
             updated = await t.query(
-                `SELECT * FROM ${API_METADATA_TABLE} WHERE uuid IN (${idPlaceholders})`,
-                ids
+                `SELECT * FROM ${API_METADATA_TABLE} WHERE uuid IN (${idPlaceholders}) AND portal_id = ?`,
+                [...ids, getPortalId()]
             );
         });
 

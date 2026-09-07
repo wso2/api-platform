@@ -18,19 +18,20 @@
 'use strict';
 
 const { findOrCreateSafe } = require('./findOrCreateHelper');
+const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'user_organization_mappings';
 
 /**
- * Record that this user has been seen in this org. No-op if already recorded.
- * (user_uuid, org_uuid) is the table's composite primary key, so no separate
- * generated id is needed on insert.
+ * Record that this user belongs to this org. No-op if already recorded.
+ * PRIMARY KEY is (user_uuid, org_uuid).
  */
 const ensureMapping = async (userUuid, orgUuid) => {
+    const portalId = getPortalId();
     await findOrCreateSafe(
         TABLE,
         { user_uuid: userUuid, org_uuid: orgUuid },
-        { user_uuid: userUuid, org_uuid: orgUuid }
+        { portal_id: portalId, user_uuid: userUuid, org_uuid: orgUuid }
     );
 };
 

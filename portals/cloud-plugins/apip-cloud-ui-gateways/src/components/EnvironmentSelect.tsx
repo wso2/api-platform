@@ -24,12 +24,14 @@ export type EnvironmentSelectProps = {
   environments: Environment[];
   value: string;
   onChange: (environmentId: string) => void;
+  disabled?: boolean;
 };
 
-const EnvironmentSelect: FC<EnvironmentSelectProps> = ({ environments, value, onChange }) => (
+const EnvironmentSelect: FC<EnvironmentSelectProps> = ({ environments, value, onChange, disabled }) => (
   <Select
     fullWidth
     displayEmpty
+    disabled={disabled}
     value={value}
     onChange={(event) => onChange(event.target.value as string)}
     renderValue={(selected) => {

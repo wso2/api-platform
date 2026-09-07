@@ -1,0 +1,14 @@
+# Tools/resources/prompts schema for weather-mcp, in the platform's canonical
+# flat, type-tagged form (see WSO2 API Platform docs: API Portal -> Publishing
+# APIs -> MCP servers).
+- type: TOOL
+  name: get_forecast
+  description: Get a short-term weather forecast for a city.
+  inputSchema:
+    type: object
+    properties:
+      city:
+        type: string
+        description: City name, e.g. "Colombo"
+    required:
+      - city

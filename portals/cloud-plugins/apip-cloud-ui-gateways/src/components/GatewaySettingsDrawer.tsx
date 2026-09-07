@@ -38,8 +38,11 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({ open, onClose, 
   const rows = [
     { label: 'Type', value: gatewayTypeLabel(gateway.type) },
     { label: 'Environment', value: environmentName },
-    { label: 'URL', value: gateway.url },
+    { label: 'URL', value: gateway.url || '—' },
     { label: 'Status', value: gateway.status === 'active' ? 'Active' : 'Inactive' },
+    { label: 'Version', value: gateway.version || '—' },
+    { label: 'Critical', value: gateway.isCritical ? 'Yes' : 'No' },
+    { label: 'Created', value: relativeTime(gateway.createdAt) },
     { label: 'Last Updated', value: relativeTime(gateway.updatedAt) },
   ];
 

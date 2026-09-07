@@ -6,7 +6,7 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 
 ## Directives
 
-1. **Explicit HTTP timeouts and size ceilings.** Never use bare `http.ListenAndServe` — construct an `http.Server{ReadTimeout, WriteTimeout, IdleTimeout}` from configuration with safe non-zero defaults (the zero-value server has none, so a slow-loris client holds a goroutine open indefinitely). Set `MaxHeaderBytes` and wrap every request body in `http.MaxBytesReader(w, r.Body, maxBytes)`. Default to `ListenAndServeTLS`; plaintext must be an explicit, narrowly-scoped dev-mode opt-out.
+1. **Explicit HTTP timeouts and size ceilings.** Never use bare `http.ListenAndServe` — construct an `http.Server{ReadTimeout, WriteTimeout, IdleTimeout}` from configuration with safe non-zero defaults (the zero-value server has none, so a slow-loris client holds a goroutine open indefinitely). Set `MaxHeaderBytes` and wrap every request body in `http.MaxBytesReader(w, r.Body, maxBytes)`. Both plaintext `ListenAndServe` and `ListenAndServeTLS` are generally-available serving modes, selected by configuration — plaintext is not restricted to a dev-mode opt-out.
 2. **Bound every gRPC server's message size and concurrency.** Set `grpc.MaxRecvMsgSize`, `grpc.MaxSendMsgSize`, and `grpc.MaxConcurrentStreams` explicitly on every `grpc.NewServer(...)` call, including internal control-plane/xDS servers (see `go-control-plane-xds-security.md`) — library defaults are unbounded or sized for general-purpose RPC, not this service's threat model.
 3. **A bounded queue in front of a bounded worker pool must itself be bounded.** If callers queue ahead of a concurrency semaphore, cap the queue with an explicit pending-count and reject new work immediately (gRPC `RESOURCE_EXHAUSTED`, HTTP `503`) once hit — an unbounded queue in front of a bounded pool is just delayed unbounded memory growth. Where workers run semi-trusted logic, also cap memory/CPU per worker process (`resource.setrlimit`); remember that's a per-process, not per-request, ceiling — use a short-lived sandboxed process per invocation when a hard per-request budget is required.
 4. **Jitter any fixed-interval poll against a shared upstream.** A poll loop replicated across instances (EventHub poll, control-plane heartbeat) must desynchronize with random jitter computed and waited *before* each fetch, not after — otherwise simultaneous restarts stampede the upstream on the very first call. Validate `interval > 0` (and large enough that `interval/2` isn't zero) before computing jitter.
@@ -28,7 +28,8 @@ func PollEventHub(interval time.Duration) {
     }
 }
 
-// GOOD: explicit server timeouts + body cap, TLS by default.
+// GOOD: explicit server timeouts + body cap; plaintext and TLS are both
+// ordinary, configuration-selected serving modes.
 func StartManagementAPI(cfg ServerConfig, handler http.Handler) error {
     wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         r.Body = http.MaxBytesReader(w, r.Body, cfg.MaxBodyBytes)
@@ -39,8 +40,8 @@ func StartManagementAPI(cfg ServerConfig, handler http.Handler) error {
         ReadTimeout: 60 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second,
         MaxHeaderBytes: 1 << 20,
     }
-    if cfg.DevelopmentMode {
-        log.Warn("DEVELOPMENT MODE: serving management API over plaintext HTTP")
+    if !cfg.TLSEnabled {
+        log.Info("serving management API over plaintext HTTP")
         return srv.ListenAndServe()
     }
     return srv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)

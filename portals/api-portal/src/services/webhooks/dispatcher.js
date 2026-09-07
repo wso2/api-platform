@@ -51,7 +51,8 @@ async function runBatch() {
             const subscribers = await matchSubscribers(event.org_uuid, event.type);
             if (subscribers.length === 0) {
                 // No matching subscribers — mark as delivered immediately.
-                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`, ['ALL_DELIVERED', event.uuid]);
+                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`,
+                    ['ALL_DELIVERED', event.uuid, orgContext.getPortalId()]);
                 continue;
             }
             await eventDao.createDeliveries(event.uuid, subscribers, null, null);
@@ -60,7 +61,8 @@ async function runBatch() {
                 eventId: event.uuid, error: err.message
             });
             try {
-                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`, ['PENDING', event.uuid]);
+                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`,
+                    ['PENDING', event.uuid, orgContext.getPortalId()]);
                 logger.info('Restored event eligibility after delivery creation failure', {
                     eventId: event.uuid
                 });

@@ -1,0 +1,14 @@
+# Tools/resources/prompts schema for inventory-mcp, in the platform's
+# canonical flat, type-tagged form (see WSO2 API Platform docs: API Portal ->
+# Publishing APIs -> MCP servers).
+- type: TOOL
+  name: check_stock
+  description: Look up current stock quantity and warehouse for a SKU.
+  inputSchema:
+    type: object
+    properties:
+      sku:
+        type: string
+        description: Stock keeping unit, e.g. "sku-1001"
+    required:
+      - sku

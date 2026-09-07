@@ -45,17 +45,16 @@ import {
 } from '@wso2/oxygen-ui';
 import { Edit, Plus, Search, Settings, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
-import { deleteGateway, listEnvironments, listGateways } from './mocks/gatewaysStore';
-import { relativeTime } from './utils/time';
 import { gatewayTypeLabel } from './utils/gateway';
 import NoGatewaysImage from './assets/images/NoGW.svg';
-import type { NotifySeverity } from './hostPort';
-import type { Gateway } from './types';
+import type { Environment, Gateway } from './types';
 
 export type GatewaysListProps = {
+  gateways: Gateway[];
+  environments: Environment[];
   onAddClick: () => void;
   onEditClick: (gatewayId: string) => void;
-  notify?: (message: string, severity?: NotifySeverity) => void;
+  onDelete: (gatewayId: string, name: string) => void;
 };
 
 function truncateText(text: string, maxLength: number): string {
@@ -63,12 +62,24 @@ function truncateText(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength).trim()}…`;
 }
 
-const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }) => {
-  const [gateways, setGateways] = useState<Gateway[]>(() => listGateways());
-  const [environments] = useState(() => listEnvironments());
+const GatewaysList: FC<GatewaysListProps> = ({
+  gateways,
+  environments,
+  onAddClick,
+  onEditClick,
+  onDelete,
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
+
+  // Environments are keyed by name, so a gateway that points at an environment
+  // missing from the list (deleted, or not yet loaded) still shows its raw
+  // `environmentId` rather than nothing.
+  const environmentNames = useMemo(
+    () => new Map(environments.map((environment) => [environment.id, environment.name])),
+    [environments]
+  );
 
   const filteredGateways = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -80,9 +91,7 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
 
   const handleDeleteConfirm = () => {
     if (!deleteTarget) return;
-    deleteGateway(deleteTarget.id);
-    setGateways(listGateways());
-    notify?.(`Gateway "${deleteTarget.name}" deleted.`, 'success');
+    onDelete(deleteTarget.id, deleteTarget.name);
     setDeleteTarget(null);
   };
 
@@ -150,7 +159,7 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
                         <TableCell>Description</TableCell>
                         <TableCell>Type</TableCell>
                         <TableCell>Status</TableCell>
-                        <TableCell>Last Updated</TableCell>
+                        <TableCell>Environment</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
@@ -197,16 +206,21 @@ const GatewaysList: FC<GatewaysListProps> = ({ onAddClick, onEditClick, notify }
                               <Chip label={gatewayTypeLabel(gateway.type)} size="small" variant="outlined" />
                             </TableCell>
                             <TableCell>
+                              {/* Inactive is a warning, not an error: a gateway
+                                  reads inactive while it is still being
+                                  provisioned, before its controller connects. */}
                               <Chip
                                 size="small"
                                 variant="outlined"
                                 label={gateway.status === 'active' ? 'Active' : 'Inactive'}
-                                color={gateway.status === 'active' ? 'success' : 'error'}
+                                color={gateway.status === 'active' ? 'success' : 'warning'}
                               />
                             </TableCell>
                             <TableCell>
                               <Typography variant="body2" color="text.secondary">
-                                {relativeTime(gateway.updatedAt)}
+                                {environmentNames.get(gateway.environmentId) ||
+                                  gateway.environmentId ||
+                                  '—'}
                               </Typography>
                             </TableCell>
                             <TableCell align="right">

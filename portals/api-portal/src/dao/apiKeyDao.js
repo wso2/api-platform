@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { indexBy } = require('../db/rows');
 const constants = require('../utils/constants');
+const { getPortalId } = require('../utils/orgContext');
 
 const API_KEYS_TABLE = 'api_keys';
 const APP_KEY_MAPPINGS_TABLE = 'api_key_app_mappings';
@@ -30,11 +31,11 @@ const APPLICATIONS_TABLE = 'applications';
 // Built once at module load — buildUpsert only depends on the (fixed) dialect
 // and column list, not on any per-call data. Used both by create() (first-time
 // association, never conflicts) and setApplication() (re-association, may
-// conflict on the key_uuid primary key).
+// conflict on the composite (portal_id, key_uuid) primary key).
 const UPSERT_KEY_APP_MAPPING_SQL = db.buildUpsert(
     APP_KEY_MAPPINGS_TABLE,
-    ['key_uuid', 'app_uuid', 'created_by', 'created_at'],
-    ['key_uuid'],
+    ['portal_id', 'key_uuid', 'app_uuid', 'created_by', 'created_at'],
+    ['portal_id', 'key_uuid'],
     ['app_uuid', 'created_by']
 );
 
@@ -50,8 +51,8 @@ async function attachAssociations(exec, keys) {
     const apiIds = [...new Set(keys.map((k) => k.api_uuid))];
     const metadataRows = apiIds.length
         ? await exec.query(
-            `SELECT uuid, name, version, handle, ref_id, type FROM ${API_METADATA_TABLE} WHERE uuid IN (${apiIds.map(() => '?').join(', ')})`,
-            apiIds
+            `SELECT uuid, name, version, handle, ref_id, type FROM ${API_METADATA_TABLE} WHERE uuid IN (${apiIds.map(() => '?').join(', ')}) AND portal_id = ?`,
+            [...apiIds, getPortalId()]
         )
         : [];
     const metadataByUuid = indexBy(metadataRows, 'uuid');
@@ -59,8 +60,8 @@ async function attachAssociations(exec, keys) {
     const keyIds = keys.map((k) => k.uuid);
     const mappingRows = keyIds.length
         ? await exec.query(
-            `SELECT * FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid IN (${keyIds.map(() => '?').join(', ')})`,
-            keyIds
+            `SELECT * FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid IN (${keyIds.map(() => '?').join(', ')}) AND portal_id = ?`,
+            [...keyIds, getPortalId()]
         )
         : [];
     const mappingByKeyUuid = indexBy(mappingRows, 'key_uuid');
@@ -68,8 +69,8 @@ async function attachAssociations(exec, keys) {
     const appIds = [...new Set(mappingRows.map((m) => m.app_uuid))];
     const appRows = appIds.length
         ? await exec.query(
-            `SELECT uuid, display_name, handle FROM ${APPLICATIONS_TABLE} WHERE uuid IN (${appIds.map(() => '?').join(', ')})`,
-            appIds
+            `SELECT uuid, display_name, handle FROM ${APPLICATIONS_TABLE} WHERE uuid IN (${appIds.map(() => '?').join(', ')}) AND portal_id = ?`,
+            [...appIds, getPortalId()]
         )
         : [];
     const appByUuid = indexBy(appRows, 'uuid');
@@ -91,14 +92,14 @@ async function create({ apiId, subscriptionId, appId, orgId, handle, displayName
 
     await exec.execute(
         `INSERT INTO ${API_KEYS_TABLE}
-            (uuid, api_uuid, subscription_uuid, org_uuid, handle, display_name, status, expires_at,
+            (uuid, api_uuid, subscription_uuid, org_uuid, portal_id, handle, display_name, status, expires_at,
              created_by, updated_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuid, apiId, subscriptionId || null, orgId, handle, displayName, constants.API_KEY_STATUS.ACTIVE,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, apiId, subscriptionId || null, orgId, getPortalId(), handle, displayName, constants.API_KEY_STATUS.ACTIVE,
             expiresAt || null, createdBy, createdBy, now, now]
     );
     if (appId) {
-        await exec.execute(UPSERT_KEY_APP_MAPPING_SQL, [uuid, appId, createdBy, now]);
+        await exec.execute(UPSERT_KEY_APP_MAPPING_SQL, [getPortalId(), uuid, appId, createdBy, now]);
     }
 
     return {
@@ -122,8 +123,8 @@ async function create({ apiId, subscriptionId, appId, orgId, handle, displayName
 async function get(orgId, keyId, transaction) {
     const exec = transaction || db;
     const key = await exec.queryOne(
-        `SELECT * FROM ${API_KEYS_TABLE} WHERE uuid = ? AND org_uuid = ?`,
-        [keyId, orgId]
+        `SELECT * FROM ${API_KEYS_TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [keyId, orgId, getPortalId()]
     );
     if (!key) return null;
     await attachAssociations(exec, [key]);
@@ -133,16 +134,16 @@ async function get(orgId, keyId, transaction) {
 // Resolves a key's handle (scoped to the given API) to its uuid, or null if not found.
 async function getIdByHandle(orgId, apiId, handle) {
     const key = await db.queryOne(
-        `SELECT uuid FROM ${API_KEYS_TABLE} WHERE org_uuid = ? AND api_uuid = ? AND handle = ?`,
-        [orgId, apiId, handle]
+        `SELECT uuid FROM ${API_KEYS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ? AND handle = ?`,
+        [orgId, getPortalId(), apiId, handle]
     );
     return key ? key.uuid : null;
 }
 
 async function list(orgId, { apiId, subscriptionId, appId, status, createdBy, limit } = {}, transaction) {
     const exec = transaction || db;
-    const conditions = ['org_uuid = ?'];
-    const params = [orgId];
+    const conditions = ['org_uuid = ?', 'portal_id = ?'];
+    const params = [orgId, getPortalId()];
     if (apiId) { conditions.push('api_uuid = ?'); params.push(apiId); }
     if (subscriptionId) { conditions.push('subscription_uuid = ?'); params.push(subscriptionId); }
     if (status) { conditions.push('status = ?'); params.push(status); }
@@ -170,25 +171,25 @@ async function revoke(orgId, keyId, updatedBy, transaction) {
     const exec = transaction || db;
     const { rowCount } = await exec.execute(
         `UPDATE ${API_KEYS_TABLE} SET status = ?, revoked_at = ?, revoked_by = ?, updated_by = ?
-         WHERE uuid = ? AND org_uuid = ? AND status = ?`,
-        [constants.API_KEY_STATUS.REVOKED, new Date(), updatedBy, updatedBy, keyId, orgId, constants.API_KEY_STATUS.ACTIVE]
+         WHERE uuid = ? AND org_uuid = ? AND portal_id = ? AND status = ?`,
+        [constants.API_KEY_STATUS.REVOKED, new Date(), updatedBy, updatedBy, keyId, orgId, getPortalId(), constants.API_KEY_STATUS.ACTIVE]
     );
     return rowCount > 0;
 }
 
 async function setApplication(orgId, keyId, appId, updatedBy, transaction, { activeOnly = false } = {}) {
     const exec = transaction || db;
-    const conditions = ['uuid = ?', 'org_uuid = ?'];
-    const params = [keyId, orgId];
+    const conditions = ['uuid = ?', 'org_uuid = ?', 'portal_id = ?'];
+    const params = [keyId, orgId, getPortalId()];
     if (activeOnly) { conditions.push('status = ?'); params.push(constants.API_KEY_STATUS.ACTIVE); }
 
     const key = await exec.queryOne(`SELECT * FROM ${API_KEYS_TABLE} WHERE ${conditions.join(' AND ')}`, params);
     if (!key) return false;
 
     if (appId) {
-        await exec.execute(UPSERT_KEY_APP_MAPPING_SQL, [keyId, appId, updatedBy, new Date()]);
+        await exec.execute(UPSERT_KEY_APP_MAPPING_SQL, [getPortalId(), keyId, appId, updatedBy, new Date()]);
     } else {
-        await exec.execute(`DELETE FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid = ?`, [keyId]);
+        await exec.execute(`DELETE FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid = ? AND portal_id = ?`, [keyId, getPortalId()]);
     }
     return true;
 }
@@ -197,10 +198,19 @@ async function updateExpiry(orgId, keyId, expiresAt, updatedBy, transaction) {
     const exec = transaction || db;
     const { rowCount } = await exec.execute(
         `UPDATE ${API_KEYS_TABLE} SET expires_at = ?, updated_by = ?, updated_at = ?
-         WHERE uuid = ? AND org_uuid = ? AND status = ?`,
-        [expiresAt, updatedBy, new Date(), keyId, orgId, constants.API_KEY_STATUS.ACTIVE]
+         WHERE uuid = ? AND org_uuid = ? AND portal_id = ? AND status = ?`,
+        [expiresAt, updatedBy, new Date(), keyId, orgId, getPortalId(), constants.API_KEY_STATUS.ACTIVE]
     );
     return rowCount > 0;
 }
 
-module.exports = { create, get, getIdByHandle, list, revoke, setApplication, updateExpiry };
+async function deleteByApi(orgId, apiId, t) {
+    const exec = t || db;
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${API_KEYS_TABLE} WHERE api_uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [apiId, orgId, getPortalId()]
+    );
+    return rowCount;
+}
+
+module.exports = { create, get, getIdByHandle, list, revoke, setApplication, updateExpiry, deleteByApi };

@@ -206,6 +206,7 @@ func TestHydrateStoredConfigsFromDatabaseOnStartup_FailsFastByDefault(t *testing
 		nil,
 		nil,
 		nil,
+		nil,
 		newDiscardLogger(),
 		false,
 	)
@@ -227,6 +228,7 @@ func TestHydrateStoredConfigsFromDatabaseOnStartup_SkipsInvalidConfigsWhenEnable
 
 	err = hydrateStoredConfigsFromDatabaseOnStartup(
 		configStore,
+		nil,
 		nil,
 		nil,
 		nil,

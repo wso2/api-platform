@@ -32,6 +32,7 @@ services:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
       - "9011:9091"   # Metrics
+      - "9093:9093"   # REST API TLS
     env_file:
       - path: api-platform.env
         required: true
@@ -62,6 +63,7 @@ services:
       # Policy Engine
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
+      - "9004:9004"   # Health
     env_file:
       - path: api-platform.env
         required: true
@@ -171,7 +173,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/infrastructure-overview.json
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/infrastructure-overview.json
     volumes:
       - grafana-data:/var/lib/grafana
       - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro

@@ -17,7 +17,10 @@
 
 package repository
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestResolveSort verifies that only allowlisted sort tokens map to columns and
 // that everything else — including attempted SQL injection via the sort token —
@@ -57,7 +60,28 @@ func TestResolveSort(t *testing.T) {
 	}
 }
 
-// TestHandleSearchClause verifies the empty-input short circuit and that LIKE
+// wantSearchClause is the expected fragment from handleSearchClause for
+// non-empty terms. It's parenthesized so callers can AND-join it safely.
+const wantSearchClause = ` AND (LOWER(display_name) LIKE ? ESCAPE '\' OR LOWER(handle) LIKE ? ESCAPE '\')`
+
+// assertSearchArgs checks that the clause bound exactly the expected patterns,
+// in order. Both matched columns take the same pattern, so a caller passes it
+// twice.
+func assertSearchArgs(t *testing.T, got []any, want ...string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("args = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("args[%d] = %v, want %q", i, got[i], w)
+		}
+	}
+}
+
+// TestHandleSearchClause verifies the empty-input short circuit, that the term
+// is matched against both the display name and the handle, that the two matched
+// columns are grouped so the fragment stays safe to AND-join, and that LIKE
 // metacharacters supplied by the client are escaped so they match literally
 // rather than acting as wildcards.
 func TestHandleSearchClause(t *testing.T) {
@@ -68,27 +92,50 @@ func TestHandleSearchClause(t *testing.T) {
 		}
 	})
 
-	t.Run("plain term is lowercased and wrapped", func(t *testing.T) {
+	t.Run("plain term is lowercased, wrapped, and bound once per column", func(t *testing.T) {
 		clause, args := handleSearchClause("Payment")
-		if clause == "" {
-			t.Fatal("expected a non-empty clause")
+		if clause != wantSearchClause {
+			t.Fatalf("clause = %q, want %q", clause, wantSearchClause)
 		}
-		if len(args) != 1 || args[0] != "%payment%" {
-			t.Fatalf("args = %v, want [%%payment%%]", args)
+		assertSearchArgs(t, args, "%payment%", "%payment%")
+	})
+
+	t.Run("term matches display name as well as handle", func(t *testing.T) {
+		clause, _ := handleSearchClause("Payment")
+		if !strings.Contains(clause, "LOWER(display_name) LIKE ?") {
+			t.Errorf("clause %q does not filter on display_name", clause)
 		}
+		if !strings.Contains(clause, "LOWER(handle) LIKE ?") {
+			t.Errorf("clause %q no longer filters on handle", clause)
+		}
+	})
+
+	// Guards the precedence bug independently of wantSearchClause, which a
+	// future reword would update in lockstep: the fragment must remain a single
+	// parenthesized group so callers can AND-join it without OR leaking rows
+	// past their organization filter.
+	t.Run("matched columns are grouped so the clause is safe to AND-join", func(t *testing.T) {
+		clause, _ := handleSearchClause("Payment")
+		if !strings.HasPrefix(clause, " AND (") || !strings.HasSuffix(clause, ")") {
+			t.Fatalf("clause %q must be a parenthesized group prefixed with \" AND \"", clause)
+		}
+	})
+
+	// The reported bug: a display name is prose, not a slug. The term must reach
+	// the bound pattern verbatim (lowercased only) so "Payment API" can match a
+	// display_name of "Payment API"; it can never match the handle "payment-api".
+	t.Run("multi-word display name term is preserved verbatim", func(t *testing.T) {
+		_, args := handleSearchClause("Payment API")
+		assertSearchArgs(t, args, "%payment api%", "%payment api%")
 	})
 
 	t.Run("wildcards are escaped", func(t *testing.T) {
 		_, args := handleSearchClause("a_b%c")
-		if len(args) != 1 || args[0] != `%a\_b\%c%` {
-			t.Fatalf("args = %v, want [%%a\\_b\\%%c%%]", args)
-		}
+		assertSearchArgs(t, args, `%a\_b\%c%`, `%a\_b\%c%`)
 	})
 
 	t.Run("backslash is escaped before the metacharacters", func(t *testing.T) {
 		_, args := handleSearchClause(`a\b`)
-		if len(args) != 1 || args[0] != `%a\\b%` {
-			t.Fatalf("args = %v, want [%%a\\\\b%%]", args)
-		}
+		assertSearchArgs(t, args, `%a\\b%`, `%a\\b%`)
 	})
 }

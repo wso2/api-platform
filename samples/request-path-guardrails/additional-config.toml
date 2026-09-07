@@ -1,0 +1,15 @@
+# Merged into the gateway's configs/config.toml by setup.sh, as bare top-level
+# keys (must land BEFORE the first [section] header in config.toml — TOML keys
+# bind to whichever section precedes them).
+#
+# semantic-prompt-guard's embeddingProvider/embeddingEndpoint/embeddingModel/
+# apiKey are systemParameters, not per-proxy params: the policy resolves them
+# from these global gateway config keys via a CEL expression, not from
+# llm-proxy.yaml (see llm-proxy.yaml's own comment on its semantic-prompt-guard
+# block for what setting them inline actually does instead).
+# Pointed at the same WireMock container used for the mock LLM backend, so no
+# real embedding-provider account or API key is needed.
+embedding_provider = "OPENAI"
+embedding_provider_endpoint = "http://mock-llm-openai:8080/v1/embeddings"
+embedding_provider_model = "text-embedding-3-small"
+embedding_provider_api_key = "demo-embedding-key"

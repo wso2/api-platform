@@ -16,29 +16,56 @@
  * under the License.
  */
 
+import { useEffect, useRef, useState } from 'react';
 import { Box, CodeBlock, IconButton, Tooltip } from '@wso2/oxygen-ui';
 import { Check, Copy } from '@wso2/oxygen-ui-icons-react';
-import { useState } from 'react';
+import { defineMessages, useIntl } from 'react-intl';
 
-/** A bash CodeBlock with a copy-to-clipboard button overlaid in the corner. */
+const messages = defineMessages({
+  copied: {
+    id: 'gateways.CopyableCommand.copied',
+    defaultMessage: 'Copied',
+    description: 'Tooltip confirming the command was copied to the clipboard.',
+  },
+  copy: {
+    id: 'gateways.CopyableCommand.copy',
+    defaultMessage: 'Copy command',
+    description: 'Accessible label and tooltip for the button that copies a terminal command.',
+  },
+});
+
+/** How long the button stays in its confirmed state after a copy. */
+const COPIED_FEEDBACK_MS = 1500;
+
+/** A shell command block with a copy-to-clipboard button in its corner. */
 export function CopyableCommand({ code }: { code: string }) {
+  const intl = useIntl();
   const [copied, setCopied] = useState(false);
+
+  // Held in a ref so a copy that lands just before the block unmounts (a tab
+  // change, a dialog closing) does not leave a timer setting state afterwards.
+  const resetTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(resetTimer.current), []);
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      window.clearTimeout(resetTimer.current);
+      resetTimer.current = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
     } catch {
-      // clipboard unavailable
+      // No clipboard permission (or no clipboard at all, over plain HTTP). The
+      // command is still on screen and selectable, so there is nothing useful
+      // to report; an error toast here would only interrupt.
     }
   };
 
   return (
     <Box sx={{ position: 'relative' }}>
-      <Tooltip title={copied ? 'Copied' : 'Copy'}>
+      <Tooltip title={intl.formatMessage(copied ? messages.copied : messages.copy)}>
         <IconButton
-          aria-label="Copy command"
+          aria-label={intl.formatMessage(messages.copy)}
           onClick={copy}
           size="small"
           sx={{ position: 'absolute', right: 8, top: 8, zIndex: 1 }}

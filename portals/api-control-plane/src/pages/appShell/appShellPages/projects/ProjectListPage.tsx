@@ -29,27 +29,20 @@ import {
 } from '@wso2/oxygen-ui';
 import { Plus, Search } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
-import {
-  defineMessages,
-  FormattedMessage,
-  useIntl,
-  type MessageDescriptor,
-} from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import type { Project } from '../../../../api/resources/projects';
-import {
-  useDeleteProject,
-  useProjects,
-  type ProjectListFilters,
-} from '../../../../api/resources/projects';
+import type { Project } from '@/api/resources/projects';
+import { useDeleteProject, useProjects, type ProjectListFilters } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
-import { ConfirmDialog } from '../../../../components/ConfirmDialog';
-import { useNotifications } from '../../../../components/Notifications';
-import { EmptyState, ErrorState, LoadingState } from '../../../../components/StateViews';
-import { routes } from '../../../../routes/paths';
-import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
-import { NewProjectDialog } from './NewProjectDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useNotifications } from '@/components/Notifications';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { routes } from '@/routes/paths';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { NewProjectDialog } from './components/NewProjectDialog';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { ProjectFolderIllustration } from '@/components/illustrations/ProjectFolderIllustration';
 
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 const SEARCH_DEBOUNCE_MS = 300;
@@ -60,7 +53,6 @@ const SEARCH_DEBOUNCE_MS = 300;
 type SortBy = NonNullable<ProjectListFilters['sortBy']>;
 type SortOrder = NonNullable<ProjectListFilters['sortOrder']>;
 
-
 const messages = defineMessages({
   createProject: {
     id: 'project.list.createProjectButton',
@@ -69,8 +61,7 @@ const messages = defineMessages({
   deleteConfirmInputLabel: {
     id: 'project.list.delete.confirmInputLabel',
     defaultMessage: 'Type "{name}" to confirm',
-    description:
-      'Label for the type-to-confirm field guarding an irreversible delete.',
+    description: 'Label for the type-to-confirm field guarding an irreversible delete.',
   },
   deleteConfirm: {
     id: 'project.list.delete.confirmLabel',
@@ -104,7 +95,7 @@ const messages = defineMessages({
   },
   emptyTitle: {
     id: 'project.list.empty.title',
-    defaultMessage: 'No projects found',
+    defaultMessage: 'Create your first Project',
   },
   errorMessage: {
     id: 'project.list.error.message',
@@ -198,21 +189,6 @@ const SORT_OPTIONS = [
 
 type SortOption = (typeof SORT_OPTIONS)[number];
 
-/**
- * Delays a fast-changing value so it can drive a request. Typing updates the
- * field on every keystroke; the query only follows once the user pauses.
- */
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debounced;
-}
-
 export function ProjectListPage() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
@@ -229,8 +205,7 @@ export function ProjectListPage() {
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
 
-  // Page 1 is the only page that still means anything once the filter or the
-  // order changes — the row that was at offset 24 is somewhere else now.
+  // Reset to page 1 when filter or sort changes.
   useEffect(() => setPage(0), [debouncedSearch, sort.value]);
 
   const projectsQuery = useProjects({
@@ -245,11 +220,11 @@ export function ProjectListPage() {
   const projects = projectsQuery.data?.list ?? [];
   const total = projectsQuery.data?.pagination?.total ?? projects.length;
   const lastPage = Math.max(0, Math.ceil(total / rowsPerPage) - 1);
-  // Deleting the last row of the last page leaves `page` past the end. Render
-  // the clamped value (an out-of-range `page` makes TablePagination complain),
-  // and correct the state so the next request asks for a window that exists.
+  // Clamp `page` after deleting the last row of the last page.
   const currentPage = Math.min(page, lastPage);
   const isSearching = debouncedSearch.length > 0;
+  // Show the create prompt only for an empty project, not an empty search.
+  const isFirstRun = total === 0 && !isSearching;
 
   useEffect(() => {
     if (page > lastPage) setPage(lastPage);
@@ -262,23 +237,16 @@ export function ProjectListPage() {
       { projectId: toDelete.id },
       {
         onSuccess: () => {
-          notify(
-            intl.formatMessage(messages.deleteSucceeded, { name: displayName }),
-            'success'
-          );
+          notify(intl.formatMessage(messages.deleteSucceeded, { name: displayName }), 'success');
           setToDelete(null);
         },
         onError: (error) =>
-          notify(
-            error.message || intl.formatMessage(messages.deleteFailed),
-            'error'
-          ),
-      }
+          notify(error.message || intl.formatMessage(messages.deleteFailed), 'error'),
+      },
     );
   };
 
-  const openProject = (project: Project) =>
-    navigate(routes.projectHome(orgHandle, project.id));
+  const openProject = (project: Project) => navigate(routes.projectHome(orgHandle, project.id));
 
   if (projectsQuery.isLoading) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
@@ -297,45 +265,44 @@ export function ProjectListPage() {
     <>
       <PageTitle>
         <PageTitle.Header>
-          <FormattedMessage
-            id="project.list.title"
-            defaultMessage="Projects"
-            />
+          <FormattedMessage id="project.list.title" defaultMessage="Projects" />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          {organization?.displayName
-            ? (
-              <FormattedMessage
-                defaultMessage="Project workspaces in {organizationName}."
-                id="project.list.subHeader.withOrganization"
-                values={{ organizationName: organization.displayName }}
-              />
-            )
-            : (
-              <FormattedMessage
-                defaultMessage="Select a project to manage APIs."
-                id="project.list.subHeader.default"
-              />
-            )}
+          {organization?.displayName ? (
+            <FormattedMessage
+              defaultMessage="Project workspaces in {organizationName}."
+              id="project.list.subHeader.withOrganization"
+              values={{ organizationName: organization.displayName }}
+            />
+          ) : (
+            <FormattedMessage
+              defaultMessage="Select a project to manage APIs."
+              id="project.list.subHeader.default"
+            />
+          )}
         </PageTitle.SubHeader>
-        <PageTitle.Actions>
-          <Button
-            onClick={() => setCreateOpen(true)}
-            startIcon={<Plus />}
-            sx={{ borderRadius: 5 }}
-            variant="contained"
-          >
-            <FormattedMessage {...messages.createProject} />
-          </Button>
-        </PageTitle.Actions>
+        {!isFirstRun && (
+          <PageTitle.Actions>
+            <Button
+              onClick={() => setCreateOpen(true)}
+              startIcon={<Plus />}
+              sx={{ borderRadius: 5 }}
+              variant="contained"
+            >
+              <FormattedMessage {...messages.createProject} />
+            </Button>
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
-      {total === 0 && !isSearching ? (
+      {isFirstRun ? (
         <EmptyState
           actionLabel={intl.formatMessage(messages.emptyAction)}
           onAction={() => setCreateOpen(true)}
           title={intl.formatMessage(messages.emptyTitle)}
           description={intl.formatMessage(messages.emptyDescription)}
+          actionIcon={<Plus />}
+          illustration={<ProjectFolderIllustration />}
         />
       ) : (
         <Stack spacing={2} sx={{ flexGrow: 1 }}>
@@ -366,17 +333,12 @@ export function ProjectListPage() {
             }}
           >
             <Typography variant="h6">
-              <FormattedMessage
-                {...messages.projectCount}
-                values={{ count: total }}
-              />
+              <FormattedMessage {...messages.projectCount} values={{ count: total }} />
             </Typography>
             <TextField
               label={intl.formatMessage(messages.sortLabel)}
               onChange={(event) => {
-                const next = SORT_OPTIONS.find(
-                  (option) => option.value === event.target.value
-                );
+                const next = SORT_OPTIONS.find((option) => option.value === event.target.value);
                 if (next) setSort(next);
               }}
               select

@@ -18,50 +18,75 @@
 
 import { useEffect, useState, type FC } from 'react';
 import {
+  Alert,
   Box,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
+  FormControl,
+  FormLabel,
+  MenuItem,
+  Select,
+  TextField,
   Typography,
 } from '@wso2/oxygen-ui';
+import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
-import type { Environment } from '../types';
+import type { Environment, Gateway } from '../types';
 
 export type DeployDialogProps = {
   open: boolean;
   mode: 'deploy' | 'promote';
   environment: Environment | null;
   onClose: () => void;
-  onConfirm: (gatewayIds: string[]) => void;
+  onConfirm: (gatewayId: string, endpointUrl: string) => void;
 };
 
+const sectionLabelSx = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: 'text.secondary',
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.04em',
+};
+
+const pickDefaultGateway = (gateways: Gateway[]): Gateway | null =>
+  gateways.find((gateway) => gateway.isDefault) ??
+  gateways.find((gateway) => gateway.status === 'active') ??
+  gateways[0] ??
+  null;
+
 const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose, onConfirm }) => {
-  const [selected, setSelected] = useState<string[]>([]);
+  const [gatewayId, setGatewayId] = useState('');
+  const [endpointUrl, setEndpointUrl] = useState('');
+  const [urlTouched, setUrlTouched] = useState(false);
 
   useEffect(() => {
     if (open && environment) {
-      setSelected(environment.gateways.map((gateway) => gateway.id));
+      const defaultGateway = pickDefaultGateway(environment.gateways);
+      setGatewayId(defaultGateway?.id ?? '');
+      setEndpointUrl(defaultGateway?.endpointUrl ?? '');
+      setUrlTouched(false);
     }
   }, [open, environment]);
 
   if (!environment) return null;
 
-  const allSelected = selected.length === environment.gateways.length && environment.gateways.length > 0;
   const actionLabel = mode === 'deploy' ? 'Deploy' : 'Promote';
+  const selectedGateway = environment.gateways.find((gateway) => gateway.id === gatewayId) ?? null;
+  const isSingleGateway = environment.gateways.length === 1;
+  const isSelectedInactive = selectedGateway ? selectedGateway.status !== 'active' : false;
+  const urlMissing = endpointUrl.trim().length === 0;
+  const canConfirm = !!selectedGateway && !isSelectedInactive && !urlMissing;
 
-  const toggleGateway = (gatewayId: string) => {
-    setSelected((prev) =>
-      prev.includes(gatewayId) ? prev.filter((id) => id !== gatewayId) : [...prev, gatewayId]
-    );
-  };
-
-  const toggleSelectAll = () => {
-    setSelected(allSelected ? [] : environment.gateways.map((gateway) => gateway.id));
+  const handleSelectGateway = (id: string) => {
+    setGatewayId(id);
+    const gateway = environment.gateways.find((candidate) => candidate.id === id);
+    setEndpointUrl(gateway?.endpointUrl ?? '');
+    setUrlTouched(false);
   };
 
   return (
@@ -72,85 +97,101 @@ const DeployDialog: FC<DeployDialogProps> = ({ open, mode, environment, onClose,
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {mode === 'deploy'
-            ? `Initial deployment goes to ${environment.name}. Select the gateways to deploy to.`
-            : `Select which gateways in ${environment.name} should receive this build.`}
+            ? `Initial deployment goes to ${environment.name}. Select the gateway to deploy to.`
+            : `Select which gateway in ${environment.name} should receive this build.`}
         </Typography>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Typography
-            sx={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'text.secondary',
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-            }}
-          >
-            Gateways
-          </Typography>
-          <FormControlLabel
-            control={<Checkbox size="small" checked={allSelected} onChange={toggleSelectAll} />}
-            label={<Typography variant="body2">Select all</Typography>}
-            sx={{ mr: 0 }}
-          />
-        </Box>
+        {isSelectedInactive ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {selectedGateway?.name} is inactive and can't receive a deployment. Choose an active gateway to continue.
+          </Alert>
+        ) : null}
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {environment.gateways.map((gateway) => {
-            const checked = selected.includes(gateway.id);
-            const tone = gatewayStatusTone(gateway.status);
-            return (
-              <Box
-                key={gateway.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => toggleGateway(gateway.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') toggleGateway(gateway.id);
-                }}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  px: 1.5,
-                  py: 1,
-                  border: '1px solid',
-                  borderColor: checked ? 'primary.main' : 'divider',
-                  bgcolor: checked ? 'action.selected' : 'background.paper',
-                  borderRadius: 1.5,
-                  cursor: 'pointer',
+        {isSingleGateway ? (
+          <Box sx={{ mb: 2.5 }}>
+            <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateway</FormLabel>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.5,
+                py: 1,
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1.5,
+              }}
+            >
+              <StatusDot tone={gatewayStatusTone(selectedGateway!.status).tone} />
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                  {selectedGateway!.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap display="block">
+                  {selectedGateway!.region}
+                </Typography>
+              </Box>
+              <StatusPill tone={gatewayStatusTone(selectedGateway!.status)} />
+            </Box>
+          </Box>
+        ) : (
+          <Box sx={{ mb: 2.5 }}>
+            <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateway</FormLabel>
+            <FormControl fullWidth size="small">
+              <Select
+                value={gatewayId}
+                onChange={(event) => handleSelectGateway(event.target.value as string)}
+                renderValue={(value) => {
+                  const gateway = environment.gateways.find((candidate) => candidate.id === value);
+                  if (!gateway) return null;
+                  return (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <StatusDot tone={gatewayStatusTone(gateway.status).tone} />
+                      <Typography variant="body2">{gateway.name}</Typography>
+                    </Box>
+                  );
                 }}
               >
-                <Checkbox
-                  size="small"
-                  checked={checked}
-                  onChange={() => toggleGateway(gateway.id)}
-                  onClick={(event) => event.stopPropagation()}
-                />
-                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                    {gateway.name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" noWrap display="block">
-                    {gateway.region}
-                  </Typography>
-                </Box>
-                <StatusPill tone={tone} />
-              </Box>
-            );
-          })}
+                {environment.gateways.map((gateway) => (
+                  <MenuItem key={gateway.id} value={gateway.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <StatusDot tone={gatewayStatusTone(gateway.status).tone} />
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {gateway.name}
+                        {gateway.isDefault ? ' · Default' : ''}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        )}
+
+        <Box>
+          <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Endpoint URL</FormLabel>
+          <TextField
+            fullWidth
+            size="small"
+            required
+            placeholder="https://api.example.com"
+            value={endpointUrl}
+            onChange={(event) => setEndpointUrl(event.target.value)}
+            onBlur={() => setUrlTouched(true)}
+            error={urlTouched && urlMissing}
+            helperText={urlTouched && urlMissing ? 'Endpoint URL is required.' : ' '}
+          />
         </Box>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2, display: 'flex', justifyContent: 'space-between' }}>
-        <Typography variant="body2" color="text.secondary">
-          {selected.length} of {environment.gateways.length} selected
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="contained" disabled={selected.length === 0} onClick={() => onConfirm(selected)}>
-            {actionLabel}
-          </Button>
-        </Box>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          disabled={!canConfirm}
+          onClick={() => onConfirm(gatewayId, endpointUrl.trim())}
+        >
+          {actionLabel}
+        </Button>
       </DialogActions>
     </Dialog>
   );

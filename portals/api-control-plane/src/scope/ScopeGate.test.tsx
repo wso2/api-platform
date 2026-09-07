@@ -20,23 +20,20 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ApiError } from '../api/core/errors';
-import { organizations } from '../api/mocks/data';
-import type {
-  RestApi,
-  RestApiListResponse,
-} from '../api/resources/restApis';
-import { routes } from '../routes/paths';
-import { makeConsoleScope } from '../test/mockScope';
-import { renderWithProviders, screen } from '../test/utils';
+import type { ApiError } from '@/api/core/errors';
+import type { RestApi, RestApiListResponse } from '@/api/resources/restApis';
+import { routes } from '@/routes/paths';
+import { makeConsoleScope } from '@/test/mockScope';
+import { renderWithProviders, screen } from '@/test/utils';
 
-vi.mock('../api/resources/restApis', async (importActual) => ({
-  ...(await importActual<typeof import('../api/resources/restApis')>()),
+vi.mock('@/api/resources/restApis', async (importActual) => ({
+  ...(await importActual<typeof import('@/api/resources/restApis')>()),
   useRestApis: vi.fn(),
 }));
 
 import { useRestApis } from '../api/resources/restApis';
 import { ScopeGate } from './ScopeGate';
+import { anOrganization } from '@/test/msw';
 
 const API_LIST = [
   {
@@ -58,7 +55,7 @@ const listQuery = (list: RestApi[]) =>
 // `makeConsoleScope` seeds itself from these fixtures, and `ScopeGate` reads the
 // org handle from scope rather than from the URL — so the routes under test have
 // to be built from the same handles.
-const ORG = organizations[0].id;
+const ORG = anOrganization().id;
 
 /*
  * The project list is supplied by the test rather than taken from
@@ -73,9 +70,7 @@ const projectScope = () =>
   makeConsoleScope({
     isProjectScope: false,
     project: undefined,
-    projects: [PROJECT_OPTION] as ReturnType<
-      typeof makeConsoleScope
-    >['projects'],
+    projects: [PROJECT_OPTION] as ReturnType<typeof makeConsoleScope>['projects'],
   });
 
 /** The select's own control — `getByLabelText` also matches the visible label. */
@@ -102,13 +97,13 @@ describe('ScopeGate', () => {
   const renderGate = (
     route: string,
     gate: React.ReactNode,
-    scope: ReturnType<typeof makeConsoleScope>
+    scope: ReturnType<typeof makeConsoleScope>,
   ) =>
     renderWithProviders(
       <Routes>
         <Route path="*" element={gate} />
       </Routes>,
-      { route, scope }
+      { route, scope },
     );
 
   it('renders the page once the required scope is on the route', () => {
@@ -117,7 +112,7 @@ describe('ScopeGate', () => {
       <ScopeGate requires="project" to={routes.apis}>
         <span>page body</span>
       </ScopeGate>,
-      makeConsoleScope()
+      makeConsoleScope(),
     );
 
     expect(screen.getByText('page body')).toBeInTheDocument();
@@ -133,11 +128,11 @@ describe('ScopeGate', () => {
       >
         <span>page body</span>
       </ScopeGate>,
-      projectScope()
+      projectScope(),
     );
 
     expect(
-      screen.getByText('APIs are created and managed at the project level.')
+      screen.getByText('APIs are created and managed at the project level.'),
     ).toBeInTheDocument();
     expect(screen.queryByText('page body')).not.toBeInTheDocument();
   });
@@ -151,16 +146,14 @@ describe('ScopeGate', () => {
         </ScopeGate>
         <Located />
       </>,
-      projectScope()
+      projectScope(),
     );
 
     await user.click(selectFor('Project'));
     await user.click(optionFor(/Retail APIs/));
     await user.click(screen.getByRole('button', { name: 'Go to Project Level' }));
 
-    expect(
-      screen.getByText(`at ${routes.apis(ORG, PROJECT)}`)
-    ).toBeInTheDocument();
+    expect(screen.getByText(`at ${routes.apis(ORG, PROJECT)}`)).toBeInTheDocument();
   });
 
   it('asks for both handles on an api-level page outside any project', async () => {
@@ -172,7 +165,7 @@ describe('ScopeGate', () => {
         </ScopeGate>
         <Located />
       </>,
-      projectScope()
+      projectScope(),
     );
 
     // Disabled until a project narrows the API list.
@@ -188,9 +181,7 @@ describe('ScopeGate', () => {
     await user.click(continueButton);
 
     expect(
-      screen.getByText(
-        `at ${routes.apiDeploy(ORG, PROJECT, 'orders-api')}`
-      )
+      screen.getByText(`at ${routes.apiDeploy(ORG, PROJECT, 'orders-api')}`),
     ).toBeInTheDocument();
   });
 
@@ -200,12 +191,10 @@ describe('ScopeGate', () => {
       <ScopeGate requires="api" to={routes.apiDeploy}>
         <span>page body</span>
       </ScopeGate>,
-      makeConsoleScope()
+      makeConsoleScope(),
     );
 
     expect(selectFor('API')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('combobox', { name: 'Project' })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Project' })).not.toBeInTheDocument();
   });
 });

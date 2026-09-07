@@ -287,7 +287,7 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     id: 'gateways',
-    label: 'API Gateways',
+    label: 'Gateways',
     group: CLUSTER.place,
     order: 30,
     icon: <Network />,

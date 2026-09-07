@@ -29,8 +29,12 @@ export type Gateway = {
   name: string;
   region: string;
   status: GatewayStatus;
+  /** Preselected in the deploy/promote gateway picker when an environment has more than one gateway. */
+  isDefault?: boolean;
   buildId?: string;
   deployedAt?: string;
+  /** The endpoint URL this gateway currently serves the build on, if it has ever been deployed. */
+  endpointUrl?: string;
   envVars: number;
   history: Deployment[];
 };

@@ -1,0 +1,33 @@
+# Developer Portal manifest for the weather-mcp sample server.
+# Format: https://wso2.com/api-platform/docs/ (API Portal -> Publishing APIs)
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
+kind: MCP
+
+metadata:
+  name: weather-mcp-v1
+
+spec:
+  type: MCP
+  displayName: Weather MCP Server
+  version: 1.0.0
+  description: Look up short-term weather forecasts by city.
+  status: PUBLISHED
+
+  tags:
+    - weather
+    - sample
+
+  labels:
+    - default
+
+  subscriptionPlans: []
+  visibility: PUBLIC
+
+  businessInformation:
+    businessOwner: Platform Team
+    businessOwnerEmail: platform-team@example.com
+    technicalOwner: Platform Team
+    technicalOwnerEmail: platform-team@example.com
+
+  endpoints:
+    productionUrl: http://weather-mcp:8080/mcp

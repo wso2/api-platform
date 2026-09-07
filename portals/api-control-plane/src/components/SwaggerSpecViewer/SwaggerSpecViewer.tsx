@@ -1,0 +1,692 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import React, { useMemo, useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { InputAdornment, MenuItem, Stack, TextField, Typography } from '@wso2/oxygen-ui';
+import { Search } from '@wso2/oxygen-ui-icons-react';
+import SwaggerUI from 'swagger-ui-react';
+import 'swagger-ui-react/swagger-ui.css';
+import './SwaggerSpecViewer.css';
+import {
+  AccessControl,
+  buildExceptionSet,
+  normalizeAccessControlMode,
+} from '../../utils/openApiAccessControl';
+
+const messages = defineMessages({
+  allMethods: {
+    id: 'apiControlPlane.components.SwaggerSpecViewer.allMethods',
+    defaultMessage: 'All methods',
+    description: 'Option that leaves the resource list unfiltered by HTTP method.',
+  },
+  requestUrl: {
+    id: 'apiControlPlane.components.SwaggerSpecViewer.requestUrl',
+    defaultMessage: 'Request URL',
+    description: 'Heading above the URL a generated request would be sent to.',
+  },
+  noResources: {
+    id: 'apiControlPlane.components.SwaggerSpecViewer.noResources',
+    defaultMessage: 'No resources match your search.',
+  },
+  notAllowedTooltip: {
+    id: 'apiControlPlane.components.SwaggerSpecViewer.notAllowedTooltip',
+    defaultMessage: 'This resource is not allowed',
+    description: 'Tooltip on an operation the access-control settings exclude.',
+  },
+  searchPlaceholder: {
+    id: 'apiControlPlane.components.SwaggerSpecViewer.searchPlaceholder',
+    defaultMessage: 'Search resources by path or description',
+  },
+});
+
+const SwaggerUIComponent = SwaggerUI as unknown as React.ComponentType<Record<string, unknown>>;
+
+type SwaggerSpecViewerProps = {
+  spec: Record<string, unknown>;
+  className?: string;
+  docExpansion?: 'list' | 'full' | 'none';
+  defaultModelsExpandDepth?: number;
+  displayRequestDuration?: boolean;
+  requestBaseUrl?: string;
+  defaultHeaders?: Record<string, string>;
+  disableNetworkExecution?: boolean;
+  hideInfoSection?: boolean;
+  hideServers?: boolean;
+  hideAuthorizeButton?: boolean;
+  hideTagHeaders?: boolean;
+  hideOperationHeader?: boolean;
+  disableTryOutBtn?: boolean;
+  disableResponseSection?: boolean;
+  enableResourceSearch?: boolean;
+  accessControl?: AccessControl;
+};
+
+type SwaggerSpec = Record<string, unknown>;
+type ImmutableRequestLike = {
+  get: (key: string) => unknown;
+  set: (key: string, value: unknown) => unknown;
+};
+
+const HTTP_METHODS = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options', 'trace'] as const;
+
+function applyRequestBaseUrlToSpec(spec: SwaggerSpec, baseUrl: string): SwaggerSpec {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+  let parsedBase: URL;
+  try {
+    parsedBase = new URL(normalizedBaseUrl);
+  } catch {
+    return spec;
+  }
+
+  const isSwagger2 = typeof spec.swagger === 'string' && spec.swagger.startsWith('2.');
+  const isOpenApi3 = typeof spec.openapi === 'string';
+  const protocol = parsedBase.protocol.replace(':', '');
+
+  const nextSpec: SwaggerSpec = { ...spec };
+
+  if (isOpenApi3) {
+    nextSpec.servers = [{ url: normalizedBaseUrl }];
+  }
+
+  if (isSwagger2) {
+    const basePath = parsedBase.pathname.replace(/\/+$/, '') || '/';
+    nextSpec.schemes = [protocol];
+    nextSpec.host = parsedBase.host;
+    nextSpec.basePath = basePath;
+  }
+
+  const rawPaths = spec.paths;
+  if (!rawPaths || typeof rawPaths !== 'object') {
+    return nextSpec;
+  }
+
+  const nextPaths: Record<string, unknown> = {};
+  Object.entries(rawPaths as Record<string, unknown>).forEach(([pathKey, pathValue]) => {
+    if (!pathValue || typeof pathValue !== 'object') {
+      nextPaths[pathKey] = pathValue;
+      return;
+    }
+
+    const pathItem = pathValue as Record<string, unknown>;
+    let nextPathItem: Record<string, unknown> = pathItem;
+    let pathChanged = false;
+
+    if (isOpenApi3) {
+      nextPathItem = {
+        ...nextPathItem,
+        servers: [{ url: normalizedBaseUrl }],
+      };
+      pathChanged = true;
+    }
+
+    HTTP_METHODS.forEach((method) => {
+      const operationValue = pathItem[method];
+      if (!operationValue || typeof operationValue !== 'object') {
+        return;
+      }
+
+      const operation = operationValue as Record<string, unknown>;
+      let nextOperation: Record<string, unknown> = operation;
+      let operationChanged = false;
+
+      if (isOpenApi3) {
+        nextOperation = {
+          ...nextOperation,
+          servers: [{ url: normalizedBaseUrl }],
+        };
+        operationChanged = true;
+      }
+
+      if (isSwagger2) {
+        nextOperation = {
+          ...nextOperation,
+          schemes: [protocol],
+        };
+        operationChanged = true;
+      }
+
+      if (operationChanged) {
+        if (!pathChanged) {
+          nextPathItem = { ...nextPathItem };
+          pathChanged = true;
+        }
+        nextPathItem[method] = nextOperation;
+      }
+    });
+
+    nextPaths[pathKey] = pathChanged ? nextPathItem : pathItem;
+  });
+
+  nextSpec.paths = nextPaths;
+  return nextSpec;
+}
+
+function rewriteRequestUrlWithBase(originalUrl: string, baseUrl: string): string {
+  try {
+    const base = new URL(baseUrl);
+    const current = /^https?:\/\//i.test(originalUrl)
+      ? new URL(originalUrl)
+      : new URL(originalUrl, base);
+
+    const basePath = base.pathname.replace(/\/+$/, '');
+    const currentPath = current.pathname.startsWith('/')
+      ? current.pathname
+      : `/${current.pathname}`;
+    const shouldPrefixBasePath =
+      basePath !== '' &&
+      basePath !== '/' &&
+      currentPath !== basePath &&
+      !currentPath.startsWith(`${basePath}/`);
+    const rewrittenPath = shouldPrefixBasePath
+      ? `${basePath}${currentPath === '/' ? '' : currentPath}`
+      : currentPath;
+
+    return `${base.protocol}//${base.host}${rewrittenPath}${current.search}${current.hash}`;
+  } catch {
+    return originalUrl;
+  }
+}
+
+function mergePlainHeaders(
+  headers: unknown,
+  defaultHeadersObject: Record<string, string>,
+): Record<string, unknown> {
+  const nextHeaders =
+    headers && typeof headers === 'object' ? { ...(headers as Record<string, unknown>) } : {};
+
+  Object.entries(defaultHeadersObject).forEach(([key, value]) => {
+    nextHeaders[key] = value;
+  });
+
+  return nextHeaders;
+}
+
+type ResourceMethod = 'all' | (typeof HTTP_METHODS)[number];
+
+function filterSpecResources(
+  spec: SwaggerSpec,
+  searchValue: string,
+  selectedMethod: ResourceMethod,
+): SwaggerSpec {
+  const query = searchValue.trim().toLowerCase();
+  if ((!query && selectedMethod === 'all') || !spec.paths || typeof spec.paths !== 'object') {
+    return spec;
+  }
+
+  const filteredPaths: Record<string, unknown> = {};
+  Object.entries(spec.paths as Record<string, unknown>).forEach(([path, pathValue]) => {
+    if (!pathValue || typeof pathValue !== 'object') return;
+
+    const pathItem = pathValue as Record<string, unknown>;
+    const pathMatches = path.toLowerCase().includes(query);
+    const matchingOperations = HTTP_METHODS.filter((method) => {
+      const operation = pathItem[method];
+      if (!operation || typeof operation !== 'object') return false;
+      if (selectedMethod !== 'all' && method !== selectedMethod) return false;
+      if (pathMatches) return true;
+
+      const { summary, description } = operation as Record<string, unknown>;
+      return [summary, description].some(
+        (value) => typeof value === 'string' && value.toLowerCase().includes(query),
+      );
+    });
+
+    if (matchingOperations.length === 0) return;
+
+    filteredPaths[path] = Object.fromEntries(
+      Object.entries(pathItem).filter(
+        ([key]) =>
+          !HTTP_METHODS.includes(key as (typeof HTTP_METHODS)[number]) ||
+          matchingOperations.includes(key as (typeof HTTP_METHODS)[number]),
+      ),
+    );
+  });
+
+  return { ...spec, paths: filteredPaths };
+}
+
+function hasResourceOperations(spec: SwaggerSpec): boolean {
+  if (!spec.paths || typeof spec.paths !== 'object') return false;
+
+  return Object.values(spec.paths as Record<string, unknown>).some(
+    (pathValue) =>
+      Boolean(pathValue) &&
+      typeof pathValue === 'object' &&
+      HTTP_METHODS.some((method) => Boolean((pathValue as Record<string, unknown>)[method])),
+  );
+}
+
+const ACCESS_CONTROL_ALLOWED_EXTENSION = 'x-wso2-access-control-allowed';
+const ACCESS_CONTROL_ALLOWED_TAG = '__wso2_allowed_resources__';
+const ACCESS_CONTROL_NOT_ALLOWED_TAG = '__wso2_not_allowed_resources__';
+
+function annotateSpecAccessControl(spec: SwaggerSpec, accessControl?: AccessControl): SwaggerSpec {
+  const mode = normalizeAccessControlMode(accessControl?.mode);
+  const paths = spec.paths;
+  if (!mode || !paths || typeof paths !== 'object') return spec;
+
+  const exceptions = buildExceptionSet(accessControl);
+  const annotatedPaths: Record<string, unknown> = {};
+
+  Object.entries(paths as Record<string, unknown>).forEach(([path, value]) => {
+    if (!value || typeof value !== 'object') {
+      annotatedPaths[path] = value;
+      return;
+    }
+
+    const pathItem = value as Record<string, unknown>;
+    const annotatedPathItem: Record<string, unknown> = { ...pathItem };
+    HTTP_METHODS.forEach((method) => {
+      const operation = pathItem[method];
+      if (!operation || typeof operation !== 'object') return;
+
+      const isException = exceptions.has(`${method.toUpperCase()}::${path}`);
+      const allowed = mode === 'allow_all' ? !isException : isException;
+      annotatedPathItem[method] = {
+        ...(operation as Record<string, unknown>),
+        tags: [allowed ? ACCESS_CONTROL_ALLOWED_TAG : ACCESS_CONTROL_NOT_ALLOWED_TAG],
+        [ACCESS_CONTROL_ALLOWED_EXTENSION]: allowed,
+      };
+    });
+    annotatedPaths[path] = annotatedPathItem;
+  });
+
+  return {
+    ...spec,
+    // Swagger builds tag groups in this declared order before applying its
+    // optional sorter. Keep the allowed group first even when the first path in
+    // a deny-all specification is denied.
+    tags: [{ name: ACCESS_CONTROL_ALLOWED_TAG }, { name: ACCESS_CONTROL_NOT_ALLOWED_TAG }],
+    paths: annotatedPaths,
+  };
+}
+
+function isSwaggerOperationAllowed(operation: unknown): boolean {
+  try {
+    const immutableOperation = operation as {
+      get?: (key: string) => unknown;
+    };
+    const nestedOperation = (immutableOperation?.get?.('operation') ??
+      immutableOperation?.get?.('op')) as
+      | {
+          get?: (key: string) => unknown;
+        }
+      | undefined;
+    const allowed =
+      immutableOperation?.get?.(ACCESS_CONTROL_ALLOWED_EXTENSION) ??
+      nestedOperation?.get?.(ACCESS_CONTROL_ALLOWED_EXTENSION);
+    return allowed !== false;
+  } catch {
+    return true;
+  }
+}
+
+export default function SwaggerSpecViewer({
+  spec,
+  className,
+  docExpansion = 'list',
+  defaultModelsExpandDepth = -1,
+  displayRequestDuration = true,
+  requestBaseUrl,
+  defaultHeaders,
+  disableNetworkExecution = false,
+  hideInfoSection = false,
+  hideServers = false,
+  hideAuthorizeButton = false,
+  hideTagHeaders = false,
+  hideOperationHeader = false,
+  disableTryOutBtn = false,
+  disableResponseSection = false,
+  enableResourceSearch = false,
+  accessControl,
+}: SwaggerSpecViewerProps) {
+  const intl = useIntl();
+  const [resourceSearchValue, setResourceSearchValue] = useState('');
+  const [selectedResourceMethod, setSelectedResourceMethod] = useState<ResourceMethod>('all');
+  const normalizedRequestBaseUrl = requestBaseUrl?.trim().replace(/\/+$/, '');
+  const normalizedDefaultHeaders = useMemo(
+    () =>
+      Object.entries(defaultHeaders ?? {}).filter(
+        ([key, value]) => Boolean(key?.trim()) && Boolean(value?.trim()),
+      ),
+    [defaultHeaders],
+  );
+  const defaultHeadersObject = useMemo<Record<string, string>>(
+    () => Object.fromEntries(normalizedDefaultHeaders),
+    [normalizedDefaultHeaders],
+  );
+
+  const specWithRequestBaseUrl = useMemo(() => {
+    if (!normalizedRequestBaseUrl) {
+      return spec;
+    }
+    return applyRequestBaseUrlToSpec(spec, normalizedRequestBaseUrl);
+  }, [normalizedRequestBaseUrl, spec]);
+
+  const displayedSpec = useMemo(
+    () =>
+      annotateSpecAccessControl(
+        filterSpecResources(specWithRequestBaseUrl, resourceSearchValue, selectedResourceMethod),
+        accessControl,
+      ),
+    [accessControl, resourceSearchValue, selectedResourceMethod, specWithRequestBaseUrl],
+  );
+  const hasDisplayedResources = useMemo(
+    () => hasResourceOperations(displayedSpec),
+    [displayedSpec],
+  );
+
+  const plugin = useMemo(() => {
+    const wrapSelectors: Record<string, unknown> = {};
+    const wrapComponents: Record<string, unknown> = {};
+    const wrapActions: Record<string, unknown> = {};
+
+    if (accessControl) {
+      wrapComponents.OperationSummary =
+        (Original: React.ComponentType<Record<string, unknown>>) =>
+        (props: Record<string, unknown>) => {
+          const allowed = isSwaggerOperationAllowed(props.operationProps);
+          return (
+            <div
+              className={allowed ? undefined : 'access-control-not-allowed'}
+              aria-disabled={!allowed}
+              title={allowed ? undefined : intl.formatMessage(messages.notAllowedTooltip)}
+            >
+              <Original {...props} />
+            </div>
+          );
+        };
+    }
+
+    if (hideAuthorizeButton) {
+      wrapComponents.authorizeBtn = () => () => null;
+      wrapSelectors.securityDefinitions = () => () => null;
+      wrapSelectors.schemes = () => () => [];
+    }
+
+    if (disableNetworkExecution) {
+      wrapActions.executeRequest =
+        (oriAction: (request: Record<string, unknown>) => unknown) =>
+        (request: Record<string, unknown>) => {
+          const requestWithNoopFetch = {
+            ...request,
+            headers: mergePlainHeaders(request.headers, defaultHeadersObject),
+            fetch: async () => ({
+              ok: true,
+              status: 0,
+              statusText: 'Execution disabled',
+              url: typeof request.url === 'string' ? request.url : '',
+              headers: {},
+              text: '',
+              data: '',
+            }),
+          };
+
+          return oriAction(requestWithNoopFetch);
+        };
+
+      wrapComponents.liveResponse =
+        (
+          _Original: React.ComponentType<Record<string, unknown>>,
+          system: {
+            specSelectors?: {
+              requestFor?: (path: string, method: string) => unknown;
+              mutatedRequestFor?: (path: string, method: string) => unknown;
+            };
+            Im?: { Map?: (value?: unknown) => unknown };
+          },
+        ) =>
+        (props: Record<string, unknown>) => {
+          try {
+            const path = props.path as string | undefined;
+            const method = props.method as string | undefined;
+            const selectors =
+              (props.specSelectors as {
+                requestFor?: (p: string, m: string) => unknown;
+                mutatedRequestFor?: (p: string, m: string) => unknown;
+              }) ?? system.specSelectors;
+
+            const rawRequest =
+              (path && method && selectors?.mutatedRequestFor
+                ? selectors.mutatedRequestFor(path, method)
+                : null) ??
+              (path && method && selectors?.requestFor ? selectors.requestFor(path, method) : null);
+
+            if (
+              !rawRequest ||
+              typeof (rawRequest as { get?: unknown }).get !== 'function' ||
+              typeof (rawRequest as { set?: unknown }).set !== 'function'
+            ) {
+              return null;
+            }
+
+            const immutableRequest = rawRequest as ImmutableRequestLike;
+            const currentHeaders = immutableRequest.get('headers') as {
+              merge?: (value: unknown) => unknown;
+            };
+            const mergedHeaders =
+              currentHeaders && typeof currentHeaders.merge === 'function'
+                ? currentHeaders.merge(defaultHeadersObject)
+                : system.Im && typeof system.Im.Map === 'function'
+                  ? system.Im.Map(defaultHeadersObject)
+                  : defaultHeadersObject;
+            const request = immutableRequest.set('headers', mergedHeaders) as ImmutableRequestLike;
+
+            const getComponent = props.getComponent as
+              | ((
+                  name: string,
+                  noErrorBoundary?: boolean,
+                ) => React.ComponentType<Record<string, unknown>> | null)
+              | undefined;
+            const Curl = getComponent?.('curl', true);
+            const RequestSnippets = getComponent?.('RequestSnippets', true);
+            const requestUrl = String(request.get('url') ?? '');
+            const getConfigs = props.getConfigs as (() => Record<string, unknown>) | undefined;
+            const requestSnippetsEnabled = Boolean(getConfigs?.().requestSnippetsEnabled);
+
+            return (
+              <div>
+                {requestSnippetsEnabled && RequestSnippets ? (
+                  <RequestSnippets request={request as Record<string, unknown>} />
+                ) : Curl ? (
+                  <Curl request={request as Record<string, unknown>} />
+                ) : null}
+                {requestUrl ? (
+                  <div className="request-url">
+                    <h4>
+                      <FormattedMessage {...messages.requestUrl} />
+                    </h4>
+                    <pre className="microlight">{requestUrl}</pre>
+                  </div>
+                ) : null}
+              </div>
+            );
+          } catch {
+            return null;
+          }
+        };
+    }
+
+    const hasWrapSelectors = Object.keys(wrapSelectors).length > 0;
+    const hasWrapActions = Object.keys(wrapActions).length > 0;
+    const hasWrapComponents = hideInfoSection || Object.keys(wrapComponents).length > 0;
+
+    if (!hasWrapSelectors && !hasWrapActions && !hasWrapComponents) {
+      return undefined;
+    }
+
+    const swaggerPlugin: Record<string, unknown> = {};
+
+    if (hasWrapSelectors || hasWrapActions) {
+      swaggerPlugin.statePlugins = {
+        spec: {
+          ...(hasWrapSelectors ? { wrapSelectors } : {}),
+          ...(hasWrapActions ? { wrapActions } : {}),
+        },
+      };
+    }
+
+    if (hasWrapComponents) {
+      swaggerPlugin.wrapComponents = {
+        ...(hideInfoSection ? { info: () => () => null } : {}),
+        ...wrapComponents,
+      };
+    }
+
+    return swaggerPlugin;
+  }, [
+    defaultHeadersObject,
+    disableNetworkExecution,
+    accessControl,
+    hideAuthorizeButton,
+    hideInfoSection,
+    intl,
+  ]);
+
+  const plugins = plugin ? [plugin] : undefined;
+
+  const operationsSorter = useMemo(
+    () =>
+      accessControl
+        ? (first: unknown, second: unknown) =>
+            Number(isSwaggerOperationAllowed(second)) - Number(isSwaggerOperationAllowed(first))
+        : undefined,
+    [accessControl],
+  );
+
+  const tagsSorter = useMemo(
+    () =>
+      accessControl
+        ? (first: string, second: string) => {
+            if (first === ACCESS_CONTROL_ALLOWED_TAG) return -1;
+            if (second === ACCESS_CONTROL_ALLOWED_TAG) return 1;
+            return first.localeCompare(second);
+          }
+        : undefined,
+    [accessControl],
+  );
+
+  const requestInterceptor = useMemo(() => {
+    if (!normalizedRequestBaseUrl && normalizedDefaultHeaders.length === 0) {
+      return undefined;
+    }
+
+    return (request: Record<string, unknown>) => {
+      const nextRequest: Record<string, unknown> = { ...request };
+      const requestUrl = request.url;
+
+      if (normalizedRequestBaseUrl && typeof requestUrl === 'string' && requestUrl.trim()) {
+        nextRequest.url = rewriteRequestUrlWithBase(requestUrl, normalizedRequestBaseUrl);
+      }
+
+      if (normalizedDefaultHeaders.length > 0) {
+        nextRequest.headers = mergePlainHeaders(nextRequest.headers, defaultHeadersObject);
+      }
+
+      return nextRequest;
+    };
+  }, [defaultHeadersObject, normalizedDefaultHeaders.length, normalizedRequestBaseUrl]);
+
+  const swaggerInstanceKey = useMemo(() => {
+    const headersKey = normalizedDefaultHeaders
+      .slice()
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}:${value}`)
+      .join('|');
+
+    return [
+      normalizedRequestBaseUrl ?? '',
+      disableNetworkExecution ? 'no-network' : 'network',
+      headersKey,
+    ].join('::');
+  }, [disableNetworkExecution, normalizedDefaultHeaders, normalizedRequestBaseUrl]);
+
+  const containerClassName = [
+    'swagger-spec-viewer',
+    hideInfoSection ? 'hide-info-section' : '',
+    hideServers ? 'hide-servers' : '',
+    hideAuthorizeButton ? 'hide-authorize' : '',
+    hideTagHeaders ? 'hide-tag-headers' : '',
+    hideOperationHeader ? 'hide-operation-header' : '',
+    disableTryOutBtn ? 'disable-try-out-btn' : '',
+    disableResponseSection ? 'disable-response-section' : '',
+    className ?? '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <Stack className={containerClassName} spacing={2}>
+      {enableResourceSearch ? (
+        <Stack direction="row" spacing={2} sx={{ px: 1 }}>
+          <TextField
+            fullWidth
+            size="small"
+            value={resourceSearchValue}
+            onChange={(event) => setResourceSearchValue(event.target.value)}
+            placeholder={intl.formatMessage(messages.searchPlaceholder)}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={18} />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <TextField
+            select
+            size="small"
+            value={selectedResourceMethod}
+            onChange={(event) => setSelectedResourceMethod(event.target.value as ResourceMethod)}
+            sx={{ width: 180, flexShrink: 0 }}
+          >
+            <MenuItem value="all">
+              <FormattedMessage {...messages.allMethods} />
+            </MenuItem>
+            {HTTP_METHODS.map((method) => (
+              <MenuItem key={method} value={method}>
+                {method.toUpperCase()}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Stack>
+      ) : null}
+      {enableResourceSearch && !hasDisplayedResources ? (
+        <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
+          <FormattedMessage {...messages.noResources} />
+        </Typography>
+      ) : (
+        <SwaggerUIComponent
+          key={swaggerInstanceKey}
+          spec={displayedSpec}
+          docExpansion={docExpansion}
+          defaultModelsExpandDepth={defaultModelsExpandDepth}
+          displayRequestDuration={displayRequestDuration}
+          showMutatedRequest={!disableNetworkExecution}
+          plugins={plugins}
+          requestInterceptor={requestInterceptor}
+          operationsSorter={operationsSorter}
+          tagsSorter={tagsSorter}
+        />
+      )}
+    </Stack>
+  );
+}

@@ -1,0 +1,13 @@
+# Optional static overrides merged with .generated-values.yaml by install-gateway.sh.
+# Replica count and images are set dynamically from env.eks — edit env.eks instead.
+
+gateway:
+  controller:
+    persistence:
+      enabled: true
+      size: 1Gi
+
+  gatewayRuntime:
+    deployment:
+      # Overridden at install time from GATEWAY_RUNTIME_REPLICAS in env.eks
+      replicaCount: 1

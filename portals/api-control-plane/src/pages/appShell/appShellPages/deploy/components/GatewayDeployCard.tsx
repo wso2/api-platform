@@ -28,10 +28,11 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useDeployApi } from '../../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../../components/Notifications';
-import type { Api, Gateway, GatewayDeployment } from '../../../../../types/domain';
+import type { Gateway } from '@/api/resources/gateways';
+import { useDeployApi, type Deployment } from '@/api/resources/restApis/deployments';
+import { useNotifications } from '@/components/Notifications';
 import { GatewayDeployEnvCard } from './GatewayDeployEnvCard';
 import { GatewayDeploymentHistory } from '../GatewayDeploymentHistory';
 import {
@@ -40,11 +41,46 @@ import {
   nextDeploymentName,
 } from '../utils/gatewayDeployUtils';
 
+const messages = defineMessages({
+  active: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.active',
+    defaultMessage: 'Active',
+    description: 'Gateway connection state: the control plane can reach this gateway.',
+  },
+  notActive: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.notActive',
+    defaultMessage: 'Not Active',
+    description: 'Gateway connection state: the control plane cannot reach this gateway.',
+  },
+  currentDeployment: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.currentDeployment',
+    defaultMessage: 'Current Deployment:',
+    description: 'Label before the name of the deployment currently on this gateway.',
+  },
+  deploy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploy',
+    defaultMessage: 'Deploy',
+    description: "Button that deploys the API's working copy to this gateway. Verb.",
+  },
+  deploying: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploying',
+    defaultMessage: 'Deploying...',
+    description: 'Label on the Deploy button while the request is in flight.',
+  },
+  deployStarted: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployStarted',
+    defaultMessage: 'Deployment "{deploymentName}" started.',
+    description:
+      'Toast confirming a deploy was requested. {deploymentName} is server-generated; do not translate it.',
+  },
+});
+
 type GatewayDeployCardProps = {
-  api: Api;
+  /** Handle of the API being deployed. */
+  restApiId: string;
   gateway: Gateway;
   /** All deployments of the API (across gateways). */
-  deployments: GatewayDeployment[];
+  deployments: Deployment[];
   isExpanded: boolean;
   onToggleExpand: (expanded: boolean) => void;
   onRefresh: () => void;
@@ -58,7 +94,7 @@ type GatewayDeployCardProps = {
  * GatewayDeployCard).
  */
 export function GatewayDeployCard({
-  api,
+  restApiId,
   gateway,
   deployments,
   isExpanded,
@@ -66,26 +102,32 @@ export function GatewayDeployCard({
   onRefresh,
   refreshing,
 }: GatewayDeployCardProps) {
+  const intl = useIntl();
   const { notify } = useNotifications();
   const deployMutation = useDeployApi();
   const isActive = gateway.isActive === true;
-  const gatewayDeployments = deploymentsForGateway(deployments, gateway.id);
-  const currentDeployment = currentDeploymentFor(deployments, gateway.id);
+  // `id` is the gateway handle. The spec marks it optional (it is server-assigned
+  // on create), but a gateway that reached this card came from a list response,
+  // so it is always present here.
+  const gatewayId = gateway.id ?? '';
+  const gatewayDeployments = deploymentsForGateway(deployments, gatewayId);
+  const currentDeployment = currentDeploymentFor(deployments, gatewayId);
   const hasDeployments = gatewayDeployments.length > 0;
 
   const handleDeploy = () => {
     const name = nextDeploymentName(gateway, deployments);
     deployMutation.mutate(
-      { api, input: { name, gatewayId: gateway.id, base: 'current' } },
+      { restApiId, body: { name, gatewayId, base: 'current' } },
+      // No `onError`: the query client's `onMutationError` already notifies.
       {
         onSuccess: (deployment) =>
-          notify(`Deployment "${deployment.name}" started.`, 'success'),
-        onError: (error) =>
           notify(
-            error instanceof Error ? error.message : 'Deploy failed',
-            'error'
+            intl.formatMessage(messages.deployStarted, {
+              deploymentName: deployment.name,
+            }),
+            'success',
           ),
-      }
+      },
     );
   };
 
@@ -142,24 +184,16 @@ export function GatewayDeployCard({
             </Typography>
             <Chip
               color={isActive ? 'success' : 'error'}
-              label={isActive ? 'Active' : 'Not Active'}
+              label={intl.formatMessage(isActive ? messages.active : messages.notActive)}
               size="small"
               variant="outlined"
             />
             {currentDeployment && (
               <Box sx={{ alignItems: 'center', display: 'flex', gap: 1 }}>
-                <Typography
-                  color="text.secondary"
-                  component="span"
-                  variant="body2"
-                >
-                  Current Deployment:
+                <Typography color="text.secondary" component="span" variant="body2">
+                  <FormattedMessage {...messages.currentDeployment} />
                 </Typography>
-                <Chip
-                  label={currentDeployment.name}
-                  size="small"
-                  variant="outlined"
-                />
+                <Chip label={currentDeployment.name} size="small" variant="outlined" />
               </Box>
             )}
           </Box>
@@ -177,7 +211,9 @@ export function GatewayDeployCard({
                 }
                 variant="contained"
               >
-                {deployMutation.isPending ? 'Deploying...' : 'Deploy'}
+                <FormattedMessage
+                  {...(deployMutation.isPending ? messages.deploying : messages.deploy)}
+                />
               </Button>
             </Box>
             <ChevronDown
@@ -192,16 +228,13 @@ export function GatewayDeployCard({
       </AccordionSummary>
       <AccordionDetails sx={{ px: 3, py: 2 }}>
         <Grid container spacing={3}>
-          <Grid
-            size={{ md: hasDeployments ? 6 : 12, xs: 12 }}
-            sx={{ minWidth: 240 }}
-          >
+          <Grid size={{ md: hasDeployments ? 6 : 12, xs: 12 }} sx={{ minWidth: 240 }}>
             <GatewayDeployEnvCard
-              api={api}
               currentDeployment={currentDeployment}
               deployments={gatewayDeployments}
               gateway={gateway}
               isGatewayActive={isActive}
+              restApiId={restApiId}
             />
           </Grid>
           {hasDeployments && (
@@ -215,10 +248,10 @@ export function GatewayDeployCard({
               }}
             >
               <GatewayDeploymentHistory
-                api={api}
                 deployments={gatewayDeployments}
                 onRefresh={onRefresh}
                 refreshing={refreshing}
+                restApiId={restApiId}
               />
             </Grid>
           )}

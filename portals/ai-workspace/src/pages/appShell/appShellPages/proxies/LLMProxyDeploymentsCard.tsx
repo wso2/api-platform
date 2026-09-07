@@ -56,6 +56,8 @@ import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 interface GatewayWithDeployment extends Gateway {
   deployment?: DeploymentResponse;
@@ -72,6 +74,8 @@ export default function LLMProxyDeploymentsCard() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
   const isReadOnlyProxy = Boolean(proxy?.readOnly);
+  const { hasPermission } = useAppAuth();
+  const canCreateProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_CREATE);
   const apiKeyLocation = proxy?.security?.apiKey?.in ?? 'header';
   const apiKeyName = proxy?.security?.apiKey?.key ?? 'X-API-Key';
 
@@ -377,12 +381,18 @@ export default function LLMProxyDeploymentsCard() {
                   </Typography>
                 </Box>
                 <DisabledActionTooltip
-                  disabled={isReadOnlyProxy}
-                  title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                  disabled={isReadOnlyProxy || !canCreateProxyApiKey}
+                  title={
+                    isReadOnlyProxy
+                      ? GATEWAY_MANAGED_ARTIFACT_TOOLTIP
+                      : NO_PERMISSION_TOOLTIP
+                  }
                 >
                   <Tooltip
                     title={
-                      !isReadOnlyProxy && deployedGateways.length === 0
+                      !isReadOnlyProxy &&
+                      canCreateProxyApiKey &&
+                      deployedGateways.length === 0
                         ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
                         : ''
                     }
@@ -395,6 +405,7 @@ export default function LLMProxyDeploymentsCard() {
                         onClick={handleGenerateAPIKey}
                         disabled={
                           isReadOnlyProxy ||
+                          !canCreateProxyApiKey ||
                           generatingKey ||
                           deployedGateways.length === 0
                         }

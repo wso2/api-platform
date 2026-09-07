@@ -183,6 +183,23 @@ services:
     networks:
       - it-gateway-runtime-network
 
+  # Mock OAuth2 identity provider for oauth2-generator policy testing
+  mock-oauth2-idp:
+    container_name: it-mock-oauth2-idp
+    image: ghcr.io/wso2/api-platform/mock-oauth2-idp:latest
+    build:
+      context: ../../tests/mock-servers/mock-oauth2-idp
+      dockerfile: Dockerfile
+    environment:
+      - CLIENT_ID=test-client
+      - CLIENT_SECRET=test-secret
+      - RESOURCE_OWNER_USERNAME=resource-owner
+      - RESOURCE_OWNER_PASSWORD=hunter2
+    ports:
+      - "8088:9601"
+    networks:
+      - it-gateway-runtime-network
+
   # Generic mock server for various test scenarios
   mock-openapi:
     container_name: it-mock-openapi

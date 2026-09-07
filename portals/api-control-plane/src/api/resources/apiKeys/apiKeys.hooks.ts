@@ -29,6 +29,7 @@ import {
   type ListMyApiKeysQuery,
   type UpdateApiKeyBody,
   type UpdateApiKeyResponse,
+  type UserApiKeyListResponse,
 } from './apiKeys.endpoints';
 import { apiKeyKeys, apiKeyQueries } from './apiKeys.queries';
 
@@ -53,7 +54,7 @@ export type ApiKeyListFilters = ListMyApiKeysQuery;
  */
 export const useMyApiKeys = (
   filters: ApiKeyListFilters = {},
-  overrides: { orgId?: string } = {}
+  overrides: { orgId?: string } = {},
 ) => {
   const { org } = useApiScope(overrides);
 
@@ -92,14 +93,12 @@ export const useCreateApiKey = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
   const invalidate = useInvalidateApiKeys(orgId);
 
-  return useMutation<
-    CreateApiKeyResponse,
-    ApiError,
-    { restApiId: string; body: CreateApiKeyBody }
-  >({
-    mutationFn: ({ restApiId, body }) => createApiKey(restApiId, body, { orgId }),
-    onSuccess: () => invalidate(),
-  });
+  return useMutation<CreateApiKeyResponse, ApiError, { restApiId: string; body: CreateApiKeyBody }>(
+    {
+      mutationFn: ({ restApiId, body }) => createApiKey(restApiId, body, { orgId }),
+      onSuccess: () => invalidate(),
+    },
+  );
 };
 
 export const useUpdateApiKey = (overrides: { orgId?: string } = {}) => {
@@ -122,12 +121,39 @@ export const useUpdateApiKey = (overrides: { orgId?: string } = {}) => {
 
 /** Revokes a key. Any client using it starts failing immediately. */
 export const useRevokeApiKey = (overrides: { orgId?: string } = {}) => {
-  const { orgId } = useApiScope(overrides);
+  const queryClient = useQueryClient();
+  const { org, orgId } = useApiScope(overrides);
   const invalidate = useInvalidateApiKeys(orgId);
 
   return useMutation<void, ApiError, { restApiId: string; apiKeyId: string }>({
-    mutationFn: ({ restApiId, apiKeyId }) =>
-      revokeApiKey(restApiId, apiKeyId, { orgId }),
-    onSuccess: () => invalidate(),
+    mutationFn: ({ restApiId, apiKeyId }) => revokeApiKey(restApiId, apiKeyId, { orgId }),
+    onSuccess: (_data, { restApiId, apiKeyId }) => {
+      // A revoke is represented as a status change by `/me/api-keys`, so merely
+      // refetching can leave the revoked credential visible. Remove the exact
+      // REST API key from every filtered caller list immediately; invalidation
+      // still follows to refresh pagination and counts from the server.
+      if (org) {
+        queryClient.setQueriesData<UserApiKeyListResponse>(
+          { queryKey: apiKeyKeys.all(org) },
+          (current) => {
+            if (!current) return current;
+            const list = current.list.filter(
+              (key) =>
+                !(
+                  key.artifactType === 'RestApi' &&
+                  key.artifactId === restApiId &&
+                  key.id === apiKeyId
+                ),
+            );
+            return {
+              ...current,
+              count: Math.max(0, current.count - (current.list.length - list.length)),
+              list,
+            };
+          },
+        );
+      }
+      invalidate();
+    },
   });
 };

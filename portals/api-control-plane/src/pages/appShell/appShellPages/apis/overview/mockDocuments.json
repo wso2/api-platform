@@ -1,0 +1,20 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Getting started",
+    "description": "Authenticate, make your first call, and read a response.",
+    "type": "How to"
+  },
+  {
+    "id": "authentication-guide",
+    "title": "Authentication guide",
+    "description": "OAuth2 scopes, API keys, and token lifetimes.",
+    "type": "How to"
+  },
+  {
+    "id": "api-reference",
+    "title": "API reference",
+    "description": "Resource paths, request formats, and response models.",
+    "type": "Reference"
+  }
+]

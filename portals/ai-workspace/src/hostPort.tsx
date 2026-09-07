@@ -32,13 +32,68 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
+import { CSRF_HEADER, CSRF_VALUE } from './config.env';
+import { PLATFORM_API_BASE_URL } from './paths';
+
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
+
+/**
+ * A same-origin, host-authenticated call to platform-api that an extension can
+ * make without knowing this portal's transport. `path` is relative to the API
+ * base (e.g. `/pipelines`). Resolves parsed JSON, or `undefined` for a 204/205
+ * or an empty successful body, and rejects with an `Error` carrying the API's
+ * message on failure. The `undefined` in the resolved type is deliberate: callers
+ * must narrow before dereferencing an empty response.
+ */
+export type ApiFetch = <T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown
+) => Promise<T | undefined>;
 
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
+  apiFetch: ApiFetch;
+};
+
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * The Port's `apiFetch`: a same-origin fetch through the BFF proxy, which
+ * injects the bearer token from the session cookie (the browser never holds a
+ * token) and validates the CSRF header on mutations. The org is resolved by
+ * platform-api from that token, so no org header is sent here.
+ */
+export const extensionApiFetch: ApiFetch = async <T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<T | undefined> => {
+  const verb = method.toUpperCase();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (MUTATING_METHODS.has(verb)) headers[CSRF_HEADER] = CSRF_VALUE;
+  const response = await fetch(`${PLATFORM_API_BASE_URL}${path}`, {
+    method: verb,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const parsed = (await response.json()) as { message?: string } | null;
+      if (parsed?.message) message = parsed.message;
+    } catch {
+      /* non-JSON error body — keep the status-based default */
+    }
+    throw new Error(message);
+  }
+  if (response.status === 204 || response.status === 205) return undefined;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T | undefined;
 };
 
 const PortContext = createContext<AIWorkspaceHostPort | null>(null);

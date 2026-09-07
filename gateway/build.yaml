@@ -62,6 +62,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
   - name: nvidia-nemoguard-content-safety
     pipPackage: github.com/wso2/gateway-controllers/policies/nvidia-nemoguard-content-safety@v0
+  - name: oauth2-generator
+    gomodule: github.com/wso2/gateway-controllers/policies/oauth2-generator@v0
   - name: opaque-token-auth
     gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
   - name: openai-to-anthropic-transformer

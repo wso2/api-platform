@@ -18,10 +18,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { organizations, projects } from '../api/mocks/data';
 import { routes } from '../routes/paths';
 import { makeConsoleScope } from '../test/mockScope';
 import { navigationRegistry } from './navigationRegistry';
+import { anOrganization, aProject } from '@/test/msw/fixtures';
 
 const definitionFor = (id: string) => {
   const item = navigationRegistry.find((entry) => entry.id === id);
@@ -35,8 +35,8 @@ const matcherFor = (id: string) => {
   return match;
 };
 
-const ORG = `/organizations/${organizations[0].id}`;
-const PROJECT = `${ORG}/projects/${projects[0].id}`;
+const ORG = `/organizations/${anOrganization().id}`;
+const PROJECT = `${ORG}/projects/${aProject().id}`;
 const API = `${PROJECT}/apis/api-1`;
 const SELECT = `${ORG}/select-scope`;
 
@@ -45,7 +45,8 @@ const atOrg = () =>
   makeConsoleScope({
     isApiScope: false,
     isProjectScope: false,
-    params: { orgHandle: organizations[0].id },
+    organizations: [anOrganization()],
+    params: { orgHandle: anOrganization().id },
     project: undefined,
   });
 const atProject = () => makeConsoleScope();
@@ -54,8 +55,8 @@ const atApi = () =>
     isApiScope: true,
     params: {
       apiHandler: 'api-1',
-      orgHandle: organizations[0].id,
-      projectHandler: projects[0].id,
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
     },
   });
 
@@ -384,7 +385,7 @@ describe('every page routes.* builds is anchored, not a bare suffix', () => {
   // pinning: it is a consequence of the URL shape, not a decision, and the same
   // overlap makes every API-level item treat `new` as a handle.
   it('leaves the new-api page under Overview', () => {
-    const newApi = routes.newApi(organizations[0].id, projects[0].id);
+    const newApi = routes.newApi(anOrganization().id, aProject().id);
     const owners = navigationRegistry
       .filter((item) => item.match?.(newApi))
       .map((item) => item.id);

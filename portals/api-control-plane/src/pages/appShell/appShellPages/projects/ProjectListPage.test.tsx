@@ -31,12 +31,7 @@ import {
   type Recorder,
 } from '../../../../test/msw';
 import { server } from '../../../../test/server';
-import {
-  renderWithProviders,
-  screen,
-  waitFor,
-  within,
-} from '../../../../test/utils';
+import { renderWithProviders, screen, waitFor, within } from '../../../../test/utils';
 import { makeConsoleScope } from '../../../../test/mockScope';
 import { ProjectListPage } from './ProjectListPage';
 
@@ -52,7 +47,7 @@ const manyProjects = Array.from({ length: 14 }, (_, index) =>
   aProject({
     id: `project-${index + 1}`,
     displayName: `Project ${index + 1}`,
-  })
+  }),
 );
 
 let requests: Recorder;
@@ -66,16 +61,13 @@ function renderPage() {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <Routes>
-        <Route
-          path="/organizations/:orgHandle/projects"
-          element={<ProjectListPage />}
-        />
+        <Route path="/organizations/:orgHandle/projects" element={<ProjectListPage />} />
       </Routes>
     </ApiScopeProvider>,
     {
       route: `/organizations/${ORG}/projects`,
       scope: makeConsoleScope(),
-    }
+    },
   );
 }
 
@@ -97,18 +89,16 @@ describe('ProjectListPage', () => {
     server.use(
       failure('get', '/projects', 500, 'INTERNAL_SERVER_ERROR', {
         message: 'boom',
-      })
+      }),
     );
     renderPage();
-    expect(
-      await screen.findByText(/Unable to load projects\./)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Unable to load projects\./)).toBeInTheDocument();
   });
 
   it('shows the empty state when the organization has no projects', async () => {
     server.use(collection('/projects', []));
     renderPage();
-    expect(await screen.findByText('No projects found')).toBeInTheDocument();
+    expect(await screen.findByText('Create your first Project')).toBeInTheDocument();
   });
 
   it('renders the first page and asks the server for the paging window', async () => {
@@ -128,12 +118,8 @@ describe('ProjectListPage', () => {
     await screen.findByText('Retail APIs');
     await user.type(screen.getByPlaceholderText('Search projects'), 'internal');
 
-    await waitFor(() =>
-      expect(requests.last()?.params.get('query')).toBe('internal')
-    );
-    await waitFor(() =>
-      expect(screen.queryByText('Retail APIs')).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(requests.last()?.params.get('query')).toBe('internal'));
+    await waitFor(() => expect(screen.queryByText('Retail APIs')).not.toBeInTheDocument());
     expect(screen.getByText('Internal Tools')).toBeInTheDocument();
   });
 
@@ -184,7 +170,7 @@ describe('ProjectListPage', () => {
   it('deletes a project after type-to-confirm', async () => {
     server.use(
       collection('/projects', projectFixtures),
-      noContent('delete', '/projects/:projectId', { record: requests })
+      noContent('delete', '/projects/:projectId', { record: requests }),
     );
     const { user } = renderPage();
 

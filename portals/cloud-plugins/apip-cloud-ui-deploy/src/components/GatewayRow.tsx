@@ -17,12 +17,12 @@
  */
 
 import { useState, type FC } from 'react';
-import { Box, Button, Divider, Collapse, IconButton, Typography } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronUp, Pencil, Wrench } from '@wso2/oxygen-ui-icons-react';
+import { Box, Button, Card, CardContent, Collapse, Typography } from '@wso2/oxygen-ui';
+import { ChevronDown, ChevronUp, Eye } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
-import CorsResiliencyDrawer from './CorsResiliencyDrawer';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import DeploymentStatusBar from './DeploymentStatusBar';
-import EnvironmentVariablesDrawer from './EnvironmentVariablesDrawer';
+import EndpointUrlDrawer from './EndpointUrlDrawer';
 import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
 import { relativeTime } from '../utils/time';
@@ -37,136 +37,93 @@ export type GatewayRowProps = {
   onStop: () => void;
 };
 
-const sectionLabelSx = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: 'text.secondary',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.04em',
-};
-
 const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, onStop }) => {
   const [expanded, setExpanded] = useState(false);
-  const [envVarsOpen, setEnvVarsOpen] = useState(false);
-  const [corsOpen, setCorsOpen] = useState(false);
+  const [endpointUrlOpen, setEndpointUrlOpen] = useState(false);
   const tone = gatewayStatusTone(gateway.status);
   const scopeLabel = `${environmentName} · ${gateway.name}`;
 
+  const actionLabel = gateway.status === 'failed' ? 'Re deploy' : 'Stop deployment';
+  const actionDisabled = gateway.status === 'none' || gateway.status === 'deploying';
+  const handleActionClick = gateway.status === 'failed' ? onRetry : onStop;
+
   return (
-    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
-      <Box
-        role="button"
-        tabIndex={0}
-        onClick={() => setExpanded((prev) => !prev)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') setExpanded((prev) => !prev);
-        }}
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          px: 1.5,
-          py: 1.25,
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
-        <StatusDot tone={tone.tone} />
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-            {gateway.name}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap display="block">
-            {gateway.region}
-          </Typography>
+    <Card>
+      <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+        <Box
+          role="button"
+          tabIndex={0}
+          onClick={() => setExpanded((prev) => !prev)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') setExpanded((prev) => !prev);
+          }}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <StatusDot tone={tone.tone} />
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+              {gateway.name}
+            </Typography>
+          </Box>
+          <StatusPill tone={tone} variant="outlined" />
+          <Box sx={{ display: 'flex', color: 'text.secondary' }}>
+            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </Box>
         </Box>
-        <StatusPill tone={tone} />
-        <Box sx={{ display: 'flex', color: 'text.secondary' }}>
-          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </Box>
-      </Box>
 
-      <Collapse in={expanded}>
-        <Box sx={{ px: 1.5, pb: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <DeploymentStatusBar tone={tone} />
+        <Collapse in={expanded}>
+          <Box sx={{ pt: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {/* <DeploymentStatusBar tone={tone} /> */}
 
-          {gateway.status !== 'none' ? (
-            <Box
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                p: 1.25,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Box>
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  ID {gateway.buildId}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Deployed {gateway.deployedAt ? relativeTime(gateway.deployedAt) : '—'}
-                </Typography>
-              </Box>
-              <IconButton size="small" aria-label="Edit build" sx={{ p: 0 }}>
-                <Pencil size={14} />
-              </IconButton>
-            </Box>
-          ) : null}
-
-          <ActionRow label="Environment Variables" icon={<Wrench size={14} />} onClick={() => setEnvVarsOpen(true)} />
-          <Divider sx={{ borderStyle: 'dashed' }} />
-          <ActionRow
-            label="CORS, Rate Limiting and Resiliency"
-            icon={<Wrench size={14} />}
-            onClick={() => setCorsOpen(true)}
-          />
-
-          <Box>
-            <Typography sx={{ ...sectionLabelSx, mb: 0.75 }}>Deployment History</Typography>
-            {gateway.history.length === 0 ? (
-              <Typography variant="caption" color="text.disabled">
-                No deployments yet.
-              </Typography>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                {gateway.history.map((deployment, index) => (
-                  <Box key={`${deployment.buildId}-${index}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <StatusDot tone={deployment.result === 'Success' ? 'success' : 'error'} />
-                    <Typography variant="caption">{deployment.result}</Typography>
-                    <Typography variant="caption" color="text.disabled">
-                      · {deployment.buildId} · {relativeTime(deployment.when)}
+            {gateway.status !== 'none' ? (
+              <Card>
+                <CardContent
+                  sx={{
+                    p: 1.25,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    '&:last-child': { pb: 1.25 },
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      ID {gateway.buildId}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Deployed {gateway.deployedAt ? relativeTime(gateway.deployedAt) : '—'}
                     </Typography>
                   </Box>
-                ))}
-              </Box>
-            )}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            <ActionRow
+              label="Environment Variables"
+              icon={<Eye size={14} />}
+              onClick={() => setEndpointUrlOpen(true)}
+            />
+
+            <Button fullWidth variant="outlined" color="error" disabled={actionDisabled} onClick={handleActionClick}>
+              {actionLabel}
+            </Button>
           </Box>
+        </Collapse>
+      </CardContent>
 
-          {gateway.status === 'failed' ? (
-            <Button fullWidth variant="outlined" color="error" onClick={onRetry}>
-              Retry deployment
-            </Button>
-          ) : null}
-
-          {gateway.status === 'active' ? (
-            <Button fullWidth variant="outlined" color="error" onClick={onStop}>
-              Stop deployment
-            </Button>
-          ) : null}
-        </Box>
-      </Collapse>
-
-      <EnvironmentVariablesDrawer
-        open={envVarsOpen}
-        onClose={() => setEnvVarsOpen(false)}
+      <EndpointUrlDrawer
+        open={endpointUrlOpen}
+        onClose={() => setEndpointUrlOpen(false)}
         scopeLabel={scopeLabel}
-        count={gateway.envVars}
+        endpointUrl={gateway.endpointUrl}
       />
-      <CorsResiliencyDrawer open={corsOpen} onClose={() => setCorsOpen(false)} scopeLabel={scopeLabel} />
-    </Box>
+    </Card>
   );
 };
 

@@ -31,8 +31,7 @@ export type ApiCapabilities = {
   testMode: ApiTestMode;
 };
 
-export const getApiCapabilities = (component?: RestApi
-): ApiCapabilities => {
+export const getApiCapabilities = (component?: RestApi): ApiCapabilities => {
   if (!component) {
     return {
       canBuild: false,
@@ -55,11 +54,8 @@ export const getApiCapabilities = (component?: RestApi
   // made `canTest` false for every API and hid the whole Test menu from the
   // sidebar. Server-supplied tokens get normalised at the boundary, the same way
   // HTTP methods do elsewhere in this repo.
-  const transports = (component.transport ?? []).map((value) =>
-    value.toUpperCase()
-  );
-  const isHttpReachable =
-    transports.includes('HTTP') || transports.includes('HTTPS');
+  const transports = (component.transport ?? []).map((value) => value.toUpperCase());
+  const isHttpReachable = transports.includes('HTTP') || transports.includes('HTTPS');
 
   return {
     canBuild: isService || isWebApp,

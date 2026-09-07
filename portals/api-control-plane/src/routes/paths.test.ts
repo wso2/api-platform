@@ -135,6 +135,7 @@ describe('path builders', () => {
       routes.projectSettings(ORG, PROJECT),
       routes.projectHome(ORG, PROJECT),
       routes.api(ORG, PROJECT, API),
+      routes.apiEdit(ORG, PROJECT, API),
       ...PROJECT_LEVEL.map(([, build]) => build(ORG, PROJECT)),
       ...API_LEVEL.map(([, build]) => build(ORG, PROJECT, API)),
       routes.newApi(ORG, PROJECT),

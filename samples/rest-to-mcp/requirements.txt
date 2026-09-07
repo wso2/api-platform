@@ -1,0 +1,4 @@
+# Upper bounds are deliberate: mcp 2.x renamed the client API that 1.x used,
+# so an unbounded requirement would break this sample on the next major release.
+mcp>=2.1.0,<3
+httpx2>=2.12.0,<3

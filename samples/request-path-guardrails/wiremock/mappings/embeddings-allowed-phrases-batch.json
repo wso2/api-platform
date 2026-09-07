@@ -1,0 +1,22 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "url": "/v1/embeddings",
+    "bodyPatterns": [
+      { "contains": "general_knowledge" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "data": [
+        { "embedding": [1.0, 0.0, 0.0] },
+        { "embedding": [1.0, 0.0, 0.0] },
+        { "embedding": [1.0, 0.0, 0.0] },
+        { "embedding": [1.0, 0.0, 0.0] }
+      ]
+    }
+  }
+}

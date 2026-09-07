@@ -23,24 +23,23 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 
-import type { Environment, PipelineStage } from '../types';
+import type { Environment } from '../types';
 
 export type EnvironmentGatewayPickerProps = {
   open: boolean;
   anchorEl: HTMLElement | null;
   /** All environments the pipeline could target. */
   environments: Environment[];
-  /** Stages already in this pipeline — an environment used by any of them is offered but disabled, not hidden, so the count stays legible. One pipeline may use a given environment at most once. */
-  usedStages: Pick<PipelineStage, 'environmentId'>[];
+  /** Environment names already in this pipeline — offered but disabled, not hidden, so the count stays legible. One pipeline may use a given environment at most once. */
+  usedEnvironments: string[];
   onClose: () => void;
   /**
-   * Called once the user confirms adding an environment — the whole
-   * environment (every gateway it has) becomes the stage; `defaultGatewayId`
-   * is whichever gateway they toggled on. An environment with exactly one
-   * gateway skips straight to this call, that gateway as the default — no
-   * toggle step to show.
+   * Called once the user confirms adding an environment — `defaultGatewayId` is
+   * whichever gateway they toggled on. An environment with exactly one gateway
+   * skips straight to this call with that gateway as the default — no toggle
+   * step to show. The environment is identified by name (the API's identifier).
    */
-  onAdd: (environmentId: string, defaultGatewayId: string) => void;
+  onAdd: (environmentName: string, defaultGatewayId: string) => void;
 };
 
 /**
@@ -53,39 +52,41 @@ const EnvironmentGatewayPicker: FC<EnvironmentGatewayPickerProps> = ({
   open,
   anchorEl,
   environments,
-  usedStages,
+  usedEnvironments,
   onClose,
   onAdd,
 }) => {
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
+  const [selectedEnvironmentName, setSelectedEnvironmentName] = useState<string | null>(null);
   const [defaultGatewayId, setDefaultGatewayId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
-      setSelectedEnvironmentId(null);
+      setSelectedEnvironmentName(null);
       setDefaultGatewayId(null);
     }
   }, [open]);
 
-  const selectedEnvironment = environments.find((env) => env.id === selectedEnvironmentId) ?? null;
+  const selectedEnvironment =
+    environments.find((env) => env.name === selectedEnvironmentName) ?? null;
 
-  const isEnvironmentUsed = (environmentId: string) =>
-    usedStages.some((stage) => stage.environmentId === environmentId);
+  const isEnvironmentUsed = (name: string) => usedEnvironments.includes(name);
 
   const handleSelectEnvironment = (environment: Environment) => {
-    if (environment.gateways.length <= 1) {
-      const [onlyGateway] = environment.gateways;
-      if (onlyGateway) onAdd(environment.id, onlyGateway.id);
+    // An environment with no gateways cannot be added — it is disabled in the
+    // list, but guard here too so a stray call never silently closes the picker.
+    if (environment.gateways.length === 0) return;
+    if (environment.gateways.length === 1) {
+      onAdd(environment.name, environment.gateways[0].id);
       onClose();
       return;
     }
-    setSelectedEnvironmentId(environment.id);
+    setSelectedEnvironmentName(environment.name);
     setDefaultGatewayId(environment.gateways[0]?.id ?? null);
   };
 
   const handleConfirmAdd = () => {
     if (!selectedEnvironment || !defaultGatewayId) return;
-    onAdd(selectedEnvironment.id, defaultGatewayId);
+    onAdd(selectedEnvironment.name, defaultGatewayId);
     onClose();
   };
 
@@ -114,7 +115,7 @@ const EnvironmentGatewayPicker: FC<EnvironmentGatewayPickerProps> = ({
               <IconButton
                 size="small"
                 aria-label="Back to environments"
-                onClick={() => setSelectedEnvironmentId(null)}
+                onClick={() => setSelectedEnvironmentName(null)}
               >
                 <ChevronLeft size={18} />
               </IconButton>
@@ -159,11 +160,19 @@ const EnvironmentGatewayPicker: FC<EnvironmentGatewayPickerProps> = ({
             </Typography>
             <List dense sx={{ py: 0.5 }}>
               {environments.map((environment) => {
-                const disabled = isEnvironmentUsed(environment.id);
+                const used = isEnvironmentUsed(environment.name);
+                const noGateways = environment.gateways.length === 0;
+                const disabled = used || noGateways;
                 return (
                   <Tooltip
-                    key={environment.id}
-                    title={disabled ? 'This environment is already part of the pipeline.' : ''}
+                    key={environment.name}
+                    title={
+                      used
+                        ? 'This environment is already part of the pipeline.'
+                        : noGateways
+                          ? 'This environment has no gateways yet. Add a gateway to it before including it in a pipeline.'
+                          : ''
+                    }
                     placement="right"
                   >
                     <Box component="span" sx={{ display: 'block' }}>
@@ -174,9 +183,11 @@ const EnvironmentGatewayPicker: FC<EnvironmentGatewayPickerProps> = ({
                         <ListItemText
                           primary={environment.name}
                           secondary={
-                            disabled
+                            used
                               ? 'Already added'
-                              : `${environment.gateways.length} gateway${environment.gateways.length === 1 ? '' : 's'}`
+                              : noGateways
+                                ? 'No gateways'
+                                : `${environment.gateways.length} gateway${environment.gateways.length === 1 ? '' : 's'}`
                           }
                         />
                       </ListItemButton>
@@ -184,7 +195,7 @@ const EnvironmentGatewayPicker: FC<EnvironmentGatewayPickerProps> = ({
                   </Tooltip>
                 );
               })}
-              {environments.every((environment) => isEnvironmentUsed(environment.id)) ? (
+              {environments.every((environment) => isEnvironmentUsed(environment.name)) ? (
                 <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
                   All environments have been added.
                 </Typography>

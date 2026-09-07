@@ -37,7 +37,7 @@ const baseApi: RestApi = {
   upstream: {
     main: {
       url: 'https://api.example.com/orders',
-    }
+    },
   },
 };
 
@@ -62,12 +62,8 @@ describe('getApiCapabilities', () => {
   });
 
   it('is not HTTP-reachable when no HTTP transport is offered', () => {
-    expect(getApiCapabilities({ ...baseApi, transport: ['ws'] }).canTest).toBe(
-      false
-    );
-    expect(getApiCapabilities({ ...baseApi, transport: [] }).testMode).toBe(
-      'none'
-    );
+    expect(getApiCapabilities({ ...baseApi, transport: ['ws'] }).canTest).toBe(false);
+    expect(getApiCapabilities({ ...baseApi, transport: [] }).testMode).toBe('none');
   });
 
   it('disables component scoped entries without component data', () => {

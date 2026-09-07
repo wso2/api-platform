@@ -17,37 +17,168 @@
  */
 
 import { useState } from 'react';
-import {
-  alpha,
-  Box,
-  Button,
-  IconButton,
-  Typography,
-  useTheme,
-} from '@wso2/oxygen-ui';
+import { alpha, Box, Button, IconButton, Typography, useTheme } from '@wso2/oxygen-ui';
 import { PackageOpen, SquarePen } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import type { Gateway } from '@/api/resources/gateways';
 import {
-  useRestoreGatewayDeployment,
-  useUndeployGatewayDeployment,
-} from '../../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../../components/Notifications';
-import type { Api, Gateway, GatewayDeployment } from '../../../../../types/domain';
-import { relativeTime } from '../../../../../utils/relativeTime';
+  useRestoreDeployment,
+  useUndeployDeployment,
+  type Deployment,
+} from '@/api/resources/restApis/deployments';
+import { useNotifications } from '@/components/Notifications';
+import { useFormatters } from '@/i18n/useFormatters';
 import { GatewayDeploymentSelector } from './GatewayDeploymentSelector';
 
-const STATUS_REASON_MESSAGES: Record<string, string> = {
-  GATEWAY_PROCESSING_ERROR:
-    'Failed to process deployment. Please check gateway logs.',
-  DEPLOYMENT_TIMEOUT: 'Deployment timed out. Gateway did not respond.',
-};
+/**
+ * Explanations for the `statusReason` codes platform-api returns on a failed
+ * deployment. An unrecognised code falls through to the raw value: it is
+ * backend data, so it passes to the user untranslated rather than guessed at.
+ */
+const statusReasonMessages = defineMessages({
+  GATEWAY_PROCESSING_ERROR: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.reasonGatewayProcessingError',
+    defaultMessage: 'Failed to process deployment. Please check gateway logs.',
+  },
+  DEPLOYMENT_TIMEOUT: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.reasonDeploymentTimeout',
+    defaultMessage: 'Deployment timed out. Gateway did not respond.',
+  },
+});
+
+/**
+ * This card's own status vocabulary, which is deliberately not the deployment
+ * status vocabulary: an offline gateway makes the state unknowable
+ * (`NOT_ACTIVE`), and a reachable one reads as Active/Suspended rather than
+ * Deployed/Undeployed.
+ */
+const statusLabels = defineMessages({
+  NOT_ACTIVE: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusNotActive',
+    defaultMessage: 'Not Active',
+    description: 'The gateway is offline, so the deployment state cannot be determined.',
+  },
+  DEPLOYED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusActive',
+    defaultMessage: 'Active',
+    description: 'The deployment is live on the gateway and serving traffic.',
+  },
+  UNDEPLOYED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusSuspended',
+    defaultMessage: 'Suspended',
+    description: 'The deployment was stopped, but can be redeployed.',
+  },
+  DEPLOYING: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusDeploying',
+    defaultMessage: 'Deploying',
+  },
+  UNDEPLOYING: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusUndeploying',
+    defaultMessage: 'Undeploying',
+  },
+  FAILED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusFailed',
+    defaultMessage: 'Failed',
+  },
+  ARCHIVED: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusArchived',
+    defaultMessage: 'Archived',
+    description: 'The deployment was superseded by a newer one.',
+  },
+});
+
+const messages = defineMessages({
+  notDeployed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.notDeployed',
+    defaultMessage: 'Not yet deployed',
+    description: 'Placeholder shown when this API has never been deployed to this gateway.',
+  },
+  deployedAt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deployedAt',
+    defaultMessage: 'Deployed',
+    description: 'Label before the timestamp while the deployment is live. Past tense.',
+  },
+  lastDeployedAt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.lastDeployedAt',
+    defaultMessage: 'Last deployed',
+    description: 'Label before the timestamp once the deployment is no longer live.',
+  },
+  stop: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stop',
+    defaultMessage: 'Stop',
+    description: 'Button that takes the live deployment out of service. Verb.',
+  },
+  stopping: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stopping',
+    defaultMessage: 'Stopping...',
+    description: 'Label on the Stop button while the request is in flight.',
+  },
+  redeploy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeploy',
+    defaultMessage: 'Redeploy',
+    description: 'Button that returns a stopped or failed deployment to service. Verb.',
+  },
+  redeploying: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeploying',
+    defaultMessage: 'Redeploying...',
+    description: 'Label on the Redeploy button while the request is in flight.',
+  },
+  deploymentStatus: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentStatus',
+    defaultMessage: 'Deployment Status',
+    description: 'Label on the bar summarising the current deployment state.',
+  },
+  deploymentHeading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentHeading',
+    defaultMessage: 'Deployment',
+    description: 'Heading over the box naming which deployment is on the gateway. Noun.',
+  },
+  deploymentId: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentId',
+    defaultMessage: 'ID {shortId}',
+    description:
+      'Shortened deployment identifier. {shortId} is a server-generated id; do not translate it.',
+  },
+  deployedRelative: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deployedRelative',
+    defaultMessage: 'Deployed \u23F1 {relative}',
+    description:
+      'Deployment age, e.g. "Deployed \u23F1 3 hours ago". {relative} is an already-formatted relative time.',
+  },
+  relative: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.relative',
+    defaultMessage: '\u23F1 {relative}',
+    description:
+      'Timestamp next to the Deployed/Last deployed label. {relative} is an already-formatted relative time.',
+  },
+  changeDeploymentLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.changeDeploymentLabel',
+    defaultMessage: 'Change deployment on {gatewayName}',
+    description:
+      'Accessible label for the button opening the restore drawer. {gatewayName} is user-supplied; do not translate it.',
+  },
+  stopStarted: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stopStarted',
+    defaultMessage: 'Stopping "{deploymentName}".',
+    description:
+      'Toast confirming an undeploy was requested. {deploymentName} is user-supplied; do not translate it.',
+  },
+  redeployStarted: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeployStarted',
+    defaultMessage: 'Redeploying "{deploymentName}".',
+    description:
+      'Toast confirming a redeploy was requested. {deploymentName} is user-supplied; do not translate it.',
+  },
+});
 
 type GatewayDeployEnvCardProps = {
-  api: Api;
+  /** Handle of the API these deployments belong to. */
+  restApiId: string;
   gateway: Gateway;
   /** Deployments on this gateway, newest first. */
-  deployments: GatewayDeployment[];
-  currentDeployment?: GatewayDeployment;
+  deployments: Deployment[];
+  currentDeployment?: Deployment;
   isGatewayActive: boolean;
 };
 
@@ -57,23 +188,26 @@ type GatewayDeployEnvCardProps = {
  * GatewayDeployEnvCard).
  */
 export function GatewayDeployEnvCard({
-  api,
+  restApiId,
   gateway,
   deployments,
   currentDeployment,
   isGatewayActive,
 }: GatewayDeployEnvCardProps) {
   const theme = useTheme();
+  const intl = useIntl();
+  // `useFormatters`, not the module-scope `Intl.*` in `utils/relativeTime`:
+  // that one freezes its locale at import, so it never follows a locale switch.
+  const { relativeTime } = useFormatters();
   const { notify } = useNotifications();
-  const undeployMutation = useUndeployGatewayDeployment();
-  const restoreMutation = useRestoreGatewayDeployment();
+  const undeployMutation = useUndeployDeployment();
+  const restoreMutation = useRestoreDeployment();
   const [selectorOpen, setSelectorOpen] = useState(false);
 
   const status = currentDeployment?.status;
   // When the gateway is offline the deployment state is unknowable — show
   // "Not Active" instead (ai-workspace behaviour).
-  const effective =
-    !isGatewayActive && currentDeployment ? 'NOT_ACTIVE' : status;
+  const effective = !isGatewayActive && currentDeployment ? 'NOT_ACTIVE' : status;
   const isDeployed = effective === 'DEPLOYED';
   const isUndeployed = effective === 'UNDEPLOYED';
   const isDeploying = effective === 'DEPLOYING';
@@ -96,38 +230,42 @@ export function GatewayDeployEnvCard({
         }}
       >
         <PackageOpen size={40} strokeWidth={1.25} />
-        <Typography color="text.secondary">Not yet deployed</Typography>
+        <Typography color="text.secondary">
+          <FormattedMessage {...messages.notDeployed} />
+        </Typography>
       </Box>
     );
   }
 
+  // `onError` is omitted throughout: the query client's `onMutationError`
+  // already notifies, so a local handler would only duplicate the toast.
   const handleUndeploy = () => {
     undeployMutation.mutate(
-      { api, deployment: currentDeployment },
+      { restApiId, deploymentId: currentDeployment.deploymentId },
       {
         onSuccess: () =>
-          notify(`Stopping "${currentDeployment.name}".`, 'success'),
-        onError: (error) =>
           notify(
-            error instanceof Error ? error.message : 'Undeploy failed',
-            'error'
+            intl.formatMessage(messages.stopStarted, {
+              deploymentName: currentDeployment.name,
+            }),
+            'success',
           ),
-      }
+      },
     );
   };
 
   const handleRedeploy = () => {
     restoreMutation.mutate(
-      { api, deployment: currentDeployment },
+      { restApiId, deploymentId: currentDeployment.deploymentId },
       {
         onSuccess: () =>
-          notify(`Redeploying "${currentDeployment.name}".`, 'success'),
-        onError: (error) =>
           notify(
-            error instanceof Error ? error.message : 'Redeploy failed',
-            'error'
+            intl.formatMessage(messages.redeployStarted, {
+              deploymentName: currentDeployment.name,
+            }),
+            'success',
           ),
-      }
+      },
     );
   };
 
@@ -154,19 +292,11 @@ export function GatewayDeployEnvCard({
           : isFailed
             ? 'error.main'
             : 'text.secondary';
-  const statusLabel = isNotActive
-    ? 'Not Active'
-    : isDeployed
-      ? 'Active'
-      : isUndeployed
-        ? 'Suspended'
-        : isDeploying
-          ? 'Deploying'
-          : isUndeploying
-            ? 'Undeploying'
-            : isFailed
-              ? 'Failed'
-              : (status ?? '');
+  // A total lookup rather than the ternary chain it replaces: `effective` is
+  // either a DeploymentStatus or NOT_ACTIVE, both of which `statusLabels`
+  // covers, so ARCHIVED now reads "Archived" instead of falling through to the
+  // raw enum value the chain ended on.
+  const statusLabel = effective ? intl.formatMessage(statusLabels[effective]) : '';
 
   return (
     <Box sx={{ p: 1 }}>
@@ -181,10 +311,13 @@ export function GatewayDeployEnvCard({
         {created && (
           <Box sx={{ alignItems: 'center', display: 'flex', gap: 1 }}>
             <Typography sx={{ fontWeight: 500 }} variant="body2">
-              {isDeployed ? 'Deployed' : 'Last deployed'}
+              <FormattedMessage {...(isDeployed ? messages.deployedAt : messages.lastDeployedAt)} />
             </Typography>
             <Typography color="text.secondary" variant="body2">
-              ⏱ {relativeTime(created)}
+              <FormattedMessage
+                {...messages.relative}
+                values={{ relative: relativeTime(created) }}
+              />
             </Typography>
           </Box>
         )}
@@ -196,13 +329,12 @@ export function GatewayDeployEnvCard({
             size="small"
             variant="outlined"
           >
-            {undeployMutation.isPending ? 'Stopping...' : 'Stop'}
+            <FormattedMessage
+              {...(undeployMutation.isPending ? messages.stopping : messages.stop)}
+            />
           </Button>
         )}
-        {(isFailed ||
-          isUndeployed ||
-          isUndeploying ||
-          status === 'ARCHIVED') && (
+        {(isFailed || isUndeployed || isUndeploying || status === 'ARCHIVED') && (
           <Button
             color="primary"
             disabled={!isGatewayActive || busy || isUndeploying}
@@ -210,7 +342,9 @@ export function GatewayDeployEnvCard({
             size="small"
             variant="outlined"
           >
-            {restoreMutation.isPending ? 'Redeploying...' : 'Redeploy'}
+            <FormattedMessage
+              {...(restoreMutation.isPending ? messages.redeploying : messages.redeploy)}
+            />
           </Button>
         )}
       </Box>
@@ -229,12 +363,9 @@ export function GatewayDeployEnvCard({
         }}
       >
         <Typography sx={{ fontWeight: 600 }} variant="body2">
-          Deployment Status
+          <FormattedMessage {...messages.deploymentStatus} />
         </Typography>
-        <Typography
-          sx={{ color: statusColor, fontWeight: 600 }}
-          variant="body2"
-        >
+        <Typography sx={{ color: statusColor, fontWeight: 600 }} variant="body2">
           {statusLabel}
         </Typography>
       </Box>
@@ -242,15 +373,20 @@ export function GatewayDeployEnvCard({
       {isFailed && currentDeployment.statusReason && (
         <Box mb={2} px={2}>
           <Typography color="error.main" variant="caption">
-            {STATUS_REASON_MESSAGES[currentDeployment.statusReason] ??
-              currentDeployment.statusReason}
+            {currentDeployment.statusReason in statusReasonMessages
+              ? intl.formatMessage(
+                  statusReasonMessages[
+                    currentDeployment.statusReason as keyof typeof statusReasonMessages
+                  ],
+                )
+              : currentDeployment.statusReason}
           </Typography>
         </Box>
       )}
 
       {/* Deployment info box */}
       <Typography sx={{ fontWeight: 600, mb: 1 }} variant="subtitle2">
-        Deployment
+        <FormattedMessage {...messages.deploymentHeading} />
       </Typography>
       <Box
         sx={{
@@ -266,16 +402,24 @@ export function GatewayDeployEnvCard({
       >
         <Box>
           <Typography sx={{ fontWeight: 500 }} variant="body2">
-            ID {currentDeployment.id.slice(0, 8)}
+            <FormattedMessage
+              {...messages.deploymentId}
+              values={{ shortId: currentDeployment.deploymentId.slice(0, 8) }}
+            />
           </Typography>
           {created && (
             <Typography color="text.secondary" variant="caption">
-              Deployed ⏱ {relativeTime(created)}
+              <FormattedMessage
+                {...messages.deployedRelative}
+                values={{ relative: relativeTime(created) }}
+              />
             </Typography>
           )}
         </Box>
         <IconButton
-          aria-label={`Change deployment on ${gateway.displayName}`}
+          aria-label={intl.formatMessage(messages.changeDeploymentLabel, {
+            gatewayName: gateway.displayName,
+          })}
           disabled={!isGatewayActive}
           onClick={() => setSelectorOpen(true)}
           size="small"
@@ -285,8 +429,8 @@ export function GatewayDeployEnvCard({
       </Box>
 
       <GatewayDeploymentSelector
-        api={api}
         deployments={deployments}
+        restApiId={restApiId}
         onClose={() => setSelectorOpen(false)}
         open={selectorOpen}
       />

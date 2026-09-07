@@ -17,288 +17,134 @@
  */
 
 import { useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Grid,
-  PageContent,
-  PageTitle,
-  Stack,
-  Tab,
-  Tabs,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { KeyRound } from '@wso2/oxygen-ui-icons-react';
+import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useParams } from 'react-router-dom';
 
-import {
-  useCreateGatewayToken,
-  useGateway,
-} from '../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../components/Notifications';
-import { ErrorState, LoadingState } from '../../../../components/StateViews';
-import { runtimeConfig } from '../../../../config/runtime';
-import { routes } from '../../../../routes/paths';
-import type { Gateway } from '../../../../types/domain';
-import { relativeTime } from '../../../../utils/relativeTime';
-import { CopyableCommand } from './components/CopyableCommand';
+import { useGateway } from '@/api/resources/gateways';
+import { ErrorState, LoadingState } from '@/components/StateViews';
+import { runtimeConfig } from '@/config/runtime';
+import { routes } from '@/routes/paths';
+import { GatewayDetailHeader } from './components/GatewayDetailHeader';
+import { GatewayGetStartedPanel } from './components/GatewayGetStartedPanel';
+import { GatewayPoliciesPanel } from './components/GatewayPoliciesPanel';
+import { GatewaySetupBanner } from './components/GatewaySetupBanner';
+import { isSetupBannerDismissed, dismissSetupBanner } from './gatewaySetupBannerStorage';
 
-const TOKEN_PLACEHOLDER = '<your-gateway-token>';
-const ZIP = 'wso2apip-api-gateway';
+const messages = defineMessages({
+  back: {
+    id: 'gateways.detail.action.back',
+    defaultMessage: 'Back to list',
+    description: 'Returns to the gateway listing from a gateway’s own page.',
+  },
+  errorMessage: {
+    id: 'gateways.detail.error.message',
+    defaultMessage: 'Unable to load this gateway.',
+  },
+  loading: {
+    id: 'gateways.detail.loading',
+    defaultMessage: 'Loading gateway',
+  },
+  notFound: {
+    id: 'gateways.detail.notFound',
+    defaultMessage: 'Gateway not found',
+  },
+  tabConfigurations: {
+    id: 'gateways.detail.tab.configurations',
+    defaultMessage: 'Configurations',
+    description: 'Tab holding the setup walkthrough that brings a gateway online.',
+  },
+  tabPolicies: {
+    id: 'gateways.detail.tab.policies',
+    defaultMessage: 'Policies',
+    description: 'Tab listing the mediation policies installed on a gateway.',
+  },
+});
 
-const downloadCmd = () =>
-  `curl -sLO https://github.com/wso2/api-platform/releases/latest/download/${ZIP}.zip && \\\n  unzip ${ZIP}.zip`;
+/** Which section of the gateway the page is showing. */
+type GatewayTab = 'configurations' | 'policies';
 
-const configureCmd = (host: string, token: string) =>
-  `cat > ${ZIP}/configs/keys.env << 'ENVFILE'\n` +
-  `GATEWAY_CONTROLPLANE_HOST=${host}\n` +
-  `GATEWAY_REGISTRATION_TOKEN=${token}\n` +
-  `ENVFILE`;
-
-const startDockerCmd = () =>
-  `cd ${ZIP} && docker compose --env-file configs/keys.env up`;
-
-const helmCmd = (name: string, host: string, token: string) =>
-  `helm install ${name} oci://ghcr.io/wso2/api-platform/helm-charts/gateway \\\n` +
-  `  --set gateway.controller.controlPlane.host="${host}" \\\n` +
-  `  --set gateway.controller.controlPlane.port=443 \\\n` +
-  `  --set gateway.controller.controlPlane.token.value="${token}"`;
-
-function Step({
-  n,
-  title,
-  children,
-}: {
-  n: number;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Box sx={{ mt: 2 }}>
-      <Typography sx={{ fontWeight: 600, mb: 1 }} variant="body2">
-        {n}. {title}
-      </Typography>
-      {children}
-    </Box>
-  );
-}
-
+/**
+ * One gateway: what it is, and how to bring it online.
+ *
+ * A user arriving here has just provisioned a gateway and
+ * has one job: run the commands.
+ *
+ * Data comes from the polled detail query, so `isActive` flipping when the
+ * gateway finally connects updates the banner and the header on its own.
+ */
 export function GatewayDetailPage() {
   const { orgHandle = '', gatewayId = '' } = useParams();
-  const { notify } = useNotifications();
-  const gatewayQuery = useGateway(orgHandle, gatewayId, { poll: true });
-  const createToken = useCreateGatewayToken(orgHandle, gatewayId);
-  const [token, setToken] = useState<string>();
-  const [tab, setTab] = useState(0);
+  const intl = useIntl();
+  const gatewayQuery = useGateway(gatewayId, { poll: true });
 
-  const host = runtimeConfig.gatewayControlPlaneHost;
-  const tokenValue = token || TOKEN_PLACEHOLDER;
+  // Seeded from storage so a banner closed on a previous visit does not
+  // reappear, then held in state so closing it this time takes effect at once.
+  const [bannerDismissed, setBannerDismissed] = useState(() => isSetupBannerDismissed(gatewayId));
+  const [tab, setTab] = useState<GatewayTab>('configurations');
 
-  if (gatewayQuery.isLoading) return <LoadingState label="Loading gateway" />;
-  if (gatewayQuery.error)
-    return <ErrorState message="Unable to load gateway" />;
-  if (!gatewayQuery.data) return <ErrorState title="Gateway not found" />;
-
-  const gateway: Gateway = gatewayQuery.data;
-  const connected = Boolean(gateway.isActive);
-
-  const generateToken = () => {
-    createToken.mutate(undefined, {
-      onSuccess: (result) => {
-        setToken(result.token);
-        notify(
-          'Registration token generated. Copy it now — it is shown once.',
-          'success'
-        );
-      },
-      onError: (error) =>
-        notify(
-          error instanceof Error ? error.message : 'Failed to generate token',
-          'error'
-        ),
-    });
+  const dismissBanner = () => {
+    dismissSetupBanner(gatewayId);
+    setBannerDismissed(true);
   };
 
+  // `isPending` is used instead of `isLoading` because the query is disabled
+  // until the route's organization resolves; otherwise an empty state would
+  // look like a missing gateway.
+  if (gatewayQuery.isPending) {
+    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  }
+  if (gatewayQuery.error) {
+    return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
+  }
+  if (!gatewayQuery.data) {
+    return <ErrorState title={intl.formatMessage(messages.notFound)} />;
+  }
+
+  const gateway = gatewayQuery.data;
+
   return (
-    <PageContent fullWidth>
+    <>
       <PageTitle>
         <Link to={routes.gateways(orgHandle)}>
-          <PageTitle.BackButton>Back to gateways</PageTitle.BackButton>
+          <PageTitle.BackButton>
+            <FormattedMessage {...messages.back} />
+          </PageTitle.BackButton>
         </Link>
-        <PageTitle.Header>{gateway.displayName}</PageTitle.Header>
-        <PageTitle.SubHeader>{gateway.vhost}</PageTitle.SubHeader>
       </PageTitle>
 
-      {/* Connection status banner */}
-      {connected ? (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          Gateway is connected and active.
-        </Alert>
-      ) : (
-        <Alert
-          icon={<CircularProgress size={18} />}
-          severity="info"
-          sx={{ mb: 3 }}
-        >
-          Waiting for the gateway to connect. Complete the setup steps below,
-          then this page updates automatically once the gateway comes online.
-        </Alert>
-      )}
+      <Stack spacing={3}>
+        {!bannerDismissed && (
+          <GatewaySetupBanner
+            displayName={gateway.displayName || gatewayId}
+            isConnected={Boolean(gateway.isActive)}
+            onDismiss={dismissBanner}
+          />
+        )}
 
-      <Grid container spacing={3}>
-        {/* Setup hub */}
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Card>
-            <CardContent>
-              <Typography sx={{ fontWeight: 700 }} variant="h6">
-                Self-hosted gateway setup
-              </Typography>
-              <Typography
-                color="text.secondary"
-                sx={{ mt: 0.5 }}
-                variant="body2"
-              >
-                Run the gateway on your own infrastructure and connect it to the
-                platform using a registration token.
-              </Typography>
+        <GatewayDetailHeader gateway={gateway} gatewayId={gatewayId} />
 
-              {/* Token */}
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  disabled={createToken.isPending}
-                  onClick={generateToken}
-                  startIcon={<KeyRound size={18} />}
-                  variant="contained"
-                >
-                  {createToken.isPending
-                    ? 'Generating…'
-                    : token
-                      ? 'Regenerate token'
-                      : 'Generate registration token'}
-                </Button>
-                {token && (
-                  <Alert severity="warning" sx={{ mt: 2 }}>
-                    Copy this token now — it is shown only once. Regenerating
-                    creates a new token.
-                    <Box
-                      sx={{
-                        fontFamily: 'monospace',
-                        mt: 1,
-                        overflowWrap: 'anywhere',
-                      }}
-                    >
-                      {token}
-                    </Box>
-                  </Alert>
-                )}
-              </Box>
+        <Box>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs onChange={(_event, next: GatewayTab) => setTab(next)} value={tab}>
+              <Tab label={intl.formatMessage(messages.tabConfigurations)} value="configurations" />
+              <Tab label={intl.formatMessage(messages.tabPolicies)} value="policies" />
+            </Tabs>
+          </Box>
 
-              {/* Install instructions */}
-              <Tabs onChange={(_e, v) => setTab(v)} sx={{ mt: 3 }} value={tab}>
-                <Tab label="Docker" />
-                <Tab label="Kubernetes" />
-              </Tabs>
-
-              {tab === 0 && (
-                <Box>
-                  <Step n={1} title="Download the gateway">
-                    <CopyableCommand code={downloadCmd()} />
-                  </Step>
-                  <Step n={2} title="Configure the registration token">
-                    <CopyableCommand code={configureCmd(host, tokenValue)} />
-                  </Step>
-                  <Step n={3} title="Start the gateway">
-                    <CopyableCommand code={startDockerCmd()} />
-                  </Step>
-                </Box>
-              )}
-
-              {tab === 1 && (
-                <Box>
-                  <Step n={1} title="Install the gateway with Helm">
-                    <CopyableCommand
-                      code={helmCmd(gateway.name, host, tokenValue)}
-                    />
-                  </Step>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Details */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography sx={{ fontWeight: 700, mb: 1 }} variant="h6">
-                Details
-              </Typography>
-              <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
-                <Chip
-                  color={
-                    gateway.mode === 'self-hosted' ? 'primary' : 'secondary'
-                  }
-                  label={
-                    gateway.mode === 'self-hosted'
-                      ? 'Self-hosted'
-                      : 'WSO2-managed'
-                  }
-                  size="small"
-                />
-                <Chip
-                  label={gateway.functionalityType}
-                  size="small"
-                  variant="outlined"
-                />
-                {gateway.version && (
-                  <Chip
-                    label={`v${gateway.version}`}
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-                <Chip
-                  color={connected ? 'success' : 'default'}
-                  label={connected ? 'Connected' : 'Not connected'}
-                  size="small"
-                />
-                {gateway.isCritical && (
-                  <Chip color="warning" label="Critical" size="small" />
-                )}
-              </Stack>
-              <Typography color="text.secondary" variant="body2">
-                Name: {gateway.name}
-              </Typography>
-              <Typography color="text.secondary" variant="body2">
-                Control plane: {host}
-              </Typography>
-              {gateway.description && (
-                <Typography
-                  color="text.secondary"
-                  sx={{ mt: 1 }}
-                  variant="body2"
-                >
-                  {gateway.description}
-                </Typography>
-              )}
-              {gateway.updatedAt && (
-                <Typography
-                  color="text.secondary"
-                  sx={{ display: 'block', mt: 2 }}
-                  variant="caption"
-                >
-                  Updated {relativeTime(gateway.updatedAt)}
-                </Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </PageContent>
+          <Box sx={{ pt: 3 }}>
+            {tab === 'configurations' ? (
+              <GatewayGetStartedPanel
+                controlPlaneHost={runtimeConfig.gatewayControlPlaneHost}
+                gateway={gateway}
+                gatewayId={gatewayId}
+              />
+            ) : (
+              <GatewayPoliciesPanel gatewayId={gatewayId} />
+            )}
+          </Box>
+        </Box>
+      </Stack>
+    </>
   );
 }

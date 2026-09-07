@@ -94,6 +94,23 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 	return t.policyVersionResolver.Resolve(name)
 }
 
+// resolvePolicyVersionOverride errors if an optional caller-requested override
+// doesn't match the one version of name actually loaded in this gateway image.
+func (t *LLMProviderTransformer) resolvePolicyVersionOverride(name string, override *string) (string, error) {
+	resolved, err := t.resolvePolicyVersion(name)
+	if err != nil {
+		return "", err
+	}
+	if override == nil {
+		return resolved, nil
+	}
+	trimmed := strings.TrimSpace(*override)
+	if trimmed == "" || trimmed == resolved {
+		return resolved, nil
+	}
+	return "", fmt.Errorf("policy '%s' version '%s' was requested, but this gateway build only has '%s' loaded", name, trimmed, resolved)
+}
+
 func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	return t.db.GetLLMProviderTemplateByHandle(handle)
 }
@@ -458,28 +475,51 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	upstream := provider.Spec.Upstream
 	var upstreamAuthPolicy *api.Policy
 	if upstream.Auth != nil {
-		switch upstream.Auth.Type {
+		auth := upstream.Auth
+		switch auth.Type {
 		case api.LLMProviderConfigDataUpstreamAuthTypeApiKey:
-			// Add API Key auth policy at API level
-			params, err := GetUpstreamAuthApikeyPolicyParams(*upstream.Auth.Header, *upstream.Auth.Value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
-			}
-			policyVersion, err := t.resolvePolicyVersion(constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME)
+			pol, err := buildUpstreamAuthPolicy(string(auth.Type), "upstream.auth",
+				auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+				constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
+				func() (map[string]interface{}, error) {
+					if auth.Header == nil || *auth.Header == "" {
+						return nil, fmt.Errorf("upstream.auth.header is required")
+					}
+					if auth.Value == nil || *auth.Value == "" {
+						return nil, fmt.Errorf("upstream.auth.value is required")
+					}
+					return GetUpstreamAuthApikeyPolicyParams(*auth.Header, *auth.Value)
+				},
+				t.resolvePolicyVersionOverride,
+			)
 			if err != nil {
 				return nil, err
 			}
-			mh := api.Policy{
-				Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
-				Version: policyVersion, Params: &params}
-			upstreamAuthPolicy = &mh
-		case api.LLMProviderConfigDataUpstreamAuthTypeOther,
-			api.LLMProviderConfigDataUpstreamAuthTypeNone:
-			// "other": auth handled entirely by user-attached policies.
-			// "none": no upstream authentication. In both cases the gateway
-			// attaches no auth policy of its own.
+			upstreamAuthPolicy = pol
+		case api.LLMProviderConfigDataUpstreamAuthTypeOauth2:
+			// No typed-field fallback for oauth2 - policyParams is always required.
+			pol, err := buildUpstreamAuthPolicy(string(auth.Type), "upstream.auth",
+				auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+				constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME, nil, t.resolvePolicyVersionOverride)
+			if err != nil {
+				return nil, err
+			}
+			upstreamAuthPolicy = pol
+		case api.LLMProviderConfigDataUpstreamAuthTypeOther:
+			// No default policy name (policyName is required) and no typed-field
+			// fallback (policyParams is always required).
+			pol, err := buildUpstreamAuthPolicy(string(auth.Type), "upstream.auth",
+				auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+				"", nil, t.resolvePolicyVersionOverride)
+			if err != nil {
+				return nil, err
+			}
+			upstreamAuthPolicy = pol
+		case api.LLMProviderConfigDataUpstreamAuthTypeNone:
+			// No auth policy attached; auth (if any) is handled by user-attached
+			// policies elsewhere in the chain.
 		default:
-			return nil, fmt.Errorf("unsupported upstream auth type: %s", upstream.Auth.Type)
+			return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 		}
 	}
 
@@ -821,41 +861,49 @@ func apiKeyAuthValuePrefix(globalPolicies *[]api.Policy) string {
 	return ""
 }
 
+// proxyUpstreamAuthPolicy builds the api.Policy for an LlmProxy
+// provider/additionalProviders auth config. valuePrefix is the provider's own
+// api-key-auth value prefix, applied the same way to the loopback credential.
 func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAuth, valuePrefix, field string) (*api.Policy, error) {
 	if auth == nil {
 		return nil, nil
 	}
 	switch auth.Type {
 	case api.LLMUpstreamAuthTypeApiKey:
-		if auth.Header == nil || *auth.Header == "" {
-			return nil, fmt.Errorf("%s.header is required", field)
-		}
-		if auth.Value == nil || *auth.Value == "" {
-			return nil, fmt.Errorf("%s.value is required", field)
-		}
-		// The loopback hop re-enters the provider's own api-key-auth. When that policy
-		// declares a valuePrefix (e.g. "Bearer"), the injected credential must be prefixed
-		// the same way — a single space separator matches how the provider strips it.
-		value := *auth.Value
-		if valuePrefix != "" {
-			value = valuePrefix + " " + value
-		}
-		params, err := GetUpstreamAuthApikeyPolicyParams(*auth.Header, value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
-		}
-		policyVersion, err := t.resolvePolicyVersion(constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME)
-		if err != nil {
-			return nil, err
-		}
-		return &api.Policy{
-			Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
-			Version: policyVersion,
-			Params:  &params,
-		}, nil
-	case api.LLMUpstreamAuthTypeOther, api.LLMUpstreamAuthTypeNone:
-		// "other": auth handled entirely by user-attached policies.
-		// "none": no upstream authentication. No auth policy is attached.
+		return buildUpstreamAuthPolicy(string(auth.Type), field,
+			auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+			constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
+			func() (map[string]interface{}, error) {
+				if auth.Header == nil || *auth.Header == "" {
+					return nil, fmt.Errorf("%s.header is required", field)
+				}
+				if auth.Value == nil || *auth.Value == "" {
+					return nil, fmt.Errorf("%s.value is required", field)
+				}
+				// Loopback re-enters the provider's own api-key-auth, so match
+				// its valuePrefix stripping.
+				value := *auth.Value
+				if valuePrefix != "" {
+					value = valuePrefix + " " + value
+				}
+				return GetUpstreamAuthApikeyPolicyParams(*auth.Header, value)
+			},
+			t.resolvePolicyVersionOverride,
+		)
+	case api.LLMUpstreamAuthTypeOauth2:
+		// No typed-field fallback for oauth2 - policyParams is always required.
+		return buildUpstreamAuthPolicy(string(auth.Type), field,
+			auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+			constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME, nil, t.resolvePolicyVersionOverride)
+	case api.LLMUpstreamAuthTypeOther:
+		// No default policy name (policyName is required) and no typed-field
+		// fallback (policyParams is always required).
+		return buildUpstreamAuthPolicy(string(auth.Type), field,
+			auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+			"", nil, t.resolvePolicyVersionOverride)
+	case api.LLMUpstreamAuthTypeNone:
+		// No auth policy attached; auth (if any) is handled by user-attached
+		// policies elsewhere.
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)

@@ -1,0 +1,217 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Card,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  PageContent,
+  PageTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { Clock3, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import type { NotifySeverity } from './hostPort';
+import type { Environment, EnvironmentPort } from './types';
+
+export type EnvironmentsListProps = {
+  port: EnvironmentPort;
+  readOnly: boolean;
+  onCreateClick: () => void;
+  notify?: (message: string, severity?: NotifySeverity) => void;
+};
+
+function relativeTime(value: string): string {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 365) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const years = Math.floor(days / 365);
+  return `${years} year${years === 1 ? '' : 's'} ago`;
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateClick, notify }) => {
+  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped on every refetch so a slower, superseded request's completion
+  // (e.g. the initial load racing a Retry click) can recognize it's stale
+  // and skip applying its result instead of clobbering a newer one.
+  const requestIdRef = useRef(0);
+
+  const refetch = useCallback(() => {
+    const requestId = ++requestIdRef.current;
+    setLoadError(null);
+    void port.list().then(
+      (result) => {
+        if (requestIdRef.current !== requestId) return; // superseded by a later refetch
+        setEnvironments(result);
+      },
+      (err: unknown) => {
+        if (requestIdRef.current !== requestId) return; // superseded by a later refetch
+        // Deliberately leaves `environments` at its last-known value rather
+        // than clearing it — a failed refetch shouldn't blank out a list the
+        // user was already looking at.
+        const message = errorMessage(err, 'Failed to load environments.');
+        setLoadError(message);
+        notify?.(message, 'error');
+      }
+    );
+  }, [port, notify]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  const rows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return query ? environments.filter((environment) => environment.name.toLowerCase().includes(query)) : environments;
+  }, [environments, searchQuery]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await port.remove(deleteTarget.id);
+      refetch();
+      notify?.(`Environment "${deleteTarget.name}" deleted.`, 'success');
+    } catch (err) {
+      notify?.(errorMessage(err, `Failed to delete environment "${deleteTarget.name}".`), 'error');
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
+
+  return (
+    <PageContent fullWidth>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
+        <PageTitle>
+          <PageTitle.Header>Environments</PageTitle.Header>
+          <PageTitle.SubHeader>Manage the deployment environments available across your organization.</PageTitle.SubHeader>
+        </PageTitle>
+        {!readOnly ? <Button variant="contained" startIcon={<Plus size={20} />} onClick={onCreateClick}>Create</Button> : null}
+      </Box>
+
+      {readOnly ? <Alert severity="info" sx={{ mb: 3 }}>Environments can be managed only at Organization level.</Alert> : null}
+
+      {loadError ? (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={<Button color="inherit" size="small" onClick={refetch}>Retry</Button>}
+        >
+          {loadError}
+        </Alert>
+      ) : null}
+
+      <TextField
+        fullWidth
+        placeholder="Search Environments..."
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+        sx={{ mb: 2 }}
+        slotProps={{
+          input: {
+            startAdornment: <InputAdornment position="start"><Search size={20} /></InputAdornment>,
+          },
+        }}
+      />
+
+      <Card>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                {readOnly ? <TableCell>Data Plane</TableCell> : null}
+                <TableCell>Type</TableCell>
+                <TableCell>Created</TableCell>
+                {!readOnly ? <TableCell align="right">Actions</TableCell> : null}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow><TableCell colSpan={4}><Typography variant="body2" color="text.secondary">No environments found.</Typography></TableCell></TableRow>
+              ) : rows.map((environment) => (
+                <TableRow key={environment.id}>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.light', color: 'primary.contrastText', fontSize: 16 }}>
+                        {environment.name.trim().slice(0, 2).toUpperCase()}
+                      </Avatar>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>{environment.name}</Typography>
+                    </Box>
+                  </TableCell>
+                  {readOnly ? <TableCell>Choreo Cloud US Dataplane</TableCell> : null}
+                  <TableCell>{environment.critical ? 'Critical Environment' : 'Non-Critical Environment'}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, color: 'text.secondary' }}>
+                      <Clock3 size={16} /><Typography variant="body2">{relativeTime(environment.createdAt)}</Typography>
+                    </Box>
+                  </TableCell>
+                  {!readOnly ? (
+                    <TableCell align="right">
+                      <IconButton size="small" color="error" aria-label={`Delete ${environment.name}`} onClick={() => setDeleteTarget(environment)}>
+                        <Trash2 size={16} />
+                      </IconButton>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+
+      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
+        <DialogTitle>Delete Environment</DialogTitle>
+        <DialogContent><DialogContentText>Are you sure you want to delete {deleteTarget?.name}?</DialogContentText></DialogContent>
+        <DialogActions>
+          <Button variant="outlined" color="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button color="error" onClick={handleDelete}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+    </PageContent>
+  );
+};
+
+export default EnvironmentsList;

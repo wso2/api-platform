@@ -62,10 +62,34 @@ const SIDEBAR_SLOT_PREFIX = 'sidebar.';
 export const settingsTabSlot = (level: NavigationLevel): string =>
   `settings.${level}.tabs`;
 
+/**
+ * Slot for overriding the built-in Gateways page (list + create/edit) without
+ * changing anything under `pages/appShell/appShellPages/gateways`. Consumed
+ * directly by the `gateways/*` route wrapper in `AppRoutes` (via `useSlot`) —
+ * not by the sidebar or Settings-tab filters, which only match `sidebar.*` /
+ * `settings.*.tabs`. A `page.*` entry therefore rides the same
+ * `ApiControlPlaneExtension` shape with no new nav plumbing; only its `render`
+ * is used, and its `routePath`/`level` are inert.
+ */
+export const PAGE_GATEWAYS_SLOT = 'page.gateways';
+
 /** Whether this entry is a top-level sidebar item rather than a nested one. */
 export const isSidebarExtension = (
   extension: ApiControlPlaneExtension
 ): boolean => extension.slot.startsWith(SIDEBAR_SLOT_PREFIX);
+
+/** Prefix for a slot that overrides a built-in page (e.g. `page.gateways`). */
+const PAGE_SLOT_PREFIX = 'page.';
+
+/**
+ * Whether this entry overrides a built-in page rather than adding a sidebar or
+ * Settings-tab item. Consumed by the built-in route wrapper (via `useSlot`) to
+ * render in place of the native page; the nav pipeline also uses it to let an
+ * override reposition the built-in item it replaces (its `group`/`order`),
+ * without changing the item for hosts that register no override.
+ */
+export const isPageOverride = (extension: ApiControlPlaneExtension): boolean =>
+  extension.slot.startsWith(PAGE_SLOT_PREFIX);
 
 /**
  * Entries for `settingsTabSlot(level)`, sorted by `order`.

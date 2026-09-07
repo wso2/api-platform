@@ -38,6 +38,30 @@ func stringPtr(s string) *string {
 	return &s
 }
 
+// apiKeyUpstreamAuth builds an api-key-type upstream auth fixture. Its anonymous
+// struct type must match LLMProviderConfigData_Upstream.Auth's field order/tags exactly.
+func apiKeyUpstreamAuth(header, value string) *struct {
+	Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+	PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+	PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+	PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+	Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+	Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+} {
+	return &struct {
+		Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+		PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+		PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+		PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+		Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+		Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+	}{
+		Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
+		Header: stringPtr(header),
+		Value:  stringPtr(value),
+	}
+}
+
 // loadDummyConfig creates a dummy router configuration
 func loadDummyConfig() config.RouterConfig {
 	return config.RouterConfig{
@@ -189,15 +213,7 @@ func TestTransform_FullProvider(t *testing.T) {
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("Authorization"),
-					Value:  stringPtr("Bearer sk-test123"),
-				},
+				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test123"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode: api.AllowAll,
@@ -476,15 +492,7 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("X-API-Key"),
-					Value:  stringPtr("secret-key-123"),
-				},
+				Auth: apiKeyUpstreamAuth("X-API-Key", "secret-key-123"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode: api.AllowAll,
@@ -523,15 +531,23 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 	}
 }
 
-// TestTransform_OtherAndNoneAuth verifies that "other" and "none" upstream auth
-// types transform successfully but attach no upstream auth policy - for "other"
-// authentication is handled by user-attached policies, for "none" there is none.
+// TestTransform_OtherAndNoneAuth verifies "other" and "none" upstream auth
+// transform successfully but attach no *built-in* auth policy.
 func TestTransform_OtherAndNoneAuth(t *testing.T) {
-	for _, authType := range []api.LLMProviderConfigDataUpstreamAuthType{
-		api.LLMProviderConfigDataUpstreamAuthTypeOther,
-		api.LLMProviderConfigDataUpstreamAuthTypeNone,
-	} {
-		t.Run(string(authType), func(t *testing.T) {
+	tests := []struct {
+		authType     api.LLMProviderConfigDataUpstreamAuthType
+		policyName   *string
+		policyParams *map[string]interface{}
+	}{
+		{
+			authType:     api.LLMProviderConfigDataUpstreamAuthTypeOther,
+			policyName:   stringPtr(testCustomAuthPolicyName),
+			policyParams: &map[string]interface{}{"foo": "bar"},
+		},
+		{authType: api.LLMProviderConfigDataUpstreamAuthTypeNone},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.authType), func(t *testing.T) {
 			transformer, _ := setupTestTransformer(t)
 
 			provider := &api.LLMProviderConfiguration{
@@ -545,11 +561,16 @@ func TestTransform_OtherAndNoneAuth(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 						Auth: &struct {
-							Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-							Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-							Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+							Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+							PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+							PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+							PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+							Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+							Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 						}{
-							Type: authType,
+							Type:         tc.authType,
+							PolicyName:   tc.policyName,
+							PolicyParams: tc.policyParams,
 						},
 					},
 					AccessControl: api.LLMAccessControl{
@@ -562,14 +583,15 @@ func TestTransform_OtherAndNoneAuth(t *testing.T) {
 			result, err := transformer.Transform(provider, output)
 			require.NoError(t, err)
 
-			// No upstream auth policy should be attached to any operation.
+			// No built-in upstream auth (api-key/set-headers) policy should be
+			// attached to any operation.
 			for _, op := range result.Spec.Operations {
 				if op.Policies == nil {
 					continue
 				}
 				for _, pol := range *op.Policies {
 					assert.NotEqual(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, pol.Name,
-						"auth type %q should not attach an upstream auth policy", authType)
+						"auth type %q should not attach the built-in upstream auth policy", tc.authType)
 				}
 			}
 		})
@@ -590,9 +612,12 @@ func TestTransform_UnsupportedAuthType(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+					Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 				}{
 					Type:   "bearer", // Unsupported type
 					Header: stringPtr("Authorization"),
@@ -1714,15 +1739,7 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("Authorization"),
-					Value:  stringPtr("Bearer sk-test"),
-				},
+				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.AllowAll,
@@ -2258,15 +2275,7 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_AllowAll(t *testing.T) {
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("Authorization"),
-					Value:  stringPtr("Bearer sk-test"),
-				},
+				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode: api.AllowAll,
@@ -2347,15 +2356,7 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_DenyAll(t *testing.T) {
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("X-API-Key"),
-					Value:  stringPtr("secret123"),
-				},
+				Auth: apiKeyUpstreamAuth("X-API-Key", "secret123"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.DenyAll,
@@ -3505,15 +3506,7 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_AllowAll(t *testing.T)
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("Authorization"),
-					Value:  stringPtr("Bearer secret-token"),
-				},
+				Auth: apiKeyUpstreamAuth("Authorization", "Bearer secret-token"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.AllowAll,
@@ -3635,15 +3628,7 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_DenyAll(t *testing.T) 
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("X-API-Key"),
-					Value:  stringPtr("secret-key"),
-				},
+				Auth: apiKeyUpstreamAuth("X-API-Key", "secret-key"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.DenyAll,
@@ -3972,15 +3957,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_AllowAll
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("Authorization"),
-					Value:  stringPtr("Bearer token"),
-				},
+				Auth: apiKeyUpstreamAuth("Authorization", "Bearer token"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.AllowAll,
@@ -4202,15 +4179,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_DenyAll(
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("X-API-Key"),
-					Value:  stringPtr("secret"),
-				},
+				Auth: apiKeyUpstreamAuth("X-API-Key", "secret"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.DenyAll,
@@ -5424,15 +5393,7 @@ func TestTransform_ComplexCombined_MaximumComplexity_AllowAll(t *testing.T) {
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("Authorization"),
-					Value:  stringPtr("Bearer sk-test123"),
-				},
+				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test123"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.AllowAll,
@@ -5733,15 +5694,7 @@ func TestTransform_ComplexCombined_MaximumComplexity_DenyAll(t *testing.T) {
 			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
-				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
-				}{
-					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
-					Header: stringPtr("Authorization"),
-					Value:  stringPtr("Bearer sk-test123"),
-				},
+				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test123"),
 			},
 			AccessControl: api.LLMAccessControl{
 				Mode:       api.DenyAll,

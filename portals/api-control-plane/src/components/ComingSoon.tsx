@@ -107,10 +107,7 @@ export function ComingSoon({ action, detail, feature }: ComingSoonProps) {
       <Stack alignItems="center" spacing={1} sx={{ maxWidth: 520 }}>
         <BarricadeIllustration />
         <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h4">
-          <FormattedMessage
-            id="components.comingSoon.title"
-            defaultMessage="Coming Soon"
-          />
+          <FormattedMessage id="components.comingSoon.title" defaultMessage="Coming Soon" />
         </Typography>
         <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
           <FormattedMessage
@@ -125,12 +122,7 @@ export function ComingSoon({ action, detail, feature }: ComingSoonProps) {
           </Typography>
         )}
         {action && (
-          <Button
-            component={Link}
-            sx={{ mt: 2 }}
-            to={action.to}
-            variant="contained"
-          >
+          <Button component={Link} sx={{ mt: 2 }} to={action.to} variant="contained">
             {action.label}
           </Button>
         )}

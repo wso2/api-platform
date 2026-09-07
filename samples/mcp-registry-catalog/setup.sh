@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# One-time provisioning + startup for the MCP Registry Catalog sample:
+# Platform API (Management API), API Portal (MCP hub + Registry API), AI
+# Gateway, and the two sample MCP servers. See README.md for the full flow.
+#
+# Usage: ./setup.sh [--force]
+#   --force   regenerate every certificate, key, and admin credential
+#             (existing ones are kept by default -- safe to re-run).
+#
+# ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
+# prompt and pin known credentials (used by CI).
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+source "$SCRIPT_DIR/scripts/lib.sh"
+
+FORCE=false
+[[ "${1:-}" == "--force" ]] && FORCE=true
+
+log_header "MCP Registry Catalog -- Setup"
+
+require_cmd docker
+require_cmd openssl
+require_cmd curl
+require_cmd jq
+
+CERTS_DIR="$SCRIPT_DIR/resources/certificates"
+KEYS_DIR="$SCRIPT_DIR/resources/keys"
+GW_CERTS_DIR="$SCRIPT_DIR/resources/gateway-certificates"
+GW_LISTENER_DIR="$SCRIPT_DIR/resources/gateway-listener-certs"
+GW_AESGCM_DIR="$SCRIPT_DIR/resources/gateway-aesgcm-keys"
+ENV_FILE="$SCRIPT_DIR/.env"
+CONTAINER_ENV_FILE="$SCRIPT_DIR/api-platform.env"
+
+mkdir -p "$CERTS_DIR" "$KEYS_DIR" "$GW_CERTS_DIR" "$GW_LISTENER_DIR" "$GW_AESGCM_DIR"
+
+log_info "Provisioning shared TLS certificate for Platform API + API Portal..."
+if [[ "$FORCE" == false && -f "$CERTS_DIR/cert.pem" && -f "$CERTS_DIR/key.pem" ]]; then
+  log_info "  already exists, leaving as-is"
+else
+  openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+    -keyout "$CERTS_DIR/key.pem" -out "$CERTS_DIR/cert.pem" \
+    -subj "/O=WSO2 API Platform/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,DNS:platform-api,DNS:api-portal,DNS:host.docker.internal,IP:127.0.0.1" \
+    >/dev/null 2>&1
+  log_ok "  generated at $CERTS_DIR"
+fi
+
+log_info "Provisioning TLS listener certificate for the AI Gateway..."
+if [[ "$FORCE" == false && -f "$GW_LISTENER_DIR/default-listener.crt" ]]; then
+  log_info "  already exists, leaving as-is"
+else
+  openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+    -keyout "$GW_LISTENER_DIR/default-listener.key" -out "$GW_LISTENER_DIR/default-listener.crt" \
+    -subj "/O=WSO2 API Platform/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,DNS:gateway-runtime,IP:127.0.0.1" \
+    >/dev/null 2>&1
+  log_ok "  generated at $GW_LISTENER_DIR"
+fi
+
+log_info "Provisioning Platform API at-rest encryption key..."
+if [[ "$FORCE" == false && -f "$KEYS_DIR/encryption.key" ]]; then
+  log_info "  already exists, leaving as-is"
+else
+  openssl rand -hex 32 > "$KEYS_DIR/encryption.key"
+  log_ok "  generated at $KEYS_DIR/encryption.key"
+fi
+
+log_info "Provisioning Platform API JWT signing keypair (RS256)..."
+if [[ "$FORCE" == false && -f "$KEYS_DIR/jwt_private.pem" && -f "$KEYS_DIR/jwt_public.pem" ]]; then
+  log_info "  already exists, leaving as-is"
+else
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$KEYS_DIR/jwt_private.pem" 2>/dev/null
+  openssl rsa -in "$KEYS_DIR/jwt_private.pem" -pubout -out "$KEYS_DIR/jwt_public.pem" 2>/dev/null
+  log_ok "  generated at $KEYS_DIR"
+fi
+
+log_info "Provisioning API Portal encryption key + session secret..."
+if [[ "$FORCE" == false && -f "$KEYS_DIR/api-portal-encryption.key" ]]; then
+  log_info "  encryption key already exists, leaving as-is"
+else
+  openssl rand -hex 32 > "$KEYS_DIR/api-portal-encryption.key"
+  log_ok "  generated at $KEYS_DIR/api-portal-encryption.key"
+fi
+if [[ "$FORCE" == false && -f "$KEYS_DIR/api-portal-session-secret" ]]; then
+  log_info "  session secret already exists, leaving as-is"
+else
+  openssl rand -hex 32 > "$KEYS_DIR/api-portal-session-secret"
+  log_ok "  generated at $KEYS_DIR/api-portal-session-secret"
+fi
+
+log_info "Provisioning AI Gateway at-rest encryption key..."
+if [[ "$FORCE" == false && -f "$GW_AESGCM_DIR/default-aesgcm256-v1.bin" ]]; then
+  log_info "  already exists, leaving as-is"
+else
+  openssl rand 32 > "$GW_AESGCM_DIR/default-aesgcm256-v1.bin"
+  log_ok "  generated at $GW_AESGCM_DIR/default-aesgcm256-v1.bin"
+fi
+
+log_info "Provisioning admin credentials..."
+if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
+  log_info "  $ENV_FILE already exists, leaving credentials as-is"
+else
+  if [[ -z "${ADMIN_USERNAME:-}" && -t 0 ]]; then
+    read -r -p "Admin username [press Enter to use 'admin']: " ADMIN_USERNAME
+  fi
+  ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+
+  if [[ -z "${ADMIN_PASSWORD:-}" && -t 0 ]]; then
+    read -r -s -p "Admin password [press Enter to generate one]: " ADMIN_PASSWORD
+    echo
+  fi
+  if [[ -z "${ADMIN_PASSWORD:-}" ]]; then
+    ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-20)"
+  fi
+
+  ADMIN_USERNAME_QUOTED="$(printf '%q' "$ADMIN_USERNAME")"
+  ADMIN_PASSWORD_QUOTED="$(printf '%q' "$ADMIN_PASSWORD")"
+  (
+    umask 077
+    cat > "$ENV_FILE" <<EOF
+# Generated by setup.sh. Plaintext admin credentials used by publish.sh /
+# discover.sh to log in to the Platform API. Not passed to any container --
+# see api-platform.env for that (bcrypt hash only).
+ADMIN_USERNAME=${ADMIN_USERNAME_QUOTED}
+ADMIN_PASSWORD=${ADMIN_PASSWORD_QUOTED}
+EOF
+  )
+  log_ok "  admin credentials written to $ENV_FILE"
+  echo
+  echo "  ================================================================"
+  echo "   ADMIN CREDENTIALS"
+  echo "     Username:  ${ADMIN_USERNAME}"
+  echo "     Password:  ${ADMIN_PASSWORD}"
+  echo "  ================================================================"
+  echo
+fi
+
+# shellcheck source=.env
+source "$ENV_FILE"
+
+log_info "Writing container secrets (api-platform.env)..."
+CP_HASH="$(bcrypt_hash "$ADMIN_USERNAME" "$ADMIN_PASSWORD")"
+GW_HASH="$(bcrypt_hash "$ADMIN_USERNAME" "$ADMIN_PASSWORD")"
+cat > "$CONTAINER_ENV_FILE" <<EOF
+# Generated by setup.sh -- passed into containers via docker-compose's
+# env_file:. Do not commit.
+APIP_CP_ADMIN_USERNAME=${ADMIN_USERNAME}
+APIP_CP_ADMIN_PASSWORD_HASH=${CP_HASH}
+APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME=${ADMIN_USERNAME}
+APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH=${GW_HASH}
+EOF
+log_ok "  written to $CONTAINER_ENV_FILE"
+
+if [[ "$FORCE" == true ]]; then
+  log_info "Force mode: removing persisted data volumes (encrypted under the previous keys)..."
+  (cd "$SCRIPT_DIR" && docker compose down --volumes)
+  log_ok "  stack stopped and data volumes removed"
+fi
+
+log_header "Starting the stack"
+(cd "$SCRIPT_DIR" && docker compose up -d --build)
+
+log_info "Waiting for Platform API (https://localhost:9243)..."
+wait_for_health "Platform API" --cacert "$CA_BUNDLE" "https://localhost:9243/health"
+log_ok "Platform API is up"
+
+log_info "Waiting for API Portal (https://localhost:9543)..."
+wait_for_health "API Portal" --cacert "$CA_BUNDLE" "https://localhost:9543/health"
+log_ok "API Portal is up"
+
+log_header "Setup complete"
+cat <<EOF
+Next steps:
+
+  1. ${BOLD}./publish.sh${NC}    -- push both sample MCP proxies to the portal
+  2. ${BOLD}./discover.sh${NC}   -- query the MCP Registry API and print the catalog
+
+Portal UI (the MCP hub):  ${BOLD}https://localhost:9543/api-portal/default/views/default${NC}
+  (self-signed certificate -- click through the browser warning)
+EOF
