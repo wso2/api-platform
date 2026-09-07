@@ -32,7 +32,7 @@ import {
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import EnvironmentSelect from './components/EnvironmentSelect';
 import GatewayTypeSelector from './components/GatewayTypeSelector';
-import { validateGatewayName } from './utils/name';
+import { gatewayHandleFromName, validateGatewayName } from './utils/name';
 import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
 export type GatewayFormProps = {
@@ -46,6 +46,9 @@ export type GatewayFormProps = {
   onBack: () => void;
   onSubmit: (input: GatewayInput) => void;
 };
+
+/** Shown before a name is typed, so the naming rule is known up front. */
+const NAME_HELPER_TEXT = 'The gateway handle is derived from this name and cannot be changed later.';
 
 const GatewayForm: FC<GatewayFormProps> = ({
   mode = 'create',
@@ -71,6 +74,13 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // handle is immutable — so an edit must not be blocked by rules that no longer
   // apply to what it changes.
   const nameError = isEdit ? undefined : validateGatewayName(name, environmentId);
+
+  // The handle is what the gateway is addressed by and cannot be changed later,
+  // so show what the name will become instead of leaving the user to guess.
+  const derivedHandle = isEdit ? '' : gatewayHandleFromName(name);
+  const nameHelperText =
+    nameError ??
+    (derivedHandle ? `Handle: ${derivedHandle}` : isEdit ? undefined : NAME_HELPER_TEXT);
 
   const missingRequired = name.trim().length === 0 || environmentId.length === 0;
   const canSubmit = !missingRequired && !nameError;
@@ -117,7 +127,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 error={Boolean(nameError)}
-                helperText={nameError}
+                helperText={nameHelperText}
                 autoFocus
               />
             </FormControl>

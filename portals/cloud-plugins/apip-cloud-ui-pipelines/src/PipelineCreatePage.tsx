@@ -24,6 +24,7 @@ import EnvironmentGatewayPicker from './components/EnvironmentGatewayPicker';
 import PipelineStageCard from './components/PipelineStageCard';
 import type { CreatePipelineInput, Environment, Pipeline } from './types';
 import { orderEnvironments } from './utils';
+import { validatePipelineName } from './utils/name';
 
 export type PipelineCreatePageProps = {
   environments: Environment[];
@@ -46,6 +47,10 @@ type ChainEntry = {
   environment: string;
   defaultGatewayId: string;
 };
+
+/** Shown until the name breaks a rule, so the constraint is known up front. */
+const NAME_HELPER_TEXT =
+  'Lowercase letters, numbers and hyphens only. The name cannot be changed later.';
 
 const findEnvironment = (environments: Environment[], name: string) =>
   environments.find((environment) => environment.name === name);
@@ -103,9 +108,14 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
     setChain((prev) => prev.filter((entry) => entry.environment !== environment));
   };
 
+  // Only a new pipeline is named here; an existing one cannot be renamed, so its
+  // stored name is never re-validated (and an older name that predates the rule
+  // must not be reported as an error on a page that cannot fix it).
+  const nameError = isEdit ? undefined : validatePipelineName(name);
+
   // A pipeline needs at least two environments to form a promotion path
   // (source -> target), which is what the platform-api requires.
-  const canSubmit = name.trim().length > 0 && chain.length >= 2;
+  const canSubmit = name.trim().length > 0 && !nameError && chain.length >= 2;
 
   const handleSubmit = async () => {
     // Guard against a second click issuing a duplicate create/update while the
@@ -155,7 +165,10 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
             value={name}
             onChange={(event) => setName(event.target.value)}
             disabled={isEdit}
-            helperText={isEdit ? 'A pipeline cannot be renamed after it is created.' : undefined}
+            error={Boolean(nameError)}
+            helperText={
+              isEdit ? 'A pipeline cannot be renamed after it is created.' : nameError ?? NAME_HELPER_TEXT
+            }
             autoFocus={!isEdit}
           />
         </Box>
