@@ -129,6 +129,7 @@ export default function AppLayout() {
                   <AppBreadcrumbs
                     items={breadcrumbItems}
                     sx={(theme) => ({
+                      mb: 1,
                       '& .MuiBreadcrumbs-li .MuiTypography-root': {
                         fontSize: theme.typography.body2.fontSize,
                         opacity: 0.55,

@@ -17,7 +17,7 @@
  */
 
 import { useMemo } from 'react';
-import { Box, Card, Typography } from '@wso2/oxygen-ui';
+import { Box, Card, Divider, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
@@ -43,6 +43,11 @@ const messages = defineMessages({
     description:
       "Heading of the panel listing the API's operations (its OpenAPI paths). A noun, not a command.",
   },
+  count: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.count',
+    defaultMessage: 'Showing {count, plural, one {# resource} other {# resources}}',
+    description: 'Number of API operations displayed in the resources panel.',
+  },
 });
 
 /**
@@ -63,10 +68,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
   const spec = useMemo(() => restApiToOpenApiSpec(api), [api]);
 
   return (
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <Typography sx={{ fontWeight: 600, mb: 0.5 }} variant="h6">
-        <FormattedMessage {...messages.title} />
-      </Typography>
+    <Box sx={{ minWidth: 0 }}>
       {operations.length === 0 ? (
         // The placeholder brings its own bordered surface, so it stands in for
         // the scroll box rather than sitting inside it — a hairline drawn
@@ -79,33 +81,40 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
       ) : (
         <Card
           sx={{
-            maxHeight: { md: 520, xs: 320 },
-            overflowY: 'auto',
-            px: 2,
-            py: 1,
             // Swagger UI ships its own canvas; keep it from fighting the
             // panel's surface.
             '& .swagger-ui': { bgcolor: 'transparent' },
           }}
         >
-          {/* Read-only, and stripped down to what a rebuilt document can
+          <Box sx={{ px: 2, py: 1.5 }}>
+            <Typography sx={{ fontWeight: 600 }} variant="h6">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+            <Typography color="text.secondary" variant="caption">
+              <FormattedMessage {...messages.count} values={{ count: operations.length }} />
+            </Typography>
+          </Box>
+          <Divider />
+          <Box sx={{ maxHeight: { md: 720, xs: 420 }, overflowY: 'auto', px: 2, py: 1 }}>
+            {/* Read-only, and stripped down to what a rebuilt document can
               honestly show. The info block would repeat the page header; the
               servers/authorize strip and try-it-out belong to a console, which
               this panel is not; the responses section would be an empty table,
               because the platform kept no responses to put in it. Operations
               carry no tags either, so the lone "default" group header is
               hidden and the operations read as one flat list. */}
-          <SwaggerSpecViewer
-            disableResponseSection
-            disableTryOutBtn
-            displayRequestDuration={false}
-            enableResourceSearch
-            hideAuthorizeButton
-            hideInfoSection
-            hideServers
-            hideTagHeaders
-            spec={spec}
-          />
+            <SwaggerSpecViewer
+              disableResponseSection
+              disableTryOutBtn
+              displayRequestDuration={false}
+              enableResourceSearch
+              hideAuthorizeButton
+              hideInfoSection
+              hideServers
+              hideTagHeaders
+              spec={spec}
+            />
+          </Box>
         </Card>
       )}
     </Box>

@@ -25,20 +25,21 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Drawer,
   FormControl,
   FormLabel,
   IconButton,
-  ListingTable,
   Stack,
   TextField,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ChevronLeft, Clock, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useCreateApiKey, useMyApiKeys, useRevokeApiKey } from '@/api/resources/apiKeys';
 import { useNotifications } from '@/components/Notifications';
+import { useFormatters } from '@/i18n/useFormatters';
 
 const messages = defineMessages({
   add: {
@@ -100,6 +101,23 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.description',
     defaultMessage: 'Add an API key to authenticate requests through the deployed gateways.',
     description: 'Explains what an API key is for, above the button that adds one.',
+  },
+  createdMetadata: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.createdMetadata',
+    defaultMessage: 'Created {time} by {creator}',
+    description: 'Creation time and creator shown beside an API key.',
+  },
+  closeDrawer: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.closeDrawer',
+    defaultMessage: 'Close API keys',
+  },
+  seeMore: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.seeMore',
+    defaultMessage: 'See more',
+  },
+  separator: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.separator',
+    defaultMessage: '·',
   },
   keyNameLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyNameLabel',
@@ -171,12 +189,6 @@ const API_KEY_PAGE_SIZE = 100;
  * definition so the table and the date formatter can't drift apart. */
 const EMPTY_VALUE = '-';
 
-const formatDate = (value?: string): string => {
-  if (!value) return EMPTY_VALUE;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? EMPTY_VALUE : date.toLocaleDateString();
-};
-
 /** The key the revoke dialog is armed for: its id addresses the request, its
  * name is what the dialog and the toast show. */
 type RevokeTarget = { id: string; displayName: string };
@@ -188,6 +200,7 @@ type RevokeTarget = { id: string; displayName: string };
  */
 export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
   const intl = useIntl();
+  const { dateTime, relativeTime } = useFormatters();
   const { notify } = useNotifications();
   // The spec has no per-API key listing — the only read is the caller's own
   // inventory across artifacts, so this narrows to REST API keys server-side
@@ -201,12 +214,16 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
   const revokeMutation = useRevokeApiKey();
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [keyValue, setKeyValue] = useState('');
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
 
   const keys = useMemo(
-    () => (keysQuery.data?.list ?? []).filter((key) => key.artifactId === restApiId),
+    () =>
+      (keysQuery.data?.list ?? [])
+        .filter((key) => key.artifactId === restApiId && key.status === 'active')
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [keysQuery.data, restApiId],
   );
 
@@ -251,32 +268,27 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
   };
 
   const canSubmit = Boolean(displayName.trim() && keyValue.trim()) && !createMutation.isPending;
+  const recentKeys = keys.slice(0, 5);
 
   return (
     <Box>
-      <Typography sx={{ fontWeight: 600, mb: 1.5 }} variant="h6">
-        <FormattedMessage {...messages.title} />
-      </Typography>
-      <Stack spacing={2}>
-        <Stack
-          alignItems={{ sm: 'center', xs: 'flex-start' }}
-          direction={{ sm: 'row', xs: 'column' }}
-          spacing={2}
-          sx={{
-            bgcolor: 'background.paper',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1,
-            p: 2,
-          }}
-        >
+      <Stack spacing={1.5}>
+        <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={1}>
           <Box sx={{ flex: 1 }}>
-            <Typography color="text.secondary" variant="body2">
+            <Typography sx={{ fontWeight: 600 }} variant="h6">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+            <Typography color="text.secondary" sx={{ lineHeight: 1.25 }} variant="caption">
               <FormattedMessage {...messages.description} />
             </Typography>
           </Box>
-          <Button onClick={() => setDialogOpen(true)} size="medium" variant="contained">
-            <FormattedMessage {...messages.addButton} />
+          <Button
+            onClick={() => setDialogOpen(true)}
+            size="small"
+            startIcon={<Plus size={16} />}
+            variant="outlined"
+          >
+            <FormattedMessage {...messages.add} />
           </Button>
         </Stack>
 
@@ -285,61 +297,142 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
             <CircularProgress />
           </Box>
         ) : keys.length > 0 ? (
-          <ListingTable.Container>
-            <ListingTable>
-              <ListingTable.Head>
-                <ListingTable.Row>
-                  <ListingTable.Cell>
-                    <FormattedMessage {...messages.columnName} />
-                  </ListingTable.Cell>
-                  <ListingTable.Cell>
-                    <FormattedMessage {...messages.columnKey} />
-                  </ListingTable.Cell>
-                  <ListingTable.Cell>
-                    <FormattedMessage {...messages.columnExpiresAt} />
-                  </ListingTable.Cell>
-                  <ListingTable.Cell align="right">
-                    <FormattedMessage {...messages.columnActions} />
-                  </ListingTable.Cell>
-                </ListingTable.Row>
-              </ListingTable.Head>
-              <ListingTable.Body>
-                {keys.map((key) => (
-                  <ListingTable.Row key={key.id ?? key.displayName}>
-                    <ListingTable.Cell>{key.displayName || EMPTY_VALUE}</ListingTable.Cell>
-                    <ListingTable.Cell>{key.maskedApiKey || EMPTY_VALUE}</ListingTable.Cell>
-                    <ListingTable.Cell>
-                      <Tooltip title={key.expiresAt ? new Date(key.expiresAt).toUTCString() : ''}>
-                        <span>{formatDate(key.expiresAt)}</span>
-                      </Tooltip>
-                    </ListingTable.Cell>
-                    <ListingTable.Cell align="right">
-                      <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
-                        <span>
-                          <IconButton
-                            color="error"
-                            disabled={revokeMutation.isPending || !key.id}
-                            onClick={() =>
-                              key.id &&
-                              setRevokeTarget({
-                                id: key.id,
-                                displayName: key.displayName,
-                              })
-                            }
-                            size="small"
-                          >
-                            <Trash2 size={16} />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </ListingTable.Cell>
-                  </ListingTable.Row>
-                ))}
-              </ListingTable.Body>
-            </ListingTable>
-          </ListingTable.Container>
+          <Stack spacing={1}>
+            {recentKeys.map((key) => (
+              <Stack
+                alignItems="center"
+                direction="row"
+                key={key.id ?? key.displayName}
+                spacing={1}
+                sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.25 }}
+              >
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography noWrap sx={{ fontWeight: 600 }} variant="body2">
+                    {key.displayName || EMPTY_VALUE}
+                  </Typography>
+                  <Stack alignItems="center" direction="row" spacing={0.5}>
+                    <Typography color="text.secondary" noWrap variant="caption">
+                      {key.maskedApiKey || EMPTY_VALUE}
+                    </Typography>
+                    <Typography color="text.secondary" variant="caption">
+                      <FormattedMessage {...messages.separator} />
+                    </Typography>
+                    <Tooltip title={dateTime(key.createdAt)}>
+                      <Stack alignItems="center" direction="row" spacing={0.5} sx={{ minWidth: 0 }}>
+                        <Clock color="currentColor" size={13} />
+                        <Typography color="text.secondary" noWrap variant="caption">
+                          <FormattedMessage
+                            {...messages.createdMetadata}
+                            values={{
+                              creator: key.createdBy || '—',
+                              time: relativeTime(key.createdAt),
+                            }}
+                          />
+                        </Typography>
+                      </Stack>
+                    </Tooltip>
+                  </Stack>
+                </Box>
+                <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
+                  <span>
+                    <IconButton
+                      disabled={revokeMutation.isPending || !key.id}
+                      onClick={() =>
+                        key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
+                      }
+                      size="small"
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Stack>
+            ))}
+            {keys.length > 5 && (
+              <Box sx={{ textAlign: 'center' }}>
+                <Button onClick={() => setDrawerOpen(true)} size="small" variant="text">
+                  <FormattedMessage {...messages.seeMore} />
+                </Button>
+              </Box>
+            )}
+          </Stack>
         ) : null}
       </Stack>
+
+      <Drawer
+        anchor="right"
+        onClose={() => setDrawerOpen(false)}
+        open={drawerOpen}
+        sx={{ '& .MuiDrawer-paper': { width: { md: 560, xs: '100%' } } }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Stack
+            alignItems="center"
+            direction="row"
+            spacing={1}
+            sx={{ borderBottom: '1px solid', borderColor: 'divider', p: 2 }}
+          >
+            <IconButton
+              aria-label={intl.formatMessage(messages.closeDrawer)}
+              onClick={() => setDrawerOpen(false)}
+              size="small"
+            >
+              <ChevronLeft size={20} />
+            </IconButton>
+            <Typography sx={{ fontWeight: 600 }} variant="h6">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+          </Stack>
+          <Stack spacing={1} sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
+            {keys.map((key) => (
+              <Stack
+                alignItems="center"
+                direction="row"
+                key={key.id ?? key.displayName}
+                spacing={1}
+                sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.25 }}
+              >
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography noWrap sx={{ fontWeight: 600 }} variant="body2">
+                    {key.displayName || EMPTY_VALUE}
+                  </Typography>
+                  <Stack alignItems="center" direction="row" spacing={0.5}>
+                    <Typography color="text.secondary" noWrap variant="caption">
+                      {key.maskedApiKey || EMPTY_VALUE}
+                    </Typography>
+                    <Typography color="text.secondary" variant="caption">
+                      <FormattedMessage {...messages.separator} />
+                    </Typography>
+                    <Clock color="currentColor" size={13} />
+                    <Typography color="text.secondary" noWrap variant="caption">
+                      <FormattedMessage
+                        {...messages.createdMetadata}
+                        values={{
+                          creator: key.createdBy || '—',
+                          time: relativeTime(key.createdAt),
+                        }}
+                      />
+                    </Typography>
+                  </Stack>
+                </Box>
+                <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
+                  <span>
+                    <IconButton
+                      disabled={revokeMutation.isPending || !key.id}
+                      onClick={() =>
+                        key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
+                      }
+                      size="small"
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      </Drawer>
 
       {/* Add key dialog */}
       <Dialog fullWidth maxWidth="sm" onClose={closeDialog} open={dialogOpen}>

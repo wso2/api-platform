@@ -20,7 +20,6 @@ import { useState } from 'react';
 import {
   Box,
   FormControl,
-  FormLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -37,6 +36,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import type { Gateway } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
 import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
+import { MOCK_ENVIRONMENTS } from '../../gateways/utils/gatewayEnvironments';
 
 const messages = defineMessages({
   copy: {
@@ -57,15 +57,14 @@ const messages = defineMessages({
   },
   description: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.description',
-    defaultMessage: 'Change the gateway to generate the gateway specific invoke URL.',
+    defaultMessage: 'Pick a gateway to get its invoke URL.',
     description:
       'Explains that the URL below is per-gateway, so picking another gateway rewrites it.',
   },
   gatewaysLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.gatewaysLabel',
     defaultMessage: 'Gateways',
-    description:
-      'Label of the picker choosing which deployed gateway the invoke URL is built for.',
+    description: 'Label of the picker choosing which deployed gateway the invoke URL is built for.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.title',
@@ -96,6 +95,15 @@ type InvokeUrlPanelProps = {
   /** Gateways the API is currently deployed on, most recent first. */
   gateways: Gateway[];
   context?: string;
+};
+
+const recordedEnvironmentName = (gateway: Gateway): string | undefined =>
+  MOCK_ENVIRONMENTS.find((environment) => environment.id === gateway.properties?.environment)?.name;
+
+const gatewayOptionLabel = (gateway: Gateway): string => {
+  const name = gateway.displayName || gateway.id || '';
+  const environment = recordedEnvironmentName(gateway);
+  return environment ? `${name} — ${environment}` : name;
 };
 
 /**
@@ -133,35 +141,33 @@ export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
           <FormattedMessage {...messages.description} />
         </Typography>
       </Box>
-      <Grid alignItems="flex-end" container spacing={1}>
-        <Grid size={{ md: 4, xs: 12 }}>
+      <Grid container spacing={1}>
+        <Grid size={12}>
           <FormControl fullWidth>
-            <FormLabel>
-              <FormattedMessage {...messages.gatewaysLabel} />
-            </FormLabel>
             <Select
               disabled={gateways.length === 0}
+              inputProps={{ 'aria-label': intl.formatMessage(messages.gatewaysLabel) }}
               onChange={(event) => setSelectedGatewayId(String(event.target.value))}
               size="small"
               value={selectedGateway?.id || ''}
             >
               {gateways.map((gateway) => (
                 <MenuItem key={gateway.id} value={gateway.id ?? ''}>
-                  {gateway.displayName || gateway.id}
+                  {gatewayOptionLabel(gateway)}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
         </Grid>
-        <Grid size={{ md: 8, xs: 12 }}>
+        <Grid size={12}>
           <FormControl fullWidth>
-            <FormLabel>
-              <FormattedMessage {...messages.urlLabel} />
-            </FormLabel>
             <TextField
               fullWidth
               size="small"
               slotProps={{
+                htmlInput: {
+                  'aria-label': intl.formatMessage(messages.urlLabel),
+                },
                 input: {
                   readOnly: true,
                   endAdornment: (

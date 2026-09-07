@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, ButtonBase, Card, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, ButtonBase, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import {
   Check,
   FilePlus2,
@@ -36,7 +36,12 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.progress',
     defaultMessage: '{completed} of {total} completed',
     description:
-      'Counter beside the progress bar, e.g. "2 of 4 completed". Counts the steps of getting an API live, not APIs.',
+      'Counter beside the lifecycle steps, e.g. "2 of 4 completed". Counts the steps of getting an API live, not APIs.',
+  },
+  next: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.next',
+    defaultMessage: 'Next: {step}',
+    description: 'The next incomplete lifecycle step shown beside the progress counter.',
   },
   stepCreate: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create',
@@ -52,21 +57,15 @@ const messages = defineMessages({
   },
   stepPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish',
-    defaultMessage: 'Publish to API Portal',
+    defaultMessage: 'Publish to Devportal',
     description:
-      'Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name "API Portal".',
+      'Fourth step of the API progress stepper — the API is listed in the developer portal.',
   },
   stepTest: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test',
     defaultMessage: 'Test',
     description:
       'Third step of the API progress stepper — the API has been called from the test console. A stage name, not a button command.',
-  },
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.title',
-    defaultMessage: 'Track your progress here',
-    description:
-      'Heading of the banner that walks the user through creating, deploying, testing and publishing an API.',
   },
 });
 
@@ -138,7 +137,6 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   ];
 
   const completedCount = steps.filter((step) => step.complete).length;
-  const percent = Math.round((completedCount / steps.length) * 100);
   // The first not-yet-complete step is the current, actionable one.
   const activeIndex = steps.findIndex((step) => !step.complete);
 
@@ -148,42 +146,63 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   };
 
   return (
-    <Card
+    <Box
       sx={{
-        p: 2,
+        borderTop: '1px solid',
+        borderColor: 'divider',
+        px: { sm: 4, xs: 2 },
+        py: 2,
       }}
     >
-      <Stack alignItems="center" direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
-        <Typography sx={{ fontWeight: 600 }} variant="h6">
-          <FormattedMessage {...messages.title} />
-        </Typography>
-        <Typography color="text.secondary" variant="caption">
-          <FormattedMessage
-            {...messages.progress}
-            values={{ completed: completedCount, total: steps.length }}
-          />
-        </Typography>
-      </Stack>
-      <LinearProgress
-        color={percent === 100 ? 'success' : 'primary'}
-        sx={{ borderRadius: 1, height: 6, mb: 2 }}
-        value={percent}
-        variant="determinate"
-      />
-      <Stack alignItems="center" direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
-        {steps.map((step, index) => (
-          <Stack alignItems="center" direction="row" key={step.key} spacing={1}>
-            <StepPill state={stateOf(step, index)} step={step} />
-            {index < steps.length - 1 && (
-              <StepConnector
-                fromState={stateOf(step, index)}
-                toState={stateOf(steps[index + 1], index + 1)}
+      <Stack
+        alignItems="center"
+        direction={{ md: 'row', xs: 'column' }}
+        justifyContent="space-between"
+        spacing={2}
+      >
+        <Stack alignItems="center" direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+          {steps.map((step, index) => (
+            <Stack alignItems="center" direction="row" key={step.key} spacing={1}>
+              <StepPill state={stateOf(step, index)} step={step} />
+              {index < steps.length - 1 && (
+                <StepConnector
+                  fromState={stateOf(step, index)}
+                  toState={stateOf(steps[index + 1], index + 1)}
+                />
+              )}
+            </Stack>
+          ))}
+        </Stack>
+        <Stack
+          alignItems="center"
+          direction="row"
+          divider={<Divider flexItem orientation="vertical" />}
+          spacing={1.5}
+          sx={{ flexShrink: 0 }}
+        >
+          <Typography color="text.secondary" variant="body2">
+            <FormattedMessage
+              {...messages.progress}
+              values={{ completed: completedCount, total: steps.length }}
+            />
+          </Typography>
+          {activeIndex >= 0 && (
+            <Typography color="text.secondary" variant="body2">
+              <FormattedMessage
+                {...messages.next}
+                values={{
+                  step: (
+                    <Box component="span" sx={{ color: 'text.primary', fontWeight: 700 }}>
+                      {steps[activeIndex].label}
+                    </Box>
+                  ),
+                }}
               />
-            )}
-          </Stack>
-        ))}
+            </Typography>
+          )}
+        </Stack>
       </Stack>
-    </Card>
+    </Box>
   );
 }
 
@@ -220,13 +239,13 @@ function StepPill({ state, step }: { state: StepState; step: ProgressStep }) {
       onClick={onClick}
       sx={{
         border: '1px solid',
-        minWidth: 120,
+        minWidth: 0,
         justifyContent: 'flex-start',
         borderColor: complete ? 'success.main' : active ? 'primary.main' : 'divider',
         borderRadius: 5,
         gap: 1,
         opacity: upcoming ? 0.6 : 1,
-        px: 1,
+        px: 1.25,
         py: 0.75,
         transition: 'opacity 0.15s',
         '&:hover': onClick ? { opacity: 0.75 } : undefined,
@@ -244,12 +263,11 @@ function StepPill({ state, step }: { state: StepState; step: ProgressStep }) {
           width: 32,
         }}
       >
-        <Icon size={16} />
+        {complete ? <Check size={18} /> : <Icon size={16} />}
       </Box>
       <Typography sx={{ fontWeight: 600 }} variant="body2">
         {label}
       </Typography>
-      {complete && <Check color="var(--mui-palette-success-main)" size={16} />}
     </ButtonBase>
   );
 }

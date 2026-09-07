@@ -652,9 +652,21 @@
   "apiControlPlane.pages.appShell.ProjectQuickSelector.projects": {
     "defaultMessage": "Projects"
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label": {
+    "defaultMessage": "by",
+    "description": "Label between the API creation time and creator."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label": {
-    "defaultMessage": "Context",
+    "defaultMessage": "Context:",
     "description": "Label for the API base path shown in the API detail header, e.g. \"/orders\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.copyContext": {
+    "defaultMessage": "Copy API context",
+    "description": "Accessible label for the button that copies the API context."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.created.label": {
+    "defaultMessage": "Created",
+    "description": "Label before the API creation time in the API detail header."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway": {
     "defaultMessage": "Deploy to Gateway",
@@ -676,9 +688,8 @@
     "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
     "description": "Tooltip explaining the gateway-managed chip."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.lastUpdated.label": {
-    "defaultMessage": "Last updated",
-    "description": "Label for when the API definition last changed, shown in the API detail header."
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
+    "defaultMessage": "—"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
@@ -862,6 +873,13 @@
     "defaultMessage": "Add an API key to authenticate requests through the deployed gateways.",
     "description": "Explains what an API key is for, above the button that adds one."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.createdMetadata": {
+    "defaultMessage": "Created {time} by {creator}",
+    "description": "Creation time and creator shown beside an API key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.closeDrawer": {
+    "defaultMessage": "Close API keys"
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyNameLabel": {
     "defaultMessage": "Key Name",
     "description": "Label of the field naming the new key."
@@ -902,6 +920,12 @@
     "defaultMessage": "Revoke API key",
     "description": "Tooltip on the button that revokes one key from the table."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.seeMore": {
+    "defaultMessage": "See more"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.separator": {
+    "defaultMessage": "·"
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revoking": {
     "defaultMessage": "Revoking...",
     "description": "Label of the revoke button while the request is in flight."
@@ -909,6 +933,25 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.title": {
     "defaultMessage": "API Keys",
     "description": "Heading of the section listing the keys accepted for this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.seeMore": {
+    "defaultMessage": "See more"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.status": {
+    "defaultMessage": "{status, select, DEPLOYED {Deployed} UNDEPLOYED {Undeployed} DEPLOYING {Deploying} UNDEPLOYING {Undeploying} FAILED {Failed} ARCHIVED {Archived} other {{status}}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.title": {
+    "defaultMessage": "Deployed gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.description": {
+    "defaultMessage": "Guides, references, and specifications published with this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.title": {
+    "defaultMessage": "Documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.updated": {
+    "defaultMessage": "2 days ago",
+    "description": "Temporary relative update time for demo document data."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.copy": {
     "defaultMessage": "Copy URL",
@@ -940,7 +983,11 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.progress": {
     "defaultMessage": "{completed} of {total} completed",
-    "description": "Counter beside the progress bar, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
+    "description": "Counter beside the lifecycle steps, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.next": {
+    "defaultMessage": "Next: {step}",
+    "description": "The next incomplete lifecycle step shown beside the progress counter."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create": {
     "defaultMessage": "Create",
@@ -951,20 +998,20 @@
     "description": "Second step of the API progress stepper — the API runs on a gateway. A stage name, not a button command."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
-    "defaultMessage": "Publish to API Portal",
-    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal, which ships under the name \"API Portal\"."
+    "defaultMessage": "Publish to Devportal",
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
     "defaultMessage": "Test",
     "description": "Third step of the API progress stepper — the API has been called from the test console. A stage name, not a button command."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.title": {
-    "defaultMessage": "Track your progress here",
-    "description": "Heading of the banner that walks the user through creating, deploying, testing and publishing an API."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty": {
     "defaultMessage": "No available resources.",
     "description": "Shown in place of the operation list when the API definition exposes none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.count": {
+    "defaultMessage": "Showing {count, plural, one {# resource} other {# resources}}",
+    "description": "Number of API operations displayed in the resources panel."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.emptyDescription": {
     "defaultMessage": "This API’s definition does not expose any operations yet.",

@@ -68,17 +68,6 @@ describe('EditApiForm — initial values', () => {
     expect(screen.getByLabelText(/Version/)).toHaveValue('1.0.0');
     expect(screen.getByLabelText(/Context/)).toHaveValue('/pizza');
     expect(screen.getByLabelText(/Description/)).toHaveValue('Pizza ordering');
-    expect(screen.getByLabelText(/Target URL/)).toHaveValue('https://upstream.test');
-  });
-
-  it('shows the identifier but does not let it be edited', () => {
-    // `PUT /rest-apis/{restApiId}` rejects a body whose `id` differs from the
-    // path and there is no rename operation, so the handle is reference only.
-    renderForm();
-
-    const identifier = screen.getByLabelText(/Identifier/);
-    expect(identifier).toHaveValue('pizza-shack');
-    expect(identifier).toBeDisabled();
   });
 
   it('leaves an absent description as an empty field rather than "undefined"', () => {
@@ -127,19 +116,6 @@ describe('EditApiForm — validation', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('rejects a target URL that is not a full http(s) URL', async () => {
-    const { onSubmit, user } = renderForm();
-
-    await user.clear(screen.getByLabelText(/Target URL/));
-    await user.type(screen.getByLabelText(/Target URL/), 'upstream.test');
-    await save(user);
-
-    expect(
-      screen.getByText('Enter a full URL, for example https://api.example.com.'),
-    ).toBeInTheDocument();
-    expect(onSubmit).not.toHaveBeenCalled();
-  });
-
   it('stays quiet until a rule is actually broken', () => {
     renderForm();
 
@@ -154,7 +130,7 @@ describe('EditApiForm — validation', () => {
 });
 
 describe('EditApiForm — submitting', () => {
-  it('hands back the five fields, trimmed', async () => {
+  it('hands back the four fields, trimmed', async () => {
     const { onSubmit, user } = renderForm();
 
     await user.clear(screen.getByLabelText(/^Name/));
@@ -167,7 +143,6 @@ describe('EditApiForm — submitting', () => {
       context: '/pizza',
       description: 'Now with sides',
       displayName: 'Pizza Shack v2',
-      targetUrl: 'https://upstream.test',
       version: '1.0.0',
     });
   });
@@ -190,25 +165,38 @@ describe('EditApiForm — submitting', () => {
   });
 });
 
-describe('EditApiForm — shared upstream', () => {
-  const withRef = anApi({ upstream: { main: { ref: 'retail-backend' } } });
+describe('EditApiForm — save button reflects unsaved changes', () => {
+  const saveButton = () => screen.getByRole('button', { name: /Save changes/ });
 
-  it('locks the target URL and names the upstream it points at', () => {
-    renderForm({ api: withRef });
+  it('starts disabled: nothing has been changed yet', () => {
+    renderForm();
 
-    expect(screen.getByLabelText(/Target URL/)).toBeDisabled();
-    expect(
-      screen.getByText(/Routed through the shared upstream “retail-backend”/),
-    ).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
   });
 
-  it('still submits: an API with no URL of its own is not an invalid one', async () => {
-    const { onSubmit, user } = renderForm({ api: withRef });
+  it('enables once any field diverges from what the API was opened with', async () => {
+    const { user } = renderForm();
 
-    await save(user);
+    await user.type(screen.getByLabelText(/^Name/), ' v2');
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ displayName: 'Pizza Shack', targetUrl: '' }),
-    );
+    expect(saveButton()).toBeEnabled();
+  });
+
+  it('disables again when every field is edited back to its original value', async () => {
+    const { user } = renderForm();
+
+    const name = screen.getByLabelText(/^Name/);
+    await user.type(name, ' v2');
+    expect(saveButton()).toBeEnabled();
+
+    await user.clear(name);
+    await user.type(name, 'Pizza Shack');
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it('never enables just because the save is in flight, even if untouched', () => {
+    renderForm({ isSaving: true });
+
+    expect(saveButton()).toBeDisabled();
   });
 });

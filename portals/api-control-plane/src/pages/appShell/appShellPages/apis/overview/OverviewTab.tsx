@@ -16,15 +16,15 @@
  * under the License.
  */
 
-import { useMemo } from 'react';
-import { Box, Divider, Stack } from '@wso2/oxygen-ui';
+import { Box, Card, Grid, Stack } from '@wso2/oxygen-ui';
 
-import { useGateways, type Gateway } from '@/api/resources/gateways';
+import type { Gateway } from '@/api/resources/gateways';
 import type { RestApi } from '@/api/resources/restApis';
-import { useDeployments } from '@/api/resources/restApis/deployments';
+import type { Deployment } from '@/api/resources/restApis/deployments';
 import { ApiKeysPanel } from './ApiKeysPanel';
+import { DeployedGatewaysPanel } from './DeployedGatewaysPanel';
+import { DocumentsPanel } from './DocumentsPanel';
 import { InvokeUrlPanel } from './InvokeUrlPanel';
-import { ProgressBanner } from './ProgressBanner';
 import { ResourcesPanel } from './ResourcesPanel';
 
 /**
@@ -32,66 +32,47 @@ import { ResourcesPanel } from './ResourcesPanel';
  * default 20-item page could hide the very gateway this API runs on. 100 is the
  * spec's ceiling on `limit`.
  */
-const GATEWAY_PAGE_LIMIT = 100;
-
 /**
  * Overview tab: resources on the left; invoke URL and
  * API keys on the right; the right column only appears once the API is
  * deployed on at least one gateway.
  */
-export function OverviewTab({ api }: { api: RestApi }) {
-  const gatewaysQuery = useGateways({ limit: GATEWAY_PAGE_LIMIT });
-  const deploymentsQuery = useDeployments(api.id);
-
-  // Gateways with an active deployment of this API, most recent first.
-  const deployedGateways = useMemo((): Gateway[] => {
-    const gateways = gatewaysQuery.data?.list ?? [];
-    const deployments = deploymentsQuery.data?.list ?? [];
-    const latestByGateway = new Map<string, number>();
-    deployments
-      .filter((deployment) => deployment.status === 'DEPLOYED')
-      .forEach((deployment) => {
-        const time = new Date(deployment.createdAt || 0).getTime();
-        const current = latestByGateway.get(deployment.gatewayId);
-        if (current === undefined || time > current) {
-          latestByGateway.set(deployment.gatewayId, time);
-        }
-      });
-    return gateways
-      .filter((gateway) => latestByGateway.has(gateway.id ?? ''))
-      .sort(
-        (a, b) => (latestByGateway.get(b.id ?? '') || 0) - (latestByGateway.get(a.id ?? '') || 0),
-      );
-  }, [gatewaysQuery.data, deploymentsQuery.data]);
+export function OverviewTab({
+  api,
+  deployedGateways,
+  deployments,
+}: {
+  api: RestApi;
+  deployedGateways: Gateway[];
+  deployments: Deployment[];
+}) {
+  const deployed = deployedGateways.length > 0;
 
   return (
-    <Stack spacing={3}>
-      <ProgressBanner api={api} deployed={deployedGateways.length > 0} />
-      <Stack direction={{ md: 'row', xs: 'column' }} spacing={2}>
-        <ResourcesPanel api={api} />
-        {deployedGateways.length > 0 && (
-          <>
-            <Divider
-              flexItem
-              orientation="vertical"
-              sx={{ display: { md: 'block', xs: 'none' } }}
-            />
-            <Box sx={{ flex: 1, minWidth: 0 }}>
+    <Grid container spacing={2}>
+      <Grid size={{ lg: deployed ? 8 : 12, xs: 12 }}>
+        <Stack spacing={2} marginTop={1}>
+          <ResourcesPanel api={api} />
+          <DocumentsPanel />
+        </Stack>
+      </Grid>
+      {deployed && (
+        <Grid size={{ lg: 4, xs: 12 }}>
+          <Stack spacing={2} marginTop={1}>
+            <Card sx={{ p: 2 }}>
               <Stack spacing={2}>
                 <InvokeUrlPanel context={api.context} gateways={deployedGateways} />
-                {/* Keys are an API-proxy affordance; `getApiCapabilities` draws
-                    the same line off `kind`. */}
                 {api.kind === 'RestApi' && (
-                  <>
-                    <Divider />
+                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
                     <ApiKeysPanel restApiId={api.id ?? ''} />
-                  </>
+                  </Box>
                 )}
               </Stack>
-            </Box>
-          </>
-        )}
-      </Stack>
-    </Stack>
+            </Card>
+            <DeployedGatewaysPanel deployments={deployments} gateways={deployedGateways} />
+          </Stack>
+        </Grid>
+      )}
+    </Grid>
   );
 }
