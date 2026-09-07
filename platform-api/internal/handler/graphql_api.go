@@ -94,6 +94,41 @@ func (h *GraphQLAPIHandler) CreateGraphQLAPI(w http.ResponseWriter, r *http.Requ
 	return nil
 }
 
+// ValidateGraphQLSchema handles POST /api/v0.9/graphql-apis/validate-schema —
+// a dry-run of resolveSchema (see graphql_api.go's Create for the mutating
+// counterpart) that never persists anything. A structural mismatch
+// (schemaSource inconsistent with the fields supplied) surfaces as the usual
+// 400 via serviceError; an actual resolution failure is not an error here —
+// it comes back as {resolved: false, message: "..."} with a 200.
+func (h *GraphQLAPIHandler) ValidateGraphQLSchema(w http.ResponseWriter, r *http.Request) error {
+	if _, exists := middleware.GetOrganizationFromRequest(r); !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	var req api.ValidateGraphQLSchemaRequest
+	if err := decodeValidateGraphQLSchemaRequest(r, &req); err != nil {
+		return apperror.NewValidation(err)
+	}
+
+	resolution, err := h.graphqlAPIService.ValidateSchema(req)
+	if err != nil {
+		return serviceError(err, "failed to validate GraphQL schema")
+	}
+
+	resp := api.ValidateGraphQLSchemaResponse{Resolved: resolution.Resolved, Sdl: resolution.SDL}
+	if resolution.Resolved {
+		mode := api.GraphQLIntrospectionMode(resolution.IntrospectionMode)
+		resp.IntrospectionMode = &mode
+	} else {
+		msg := apperror.GraphQLAPISchemaResolveFailed.New().Message
+		resp.Message = &msg
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
+}
+
 // GetGraphQLAPI handles GET /api/v0.9/graphql-apis/:graphqlApiId and retrieves a GraphQL API by its handle.
 func (h *GraphQLAPIHandler) GetGraphQLAPI(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
@@ -337,11 +372,33 @@ func decodeUpdateGraphQLAPIRequest(r *http.Request, req *api.GraphQLAPI) error {
 	return nil
 }
 
+// decodeValidateGraphQLSchemaRequest is decodeCreateGraphQLAPIRequest's
+// counterpart for the dry-run validate endpoint, targeting
+// api.ValidateGraphQLSchemaRequest — the lightweight schema-only shape,
+// without displayName/context/version/projectId.
+func decodeValidateGraphQLSchemaRequest(r *http.Request, req *api.ValidateGraphQLSchemaRequest) error {
+	if !utils.IsMultipartFormRequest(r) {
+		return fmt.Errorf("Content-Type must be multipart/form-data")
+	}
+	metadataJSON, sdl, err := utils.ParseGraphQLAPIMultipartRequest(r)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(metadataJSON, req); err != nil {
+		return err
+	}
+	if sdl != "" {
+		req.Sdl = &sdl
+	}
+	return nil
+}
+
 // RegisterRoutes registers all GraphQL API routes.
 func (h *GraphQLAPIHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering GraphQL API routes")
 	base := constants.APIBasePath + "/graphql-apis"
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateGraphQLAPI))
+	mux.HandleFunc("POST "+base+"/validate-schema", middleware.MapErrors(h.slogger, h.ValidateGraphQLSchema))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListGraphQLAPIs))
 	mux.HandleFunc("GET "+base+"/{graphqlApiId}", middleware.MapErrors(h.slogger, h.GetGraphQLAPI))
 	mux.HandleFunc("GET "+base+"/{graphqlApiId}/sdl", middleware.MapErrors(h.slogger, h.GetGraphQLAPISDL))
