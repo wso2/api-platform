@@ -1357,6 +1357,30 @@ func (e UserAPIKeyItemStatus) Valid() bool {
 	}
 }
 
+// Defines values for ValidateGraphQLSchemaRequestSchemaSource.
+const (
+	ValidateGraphQLSchemaRequestSchemaSourceFile          ValidateGraphQLSchemaRequestSchemaSource = "file"
+	ValidateGraphQLSchemaRequestSchemaSourceInline        ValidateGraphQLSchemaRequestSchemaSource = "inline"
+	ValidateGraphQLSchemaRequestSchemaSourceIntrospection ValidateGraphQLSchemaRequestSchemaSource = "introspection"
+	ValidateGraphQLSchemaRequestSchemaSourceUrl           ValidateGraphQLSchemaRequestSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the ValidateGraphQLSchemaRequestSchemaSource enum.
+func (e ValidateGraphQLSchemaRequestSchemaSource) Valid() bool {
+	switch e {
+	case ValidateGraphQLSchemaRequestSchemaSourceFile:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceInline:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceIntrospection:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentProxyProtocolQ.
 const (
 	AgentProxyProtocolQA2a AgentProxyProtocolQ = "a2a"
@@ -5374,6 +5398,59 @@ type UserAPIKeyListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ValidateGraphQLSchemaMultipartRequest defines model for ValidateGraphQLSchemaMultipartRequest.
+type ValidateGraphQLSchemaMultipartRequest struct {
+	// Metadata JSON-encoded ValidateGraphQLSchemaRequest.
+	Metadata string `json:"metadata" yaml:"metadata"`
+
+	// SdlFile The GraphQL SDL document as a file upload. Required when
+	// `schemaSource` is `file`; must be omitted otherwise.
+	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequest defines model for ValidateGraphQLSchemaRequest.
+type ValidateGraphQLSchemaRequest struct {
+	// SchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+	// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+	// supplies the schema to resolve.
+	SchemaSource *ValidateGraphQLSchemaRequestSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form, when `schemaSource` is `inline` (or the uploaded file's content, when `file`).
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to fetch the SDL from, when `schemaSource` is `url`.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// Upstream Only relevant when `schemaSource` is `introspection` (explicit or
+	// inferred) — unlike `GraphQLAPI.upstream`, this is not required,
+	// since a validation request for `inline`/`url`/`file` has no use
+	// for it.
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequestSchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+// supplies the schema to resolve.
+type ValidateGraphQLSchemaRequestSchemaSource string
+
+// ValidateGraphQLSchemaResponse defines model for ValidateGraphQLSchemaResponse.
+type ValidateGraphQLSchemaResponse struct {
+	// IntrospectionMode Only set when `resolved` is `true`.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Message A generic explanation, set only when `resolved` is `false`. Never
+	// the specific parser/fetch/introspection failure reason — reuses
+	// the same sterile message `GraphQLAPISchemaResolveFailed` uses
+	// elsewhere (`error-handling.md`).
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+
+	// Resolved Whether the declared schemaSource actually resolved to a usable schema.
+	Resolved bool `json:"resolved" yaml:"resolved"`
+
+	// Sdl The resolved SDL text when `resolved` is `true`; empty otherwise.
+	Sdl string `json:"sdl" yaml:"sdl"`
+}
+
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
 type ValidateOpenAPIResponse struct {
 	// Content The exact bytes the validator ran against. Always echoed for file
@@ -6296,6 +6373,9 @@ type UpdateGatewayJSONRequestBody = GatewayResponse
 
 // CreateGraphQLAPIMultipartRequestBody defines body for CreateGraphQLAPI for multipart/form-data ContentType.
 type CreateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// ValidateGraphQLSchemaMultipartRequestBody defines body for ValidateGraphQLSchema for multipart/form-data ContentType.
+type ValidateGraphQLSchemaMultipartRequestBody = ValidateGraphQLSchemaMultipartRequest
 
 // UpdateGraphQLAPIMultipartRequestBody defines body for UpdateGraphQLAPI for multipart/form-data ContentType.
 type UpdateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
