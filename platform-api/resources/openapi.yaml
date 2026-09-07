@@ -790,8 +790,8 @@ paths:
       operationId: CreateBuild
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:create
-            - ap:rest_api:deployment:manage
+            - ap:rest_api:build:create
+            - ap:rest_api:build:manage
             - ap:rest_api:manage
       tags:
         - REST API Deployments
@@ -831,8 +831,8 @@ paths:
       operationId: GetBuilds
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:read
-            - ap:rest_api:deployment:manage
+            - ap:rest_api:build:read
+            - ap:rest_api:build:manage
             - ap:rest_api:manage
       tags:
         - REST API Deployments
@@ -863,8 +863,8 @@ paths:
       operationId: GetBuild
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:read
-            - ap:rest_api:deployment:manage
+            - ap:rest_api:build:read
+            - ap:rest_api:build:manage
             - ap:rest_api:manage
       tags:
         - REST API Deployments

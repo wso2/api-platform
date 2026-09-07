@@ -333,6 +333,9 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 |ap:rest_api:api_key:delete|Delete an API key of a REST API|
 |ap:rest_api:api_key:manage|Full access to a REST API's API keys|
 |ap:rest_api:api_key:update|Update an API key of a REST API|
+|ap:rest_api:build:create|Prepare a build of a REST API|
+|ap:rest_api:build:manage|Full access to a REST API's builds|
+|ap:rest_api:build:read|Read a REST API's builds|
 |ap:rest_api:create|Create a REST API|
 |ap:rest_api:delete|Delete a REST API|
 |ap:rest_api:deployment:create|Deploy a REST API|
