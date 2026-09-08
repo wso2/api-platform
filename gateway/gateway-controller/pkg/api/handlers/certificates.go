@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/httpkit/httputil"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 )
 
@@ -60,6 +61,24 @@ type ListCertificatesResponse struct {
 // It is not RFC 3339, which is why these responses use hand-written structs
 // rather than the generated certificate types.
 const certNotAfterLayout = "2006-01-02 15:04:05"
+
+// certificateToResponse renders one stored certificate for a client.
+//
+// Shared by the REST handlers below and the MCP certificate tool so both
+// surfaces report the same fields in the same timestamp format. Note what it
+// omits: StoredCertificate.Certificate is tagged json:"certificate", so
+// returning the model itself would put the whole stored PEM chain on the wire.
+func certificateToResponse(cert *models.StoredCertificate) CertificateResponse {
+	return CertificateResponse{
+		ID:       cert.UUID,
+		Name:     cert.Name,
+		Subject:  cert.Subject,
+		Issuer:   cert.Issuer,
+		NotAfter: cert.NotAfter.Format(certNotAfterLayout),
+		Count:    cert.CertCount,
+		Status:   "success",
+	}
+}
 
 // certSyncMessages maps a failed sync stage to the message each operation
 // reported before the service layer existed. Preserved verbatim: the string is
@@ -103,17 +122,9 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cert := result.Certificate
-	httputil.WriteJSON(w, http.StatusCreated, CertificateResponse{
-		ID:       cert.UUID,
-		Name:     cert.Name,
-		Subject:  cert.Subject,
-		Issuer:   cert.Issuer,
-		NotAfter: cert.NotAfter.Format(certNotAfterLayout),
-		Count:    cert.CertCount,
-		Message:  "Certificate uploaded and SDS updated successfully",
-		Status:   "success",
-	})
+	resp := certificateToResponse(result.Certificate)
+	resp.Message = "Certificate uploaded and SDS updated successfully"
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // ListCertificates lists all custom certificates
@@ -131,15 +142,7 @@ func (s *APIServer) ListCertificates(w http.ResponseWriter, r *http.Request) {
 
 	var certificates []CertificateResponse
 	for _, cert := range result.Certificates {
-		certificates = append(certificates, CertificateResponse{
-			ID:       cert.UUID,
-			Name:     cert.Name,
-			Subject:  cert.Subject,
-			Issuer:   cert.Issuer,
-			NotAfter: cert.NotAfter.Format(certNotAfterLayout),
-			Count:    cert.CertCount,
-			Status:   "success",
-		})
+		certificates = append(certificates, certificateToResponse(cert))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, ListCertificatesResponse{

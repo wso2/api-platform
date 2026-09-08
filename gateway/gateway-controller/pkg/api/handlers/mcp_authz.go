@@ -74,6 +74,233 @@ var apiKeyRouteSuffixes = []struct {
 	{http.MethodDelete, "/{apiKeyName}"},
 }
 
+// Action dispatch for the certificate and subscription tools
+//
+// Certificates and subscriptions are not artifact kinds, so routeKey() cannot
+// build their keys: certificate reload has no {id} placeholder at all, and the
+// two subscription collections spell their placeholder differently
+// ({subscriptionId} vs {planId}). Both tools therefore carry a literal dispatch
+// table, resolved by one function each.
+//
+// Each resolver is called by BOTH the authorization gate (routeKeysForCall) and
+// the tool handler, so the route key that was authorized is always the route key
+// that executes — the same shared-predicate discipline rotateIsInjection applies
+// to api-key rotation. Every key below must match generateAuthConfig in
+// cmd/controller/main.go exactly; a typo fails closed, which is correct but
+// silently disables the action.
+
+// Certificate actions, canonical spellings.
+const (
+	certActionList   = "list"
+	certActionApply  = "apply"
+	certActionDelete = "delete"
+	certActionReload = "reload"
+)
+
+// certAction is the management REST operation one certificate action performs.
+type certAction struct {
+	Action string
+	// the REST route it maps to
+	RouteKey string
+	// whether to refuse in immutable mode
+	Mutating bool
+	// NeedsConfirm marks the actions requiring confirm=true.
+	NeedsConfirm bool
+}
+
+var certActions = map[string]certAction{
+	certActionList:   {Action: certActionList, RouteKey: "GET /certificates"},
+	certActionApply:  {Action: certActionApply, RouteKey: "POST /certificates", Mutating: true},
+	certActionDelete: {Action: certActionDelete, RouteKey: "DELETE /certificates/{id}", Mutating: true, NeedsConfirm: true},
+	certActionReload: {Action: certActionReload, RouteKey: "POST /certificates/reload", Mutating: true, NeedsConfirm: true},
+}
+
+// certActionAliases resolves an accepted spelling to its canonical action.
+// Models are inconsistent about which verb they reach for, so "upload" and
+// "create" settle on "apply" before any lookup, exactly as kindAliases does for
+// kind names.
+var certActionAliases = map[string]string{
+	"list":    certActionList,
+	"apply":   certActionApply,
+	"upload":  certActionApply,
+	"create":  certActionApply,
+	"add":     certActionApply,
+	"delete":  certActionDelete,
+	"remove":  certActionDelete,
+	"reload":  certActionReload,
+	"refresh": certActionReload,
+}
+
+// resolveCertAction resolves the certificate tool's action argument to the management REST operation it performs.
+func resolveCertAction(rawAction string) (certAction, error) {
+	canonical, ok := certActionAliases[normalizeToolWord(rawAction)]
+	if !ok {
+		return certAction{}, fmt.Errorf(
+			"unknown action %q; wso2_apip_gw_manage_certificates accepts: list, apply, delete, reload",
+			rawAction)
+	}
+	return certActions[canonical], nil
+}
+
+// Subscription types and actions, canonical spellings.
+const (
+	subTypeSubscription = "Subscription"
+	subTypePlan         = "SubscriptionPlan"
+
+	subActionList   = "list"
+	subActionGet    = "get"
+	subActionApply  = "apply"
+	subActionDelete = "delete"
+)
+
+// subAction is the management REST operation one (type, action, id-presence)
+type subAction struct {
+	Type         string
+	Action       string
+	RouteKey     string
+	Mutating     bool
+	NeedsID      bool
+	NeedsConfirm bool
+}
+
+// subCollections holds each type's collection path and the placeholder its item
+// routes use. The placeholders genuinely differ, which is the whole reason this
+// is a table and not a shared "/{id}" suffix.
+var subCollections = map[string]struct {
+	Collection  string
+	Placeholder string
+}{
+	subTypeSubscription: {Collection: "/subscriptions", Placeholder: "{subscriptionId}"},
+	subTypePlan:         {Collection: "/subscription-plans", Placeholder: "{planId}"},
+}
+
+var subTypeAliases = map[string]string{
+	"subscription":     subTypeSubscription,
+	"subscriptions":    subTypeSubscription,
+	"subscriptionplan": subTypePlan,
+	"plan":             subTypePlan,
+	"plans":            subTypePlan,
+}
+
+var subActionAliases = map[string]string{
+	"list":   subActionList,
+	"get":    subActionGet,
+	"read":   subActionGet,
+	"apply":  subActionApply,
+	"create": subActionApply,
+	"update": subActionApply,
+	"delete": subActionDelete,
+	"remove": subActionDelete,
+}
+
+// resolveSubscriptionAction resolves the subscription tool's arguments to the
+// management REST operation they perform. Only apply depends on the id, and
+// only on whether one was supplied: present means update, absent means create,
+// which is the same dispatch-on-argument shape write() uses for manifests.
+func resolveSubscriptionAction(rawType, rawAction, id string) (subAction, error) {
+	// Get the resources Type
+	resourceType, ok := subTypeAliases[normalizeToolWord(rawType)]
+	if !ok {
+		return subAction{}, fmt.Errorf(
+			"unknown type %q; wso2_apip_gw_manage_subscriptions accepts: %s, %s",
+			rawType, subTypeSubscription, subTypePlan)
+	}
+	// Get the resources Action
+	action, ok := subActionAliases[normalizeToolWord(rawAction)]
+	if !ok {
+		return subAction{}, fmt.Errorf(
+			"unknown action %q; wso2_apip_gw_manage_subscriptions accepts: list, get, apply, delete",
+			rawAction)
+	}
+
+	// Get the path(contains collection and placeholder) from the Collections map based on the resource type
+	paths := subCollections[resourceType]
+	// Create complete path for the resource
+	item := paths.Collection + "/" + paths.Placeholder
+	op := subAction{Type: resourceType, Action: action}
+
+	switch action {
+	case subActionList:
+		op.RouteKey = http.MethodGet + " " + paths.Collection
+	case subActionGet:
+		op.RouteKey = http.MethodGet + " " + item
+		op.NeedsID = true
+	case subActionDelete:
+		op.RouteKey = http.MethodDelete + " " + item
+		op.Mutating, op.NeedsID, op.NeedsConfirm = true, true, true
+	default: // apply
+		op.Mutating = true
+		if strings.TrimSpace(id) != "" {
+			op.RouteKey = http.MethodPut + " " + item
+		} else {
+			op.RouteKey = http.MethodPost + " " + paths.Collection
+		}
+	}
+
+	return op, nil
+}
+
+// normalizeToolWord folds an action or type argument to the form the alias maps
+// are keyed on, so "SubscriptionPlan", "subscription_plan" and "plan" all reach
+// one value before any comparison. Shares kindSeparatorStripper with
+// normalizeKind so the two tolerate exactly the same spellings.
+func normalizeToolWord(raw string) string {
+	return strings.ToLower(kindSeparatorStripper.Replace(strings.TrimSpace(raw)))
+}
+
+// MCPCertificateRouteKeys is every route key the certificate tool can reach,
+// read out of the dispatch table itself rather than restated, so it cannot
+// describe a surface the resolver does not actually produce.
+//
+// Exported because cmd/controller asserts each key exists in
+// generateAuthConfig's role map. That assertion is what catches a mistyped
+// placeholder, which otherwise fails closed and silently disables an action.
+func MCPCertificateRouteKeys() []string {
+	keys := make([]string, 0, len(certActions))
+	for _, op := range certActions {
+		keys = append(keys, op.RouteKey)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// MCPSubscriptionRouteKeys is the same for the subscription tool. It walks every
+// (type, action, id-presence) combination through resolveSubscriptionAction, so
+// the two placeholder spellings are exercised exactly as a real call would
+// produce them.
+func MCPSubscriptionRouteKeys() []string {
+	var keys []string
+	for resourceType := range subCollections {
+		for _, action := range []string{subActionList, subActionGet, subActionDelete} {
+			if op, err := resolveSubscriptionAction(resourceType, action, ""); err == nil {
+				keys = append(keys, op.RouteKey)
+			}
+		}
+		// apply reaches two routes, chosen by whether an id was supplied.
+		for _, id := range []string{"", "an-id"} {
+			if op, err := resolveSubscriptionAction(resourceType, subActionApply, id); err == nil {
+				keys = append(keys, op.RouteKey)
+			}
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// certAndSubscriptionRouteKeys narrows the two surfaces above to the tools this
+// gateway actually registered, so a handler built without one of the services
+// does not advertise routes no tool can reach.
+func (h *McpHandler) certAndSubscriptionRouteKeys() []string {
+	var keys []string
+	if h.certificateService != nil {
+		keys = append(keys, MCPCertificateRouteKeys()...)
+	}
+	if h.subscriptionService != nil {
+		keys = append(keys, MCPSubscriptionRouteKeys()...)
+	}
+	return keys
+}
+
 // Caller identity, carried from the HTTP gate to the tool handlers.
 type mcpCallerKeyType struct{}
 
@@ -204,6 +431,55 @@ func hasAnyRole(held, allowed []string) bool {
 	return false
 }
 
+// MCPRouteKeys is every management route key some MCP tool can reach, sorted
+// and deduplicated.
+//
+// It is the single enumeration of the MCP endpoint's authorization surface:
+// MCPBaselineRoles derives the advertised scope set from it, and a test asserts
+// every key it returns exists in generateAuthConfig's map. That test is the
+// only thing that catches a mistyped placeholder, which otherwise fails closed
+// and silently disables a tool.
+//
+// Kinds absent from the registry and tools whose service was never wired
+// contribute nothing, so the surface always describes this gateway rather than
+// every gateway.
+func (h *McpHandler) MCPRouteKeys() []string {
+	seen := map[string]struct{}{}
+	add := func(keys ...string) {
+		for _, k := range keys {
+			seen[k] = struct{}{}
+		}
+	}
+
+	for _, kind := range canonicalKinds() {
+		ops, ok := h.kinds[kind]
+		if !ok {
+			continue
+		}
+		for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
+			for _, item := range []bool{false, true} {
+				add(routeKey(m, ops, item))
+			}
+		}
+		// Without these the api-key routes' roles never surface, and consumer
+		// would be missing from the advertised scopes_supported even though
+		// "POST /mcp" admits it.
+		if ops.Keys != nil {
+			for _, r := range apiKeyRouteSuffixes {
+				add(keyRouteKey(r.Method, ops, r.Suffix))
+			}
+		}
+	}
+	add(h.certAndSubscriptionRouteKeys()...)
+
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // MCPBaselineRoles is the union of every role that can call at least one tool.
 // Used for the endpoint's own entry in the route role map, and as the default
 // entry set main.go projects through MapRolesToScopes to build the advertised
@@ -214,29 +490,10 @@ func hasAnyRole(held, allowed []string) bool {
 // here would double-translate main.go's operator-configured entry set.
 func (h *McpHandler) MCPBaselineRoles() []string {
 	seen := map[string]struct{}{}
-	collect := func(key string) {
+	for _, key := range h.MCPRouteKeys() {
 		if roles, ok := h.rolesFor(key); ok {
 			for _, r := range roles {
 				seen[r] = struct{}{}
-			}
-		}
-	}
-	for _, kind := range canonicalKinds() {
-		ops, ok := h.kinds[kind]
-		if !ok {
-			continue
-		}
-		for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
-			for _, item := range []bool{false, true} {
-				collect(routeKey(m, ops, item))
-			}
-		}
-		// Without these the api-key routes' roles never surface, and consumer
-		// would be missing from the advertised scopes_supported even though
-		// "POST /mcp" admits it.
-		if ops.Keys != nil {
-			for _, r := range apiKeyRouteSuffixes {
-				collect(keyRouteKey(r.Method, ops, r.Suffix))
 			}
 		}
 	}
@@ -460,6 +717,33 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 			return nil, false
 		}
 		return h.keyRouteKeysFor(in.Kind, http.MethodDelete, "/{apiKeyName}")
+
+	// The two action-dispatched tools resolve through the same functions their
+	// handlers call, so the key authorized here is the key that executes. Both
+	// are exact for every resolvable call: the route depends only on the
+	// action, the type, and whether an id was supplied — all readable from the
+	// arguments without touching a service.
+	case "wso2_apip_gw_manage_certificates":
+		var in manageCertificatesInput
+		if err := json.Unmarshal(args, &in); err != nil {
+			return nil, false
+		}
+		op, err := resolveCertAction(in.Action)
+		if err != nil {
+			return nil, false
+		}
+		return []string{op.RouteKey}, true
+
+	case "wso2_apip_gw_manage_subscriptions":
+		var in manageSubscriptionsInput
+		if err := json.Unmarshal(args, &in); err != nil {
+			return nil, false
+		}
+		op, err := resolveSubscriptionAction(in.Type, in.Action, in.ID)
+		if err != nil {
+			return nil, false
+		}
+		return []string{op.RouteKey}, true
 
 	default:
 		return nil, false
