@@ -120,4 +120,9 @@ type Deployments interface {
 
 	// UndeployDeploymentByHandle undeploys a deployment from its gateway (Delete).
 	UndeployDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+
+	// RestoreDeploymentByHandle puts an UNDEPLOYED or ARCHIVED deployment back on
+	// its gateway, serving the artifact it already holds rather than rendering or
+	// building anything new (Update). The deployment must not already be DEPLOYED.
+	RestoreDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
 }
