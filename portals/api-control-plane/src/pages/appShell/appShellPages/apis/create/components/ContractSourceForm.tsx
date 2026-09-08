@@ -1600,7 +1600,13 @@ export const ContractSourceForm = ({
                     <Tooltip title={intl.formatMessage(messages.clearUrl)}>
                       <IconButton
                         aria-label={intl.formatMessage(messages.clearUrl)}
-                        onClick={() => contractUrl.setValue('')}
+                        onClick={() => {
+                          contractUrl.setValue('');
+                          setFetched(null);
+                          setRequest(null);
+                          setFetching(false);
+                          setFetchError(null);
+                        }}
                         onMouseDown={(event) => event.preventDefault()}
                         size="small"
                         type="button"

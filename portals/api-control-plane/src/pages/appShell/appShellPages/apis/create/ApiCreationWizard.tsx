@@ -304,12 +304,11 @@ export const ApiCreationWizard = () => {
               />
             )}
 
-            {step === 'source' && (
-              // `onAuthorizeGitHub` and `onRefreshSwaggerHubOrganizations` are
-              // deliberately not passed: neither flow is wired yet, and the
-              // panel hides the control belonging to a handler it wasn't given
-              // rather than rendering a button that does nothing.
-              <DefineApiPanel initialApiTypeKey={apiType?.key} onDraftChange={setSourceDraft} />
+            {step !== 'apiType' && (
+              <Box sx={{ display: step === 'source' ? 'block' : 'none' }}>
+                {/* Kept mounted during configuration so Back preserves the selected source and edits. */}
+                <DefineApiPanel initialApiTypeKey={apiType?.key} onDraftChange={setSourceDraft} />
+              </Box>
             )}
 
             {step === 'configure' && (

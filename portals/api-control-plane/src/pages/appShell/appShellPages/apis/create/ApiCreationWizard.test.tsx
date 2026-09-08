@@ -17,6 +17,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEffect } from 'react';
 
 import { resetHttpClient } from '@/api/core/http';
 import { accepts, collection, failure, recorder } from '@/test/msw';
@@ -51,14 +52,18 @@ vi.mock('./components/ApiTypeSelector', () => ({
 }));
 
 vi.mock('./components/DefineApiPanel', () => ({
-  DefineApiPanel: ({ onDraftChange }: { onDraftChange: (draft: unknown) => void }) => (
-    <button
-      onClick={() => onDraftChange({ displayName: 'Orders API', version: '1.0' })}
-      type="button"
-    >
-      Use this contract
-    </button>
-  ),
+  DefineApiPanel: ({ onDraftChange }: { onDraftChange: (draft: unknown) => void }) => {
+    useEffect(() => () => onDraftChange(null), [onDraftChange]);
+
+    return (
+      <button
+        onClick={() => onDraftChange({ displayName: 'Orders API', version: '1.0' })}
+        type="button"
+      >
+        Use this contract
+      </button>
+    );
+  },
 }));
 
 const scope = makeConsoleScope();
@@ -85,6 +90,18 @@ const submitCreate = async () => {
 };
 
 describe('ApiCreationWizard — explicit creation boundary', () => {
+  it('preserves the selected source when returning from configuration', async () => {
+    const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
+
+    await user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Use this contract' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+  });
+
   it('shows Step 3 without posting when Continue is clicked, then posts on Create', async () => {
     const createRequests = recorder();
     server.use(accepts('post', '/rest-apis', { id: 'orders-api' }, { record: createRequests }));

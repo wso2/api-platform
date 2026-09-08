@@ -143,8 +143,8 @@ describe('ContractSourceForm — automatic fetch', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('clears the URL and loaded contract from the field action', async () => {
-    stubSpecHost();
+  it('clears fetched state and re-fetches when the same URL is entered again', async () => {
+    const fetchMock = stubSpecHost();
     const onContractChange = vi.fn();
     const { user } = renderWithProviders(
       <ContractSourceForm onContractChange={onContractChange} />,
@@ -162,6 +162,16 @@ describe('ContractSourceForm — automatic fetch', () => {
 
     expect(field).toHaveValue('');
     await waitFor(() => expect(onContractChange).toHaveBeenLastCalledWith(null));
+
+    await user.type(field, 'https://example.com/openapi.yaml');
+    await user.tab();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(onContractChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dialect: 'openapi-3.0' }),
+      ),
+    );
   });
 
   it('does not read it again when the field is left untouched', async () => {
