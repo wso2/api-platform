@@ -86,6 +86,26 @@ type ListCertificatesResponse struct {
 	Status       string                `json:"status"`
 }
 
+// certNotAfterLayout is the timestamp format certificate responses use.
+const certNotAfterLayout = "2006-01-02 15:04:05"
+
+// certificateToResponse renders one stored certificate for a client.
+//
+// Used by the MCP certificate tool. Note what it omits:
+// StoredCertificate.Certificate is tagged json:"certificate", so returning the
+// model itself would put the whole stored PEM chain on the wire.
+func certificateToResponse(cert *models.StoredCertificate) CertificateResponse {
+	return CertificateResponse{
+		ID:       cert.UUID,
+		Name:     cert.Name,
+		Subject:  cert.Subject,
+		Issuer:   cert.Issuer,
+		NotAfter: cert.NotAfter.Format(certNotAfterLayout),
+		Count:    cert.CertCount,
+		Status:   "success",
+	}
+}
+
 // UploadCertificate handles certificate upload via REST API
 // POST /certificates
 func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
