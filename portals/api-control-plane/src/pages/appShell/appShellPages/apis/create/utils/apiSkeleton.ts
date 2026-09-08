@@ -30,6 +30,7 @@ export const DEFAULT_API_SKELETON: Record<string, unknown> = {
     version: '1.0.0',
     description: 'A starting point. Edit the operations, or ask AI to refine them.',
   },
+  servers: [{ url: 'https://example.com' }],
   paths: {
     '/resources': {
       get: {

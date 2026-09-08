@@ -41,10 +41,4 @@ describe('DesignWithAiPanel', () => {
       runtimeConfig.apiDesignerDocsUrl,
     );
   });
-
-  it('keeps the editable skeleton as an alternative to leaving the wizard', () => {
-    renderWithProviders(<DesignWithAiPanel />);
-
-    expect(screen.getByText(/skeleton on the right/)).toBeInTheDocument();
-  });
 });

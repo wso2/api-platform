@@ -67,14 +67,14 @@ const messages = defineMessages({
     id: 'api.create.ApiCreationProgress.stage.validating',
     defaultMessage: 'Validating configuration',
   },
-  subtitle: {
-    id: 'api.create.ApiCreationProgress.subtitle',
-    defaultMessage: '“{name}” will be ready in a moment.',
-    description: '{name} is the display name the user gave the API. Never translated.',
-  },
   title: {
     id: 'api.create.ApiCreationProgress.title',
     defaultMessage: 'We are in the process of creating your API Proxy',
+  },
+  titleWithName: {
+    id: 'api.create.ApiCreationProgress.titleWithName',
+    defaultMessage: 'We are in the process of creating your {name} API Proxy',
+    description: '{name} is the display name the user gave the API. Never translated.',
   },
 });
 
@@ -122,7 +122,7 @@ const stageFor = (percent: number) =>
   (STAGES.find((stage) => percent < stage.until) ?? STAGES[STAGES.length - 1]).label;
 
 /** Diameter of the progress ring, in px. Shared by the ring and its track. */
-const RING_SIZE = 56;
+const RING_SIZE = 48;
 const RING_THICKNESS = 3;
 
 /** Geometry of the illustration, in its own viewBox units. */
@@ -136,7 +136,7 @@ const ART = {
  * Rendered width of the illustration, in px. The drawing scales to it from the
  * viewBox, so this is the only knob for how large it appears on screen.
  */
-const ART_DISPLAY_WIDTH = 720;
+const ART_DISPLAY_WIDTH = 560;
 
 /**
  * Tooth counts of the two gears, which double as their turn durations in
@@ -357,16 +357,14 @@ export const ApiCreationProgress = ({
   const rounded = Math.round(percent);
 
   return (
-    <Stack spacing={4} sx={{ alignItems: 'center', py: 8, textAlign: 'center', width: '100%' }}>
-      <Stack spacing={1} sx={{ alignItems: 'center', maxWidth: 'sm' }}>
-        <Typography sx={{ fontWeight: 700 }} variant="h1">
-          <FormattedMessage {...messages.title} />
+    <Stack spacing={3} sx={{ alignItems: 'center', py: 6, textAlign: 'center', width: '100%' }}>
+      <Stack sx={{ alignItems: 'center', maxWidth: 'md' }}>
+        <Typography sx={{ fontWeight: 700 }} variant="h2">
+          <FormattedMessage
+            {...(displayName ? messages.titleWithName : messages.title)}
+            values={displayName ? { name: displayName } : undefined}
+          />
         </Typography>
-        {displayName && (
-          <Typography color="text.secondary" variant="body1">
-            <FormattedMessage {...messages.subtitle} values={{ name: displayName }} />
-          </Typography>
-        )}
       </Stack>
 
       <ApiProxyAssemblyArt />

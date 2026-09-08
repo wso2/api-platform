@@ -27,6 +27,7 @@ import {
   Form,
   FormControl,
   FormHelperText,
+  FormLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -42,7 +43,16 @@ import {
   alpha,
   type Theme,
 } from '@wso2/oxygen-ui';
-import { FileText, GitHub, Pencil, RefreshCw, Upload, X } from '@wso2/oxygen-ui-icons-react';
+import {
+  Eraser as Broom,
+  FileText,
+  GitHub,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Zap,
+} from '@wso2/oxygen-ui-icons-react';
 import yaml from 'js-yaml';
 import {
   useEffect,
@@ -182,6 +192,11 @@ const SAMPLE_CONTRACT_URLS: Record<string, string> = {
 const SAMPLE_REPOSITORY_URL = 'https://github.com/wso2/bijira-samples';
 
 const messages = defineMessages({
+  clearUrl: {
+    id: 'api.create.fromContract.action.clearUrl',
+    defaultMessage: 'Clear URL',
+    description: 'Clears the API contract URL field and its loaded preview.',
+  },
   fetching: {
     id: 'api.create.fromContract.status.fetching',
     defaultMessage: 'Reading the contract…',
@@ -374,11 +389,12 @@ const messages = defineMessages({
   },
   uploadAction: {
     id: 'api.create.fromContract.upload.action',
-    defaultMessage: 'Select file',
+    defaultMessage: 'Upload',
   },
   uploadHint: {
     id: 'api.create.fromContract.upload.hint',
-    defaultMessage: 'One file \u00b7 {extensions}',
+    defaultMessage:
+      'Drag & drop your file or click to select \u00b7 Accepted file types: {extensions}',
     description: 'Sits under the drop-zone heading; {extensions} is a list such as ".json, .yaml".',
   },
   uploadRemove: {
@@ -386,10 +402,10 @@ const messages = defineMessages({
     defaultMessage: 'Remove {fileName}',
     description: 'Accessible name for the button that discards the chosen file.',
   },
-  uploadReplace: {
-    id: 'api.create.fromContract.upload.replace',
-    defaultMessage: 'Replace file',
-    description: 'Reopens the file picker so the chosen contract can be swapped for another.',
+  uploadedFile: {
+    id: 'api.create.fromContract.upload.uploadedFile',
+    defaultMessage: 'Uploaded file',
+    description: 'Heading above the selected API contract file.',
   },
   uploadRequired: {
     id: 'api.create.fromContract.upload.required',
@@ -397,7 +413,7 @@ const messages = defineMessages({
   },
   uploadTitle: {
     id: 'api.create.fromContract.upload.title',
-    defaultMessage: 'Drag and drop your contract here',
+    defaultMessage: 'Upload API Contract',
   },
   uploadUnsupported: {
     id: 'api.create.fromContract.upload.unsupported',
@@ -558,6 +574,7 @@ const SampleLink = ({ onClick }: { onClick: () => void }) => (
   <Button
     onClick={onClick}
     size="small"
+    startIcon={<Zap size={16} />}
     sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
     type="button"
     variant="text"
@@ -679,15 +696,7 @@ const ContractFileControl = ({
         <FormattedMessage {...messages.uploadUnsupported} values={{ extensions: extensionList }} />
       );
     }
-    return (
-      <FormattedMessage
-        {...messages.uploadAccepted}
-        values={{
-          extensions: extensionList,
-          maxSize: formatFileSize(intl, MAX_CONTRACT_BYTES),
-        }}
-      />
-    );
+    return undefined;
   })();
 
   return (
@@ -707,91 +716,93 @@ const ContractFileControl = ({
         type="file"
       />
 
-      <Box
+      <Card
         onClick={file === null ? openPicker : undefined}
         onDragLeave={() => setDraggedOver(false)}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         sx={(theme) => ({
-          alignItems: 'center',
           bgcolor: draggedOver ? 'action.hover' : 'background.default',
           border: hairline(theme),
           borderColor: draggedOver ? 'primary.main' : 'divider',
           borderRadius: 2,
           borderStyle: 'dashed',
           cursor: file === null ? 'pointer' : 'default',
-          display: 'flex',
-          justifyContent: 'center',
-          px: 3,
-          py: file === null ? 5 : 3,
+          minHeight: 300,
         })}
+        variant="outlined"
       >
-        {file === null ? (
-          <Stack spacing={1} sx={{ alignItems: 'center', textAlign: 'center' }}>
-            <Box sx={iconTileSx(7)}>
-              <Upload size={24} />
-            </Box>
-            <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h6">
-              <FormattedMessage {...messages.uploadTitle} />
-            </Typography>
-            <Typography color="text.secondary" variant="body2">
-              <FormattedMessage {...messages.uploadHint} values={{ extensions: extensionList }} />
-            </Typography>
-            <Button onClick={openPicker} sx={{ mt: 2 }} variant="contained">
-              <FormattedMessage {...messages.uploadAction} />
-            </Button>
-          </Stack>
-        ) : (
-          <Stack spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
-            <Stack
-              direction="row"
-              spacing={2}
-              sx={(theme) => ({
-                alignItems: 'center',
-                bgcolor: 'background.paper',
-                border: hairline(theme),
-                borderColor: 'divider',
-                borderRadius: 2,
-                maxWidth: theme.spacing(60),
-                px: 2,
-                py: 1.5,
-                width: '100%',
-              })}
-            >
-              <Box sx={iconTileSx(5)}>
-                <FileText size={20} />
+        <CardContent
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            justifyContent: 'center',
+            minHeight: 300,
+            p: 3,
+            '&:last-child': { pb: 3 },
+          }}
+        >
+          {file === null ? (
+            <Stack spacing={1} sx={{ alignItems: 'center', textAlign: 'center' }}>
+              <Box sx={iconTileSx(7)}>
+                <Upload size={24} />
               </Box>
-              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                  <Typography noWrap sx={{ fontWeight: 600 }} variant="body1">
-                    {file.name}
-                  </Typography>
-                  {fileExtensionLabel(file.name) === '' ? null : (
-                    <Chip label={fileExtensionLabel(file.name)} size="small" />
-                  )}
-                </Stack>
-                <Typography color="text.secondary" variant="caption">
-                  {formatFileSize(intl, file.size)}
-                </Typography>
-              </Box>
-              <IconButton
-                aria-label={intl.formatMessage(messages.uploadRemove, {
-                  fileName: file.name,
-                })}
-                onClick={() => onReject('removed')}
-                size="small"
-              >
-                <X size={16} />
-              </IconButton>
+              <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h6">
+                <FormattedMessage {...messages.uploadTitle} />
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                <FormattedMessage {...messages.uploadHint} values={{ extensions: extensionList }} />
+              </Typography>
+              <Button onClick={openPicker} sx={{ mt: 2 }} type="button" variant="contained">
+                <FormattedMessage {...messages.uploadAction} />
+              </Button>
             </Stack>
-            <Button onClick={openPicker} sx={{ mt: 1 }} variant="text">
-              <FormattedMessage {...messages.uploadReplace} />
-            </Button>
-          </Stack>
-        )}
-      </Box>
+          ) : (
+            <Stack spacing={2} sx={{ alignItems: 'center', width: '100%' }}>
+              <Typography sx={{ fontWeight: 700 }} variant="h6">
+                <FormattedMessage {...messages.uploadedFile} />
+              </Typography>
+              <Card sx={{ maxWidth: 480, width: '100%' }}>
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                    <Box sx={iconTileSx(5)}>
+                      <FileText size={20} />
+                    </Box>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
+                        <Typography noWrap sx={{ fontWeight: 600 }} variant="body1">
+                          {file.name}
+                        </Typography>
+                        {fileExtensionLabel(file.name) === '' ? null : (
+                          <Chip label={fileExtensionLabel(file.name)} size="small" />
+                        )}
+                      </Stack>
+                      <Typography color="text.secondary" variant="caption">
+                        {formatFileSize(intl, file.size)}
+                      </Typography>
+                    </Box>
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.uploadRemove, {
+                        fileName: file.name,
+                      })}
+                      color="error"
+                      onClick={() => onReject('removed')}
+                      size="small"
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
 
-      <FormHelperText id={helperId}>{helperText}</FormHelperText>
+      {helperText === undefined ? null : (
+        <FormHelperText id={helperId}>{helperText}</FormHelperText>
+      )}
     </FormControl>
   );
 };
@@ -1570,7 +1581,7 @@ export const ContractSourceForm = ({
           value={sourceKey}
         >
           {availableSources.map((candidate) => (
-            <ToggleButton key={candidate} value={candidate}>
+            <ToggleButton key={candidate} type="button" value={candidate}>
               {intl.formatMessage(SOURCE_LABELS[candidate])}
             </ToggleButton>
           ))}
@@ -1579,17 +1590,61 @@ export const ContractSourceForm = ({
 
       {sourceKey === 'url' ? (
         <Form.Stack spacing={1}>
-          <ContractTextControl
-            field={contractUrl}
-            id="contractUrl"
-            invalidMessage={messages.urlInvalid}
-            label={intl.formatMessage(messages.urlLabel)}
-            // Leaving a valid URL is the whole gesture: the contract is read
-            // then, rather than on a button afterwards.
-            onCommitted={(url) => requestFetch({ apiTypeKey, sourceKey: 'url', url })}
-            placeholder={intl.formatMessage(messages.urlPlaceholder)}
-            requiredMessage={messages.urlRequired}
-          />
+          <FormControl error={contractUrl.error !== null} fullWidth required>
+            <FormLabel htmlFor="contractUrl">{intl.formatMessage(messages.urlLabel)}</FormLabel>
+            <OutlinedInput
+              aria-describedby="contractUrl-helper"
+              endAdornment={
+                contractUrl.value === '' ? undefined : (
+                  <InputAdornment position="end">
+                    <Tooltip title={intl.formatMessage(messages.clearUrl)}>
+                      <IconButton
+                        aria-label={intl.formatMessage(messages.clearUrl)}
+                        onClick={() => {
+                          contractUrl.setValue('');
+                          setFetched(null);
+                          setRequest(null);
+                          setFetching(false);
+                          setFetchError(null);
+                        }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        size="small"
+                        type="button"
+                      >
+                        <Broom size={18} />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                )
+              }
+              id="contractUrl"
+              name="contractUrl"
+              onBlur={() => {
+                // Leaving a valid URL is the whole gesture: the contract is
+                // read then, rather than on a button afterwards.
+                if (contractUrl.commit()) {
+                  requestFetch({
+                    apiTypeKey,
+                    sourceKey: 'url',
+                    url: contractUrl.value.trim(),
+                  });
+                }
+              }}
+              onChange={(event) => contractUrl.handleChange(event.target.value)}
+              placeholder={intl.formatMessage(messages.urlPlaceholder)}
+              sx={{ mt: 0.75 }}
+              value={contractUrl.value}
+            />
+            {contractUrl.error === null ? null : (
+              <FormHelperText id="contractUrl-helper">
+                <FormattedMessage
+                  {...(contractUrl.error === 'required'
+                    ? messages.urlRequired
+                    : messages.urlInvalid)}
+                />
+              </FormHelperText>
+            )}
+          </FormControl>
           <SampleLink onClick={fillWithSampleUrl} />
         </Form.Stack>
       ) : null}
@@ -1677,6 +1732,7 @@ export const ContractSourceForm = ({
                                 edge="end"
                                 onClick={() => setDirectoryDialogOpen(true)}
                                 size="small"
+                                type="button"
                               >
                                 <Pencil size={16} />
                               </IconButton>
@@ -1781,10 +1837,15 @@ export const ContractSourceForm = ({
             sx={{ alignSelf: 'flex-start' }}
             value="public"
           >
-            <ToggleButton sx={{ px: 3, textTransform: 'none' }} value="public">
+            <ToggleButton sx={{ px: 3, textTransform: 'none' }} type="button" value="public">
               <FormattedMessage {...messages.swaggerHubPublic} />
             </ToggleButton>
-            <ToggleButton disabled sx={{ px: 3, textTransform: 'none' }} value="authorized">
+            <ToggleButton
+              disabled
+              sx={{ px: 3, textTransform: 'none' }}
+              type="button"
+              value="authorized"
+            >
               <Tooltip title={intl.formatMessage(messages.swaggerHubAuthorizedHint)}>
                 <Box component="span">
                   <FormattedMessage {...messages.swaggerHubAuthorized} />
@@ -1837,6 +1898,7 @@ export const ContractSourceForm = ({
                   aria-label={intl.formatMessage(messages.swaggerHubRefresh)}
                   onClick={onRefreshSwaggerHubOrganizations}
                   size="small"
+                  type="button"
                 >
                   <RefreshCw size={18} />
                 </IconButton>
