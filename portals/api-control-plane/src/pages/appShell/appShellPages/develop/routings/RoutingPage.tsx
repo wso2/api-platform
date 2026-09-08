@@ -57,7 +57,7 @@ export function RoutingPage() {
   ) : !apiQuery.data ? (
     <ErrorState title={intl.formatMessage(messages.notFound)} />
   ) : (
-    <ResourcesPanel api={apiQuery.data} />
+    <ResourcesPanel key={apiQuery.data.id ?? params.apiHandler} api={apiQuery.data} />
   );
 
   return (

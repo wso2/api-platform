@@ -158,7 +158,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
   };
 
   const addResource = () => {
-    if (!pathValid) return;
+    if (update.isPending || !pathValid) return;
     setOperations((current) => [
       {
         name: operationName(method, trimmedPath),
@@ -171,7 +171,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
   };
 
   const save = () => {
-    if (!api.id) return;
+    if (!api.id || update.isPending) return;
     const savedOperations = operations.filter(
       (operation) => !deletedOperations.has(operationKey(operation)),
     );
@@ -200,6 +200,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
           </PageTitle.SubHeader>
         </PageTitle>
         <Button
+          disabled={update.isPending}
           onClick={() => setDialogOpen(true)}
           startIcon={<Plus size={18} />}
           sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
@@ -253,8 +254,11 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
         }}
       >
         <SwaggerOperationsView
-          isOperationDisabled={(operation) => deletedOperations.has(operationKey(operation))}
+          isOperationDisabled={(operation) =>
+            update.isPending || deletedOperations.has(operationKey(operation))
+          }
           onDelete={(index) =>
+            !update.isPending &&
             setDeletedOperations((current) =>
               new Set(current).add(operationKey(visibleOperations[index])),
             )
@@ -286,6 +290,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
                 <FormattedMessage {...messages.method} />
               </FormLabel>
               <Select
+                disabled={update.isPending}
                 labelId="resource-method-label"
                 onChange={(event) =>
                   setMethod(event.target.value as Operation['request']['method'])
@@ -305,6 +310,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
                 <FormattedMessage {...messages.path} />
               </FormLabel>
               <TextField
+                disabled={update.isPending}
                 error={!pathValid}
                 fullWidth
                 helperText={!pathValid ? intl.formatMessage(messages.pathHelp) : undefined}
@@ -319,6 +325,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
                 <FormattedMessage {...messages.descriptionLabel} />
               </FormLabel>
               <TextField
+                disabled={update.isPending}
                 fullWidth
                 id="resource-description"
                 multiline
@@ -334,7 +341,11 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
           <Button color="secondary" onClick={closeDialog} variant="outlined">
             <FormattedMessage {...messages.cancel} />
           </Button>
-          <Button disabled={!pathValid} onClick={addResource} variant="contained">
+          <Button
+            disabled={update.isPending || !pathValid}
+            onClick={addResource}
+            variant="contained"
+          >
             <FormattedMessage {...messages.add} />
           </Button>
         </DialogActions>
