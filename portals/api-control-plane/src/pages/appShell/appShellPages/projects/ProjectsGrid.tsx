@@ -39,6 +39,10 @@ const messages = defineMessages({
     id: 'project.list.table.apiCountLoading',
     defaultMessage: '… APIs',
   },
+  apiCountUnavailable: {
+    id: 'project.list.table.apiCountUnavailable',
+    defaultMessage: 'API count unavailable',
+  },
   delete: {
     id: 'project.list.table.delete',
     defaultMessage: 'Delete {name}',
@@ -60,7 +64,7 @@ function ProjectRow({
 }: Pick<ProjectsGridProps, 'onDelete' | 'onOpen'> & { project: Project }) {
   const intl = useIntl();
   const apisQuery = useRestApis({}, { projectId: project.id });
-  const apiCount = apisQuery.data?.pagination?.total ?? apisQuery.data?.count ?? 0;
+  const apiCount = apisQuery.data?.pagination?.total ?? apisQuery.data?.count;
   const initial = project.displayName.trim().charAt(0).toUpperCase() || '?';
 
   return (
@@ -88,6 +92,8 @@ function ProjectRow({
         <Typography color="text.secondary" variant="body2">
           {apisQuery.isLoading ? (
             <FormattedMessage {...messages.apiCountLoading} />
+          ) : apiCount === undefined ? (
+            <FormattedMessage {...messages.apiCountUnavailable} />
           ) : (
             <FormattedMessage {...messages.apiCount} values={{ count: apiCount }} />
           )}

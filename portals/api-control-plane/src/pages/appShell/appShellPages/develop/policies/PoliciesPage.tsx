@@ -35,6 +35,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.notFound',
     defaultMessage: 'API not found',
   },
+  loadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.loadError',
+    defaultMessage: 'Unable to load the API.',
+  },
   scopePrompt: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.scopePrompt',
     defaultMessage: 'Policies are attached to a single API.',
@@ -49,7 +53,9 @@ export function PoliciesPage() {
 
   const content = apiQuery.isPending ? (
     <LoadingState label={intl.formatMessage(messages.loading)} />
-  ) : apiQuery.error || !apiQuery.data ? (
+  ) : apiQuery.error ? (
+    <ErrorState title={intl.formatMessage(messages.loadError)} />
+  ) : !apiQuery.data ? (
     <ErrorState title={intl.formatMessage(messages.notFound)} />
   ) : (
     <Box sx={{ mt: 2 }}>

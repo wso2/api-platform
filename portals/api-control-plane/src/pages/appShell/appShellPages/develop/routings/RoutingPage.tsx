@@ -34,6 +34,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.notFound',
     defaultMessage: 'API not found',
   },
+  loadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.loadError',
+    defaultMessage: 'Unable to load the API.',
+  },
   scopePrompt: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.scopePrompt',
     defaultMessage: 'Routing is configured per API.',
@@ -48,7 +52,9 @@ export function RoutingPage() {
 
   const content = apiQuery.isPending ? (
     <LoadingState label={intl.formatMessage(messages.loading)} />
-  ) : apiQuery.error || !apiQuery.data ? (
+  ) : apiQuery.error ? (
+    <ErrorState title={intl.formatMessage(messages.loadError)} />
+  ) : !apiQuery.data ? (
     <ErrorState title={intl.formatMessage(messages.notFound)} />
   ) : (
     <RoutingPanel api={apiQuery.data} />

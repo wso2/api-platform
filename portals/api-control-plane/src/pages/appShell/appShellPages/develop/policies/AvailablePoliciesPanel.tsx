@@ -178,7 +178,9 @@ export function AvailablePoliciesPanel({
 
       {(categoriesQuery.data?.length || 0) > 0 && (
         <FormControl fullWidth sx={{ mt: 1.5 }}>
-          <FormLabel sx={{ mb: 0.75 }}>{intl.formatMessage(messages.categories)}</FormLabel>
+          <FormLabel htmlFor="policy-category-filter" sx={{ mb: 0.75 }}>
+            {intl.formatMessage(messages.categories)}
+          </FormLabel>
           <Autocomplete
             disableCloseOnSelect
             multiple
@@ -190,6 +192,7 @@ export function AvailablePoliciesPanel({
             renderInput={(params) => (
               <TextField
                 {...params}
+                id="policy-category-filter"
                 placeholder={
                   activeCategories.length === 0
                     ? intl.formatMessage(messages.allCategories)

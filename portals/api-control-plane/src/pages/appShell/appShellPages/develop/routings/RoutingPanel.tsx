@@ -617,6 +617,7 @@ export function RoutingPanel({ api }: { api: RestApi }) {
     setProdUrl(api.upstream?.main?.url ?? '');
     setSandboxUrl(api.upstream?.sandbox?.url ?? '');
     setSelection(null);
+    setConnectingFrom(null);
     setDisconnected(new Set());
     setDiscovery({ status: 'idle' });
   };

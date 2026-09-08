@@ -103,6 +103,10 @@ const messages = defineMessages({
     defaultMessage: 'No resources. Add them in the Routing tab.',
     description: '"Routing" is the name of a sibling page in this console.',
   },
+  noMatchingResources: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noMatchingResources',
+    defaultMessage: 'No resources match the filters.',
+  },
   resourceEmpty: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty',
     defaultMessage: 'Drag and drop policies here, or use Add Policy.',
@@ -419,9 +423,13 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                         ))}
                       </TextField>
                     </Stack>
-                    {operations.length === 0 ? (
+                    {visibleOperations.length === 0 ? (
                       <Typography color="text.secondary" variant="body2">
-                        <FormattedMessage {...messages.noResources} />
+                        <FormattedMessage
+                          {...(operations.length === 0
+                            ? messages.noResources
+                            : messages.noMatchingResources)}
+                        />
                       </Typography>
                     ) : (
                       <Stack spacing={1}>

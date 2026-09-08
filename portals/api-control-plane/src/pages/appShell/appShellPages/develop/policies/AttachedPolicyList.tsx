@@ -188,6 +188,7 @@ export function AttachedPolicyList({
                   <Tooltip title={intl.formatMessage(messages.edit)}>
                     <IconButton
                       aria-label={intl.formatMessage(messages.editLabel)}
+                      disabled={!canAdd}
                       onClick={() => onEdit(index)}
                       size="small"
                     >

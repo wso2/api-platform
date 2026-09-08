@@ -81,7 +81,7 @@ export function SaveBar({ dirty, disabled, saving, onCancel, onSave, label }: Sa
           <Stack direction="row" spacing={1}>
             <Button
               color="secondary"
-              disabled={disabled || saving || !dirty}
+              disabled={saving || !dirty}
               onClick={onCancel}
               variant="outlined"
             >
