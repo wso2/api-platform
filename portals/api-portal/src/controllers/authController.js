@@ -31,6 +31,7 @@ const { validationResult } = require('express-validator');
 const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
 const { portalRoles, rolesFromClaims } = require('../middlewares/authorization');
 const { clearPortalCookies } = require('../utils/sessionCookies');
+const { sanitizeReturnTo } = require('../utils/returnToGuard');
 
 // Memoized once (not per-login) so tls_skip_verify logins still get bounded
 // connection pooling from the shared pooling options — a fresh https.Agent
@@ -246,7 +247,12 @@ const handleSilentSSO = async (req, res, next) => {
         return next();
     }
 
-    req.session.returnTo = req.originalUrl;
+    // Sanitised for the same reason as the two writers in ensureAuthenticated.js:
+    // this value is handed to res.redirect() once the IDP round trip completes, and
+    // req.originalUrl can carry an attacker-supplied scheme/host (see safeReturnTo).
+    req.session.returnTo = sanitizeReturnTo(req.originalUrl, req.params.orgName
+        ? `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`
+        : constants.ROUTE.BASE_PATH);
     req.session.silentAuthRedirected = true;
     req.session.save((err) => {
         if (err) {
