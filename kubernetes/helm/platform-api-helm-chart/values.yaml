@@ -136,8 +136,8 @@ config:
       # Roles the mapping file defines, each a name and the scopes it grants.
       # Only ap_admin is shipped here — the file-mode admin below names it.
       # platform-api/resources/role-to-scope-mapping.yaml is the full sample set (ap_admin,
-      # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
-      # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
+      # ap_operator, ap_publisher, ap_developer, ap_subscriber, ap_viewer); copy the
+      # entries you need from it. An ap: scope the Platform API's OpenAPI spec does not declare
       # fails startup; dp: scopes (API Portal) are checked for shape only.
       # A resource-level :manage already covers that resource's subresources
       # (each subresource operation lists the parent :manage in its own accepted
