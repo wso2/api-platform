@@ -184,7 +184,13 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 		return nil, fmt.Errorf("unsupported A2A protocol version %q", a2a.ProtocolVersion)
 	}
 
-	agentContext := config.AgentContextPath(spec.Context)
+	// $version resolves here, before any path arithmetic: agentContext is the
+	// base every A2A route, the Agent Card route, and every rewritten interface
+	// URL is built from, so an unresolved placeholder would reach Envoy as a
+	// literal path segment. RestApi resolves at the same point (restapi.go) —
+	// the RDC contract is that Route.Path is already final.
+	agentContext := strings.ReplaceAll(
+		config.AgentContextPath(spec.Context), "$version", spec.Version)
 
 	rdc := &models.RuntimeDeployConfig{
 		Metadata: models.Metadata{

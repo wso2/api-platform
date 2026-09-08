@@ -440,6 +440,62 @@ func TestAgentWithoutContextServesAtTheVirtualHostRoot(t *testing.T) {
 	assert.Equal(t, "/", jsonrpc.Path)
 }
 
+// spec.context may embed the version as `$version`, the same placeholder RestApi
+// and the other kinds accept. It has to be resolved here, because everything a
+// client touches is derived from the context the transformer hands on: the route
+// paths Envoy matches, and the interface URLs a rewritten Agent Card advertises.
+// Left unresolved it does not fail anywhere — it ships as a literal path
+// segment, so the agent answers on /weather/$version and 404s on the version the
+// operator actually deployed.
+func TestAgentContextResolvesTheVersionPlaceholder(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(withContext(ptrStr("/weather/$version"))))
+	require.NoError(t, err)
+
+	assert.Equal(t, "/weather/v1.0", rdc.Context)
+	assert.Contains(t, rdc.Routes, "GET|/weather/v1.0/.well-known/agent-card.json|main.local")
+	assert.Contains(t, rdc.Routes, "POST|/weather/v1.0/rpc|main.local")
+	assert.Contains(t, rdc.Routes, "POST|/weather/v1.0/message:send|main.local")
+
+	for key, r := range rdc.Routes {
+		assert.NotContains(t, key, "$version", "a route key kept the placeholder")
+		assert.NotContains(t, r.Path, "$version", "route %s kept the placeholder in its path", key)
+	}
+}
+
+// The placeholder resolves for the rewritten Agent Card too. The card is what a
+// client reads to learn where to send its requests, so an interface URL still
+// carrying `$version` sends every client to a path no route serves — the same
+// failure as the route bug above, one indirection later.
+func TestAgentCardInterfacesResolveTheVersionPlaceholder(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(
+		withContext(ptrStr("/weather/$version")),
+		withPassthroughCard(),
+	))
+	require.NoError(t, err)
+
+	const cardRouteKey = "GET|/weather/v1.0/.well-known/agent-card.json|main.local"
+	block, carries := publicCardParams(rdc.PolicyChains[cardRouteKey])
+	require.True(t, carries, "a rewriting passthrough card needs the A2A policy on its card chain")
+
+	rewrite, ok := block[constants.A2A_POLICY_PARAM_REWRITE_URLS].(map[string]interface{})
+	require.True(t, ok, "the rewrite block is missing or not an object: %#v",
+		block[constants.A2A_POLICY_PARAM_REWRITE_URLS])
+	interfaces, ok := rewrite[constants.A2A_POLICY_PARAM_INTERFACES].([]any)
+	require.True(t, ok, "the interface mapping is missing or not a list: %#v",
+		rewrite[constants.A2A_POLICY_PARAM_INTERFACES])
+
+	assert.ElementsMatch(t, []any{
+		map[string]any{
+			constants.A2A_POLICY_PARAM_PROTOCOL_BINDING: string(api.JSONRPC),
+			constants.A2A_POLICY_PARAM_PATH:             "/weather/v1.0/rpc",
+		},
+		map[string]any{
+			constants.A2A_POLICY_PARAM_PROTOCOL_BINDING: string(api.HTTPJSON),
+			constants.A2A_POLICY_PARAM_PATH:             "/weather/v1.0",
+		},
+	}, interfaces)
+}
+
 // The route paths this transformer generates have to be the ones the validator
 // checked for collisions. Two spellings of the same arithmetic is how a route
 // that was proven unique ships as one that shadows another.
