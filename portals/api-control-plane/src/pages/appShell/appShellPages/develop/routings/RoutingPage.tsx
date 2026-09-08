@@ -23,7 +23,7 @@ import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ScopeGate } from '@/scope/ScopeGate';
-import { RoutingPanel } from './RoutingPanel';
+import { ResourcesPanel } from './ResourcesPanel';
 
 const messages = defineMessages({
   loading: {
@@ -57,7 +57,7 @@ export function RoutingPage() {
   ) : !apiQuery.data ? (
     <ErrorState title={intl.formatMessage(messages.notFound)} />
   ) : (
-    <RoutingPanel api={apiQuery.data} />
+    <ResourcesPanel api={apiQuery.data} />
   );
 
   return (

@@ -27,10 +27,11 @@ import {
   Gauge,
   Home,
   Layers,
+  List,
   MessagesSquare,
   Network,
+  PanelTop,
   Rocket,
-  Route,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -292,9 +293,9 @@ export const navigationRegistry: NavigationDefinition[] = [
         to: routes.apiDevelopPolicies,
       },
       {
-        icon: <Route />,
+        icon: <List />,
         id: 'develop-routing',
-        label: 'Routing',
+        label: 'Resources',
         to: routes.apiDevelopRouting,
       },
       {
@@ -393,7 +394,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Portals',
     group: CLUSTER.api,
     order: 80,
-    icon: <FileText />,
+    icon: <PanelTop />,
     ...adaptive([
       { level: 'api', to: routes.apiPortals },
       { level: 'project', to: routes.projectPortals },

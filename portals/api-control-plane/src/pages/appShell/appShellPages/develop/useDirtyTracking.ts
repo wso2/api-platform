@@ -32,8 +32,8 @@ import { useRef } from 'react';
 export function useDirtyTracking<T>(snapshot: T) {
   const baseline = useRef(JSON.stringify(snapshot));
   const dirty = JSON.stringify(snapshot) !== baseline.current;
-  const markSaved = () => {
-    baseline.current = JSON.stringify(snapshot);
+  const markSaved = (savedSnapshot: T = snapshot) => {
+    baseline.current = JSON.stringify(savedSnapshot);
   };
   return { dirty, markSaved };
 }
