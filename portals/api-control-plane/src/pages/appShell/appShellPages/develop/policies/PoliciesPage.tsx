@@ -16,22 +16,24 @@
  * under the License.
  */
 
+import { Box } from '@wso2/oxygen-ui';
 import { defineMessages, useIntl } from 'react-intl';
 
+import { useRestApi } from '@/api/resources/restApis';
+import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ScopeGate } from '@/scope/ScopeGate';
-import { DevelopPageShell } from '../DevelopPageShell';
 import { PolicyPanel } from './PolicyPanel';
 
 const messages = defineMessages({
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.develop.PoliciesPage.title',
-    defaultMessage: 'Policies',
+  loading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.loading',
+    defaultMessage: 'Loading API',
   },
-  subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.develop.PoliciesPage.subtitle',
-    defaultMessage: 'Policies attached to {apiName}',
-    description: 'Sub-header under the section name; {apiName} is the API display name.',
+  notFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.notFound',
+    defaultMessage: 'API not found',
   },
   scopePrompt: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.scopePrompt',
@@ -42,6 +44,18 @@ const messages = defineMessages({
 
 export function PoliciesPage() {
   const intl = useIntl();
+  const { params } = useConsoleScope();
+  const apiQuery = useRestApi(params.apiHandler);
+
+  const content = apiQuery.isPending ? (
+    <LoadingState label={intl.formatMessage(messages.loading)} />
+  ) : apiQuery.error || !apiQuery.data ? (
+    <ErrorState title={intl.formatMessage(messages.notFound)} />
+  ) : (
+    <Box sx={{ mt: 2 }}>
+      <PolicyPanel api={apiQuery.data} />
+    </Box>
+  );
 
   return (
     <ScopeGate
@@ -49,9 +63,7 @@ export function PoliciesPage() {
       requires="api"
       to={routes.apiDevelopPolicies}
     >
-      <DevelopPageShell subtitle={messages.subtitle} title={messages.title}>
-        {(api) => <PolicyPanel api={api} />}
-      </DevelopPageShell>
+      {content}
     </ScopeGate>
   );
 }

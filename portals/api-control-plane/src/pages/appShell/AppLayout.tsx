@@ -123,27 +123,28 @@ export default function AppLayout() {
 
         <AppShell.Main>
           <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
-            <PageContent fullWidth>
+            <PageContent fullWidth sx={{ py: 5 }}>
               <Stack spacing={1}>
                 {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
-                  <AppBreadcrumbs
-                    items={breadcrumbItems}
-                    sx={(theme) => ({
-                      mb: 1,
-                      '& .MuiBreadcrumbs-li .MuiTypography-root': {
-                        fontSize: theme.typography.body2.fontSize,
-                        opacity: 0.55,
-                      },
-                      '& .MuiBreadcrumbs-li:last-of-type .MuiTypography-root': {
-                        color: 'text.primary',
-                        fontWeight: theme.typography.fontWeightMedium,
-                        opacity: 1,
-                      },
-                      '& .MuiBreadcrumbs-separator': {
-                        opacity: 0.45,
-                      },
-                    })}
-                  />
+                  <Box sx={{ pb: 1 }}>
+                    <AppBreadcrumbs
+                      items={breadcrumbItems}
+                      sx={(theme) => ({
+                        '& .MuiBreadcrumbs-li .MuiTypography-root': {
+                          fontSize: theme.typography.body2.fontSize,
+                          opacity: 0.55,
+                        },
+                        '& .MuiBreadcrumbs-li:last-of-type .MuiTypography-root': {
+                          color: 'text.primary',
+                          fontWeight: theme.typography.fontWeightMedium,
+                          opacity: 1,
+                        },
+                        '& .MuiBreadcrumbs-separator': {
+                          opacity: 0.45,
+                        },
+                      })}
+                    />
+                  </Box>
                 )}
                 {/* Error boundary scoped to routed page only; resets on pathname change */}
                 <ErrorBoundary

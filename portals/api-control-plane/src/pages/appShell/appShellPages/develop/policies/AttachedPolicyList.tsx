@@ -74,6 +74,7 @@ export function AttachedPolicyList({
   onRemove,
   onReorder,
   emptyText,
+  showHeader = true,
 }: {
   policies: Policy[];
   canAdd: boolean;
@@ -83,6 +84,7 @@ export function AttachedPolicyList({
   onReorder: (from: number, to: number) => void;
   /** Overrides the default placeholder; already-translated text. */
   emptyText?: string;
+  showHeader?: boolean;
 }) {
   const intl = useIntl();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -93,30 +95,37 @@ export function AttachedPolicyList({
 
   return (
     <Box>
-      <Box
-        sx={{
-          alignItems: 'center',
-          display: 'flex',
-          justifyContent: 'space-between',
-          mb: 1,
-        }}
-      >
-        <Typography sx={{ fontWeight: 600 }} variant="body2">
-          <FormattedMessage {...messages.heading} />
-        </Typography>
-        {canAdd && (
-          <Button onClick={onAdd} size="small" startIcon={<Plus size={14} />} variant="outlined">
-            <FormattedMessage {...messages.addPolicy} />
-          </Button>
-        )}
-      </Box>
+      {showHeader && (
+        <Box
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            justifyContent: 'space-between',
+            mb: 1,
+          }}
+        >
+          <Typography sx={{ fontWeight: 600 }} variant="body2">
+            <FormattedMessage {...messages.heading} />
+          </Typography>
+          {canAdd && (
+            <Button onClick={onAdd} size="small" startIcon={<Plus size={14} />} variant="outlined">
+              <FormattedMessage {...messages.addPolicy} />
+            </Button>
+          )}
+        </Box>
+      )}
 
       {policies.length === 0 ? (
         <Box
           sx={{
-            bgcolor: 'action.hover',
+            alignItems: 'center',
+            border: '2px dashed',
+            borderColor: 'divider',
             borderRadius: 1,
             color: 'text.secondary',
+            display: 'flex',
+            justifyContent: 'center',
+            minHeight: 120,
             px: 2,
             py: 1.5,
           }}
@@ -129,7 +138,7 @@ export function AttachedPolicyList({
             const isOver = overIndex === index && dragIndex !== null && dragIndex !== index;
             return (
               <Box
-                draggable={canAdd}
+                draggable
                 key={`${policy.name}-${index}`}
                 onDragEnd={() => {
                   setDragIndex(null);
@@ -141,7 +150,6 @@ export function AttachedPolicyList({
                   setOverIndex(index);
                 }}
                 onDragStart={(event) => {
-                  if (!canAdd) return;
                   setDragIndex(index);
                   event.dataTransfer.effectAllowed = 'move';
                   // Mark as an internal reorder so external policy drops ignore it.
@@ -159,48 +167,44 @@ export function AttachedPolicyList({
                   bgcolor: 'background.paper',
                   border: '1px solid',
                   borderColor: isOver ? 'primary.main' : 'divider',
-                  borderRadius: 1.5,
+                  borderRadius: 1,
                   borderTopWidth: isOver ? 3 : 1,
                   display: 'flex',
                   gap: 1,
                   opacity: dragIndex === index ? 0.5 : 1,
                   px: 1.25,
-                  py: 0.75,
+                  py: 1,
                 }}
               >
-                {canAdd && (
-                  <Box sx={{ color: 'text.disabled', cursor: 'grab', display: 'flex' }}>
-                    <GripVertical size={16} />
-                  </Box>
-                )}
+                <Box sx={{ color: 'text.disabled', cursor: 'grab', display: 'flex' }}>
+                  <GripVertical size={16} />
+                </Box>
                 <Shield size={16} />
                 <Typography noWrap sx={{ flex: 1, fontWeight: 500 }} variant="body2">
                   {policy.name}
                 </Typography>
                 <Chip label={`v${policy.version}`} size="small" variant="outlined" />
-                {canAdd && (
-                  <Stack direction="row">
-                    <Tooltip title={intl.formatMessage(messages.edit)}>
-                      <IconButton
-                        aria-label={intl.formatMessage(messages.editLabel)}
-                        onClick={() => onEdit(index)}
-                        size="small"
-                      >
-                        <Pencil size={14} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title={intl.formatMessage(messages.remove)}>
-                      <IconButton
-                        aria-label={intl.formatMessage(messages.removeLabel)}
-                        color="error"
-                        onClick={() => onRemove(index)}
-                        size="small"
-                      >
-                        <Trash2 size={14} />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                )}
+                <Stack direction="row">
+                  <Tooltip title={intl.formatMessage(messages.edit)}>
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.editLabel)}
+                      onClick={() => onEdit(index)}
+                      size="small"
+                    >
+                      <Pencil size={14} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title={intl.formatMessage(messages.remove)}>
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.removeLabel)}
+                      color="error"
+                      onClick={() => onRemove(index)}
+                      size="small"
+                    >
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
               </Box>
             );
           })}

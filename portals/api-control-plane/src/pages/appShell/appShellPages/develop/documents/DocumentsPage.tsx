@@ -16,24 +16,9 @@
  * under the License.
  */
 
-import { defineMessages } from 'react-intl';
-
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
-import { DevelopPageShell } from '../DevelopPageShell';
 import { DocumentsPanel } from './DocumentsPanel';
-
-const messages = defineMessages({
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.title',
-    defaultMessage: 'Documents',
-  },
-  subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.subtitle',
-    defaultMessage: 'Documentation for {apiName}',
-    description: 'Sub-header under the section name; {apiName} is the API display name.',
-  },
-});
 
 export function DocumentsPage() {
   return (
@@ -42,11 +27,7 @@ export function DocumentsPage() {
       requires="api"
       to={routes.apiDevelopDocuments}
     >
-      {/* `DocumentsTab` takes no detail of its own; the shell is here for the
-          heading, which still names the API being documented. */}
-      <DevelopPageShell subtitle={messages.subtitle} title={messages.title}>
-        {() => <DocumentsPanel />}
-      </DevelopPageShell>
+      <DocumentsPanel />
     </ScopeGate>
   );
 }
