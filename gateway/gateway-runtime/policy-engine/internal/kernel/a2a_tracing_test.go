@@ -62,20 +62,24 @@ const (
 func TestA2A_TraceContextAndResolutionAttributesEndToEnd(t *testing.T) {
 	installW3CPropagator(t)
 	server, k, sr := newSpanStatusServer(t)
-	// The shared helper builds the server with tracing disabled, which skips the
-	// per-request header extraction outright. Propagation is the subject of this test,
-	// so it has to be on; package-internal field, matching how the helper sets tracer.
+
+	// The shared helper constructs the server with an empty TracingConfig, and the
+	// per-request header extraction is gated on tracing being enabled — so without
+	// this the traceparent below is never read and every span starts a new root.
+	// Set directly rather than through the constructor, the same way the helper
+	// installs its own tracer: a package-internal field, no global otel state.
 	server.tracingEnabled = true
 
 	const routeKey = "POST|/weather/1.0.0|example.com"
 	registerA2AJSONRPCRoute(t, k, routeKey, "SendMessage")
 
-	// A caller-supplied traceparent, arriving the way Envoy forwards it: on the
-	// downstream request headers carried in the RequestHeaders message. It does not
-	// travel on the ext_proc gRPC stream metadata, which is set once at stream
-	// establishment and so cannot carry a per-request traceparent.
+	// A caller-supplied traceparent, arriving the way Envoy forwards it: as a request
+	// header inside the RequestHeaders message. Not on the ext_proc gRPC stream's
+	// metadata — that is set once when the long-lived stream is established, so it
+	// never carries a per-request trace context.
 	stream := newMockStream([]*extprocv3.ProcessingRequest{
-		withTraceparent(requestHeadersWithBodyToFollow(routeKey, "POST", "/weather/1.0.0"),
+		withTraceparent(
+			requestHeadersWithBodyToFollow(routeKey, "POST", "/weather/1.0.0"),
 			incomingTraceparent),
 		requestBodyReq(`{"jsonrpc":"2.0","id":1,"method":"SendMessage",` +
 			`"params":{"message":{"messageId":"msg-1","contextId":"ctx-1","taskId":"task-1"}}}`),
@@ -146,14 +150,20 @@ func TestA2A_ResolutionAttributesRecordedWithoutAnIncomingTrace(t *testing.T) {
 	}
 }
 
-// ExtractTraceContext is what turns the downstream request headers into a parent
-// context. This asserts the piece the end-to-end test depends on, in isolation, so a
-// failure there is attributable.
+// ExtractTraceContext is what turns the request's headers into a parent context. This
+// asserts the piece the end-to-end test depends on, in isolation, so a failure there
+// is attributable.
+//
+// It goes through traceContextCarrier — the same carrier the production ext_proc path
+// builds — so the header-to-carrier step is covered here too, rather than only the
+// propagator call it feeds.
 func TestExtractTraceContext_ParentsFromTheRequestHeaders(t *testing.T) {
 	installW3CPropagator(t)
-	ctx := tracing.ExtractTraceContext(context.Background(), traceContextCarrier(
-		withTraceparent(requestHeadersReq("POST|/weather/1.0.0|example.com", "POST", "/weather/1.0.0"),
-			incomingTraceparent)))
+
+	req := withTraceparent(
+		requestHeadersWithBodyToFollow("POST|/weather/1.0.0|example.com", "POST", "/weather/1.0.0"),
+		incomingTraceparent)
+	ctx := tracing.ExtractTraceContext(context.Background(), traceContextCarrier(req))
 
 	sc := trace.SpanContextFromContext(ctx)
 	require.True(t, sc.IsValid(), "the incoming traceparent must produce a valid span context")
@@ -244,13 +254,15 @@ func withA2AVersion(req *extprocv3.ProcessingRequest, version string) *extprocv3
 	return req
 }
 
-// withTraceparent adds a traceparent header to a RequestHeaders message, the way Envoy
-// forwards the caller's trace context to ext_proc. The gateway reads it from here, not
-// from the gRPC stream metadata, so a test that sets it anywhere else asserts nothing.
+// withTraceparent appends the W3C traceparent request header, in the lowercase form
+// Envoy delivers header names in. This is where a caller's trace context actually
+// arrives — inside the RequestHeaders message — which is why traceContextCarrier reads
+// it from there rather than from the ext_proc stream's gRPC metadata.
 func withTraceparent(req *extprocv3.ProcessingRequest, traceparent string) *extprocv3.ProcessingRequest {
 	headers := req.GetRequestHeaders().GetHeaders()
 	headers.Headers = append(headers.Headers, &corev3.HeaderValue{
-		Key: "traceparent", RawValue: []byte(traceparent),
+		Key:      "traceparent",
+		RawValue: []byte(traceparent),
 	})
 	return req
 }
