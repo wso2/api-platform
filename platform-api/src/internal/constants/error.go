@@ -32,6 +32,8 @@ var (
 	ErrOrganizationNotFound   = errors.New("organization not found")
 	ErrMultipleOrganizations  = errors.New("multiple organizations found")
 	ErrInvalidInput           = errors.New("invalid input parameters")
+	ErrIssuerTooLong          = errors.New("issuer must be at most 255 characters")
+	ErrAllowedTargetsTooLong  = errors.New("allowedTargets must be at most 255 characters")
 )
 
 var (

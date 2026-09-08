@@ -11052,6 +11052,7 @@ components:
         issuer:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          maxLength: 255
           nullable: true
           example: "api-platform-devportal"
         allowedTargets:
@@ -11059,6 +11060,7 @@ components:
           description: |
             Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
+          maxLength: 255
           nullable: true
           example: "dev_gateway,test_gateway"
     CreateLLMProviderAPIKeyResponse:
@@ -11107,6 +11109,7 @@ components:
         issuer:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          maxLength: 255
           nullable: true
           example: "api-platform-devportal"
         allowedTargets:
@@ -11114,6 +11117,7 @@ components:
           description: |
             Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
+          maxLength: 255
           nullable: true
           example: "dev_gateway,test_gateway"
     CreateLLMProxyAPIKeyResponse:

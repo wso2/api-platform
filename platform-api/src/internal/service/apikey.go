@@ -40,6 +40,13 @@ const (
 	apiKeyNameMaxLength     = 63
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
+
+	// apiKeyIssuerMaxLength / apiKeyAllowedTargetsMaxLength bound the two free-form
+	// API-key fields to the width v2 persists them in (VARCHAR(255)). Both are
+	// carried verbatim — issuer is an exact-match lookup key and allowedTargets is
+	// a parsed gateway allow-list — so an over-length value is rejected, not truncated.
+	apiKeyIssuerMaxLength         = 255
+	apiKeyAllowedTargetsMaxLength = 255
 )
 
 var (
@@ -48,6 +55,22 @@ var (
 	// consecutiveHyphensRegex collapses runs of hyphens into a single hyphen
 	consecutiveHyphensRegex = regexp.MustCompile(`-+`)
 )
+
+// validateAPIKeyIssuerAndTargets enforces the storage-width limit on the issuer
+// and allowedTargets fields of an API-key create request. Returns a validation
+// error (mapped to HTTP 400 by the handlers) when either exceeds 255 characters;
+// the values are never truncated because both are matched exactly at gateway
+// key-resolution time (issuer via `AND k.issuer = ?`, allowedTargets as a parsed
+// gateway allow-list).
+func validateAPIKeyIssuerAndTargets(issuer *string, allowedTargets string) error {
+	if issuer != nil && len(*issuer) > apiKeyIssuerMaxLength {
+		return constants.ErrIssuerTooLong
+	}
+	if len(allowedTargets) > apiKeyAllowedTargetsMaxLength {
+		return constants.ErrAllowedTargetsTooLong
+	}
+	return nil
+}
 
 // APIKeyService handles API key management operations for external API key injection
 type APIKeyService struct {
