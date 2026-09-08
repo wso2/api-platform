@@ -27,6 +27,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -552,6 +553,54 @@ func stringPtr(s string) *string {
 }
 
 // Tests for generateAuthConfig function
+
+// TestMCPToolRouteKeysAreAuthorized is the cross-check that keeps the MCP
+// certificate and subscription tools reachable.
+//
+// Both tools authorize a call by resolving it to the management REST route key
+// that governs the equivalent operation, then looking that key up in the map
+// generateAuthConfig builds. A key absent from the map is a hard deny — correct,
+// but silent: the tool simply stops working, with nothing failing at build or
+// startup. The two subscription collections spell their placeholder differently
+// ({subscriptionId} vs {planId}), which makes a typo easy and its consequence
+// invisible, so the two sides are compared here.
+func TestMCPToolRouteKeysAreAuthorized(t *testing.T) {
+	authConfig, err := generateAuthConfig(&config.Config{})
+	require.NoError(t, err)
+
+	keys := append(handlers.MCPCertificateRouteKeys(), handlers.MCPSubscriptionRouteKeys()...)
+	require.Len(t, keys, 14, "expected 4 certificate and 10 subscription route keys")
+
+	for _, key := range keys {
+		roles, ok := authConfig.ResourceRoles[key]
+		assert.Truef(t, ok,
+			"MCP tools resolve to route key %q, which has no entry in generateAuthConfig — "+
+				"every call mapping to it is denied", key)
+		assert.NotEmptyf(t, roles, "route key %q maps to an empty role list, which denies every caller", key)
+	}
+
+	// The literal spellings, written independently of the dispatch tables the
+	// keys above are read from. Without these the test would only prove the two
+	// sides agree, not that either matches the routes actually registered.
+	for _, key := range []string{
+		"GET /certificates",
+		"POST /certificates",
+		"DELETE /certificates/{id}",
+		"POST /certificates/reload",
+		"GET /subscriptions",
+		"POST /subscriptions",
+		"GET /subscriptions/{subscriptionId}",
+		"PUT /subscriptions/{subscriptionId}",
+		"DELETE /subscriptions/{subscriptionId}",
+		"GET /subscription-plans",
+		"POST /subscription-plans",
+		"GET /subscription-plans/{planId}",
+		"PUT /subscription-plans/{planId}",
+		"DELETE /subscription-plans/{planId}",
+	} {
+		assert.Containsf(t, keys, key, "no MCP tool action resolves to %q", key)
+	}
+}
 
 func TestGenerateAuthConfig(t *testing.T) {
 	t.Run("No authentication enabled", func(t *testing.T) {

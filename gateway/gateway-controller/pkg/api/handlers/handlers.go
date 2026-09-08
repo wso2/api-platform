@@ -717,6 +717,8 @@ func (s *APIServer) EnableMCP(
 		LLMDeploymentService: s.llmDeploymentService,
 		SecretService:        s.secretService,
 		APIKeyService:        s.apiKeyService,
+		CertificateService:   s.getCertificateService(),
+		SubscriptionService:  s.getSubscriptionService(),
 		ResourceRoles:        resourceRoles,
 		RoleMapping:          roleMapping,
 		ResourceMetadataURL:  resourceMetadataURL,
