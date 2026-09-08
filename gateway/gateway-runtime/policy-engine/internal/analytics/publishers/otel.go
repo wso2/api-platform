@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -70,6 +71,10 @@ const (
 	// 2xx body carries partialSuccess and a failure body carries an error
 	// message; neither may be allowed to grow the heap.
 	otelMaxResponseBytes int64 = 4 << 10
+	// otelMaxHeaderAttributes caps how many header attributes one record may
+	// carry, per direction. Header names become attribute keys, so an over-broad
+	// allowlist grows the record's schema, not just its size.
+	otelMaxHeaderAttributes = 32
 )
 
 // ns qualifies an attribute name with the WSO2 namespace.
@@ -771,6 +776,9 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 	attrs.anyStr(ns("request.body"), event.Properties[dto.PropKeyRequestPayload])
 	attrs.anyStr(ns("response.body"), event.Properties[dto.PropKeyResponsePayload])
 
+	appendHeaderAttributes(attrs, "http.request.header.", event.Properties[dto.PropKeyRequestHeaders])
+	appendHeaderAttributes(attrs, "http.response.header.", event.Properties[dto.PropKeyResponseHeaders])
+
 	o.appendAIAttributes(event, attrs, route)
 	o.appendMCPAttributes(event, attrs)
 
@@ -793,6 +801,51 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 		EventName:            otelEventName,
 		Body:                 otelAnyValue{StringValue: &body},
 		Attributes:           attrs.list(),
+	}
+}
+
+// appendHeaderAttributes emits one attribute per header under the given prefix,
+// per the HTTP conventions: the header name forms the key, and the value is
+// always a string array because a header can repeat.
+//
+// The headers are already filtered by the operator’s allowlist policy. When 
+// the policy is absent, nothing is emitted. 
+//
+// otelMaxHeaderAttributes prevents overly broad header allowlists from 
+// exceeding OTel’s attribute limit and causing silent truncation
+func appendHeaderAttributes(attrs *otelAttrs, prefix string, raw interface{}) {
+	serialized, ok := raw.(string)
+	if !ok || serialized == "" {
+		return
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(serialized), &headers); err != nil {
+		slog.Debug("OTel publisher could not parse analytics headers", "error", err, "prefix", prefix)
+		return
+	}
+
+	// Sorted so a truncated record keeps the same headers across requests; map
+	// order would drop a different arbitrary subset every time.
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	emitted := 0
+	for _, name := range names {
+		if emitted == otelMaxHeaderAttributes {
+			slog.Warn("OTel publisher truncated header attributes; narrow the analytics-header-filter allowlist",
+				"prefix", prefix, "emitted", emitted, "available", len(names))
+			return
+		}
+		// The analytics policy joins a repeated header into one comma-separated
+		// string before it reaches the event, so the array carries that single
+		// value verbatim.
+		if value := headers[name]; value != "" {
+			attrs.strs(prefix+strings.ToLower(name), []string{value})
+			emitted++
+		}
 	}
 }
 
@@ -978,10 +1031,18 @@ type otelKeyValue struct {
 
 // otelAnyValue is the OTLP AnyValue union; exactly one field is set.
 type otelAnyValue struct {
-	StringValue *string  `json:"stringValue,omitempty"`
-	IntValue    *string  `json:"intValue,omitempty"`
-	DoubleValue *float64 `json:"doubleValue,omitempty"`
-	BoolValue   *bool    `json:"boolValue,omitempty"`
+	StringValue *string         `json:"stringValue,omitempty"`
+	IntValue    *string         `json:"intValue,omitempty"`
+	DoubleValue *float64        `json:"doubleValue,omitempty"`
+	BoolValue   *bool           `json:"boolValue,omitempty"`
+	ArrayValue  *otelArrayValue `json:"arrayValue,omitempty"`
+}
+
+// otelArrayValue is the OTLP ArrayValue: a list of AnyValue. Required for the
+// header conventions, whose values are always string arrays because a header can
+// legitimately repeat.
+type otelArrayValue struct {
+	Values []otelAnyValue `json:"values"`
 }
 
 // otelAttrs accumulates attributes, skipping empty ones so a record carries only
@@ -1000,6 +1061,24 @@ func (a *otelAttrs) str(key, value string) *otelAttrs {
 	}
 	v := value
 	a.kvs = append(a.kvs, otelKeyValue{Key: key, Value: otelAnyValue{StringValue: &v}})
+	return a
+}
+
+// strs sets a string-array attribute, skipping the attribute entirely when there
+// is nothing to put in it.
+func (a *otelAttrs) strs(key string, values []string) *otelAttrs {
+	if len(values) == 0 {
+		return a
+	}
+	items := make([]otelAnyValue, 0, len(values))
+	for _, value := range values {
+		v := value
+		items = append(items, otelAnyValue{StringValue: &v})
+	}
+	a.kvs = append(a.kvs, otelKeyValue{
+		Key:   key,
+		Value: otelAnyValue{ArrayValue: &otelArrayValue{Values: items}},
+	})
 	return a
 }
 

@@ -28,6 +28,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"math/big"
 	"net/http"
@@ -117,6 +118,17 @@ func attrMap(t *testing.T, record *otelLogRecord) map[string]interface{} {
 			out[kv.Key] = *kv.Value.DoubleValue
 		case kv.Value.BoolValue != nil:
 			out[kv.Key] = *kv.Value.BoolValue
+		case kv.Value.ArrayValue != nil:
+			// Header attributes are string arrays; flatten to []string so a test
+			// can assert on them directly.
+			items := make([]string, 0, len(kv.Value.ArrayValue.Values))
+			for _, item := range kv.Value.ArrayValue.Values {
+				if item.StringValue == nil {
+					t.Fatalf("attribute %q has a non-string array element", kv.Key)
+				}
+				items = append(items, *item.StringValue)
+			}
+			out[kv.Key] = items
 		default:
 			t.Fatalf("attribute %q has no value set", kv.Key)
 		}
@@ -1416,5 +1428,168 @@ func TestMetricsPreInitializedAtZero(t *testing.T) {
 		if _, ok := metricValue(t, scrape, key); !ok {
 			t.Errorf("%s is absent from the scrape; a healthy gateway must report a value, not No data", key)
 		}
+	}
+}
+
+// --- header attributes -----------------------------------------------------
+
+// headerEvent returns the REST fixture with the serialized header properties the
+// analytics-header-filter policy produces.
+func headerEvent(t *testing.T, request, response map[string]string) *dto.Event {
+	t.Helper()
+	event := restEvent()
+	for property, headers := range map[string]map[string]string{
+		dto.PropKeyRequestHeaders:  request,
+		dto.PropKeyResponseHeaders: response,
+	} {
+		if headers == nil {
+			continue
+		}
+		serialized, err := json.Marshal(headers)
+		if err != nil {
+			t.Fatalf("marshal headers: %v", err)
+		}
+		event.Properties[property] = string(serialized)
+	}
+	return event
+}
+
+// One attribute per header, name lowercased into the key, value a string array —
+// the shape the HTTP conventions require.
+func TestBuildRecordHeaderAttributes(t *testing.T) {
+	event := headerEvent(t,
+		map[string]string{"Content-Type": "application/json", "X-Tenant": "acme"},
+		map[string]string{"Cache-Control": "no-store"})
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string][]string{
+		"http.request.header.content-type":   {"application/json"},
+		"http.request.header.x-tenant":       {"acme"},
+		"http.response.header.cache-control": {"no-store"},
+	} {
+		values, ok := got[key].([]string)
+		if !ok {
+			t.Errorf("%s = %#v, want a string array", key, got[key])
+			continue
+		}
+		if len(values) != len(want) || values[0] != want[0] {
+			t.Errorf("%s = %v, want %v", key, values, want)
+		}
+	}
+}
+
+// No header-filter policy attached means no header properties on the event, and
+// therefore no header attributes — never an empty or partial set.
+func TestBuildRecordNoHeaderAttributesWhenAbsent(t *testing.T) {
+	cases := map[string]*dto.Event{
+		"property absent":  restEvent(),
+		"empty string":     headerEventRaw(""),
+		"empty object":     headerEventRaw("{}"),
+		"unparseable json": headerEventRaw("not json"),
+		"wrong type":       headerEventWrongType(),
+	}
+	for name, event := range cases {
+		t.Run(name, func(t *testing.T) {
+			o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+			got := attrMap(t, o.buildRecord(event))
+			for key := range got {
+				if strings.HasPrefix(key, "http.request.header.") ||
+					strings.HasPrefix(key, "http.response.header.") {
+					t.Errorf("unexpected header attribute %q", key)
+				}
+			}
+		})
+	}
+}
+
+func headerEventRaw(serialized string) *dto.Event {
+	event := restEvent()
+	event.Properties[dto.PropKeyRequestHeaders] = serialized
+	return event
+}
+
+func headerEventWrongType() *dto.Event {
+	event := restEvent()
+	event.Properties[dto.PropKeyRequestHeaders] = map[string]string{"not": "a string"}
+	return event
+}
+
+// An over-broad allowlist must not grow a record's schema without bound: header
+// names become attribute keys, and SDKs cap a record at 128 attributes.
+func TestBuildRecordHeaderAttributesAreCapped(t *testing.T) {
+	headers := map[string]string{}
+	for i := 0; i < otelMaxHeaderAttributes*2; i++ {
+		headers[fmt.Sprintf("x-header-%03d", i)] = "value"
+	}
+	event := headerEvent(t, headers, nil)
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	emitted := []string{}
+	for key := range got {
+		if strings.HasPrefix(key, "http.request.header.") {
+			emitted = append(emitted, key)
+		}
+	}
+	if len(emitted) != otelMaxHeaderAttributes {
+		t.Errorf("emitted %d header attributes, want the cap of %d", len(emitted), otelMaxHeaderAttributes)
+	}
+	// Sorted selection, so a truncated record keeps the same headers every time
+	// rather than an arbitrary subset that changes per request.
+	sort.Strings(emitted)
+	if emitted[0] != "http.request.header.x-header-000" {
+		t.Errorf("first emitted = %s, want the lowest-sorting name", emitted[0])
+	}
+}
+
+// The cap is per direction, so a wide request allowlist cannot starve the
+// response headers.
+func TestBuildRecordHeaderCapIsPerDirection(t *testing.T) {
+	request := map[string]string{}
+	for i := 0; i < otelMaxHeaderAttributes*2; i++ {
+		request[fmt.Sprintf("x-req-%03d", i)] = "value"
+	}
+	event := headerEvent(t, request, map[string]string{"Cache-Control": "no-store"})
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if _, present := got["http.response.header.cache-control"]; !present {
+		t.Error("response header dropped because request headers hit the cap")
+	}
+}
+
+// A header with no value is skipped rather than emitted as an empty array, and
+// must not consume cap budget.
+func TestBuildRecordHeaderAttributesSkipEmptyValues(t *testing.T) {
+	event := headerEvent(t, map[string]string{"X-Present": "yes", "X-Empty": ""}, nil)
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if _, present := got["http.request.header.x-empty"]; present {
+		t.Error("an empty header value produced an attribute")
+	}
+	if _, present := got["http.request.header.x-present"]; !present {
+		t.Error("x-present is missing")
+	}
+}
+
+// The array must serialize as OTLP's ArrayValue shape, since that is the wire
+// contract a collector parses.
+func TestHeaderAttributeWireShape(t *testing.T) {
+	event := headerEvent(t, map[string]string{"Accept-Encoding": "gzip, br"}, nil)
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	encoded, err := json.Marshal(o.buildRecord(event))
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+	want := `{"key":"http.request.header.accept-encoding","value":{"arrayValue":{"values":[{"stringValue":"gzip, br"}]}}}`
+	if !strings.Contains(string(encoded), want) {
+		t.Errorf("record does not contain the expected ArrayValue attribute.\nwant substring: %s\ngot: %s", want, encoded)
 	}
 }

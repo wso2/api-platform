@@ -815,9 +815,10 @@ timer_wakeup_seconds = 3
 # Full OTLP/HTTP logs URL, including the /v1/logs path. Point it at a collector
 # you run, or directly at a vendor's OTLP intake.
 endpoint = "http://otel-collector:4318/v1/logs"
-# service.name / service.version on the OTLP resource.
-service_name = "policy-engine"
-service_version = ""
+# Identifies the service
+service_name = "gateway-runtime"
+# Identifies the deployed build for rollout correlation.
+service_version = '{{ env "VERSION" "" }}'
 # Record count that triggers an export before flush_interval elapses.
 batch_size = 100
 # How long a record waits when traffic is too slow to fill a batch.
