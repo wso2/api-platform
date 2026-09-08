@@ -1527,6 +1527,34 @@ func headerEventWrongType() *dto.Event {
 	return event
 }
 
+// HTTP/2 pseudo-headers are not headers. Envoy surfaces them next to the real
+// ones, and each duplicates an attribute already mapped from its own event
+// field — while ":path" can carry a query string into an attribute key's value.
+func TestBuildRecordHeaderAttributesSkipPseudoHeaders(t *testing.T) {
+	event := headerEvent(t,
+		map[string]string{
+			":method": "GET", ":path": "/otele2e/anything?token=secret",
+			":scheme": "http", ":authority": "localhost:8080",
+			"x-tenant": "acme",
+		},
+		map[string]string{":status": "200", "content-type": "application/json"})
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key := range got {
+		if strings.Contains(key, ".header.:") {
+			t.Errorf("pseudo-header emitted as %q", key)
+		}
+	}
+	// The real headers alongside them must still come through.
+	for _, want := range []string{"http.request.header.x-tenant", "http.response.header.content-type"} {
+		if _, present := got[want]; !present {
+			t.Errorf("%s is missing", want)
+		}
+	}
+}
+
 // An over-broad allowlist must not grow a record's schema without bound: header
 // names become attribute keys, and SDKs cap a record at 128 attributes.
 func TestBuildRecordHeaderAttributesAreCapped(t *testing.T) {

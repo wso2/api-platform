@@ -834,6 +834,15 @@ func appendHeaderAttributes(attrs *otelAttrs, prefix string, raw interface{}) {
 
 	emitted := 0
 	for _, name := range names {
+		// HTTP/2 pseudo-headers (:method, :path, :scheme, :authority, :status)
+		// are not headers: Envoy surfaces them alongside the real ones, they
+		// duplicate attributes already mapped from their own event fields
+		// (http.request.method, url.path, server.address,
+		// http.response.status_code), and ":path" can carry a query string.
+		// They also make an attribute key that starts with a colon.
+		if strings.HasPrefix(name, ":") {
+			continue
+		}
 		if emitted == otelMaxHeaderAttributes {
 			slog.Warn("OTel publisher truncated header attributes; narrow the analytics-header-filter allowlist",
 				"prefix", prefix, "emitted", emitted, "available", len(names))
