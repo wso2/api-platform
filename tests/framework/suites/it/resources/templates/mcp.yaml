@@ -1,0 +1,12 @@
+apiVersion: ${VALUE:apiVersion}
+kind: Mcp
+metadata:
+  name: ${VALUE:name}
+spec:
+  displayName: ${VALUE:displayName}
+  version: ${VALUE:version}
+  context: ${VALUE:context}
+  specVersion: ${VALUE:specVersion}
+  tools: []
+  resources: []
+  prompts: []

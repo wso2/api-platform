@@ -1,0 +1,298 @@
+[
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "anthropic"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usage.output_tokens",
+        "location": "payload"
+      },
+      "displayName": "Anthropic",
+      "groupId": "wso2-anthropic",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usage.input_tokens",
+        "location": "payload"
+      },
+      "remainingTokens": {
+        "identifier": "anthropic-ratelimit-tokens-remaining",
+        "location": "header"
+      },
+      "requestModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "responseModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
+  },
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "awsbedrock"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usage.outputTokens",
+        "location": "payload"
+      },
+      "displayName": "AWS Bedrock",
+      "groupId": "wso2-awsbedrock",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usage.inputTokens",
+        "location": "payload"
+      },
+      "requestModel": {
+        "identifier": "model/([A-Za-z0-9.:-]+)/",
+        "location": "pathParam"
+      },
+      "responseModel": {
+        "identifier": "model/([A-Za-z0-9.:-]+)/",
+        "location": "pathParam"
+      },
+      "totalTokens": {
+        "identifier": "$.usage.totalTokens",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
+  },
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "azure-openai"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usage.completion_tokens",
+        "location": "payload"
+      },
+      "displayName": "Azure OpenAI",
+      "groupId": "wso2-azure-openai",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usage.prompt_tokens",
+        "location": "payload"
+      },
+      "remainingTokens": {
+        "identifier": "x-ratelimit-remaining-tokens",
+        "location": "header"
+      },
+      "requestModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "resourceMappings": {
+        "resources": [
+          {
+            "completionTokens": {
+              "identifier": "$.usage.output_tokens",
+              "location": "payload"
+            },
+            "promptTokens": {
+              "identifier": "$.usage.input_tokens",
+              "location": "payload"
+            },
+            "resource": "/responses"
+          }
+        ]
+      },
+      "responseModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "totalTokens": {
+        "identifier": "$.usage.total_tokens",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
+  },
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "azureai-foundry"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usage.completion_tokens",
+        "location": "payload"
+      },
+      "displayName": "Azure AI Foundry",
+      "groupId": "wso2-azureai-foundry",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usage.prompt_tokens",
+        "location": "payload"
+      },
+      "remainingTokens": {
+        "identifier": "x-ratelimit-remaining-tokens",
+        "location": "header"
+      },
+      "requestModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "resourceMappings": {
+        "resources": [
+          {
+            "completionTokens": {
+              "identifier": "$.usage.output_tokens",
+              "location": "payload"
+            },
+            "promptTokens": {
+              "identifier": "$.usage.input_tokens",
+              "location": "payload"
+            },
+            "resource": "/responses"
+          }
+        ]
+      },
+      "responseModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "totalTokens": {
+        "identifier": "$.usage.total_tokens",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
+  },
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "gemini"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usageMetadata.candidatesTokenCount",
+        "location": "payload"
+      },
+      "displayName": "Gemini",
+      "groupId": "wso2-gemini",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usageMetadata.promptTokenCount",
+        "location": "payload"
+      },
+      "remainingTokens": {
+        "identifier": "x-ratelimit-remaining-tokens",
+        "location": "header"
+      },
+      "requestModel": {
+        "identifier": "(?<=models/)[a-zA-Z0-9.\\-]+",
+        "location": "pathParam"
+      },
+      "responseModel": {
+        "identifier": "$.modelVersion",
+        "location": "payload"
+      },
+      "totalTokens": {
+        "identifier": "$.usageMetadata.totalTokenCount",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
+  },
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "mistralai"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usage.completion_tokens",
+        "location": "payload"
+      },
+      "displayName": "MistralAI",
+      "groupId": "wso2-mistralai",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usage.prompt_tokens",
+        "location": "payload"
+      },
+      "remainingTokens": {
+        "identifier": "x-ratelimit-remaining-tokens",
+        "location": "header"
+      },
+      "requestModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "responseModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "totalTokens": {
+        "identifier": "$.usage.total_tokens",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
+  },
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "openai"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usage.completion_tokens",
+        "location": "payload"
+      },
+      "displayName": "OpenAI",
+      "groupId": "wso2-openai",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usage.prompt_tokens",
+        "location": "payload"
+      },
+      "remainingTokens": {
+        "identifier": "x-ratelimit-remaining-tokens",
+        "location": "header"
+      },
+      "requestModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "resourceMappings": {
+        "resources": [
+          {
+            "completionTokens": {
+              "identifier": "$.usage.output_tokens",
+              "location": "payload"
+            },
+            "promptTokens": {
+              "identifier": "$.usage.input_tokens",
+              "location": "payload"
+            },
+            "resource": "/responses"
+          }
+        ]
+      },
+      "responseModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "totalTokens": {
+        "identifier": "$.usage.total_tokens",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
+  }
+]

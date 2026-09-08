@@ -1,0 +1,10 @@
+apiVersion: ${VALUE:apiVersion}
+kind: LlmProvider
+metadata:
+  name: ${VALUE:name}
+spec:
+  displayName: ${VALUE:displayName}
+  version: ${VALUE:version}
+  template: ${VALUE:template}
+  accessControl:
+    mode: ${VALUE:accessControl.mode}
