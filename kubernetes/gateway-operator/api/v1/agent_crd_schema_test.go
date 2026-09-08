@@ -148,6 +148,61 @@ func TestAgentCRDAcceptsWorkedExample(t *testing.T) {
 	}
 }
 
+// TestAgentCRDAcceptsOptionalAgentCardShapes asserts every way an Agent may say
+// nothing about its Agent Card, plus the opt-in rewrite flag, applies cleanly.
+//
+// These are the shapes a `+kubebuilder:validation:Required` marker left behind on
+// either side would reject, and the rejection would land at `kubectl apply` for
+// a configuration the gateway-controller accepts and defaults — the most common
+// configuration there is, since an Agent that is happy with its own agent's card
+// writes none of this.
+func TestAgentCRDAcceptsOptionalAgentCardShapes(t *testing.T) {
+	cases := map[string]func(spec map[string]interface{}){
+		"whole agentCard block omitted": func(spec map[string]interface{}) {
+			delete(a2a(spec), "agentCard")
+		},
+		"public block omitted": func(spec map[string]interface{}) {
+			delete(a2a(spec)["agentCard"].(map[string]interface{}), "public")
+		},
+		"public mode omitted": func(spec map[string]interface{}) {
+			card := publicCard(spec)
+			delete(card, "mode")
+			delete(card, "content")
+			delete(card, "signing")
+		},
+		"public passthrough with rewriteUrls": func(spec map[string]interface{}) {
+			card := publicCard(spec)
+			card["mode"] = "passthrough"
+			card["rewriteUrls"] = true
+			delete(card, "content")
+			delete(card, "signing")
+		},
+		"protected passthrough with rewriteUrls": func(spec map[string]interface{}) {
+			a2a(spec)["agentCard"].(map[string]interface{})["protected"] = map[string]interface{}{
+				"mode":        "passthrough",
+				"rewriteUrls": true,
+			}
+		},
+	}
+
+	validators := agentSchemaValidators(t)
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			obj := map[string]interface{}{}
+			if err := yaml.Unmarshal([]byte(agentWorkedExample), &obj); err != nil {
+				t.Fatalf("unmarshal worked example: %v", err)
+			}
+			mutate(obj["spec"].(map[string]interface{}))
+
+			for version, validator := range validators {
+				if errs := validation.ValidateCustomResource(nil, obj, validator); len(errs) > 0 {
+					t.Fatalf("%s schema rejected an accepted card shape: %v", version, errs.ToAggregate())
+				}
+			}
+		})
+	}
+}
+
 // TestAgentCRDRejectsInvalidSpecs asserts the constraints mirrored from the
 // management-API schema are actually present in the generated CRD — a marker
 // silently dropped in generation would otherwise let the CRD accept an artifact
@@ -180,6 +235,16 @@ func TestAgentCRDRejectsInvalidSpecs(t *testing.T) {
 				ops[0].(map[string]interface{})["name"] = "SendMessages"
 			},
 			wantErr: "name",
+		},
+		{
+			// The flag is a boolean, and a string "true" is a different JSON value.
+			// The gateway-controller reads it as a typed field, so a quoted value
+			// admitted here would arrive as an unset flag rather than an enabled one.
+			name: "public rewriteUrls not a boolean",
+			mutate: func(spec map[string]interface{}) {
+				publicCard(spec)["rewriteUrls"] = "true"
+			},
+			wantErr: "rewriteUrls",
 		},
 		{
 			name: "unknown public card mode",

@@ -169,9 +169,9 @@ func testAgentStoredConfig(
 						{ProtocolBinding: api.HTTPJSON, PathPrefix: stringPtr("/")},
 					},
 				},
-				AgentCard: api.A2AAgentCard{
-					Public: api.A2APublicAgentCard{
-						Mode:    api.A2APublicAgentCardModeManaged,
+				AgentCard: &api.A2AAgentCard{
+					Public: &api.A2APublicAgentCard{
+						Mode:    publicCardMode(api.A2APublicAgentCardModeManaged),
 						Content: &cardContent,
 					},
 				},
@@ -532,4 +532,11 @@ func TestHandleEvent_AgentEvent_UnknownActionIsIgnored(t *testing.T) {
 	_, err := replica.store.Get(cfg.UUID)
 	require.ErrorIs(t, err, storage.ErrNotFound)
 	assert.Empty(t, replica.runtimeStore.GetAll())
+}
+
+// publicCardMode returns a pointer to a public Agent Card mode. The field is
+// optional — an omitted one means passthrough — so a fixture that states a mode
+// states it as a pointer.
+func publicCardMode(mode api.A2APublicAgentCardMode) *api.A2APublicAgentCardMode {
+	return &mode
 }

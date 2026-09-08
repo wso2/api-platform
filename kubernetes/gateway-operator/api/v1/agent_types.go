@@ -185,15 +185,39 @@ type A2ACardSigning struct {
 }
 
 // A2APublicAgentCard configures public Agent Card serving. Mode selects whether
-// the card is proxied unchanged from the upstream (passthrough) or validated,
-// stored, and served by the gateway (managed). Mode-specific rules are enforced
-// by the gateway-controller at deploy time, not by this schema: managed
-// requires content; passthrough accepts neither content nor signing.
+// the card is proxied from the upstream (passthrough) or validated, stored, and
+// served by the gateway (managed), and defaults to passthrough when omitted.
+// Mode-specific rules are enforced by the gateway-controller at deploy time, not
+// by this schema: managed requires content; passthrough accepts neither content
+// nor signing, and only passthrough accepts rewriteUrls (which defaults to true).
 type A2APublicAgentCard struct {
-	// Mode selects how the public Agent Card is produced.
-	// +kubebuilder:validation:Required
+	// Mode selects how the public Agent Card is produced. Omitting it means
+	// passthrough, which is also what an omitted public or agentCard block
+	// resolves to.
+	// +optional
 	// +kubebuilder:validation:Enum=managed;passthrough
-	Mode string `json:"mode"`
+	Mode string `json:"mode,omitempty"`
+
+	// RewriteUrls selects whether the gateway rewrites supportedInterfaces[].url
+	// in a proxied Agent Card response so each entry points at the gateway
+	// endpoint serving that protocol binding, using the original request's HTTP
+	// or HTTPS scheme and the authority the client reached the gateway on.
+	//
+	// Valid only in passthrough mode, and rejected by the gateway-controller in
+	// managed mode. Defaults to true: a proxied card advertises the URLs the agent
+	// itself is reachable at, so forwarding it unchanged tells every client to
+	// bypass the gateway. Only the bindings the configured transports expose are
+	// rewritten. Rewriting drops the upstream signatures block, which no longer
+	// covers the returned bytes, and does not make the card's security
+	// declarations verifiable. Set it to false to forward the response —
+	// signatures included — byte-for-byte instead.
+	//
+	// No default is set on this field deliberately: defaulting it here would
+	// materialise the flag on every object, and a stated flag is rejected in
+	// managed mode. The default is applied by the gateway-controller, which is
+	// where every consumer reads it from.
+	// +optional
+	RewriteUrls *bool `json:"rewriteUrls,omitempty"`
 
 	// Path is the exact gateway-facing Agent Card path relative to
 	// spec.context. When omitted the gateway-controller uses
@@ -249,6 +273,15 @@ type A2AProtectedAgentCard struct {
 	// +kubebuilder:validation:Enum=managed;passthrough
 	Mode string `json:"mode"`
 
+	// RewriteUrls selects whether the gateway rewrites supportedInterfaces[].url
+	// in the proxied extended Agent Card response, as on the public card. Valid
+	// only in passthrough mode, and rejected by the gateway-controller in managed
+	// mode. Defaults to true, for the same reason it does on the public card: the
+	// extended card advertises the agent's own interface URLs too. The
+	// authentication guard is unaffected either way.
+	// +optional
+	RewriteUrls *bool `json:"rewriteUrls,omitempty"`
+
 	// Content is the complete Agent Card as a structured object, preserved as
 	// supplied. Required in managed mode and rejected in passthrough mode.
 	// +optional
@@ -266,9 +299,11 @@ type A2AProtectedAgentCard struct {
 // protected Agent Card configuration for the authenticated A2A
 // GetExtendedAgentCard operation.
 type A2AAgentCard struct {
-	// Public configures public Agent Card serving.
-	// +kubebuilder:validation:Required
-	Public A2APublicAgentCard `json:"public"`
+	// Public configures public Agent Card serving. Omitting it is the same as
+	// configuring passthrough at /.well-known/agent-card.json with rewriteUrls
+	// disabled and no public Agent Card policies.
+	// +optional
+	Public *A2APublicAgentCard `json:"public,omitempty"`
 
 	// Protected configures the authenticated extended Agent Card. Omitting it
 	// leaves GetExtendedAgentCard proxied to the upstream unguarded, which is not
@@ -292,9 +327,13 @@ type A2AConfig struct {
 	// +kubebuilder:validation:Required
 	OperationConfigs A2AOperationConfigs `json:"operationConfigs"`
 
-	// AgentCard configures Agent Card serving.
-	// +kubebuilder:validation:Required
-	AgentCard A2AAgentCard `json:"agentCard"`
+	// AgentCard configures Agent Card serving. The whole block is optional:
+	// omitting it serves the public Agent Card in passthrough mode at
+	// /.well-known/agent-card.json with rewriting disabled. Omitting only the
+	// protected block is not the same thing — that keeps its own compatibility
+	// behaviour and is never turned into an explicit protected configuration.
+	// +optional
+	AgentCard *A2AAgentCard `json:"agentCard,omitempty"`
 }
 
 // AgentConfigData mirrors the management-API AgentConfigData payload.

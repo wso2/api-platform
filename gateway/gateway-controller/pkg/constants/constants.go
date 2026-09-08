@@ -245,6 +245,49 @@ const (
 	// then forward the operation to the upstream unchanged.
 	A2A_POLICY_PARAM_PROTECTED_AGENT_CARD = "protectedAgentCard"
 
+	// A2A_POLICY_PARAM_REWRITE_URLS is the nested block that turns on interface
+	// URL rewriting for a *passthrough* card, in either representation. Its
+	// presence is what enables rewriting: a card block carrying neither it nor
+	// content is plain passthrough, and the response is forwarded untouched.
+	//
+	// It carries the mapping rather than a bare boolean because the runtime
+	// cannot derive it. Rewriting means replacing each advertised interface URL
+	// with the gateway endpoint serving that protocol binding, and the gateway's
+	// own path for a binding is spec.context joined with that transport's
+	// pathPrefix — configuration the policy engine never sees. Sending a boolean
+	// and letting the runtime guess would put a second, weaker copy of the route
+	// arithmetic in the data plane.
+	A2A_POLICY_PARAM_REWRITE_URLS = "rewriteUrls"
+
+	// A2A_POLICY_PARAM_PROTOCOL_VERSION is the A2A protocol version the gateway
+	// endpoints in the mapping serve.
+	//
+	// The runtime matches it against each advertised interface's own
+	// protocolVersion, alongside the binding: an Agent's routes are generated for
+	// one protocol version, so an endpoint speaks that version and no other, and
+	// an interface claiming a different one has no correct gateway URL to be
+	// given. It is therefore load-bearing rather than provenance — omitting it
+	// leaves the runtime unable to decide what it serves.
+	A2A_POLICY_PARAM_PROTOCOL_VERSION = "protocolVersion"
+
+	// A2A_POLICY_PARAM_INTERFACES is the per-binding gateway endpoint mapping:
+	// one entry per configured transport, each naming a protocolBinding and the
+	// absolute gateway path serving it.
+	//
+	// Every configured transport is listed, and the runtime selects by binding
+	// rather than by position — a card advertises interfaces in whatever order
+	// its author wrote them, which has nothing to do with the order transports
+	// are configured in.
+	A2A_POLICY_PARAM_INTERFACES = "interfaces"
+
+	// A2A_POLICY_PARAM_PROTOCOL_BINDING and A2A_POLICY_PARAM_PATH are the fields
+	// of one interface mapping entry. The binding values are the management API's
+	// own protocolBinding enum, which is also what an Agent Card's
+	// supportedInterfaces[].protocolBinding carries, so the two can be compared
+	// without translation.
+	A2A_POLICY_PARAM_PROTOCOL_BINDING = "protocolBinding"
+	A2A_POLICY_PARAM_PATH             = "path"
+
 	// ResilienceDurationPattern is the single source of truth for the format of resilience
 	// timeout strings.
 	//   - accepted:  "30s", "500ms", "1m", "2h", "1.5s", and "0s" (zero disables the timeout)

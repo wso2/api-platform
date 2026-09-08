@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/common/agentproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
@@ -476,8 +477,206 @@ func TestAgentCard_InterfaceVersionIsNotCheckedAgainstAnUnknownProtocolVersion(t
 // does not have.
 func TestAgentCard_PassthroughIsNotInspected(t *testing.T) {
 	cfg := validAgent()
-	cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
+	cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
 	cfg.Spec.A2a.AgentCard.Public.Content = nil
+	cfg.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, "/rpc", api.HTTPJSON, "/rest")
+
+	assert.Empty(t, NewAgentValidator().Validate(&cfg))
+}
+
+// An Agent may say nothing at all about its Agent Card, at three levels: the
+// whole block, its public block, and that block's mode. All three resolve to the
+// same configuration an explicit passthrough card resolves to, and all three
+// have to be accepted — this is the shape most Agents have, since an agent that
+// is content to publish its own discovery document writes none of this.
+func TestAgentCard_OptionalBlocksResolveToPassthrough(t *testing.T) {
+	tests := map[string]func(cfg *api.AgentConfiguration){
+		"whole agentCard block omitted": func(cfg *api.AgentConfiguration) {
+			cfg.Spec.A2a.AgentCard = nil
+		},
+		"public block omitted": func(cfg *api.AgentConfiguration) {
+			cfg.Spec.A2a.AgentCard = &api.A2AAgentCard{}
+		},
+		"public mode omitted": func(cfg *api.AgentConfiguration) {
+			cfg.Spec.A2a.AgentCard.Public.Mode = nil
+			cfg.Spec.A2a.AgentCard.Public.Content = nil
+		},
+		"explicit passthrough": func(cfg *api.AgentConfiguration) {
+			cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
+			cfg.Spec.A2a.AgentCard.Public.Content = nil
+		},
+	}
+
+	for name, omit := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			omit(&cfg)
+
+			errs := NewAgentValidator().Validate(&cfg)
+			assert.Empty(t, errs, messagesOf(errs))
+
+			// The same resolution the transformer will use, so the two cannot
+			// disagree about what the silence meant.
+			public := EffectivePublicCard(cfg.Spec.A2a.AgentCard)
+			assert.Equal(t, api.A2APublicAgentCardModePassthrough, public.Mode)
+			assert.Equal(t, DefaultAgentCardPath, public.Path)
+			// Rewriting is on by default: silence must not publish the agent's own
+			// URLs, which is what tells a client to skip the gateway entirely.
+			assert.True(t, public.RewriteUrls)
+			assert.False(t, public.RewriteUrlsStated,
+				"the default must not read as a stated flag — a stated one is rejected in managed mode")
+			assert.Nil(t, ProtectedCard(cfg.Spec.A2a.AgentCard),
+				"an omitted protected block must not be materialised by defaulting")
+			assert.True(t, EffectiveRewriteUrls(nil),
+				"an omitted protected block rewrites too — its card advertises the same URLs")
+		})
+	}
+}
+
+// The default discovery route is enumerated for collision detection exactly as a
+// configured one is.
+//
+// It is the one route nobody writes down, so it is the one route enumeration
+// could plausibly skip — and skipping it is silent: nothing would compare it
+// against the operation routes, and if a future protocol version did place an
+// operation where the card sits, Envoy would hand the request to whichever route
+// matched first with no error anywhere.
+//
+// Asserted against the enumeration rather than by constructing a collision,
+// because A2A 1.0 has no GET binding that can collide with the default path —
+// every template's leading segment is a literal that is not ".well-known". That
+// is a property of this version's binding table, not of the check.
+func TestAgentCard_DefaultRouteIsEnumeratedForCollisionDetection(t *testing.T) {
+	for name, omit := range map[string]func(cfg *api.AgentConfiguration){
+		"agentCard omitted": func(cfg *api.AgentConfiguration) { cfg.Spec.A2a.AgentCard = nil },
+		"public omitted":    func(cfg *api.AgentConfiguration) { cfg.Spec.A2a.AgentCard = &api.A2AAgentCard{} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			omit(&cfg)
+
+			context := AgentContextPath(cfg.Spec.Context)
+			validator := NewAgentValidator()
+			resolvedTransports, transportErrors := validator.validateTransports(
+				context, true, cfg.Spec.A2a.OperationConfigs.Transports)
+			require.Empty(t, transportErrors)
+
+			card, cardErrors := validator.validateAgentCard(
+				context, true, cfg.Spec.A2a.AgentCard, EffectivePublicCard(cfg.Spec.A2a.AgentCard))
+			require.Empty(t, cardErrors, messagesOf(cardErrors))
+			require.True(t, card.usable, "an omitted card block must still resolve to a usable route")
+
+			routes := buildAgentRoutes(agentproto.V1_0, resolvedTransports, card)
+			var found bool
+			for _, route := range routes {
+				if route.method == agentCardRouteMethod &&
+					route.path == JoinAgentPath(context, DefaultAgentCardPath) {
+					found = true
+				}
+			}
+			assert.True(t, found, "the default card route is missing from the enumerated routes: %+v", routes)
+		})
+	}
+}
+
+// rewriteUrls belongs to a passthrough card and is rejected on a managed one in
+// either polarity.
+//
+// A stated false is rejected too: the flag means nothing in managed mode, so an
+// author who wrote it believes something about their configuration that is not
+// true, and accepting the false case would leave them to find that out only if
+// they ever flipped it and found it ignored.
+func TestAgentCard_RewriteUrlsIsPassthroughOnly(t *testing.T) {
+	t.Run("accepted on a passthrough public card", func(t *testing.T) {
+		for _, flag := range []bool{true, false} {
+			cfg := validAgent()
+			cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
+			cfg.Spec.A2a.AgentCard.Public.Content = nil
+			cfg.Spec.A2a.AgentCard.Public.RewriteUrls = &flag
+
+			errs := NewAgentValidator().Validate(&cfg)
+			assert.Empty(t, errs, messagesOf(errs))
+			assert.Equal(t, flag, EffectivePublicCard(cfg.Spec.A2a.AgentCard).RewriteUrls)
+		}
+	})
+
+	t.Run("accepted on a passthrough protected card", func(t *testing.T) {
+		for _, flag := range []bool{true, false} {
+			cfg := validAgent()
+			declareExtendedCardCapability(&cfg)
+			cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+				Mode:        api.A2AProtectedAgentCardModePassthrough,
+				RewriteUrls: &flag,
+			}
+
+			errs := NewAgentValidator().Validate(&cfg)
+			assert.Empty(t, errs, messagesOf(errs))
+			assert.Equal(t, flag,
+				EffectiveRewriteUrls(cfg.Spec.A2a.AgentCard.Protected.RewriteUrls))
+		}
+	})
+
+	rejections := map[string]struct {
+		mutate func(cfg *api.AgentConfiguration)
+		field  string
+	}{
+		"managed public card, flag true": {
+			mutate: func(cfg *api.AgentConfiguration) {
+				cfg.Spec.A2a.AgentCard.Public.RewriteUrls = boolPtr(true)
+			},
+			field: "spec.a2a.agentCard.public.rewriteUrls",
+		},
+		"managed public card, flag false": {
+			mutate: func(cfg *api.AgentConfiguration) {
+				cfg.Spec.A2a.AgentCard.Public.RewriteUrls = boolPtr(false)
+			},
+			field: "spec.a2a.agentCard.public.rewriteUrls",
+		},
+		"managed protected card, flag true": {
+			mutate: func(cfg *api.AgentConfiguration) {
+				declareExtendedCardCapability(cfg)
+				cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+					Mode:        api.A2AProtectedAgentCardModeManaged,
+					Content:     protectedCardContent(),
+					RewriteUrls: boolPtr(true),
+				}
+			},
+			field: "spec.a2a.agentCard.protected.rewriteUrls",
+		},
+		"managed protected card, flag false": {
+			mutate: func(cfg *api.AgentConfiguration) {
+				declareExtendedCardCapability(cfg)
+				cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+					Mode:        api.A2AProtectedAgentCardModeManaged,
+					Content:     protectedCardContent(),
+					RewriteUrls: boolPtr(false),
+				}
+			},
+			field: "spec.a2a.agentCard.protected.rewriteUrls",
+		},
+	}
+
+	for name, tt := range rejections {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			tt.mutate(&cfg)
+
+			errs := NewAgentValidator().Validate(&cfg)
+			require.NotEmpty(t, errs)
+			assert.Contains(t, fieldsOf(errs), tt.field, messagesOf(errs))
+		})
+	}
+}
+
+// Enabling rewriting does not turn a passthrough card into an inspected one.
+// The gateway parses the response far enough to replace the interface URLs and
+// nothing further, so none of the managed-card checks apply — a passthrough card
+// that supplies content is still told to remove it.
+func TestAgentCard_RewritingPassthroughIsStillNotInspected(t *testing.T) {
+	cfg := validAgent()
+	cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
+	cfg.Spec.A2a.AgentCard.Public.Content = nil
+	cfg.Spec.A2a.AgentCard.Public.RewriteUrls = boolPtr(true)
 	cfg.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, "/rpc", api.HTTPJSON, "/rest")
 
 	assert.Empty(t, NewAgentValidator().Validate(&cfg))
@@ -689,7 +888,7 @@ func TestProtectedCard_ExplicitModesAreAccepted(t *testing.T) {
 	// runtime.
 	t.Run("managed protected beside a passthrough public card", func(t *testing.T) {
 		cfg := validAgent()
-		cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
+		cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
 		cfg.Spec.A2a.AgentCard.Public.Content = nil
 		cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
 			Mode:    api.A2AProtectedAgentCardModeManaged,

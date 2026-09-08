@@ -161,6 +161,7 @@ Base URLs:
 - [A2AAgentCard](schemas.md#a2aagentcard)
 - [A2APublicAgentCard](schemas.md#a2apublicagentcard)
 - [A2AProtectedAgentCard](schemas.md#a2aprotectedagentcard)
+- [A2ACardRewriteUrls](schemas.md#a2acardrewriteurls)
 - [A2AAgentCardPath](schemas.md#a2aagentcardpath)
 - [A2AAgentCardDocument](schemas.md#a2aagentcarddocument)
 - [A2ACardSigning](schemas.md#a2acardsigning)

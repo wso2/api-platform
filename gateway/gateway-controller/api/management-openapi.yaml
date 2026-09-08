@@ -4647,7 +4647,6 @@ components:
       required:
         - protocolVersion
         - operationConfigs
-        - agentCard
       properties:
         protocolVersion:
           type: string
@@ -4786,8 +4785,14 @@ components:
       description: >
         Public Agent Card configuration and optional protected Agent Card configuration
         for the authenticated A2A GetExtendedAgentCard operation.
-      required:
-        - public
+
+        The whole block is optional, and so is `public`. When either is omitted the
+        gateway serves the public Agent Card in `passthrough` mode at
+        /.well-known/agent-card.json, with `rewriteUrls` disabled and no public Agent
+        Card policies — the same configuration as writing that block out explicitly.
+        Omitting `protected` is *not* equivalent to omitting `public`: it keeps the
+        compatibility behaviour described on that schema and is never turned into an
+        explicit protected configuration by defaulting.
       properties:
         public:
           $ref: "#/components/schemas/A2APublicAgentCard"
@@ -4825,20 +4830,22 @@ components:
     A2APublicAgentCard:
       type: object
       description: >
-        Public Agent Card serving. `mode` selects whether the card is proxied unchanged
-        from the upstream (`passthrough`) or validated, stored, and served by the gateway
-        (`managed`). Mode-specific rules are enforced at deploy time, not by this schema:
-        `managed` requires `content`; `passthrough` accepts neither `content` nor
-        `signing`, because the gateway does not parse, transform, or sign a proxied card.
-      required:
-        - mode
+        Public Agent Card serving. `mode` selects whether the card is proxied from the
+        upstream (`passthrough`) or validated, stored, and served by the gateway
+        (`managed`), and defaults to `passthrough` when omitted. Mode-specific rules are
+        enforced at deploy time, not by this schema: `managed` requires `content`;
+        `passthrough` accepts neither `content` nor `signing`, because the gateway does
+        not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`.
       properties:
         mode:
           type: string
-          description: How the public Agent Card is produced.
+          description: >
+            How the public Agent Card is produced. Defaults to `passthrough`, which is
+            also what an omitted `public` or `agentCard` block resolves to.
           enum:
             - managed
             - passthrough
+          default: passthrough
           example: managed
         path:
           $ref: "#/components/schemas/A2AAgentCardPath"
@@ -4847,6 +4854,8 @@ components:
           description: Ordered policies applied only to public Agent Card serving.
           items:
             $ref: "#/components/schemas/Policy"
+        rewriteUrls:
+          $ref: "#/components/schemas/A2ACardRewriteUrls"
         content:
           $ref: "#/components/schemas/A2AAgentCardDocument"
         signing:
@@ -4863,10 +4872,12 @@ components:
         rather than a document at a location.
 
         This block is optional, and omitting it is the same as configuring
-        `passthrough`: the extended Agent Card is guarded for every Agent. Writing the
-        block out only chooses how the card is produced — whether the gateway serves a
-        document of its own (`managed`) or forwards the authenticated request
-        (`passthrough`).
+        `passthrough` with `rewriteUrls` disabled: the extended Agent Card is guarded for
+        every Agent. Writing the block out only chooses how the card is produced —
+        whether the gateway serves a document of its own (`managed`) or forwards the
+        authenticated request (`passthrough`) — and, for `passthrough`, whether the
+        proxied response's interface URLs are rewritten. Unlike `public`, an omitted
+        block is never materialized into an explicit protected configuration.
 
         The gateway requires the request to have been authenticated by a policy in the
         Agent's own chain before the card is returned or proxied, and answers 401
@@ -4881,10 +4892,10 @@ components:
 
         Mode-specific rules are enforced at deploy time, not by this schema: `managed`
         requires `content`; `passthrough` accepts neither `content` nor `signing`, because
-        the gateway does not parse, transform, or sign a proxied card. When the public
-        Agent Card is `managed`, it must additionally declare
-        `capabilities.extendedAgentCard: true`, since that is what tells a client the
-        operation exists at all.
+        the gateway does not parse or sign a proxied card, and only `passthrough` accepts
+        `rewriteUrls`. When the public Agent Card is `managed`, it must additionally
+        declare `capabilities.extendedAgentCard: true`, since that is what tells a client
+        the operation exists at all.
       required:
         - mode
       properties:
@@ -4894,15 +4905,46 @@ components:
             How the protected Agent Card is produced. `managed` serves the supplied
             `content` from the gateway, and the request never reaches the upstream.
             `passthrough` forwards the authenticated request and proxies the upstream's own
-            response unchanged.
+            response, unchanged unless `rewriteUrls` is enabled.
           enum:
             - managed
             - passthrough
           example: managed
+        rewriteUrls:
+          $ref: "#/components/schemas/A2ACardRewriteUrls"
         content:
           $ref: "#/components/schemas/A2AAgentCardDocument"
         signing:
           $ref: "#/components/schemas/A2ACardSigning"
+
+    A2ACardRewriteUrls:
+      type: boolean
+      description: >
+        Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card
+        response so each entry points at the gateway endpoint serving that protocol
+        binding, using the original request's HTTP or HTTPS scheme and the authority the
+        client reached the gateway on.
+
+        Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode,
+        where the gateway already owns the document and its interfaces are validated
+        against the configured transports instead.
+
+        Defaults to true. A proxied card advertises the URLs the agent is reachable at,
+        so forwarding it unchanged tells every client to bypass the gateway that was put
+        in front of the agent — the default therefore points those URLs at the gateway.
+        Only the bindings the Agent's configured transports expose are rewritten; an
+        interface the gateway does not serve keeps the agent's own URL, and a client
+        selecting that binding reaches the agent directly. The gateway buffers the card
+        response (up to 1 MiB) and drops the upstream `signatures` block, which no longer
+        covers the returned bytes; it never signs a passthrough card, so a rewritten card
+        is unsigned. Enabling it does not make the card's security declarations
+        verifiable.
+
+        Set it to false to forward the proxied response — signatures included —
+        byte-for-byte, accepting that clients configured from the card will not traverse
+        the gateway.
+      default: true
+      example: true
 
     A2AAgentCardPath:
       type: string

@@ -52,11 +52,15 @@ const agentCardRouteMethod = "GET"
 // authenticated and then forwarded, so an author who never named the field does
 // not end up publishing their extended card to anyone.
 //
-// This has no counterpart for the public card, and deliberately so. That block
-// is required, as is its mode: the public card is the discovery document every
-// A2A client fetches first, so which of the two ways the gateway produces it is
-// a decision the author has to make rather than one inferred from an omission.
-// An empty public mode stays a validation error.
+// The public card defaults to passthrough too (EffectivePublicCard), but for a
+// different reason, and the two are resolved separately so the difference cannot
+// be lost. There, the default is what the *upstream already serves*: an omitted
+// public block proxies the agent's own discovery document, and the block is
+// materialized as an explicit configuration for every consumer. Here, an omitted
+// block is deliberately *not* materialized — it keeps the compatibility
+// behaviour it shipped with — and passthrough is the default because it is the
+// guarded reading of silence rather than because it is what an author most
+// likely meant. An empty *stated* mode stays a validation error in both.
 //
 // Used by the validator *and* the transformer, so the two cannot disagree about
 // what an omitted block means. That disagreement is the failure worth designing
@@ -354,7 +358,13 @@ func (v *AgentValidator) validateA2A(context string, contextUsable bool, a2a *ap
 
 	errors = append(errors, v.validateOperationConfigs(version, versionUsable, a2a.OperationConfigs.Operations)...)
 
-	card, cardErrors := v.validateAgentCard(context, contextUsable, &a2a.AgentCard)
+	// Resolved through the shared defaults helper, so an omitted agentCard block,
+	// an omitted public block, and an explicitly written passthrough one are
+	// validated as the same configuration — and as the same one the transformer
+	// will build routes from.
+	public := EffectivePublicCard(a2a.AgentCard)
+
+	card, cardErrors := v.validateAgentCard(context, contextUsable, a2a.AgentCard, public)
 	errors = append(errors, cardErrors...)
 
 	if contextUsable && versionUsable {
@@ -365,15 +375,15 @@ func (v *AgentValidator) validateA2A(context string, contextUsable bool, a2a *ap
 	errors = append(errors, validateManagedCardConsistency(
 		publicCardField, a2a.ProtocolVersion, versionUsable,
 		transports, transportsUsable,
-		managedCardContent(a2a.AgentCard.Public.Mode == api.A2APublicAgentCardModeManaged, a2a.AgentCard.Public.Content))...)
+		managedCardContent(public.Mode == api.A2APublicAgentCardModeManaged, public.Content))...)
 
-	if protected := a2a.AgentCard.Protected; protected != nil {
+	if protected := ProtectedCard(a2a.AgentCard); protected != nil {
 		errors = append(errors, validateManagedCardConsistency(
 			protectedCardField, a2a.ProtocolVersion, versionUsable,
 			transports, transportsUsable,
 			managedCardContent(EffectiveProtectedCardMode(protected) == api.A2AProtectedAgentCardModeManaged,
 				protected.Content))...)
-		errors = append(errors, validateExtendedCardCapability(&a2a.AgentCard)...)
+		errors = append(errors, validateExtendedCardCapability(public)...)
 	}
 
 	return errors
@@ -537,12 +547,25 @@ func (v *AgentValidator) validateOperationConfigs(version agentproto.ProtocolVer
 // route's path. Two features are rejected outright rather than ignored:
 // accepting them would store an Agent whose served card does not match what the
 // user asked for.
-func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, card *api.A2AAgentCard) (resolvedCard, []ValidationError) {
+//
+// It runs identically whether the author wrote a card block or omitted one:
+// public is already resolved against the shared defaults, so an Agent that says
+// nothing about its card still has its default discovery route path-checked and
+// carried into collision detection. Skipping that for an omitted block would
+// leave the one configuration nobody writes out — the common one — as the only
+// one whose route was never compared against the operation routes.
+//
+// raw is the block as the author wrote it, or nil. It is needed alongside the
+// resolved view only for the protected representation, whose absence must not be
+// read as an explicit mode.
+func (v *AgentValidator) validateAgentCard(
+	context string, contextUsable bool,
+	raw *api.A2AAgentCard, public PublicCardConfig,
+) (resolvedCard, []ValidationError) {
 	var errors []ValidationError
 
-	errors = append(errors, validateProtectedAgentCard(card.Protected)...)
+	errors = append(errors, validateProtectedAgentCard(ProtectedCard(raw))...)
 
-	public := &card.Public
 	modeOK := true
 	switch public.Mode {
 	case api.A2APublicAgentCardModeManaged:
@@ -552,10 +575,17 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 				Message: "A managed public Agent Card requires content",
 			})
 		}
+		// The gateway owns a managed document: its interfaces are validated
+		// against the configured transports and served as written, so there is
+		// nothing to rewrite in a response the gateway does not proxy. Accepting
+		// the flag here would silently do nothing.
+		errors = append(errors, rejectManagedCardRewriteUrls(
+			publicCardField, public.RewriteUrlsStated)...)
 	case api.A2APublicAgentCardModePassthrough:
-		// The gateway neither parses nor rewrites a proxied card, so anything
-		// that would require it to produce one is a contradiction, not a
-		// harmless extra.
+		// The gateway does not author a proxied card, so anything that would
+		// require it to produce one is a contradiction, not a harmless extra.
+		// rewriteUrls is the one exception and belongs here: it mutates a
+		// document the upstream authored rather than producing one.
 		if public.Content != nil {
 			errors = append(errors, ValidationError{
 				Field:   publicCardField + ".content",
@@ -579,11 +609,13 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 
 	errors = append(errors, validateCardSigning(publicCardField, public.Signing)...)
 
-	cardPath := DefaultAgentCardPath
 	pathOK := true
-	if public.Path != nil {
-		cardPath = *public.Path
-		if pathErrors := validateAgentPathValue(publicCardField+".path", "Agent Card path", cardPath); len(pathErrors) > 0 {
+	if public.PathStated {
+		// The stated value, not the effective one: an explicitly empty path is a
+		// malformed value rather than an omission, and reporting the default it
+		// resolved to would name a path the author never wrote.
+		if pathErrors := validateAgentPathValue(
+			publicCardField+".path", "Agent Card path", public.StatedPath); len(pathErrors) > 0 {
 			errors = append(errors, pathErrors...)
 			pathOK = false
 		}
@@ -591,13 +623,34 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 
 	resolved := resolvedCard{usable: modeOK && pathOK && contextUsable}
 	if pathOK {
-		resolved.path = JoinAgentPath(context, cardPath)
+		resolved.path = JoinAgentPath(context, public.Path)
 		if contextUsable {
 			errors = append(errors, validateNotReservedHealthPath(publicCardField+".path", resolved.path)...)
 		}
 	}
 
 	return resolved, errors
+}
+
+// rejectManagedCardRewriteUrls refuses a rewriteUrls flag on a managed
+// representation, in either polarity.
+//
+// `rewriteUrls: false` is rejected as well as `true`, and that is not
+// pedantry: the flag has no meaning at all in managed mode, so an author who
+// wrote it believes something about their configuration that is not the case.
+// Accepting the false case would leave them to discover that only if they ever
+// flipped it to true and found it ignored — and the flag is exactly the kind
+// that gets copied between the two representations.
+func rejectManagedCardRewriteUrls(fieldPrefix string, stated bool) []ValidationError {
+	if !stated {
+		return nil
+	}
+	return []ValidationError{{
+		Field: fieldPrefix + ".rewriteUrls",
+		Message: "rewriteUrls applies only to a passthrough Agent Card; a managed card is authored by the " +
+			"gateway and its interfaces are validated against the configured transports. Remove the field or " +
+			"set mode: passthrough",
+	}}
 }
 
 // validateProtectedAgentCard enforces the mode-specific rules of the
@@ -640,6 +693,8 @@ func validateProtectedAgentCard(protected *api.A2AProtectedAgentCard) []Validati
 				Message: "A managed protected Agent Card requires content",
 			})
 		}
+		errors = append(errors, rejectManagedCardRewriteUrls(
+			protectedCardField, protected.RewriteUrls != nil)...)
 	case api.A2AProtectedAgentCardModePassthrough:
 		// Same contradiction as the public card's: the gateway forwards the
 		// operation to the upstream and never produces a document of its own, so
@@ -699,9 +754,9 @@ func validateProtectedAgentCard(protected *api.A2AProtectedAgentCard) []Validati
 // coerced: it is a different JSON value, and it is the card's own bytes that get
 // published to clients — a client deserializing the card against the A2A model
 // reads a type error, not a capability.
-func validateExtendedCardCapability(card *api.A2AAgentCard) []ValidationError {
+func validateExtendedCardCapability(public PublicCardConfig) []ValidationError {
 	content := managedCardContent(
-		card.Public.Mode == api.A2APublicAgentCardModeManaged, card.Public.Content)
+		public.Mode == api.A2APublicAgentCardModeManaged, public.Content)
 	if content == nil {
 		return nil
 	}

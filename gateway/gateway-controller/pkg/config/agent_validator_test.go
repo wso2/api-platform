@@ -52,9 +52,9 @@ func validAgent() api.AgentConfiguration {
 						{ProtocolBinding: api.JSONRPC, PathPrefix: stringPtr("/rpc")},
 					},
 				},
-				AgentCard: api.A2AAgentCard{
-					Public: api.A2APublicAgentCard{
-						Mode:    api.A2APublicAgentCardModeManaged,
+				AgentCard: &api.A2AAgentCard{
+					Public: &api.A2APublicAgentCard{
+						Mode:    publicCardMode(api.A2APublicAgentCardModeManaged),
 						Content: cardContent(),
 					},
 				},
@@ -105,7 +105,7 @@ const cardHost = "https://agents.example.com"
 // also produce a duplicate-interface error, which is a different rejection with
 // its own test.
 func syncCardInterfaces(cfg *api.AgentConfiguration) {
-	public := &cfg.Spec.A2a.AgentCard.Public
+	public := EffectivePublicCard(cfg.Spec.A2a.AgentCard)
 	// An absent or deliberately emptied card is left alone: those are the
 	// mode-rule cases, and filling one in here would repair the very thing the
 	// test set out to break.
@@ -756,21 +756,21 @@ func TestAgentValidator_CardModes(t *testing.T) {
 		{
 			name: "passthrough without content",
 			spoil: func(c *api.A2APublicAgentCard) {
-				c.Mode = api.A2APublicAgentCardModePassthrough
+				c.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
 				c.Content = nil
 			},
 		},
 		{
 			name: "passthrough with content",
 			spoil: func(c *api.A2APublicAgentCard) {
-				c.Mode = api.A2APublicAgentCardModePassthrough
+				c.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
 			},
 			field: "spec.a2a.agentCard.public.content",
 		},
 		{
 			name: "passthrough with signing",
 			spoil: func(c *api.A2APublicAgentCard) {
-				c.Mode = api.A2APublicAgentCardModePassthrough
+				c.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
 				c.Content = nil
 				c.Signing = &api.A2ACardSigning{Enabled: false}
 			},
@@ -778,7 +778,7 @@ func TestAgentValidator_CardModes(t *testing.T) {
 		},
 		{
 			name:  "unknown mode",
-			spoil: func(c *api.A2APublicAgentCard) { c.Mode = "proxied" },
+			spoil: func(c *api.A2APublicAgentCard) { c.Mode = publicCardMode("proxied") },
 			field: "spec.a2a.agentCard.public.mode",
 		},
 	}
@@ -786,7 +786,7 @@ func TestAgentValidator_CardModes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validAgent()
-			tt.spoil(&cfg.Spec.A2a.AgentCard.Public)
+			tt.spoil(cfg.Spec.A2a.AgentCard.Public)
 
 			errs := validateAgent(&cfg)
 			if tt.field == "" {

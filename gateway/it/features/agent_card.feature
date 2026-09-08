@@ -297,10 +297,16 @@ Feature: Agent Card serving
 
   # ==================== PASSTHROUGH CARD ====================
 
-  # In passthrough mode the card body is opaque to the gateway — it is fetched
-  # from the upstream and proxied unparsed — so the assertion is byte-identity
-  # against what the agent itself serves, fetched directly on its own port.
-  Scenario: A passthrough Agent Card is proxied byte-identically from the upstream
+  # With `rewriteUrls: false` the card body is opaque to the gateway — it is
+  # fetched from the upstream and proxied unparsed — so the assertion is
+  # byte-identity against what the agent itself serves, fetched directly on its
+  # own port.
+  #
+  # The flag has to be written out: rewriting is the default, because a proxied
+  # card advertises the agent's own address and would send every client past the
+  # gateway. Opting out is how an author keeps the upstream's exact bytes,
+  # signatures included, and accepts that consequence.
+  Scenario: A passthrough Agent Card that opts out of rewriting is proxied byte-identically
     When I deploy this Agent configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
@@ -322,6 +328,7 @@ Feature: Agent Card serving
           agentCard:
             public:
               mode: passthrough
+              rewriteUrls: false
       """
     Then the response should be successful
     And I wait for policy snapshot sync
@@ -338,6 +345,359 @@ Feature: Agent Card serving
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-passthrough-card"
+    Then the response should be successful
+
+  # `agentCard` is optional, and so is its `public` block. Both omissions resolve
+  # to the same configuration an explicit passthrough card resolves to: the
+  # upstream's own card, proxied at the well-known discovery path, with its
+  # interface URLs pointed at the gateway.
+  #
+  # This is the shape most Agents have — an agent that is content to publish its
+  # own discovery document writes none of this — so it is the configuration whose
+  # defaults would be missed most quietly, in both halves. An Agent that generated
+  # no card route at all would 404 an A2A client's very first request; one that
+  # generated the route but published the agent's own address would send every
+  # client that read the card straight past the gateway.
+  Scenario: An Agent that configures no Agent Card serves the default rewritten passthrough route
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-no-card-block
+      spec:
+        displayName: Agent No Card Block
+        version: v1.0
+        context: /agent-no-card-block
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-no-card-block/.well-known/agent-card.json"
+    Then the response status code should be 200
+    And the response body should contain "Trip Planner"
+    # Both transports are exposed, so every advertised interface is rewritten and
+    # the agent's own address (localhost:9099) is gone from the document.
+    And the response body should contain "http://localhost:8080/agent-no-card-block/v1"
+    And the response body should not contain "localhost:9099"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-no-card-block"
+    Then the response should be successful
+
+  # The same default, reached the other way: an `agentCard` block that configures
+  # only the protected representation. The public block is absent, so it defaults,
+  # and the protected block being explicit must not change that — the two
+  # representations default independently, and an author who configured one has
+  # said nothing about the other.
+  Scenario: An omitted public block defaults while an explicit protected block stands
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-no-public-block
+      spec:
+        displayName: Agent No Public Block
+        version: v1.0
+        context: /agent-no-public-block
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+          agentCard:
+            protected:
+              mode: passthrough
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # The public card is proxied at the default path with its URLs rewritten, and
+    # — because the public card policies are its own scope — the Agent-wide auth
+    # policy does not apply to it. Discovery has to stay reachable for a client to
+    # learn how to authenticate at all.
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-no-public-block/.well-known/agent-card.json"
+    Then the response status code should be 200
+    And the response body should contain "http://localhost:8080/agent-no-public-block/v1"
+    And the response body should not contain "localhost:9099"
+
+    # The explicit protected block still stands: the extended card is guarded.
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-no-public-block/v1/extendedAgentCard"
+    Then the response status code should be 401
+    And the response body should not contain "book_trip"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-no-public-block"
+    Then the response should be successful
+
+  # ==================== PASSTHROUGH URL REWRITING ====================
+
+  # Rewriting is what makes the gateway touch a passthrough card's body, and it
+  # is on by default: the upstream agent's own card advertises the agent's own
+  # address, so a client configured from an unrewritten card talks to the agent
+  # directly — past the gateway, its policies, and its analytics. Each advertised
+  # interface URL is replaced by the gateway endpoint serving that protocol
+  # binding. The flag is written out here to state what is under test.
+  #
+  # The scheme is the *original request's*, not the gateway's connection to the
+  # agent: here the gateway reaches the agent over plaintext http, so an https
+  # request that came back advertising http:// URLs would be a card no TLS client
+  # could use. Both schemes are exercised against the same Agent for that reason.
+  #
+  # Selection is by binding rather than by position: the upstream card lists
+  # HTTP+JSON before JSON-RPC while this Agent configures them the other way
+  # round, so a rewrite keyed on array position would advertise each endpoint
+  # under the wrong protocol — two URLs that both resolve, both wrong.
+  Scenario: Passthrough interface URLs are rewritten to the gateway on both schemes
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-card-rewrite
+      spec:
+        displayName: Agent Card Rewrite
+        version: v1.0
+        context: /agent-card-rewrite
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+              rewriteUrls: true
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # Over http: both interfaces point at this gateway, on the authority the
+    # client dialled, and the agent's own address is gone from the document.
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-card-rewrite/.well-known/agent-card.json"
+    Then the response status code should be 200
+    And the response body should contain "http://localhost:8080/agent-card-rewrite/v1"
+    # The agent advertises its own address (localhost:9099) in the card it
+    # serves, so its absence is what makes the assertion above cover both
+    # interfaces: one unrewritten entry would leave that address in the document.
+    And the response body should not contain "localhost:9099"
+    And the response body should contain "Trip Planner"
+
+    # A rewritten card depends on the scheme and authority of the request that
+    # fetched it, so it must not be stored by a shared cache and must carry no
+    # validator identifying the upstream's bytes.
+    And the response header "cache-control" should contain "no-store"
+    And the response should not have header "etag"
+
+    # Over https, through the same Agent, with the upstream leg still plaintext.
+    When I clear all headers
+    And I send an A2A "GET" request to "https://localhost:8443/agent-card-rewrite/.well-known/agent-card.json"
+    Then the response status code should be 200
+    And the response body should contain "https://localhost:8443/agent-card-rewrite/v1"
+    And the response body should not contain "http://localhost:8443"
+    And the response body should not contain "localhost:9099"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-card-rewrite"
+    Then the response should be successful
+
+  # Rewriting covers the transports the Agent exposes, and only those.
+  #
+  # The upstream agent advertises both bindings; this Agent fronts one of them.
+  # The exposed interface is pointed at the gateway, and the other keeps the
+  # agent's own address, because the gateway has no endpoint to name for a
+  # transport it was not configured to carry. That address surviving in the
+  # document is the assertion — and it is also the consequence an operator is
+  # accepting: a client that selects that binding talks to the agent directly,
+  # outside every policy on this gateway.
+  Scenario: Rewriting leaves an interface no configured transport serves alone
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-card-rewrite-partial
+      spec:
+        displayName: Agent Card Rewrite Partial
+        version: v1.0
+        context: /agent-card-rewrite-partial
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+              rewriteUrls: true
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-card-rewrite-partial/.well-known/agent-card.json"
+    Then the response status code should be 200
+    # The exposed transport, pointed at this gateway.
+    And the response body should contain "http://localhost:8080/agent-card-rewrite-partial/v1"
+    # The unexposed one, exactly as the agent wrote it.
+    And the response body should contain "localhost:9099"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-card-rewrite-partial"
+    Then the response should be successful
+
+  # The Agent's configured vhost decides the host a rewritten URL advertises,
+  # ahead of the address the client happened to reach the gateway on.
+  #
+  # This is the one assertion the policy's own tests cannot make: they can fix a
+  # vhost on a synthetic request context, but not prove that `spec.vhost` travels
+  # from the management API through the controller into the route metadata the
+  # policy engine hands the policy. Here the request is dialled at localhost and
+  # carries `Host: agents.example.com`, so the two differ — and the card naming
+  # the vhost rather than localhost is what shows which one was used.
+  #
+  # No port is advertised because the Host header names none. A port is taken
+  # from the request when it carries one, which is what every other rewriting
+  # scenario here exercises.
+  Scenario: A configured vhost outranks the address the client dialled
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-card-rewrite-vhost
+      spec:
+        displayName: Agent Card Rewrite Vhost
+        version: v1.0
+        context: /agent-card-rewrite-vhost
+        vhost: agents.example.com
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I set request host to "agents.example.com"
+    And I send an A2A "GET" request to "http://localhost:8080/agent-card-rewrite-vhost/.well-known/agent-card.json"
+    Then the response status code should be 200
+    And the response body should contain "http://agents.example.com/agent-card-rewrite-vhost/v1"
+    # Neither the agent's own address nor the one this client dialled.
+    And the response body should not contain "localhost:9099"
+    And the response body should not contain "localhost:8080"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-card-rewrite-vhost"
+    Then the response should be successful
+
+  # The point of rewriting, asserted the way a client experiences it: a client
+  # that bootstraps from the card reaches the gateway.
+  #
+  # This is the only scenario that builds an SDK client by following a card, and
+  # it is written so that following an *unrewritten* card fails rather than
+  # passes. The Agent carries an authentication policy the upstream agent does
+  # not, so a client that ended up at the agent's own address would succeed
+  # without a token — and the URL assertion names the address it reached, so the
+  # failure says which document sent it there.
+  Scenario: A client bootstrapped from a rewritten card reaches the gateway's policies
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-card-rewrite-sdk
+      spec:
+        displayName: Agent Card Rewrite SDK
+        version: v1.0
+        context: /agent-card-rewrite-sdk
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+          agentCard:
+            public:
+              mode: passthrough
+              rewriteUrls: true
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I create an A2A client "rpc" for the "JSONRPC" binding from the Agent Card at "http://localhost:8080/agent-card-rewrite-sdk/.well-known/agent-card.json"
+    And I create an A2A client "rest" for the "HTTP+JSON" binding from the Agent Card at "http://localhost:8080/agent-card-rewrite-sdk/.well-known/agent-card.json"
+    Then the A2A client "rpc" should be talking to "http://localhost:8080/agent-card-rewrite-sdk"
+    And the A2A client "rest" should be talking to "http://localhost:8080/agent-card-rewrite-sdk/v1"
+
+    # Reaching the gateway means reaching its policies. Without a token the
+    # gateway refuses; the agent behind it would have answered.
+    When I clear all headers
+    And the A2A client "rest" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rest" call should have failed
+
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And the A2A client "rest" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rest" call should have succeeded
+
+    When the A2A client "rpc" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rpc" call should have succeeded
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-card-rewrite-sdk"
     Then the response should be successful
 
   # ==================== EXTENDED CARD ====================
@@ -409,9 +769,11 @@ Feature: Agent Card serving
 
   # An explicit `protected` block opts into protected-card semantics. In
   # passthrough mode the gateway still proxies the upstream's own extended card,
-  # but only for a request one of the Agent's policies authenticated — and the
-  # response it proxies is byte-identical to what the upstream sent, because
-  # passthrough adds no card-specific mutation of its own.
+  # but only for a request one of the Agent's policies authenticated.
+  #
+  # Both representations opt rewriting out here, so what the upstream sent is what
+  # the client gets and the scenario is about the guard alone. The rewriting
+  # default is exercised in the scenarios above and below.
   Scenario: An explicit passthrough protected card is authenticated and then proxied unchanged
     When I deploy this Agent configuration:
       """
@@ -442,8 +804,10 @@ Feature: Agent Card serving
           agentCard:
             public:
               mode: passthrough
+              rewriteUrls: false
             protected:
               mode: passthrough
+              rewriteUrls: false
       """
     Then the response should be successful
     And I wait for policy snapshot sync
@@ -509,6 +873,113 @@ Feature: Agent Card serving
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-protected-passthrough"
+    Then the response should be successful
+
+  # Rewriting on the protected representation. It is a different response with a
+  # different shape — the bare card on HTTP+JSON, the card under `result` on
+  # JSON-RPC — and it is reached only after the authentication guard, so rewriting
+  # must happen on both bindings without weakening the guard.
+  #
+  # The public card opts out here, which is what makes this a test of independence
+  # rather than of the shared default: rewriting is resolved per representation,
+  # so turning it off on one must not turn it off on the other.
+  #
+  # The JSON-RPC half also pins the envelope: the caller's id comes back as the
+  # JSON value it sent, because that is what a client correlates responses on.
+  Scenario: A protected passthrough card rewrites its interface URLs independently of the public card
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-protected-rewrite
+      spec:
+        displayName: Agent Protected Rewrite
+        version: v1.0
+        context: /agent-protected-rewrite
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+          agentCard:
+            public:
+              mode: passthrough
+              rewriteUrls: false
+            protected:
+              mode: passthrough
+              rewriteUrls: true
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # The guard is unaffected by rewriting: without credentials nothing is
+    # fetched, so there is nothing to rewrite and no card bytes in the answer.
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-rewrite/v1/extendedAgentCard"
+    Then the response status code should be 401
+    And the response body should not contain "book_trip"
+
+    # Authenticated, HTTP+JSON: the bare extended card, with the agent's own
+    # addresses replaced by this gateway's.
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-rewrite/v1/extendedAgentCard"
+    Then the response status code should be 200
+    And the response body should contain "book_trip"
+    And the response body should contain "http://localhost:8080/agent-protected-rewrite/v1"
+    And the response body should not contain "localhost:9099"
+    And the response header "cache-control" should contain "no-store"
+
+    # Authenticated, JSON-RPC: the same card under `result`, with the id echoed
+    # back as the JSON value it arrived as.
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And I send an A2A JSON-RPC request to "http://localhost:8080/agent-protected-rewrite":
+      """
+      {"jsonrpc": "2.0", "id": 77, "method": "GetExtendedAgentCard", "params": {}}
+      """
+    Then the response status code should be 200
+    And the response JSON at "id" should be greater than 76
+    And the response body should contain "book_trip"
+    And the response body should contain "http://localhost:8080/agent-protected-rewrite/v1"
+    And the response body should not contain "localhost:9099"
+
+    # The public card opted rewriting out, so it is still proxied untouched —
+    # rewriting is per representation, and the protected card's is not what
+    # decides the public one's.
+    When I clear all headers
+    And I save the Agent Card at "http://localhost:9099/.well-known/agent-card.json"
+    Then the response status code should be 200
+
+    When I clear all headers
+    Then the Agent Card at "http://localhost:8080/agent-protected-rewrite/.well-known/agent-card.json" should be byte-identical to the saved card
+
+    # Other operations are unaffected: only the GetExtendedAgentCard chain
+    # carries the rewrite, so an ordinary invocation is neither buffered
+    # differently nor altered.
+    When I clear all headers
+    And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-protected-rewrite/v1"
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And the A2A client "rest" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rest" call should have succeeded
+    And the A2A client "rest" should have received an artifact containing "Kandy"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-protected-rewrite"
     Then the response should be successful
 
   # Managed mode answers locally: the configured card is served by the gateway and
@@ -1165,6 +1636,54 @@ Feature: Agent Card serving
       """
     Then the response should be a client error
     And the response body should contain "remove content or set mode: managed"
+
+  # rewriteUrls rewrites a document the gateway did not author, so it belongs to a
+  # passthrough card and to nothing else. A managed card is authored here and its
+  # interfaces are validated against the configured transports, so there is
+  # nothing for a rewrite to correct — an accepted flag would silently do nothing.
+  #
+  # A stated `false` is rejected too, because the flag means nothing in managed
+  # mode either way: an author who wrote it believes something about their
+  # configuration that is not the case, and they would only find out if they ever
+  # flipped it and found it ignored.
+  Scenario Outline: rewriteUrls on a managed Agent Card is rejected
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-managed-rewrite-<name>
+      spec:
+        displayName: Agent Managed Rewrite <name>
+        version: v1.0
+        context: /agent-managed-rewrite-<name>
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: managed
+              rewriteUrls: <flag>
+              content:
+                name: Managed Card With A Rewrite Flag
+                version: 1.0.0
+                supportedInterfaces:
+                  - protocolBinding: HTTP+JSON
+                    protocolVersion: "1.0"
+                    url: https://localhost:8080/agent-managed-rewrite-<name>/v1
+      """
+    Then the response should be a client error
+    And the response body should contain "rewriteUrls applies only to a passthrough Agent Card"
+
+    Examples:
+      | name     | flag  |
+      | enabled  | true  |
+      | disabled | false |
 
   # ==================== PROTECTED CARD VALIDATION REJECTIONS ====================
 

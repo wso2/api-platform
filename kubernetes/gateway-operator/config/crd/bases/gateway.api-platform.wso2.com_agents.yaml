@@ -43,7 +43,12 @@ spec:
                 description: A2A is the A2A-specific agent configuration.
                 properties:
                   agentCard:
-                    description: AgentCard configures Agent Card serving.
+                    description: |-
+                      AgentCard configures Agent Card serving. The whole block is optional:
+                      omitting it serves the public Agent Card in passthrough mode at
+                      /.well-known/agent-card.json with rewriting disabled. Omitting only the
+                      protected block is not the same thing — that keeps its own compatibility
+                      behaviour and is never turned into an explicit protected configuration.
                     properties:
                       protected:
                         description: |-
@@ -67,6 +72,15 @@ spec:
                             - managed
                             - passthrough
                             type: string
+                          rewriteUrls:
+                            description: |-
+                              RewriteUrls selects whether the gateway rewrites supportedInterfaces[].url
+                              in the proxied extended Agent Card response, as on the public card. Valid
+                              only in passthrough mode, and rejected by the gateway-controller in managed
+                              mode. Defaults to true, for the same reason it does on the public card: the
+                              extended card advertises the agent's own interface URLs too. The
+                              authentication guard is unaffected either way.
+                            type: boolean
                           signing:
                             description: |-
                               Signing configures gateway signing of a managed card. The two card
@@ -85,7 +99,10 @@ spec:
                         - mode
                         type: object
                       public:
-                        description: Public configures public Agent Card serving.
+                        description: |-
+                          Public configures public Agent Card serving. Omitting it is the same as
+                          configuring passthrough at /.well-known/agent-card.json with rewriteUrls
+                          disabled and no public Agent Card policies.
                         properties:
                           content:
                             description: |-
@@ -96,8 +113,10 @@ spec:
                             type: object
                             x-kubernetes-preserve-unknown-fields: true
                           mode:
-                            description: Mode selects how the public Agent Card is
-                              produced.
+                            description: |-
+                              Mode selects how the public Agent Card is produced. Omitting it means
+                              passthrough, which is also what an omitted public or agentCard block
+                              resolves to.
                             enum:
                             - managed
                             - passthrough
@@ -141,6 +160,27 @@ spec:
                               - version
                               type: object
                             type: array
+                          rewriteUrls:
+                            description: |-
+                              RewriteUrls selects whether the gateway rewrites supportedInterfaces[].url
+                              in a proxied Agent Card response so each entry points at the gateway
+                              endpoint serving that protocol binding, using the original request's HTTP
+                              or HTTPS scheme and the authority the client reached the gateway on.
+
+                              Valid only in passthrough mode, and rejected by the gateway-controller in
+                              managed mode. Defaults to true: a proxied card advertises the URLs the agent
+                              itself is reachable at, so forwarding it unchanged tells every client to
+                              bypass the gateway. Only the bindings the configured transports expose are
+                              rewritten. Rewriting drops the upstream signatures block, which no longer
+                              covers the returned bytes, and does not make the card's security
+                              declarations verifiable. Set it to false to forward the response —
+                              signatures included — byte-for-byte instead.
+
+                              No default is set on this field deliberately: defaulting it here would
+                              materialise the flag on every object, and a stated flag is rejected in
+                              managed mode. The default is applied by the gateway-controller, which is
+                              where every consumer reads it from.
+                            type: boolean
                           signing:
                             description: Signing configures gateway signing of a managed
                               card.
@@ -154,11 +194,7 @@ spec:
                             required:
                             - enabled
                             type: object
-                        required:
-                        - mode
                         type: object
-                    required:
-                    - public
                     type: object
                   operationConfigs:
                     description: OperationConfigs carries transport exposure and operation
@@ -320,7 +356,6 @@ spec:
                     - "1.0"
                     type: string
                 required:
-                - agentCard
                 - operationConfigs
                 - protocolVersion
                 type: object
@@ -644,7 +679,12 @@ spec:
                 description: A2A is the A2A-specific agent configuration.
                 properties:
                   agentCard:
-                    description: AgentCard configures Agent Card serving.
+                    description: |-
+                      AgentCard configures Agent Card serving. The whole block is optional:
+                      omitting it serves the public Agent Card in passthrough mode at
+                      /.well-known/agent-card.json with rewriting disabled. Omitting only the
+                      protected block is not the same thing — that keeps its own compatibility
+                      behaviour and is never turned into an explicit protected configuration.
                     properties:
                       protected:
                         description: |-
@@ -668,6 +708,15 @@ spec:
                             - managed
                             - passthrough
                             type: string
+                          rewriteUrls:
+                            description: |-
+                              RewriteUrls selects whether the gateway rewrites supportedInterfaces[].url
+                              in the proxied extended Agent Card response, as on the public card. Valid
+                              only in passthrough mode, and rejected by the gateway-controller in managed
+                              mode. Defaults to true, for the same reason it does on the public card: the
+                              extended card advertises the agent's own interface URLs too. The
+                              authentication guard is unaffected either way.
+                            type: boolean
                           signing:
                             description: |-
                               Signing configures gateway signing of a managed card. The two card
@@ -686,7 +735,10 @@ spec:
                         - mode
                         type: object
                       public:
-                        description: Public configures public Agent Card serving.
+                        description: |-
+                          Public configures public Agent Card serving. Omitting it is the same as
+                          configuring passthrough at /.well-known/agent-card.json with rewriteUrls
+                          disabled and no public Agent Card policies.
                         properties:
                           content:
                             description: |-
@@ -697,8 +749,10 @@ spec:
                             type: object
                             x-kubernetes-preserve-unknown-fields: true
                           mode:
-                            description: Mode selects how the public Agent Card is
-                              produced.
+                            description: |-
+                              Mode selects how the public Agent Card is produced. Omitting it means
+                              passthrough, which is also what an omitted public or agentCard block
+                              resolves to.
                             enum:
                             - managed
                             - passthrough
@@ -742,6 +796,27 @@ spec:
                               - version
                               type: object
                             type: array
+                          rewriteUrls:
+                            description: |-
+                              RewriteUrls selects whether the gateway rewrites supportedInterfaces[].url
+                              in a proxied Agent Card response so each entry points at the gateway
+                              endpoint serving that protocol binding, using the original request's HTTP
+                              or HTTPS scheme and the authority the client reached the gateway on.
+
+                              Valid only in passthrough mode, and rejected by the gateway-controller in
+                              managed mode. Defaults to true: a proxied card advertises the URLs the agent
+                              itself is reachable at, so forwarding it unchanged tells every client to
+                              bypass the gateway. Only the bindings the configured transports expose are
+                              rewritten. Rewriting drops the upstream signatures block, which no longer
+                              covers the returned bytes, and does not make the card's security
+                              declarations verifiable. Set it to false to forward the response —
+                              signatures included — byte-for-byte instead.
+
+                              No default is set on this field deliberately: defaulting it here would
+                              materialise the flag on every object, and a stated flag is rejected in
+                              managed mode. The default is applied by the gateway-controller, which is
+                              where every consumer reads it from.
+                            type: boolean
                           signing:
                             description: Signing configures gateway signing of a managed
                               card.
@@ -755,11 +830,7 @@ spec:
                             required:
                             - enabled
                             type: object
-                        required:
-                        - mode
                         type: object
-                    required:
-                    - public
                     type: object
                   operationConfigs:
                     description: OperationConfigs carries transport exposure and operation
@@ -921,7 +992,6 @@ spec:
                     - "1.0"
                     type: string
                 required:
-                - agentCard
                 - operationConfigs
                 - protocolVersion
                 type: object

@@ -111,9 +111,9 @@ func routingTestAgent(options ...func(*api.AgentConfiguration)) *models.StoredCo
 							{ProtocolBinding: api.HTTPJSON},
 						},
 					},
-					AgentCard: api.A2AAgentCard{
-						Public: api.A2APublicAgentCard{
-							Mode:    api.A2APublicAgentCardModeManaged,
+					AgentCard: &api.A2AAgentCard{
+						Public: &api.A2APublicAgentCard{
+							Mode:    publicCardMode(api.A2APublicAgentCardModeManaged),
 							Content: &cardContent,
 						},
 					},
@@ -385,7 +385,7 @@ func TestAgentPassthroughCardIsFetchedFromTheWellKnownUpstreamPath(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			routes := agentEnvoyRoutes(t, routingTestAgent(func(cfg *api.AgentConfiguration) {
 				cfg.Spec.Upstream.Url = &tc.upstream
-				cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
+				cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
 				cfg.Spec.A2a.AgentCard.Public.Content = nil
 				if tc.cardPath != "" {
 					cfg.Spec.A2a.AgentCard.Public.Path = &tc.cardPath
@@ -427,7 +427,7 @@ func TestAgentCardRouteIsAProxyingRoute(t *testing.T) {
 	} {
 		t.Run(string(mode), func(t *testing.T) {
 			routes := agentEnvoyRoutes(t, routingTestAgent(func(cfg *api.AgentConfiguration) {
-				cfg.Spec.A2a.AgentCard.Public.Mode = mode
+				cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(mode)
 				if mode == api.A2APublicAgentCardModePassthrough {
 					cfg.Spec.A2a.AgentCard.Public.Content = nil
 				}
@@ -440,4 +440,11 @@ func TestAgentCardRouteIsAProxyingRoute(t *testing.T) {
 				"the card route must resolve to an upstream cluster")
 		})
 	}
+}
+
+// publicCardMode returns a pointer to a public Agent Card mode. The field is
+// optional — an omitted one means passthrough — so a fixture that states a mode
+// states it as a pointer.
+func publicCardMode(mode api.A2APublicAgentCardMode) *api.A2APublicAgentCardMode {
+	return &mode
 }

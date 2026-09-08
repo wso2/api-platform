@@ -69,6 +69,15 @@
 // In managed mode the instance carries the card and answers with it. In
 // passthrough mode it carries none and forwards the operation to the upstream
 // once the check passes.
+//
+// # Passthrough interface URL rewriting
+//
+// Either representation may, in passthrough mode, ask for the proxied card's
+// advertised interface URLs to be rewritten to the gateway's own endpoints. That
+// is the third thing this policy does, and the only one that touches a response;
+// it lives in rewrite.go, and an instance opts into it by carrying a
+// `rewriteUrls` block inside its card block. Without one, no response is
+// buffered and a proxied card is forwarded byte for byte.
 package a2a
 
 import (
@@ -139,6 +148,19 @@ const (
 	transportHTTPJSON = "HTTP+JSON"
 )
 
+// metadataKeyRewriteVhost carries the Agent's configured virtual host from the
+// request phase, where the policy engine exposes it, into the response phase,
+// where a rewritten Agent Card's URLs are built.
+//
+// It exists because the vhost is on the request-phase contexts alone: a
+// ResponseContext carries only SharedContext plus the downstream request
+// snapshot, and the snapshot holds the authority the client dialled, not the
+// host the operator configured. Written only by a rewriting instance, and read
+// only by that same instance's response phase — nothing else in the chain has a
+// use for it. Underscore-prefixed like the analytics policy's own internal keys,
+// to mark it as private to this policy rather than part of any contract.
+const metadataKeyRewriteVhost = "__a2a_rewrite_vhost"
+
 const (
 	// contentTypeJSON is the media type A2A Agent Cards are served as.
 	contentTypeJSON = "application/json"
@@ -167,19 +189,71 @@ const (
 	cacheControlValue = "no-cache"
 )
 
-// A2ASystemPolicy answers the A2A requests the gateway serves itself. It holds
-// no state: everything it needs arrives as parameters on every call, so one
-// instance serves every route it is attached to.
-type A2ASystemPolicy struct{}
+// A2ASystemPolicy answers the A2A requests the gateway serves itself.
+//
+// Almost everything it needs arrives as parameters on every call, so the shared
+// instance below serves every route that does not rewrite a response. The one
+// exception is response rewriting, which has to be known *before* any request
+// arrives: whether a chain buffers its response body is decided from Mode() when
+// the chain is built, so an instance that rewrites carries its configuration
+// rather than reading it per request. That is what keeps every other chain —
+// every other operation, streaming above all — free of a response-body
+// requirement it has no use for.
+type A2ASystemPolicy struct {
+	// rewrite is non-nil only on an instance whose card block asked for
+	// interface URL rewriting. It is also what Mode() consults.
+	rewrite *rewriteConfig
+
+	// configErr records a rewriteUrls block that was present but unusable.
+	//
+	// It is held rather than returned from the factory on purpose. Returning an
+	// error there fails the whole chain build, which takes down every route in
+	// the snapshot for a defect in one Agent's parameters; holding it fails this
+	// one route closed instead, with the reason in the log. Either way nothing is
+	// forwarded: a card configured to be rewritten is never proxied unrewritten,
+	// because that would publish the upstream's own URLs and route every client
+	// past the gateway.
+	configErr error
+}
 
 var ins = &A2ASystemPolicy{}
 
-// GetPolicy returns the policy instance.
+// GetPolicy returns the instance for one attachment of the policy.
+//
+// It returns the shared stateless instance for every attachment that does not
+// rewrite a response, and a configured one for those that do. The parameters are
+// the same ones every callback receives; only the rewrite configuration is read
+// here, because only it is needed before a request exists.
 func GetPolicy(
 	_ policy.PolicyMetadata,
-	_ map[string]any,
+	params map[string]any,
 ) (policy.Policy, error) {
-	return ins, nil
+	rewrite, err := rewriteConfigFromParams(params)
+	if err != nil {
+		return &A2ASystemPolicy{configErr: err}, nil
+	}
+	if rewrite == nil {
+		return ins, nil
+	}
+	return &A2ASystemPolicy{rewrite: rewrite}, nil
+}
+
+// rewriteConfigFromParams finds the rewriteUrls block, in whichever card block
+// this instance carries.
+//
+// At most one card block is ever present, so the two are checked in a fixed
+// order rather than merged: an instance holding both would be a controller
+// defect, and reading the public one first means such an instance rewrites a
+// public discovery response rather than silently taking on the protected
+// response shape.
+func rewriteConfigFromParams(params map[string]any) (*rewriteConfig, error) {
+	if hasParamBlock(params, ParamAgentCard) {
+		return parseRewriteConfig(objectParam(params, ParamAgentCard), false)
+	}
+	if hasParamBlock(params, ParamProtectedAgentCard) {
+		return parseRewriteConfig(objectParam(params, ParamProtectedAgentCard), true)
+	}
+	return nil, nil
 }
 
 // GetPolicyV2 is an alias for GetPolicy, provided for compatibility with
@@ -191,10 +265,20 @@ func GetPolicyV2(
 	return GetPolicy(metadata, params)
 }
 
-// Mode declares participation in both request phases.
+// Mode declares participation in both request phases, and in the response body
+// phase only for an instance that rewrites one.
 //
-// Neither response phase has anything to do: every response this policy produces
-// it generates itself, so there is no upstream response left to inspect.
+// The response phase is otherwise idle: every response this policy produces it
+// generates itself, so there is no upstream response left to inspect. It is
+// declared per instance rather than per policy because the declaration is what
+// makes Envoy buffer the response body for the whole chain, and only the two
+// chains a card is served on ever need that. A policy-wide declaration would
+// give every A2A operation chain a response-body requirement — including the
+// streaming ones, where buffering the response is the difference between an
+// event stream and a reply that arrives when the stream ends.
+//
+// A misconfigured instance declares no response phase either: it never gets far
+// enough to have a response to rewrite, because it refuses the request.
 //
 // The request body is needed by exactly one job — a managed protected card on
 // the JSON-RPC binding, which must echo the caller's request id, and that id
@@ -219,11 +303,15 @@ func GetPolicyV2(
 // operation-level *body*-phase policy had run — even though the controller
 // placed that policy ahead of it in the chain.
 func (a *A2ASystemPolicy) Mode() policy.ProcessingMode {
+	responseBodyMode := policy.BodyModeSkip
+	if a.rewrite != nil {
+		responseBodyMode = policy.BodyModeBuffer
+	}
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
 		RequestBodyMode:    policy.BodyModeBuffer,
 		ResponseHeaderMode: policy.HeaderModeSkip,
-		ResponseBodyMode:   policy.BodyModeSkip,
+		ResponseBodyMode:   responseBodyMode,
 	}
 }
 
@@ -239,18 +327,89 @@ func (a *A2ASystemPolicy) OnRequestHeaders(
 	reqCtx *policy.RequestHeaderContext,
 	params map[string]any,
 ) policy.RequestHeaderAction {
+	if a.configErr != nil {
+		slog.Error("A2A system policy: Agent Card rewrite configuration is unusable; refusing to serve",
+			"api_id", reqCtx.APIId, "path", reqCtx.Path, "error", a.configErr)
+		return unavailableResponse()
+	}
+
+	if a.rewrite != nil {
+		recordRewriteVhost(reqCtx.SharedContext, reqCtx.Vhost)
+	}
+
 	switch {
 	case hasParamBlock(params, ParamAgentCard):
-		return a.servePublicCard(reqCtx, params)
+		return a.publicCardRequestHeaders(reqCtx, params)
 	case hasParamBlock(params, ParamProtectedAgentCard):
 		// Handled at the request-body phase instead. Deciding here would run
 		// ahead of any body-phase policy the author attached, and would leave the
-		// JSON-RPC binding with no request id to echo.
-		return policy.UpstreamRequestHeaderModifications{}
+		// JSON-RPC binding with no request id to echo. The one thing done here is
+		// the conditional-request suppression a rewrite needs, which has to happen
+		// before the request is forwarded.
+		return a.forwardForRewrite()
 	default:
 		slog.Error("A2A system policy: instance carries no recognised parameter block; refusing to serve",
 			"api_id", reqCtx.APIId, "path", reqCtx.Path)
 		return unavailableResponse()
+	}
+}
+
+// publicCardRequestHeaders answers, or prepares, a public Agent Card request.
+//
+// Which of the two depends on the block, not on the request: a block carrying
+// content is a managed card and is answered here, and a block carrying a
+// rewrite is a passthrough card whose request is forwarded so there is a
+// response to rewrite. A block carrying neither is a controller defect — the
+// instance exists to do one of those two things — and fails closed rather than
+// forwarding, because forwarding would serve the upstream's own unvalidated card
+// under a configuration that says otherwise.
+func (a *A2ASystemPolicy) publicCardRequestHeaders(
+	reqCtx *policy.RequestHeaderContext,
+	params map[string]any,
+) policy.RequestHeaderAction {
+	card := objectParam(params, ParamAgentCard)
+
+	if _, present := card[ParamContent]; present {
+		return a.servePublicCard(reqCtx, card)
+	}
+	if a.rewrite != nil {
+		return a.forwardForRewrite()
+	}
+
+	slog.Error("A2A system policy: no Agent Card content configured; refusing to serve",
+		"api_id", reqCtx.APIId, "path", reqCtx.Path,
+		"param", ParamAgentCard+"."+ParamContent)
+	return unavailableResponse()
+}
+
+// conditionalRequestHeaders are the request headers stripped before a card
+// request whose response will be rewritten is forwarded.
+//
+// A conditional request is answered by the upstream with 304 and no body, and a
+// rewrite needs a body: the validator the client holds was computed over the
+// upstream's own bytes, which are not the bytes the gateway returns, so
+// revalidating against it would let the client keep a card advertising the
+// upstream's URLs. Removing them costs one full card fetch and is the only way
+// the client's copy converges on the rewritten document.
+var conditionalRequestHeaders = []string{
+	"if-none-match",
+	"if-modified-since",
+	"if-match",
+	"if-unmodified-since",
+	"if-range",
+	"range",
+}
+
+// forwardForRewrite forwards the request, suppressing conditional-request
+// headers when this instance is going to rewrite the response. A non-rewriting
+// instance forwards unchanged — the client's conditional request is then between
+// it and the upstream, exactly as it is today.
+func (a *A2ASystemPolicy) forwardForRewrite() policy.RequestHeaderAction {
+	if a.rewrite == nil {
+		return policy.UpstreamRequestHeaderModifications{}
+	}
+	return policy.UpstreamRequestHeaderModifications{
+		HeadersToRemove: conditionalRequestHeaders,
 	}
 }
 
@@ -262,16 +421,14 @@ func (a *A2ASystemPolicy) OnRequestHeaders(
 // instead would quietly serve the upstream's own unvalidated card in its place.
 func (a *A2ASystemPolicy) servePublicCard(
 	reqCtx *policy.RequestHeaderContext,
-	params map[string]any,
+	card map[string]any,
 ) policy.RequestHeaderAction {
-	card := objectParam(params, ParamAgentCard)
-
 	content, ok := stringParam(card, ParamContent)
 	if !ok || content == "" {
-		// Reachable only if the chain was built without the card the policy
-		// exists to serve — a controller defect, not a client error. Fail closed
-		// rather than forwarding: the response body says nothing about why.
-		slog.Error("A2A system policy: no Agent Card content configured; refusing to serve",
+		// The field is present but unusable — a controller defect, not a client
+		// error. Fail closed rather than forwarding: the response body says
+		// nothing about why.
+		slog.Error("A2A system policy: Agent Card content is not usable; refusing to serve",
 			"api_id", reqCtx.APIId, "path", reqCtx.Path,
 			"param", ParamAgentCard+"."+ParamContent)
 		return unavailableResponse()
@@ -375,7 +532,9 @@ func (a *A2ASystemPolicy) OnRequestBody(
 		}
 		// Passthrough: the gateway owns no document here, so the request goes on
 		// to the upstream now that it is authenticated, and the upstream's own
-		// extended card is proxied unparsed.
+		// extended card is proxied — unparsed, unless this instance also asked
+		// for its interface URLs to be rewritten, in which case the response
+		// phase rewrites what comes back.
 		return policy.UpstreamRequestModifications{}
 	}
 	if content == "" {
@@ -481,6 +640,152 @@ func jsonRPCCardResponse(reqCtx *policy.RequestContext, content string) policy.R
 		},
 		Body: out.Bytes(),
 	}
+}
+
+// OnResponseBody rewrites a proxied Agent Card's advertised interface URLs.
+//
+// It runs only on an instance that asked for rewriting — nothing else declares a
+// response-body mode — and only on the two chains a card is served on, so no
+// other operation's response is buffered or inspected.
+//
+// The scheme and authority advertised are the ones of the *downstream* request:
+// the client is told to come back the way it arrived, on the scheme it used and
+// the host and port it dialled. The upstream connection's own scheme is
+// deliberately not consulted — a gateway terminating TLS and calling a plaintext
+// agent would otherwise publish http:// URLs to an https:// client — and neither
+// is any forwarding header, which is client-supplied and not normalised here.
+//
+// Everything that is not a successful card response is left alone: an upstream
+// failure stays a failure, a JSON-RPC error object stays an error, and a
+// bodyless response never reaches this at all. What is *not* left alone is a
+// successful response that cannot be rewritten safely: that fails, because
+// returning it unrewritten would publish the upstream's own URLs and route every
+// client past the gateway — the precise outcome the flag was enabled to prevent.
+func (a *A2ASystemPolicy) OnResponseBody(
+	_ context.Context,
+	respCtx *policy.ResponseContext,
+	_ map[string]any,
+) policy.ResponseAction {
+	if a.rewrite == nil {
+		// Unreachable: an instance with no rewrite configuration declares
+		// ResponseBodyMode: Skip, so this callback is never scheduled for it.
+		return policy.DownstreamResponseModifications{}
+	}
+
+	// Read before anything can fail: SharedContext is embedded by pointer, so
+	// APIId and ResolutionAttributes promote through it, and a nil one would
+	// panic in the logging call rather than in the branch that noticed the
+	// problem. A protected rewrite that finds no transport fails closed below,
+	// which is the same answer a missing context deserves.
+	apiID, transport := "", ""
+	if respCtx.SharedContext != nil {
+		apiID = respCtx.APIId
+		transport = respCtx.ResolutionAttributes.Get(attrA2ATransport)
+	}
+
+	// Only a success carries a card. A 4xx or 5xx from the upstream — including
+	// the 401 an upstream may answer a protected card request with — is the
+	// upstream's own answer and is forwarded as it stands.
+	if respCtx.ResponseStatus < 200 || respCtx.ResponseStatus > 299 {
+		return policy.DownstreamResponseModifications{}
+	}
+	if respCtx.ResponseBody == nil || len(respCtx.ResponseBody.Content) == 0 {
+		return policy.DownstreamResponseModifications{}
+	}
+
+	scheme, authority := a.downstreamOrigin(respCtx)
+
+	rewritten, err := a.rewrite.rewriteResponse(respCtx.ResponseBody.Content, transport, scheme, authority)
+	if err != nil {
+		// Logged, not answered: the reason names the upstream's document or the
+		// gateway's own configuration, neither of which a client should be able to
+		// read off a response.
+		slog.Error("A2A system policy: cannot rewrite Agent Card interface URLs; refusing to serve",
+			"api_id", apiID, "path", respCtx.RequestPath, "transport", transport, "error", err)
+		return unavailableResponse()
+	}
+	if rewritten == nil {
+		// Nothing was rewritten: a JSON-RPC error response, or a card advertising
+		// only bindings this gateway does not front. Either way the upstream's
+		// bytes are unchanged, so they are forwarded as they stand — including the
+		// caching headers, which still describe the response being returned.
+		return policy.DownstreamResponseModifications{}
+	}
+
+	// Content-Length is recomputed by the engine when a policy replaces the body,
+	// and the body is re-compressed for the client if the upstream compressed it,
+	// so neither is handled here. What is handled is everything that described the
+	// *upstream's* bytes and no longer describes these: its validators and
+	// digests are removed rather than passed through, since a client holding one
+	// would revalidate its way back to the unrewritten card.
+	return policy.DownstreamResponseModifications{
+		Body:            rewritten,
+		HeadersToSet:    map[string]string{"cache-control": cacheControlNoStore},
+		HeadersToRemove: staleResponseValidators,
+	}
+}
+
+// staleResponseValidators are the response headers that described the upstream's
+// own bytes and cannot describe the rewritten ones.
+//
+// `cache-control: no-store` is set alongside removing them, rather than a
+// validator of the gateway's own being computed: a rewritten card depends on the
+// scheme and authority of the request that fetched it, so two clients reaching
+// the same gateway differently must not be served each other's copy from a
+// shared cache. The public card's conditional-GET contract belongs to the
+// managed representation, which is a document the gateway owns.
+var staleResponseValidators = []string{
+	"etag",
+	"last-modified",
+	"digest",
+	"content-digest",
+	"content-md5",
+}
+
+// downstreamOrigin is the scheme and authority a rewritten URL advertises.
+//
+// Both come from the snapshot of the client request the engine captured before
+// any policy mutated it, so a policy earlier in the chain that rewrote the host
+// on its way upstream cannot change what the card advertises. The configured
+// authority is a fallback for a request that carried none; it is empty for a
+// wildcard virtual host, and a rewrite with neither fails closed rather than
+// advertising a guess.
+func (a *A2ASystemPolicy) downstreamOrigin(respCtx *policy.ResponseContext) (scheme, authority string) {
+	if respCtx.Downstream != nil && respCtx.Downstream.Request != nil {
+		scheme = respCtx.Downstream.Request.Scheme
+		authority = respCtx.Downstream.Request.Authority
+	}
+	return scheme, gatewayAuthority(rewriteVhost(respCtx.SharedContext), authority, scheme)
+}
+
+// recordRewriteVhost carries the route's configured virtual host into the
+// response phase, where a rewritten card's URLs are built.
+//
+// The vhost is on the request-phase contexts alone — a ResponseContext holds
+// only the shared context and the downstream request snapshot, and the snapshot
+// carries the authority the client dialled rather than the host the Agent was
+// published under. Shared metadata is the one channel that spans the two phases,
+// so the value is copied into it by the same instance that will read it back.
+//
+// Called for every representation a rewriting instance serves, since both of
+// them reach this phase: the public card decides here, and the protected card
+// only suppresses conditional headers here before deciding at the body phase.
+func recordRewriteVhost(shared *policy.SharedContext, vhost string) {
+	if shared == nil || shared.Metadata == nil || vhost == "" {
+		return
+	}
+	shared.Metadata[metadataKeyRewriteVhost] = vhost
+}
+
+// rewriteVhost reads back what recordRewriteVhost stored, or "" if the request
+// phase stored nothing — in which case the request's own authority is what a
+// rewritten URL advertises.
+func rewriteVhost(shared *policy.SharedContext) string {
+	if shared == nil || shared.Metadata == nil {
+		return ""
+	}
+	vhost, _ := shared.Metadata[metadataKeyRewriteVhost].(string)
+	return vhost
 }
 
 // jsonValueKind classifies a raw JSON value by its first structural byte, which
