@@ -323,15 +323,37 @@ describe('MCP server registry (v0.1)', () => {
     });
 
     describe('cross-origin access', () => {
+        // An Origin header is what makes these cross-origin requests rather than
+        // same-origin ones that merely happen to collect the header the router sets
+        // unconditionally — without it neither test exercises the CORS contract.
+        const BROWSER_ORIGIN = 'https://mcp-client.example';
+
+        // Split on comma so the assertion holds however the header is spelled
+        // ('GET' today, 'GET, HEAD' if it is ever widened).
+        const allowedMethods = (res) => (res.headers['access-control-allow-methods'] || '')
+            .split(',')
+            .map((m) => m.trim().toUpperCase())
+            .filter(Boolean);
+
         it('allows any origin, so a browser-based MCP client can read the registry', async () => {
-            const res = await client.raw().get(`${client.BASE_PATH}${REGISTRY}/servers`);
+            const res = await client.raw()
+                .get(`${client.BASE_PATH}${REGISTRY}/servers`)
+                .set('Origin', BROWSER_ORIGIN);
+            expect(res.status).toBe(200);
             expect(res.headers['access-control-allow-origin']).toBe('*');
         });
 
-        it('answers preflight with 204', async () => {
-            const res = await client.raw().options(`${client.BASE_PATH}${REGISTRY}/servers`);
+        it('answers preflight with 204 and permits the requested method', async () => {
+            const res = await client.raw()
+                .options(`${client.BASE_PATH}${REGISTRY}/servers`)
+                .set('Origin', BROWSER_ORIGIN)
+                .set('Access-Control-Request-Method', 'GET');
             expect(res.status).toBe(204);
             expect(res.headers['access-control-allow-origin']).toBe('*');
+            // The preflight has to actually clear the method the browser asked about;
+            // a 204 carrying an allow-methods list without GET would still block the
+            // real request, which the previous status-only assertion could not see.
+            expect(allowedMethods(res)).toContain('GET');
         });
     });
 });

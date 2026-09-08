@@ -28,6 +28,7 @@ const { safeDecodeJwt } = require('../utils/jwtDecode');
 const logger = require('../config/logger');
 const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent } = require('../utils/tokenUtil');
+const { sanitizeReturnTo } = require('../utils/returnToGuard');
 const { resolveUserUuid, verifyBearerToken } = require('./authMiddleware');
 const {
     effectiveScopes,
@@ -121,7 +122,7 @@ function enforceSecurity(scope) {
                 return enforceMTLS(req, res, next);
             } else {
                 if (req.params.orgName) {
-                    req.session.returnTo = accessControlUrl(req) || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
+                    req.session.returnTo = safeReturnTo(req, `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`);
                     return res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.session.view}/login`);
                 }
                 // No :orgName to build a login-page URL from. Not an edge case: the MCP
@@ -220,6 +221,13 @@ function hasTraversalSequence(originalUrl) {
 // such a route go through this gate unchanged instead of around it.
 function accessControlUrl(req) {
     return req.accessControlPath || req.originalUrl;
+}
+
+// Wraps the shared sanitiser (utils/returnToGuard.js) around this module's notion
+// of "the URL this request is about", so both writers below store a destination that
+// res.redirect() can be handed safely. See that module for why this is required.
+function safeReturnTo(req, fallback) {
+    return sanitizeReturnTo(accessControlUrl(req), fallback);
 }
 
 const ensureAuthenticated = async (req, res, next) => {
@@ -368,7 +376,7 @@ const ensureAuthenticated = async (req, res, next) => {
             }
             return next();
         } else {
-            req.session.returnTo = accessControlUrl(req) || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
+            req.session.returnTo = safeReturnTo(req, `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`);
             req.session.save((err) => {
                 if (err) {
                     logger.error('Session save failed before login redirect', { error: err.message });
@@ -462,6 +470,9 @@ module.exports = {
     validateAuthentication,
     enforceSecurity,
     matchesAnyScope,
+    // Exported so a future writer of req.session.returnTo reaches for this rather
+    // than re-deriving the unvalidated form.
+    safeReturnTo,
     // Exported for tests: the page-tier decision is security-relevant enough to pin
     // directly rather than only through the integration suite.
     ensurePermission,
