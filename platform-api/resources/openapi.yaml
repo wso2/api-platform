@@ -807,6 +807,9 @@ paths:
       responses:
         '201':
           description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
