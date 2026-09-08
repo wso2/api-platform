@@ -178,6 +178,10 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 				"No gateway connections available"))
 			return
 		}
+		if errors.Is(err, constants.ErrIssuerTooLong) || errors.Is(err, constants.ErrAllowedTargetsTooLong) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
+		}
 
 		h.slogger.Error("Failed to create LLM provider API key", "providerId", providerID, "organizationId", orgID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",

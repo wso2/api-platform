@@ -240,6 +240,10 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		allowedTargets = strings.TrimSpace(*req.AllowedTargets)
 	}
 
+	if err := validateAPIKeyIssuerAndTargets(issuer, allowedTargets); err != nil {
+		return nil, err
+	}
+
 	// Persist the API key to the database before broadcasting
 	dbKey := &model.APIKey{
 		UUID:           apiKeyUUID,
