@@ -18,20 +18,25 @@
 
 import { defineMessages, useIntl } from 'react-intl';
 
+import { useRestApi } from '@/api/resources/restApis';
+import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ScopeGate } from '@/scope/ScopeGate';
-import { DevelopPageShell } from '../DevelopPageShell';
 import { RoutingPanel } from './RoutingPanel';
 
 const messages = defineMessages({
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.title',
-    defaultMessage: 'Routing',
+  loading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.loading',
+    defaultMessage: 'Loading API',
   },
-  subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.subtitle',
-    defaultMessage: 'Routing for {apiName}',
-    description: 'Sub-header under the section name; {apiName} is the API display name.',
+  notFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.notFound',
+    defaultMessage: 'API not found',
+  },
+  loadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.loadError',
+    defaultMessage: 'Unable to load the API.',
   },
   scopePrompt: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.scopePrompt',
@@ -42,6 +47,18 @@ const messages = defineMessages({
 
 export function RoutingPage() {
   const intl = useIntl();
+  const { params } = useConsoleScope();
+  const apiQuery = useRestApi(params.apiHandler);
+
+  const content = apiQuery.isPending ? (
+    <LoadingState label={intl.formatMessage(messages.loading)} />
+  ) : apiQuery.error ? (
+    <ErrorState title={intl.formatMessage(messages.loadError)} />
+  ) : !apiQuery.data ? (
+    <ErrorState title={intl.formatMessage(messages.notFound)} />
+  ) : (
+    <RoutingPanel api={apiQuery.data} />
+  );
 
   return (
     <ScopeGate
@@ -49,9 +66,7 @@ export function RoutingPage() {
       requires="api"
       to={routes.apiDevelopRouting}
     >
-      <DevelopPageShell subtitle={messages.subtitle} title={messages.title}>
-        {(api) => <RoutingPanel api={api} />}
-      </DevelopPageShell>
+      {content}
     </ScopeGate>
   );
 }

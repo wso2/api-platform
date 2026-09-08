@@ -722,27 +722,6 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.title": {
     "defaultMessage": "Design with AI"
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.subtitle": {
-    "defaultMessage": "Documentation for {apiName}",
-    "description": "Sub-header under the section name; {apiName} is the API display name."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.title": {
-    "defaultMessage": "Documents"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.develop.PoliciesPage.subtitle": {
-    "defaultMessage": "Policies attached to {apiName}",
-    "description": "Sub-header under the section name; {apiName} is the API display name."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.develop.PoliciesPage.title": {
-    "defaultMessage": "Policies"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.subtitle": {
-    "defaultMessage": "Routing for {apiName}",
-    "description": "Sub-header under the section name; {apiName} is the API display name."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.title": {
-    "defaultMessage": "Routing"
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.back": {
     "defaultMessage": "Back to API",
     "description": "Back button above the edit form, returning to the API overview."
@@ -1259,26 +1238,26 @@
     "defaultMessage": "Select Deployment to Restore",
     "description": "Heading of the drawer for picking an earlier deployment to put back in service."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.DevelopPageShell.loading": {
-    "defaultMessage": "Loading API",
-    "description": "Shown while the API being edited is fetched."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.DevelopPageShell.notFound": {
-    "defaultMessage": "API not found"
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.detail": {
     "defaultMessage": "You will be able to publish guides, references, and release notes alongside the API so consumers can read them in the Developer Portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.feature": {
     "defaultMessage": "Documents for this API"
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.cancel": {
+    "defaultMessage": "Cancel"
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.save": {
-    "defaultMessage": "Save changes",
+    "defaultMessage": "Save",
     "description": "Default label on the save bar button. Verb phrase."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.saving": {
     "defaultMessage": "Saving…",
     "description": "Label on the save button while the request is in flight."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.unsaved": {
+    "defaultMessage": "You have unsaved changes",
+    "description": "Shown on the save bar while the panel has edits that have not been saved yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.addPolicy": {
     "defaultMessage": "Add Policy",
@@ -1310,7 +1289,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.allCategories": {
     "defaultMessage": "All",
-    "description": "Filter chip clearing the category selection so every policy is listed."
+    "description": "Placeholder shown when no category filters are selected."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categories": {
+    "defaultMessage": "Categories"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription": {
     "defaultMessage": "No policies match the filter."
@@ -1343,6 +1325,12 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.version": {
     "defaultMessage": "v{version}",
     "description": "Version chip on a catalog entry. {version} is backend data; keep the \"v\" prefix if it reads naturally."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.loading": {
+    "defaultMessage": "Loading API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.notFound": {
+    "defaultMessage": "API not found"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.scopePrompt": {
     "defaultMessage": "Policies are attached to a single API.",
@@ -1381,8 +1369,14 @@
     "defaultMessage": "Configure {policyName}",
     "description": "Drawer heading. {policyName} is the policy’s catalog name, backend data; do not translate it."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.allMethods": {
+    "defaultMessage": "All methods"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalDescription": {
+    "defaultMessage": "Policies applied here will affect all API resources"
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalEmpty": {
-    "defaultMessage": "Drag and drop policies here to apply at the global level."
+    "defaultMessage": "Drag and drop policies here to apply across all resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalPolicies": {
     "defaultMessage": "Global policies (API level)",
@@ -1417,11 +1411,17 @@
     "description": "\"Add Policy\" is the label of a button in this same list."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resources": {
-    "defaultMessage": "Resources",
+    "defaultMessage": "Resource-wise policies",
     "description": "Section listing the API's operations, each with its own policies. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourcesDescription": {
+    "defaultMessage": "Attach policies only to the specific resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved": {
     "defaultMessage": "Policies saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.searchResources": {
+    "defaultMessage": "Search resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
     "defaultMessage": "Add entry",
@@ -1458,6 +1458,12 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.valuePlaceholder": {
     "defaultMessage": "Value",
     "description": "Placeholder for the value side of a key/value parameter pair. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.loading": {
+    "defaultMessage": "Loading API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.notFound": {
+    "defaultMessage": "API not found"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.scopePrompt": {
     "defaultMessage": "Routing is configured per API.",
@@ -2749,11 +2755,8 @@
     "defaultMessage": "Updated {relative}",
     "description": "Footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
   },
-  "project.list.count": {
-    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
-  },
   "project.list.createProjectButton": {
-    "defaultMessage": "Create Project"
+    "defaultMessage": "New project"
   },
   "project.list.delete.confirmInputLabel": {
     "defaultMessage": "Type \"{name}\" to confirm",
@@ -2802,31 +2805,26 @@
   "project.list.searchPlaceholder": {
     "defaultMessage": "Search projects"
   },
-  "project.list.sort.nameAscending": {
-    "defaultMessage": "Name (A–Z)",
-    "description": "Sort option: alphabetical by project name, ascending."
-  },
-  "project.list.sort.nameDescending": {
-    "defaultMessage": "Name (Z–A)",
-    "description": "Sort option: alphabetical by project name, descending."
-  },
-  "project.list.sort.newest": {
-    "defaultMessage": "Newest first",
-    "description": "Sort option: by creation date, most recent project first."
-  },
-  "project.list.sort.oldest": {
-    "defaultMessage": "Oldest first",
-    "description": "Sort option: by creation date, earliest project first."
-  },
-  "project.list.sortLabel": {
-    "defaultMessage": "Sort by",
-    "description": "Label for the control choosing the project list order."
-  },
   "project.list.subHeader.default": {
     "defaultMessage": "Select a project to manage APIs."
   },
   "project.list.subHeader.withOrganization": {
     "defaultMessage": "Project workspaces in {organizationName}."
+  },
+  "project.list.table.apiCount": {
+    "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
+  },
+  "project.list.table.apiCountLoading": {
+    "defaultMessage": "… APIs"
+  },
+  "project.list.table.delete": {
+    "defaultMessage": "Delete {name}"
+  },
+  "project.list.table.neverUpdated": {
+    "defaultMessage": "Not updated yet"
+  },
+  "project.list.table.updatedAt": {
+    "defaultMessage": "Updated {relative}"
   },
   "project.list.title": {
     "defaultMessage": "Projects"

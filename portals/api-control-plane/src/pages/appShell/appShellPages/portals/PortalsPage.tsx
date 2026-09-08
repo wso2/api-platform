@@ -11,23 +11,24 @@
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
+ * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
  */
 
-import { routes } from '@/routes/paths';
-import { ScopeGate } from '@/scope/ScopeGate';
-import { DocumentsPanel } from './DocumentsPanel';
+import { FormattedMessage } from 'react-intl';
 
-export function DocumentsPage() {
+import { ComingSoon } from '@/components/ComingSoon';
+
+export function PortalsPage() {
   return (
-    <ScopeGate
-      prompt="Documents belong to a single API."
-      requires="api"
-      to={routes.apiDevelopDocuments}
-    >
-      <DocumentsPanel />
-    </ScopeGate>
+    <ComingSoon
+      feature={
+        <FormattedMessage
+          id="apiControlPlane.pages.appShell.appShellPages.portals.PortalsPage.feature"
+          defaultMessage="Portals"
+        />
+      }
+    />
   );
 }

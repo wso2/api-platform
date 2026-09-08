@@ -21,15 +21,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
 import type { RestApi } from '@/api/resources/restApis';
-import {
-  ExtensionsProvider,
-  type ApiControlPlaneExtension,
-} from '../extensions';
+import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
 import { routes } from '@/routes/paths';
-import {
-  ConsoleScopeContext,
-  type ConsoleScope,
-} from '../scope/ConsoleScopeContext';
+import { ConsoleScopeContext, type ConsoleScope } from '../scope/ConsoleScopeContext';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderHook } from '@/test/utils';
 import { useNavigationItems } from './useNavigationItems';
@@ -68,9 +62,7 @@ const atApi = () =>
 const itemsAt = (scope: ConsoleScope, route: string) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
-      <ConsoleScopeContext.Provider value={scope}>
-        {children}
-      </ConsoleScopeContext.Provider>
+      <ConsoleScopeContext.Provider value={scope}>{children}</ConsoleScopeContext.Provider>
     </MemoryRouter>
   );
   const { result } = renderHook(() => useNavigationItems(), { wrapper });
@@ -89,7 +81,7 @@ const itemFor = (scope: ConsoleScope, route: string, id: string) => {
  * Oxygen treat the row as a link instead of a disclosure.
  */
 describe('submenu children follow API scope', () => {
-  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
+  it.each(['develop', 'test', 'insights', 'observability'])(
     '%s offers its children once an API is in scope',
     (id) => {
       const item = itemFor(atApi(), routes.api(ORG, PROJECT, API), id);
@@ -99,10 +91,10 @@ describe('submenu children follow API scope', () => {
       for (const child of item.children ?? []) {
         expect(child.to).toContain(`/apis/${API}/`);
       }
-    }
+    },
   );
 
-  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
+  it.each(['develop', 'test', 'insights', 'observability'])(
     '%s withholds them outside API scope, and links to the first instead',
     (id) => {
       const item = itemFor(atOrg(), routes.organizationHome(ORG), id);
@@ -110,7 +102,7 @@ describe('submenu children follow API scope', () => {
       expect(item.children).toBeUndefined();
       // The scope-less alias of the first child — where its ScopeGate prompts.
       expect(item.to).toContain('/select-scope/');
-    }
+    },
   );
 
   it('marks the child of the open page active, not its parent', () => {
@@ -118,14 +110,13 @@ describe('submenu children follow API scope', () => {
     const parent = itemFor(atApi(), route, 'observability');
 
     expect(parent.isActive).toBe(false);
-    expect(
-      parent.children?.find((child) => child.id === 'observability-logs')
-        ?.isActive
-    ).toBe(true);
+    expect(parent.children?.find((child) => child.id === 'observability-logs')?.isActive).toBe(
+      true,
+    );
   });
 
   it('marks the parent active while its scope gate is open', () => {
-    const route = routes.apiObservabilityAlerts(ORG, null, null);
+    const route = routes.apiObservabilityMetrics(ORG, null, null);
     const parent = itemFor(atOrg(), route, 'observability');
 
     expect(parent.isActive).toBe(true);
@@ -134,7 +125,7 @@ describe('submenu children follow API scope', () => {
 
   it('leaves items without children untouched', () => {
     const items = itemsAt(atApi(), routes.api(ORG, PROJECT, API));
-    const leaves = ['overview', 'gateways', 'deploy', 'admin'];
+    const leaves = ['overview', 'gateways', 'deploy', 'portals'];
 
     for (const id of leaves) {
       expect(items.find((item) => item.id === id)?.children).toBeUndefined();
@@ -150,14 +141,12 @@ describe('submenu children follow API scope', () => {
 const itemsWithExtensions = (
   scope: ConsoleScope,
   route: string,
-  extensions: ApiControlPlaneExtension[]
+  extensions: ApiControlPlaneExtension[],
 ) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
       <ConsoleScopeContext.Provider value={scope}>
-        <ExtensionsProvider extensions={extensions}>
-          {children}
-        </ExtensionsProvider>
+        <ExtensionsProvider extensions={extensions}>{children}</ExtensionsProvider>
       </ConsoleScopeContext.Provider>
     </MemoryRouter>
   );
@@ -191,21 +180,17 @@ const PROJECT_BASE = `/organizations/${ORG}/projects/${PROJECT}`;
 
 describe('host-injected sidebar extensions', () => {
   it('is active at its own destination', () => {
-    const [item] = itemsWithExtensions(
-      atProject(),
-      `${PROJECT_BASE}/environments`,
-      [sidebarExtension]
-    ).filter((entry) => entry.id === sidebarExtension.id);
+    const [item] = itemsWithExtensions(atProject(), `${PROJECT_BASE}/environments`, [
+      sidebarExtension,
+    ]).filter((entry) => entry.id === sidebarExtension.id);
 
     expect(item?.isActive).toBe(true);
   });
 
   it('is not active on an unrelated route ending with the same segment', () => {
-    const [item] = itemsWithExtensions(
-      atProject(),
-      `${PROJECT_BASE}/settings/environments`,
-      [sidebarExtension]
-    ).filter((entry) => entry.id === sidebarExtension.id);
+    const [item] = itemsWithExtensions(atProject(), `${PROJECT_BASE}/settings/environments`, [
+      sidebarExtension,
+    ]).filter((entry) => entry.id === sidebarExtension.id);
 
     expect(item?.isActive).toBe(false);
   });
@@ -220,11 +205,9 @@ describe('host-injected sidebar extensions', () => {
       slot: 'settings.project.tabs',
     };
 
-    const items = itemsWithExtensions(
-      atProject(),
-      `${PROJECT_BASE}/settings/environments`,
-      [settingsTab]
-    );
+    const items = itemsWithExtensions(atProject(), `${PROJECT_BASE}/settings/environments`, [
+      settingsTab,
+    ]);
 
     expect(items.find((entry) => entry.id === settingsTab.id)).toBeUndefined();
   });

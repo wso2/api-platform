@@ -85,7 +85,6 @@ const ApiCreatePage = lazy(() =>
   import('../pages/appShell/appShellPages/apis/create/ApiCreationWizard').then((m) => ({
     default: m.ApiCreationWizard,
   })),
-
 );
 const ApiDetailPage = lazy(() =>
   import('../pages/appShell/appShellPages/apis/overview').then((m) => ({
@@ -168,6 +167,11 @@ const AdminPage = lazy(() =>
 const RuntimeLogsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/RuntimeLogsPage').then((m) => ({
     default: m.RuntimeLogsPage,
+  })),
+);
+const PortalsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/portals/PortalsPage').then((m) => ({
+    default: m.PortalsPage,
   })),
 );
 const SettingsLayout = lazy(() =>
@@ -351,6 +355,9 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityMetrics), <MetricsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityLogs), <RuntimeLogsPage />)}
+          <Route path={routes.organizationPortals()} element={<PortalsPage />} />
+          <Route path={routes.projectPortals()} element={<PortalsPage />} />
+          <Route path={routes.apiPortals()} element={<PortalsPage />} />
           {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}

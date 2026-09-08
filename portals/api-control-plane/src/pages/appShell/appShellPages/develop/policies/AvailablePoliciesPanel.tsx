@@ -18,10 +18,14 @@
 
 import {
   Avatar,
+  Autocomplete,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
+  FormControl,
+  FormLabel,
   InputAdornment,
   Stack,
   TextField,
@@ -58,7 +62,11 @@ const messages = defineMessages({
   allCategories: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.allCategories',
     defaultMessage: 'All',
-    description: 'Filter chip clearing the category selection so every policy is listed.',
+    description: 'Placeholder shown when no category filters are selected.',
+  },
+  categories: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categories',
+    defaultMessage: 'Categories',
   },
   loadError: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.loadError',
@@ -110,13 +118,6 @@ export function AvailablePoliciesPanel({
   const categoriesQuery = usePolicyHubCategories();
   const policiesQuery = usePolicyHubPolicies(page, PAGE_SIZE, activeCategories);
 
-  const toggleCategory = (cat: string) => {
-    setActiveCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
-    );
-    setPage(1);
-  };
-
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     const list = policiesQuery.data?.policies || [];
@@ -141,7 +142,7 @@ export function AvailablePoliciesPanel({
           mb: 1.5,
         }}
       >
-        <Typography variant="subtitle1">
+        <Typography sx={{ fontWeight: 700 }} variant="h6">
           <FormattedMessage {...messages.heading} />
         </Typography>
         {runtimeConfig.policyHubWebUrl && (
@@ -176,30 +177,39 @@ export function AvailablePoliciesPanel({
       />
 
       {(categoriesQuery.data?.length || 0) > 0 && (
-        <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.75, mt: 1.5 }}>
-          <Chip
-            color={activeCategories.length === 0 ? 'primary' : 'default'}
-            label={intl.formatMessage(messages.allCategories)}
-            onClick={() => {
-              setActiveCategories([]);
+        <FormControl fullWidth sx={{ mt: 1.5 }}>
+          <FormLabel htmlFor="policy-category-filter" sx={{ mb: 0.75 }}>
+            {intl.formatMessage(messages.categories)}
+          </FormLabel>
+          <Autocomplete
+            disableCloseOnSelect
+            multiple
+            onChange={(_event, nextCategories) => {
+              setActiveCategories(nextCategories);
               setPage(1);
             }}
-            size="small"
-          />
-          {categoriesQuery.data!.map((cat) => {
-            const selected = activeCategories.includes(cat);
-            return (
-              <Chip
-                color={selected ? 'primary' : 'default'}
-                key={cat}
-                label={cat}
-                onClick={() => toggleCategory(cat)}
+            options={categoriesQuery.data!}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                id="policy-category-filter"
+                placeholder={
+                  activeCategories.length === 0
+                    ? intl.formatMessage(messages.allCategories)
+                    : undefined
+                }
                 size="small"
-                variant={selected ? 'filled' : 'outlined'}
               />
-            );
-          })}
-        </Stack>
+            )}
+            renderOption={(props, category, state) => (
+              <Box component="li" {...props}>
+                <Checkbox checked={state.selected} size="small" sx={{ mr: 1 }} />
+                {category}
+              </Box>
+            )}
+            value={activeCategories}
+          />
+        </FormControl>
       )}
 
       <Box sx={{ flex: 1, mt: 1.5, overflowY: 'auto' }}>
@@ -238,7 +248,7 @@ export function AvailablePoliciesPanel({
                   alignItems: 'center',
                   border: '1px solid',
                   borderColor: 'divider',
-                  borderRadius: 1.5,
+                  borderRadius: 1,
                   cursor: 'grab',
                   display: 'flex',
                   gap: 1,
@@ -250,7 +260,11 @@ export function AvailablePoliciesPanel({
                 <Box sx={{ color: 'text.disabled', display: 'flex' }}>
                   <GripVertical size={16} />
                 </Box>
-                <Avatar src={policy.iconUrl} sx={{ height: 28, width: 28 }} variant="rounded">
+                <Avatar
+                  src={policy.iconUrl}
+                  sx={{ borderRadius: 0.75, height: 28, width: 28 }}
+                  variant="rounded"
+                >
                   <Shield size={14} />
                 </Avatar>
                 <Typography noWrap sx={{ flex: 1, fontWeight: 600, minWidth: 0 }} variant="body2">
