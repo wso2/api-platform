@@ -201,7 +201,9 @@ func TestConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			key := fmt.Sprintf("key-%d", i)
 
-			require.NoError(t, Set(ctx, key, i))
+			if err := Set(ctx, key, i); err != nil {
+				t.Errorf("setting own key %q: %v", key, err)
+			}
 			local.Append("ids", i)
 
 			if _, err := Resolve(ctx, key); err != nil {

@@ -179,6 +179,13 @@ type dbSpecMapping struct {
 
 // UnmarshalYAML accepts a scalar engine or a {matrix: [...]} mapping.
 func (d *DBSpec) UnmarshalYAML(value *yaml.Node) error {
+	for value.Kind == yaml.AliasNode {
+		if value.Alias == nil {
+			return fmt.Errorf("topology: db alias has no value")
+		}
+		value = value.Alias
+	}
+
 	switch value.Kind {
 	case yaml.ScalarNode:
 		var raw string

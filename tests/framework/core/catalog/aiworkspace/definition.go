@@ -84,7 +84,10 @@ func runtimeCoverageEnvironment() map[string]string {
 	if !shared.CoverageMode() {
 		return nil
 	}
-	spec, _ := BuildSpec("")
+	spec, err := BuildSpec("")
+	if err != nil {
+		panic("catalog: building AI Workspace coverage specification: " + err.Error())
+	}
 	env := make(map[string]string, len(spec.Coverage.Environment))
 	for key, value := range spec.Coverage.Environment {
 		env[key] = value

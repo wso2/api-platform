@@ -236,6 +236,23 @@ func TestBuildRejectsCommandOutsideRepository(t *testing.T) {
 	require.ErrorContains(t, err, "outside repository root")
 }
 
+func TestBuildRejectsRepositoryInternalSymlinkToOutside(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(root, "linked-dir")
+	require.NoError(t, os.Symlink(outside, link))
+
+	err := Build(context.Background(), Spec{
+		Component: "gateway",
+		SourceDir: "gateway",
+		Images:    []Image{{Name: "gateway:1.0.0", Dockerfile: "gateway/Dockerfile", Context: "gateway"}},
+		Plan: func(string, string, CoverageSpec) ([]Command, error) {
+			return []Command{{Directory: link, Args: []string{"make"}}}, nil
+		},
+	}, Request{RepoRoot: root, Version: "1.0.0", Runner: &recordingRunner{}})
+	require.ErrorContains(t, err, "outside repository root")
+}
+
 func TestBuildManyPreservesOrderAndStopsOnFailure(t *testing.T) {
 	root := t.TempDir()
 	runner := &recordingRunner{}

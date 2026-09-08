@@ -33,7 +33,10 @@ const svcAPIPortal = "api-portal"
 
 // APIPortal returns the API Portal component definition.
 func APIPortal() *components.Definition {
-	env := map[string]string{EnvImageAPIPortal: shared.APIPortalImage()}
+	env := map[string]string{EnvImageAPIPortal: shared.Image(EnvImageAPIPortal, shared.APIPortalImage()).Ref}
+	for key, value := range portalSecurityEnv() {
+		env[key] = value
+	}
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
 	}
@@ -84,11 +87,30 @@ func APIPortal() *components.Definition {
 	}
 }
 
+// portalSecurityEnv returns fresh per-definition secrets for the portal's test runtime.
+func portalSecurityEnv() map[string]string {
+	encryptionKey, err := shared.HexKey(32)
+	if err != nil {
+		panic("catalog: generating API Portal encryption key: " + err.Error())
+	}
+	sessionSecret, err := shared.HexKey(32)
+	if err != nil {
+		panic("catalog: generating API Portal session secret: " + err.Error())
+	}
+	return map[string]string{
+		"APIP_AP_SECURITY_ENCRYPTION_KEY": encryptionKey,
+		"APIP_AP_SECURITY_SESSION_SECRET": sessionSecret,
+	}
+}
+
 func runtimeCoverageEnvironment() map[string]string {
 	if !shared.CoverageMode() {
 		return nil
 	}
-	spec, _ := BuildSpec("")
+	spec, err := BuildSpec("")
+	if err != nil {
+		panic("catalog: building API Portal coverage specification: " + err.Error())
+	}
 	env := make(map[string]string, len(spec.Coverage.Environment))
 	for key, value := range spec.Coverage.Environment {
 		env[key] = value

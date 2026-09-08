@@ -117,7 +117,10 @@ func runtimeCoverageEnvironment() map[string]string {
 	if !shared.CoverageMode() {
 		return nil
 	}
-	spec, _ := BuildSpec("")
+	spec, err := BuildSpec("")
+	if err != nil {
+		panic("catalog: building Platform Gateway coverage specification: " + err.Error())
+	}
 	return cloneEnvironment(spec.Coverage.Environment)
 }
 

@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,7 +48,7 @@ func repoRoot(t *testing.T) string {
 // bootPlatformGateway brings the gateway up as ONE component on the given engine.
 func bootPlatformGateway(
 	t *testing.T, ctx context.Context, block string, engine components.DBType, repoRoot string,
-) (*runtime.ComposeStack, actor.Credentials, func()) {
+) (*runtime.ComposeStack, actor.Credentials, func(), error) {
 	return bootPlatformGatewayWithOverlay(t, ctx, block, engine, repoRoot, "")
 }
 
@@ -55,13 +56,15 @@ func bootPlatformGateway(
 // so a probe can reproduce exactly what a block with that overlay runs.
 func bootPlatformGatewayWithOverlay(
 	t *testing.T, ctx context.Context, block string, engine components.DBType, repoRoot, overlay string,
-) (*runtime.ComposeStack, actor.Credentials, func()) {
+) (*runtime.ComposeStack, actor.Credentials, func(), error) {
 	t.Helper()
 
 	gw := PlatformGateway()
 
 	nw, err := runtime.NewNetwork(ctx, block)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, actor.Credentials{}, func() {}, fmt.Errorf("creating gateway network: %w", err)
+	}
 
 	var stack *runtime.ComposeStack
 	teardown := func() {
@@ -80,7 +83,7 @@ func bootPlatformGatewayWithOverlay(
 	})
 	if err != nil {
 		teardown()
-		require.NoError(t, err, "provisioning gateway storage on %s", engine)
+		return nil, actor.Credentials{}, func() {}, fmt.Errorf("provisioning gateway storage on %s: %w", engine, err)
 	}
 	origTeardown := teardown
 	teardown = func() {
@@ -102,7 +105,7 @@ func bootPlatformGatewayWithOverlay(
 	configContent, err := components.Assemble(gw.Config, repoRoot, overlay, vars)
 	if err != nil {
 		teardown()
-		require.NoError(t, err, "assembling gateway config")
+		return nil, adminCreds, func() {}, fmt.Errorf("assembling gateway config: %w", err)
 	}
 
 	spec := gw.Compose.WithGenerated(map[string][]byte{
@@ -117,13 +120,15 @@ func bootPlatformGatewayWithOverlay(
 	if err != nil {
 		// Without the service logs a compose readiness failure says only "context
 		// deadline exceeded", which names neither the service nor the reason.
-		t.Logf("staged compose files at %s", stack.StageDir())
-		t.Logf("gateway service logs:\n%s", stack.Logs(context.Background()))
+		if stack != nil {
+			t.Logf("staged compose files at %s", stack.StageDir())
+			t.Logf("gateway service logs:\n%s", stack.Logs(context.Background()))
+		}
 		teardown()
-		require.NoError(t, err, "bringing up the platform gateway on %s", engine)
+		return nil, adminCreds, func() {}, fmt.Errorf("bringing up the platform gateway on %s: %w", engine, err)
 	}
 
-	return stack, adminCreds, teardown
+	return stack, adminCreds, teardown, nil
 }
 
 func TestPlatformGatewayBootsAsOneComponent(t *testing.T) {
@@ -132,7 +137,8 @@ func TestPlatformGatewayBootsAsOneComponent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 
-	stack, _, teardown := bootPlatformGateway(t, ctx, "pg-single", components.SQLite, root)
+	stack, _, teardown, err := bootPlatformGateway(t, ctx, "pg-single", components.SQLite, root)
+	require.NoError(t, err)
 	defer teardown()
 
 	inst := stack.Instance
@@ -176,7 +182,10 @@ func TestPlatformGatewayBootsAsOneComponent(t *testing.T) {
 		admin, err := inst.URL("envoy-admin")
 		require.NoError(t, err)
 
-		resp, err := http.Get(admin + "/ready") //nolint:gosec,noctx
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, admin+"/ready", nil)
+		require.NoError(t, err)
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
 		require.NoError(t, err, "the admin interface itself must be reachable")
 		defer func() { _ = resp.Body.Close() }()
 
@@ -202,13 +211,21 @@ func TestTwoPlatformGatewaysRunConcurrently(t *testing.T) {
 
 	done := make(chan result, 2)
 	errs := make(chan error, 2)
+	var workers sync.WaitGroup
+	t.Cleanup(workers.Wait)
 
 	for _, block := range []string{"pg-concurrent-a", "pg-concurrent-b"} {
+		workers.Add(1)
 		go func(block string) {
+			defer workers.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 			defer cancel()
 
-			stack, _, teardown := bootPlatformGateway(t, ctx, block, components.SQLite, root)
+			stack, _, teardown, err := bootPlatformGateway(t, ctx, block, components.SQLite, root)
+			if err != nil {
+				errs <- fmt.Errorf("%s: %w", block, err)
+				return
+			}
 			defer teardown()
 
 			port, err := stack.Instance.MappedPort("http")
@@ -224,17 +241,17 @@ func TestTwoPlatformGatewaysRunConcurrently(t *testing.T) {
 	}
 
 	var results []result
+	var setupErrs []error
 	for range 2 {
 		select {
 		case r := <-done:
 			results = append(results, r)
 		case err := <-errs:
-			t.Fatalf("concurrent gateway boot failed: %v", err)
-		case <-time.After(10 * time.Minute):
-			t.Fatal("timed out waiting for concurrent gateways")
+			setupErrs = append(setupErrs, err)
 		}
 	}
 
+	require.Empty(t, setupErrs)
 	require.Len(t, results, 2)
 	require.NotEqual(t, results[0].port, results[1].port,
 		"two concurrent gateways must not share a host port")

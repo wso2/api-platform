@@ -34,7 +34,6 @@ import (
 	"time"
 
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/api/types/network"
 	dockernet "github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
@@ -52,6 +51,8 @@ const (
 
 	// defaultStartTimeout bounds container startup when no override is provided.
 	defaultStartTimeout = 5 * time.Minute
+	// maxOutputBytes bounds command and log output retained in memory for diagnostics.
+	maxOutputBytes int64 = 1 << 20
 )
 
 // Options contains the resolved values used to start one component instance.
@@ -131,14 +132,16 @@ func Launch(ctx context.Context, def *components.Definition, opts Options) (*Con
 	started, err := startWithPortRetry(ctx, def, opts, alias, arch, replicas, req)
 	if err != nil {
 		if started != nil {
-			return &Container{container: started, def: def}, fmt.Errorf("runtime: starting %s: %w", def, err)
+			cleanupErr := started.Terminate(context.Background())
+			return nil, fmt.Errorf("runtime: starting %s: %w", def, errors.Join(err, cleanupErr))
 		}
 		return nil, fmt.Errorf("runtime: starting %s: %w", def, err)
 	}
 
 	inst, err := buildInstance(ctx, def, started, opts.Ordinal, replicas)
 	if err != nil {
-		return &Container{container: started, def: def}, err
+		cleanupErr := started.Terminate(context.Background())
+		return nil, errors.Join(err, cleanupErr)
 	}
 
 	return &Container{Instance: inst, container: started, def: def}, nil
@@ -399,8 +402,12 @@ func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
 
 func readAllString(r io.Reader) (string, error) {
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
+	if _, err := io.Copy(&buf, io.LimitReader(r, maxOutputBytes+1)); err != nil {
 		return "", err
+	}
+	if int64(buf.Len()) > maxOutputBytes {
+		return string(buf.Bytes()[:maxOutputBytes]), fmt.Errorf(
+			"runtime: output exceeds the %d-byte limit", maxOutputBytes)
 	}
 	return buf.String(), nil
 }
@@ -515,7 +522,7 @@ func (c *Container) AttachTo(ctx context.Context, nw *Network, alias string) err
 
 	_, err = provider.Client().NetworkConnect(ctx, nw.inner.ID, client.NetworkConnectOptions{
 		Container:      c.container.GetContainerID(),
-		EndpointConfig: &network.EndpointSettings{Aliases: []string{alias}},
+		EndpointConfig: &dockernet.EndpointSettings{Aliases: []string{alias}},
 	})
 	if err != nil {
 		return fmt.Errorf("runtime: attaching %s to network %q: %w", c.def, nw.Name(), err)

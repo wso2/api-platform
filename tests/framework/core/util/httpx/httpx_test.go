@@ -61,7 +61,7 @@ func (s *testServer) Close() {
 
 func newTestServer(t *testing.T, handler http.Handler) *testServer {
 	t.Helper()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp4", "127.0.0.1:0")
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "operation not permitted") {
 			t.Skipf("loopback listeners are unavailable: %v", err)
@@ -125,15 +125,15 @@ func TestClearHappensBeforeTheCall(t *testing.T) {
 	f := newTestFunnel(0)
 
 	var duringRequest struct {
-		checked  bool
-		hadStale bool
+		checked  atomic.Bool
+		hadStale atomic.Bool
 	}
 
 	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if !duringRequest.checked {
-			duringRequest.checked = true
+		if !duringRequest.checked.Load() {
+			duringRequest.checked.Store(true)
 			_, err := Published(ctx)
-			duringRequest.hadStale = err == nil
+			duringRequest.hadStale.Store(err == nil)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -141,13 +141,13 @@ func TestClearHappensBeforeTheCall(t *testing.T) {
 
 	_, err := f.Get(ctx, srv.URL, nil)
 	require.NoError(t, err)
-	require.True(t, duringRequest.checked)
+	require.True(t, duringRequest.checked.Load())
 
-	duringRequest.checked = false
+	duringRequest.checked.Store(false)
 	_, err = f.Get(ctx, srv.URL, nil)
 	require.NoError(t, err)
 
-	require.False(t, duringRequest.hadStale,
+	require.False(t, duringRequest.hadStale.Load(),
 		"the previous response must already be cleared when the next request is issued")
 }
 
@@ -211,6 +211,26 @@ func TestTransientRetry(t *testing.T) {
 		require.NoError(t, err, "exhaustion is not a transport error")
 		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	})
+}
+
+func TestNegativeRetryCountsStillIssueOneRequest(t *testing.T) {
+	var calls atomic.Int32
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(Options{Timeout: 5 * time.Second})
+	resp, err := client.Do(context.Background(), Request{URL: srv.URL}, -1, 0)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.EqualValues(t, 1, calls.Load())
+}
+
+func TestNewFunnelClampsNegativeRetries(t *testing.T) {
+	funnel := NewFunnel(NewClient(Options{}), -1, time.Second)
+	require.Equal(t, 0, funnel.maxRetries)
 }
 
 func TestRedirectsAreNotFollowed(t *testing.T) {

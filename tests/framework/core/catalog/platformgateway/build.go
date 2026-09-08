@@ -96,7 +96,7 @@ func BuildSpec(version string) (builder.Spec, error) {
 				{Directory: runtimeDir, Args: runtimeBuild},
 				{Directory: runtimeDir, Args: []string{"mkdir", "-p", "../target/build/gateway-controller/policies"}},
 				{Directory: runtimeDir, Args: policyExport},
-				{Directory: runtimeDir, Args: []string{"sh", "-c", "docker run --rm --entrypoint cat " + runtime + " /app/build-manifest.yaml > ../build-manifest.yaml"}},
+				{Directory: runtimeDir, Args: []string{"sh", "-c", "docker run --rm --entrypoint cat \"$1\" /app/build-manifest.yaml > ../build-manifest.yaml", "sh", runtime}},
 				{Directory: filepath.Join(dir, "gateway-controller"), Args: []string{"mkdir", "-p", "target"}},
 				{Directory: filepath.Join(dir, "gateway-controller"), Args: []string{"cp", "../../LICENSE", "target/LICENSE"}},
 				{Directory: filepath.Join(dir, "gateway-controller"), Args: controllerBuild},

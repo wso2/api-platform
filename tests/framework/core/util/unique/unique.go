@@ -227,7 +227,7 @@ func expandContext(ctx context.Context, s string) (string, error) {
 			return "", fmt.Errorf("names: unterminated %s placeholder in %q", ContextPlaceholder, s)
 		}
 		name := after[:end]
-		if err := validBase(name); err != nil {
+		if err := validBase(name, ContextPlaceholder); err != nil {
 			return "", fmt.Errorf("names: in %q: %w", s, err)
 		}
 		if ContextValue == nil {
@@ -240,6 +240,10 @@ func expandContext(ctx context.Context, s string) (string, error) {
 		value, err := ContextValue(ctx, name)
 		if err != nil {
 			return "", fmt.Errorf("names: resolving %s%s}: %w", ContextPlaceholder, name, err)
+		}
+		if value == "" {
+			return "", fmt.Errorf("names: resolving %s%s}: resolved to an empty value",
+				ContextPlaceholder, name)
 		}
 		b.WriteString(value)
 		rest = after[end+1:]
@@ -288,7 +292,7 @@ func Expand(ctx context.Context, s string) (string, error) {
 		}
 
 		base := after[:end]
-		if err := validBase(base); err != nil {
+		if err := validBase(base, Placeholder); err != nil {
 			// Without this, a mistyped placeholder like ${UNIQUE:api" inside JSON silently
 			// takes everything up to the JSON's own closing brace as the base and produces
 			// a plausible-looking name. Rejecting a suspicious base turns that into an
@@ -313,9 +317,9 @@ func Expand(ctx context.Context, s string) (string, error) {
 // Deliberately strict: a base is a short identifier, so anything containing quotes, braces,
 // colons or whitespace means the placeholder was almost certainly not closed where the
 // author intended.
-func validBase(base string) error {
+func validBase(base, marker string) error {
 	if base == "" {
-		return fmt.Errorf("%s has an empty base", Placeholder)
+		return fmt.Errorf("%s has an empty base", marker)
 	}
 	for _, r := range base {
 		switch {
@@ -323,7 +327,7 @@ func validBase(base string) error {
 		case r == '-', r == '_', r == '.':
 		default:
 			return fmt.Errorf("%s%s} has an invalid base: %q is not allowed in a name base "+
-				"(the placeholder is probably unterminated)", Placeholder, base, r)
+				"(the placeholder is probably unterminated)", marker, base, r)
 		}
 	}
 	return nil

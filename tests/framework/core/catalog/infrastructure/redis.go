@@ -18,10 +18,24 @@
 
 package infrastructure
 
-import "github.com/wso2/api-platform/tests/framework/core/components"
+import (
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/components"
+)
 
-// RedisPassword is the password used by the Redis test component.
-const RedisPassword = "redis"
+// RedisPasswordEnv is the environment variable carrying the Redis test password.
+const RedisPasswordEnv = "REDIS_PASSWORD"
+
+// RedisPassword is generated once for the framework process and shared by Redis callers.
+var RedisPassword = mustRedisPassword()
+
+func mustRedisPassword() string {
+	password, err := shared.HexKey(32)
+	if err != nil {
+		panic("catalog: generating Redis password: " + err.Error())
+	}
+	return password
+}
 
 // Redis returns the Redis component used by suites that exercise shared caching or rate limits.
 func Redis() *components.Definition {
@@ -29,6 +43,7 @@ func Redis() *components.Definition {
 		Name:  "redis",
 		Alias: "redis",
 		Image: components.ImageRef{Ref: "redis/redis-stack-server:latest"},
+		Env:   map[string]string{RedisPasswordEnv: RedisPassword},
 		Endpoints: []components.Endpoint{
 			{Name: "redis", Port: 6379, Scheme: "tcp", AwaitListening: true},
 		},

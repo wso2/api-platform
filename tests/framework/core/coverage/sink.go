@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,26 +72,23 @@ type Sink struct {
 
 var browserArtifactID atomic.Uint64
 
-// NewSink clears and recreates root for a new coverage run.
+// NewSink creates a unique directory for a new coverage run beneath root.
 func NewSink(root string) (*Sink, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, fmt.Errorf("coverage: the sink needs a root directory")
 	}
-	abs, err := filepath.Abs(root)
+	base, err := filepath.Abs(root)
 	if err != nil {
 		return nil, fmt.Errorf("coverage: resolving sink root %q: %w", root, err)
 	}
-	// A wipe target this close to the filesystem root is a config error, not a request.
-	if home, _ := os.UserHomeDir(); abs == string(filepath.Separator) || (home != "" && abs == home) {
-		return nil, fmt.Errorf("coverage: refusing to wipe %q as a sink root", abs)
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		return nil, fmt.Errorf("coverage: creating sink base %q: %w", base, err)
 	}
-	if err := os.RemoveAll(abs); err != nil {
-		return nil, fmt.Errorf("coverage: clearing sink root %q: %w", abs, err)
+	runDir, err := os.MkdirTemp(base, ".run-")
+	if err != nil {
+		return nil, fmt.Errorf("coverage: creating sink run directory beneath %q: %w", base, err)
 	}
-	if err := os.MkdirAll(abs, 0o755); err != nil {
-		return nil, fmt.Errorf("coverage: creating sink root %q: %w", abs, err)
-	}
-	return &Sink{root: abs}, nil
+	return &Sink{root: runDir}, nil
 }
 
 // Root returns the sink's absolute root directory.
@@ -110,7 +108,18 @@ func (s *Sink) Dir(block, service string) (string, error) {
 	if strings.TrimSpace(block) == "" || strings.TrimSpace(service) == "" {
 		return "", fmt.Errorf("coverage: a counter directory needs a block and a service, got %q/%q", block, service)
 	}
-	dir := filepath.Join(s.root, "raw", sanitize(block), sanitize(service))
+	blockName, err := sanitize(block)
+	if err != nil {
+		return "", fmt.Errorf("coverage: invalid block name %q: %w", block, err)
+	}
+	serviceName, err := sanitize(service)
+	if err != nil {
+		return "", fmt.Errorf("coverage: invalid service name %q: %w", service, err)
+	}
+	dir, err := coveragePath(s.root, blockName, serviceName)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("coverage: creating %q: %w", dir, err)
 	}
@@ -125,9 +134,19 @@ func (s *Sink) BrowserDir(block, scenario string) (string, error) {
 	if strings.TrimSpace(block) == "" || strings.TrimSpace(scenario) == "" {
 		return "", fmt.Errorf("coverage: a browser directory needs a block and scenario")
 	}
+	blockName, err := sanitize(block)
+	if err != nil {
+		return "", fmt.Errorf("coverage: invalid block name %q: %w", block, err)
+	}
+	scenarioName, err := sanitize(scenario)
+	if err != nil {
+		return "", fmt.Errorf("coverage: invalid scenario name %q: %w", scenario, err)
+	}
 	id := browserArtifactID.Add(1)
-	dir := filepath.Join(s.root, "raw", "blocks", sanitize(block), "browser",
-		fmt.Sprintf("%s-%d", sanitize(scenario), id))
+	dir, err := coveragePath(s.root, "blocks", blockName, "browser", fmt.Sprintf("%s-%d", scenarioName, id))
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("coverage: creating browser directory %q: %w", dir, err)
 	}
@@ -135,11 +154,46 @@ func (s *Sink) BrowserDir(block, scenario string) (string, error) {
 }
 
 // sanitize makes a name a safe, collision-resistant path element.
-func sanitize(name string) string {
+func sanitize(name string) (string, error) {
+	decoded := name
+	for {
+		next, err := url.PathUnescape(decoded)
+		if err != nil {
+			return "", fmt.Errorf("invalid URL encoding")
+		}
+		if next == decoded {
+			break
+		}
+		decoded = next
+	}
+	if strings.Contains(decoded, "\x00") {
+		return "", fmt.Errorf("name contains a null byte")
+	}
+	for _, part := range strings.FieldsFunc(decoded, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if part == "." || part == ".." {
+			return "", fmt.Errorf("name contains a traversal segment")
+		}
+	}
 	replaced := strings.NewReplacer("/", "-", "\\", "-", " ", "-", ":", "-").Replace(name)
 	if replaced == name {
-		return replaced
+		return replaced, nil
 	}
 	digest := sha256.Sum256([]byte(name))
-	return replaced + "-" + hex.EncodeToString(digest[:4])
+	return replaced + "-" + hex.EncodeToString(digest[:4]), nil
+}
+
+func coveragePath(root string, elements ...string) (string, error) {
+	raw, err := filepath.Abs(filepath.Join(root, "raw"))
+	if err != nil {
+		return "", fmt.Errorf("coverage: resolving raw coverage directory: %w", err)
+	}
+	path, err := filepath.Abs(filepath.Join(append([]string{raw}, elements...)...))
+	if err != nil {
+		return "", fmt.Errorf("coverage: resolving artifact directory: %w", err)
+	}
+	rel, err := filepath.Rel(raw, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("coverage: artifact directory %q is not strictly below raw coverage directory", path)
+	}
+	return path, nil
 }

@@ -21,6 +21,7 @@ package runtime
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"time"
@@ -65,22 +66,50 @@ type Prober interface {
 	Probe(ctx context.Context, url string) (int, error)
 }
 
-// HTTPProber probes over HTTP and accepts self-signed certificates.
+// HTTPProber probes over HTTP with normal TLS certificate and hostname verification.
 type HTTPProber struct {
 	client *http.Client
 }
 
-// NewHTTPProber returns a prober with a per-attempt timeout.
+// NewHTTPProber returns a prober with a per-attempt timeout and normal TLS verification.
 func NewHTTPProber(perAttempt time.Duration) *HTTPProber {
+	return newHTTPProber(perAttempt, nil)
+}
+
+func newHTTPProber(perAttempt time.Duration, inst *components.Instance) *HTTPProber {
 	if perAttempt <= 0 {
 		perAttempt = 5 * time.Second
+	}
+	tlsConfig := &tls.Config{}
+	if inst != nil {
+		tlsConfig.ServerName = inst.Host()
+		if cert := generatedCertificate(inst.Definition()); len(cert) > 0 {
+			rootCAs, err := x509.SystemCertPool()
+			if rootCAs == nil || err != nil {
+				rootCAs = x509.NewCertPool()
+			}
+			rootCAs.AppendCertsFromPEM(cert)
+			tlsConfig.RootCAs = rootCAs
+		}
 	}
 	return &HTTPProber{client: &http.Client{
 		Timeout: perAttempt,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // see doc comment
+			TLSClientConfig: tlsConfig,
 		},
 	}}
+}
+
+func generatedCertificate(def *components.Definition) []byte {
+	if def == nil || def.Compose == nil {
+		return nil
+	}
+	for _, path := range []string{"certs/cert.pem", "tls/cert.pem"} {
+		if cert := def.Compose.GeneratedFiles[path]; len(cert) > 0 {
+			return cert
+		}
+	}
+	return nil
 }
 
 // Probe implements Prober.
@@ -133,7 +162,7 @@ func AwaitHealthy(ctx context.Context, inst *components.Instance, prober Prober)
 		if perAttempt > 10*time.Second {
 			perAttempt = 10 * time.Second
 		}
-		prober = NewHTTPProber(perAttempt)
+		prober = newHTTPProber(perAttempt, inst)
 	}
 
 	start := time.Now()
@@ -148,7 +177,9 @@ func AwaitHealthy(ctx context.Context, inst *components.Instance, prober Prober)
 
 	for {
 		attempts++
-		code, err := prober.Probe(ctx, url)
+		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
+		code, err := prober.Probe(attemptCtx, url)
+		cancel()
 		switch {
 		case err == nil && code == hc.ExpectStatus:
 			return nil

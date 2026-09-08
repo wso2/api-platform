@@ -83,6 +83,12 @@ func LaunchCompose(
 	if err != nil {
 		return nil, err
 	}
+	keepStageDir := true
+	defer func() {
+		if keepStageDir {
+			_ = os.RemoveAll(stageDir)
+		}
+	}()
 
 	composePath := filepath.Join(stageDir, spec.StagingName())
 
@@ -132,14 +138,17 @@ func LaunchCompose(
 	result := &ComposeStack{stack: stack, def: def, stageDir: stageDir, block: opts.Network.Block()}
 
 	if err := stack.Up(ctx, tccompose.Wait(true)); err != nil {
-		return result, fmt.Errorf("runtime: bringing up %s: %w", def, err)
+		cleanupErr := result.Stop(context.Background())
+		return nil, fmt.Errorf("runtime: bringing up %s: %w", def, errors.Join(err, cleanupErr))
 	}
 
 	inst, err := composeInstance(ctx, def, spec, stack)
 	if err != nil {
-		return result, err
+		cleanupErr := result.Stop(context.Background())
+		return nil, errors.Join(err, cleanupErr)
 	}
 	result.Instance = inst
+	keepStageDir = false
 
 	return result, nil
 }
@@ -234,6 +243,12 @@ func stageComposeFiles(
 	if err != nil {
 		return "", fmt.Errorf("runtime: creating a compose staging directory: %w", err)
 	}
+	keepDir := false
+	defer func() {
+		if !keepDir {
+			_ = os.RemoveAll(dir)
+		}
+	}()
 
 	copyIn := func(name, source string) error {
 		if err := validateStagePath(name); err != nil {
@@ -286,6 +301,7 @@ func stageComposeFiles(
 		}
 	}
 
+	keepDir = true
 	return dir, nil
 }
 

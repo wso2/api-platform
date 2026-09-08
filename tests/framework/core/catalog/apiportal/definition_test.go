@@ -19,6 +19,7 @@
 package apiportal
 
 import (
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,16 @@ func TestAPIPortalDefinition(t *testing.T) {
 	require.Equal(t, []string{"platform-api"}, definition.DependsOn)
 	require.NotNil(t, definition.DB)
 	require.NotEmpty(t, definition.Compose.GeneratedFiles)
+	for _, key := range []string{
+		"APIP_AP_SECURITY_ENCRYPTION_KEY",
+		"APIP_AP_SECURITY_SESSION_SECRET",
+	} {
+		value, ok := definition.Compose.Env[key]
+		require.True(t, ok, "%s must be injected into the portal runtime", key)
+		require.Len(t, value, 64, "%s must be a 32-byte hex secret", key)
+		_, err := hex.DecodeString(value)
+		require.NoError(t, err, "%s must be hexadecimal", key)
+	}
 	_, ok := definition.Endpoint("http")
 	require.True(t, ok)
 }

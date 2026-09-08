@@ -59,7 +59,6 @@ func TestPlatformAPIBoots(t *testing.T) {
 	for k, v := range prov.Env[runtime.KeyFor(def.Name, 0)] {
 		env[k] = v
 	}
-	t.Logf("PROBE db env: %v", env)
 
 	content, err := components.Assemble(def.Config, root, "", nil)
 	require.NoError(t, err, "assembling config")
@@ -76,7 +75,11 @@ func TestPlatformAPIBoots(t *testing.T) {
 		t.Cleanup(func() { _ = stack.Stop(context.Background()) })
 	}
 	if err != nil {
-		t.Fatalf("platform-api did not start: %v\nlogs:\n%s", err, stack.Logs(ctx))
+		logs := ""
+		if stack != nil {
+			logs = stack.Logs(ctx)
+		}
+		t.Fatalf("platform-api did not start: %v\nlogs:\n%s", err, logs)
 	}
 
 	require.NoError(t, runtime.AwaitHealthy(ctx, stack.Instance, nil), "health gate")

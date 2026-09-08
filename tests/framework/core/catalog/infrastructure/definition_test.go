@@ -27,7 +27,9 @@ import (
 func TestRedisDefinition(t *testing.T) {
 	definition := Redis()
 	require.Equal(t, "redis", definition.Name)
-	require.Equal(t, RedisPassword, definition.Cmd[2])
+	require.NotEqual(t, "redis", RedisPassword)
+	require.Equal(t, RedisPassword, definition.Env[RedisPasswordEnv])
+	require.Equal(t, definition.Env[RedisPasswordEnv], definition.Cmd[2])
 	require.Equal(t, "tcp", definition.Endpoints[0].Scheme)
 	require.Equal(t, 6379, definition.Endpoints[0].Port)
 }

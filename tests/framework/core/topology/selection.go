@@ -141,6 +141,12 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			_, byName := include[block.Name]
 			_, bySource := include[block.Source]
 			if !byName && !bySource {
+				if exclude[block.Name] {
+					matchedExclude[block.Name] = true
+				}
+				if exclude[block.Source] {
+					matchedExclude[block.Source] = true
+				}
 				continue
 			}
 			if byName {
@@ -249,30 +255,30 @@ func PrintList(resolved *Resolved, out *os.File) {
 	}
 	summaries := Summarize(resolved)
 
-	fmt.Fprintf(out, "suite: %s\n", resolved.Name)
-	fmt.Fprintf(out, "concurrent blocks: %d\n", resolved.Parallel)
-	fmt.Fprintf(out, "propagation ceiling: %s, boot timeout: %s\n\n",
+	_, _ = fmt.Fprintf(out, "suite: %s\n", resolved.Name)
+	_, _ = fmt.Fprintf(out, "concurrent blocks: %d\n", resolved.Parallel)
+	_, _ = fmt.Fprintf(out, "propagation ceiling: %s, boot timeout: %s\n\n",
 		resolved.Timeouts.Propagation, resolved.Timeouts.Boot)
 
 	totalFeatures := 0
 	for _, b := range summaries {
-		fmt.Fprintf(out, "block %s  (db=%s, %d concurrent runner(s))\n", b.Name, b.DB, b.Parallel)
-		fmt.Fprintf(out, "  components: %s\n", strings.Join(b.Components, ", "))
+		_, _ = fmt.Fprintf(out, "block %s  (db=%s, %d concurrent runner(s))\n", b.Name, b.DB, b.Parallel)
+		_, _ = fmt.Fprintf(out, "  components: %s\n", strings.Join(b.Components, ", "))
 		for _, r := range b.Runners {
 			tags := ""
 			if r.Tags != "" {
 				tags = fmt.Sprintf("  tags=%s", r.Tags)
 			}
-			fmt.Fprintf(out, "  runner %s%s\n", r.Name, tags)
+			_, _ = fmt.Fprintf(out, "  runner %s%s\n", r.Name, tags)
 			for _, f := range r.Features {
-				fmt.Fprintf(out, "    - %s\n", f)
+				_, _ = fmt.Fprintf(out, "    - %s\n", f)
 				totalFeatures++
 			}
 		}
-		fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out)
 	}
 
-	fmt.Fprintf(out, "%d block(s), %d feature binding(s)\n", len(summaries), totalFeatures)
+	_, _ = fmt.Fprintf(out, "%d block(s), %d feature binding(s)\n", len(summaries), totalFeatures)
 }
 
 // BlockSummary contains the resolved values shown by PrintList.

@@ -1044,6 +1044,12 @@ func TestOverlayVariableSubstitution(t *testing.T) {
 		require.ErrorContains(t, err, "empty value")
 	})
 
+	t.Run("an unterminated variable expression is an error", func(t *testing.T) {
+		overlay := writeTOML(t, dir, "unterminated.toml", "url = \"http://x/${BLOCK\"\n")
+		_, err := MergeWithVars(Vars{VarBlock: "gateway-analytics"}, base, overlay)
+		require.ErrorContains(t, err, "unterminated variable expression")
+	})
+
 	t.Run("the shipped base is never substituted", func(t *testing.T) {
 		productBase := writeTOML(t, dir, "product.toml", "secret = \"${BLOCK}\"\n")
 		out, err := MergeWithVars(Vars{VarBlock: "gateway-analytics"}, productBase)

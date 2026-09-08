@@ -199,8 +199,7 @@ func expand(path, text string, vars Vars) (string, error) {
 		after := rest[start+2:]
 		end := strings.Index(after, "}")
 		if end < 0 {
-			b.WriteString(rest[start:])
-			return b.String(), nil
+			return "", fmt.Errorf("config merge: overlay %q contains an unterminated variable expression", path)
 		}
 
 		name := after[:end]

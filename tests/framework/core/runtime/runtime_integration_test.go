@@ -41,6 +41,16 @@ import (
 // These tests exercise network creation, container startup, port resolution, and readiness.
 const probeImage = "nginx:alpine"
 
+func newTestNetwork(t *testing.T, ctx context.Context, name string) *Network {
+	t.Helper()
+	network, err := NewNetwork(ctx, name)
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "docker provider") {
+		t.Skipf("Docker is unavailable: %v", err)
+	}
+	require.NoError(t, err)
+	return network
+}
+
 func probeDef(name string) *components.Definition {
 	return &components.Definition{
 		Name:  name,

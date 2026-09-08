@@ -196,33 +196,36 @@ func TestUntarToBoundsTotalBytes(t *testing.T) {
 }
 
 func TestCopyDirValidatesInputs(t *testing.T) {
-	require.Error(t, CopyDir(nil, "container", "/coverage", t.TempDir()))
+	require.Error(t, CopyDir(nil, "container", "/coverage", t.TempDir())) //nolint:staticcheck // SA1012: nil is intentional to cover the context guard
 	require.Error(t, CopyDir(context.Background(), "", "/coverage", t.TempDir()))
 }
 
-// TestNewSinkWipesPriorRun ensures runs do not share stale counters.
-func TestNewSinkWipesPriorRun(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "coverage-out")
-	stale := filepath.Join(root, "raw", "gateway-core-sqlite", "gateway-runtime")
+// TestNewSinkUsesUniqueRunDirectory ensures runs do not share stale counters or wipe the base.
+func TestNewSinkUsesUniqueRunDirectory(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "coverage-out")
+	stale := filepath.Join(base, "raw", "gateway-core-sqlite", "gateway-runtime")
 	require.NoError(t, os.MkdirAll(stale, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(stale, "covcounters.old.1.1"), []byte("stale"), 0o644))
+	staleFile := filepath.Join(stale, "covcounters.old.1.1")
+	require.NoError(t, os.WriteFile(staleFile, []byte("stale"), 0o644))
+	marker := filepath.Join(base, "keep.txt")
+	require.NoError(t, os.WriteFile(marker, []byte("keep"), 0o644))
 
-	sink, err := NewSink(root)
+	sink, err := NewSink(base)
 	require.NoError(t, err)
+	require.NotEqual(t, filepath.Clean(base), sink.Root())
+	rel, err := filepath.Rel(base, sink.Root())
+	require.NoError(t, err)
+	require.Len(t, splitPath(rel), 1, "the sink root must be one generated directory beneath the base")
+	require.FileExists(t, staleFile)
+	require.FileExists(t, marker)
 
-	entries, err := os.ReadDir(sink.Root())
+	second, err := NewSink(base)
 	require.NoError(t, err)
-	require.Empty(t, entries, "prior run's counters survived the per-run wipe")
+	require.NotEqual(t, sink.Root(), second.Root(), "each sink must use a unique run directory")
 }
 
-func TestNewSinkRefusesDangerousRoots(t *testing.T) {
+func TestNewSinkRejectsEmptyRoot(t *testing.T) {
 	_, err := NewSink("")
-	require.Error(t, err)
-	_, err = NewSink(string(filepath.Separator))
-	require.Error(t, err)
-	home, herr := os.UserHomeDir()
-	require.NoError(t, herr)
-	_, err = NewSink(home)
 	require.Error(t, err)
 }
 
@@ -233,7 +236,9 @@ func TestDirFlattensVariantNames(t *testing.T) {
 
 	dir, err := sink.Dir("gateway-core/sqlite", "gateway-runtime")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(sink.Root(), "raw", sanitize("gateway-core/sqlite"), "gateway-runtime"), dir)
+	block, err := sanitize("gateway-core/sqlite")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(sink.Root(), "raw", block, "gateway-runtime"), dir)
 
 	info, err := os.Stat(dir)
 	require.NoError(t, err)
@@ -267,6 +272,18 @@ func TestDirRejectsEmptyNames(t *testing.T) {
 	require.Error(t, err)
 	_, err = sink.Dir("gateway-core/sqlite", " ")
 	require.Error(t, err)
+}
+
+func TestCoverageDirectoriesRejectTraversalInputs(t *testing.T) {
+	sink, err := NewSink(filepath.Join(t.TempDir(), "out"))
+	require.NoError(t, err)
+
+	for _, name := range []string{".", "..", "\x00", "%2e%2e", "%252e%252e", "nested/%2e%2e/escape"} {
+		_, err := sink.Dir(name, "service")
+		require.Error(t, err, "block name %q must be rejected", name)
+		_, err = sink.BrowserDir("block", name)
+		require.Error(t, err, "scenario name %q must be rejected", name)
+	}
 }
 
 // TestDirIsConcurrencySafe verifies concurrent directory creation.

@@ -56,14 +56,14 @@ func CopyDir(ctx context.Context, containerID, srcPath, dst string) error {
 	if err != nil {
 		return fmt.Errorf("coverage: docker client: %w", err)
 	}
-	defer cli.Close()
+	defer func() { _ = cli.Close() }()
 
 	res, err := cli.CopyFromContainer(ctx, containerID,
 		mobyclient.CopyFromContainerOptions{SourcePath: srcPath})
 	if err != nil {
 		return fmt.Errorf("coverage: copying %s from %s: %w", srcPath, containerID, err)
 	}
-	defer res.Content.Close()
+	defer func() { _ = res.Content.Close() }()
 
 	if err := untarTo(dst, res.Content); err != nil {
 		return fmt.Errorf("coverage: extracting %s from %s: %w", srcPath, containerID, err)

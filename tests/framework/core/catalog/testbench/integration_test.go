@@ -35,6 +35,7 @@ func TestTestbenchPortResolution(t *testing.T) {
 
 	c, err := runtime.LaunchShared(ctx, def, runtime.Options{Network: nw, RepoRoot: repoRoot(t)})
 	require.NoError(t, err)
+	defer func() { _ = c.Stop(context.Background()) }()
 
 	for _, ep := range []string{"jwks", "echo"} {
 		url, err := c.Instance.URL(ep)

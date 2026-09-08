@@ -785,6 +785,13 @@ func TestDBSpecGrammar(t *testing.T) {
 		require.Equal(t, "postgres:17-alpine", got.Variant)
 	})
 
+	t.Run("scalar aliases follow scalar validation", func(t *testing.T) {
+		got, err := decode(t, "engine: &engine postgres\ndb: *engine")
+		require.NoError(t, err)
+		require.Equal(t, components.Postgres, got.One)
+		require.Equal(t, "postgres:16-alpine", got.Variant)
+	})
+
 	t.Run("mapping form declares a matrix", func(t *testing.T) {
 		got, err := decode(t, "db: {matrix: [sqlite, postgres, sqlserver]}")
 		require.NoError(t, err)
@@ -793,6 +800,12 @@ func TestDBSpecGrammar(t *testing.T) {
 			[]components.DBType{components.SQLite, components.Postgres, components.SQLServer},
 			got.Matrix)
 		require.Empty(t, got.One)
+	})
+
+	t.Run("mapping aliases follow matrix validation", func(t *testing.T) {
+		got, err := decode(t, "engines: &engines {matrix: [sqlite, postgres]}\ndb: *engines")
+		require.NoError(t, err)
+		require.Equal(t, []components.DBType{components.SQLite, components.Postgres}, got.Matrix)
 	})
 
 	t.Run("absent means fall back to defaults.components", func(t *testing.T) {
@@ -1049,6 +1062,15 @@ func TestSkipBlocks(t *testing.T) {
 		got, err := Selection{SkipBlocks: []string{"gateway-core"}}.Apply(matrixSuite())
 		require.NoError(t, err)
 		require.Equal(t, []string{"cp-dp-e2e"}, got.BlockNames())
+	})
+
+	t.Run("a valid skip outside the include set is still considered matched", func(t *testing.T) {
+		got, err := Selection{
+			Blocks:     []string{"gateway-core/postgres"},
+			SkipBlocks: []string{"cp-dp-e2e"},
+		}.Apply(matrixSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"gateway-core/postgres"}, got.BlockNames())
 	})
 
 	t.Run("an unmatched skip is also an error", func(t *testing.T) {

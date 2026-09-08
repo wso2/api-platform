@@ -183,22 +183,3 @@ func GatewayRuntime() *components.Definition {
 		Limits: components.ResourceLimits{CPUs: 1, MemoryMB: 2000},
 	}
 }
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	var d []byte
-	for i > 0 {
-		d = append([]byte{byte('0' + i%10)}, d...)
-		i /= 10
-	}
-	if neg {
-		return "-" + string(d)
-	}
-	return string(d)
-}

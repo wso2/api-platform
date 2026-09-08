@@ -23,7 +23,7 @@ import "testing"
 func TestAdministrator(t *testing.T) {
 	got := Administrator()
 	if got.Username != "admin" || got.Password != "admin" {
-		t.Fatalf("Administrator() = %#v, want admin/admin", got)
+		t.Fatal("Administrator() returned unexpected credentials")
 	}
 }
 

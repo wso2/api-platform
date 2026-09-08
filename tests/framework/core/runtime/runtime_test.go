@@ -43,19 +43,9 @@ type slowWriter struct {
 	b  *bytes.Buffer
 }
 
-func newTestNetwork(t *testing.T, ctx context.Context, name string) *Network {
-	t.Helper()
-	network, err := NewNetwork(ctx, name)
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "docker provider") {
-		t.Skipf("Docker is unavailable: %v", err)
-	}
-	require.NoError(t, err)
-	return network
-}
-
 func newTestHTTPServer(t *testing.T, handler http.Handler, tls bool) *httptest.Server {
 	t.Helper()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp4", "127.0.0.1:0")
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "operation not permitted") {
 		t.Skipf("loopback listeners are unavailable: %v", err)
 	}
@@ -724,6 +714,19 @@ func TestAwaitHealthy(t *testing.T) {
 		require.Less(t, time.Since(start), 5*time.Second, "should not wait out the 30s budget")
 	})
 
+	t.Run("bounds an injected prober by the health deadline", func(t *testing.T) {
+		def := healthyDef(100*time.Millisecond, 10*time.Millisecond)
+		var probeErr error
+		err := AwaitHealthy(context.Background(), instanceFor(t, def), probeFunc(
+			func(ctx context.Context, _ string) (int, error) {
+				<-ctx.Done()
+				probeErr = ctx.Err()
+				return 0, probeErr
+			}))
+		require.Error(t, err)
+		require.ErrorIs(t, probeErr, context.DeadlineExceeded)
+	})
+
 	t.Run("an unresolvable health endpoint is reported clearly", func(t *testing.T) {
 		def := healthyDef(time.Second, 10*time.Millisecond)
 		def.Health.Endpoint = "does-not-exist"
@@ -743,19 +746,34 @@ func TestHTTPProber(t *testing.T) {
 		require.Equal(t, http.StatusTeapot, code)
 	})
 
-	t.Run("tolerates a self-signed certificate", func(t *testing.T) {
+	t.Run("rejects an untrusted self-signed certificate", func(t *testing.T) {
 		srv := newTestHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}), true)
 
-		code, err := NewHTTPProber(time.Second).Probe(context.Background(), srv.URL)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, code)
+		_, err := NewHTTPProber(time.Second).Probe(context.Background(), srv.URL)
+		require.Error(t, err)
 	})
 
 	t.Run("a dead address is an error, not a status", func(t *testing.T) {
 		_, err := NewHTTPProber(500*time.Millisecond).Probe(context.Background(), "http://127.0.0.1:1/health")
 		require.Error(t, err)
+	})
+}
+
+func TestReadAllString(t *testing.T) {
+	t.Run("preserves output within the limit", func(t *testing.T) {
+		want := "complete output"
+		got, err := readAllString(strings.NewReader(want))
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
+
+	t.Run("reports and truncates output over the limit", func(t *testing.T) {
+		input := bytes.Repeat([]byte{'x'}, int(maxOutputBytes)+1)
+		got, err := readAllString(bytes.NewReader(input))
+		require.ErrorContains(t, err, "output exceeds the 1048576-byte limit")
+		require.Len(t, got, int(maxOutputBytes))
 	})
 }
 

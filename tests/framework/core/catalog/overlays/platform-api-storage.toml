@@ -23,6 +23,6 @@ enabled = false
 
 # Test administrator credentials.
 [[platform_api.auth.file.users]]
-username      = "admin"
-password_hash = "$2y$10$phptp63TInVnKh5d1RtQiuZ8W1E0BR1PQWAcpL6tXIgJE9Fz0aC1q"
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" "admin" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
 roles         = ["ap_admin"]

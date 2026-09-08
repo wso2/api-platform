@@ -39,6 +39,9 @@ type Funnel struct {
 
 // NewFunnel wraps a client.
 func NewFunnel(client *Client, maxRetries int, retryDelay time.Duration) *Funnel {
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
 	if retryDelay <= 0 {
 		retryDelay = 2 * time.Second
 	}

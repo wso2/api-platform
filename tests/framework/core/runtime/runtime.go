@@ -255,12 +255,17 @@ func runRunner(
 			runner.Name, runner.Features)
 	}
 
-	sweepCtx := tcontext.WithLocal(tcontext.WithShared(context.Background(), topo.Shared), local)
-	if err := cleanup.Install(sweepCtx, registry); err == nil {
-		if err := cleanup.SweepRunner(sweepCtx); err != nil {
-			log.Warn("runner cleanup had errors",
-				"block", topo.Block.Name, "runner", runner.Name, "error", err)
-		}
+	sweepCtx, cancel := context.WithTimeout(
+		tcontext.WithLocal(tcontext.WithShared(context.Background(), topo.Shared), local),
+		3*time.Minute,
+	)
+	defer cancel()
+	if err := cleanup.Install(sweepCtx, registry); err != nil {
+		log.Warn("runner cleanup setup had errors",
+			"block", topo.Block.Name, "runner", runner.Name, "error", err)
+	} else if err := cleanup.SweepRunner(sweepCtx); err != nil {
+		log.Warn("runner cleanup had errors",
+			"block", topo.Block.Name, "runner", runner.Name, "error", err)
 	}
 }
 

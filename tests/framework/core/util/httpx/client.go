@@ -161,6 +161,9 @@ func (c *Client) Do(ctx context.Context, req Request, maxRetries int, retryDelay
 
 	var last *Response
 	attempts := maxRetries + 1
+	if attempts < 1 {
+		attempts = 1
+	}
 
 	for attempt := range attempts {
 		resp, err := c.once(ctx, req)

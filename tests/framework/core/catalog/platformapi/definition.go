@@ -27,9 +27,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
@@ -44,7 +47,10 @@ const svcPlatformAPI = "platform-api"
 // PlatformAPI returns the Platform API component definition.
 func PlatformAPI() *components.Definition {
 	generated := shared.ControlPlaneCrypto()
-	env := map[string]string{EnvImagePlatformAPI: shared.PlatformAPIImage()}
+	env := map[string]string{EnvImagePlatformAPI: shared.Image(EnvImagePlatformAPI, shared.PlatformAPIImage()).Ref}
+	for key, value := range adminEnvironment() {
+		env[key] = value
+	}
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
 	}
@@ -101,11 +107,30 @@ func PlatformAPI() *components.Definition {
 	}
 }
 
+func adminEnvironment() map[string]string {
+	admin := actor.Administrator()
+	hash := strings.TrimSpace(os.Getenv("APIP_CP_ADMIN_PASSWORD_HASH"))
+	if hash == "" {
+		generated, err := bcrypt.GenerateFromPassword([]byte(admin.Password), bcrypt.DefaultCost)
+		if err != nil {
+			panic("catalog: generating Platform API admin password hash: " + err.Error())
+		}
+		hash = string(generated)
+	}
+	return map[string]string{
+		"APIP_CP_ADMIN_USERNAME":      admin.Username,
+		"APIP_CP_ADMIN_PASSWORD_HASH": hash,
+	}
+}
+
 func runtimeCoverageEnvironment() map[string]string {
 	if !shared.CoverageMode() {
 		return nil
 	}
-	spec, _ := BuildSpec("")
+	spec, err := BuildSpec("")
+	if err != nil {
+		panic("catalog: building Platform API coverage specification: " + err.Error())
+	}
 	env := make(map[string]string, len(spec.Coverage.Environment))
 	for key, value := range spec.Coverage.Environment {
 		env[key] = value

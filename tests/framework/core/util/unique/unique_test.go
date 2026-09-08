@@ -305,6 +305,13 @@ func TestExpandResolvesContextPlaceholders(t *testing.T) {
 		require.Contains(t, err.Error(), "jwtToken")
 	})
 
+	t.Run("an empty resolved value fails the expansion", func(t *testing.T) {
+		ContextValue = func(context.Context, string) (string, error) { return "", nil }
+		_, err := Expand(context.Background(), "Bearer ${CTX:jwtToken}")
+		require.ErrorContains(t, err, "resolved to an empty value")
+		require.Contains(t, err.Error(), "${CTX:jwtToken}")
+	})
+
 	t.Run("errors when the suite exposes nothing", func(t *testing.T) {
 		ContextValue = nil
 		_, err := Expand(context.Background(), "${CTX:jwtToken}")
@@ -317,6 +324,13 @@ func TestExpandResolvesContextPlaceholders(t *testing.T) {
 		_, err := Expand(context.Background(), "Bearer ${CTX:jwtToken")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unterminated")
+	})
+
+	t.Run("invalid context names identify the context placeholder", func(t *testing.T) {
+		ContextValue = func(context.Context, string) (string, error) { return "x", nil }
+		_, err := Expand(context.Background(), `Bearer ${CTX:bad"name}`)
+		require.ErrorContains(t, err, `${CTX:bad"name}`)
+		require.NotContains(t, err.Error(), Placeholder)
 	})
 
 	t.Run("leaves a string without the placeholder untouched", func(t *testing.T) {

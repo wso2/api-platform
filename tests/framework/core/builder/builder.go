@@ -313,9 +313,17 @@ func validateCommand(root string, command Command) error {
 	if err != nil {
 		return fmt.Errorf("resolve command directory: %w", err)
 	}
+	abs, err = filepath.EvalSymlinks(abs)
+	if err != nil {
+		return fmt.Errorf("resolve command directory symlinks: %w", err)
+	}
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return fmt.Errorf("resolve repository root: %w", err)
+	}
+	rootAbs, err = filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return fmt.Errorf("resolve repository root symlinks: %w", err)
 	}
 	rel, err := filepath.Rel(rootAbs, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {

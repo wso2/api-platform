@@ -23,6 +23,7 @@ package aiworkspace
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -136,9 +137,15 @@ func TestAIWorkspaceBoots(t *testing.T) {
 	base, err := aiw.Instance.URL("https")
 	require.NoError(t, err)
 
+	rootCAs := x509.NewCertPool()
+	require.True(t, rootCAs.AppendCertsFromPEM(workspace.Compose.GeneratedFiles["tls/cert.pem"]),
+		"generated AI Workspace certificate must be valid PEM")
 	client := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			RootCAs:    rootCAs,
+			ServerName: "ai-workspace",
+		}},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/ai-workspace/api/login",
 		strings.NewReader(`{"username":"`+admin.Username+`","password":"`+admin.Password+`"}`))
