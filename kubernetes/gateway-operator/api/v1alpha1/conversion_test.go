@@ -17,12 +17,10 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"bytes"
 	"reflect"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	v1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
@@ -80,163 +78,9 @@ func TestRestApiConversionRoundTrip(t *testing.T) {
 	}
 }
 
-// TestAgentConversionRoundTrip exercises a populated Agent through
-// v1alpha1 -> v1 -> v1alpha1. The interesting part is the free-form Agent Card
-// content: it travels as a runtime.RawExtension through the JSON round-trip
-// convertViaJSON performs, and the gateway signs the bytes it is given, so a
-// re-serialization that reorders or reformats them would break verification.
-func TestAgentConversionRoundTrip(t *testing.T) {
-	card := []byte(`{"name":"Weather Agent","capabilities":{"streaming":true},` +
-		`"x-vendor-extension":{"nested":["a",1,false]},"emptyList":[],"flag":false}`)
-	ctxPath := "/weather"
-
-	orig := &Agent{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       "weather-agent-v1-0",
-			Namespace:  "agents",
-			Labels:     map[string]string{"team": "platform"},
-			Generation: 4,
-		},
-		Spec: AgentConfigData{
-			DisplayName: "Weather Agent",
-			Version:     "v1.0",
-			Context:     &ctxPath,
-			Upstream:    AgentUpstream{Url: "https://weather.internal"},
-			A2A: A2AConfig{
-				ProtocolVersion: "1.0",
-				OperationConfigs: A2AOperationConfigs{
-					Transports: []A2ATransport{
-						{ProtocolBinding: A2AProtocolBindingJSONRPC, PathPrefix: strPtr("/rpc")},
-						{ProtocolBinding: A2AProtocolBindingHTTPJSON, PathPrefix: strPtr("/rest")},
-					},
-					Policies: []Policy{{Name: "jwt-auth", Version: "v1"}},
-					Operations: []A2AOperationConfig{{
-						Name:     "SendMessage",
-						Policies: []Policy{{Name: "advanced-ratelimit", Version: "v1"}},
-					}},
-				},
-				AgentCard: &A2AAgentCard{
-					Public: &A2APublicAgentCard{
-						Mode:     "managed",
-						Path:     strPtr("/.well-known/agent-card.json"),
-						Policies: []Policy{{Name: "cors", Version: "v1"}},
-						Content:  &runtime.RawExtension{Raw: card},
-						Signing:  &A2ACardSigning{Enabled: true},
-					},
-				},
-			},
-		},
-		Status: ResourceStatus{
-			Conditions: []metav1.Condition{
-				{Type: "Programmed", Status: metav1.ConditionTrue, Reason: "Programmed", Message: "ok"},
-			},
-		},
-	}
-
-	hub := &v1.Agent{}
-	if err := orig.ConvertTo(hub); err != nil {
-		t.Fatalf("ConvertTo: %v", err)
-	}
-	if hub.Spec.A2A.ProtocolVersion != "1.0" || len(hub.Spec.A2A.OperationConfigs.Transports) != 2 {
-		t.Fatalf("hub a2a config not converted: %+v", hub.Spec.A2A)
-	}
-	if hub.Spec.A2A.AgentCard.Public.Content == nil ||
-		!bytes.Equal(hub.Spec.A2A.AgentCard.Public.Content.Raw, card) {
-		t.Fatalf("card content not preserved byte-for-byte in hub: %s",
-			hub.Spec.A2A.AgentCard.Public.Content)
-	}
-
-	back := &Agent{}
-	if err := back.ConvertFrom(hub); err != nil {
-		t.Fatalf("ConvertFrom: %v", err)
-	}
-	if !reflect.DeepEqual(orig.ObjectMeta, back.ObjectMeta) {
-		t.Errorf("ObjectMeta round-trip mismatch:\n got  %+v\n want %+v", back.ObjectMeta, orig.ObjectMeta)
-	}
-	if !reflect.DeepEqual(orig.Spec, back.Spec) {
-		t.Errorf("Spec round-trip mismatch:\n got  %+v\n want %+v", back.Spec, orig.Spec)
-	}
-	if !reflect.DeepEqual(orig.Status, back.Status) {
-		t.Errorf("Status round-trip mismatch:\n got  %+v\n want %+v", back.Status, orig.Status)
-	}
-}
-
-// The optional Agent Card shapes have to survive conversion as *absences*.
-//
-// Conversion runs through a JSON round-trip, so a field that gained a value on
-// the way would gain it silently: an Agent stored as v1alpha1 and served as v1
-// (or the reverse) would come back configured for something its author never
-// wrote, and for the protected block that difference is the authentication
-// guard. A stated false has to survive too, since the gateway-controller rejects
-// a stated rewriteUrls in managed mode in either polarity.
-func TestAgentConversionPreservesOptionalCardShapes(t *testing.T) {
-	disabled := false
-	enabled := true
-
-	cases := map[string]*A2AAgentCard{
-		"whole block absent":  nil,
-		"public block absent": {},
-		"public mode unstated": {
-			Public: &A2APublicAgentCard{},
-		},
-		"rewriteUrls stated false": {
-			Public:    &A2APublicAgentCard{Mode: "passthrough", RewriteUrls: &disabled},
-			Protected: &A2AProtectedAgentCard{Mode: "passthrough", RewriteUrls: &disabled},
-		},
-		"rewriteUrls enabled": {
-			Public:    &A2APublicAgentCard{Mode: "passthrough", RewriteUrls: &enabled},
-			Protected: &A2AProtectedAgentCard{Mode: "passthrough", RewriteUrls: &enabled},
-		},
-	}
-
-	for name, card := range cases {
-		t.Run(name, func(t *testing.T) {
-			orig := &Agent{
-				ObjectMeta: metav1.ObjectMeta{Name: "weather-agent", Namespace: "agents"},
-				Spec: AgentConfigData{
-					DisplayName: "Weather Agent",
-					Version:     "v1.0",
-					Upstream:    AgentUpstream{Url: "https://weather.internal"},
-					A2A: A2AConfig{
-						ProtocolVersion: "1.0",
-						OperationConfigs: A2AOperationConfigs{
-							Transports: []A2ATransport{
-								{ProtocolBinding: A2AProtocolBindingJSONRPC},
-							},
-						},
-						AgentCard: card,
-					},
-				},
-			}
-
-			hub := &v1.Agent{}
-			if err := orig.ConvertTo(hub); err != nil {
-				t.Fatalf("ConvertTo: %v", err)
-			}
-			if card == nil && hub.Spec.A2A.AgentCard != nil {
-				t.Fatalf("an absent agentCard block was materialised: %+v", hub.Spec.A2A.AgentCard)
-			}
-			if card != nil && card.Protected == nil &&
-				hub.Spec.A2A.AgentCard != nil && hub.Spec.A2A.AgentCard.Protected != nil {
-				t.Fatalf("an absent protected block was materialised: %+v", hub.Spec.A2A.AgentCard.Protected)
-			}
-
-			back := &Agent{}
-			if err := back.ConvertFrom(hub); err != nil {
-				t.Fatalf("ConvertFrom: %v", err)
-			}
-			if !reflect.DeepEqual(orig.Spec, back.Spec) {
-				t.Errorf("Spec round-trip mismatch:\n got  %+v\n want %+v", back.Spec, orig.Spec)
-			}
-		})
-	}
-}
-
-func strPtr(s string) *string { return &s }
-
 // TestAllKindsConversionPlumbing verifies that every spoke kind implements the
 // Convertible interface, converts to the correct hub type, preserves
-// ObjectMeta, and converts back — for all 13 CRD kinds.
+// ObjectMeta, and converts back — for all 12 CRD kinds served as v1alpha1.
 func TestAllKindsConversionPlumbing(t *testing.T) {
 	meta := func() metav1.ObjectMeta {
 		return metav1.ObjectMeta{
@@ -254,7 +98,6 @@ func TestAllKindsConversionPlumbing(t *testing.T) {
 		fresh conversion.Convertible
 	}{
 		{"RestApi", &RestApi{ObjectMeta: meta()}, &v1.RestApi{}, &RestApi{}},
-		{"Agent", &Agent{ObjectMeta: meta()}, &v1.Agent{}, &Agent{}},
 		{"APIGateway", &APIGateway{ObjectMeta: meta()}, &v1.APIGateway{}, &APIGateway{}},
 		{"ApiKey", &ApiKey{ObjectMeta: meta()}, &v1.ApiKey{}, &ApiKey{}},
 		{"APIPolicy", &APIPolicy{ObjectMeta: meta()}, &v1.APIPolicy{}, &APIPolicy{}},
