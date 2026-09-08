@@ -104,33 +104,35 @@ const GatewayRow: FC<GatewayRowProps> = ({
             ) : null}
 
             {gateway.status !== 'NOT_DEPLOYED' ? (
-              <Card>
-                <CardContent
-                  sx={{
-                    p: 1.25,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    '&:last-child': { pb: 1.25 },
-                  }}
-                >
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      ID {gateway.buildId}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Deployed {gateway.deployedAt ? relativeTime(gateway.deployedAt) : '—'}
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            ) : null}
+              <>
+                <Card>
+                  <CardContent
+                    sx={{
+                      p: 1.25,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      '&:last-child': { pb: 1.25 },
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        ID {gateway.buildId}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Deployed {gateway.deployedAt ? relativeTime(gateway.deployedAt) : '—'}
+                      </Typography>
+                    </Box>
+                  </CardContent>
+                </Card>
 
-            <ActionRow
-              label="Endpoint URL"
-              icon={<Eye size={14} />}
-              onClick={() => setEndpointUrlOpen(true)}
-            />
+                <ActionRow
+                  label="Endpoint URL"
+                  icon={<Eye size={14} />}
+                  onClick={() => setEndpointUrlOpen(true)}
+                />
+              </>
+            ) : null}
 
             <Button fullWidth variant="outlined" color="error" disabled={actionDisabled} onClick={handleActionClick}>
               {actionLabel}

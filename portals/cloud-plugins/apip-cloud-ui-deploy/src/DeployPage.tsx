@@ -29,6 +29,8 @@ export type DeployPageProps = {
   environments: Environment[];
   /** The API's builds, newest first. */
   builds: Build[];
+  /** The backend URL the API is defined against; the deploy form starts from it. */
+  apiEndpointUrl?: string;
   busy: boolean;
   /** Deploys to `target`; `from` is set when this is a promotion. */
   onDeploy: (
@@ -58,6 +60,7 @@ type DialogState = {
 const DeployPage: FC<DeployPageProps> = ({
   environments,
   builds,
+  apiEndpointUrl,
   busy,
   onDeploy,
   onStopGateway,
@@ -178,6 +181,7 @@ const DeployPage: FC<DeployPageProps> = ({
         environment={target}
         sourceEnvironment={source}
         builds={builds}
+        apiEndpointUrl={apiEndpointUrl}
         initialBuildId={dialog?.buildId}
         createBuild={dialog?.createBuild ?? false}
         submitting={busy}

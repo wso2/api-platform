@@ -51,6 +51,15 @@ type ManagedGatewayDTO = {
 };
 
 /**
+ * The API's own record. Only its upstream is read: `main.url` is the backend the
+ * API is defined against, which is what a deployment serves unless it is given
+ * an endpoint of its own.
+ */
+type RestApiDTO = {
+  upstream?: { main?: { url?: string } };
+};
+
+/**
  * The deployment data client, built from the host-injected `apiFetch`.
  *
  * Everything is addressed by project and API handle, and the server resolves the
@@ -106,6 +115,16 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
         createdBy: dto.createdBy,
         createdAt: dto.createdAt,
       }));
+    },
+
+    /**
+     * The backend URL the API is defined against, which the deploy and promote
+     * forms start from so a first deployment does not have to be typed out.
+     * Absent when the API declares its upstream by reference rather than by URL.
+     */
+    async readApiEndpointUrl(): Promise<string | undefined> {
+      const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
+      return api?.upstream?.main?.url;
     },
 
     /**
