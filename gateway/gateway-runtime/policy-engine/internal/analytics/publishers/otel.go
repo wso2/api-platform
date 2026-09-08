@@ -808,10 +808,10 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 // per the HTTP conventions: the header name forms the key, and the value is
 // always a string array because a header can repeat.
 //
-// The headers are already filtered by the operator’s allowlist policy. When 
-// the policy is absent, nothing is emitted. 
+// The headers are already filtered by the operator’s allowlist policy. When
+// the policy is absent, nothing is emitted.
 //
-// otelMaxHeaderAttributes prevents overly broad header allowlists from 
+// otelMaxHeaderAttributes prevents overly broad header allowlists from
 // exceeding OTel’s attribute limit and causing silent truncation
 func appendHeaderAttributes(attrs *otelAttrs, prefix string, raw interface{}) {
 	serialized, ok := raw.(string)
@@ -888,31 +888,47 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 }
 
 // appendMCPAttributes flattens Properties["mcpAnalytics"] onto MCP conventions.
-// The capability determines which attribute the capability name belongs on.
+//
+// Known keys get a curated attribute name, almost always a standard one:
+// jsonRpcMethod becomes mcp.method.name, not a mechanical transliteration.
+// Anything NOT named below is then swept up under wso2.mcp.*
 func (o *OTel) appendMCPAttributes(event *dto.Event, attrs *otelAttrs) {
 	mcp, ok := event.Properties["mcpAnalytics"].(map[string]interface{})
 	if !ok {
 		return
 	}
 
-	attrs.anyStr("mcp.method.name", mcp["jsonRpcMethod"])
-	attrs.anyStr("mcp.session.id", mcp["sessionId"])
-	attrs.anyStr("jsonrpc.request.id", mcp["jsonRpcId"])
+	// Each source map has its own claimed-key set and its own take: reading a key
+	// marks it as having a curated attribute name, which excludes it from the
+	// sweep at the end — including a key deliberately not emitted.
+	mapped := map[string]bool{}
+	take := func(key string) interface{} {
+		mapped[key] = true
+		return mcp[key]
+	}
+
+	attrs.anyStr("mcp.method.name", take("jsonRpcMethod"))
+	attrs.anyStr("mcp.session.id", take("sessionId"))
+	attrs.anyStr("jsonrpc.request.id", take("jsonRpcId"))
 
 	// Tools and prompts are named (params.name); a resource is addressed by URI
 	// (params.uri), which the analytics policy extracts into its own field.
-	capabilityName, _ := mcp["capabilityName"].(string)
-	switch capability, _ := mcp["capability"].(string); capability {
+	capabilityName, _ := take("capabilityName").(string)
+	resourceURI := take("resourceUri")
+	// capability itself is not emitted: which attribute below is populated says
+	// it, and it is derivable from mcp.method.name's prefix. Taking it still
+	// claims it, so the sweep does not put it back.
+	switch capability, _ := take("capability").(string); capability {
 	case "TOOL":
 		attrs.str("gen_ai.tool.name", capabilityName)
 	case "RESOURCE":
-		attrs.anyStr("mcp.resource.uri", mcp["resourceUri"])
+		attrs.anyStr("mcp.resource.uri", resourceURI)
 	case "PROMPT":
 		attrs.str("gen_ai.prompt.name", capabilityName)
 	}
 
 	// A JSON-RPC error code is a string in rpc.response.status_code.
-	switch code := mcp["errorCode"].(type) {
+	switch code := take("errorCode").(type) {
 	case int:
 		attrs.str("rpc.response.status_code", strconv.Itoa(code))
 	case float64:
@@ -920,14 +936,91 @@ func (o *OTel) appendMCPAttributes(event *dto.Event, attrs *otelAttrs) {
 	case string:
 		attrs.str("rpc.response.status_code", code)
 	}
-	if isError, ok := mcp["isError"].(bool); ok && isError {
+	if isError, ok := take("isError").(bool); ok && isError {
 		attrs.strIfEmpty("error.type", "mcp_error")
 	}
 
-	attrs.anyStr("mcp.protocol.version", mcp["protocolVersion"])
-	attrs.anyStr(ns("mcp.client.requested_protocol_version"), mcp["requestedProtocolVersion"])
-	attrs.anyStr(ns("mcp.client.name"), mcp["name"])
-	attrs.anyStr(ns("mcp.client.version"), mcp["version"])
+	// clientInfo and serverInfo arrive as sub-objects, and both carry "name" and
+	// "version" — a flat lookup could not tell a client's name from a server's.
+	client := otelNestedMap(take("clientInfo"))
+	clientMapped := map[string]bool{}
+	clientTake := func(key string) interface{} {
+		clientMapped[key] = true
+		return client[key]
+	}
+	attrs.anyStr(ns("mcp.client.name"), clientTake("name"))
+	attrs.anyStr(ns("mcp.client.version"), clientTake("version"))
+	attrs.anyStr(ns("mcp.client.requested_protocol_version"), clientTake("requestedProtocolVersion"))
+
+	server := otelNestedMap(take("serverInfo"))
+	serverMapped := map[string]bool{}
+	serverTake := func(key string) interface{} {
+		serverMapped[key] = true
+		return server[key]
+	}
+	// The negotiated version, as opposed to the client's requested one above.
+	attrs.anyStr("mcp.protocol.version", serverTake("protocolVersion"))
+	attrs.anyStr(ns("mcp.server.name"), serverTake("name"))
+	attrs.anyStr(ns("mcp.server.version"), serverTake("version"))
+
+	// Sweep every key with no curated name, so a key the analytics policy gains
+	// later appears under a plainly-custom name rather than being silently
+	// dropped until someone notices.
+	otelSweepUnclaimed(attrs, ns("mcp."), mcp, mapped)
+	otelSweepUnclaimed(attrs, ns("mcp.client."), client, clientMapped)
+	otelSweepUnclaimed(attrs, ns("mcp.server."), server, serverMapped)
+}
+
+// otelNestedMap reads a sub-object out of an analytics property, returning nil
+// when the value is absent or not an object. Reading a key from the nil result is
+// safe, so no call site needs an absence check.
+func otelNestedMap(value interface{}) map[string]interface{} {
+	nested, _ := value.(map[string]interface{})
+	return nested
+}
+
+// otelSweepUnclaimed emits every unclaimed key under prefix + the key in
+// snake_case. Sorted so two identical records produce the same attribute order;
+// a sub-object recurses with an extended prefix and nothing claimed.
+func otelSweepUnclaimed(attrs *otelAttrs, prefix string, source map[string]interface{}, claimed map[string]bool) {
+	if len(source) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(source))
+	for key := range source {
+		if !claimed[key] {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		name := prefix + otelSnakeCase(key)
+		if nested, ok := source[key].(map[string]interface{}); ok {
+			otelSweepUnclaimed(attrs, name+".", nested, nil)
+			continue
+		}
+		attrs.anyScalar(name, source[key])
+	}
+}
+
+// otelSnakeCase converts a camelCase analytics key into the snake_case that
+// OpenTelemetry attribute names use.
+func otelSnakeCase(s string) string {
+	var out strings.Builder
+	out.Grow(len(s) + 4)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			if i > 0 && !(s[i-1] >= 'A' && s[i-1] <= 'Z') {
+				out.WriteByte('_')
+			}
+			out.WriteByte(c - 'A' + 'a')
+			continue
+		}
+		out.WriteByte(c)
+	}
+	return out.String()
 }
 
 // otelGenAIProviderName maps a WSO2 LLM provider template name onto the
@@ -1154,6 +1247,29 @@ func (a *otelAttrs) anyBool(key string, value interface{}) *otelAttrs {
 		if parsed, err := strconv.ParseBool(v); err == nil {
 			return a.b(key, parsed)
 		}
+	}
+	return a
+}
+
+// anyScalar emits a value of unknown concrete type, choosing the OTLP value kind
+// from it. Used by the unmapped-key sweep, where the type is whatever the
+// analytics policy put in the map.
+func (a *otelAttrs) anyScalar(key string, value interface{}) *otelAttrs {
+	switch v := value.(type) {
+	case string:
+		return a.str(key, v)
+	case bool:
+		return a.b(key, v)
+	case float64:
+		// JSON has one number type, so an integral value must not be reported as
+		// a double: a consumer summing "3.0" and 3 does not always get the same
+		// answer, and backends type the column from the first value they see.
+		if v == float64(int64(v)) {
+			return a.i64(key, int64(v))
+		}
+		return a.f64(key, v)
+	case int, int32, int64, uint32, uint64:
+		return a.anyInt(key, v)
 	}
 	return a
 }

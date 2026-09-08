@@ -377,18 +377,27 @@ func TestGenAIOperationName(t *testing.T) {
 func TestBuildRecordMCP(t *testing.T) {
 	event := restEvent()
 	event.API.APIType = "Mcp"
+	// Nested exactly as the analytics policy serializes it: clientInfo and
+	// serverInfo are sub-objects, and both carry "name" and "version". A flat
+	// fixture here is what let the nested-lookup bug pass for so long.
 	event.Properties["mcpAnalytics"] = map[string]interface{}{
-		"jsonRpcMethod":            "tools/call",
-		"jsonRpcId":                "7",
-		"sessionId":                "sess-1",
-		"capability":               "TOOL",
-		"capabilityName":           "search_docs",
-		"errorCode":                -32602,
-		"isError":                  true,
-		"protocolVersion":          "2025-06-18",
-		"requestedProtocolVersion": "2025-03-26",
-		"name":                     "claude-desktop",
-		"version":                  "1.2.0",
+		"jsonRpcMethod":  "tools/call",
+		"jsonRpcId":      "7",
+		"sessionId":      "sess-1",
+		"capability":     "TOOL",
+		"capabilityName": "search_docs",
+		"errorCode":      -32602,
+		"isError":        true,
+		"clientInfo": map[string]interface{}{
+			"name":                     "claude-desktop",
+			"version":                  "1.2.0",
+			"requestedProtocolVersion": "2025-03-26",
+		},
+		"serverInfo": map[string]interface{}{
+			"protocolVersion": "2025-06-18",
+			"name":            "everything-server",
+			"version":         "0.9.1",
+		},
 	}
 
 	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
@@ -404,6 +413,8 @@ func TestBuildRecordMCP(t *testing.T) {
 		"wso2.mcp.client.requested_protocol_version": "2025-03-26",
 		"wso2.mcp.client.name":                       "claude-desktop",
 		"wso2.mcp.client.version":                    "1.2.0",
+		"wso2.mcp.server.name":                       "everything-server",
+		"wso2.mcp.server.version":                    "0.9.1",
 	} {
 		if got[key] != expected {
 			t.Errorf("%s = %v, want %v", key, got[key], expected)
@@ -1591,5 +1602,143 @@ func TestHeaderAttributeWireShape(t *testing.T) {
 	want := `{"key":"http.request.header.accept-encoding","value":{"arrayValue":{"values":[{"stringValue":"gzip, br"}]}}}`
 	if !strings.Contains(string(encoded), want) {
 		t.Errorf("record does not contain the expected ArrayValue attribute.\nwant substring: %s\ngot: %s", want, encoded)
+	}
+}
+
+// OTLP log records have traceId/spanId envelope fields. We deliberately do not
+// emit them (design doc §2.10), and this pins that: adding the fields "for
+// completeness" would send an all-zero id to every destination on every record.
+//
+// Note that a collector's own re-serialization may still show traceId:"" — its
+// internal representation holds those as fixed-size values that are always
+// present. That is the collector's output format, not our payload.
+func TestRecordOmitsTraceEnvelopeFields(t *testing.T) {
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	encoded, err := json.Marshal(o.buildRecord(restEvent()))
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+	for _, field := range []string{"traceId", "spanId"} {
+		if strings.Contains(string(encoded), field) {
+			t.Errorf("record carries %q; it must be absent, not empty: %s", field, encoded)
+		}
+	}
+}
+
+// A key the analytics policy gains later must appear in the export rather than
+// vanish until someone notices. That is the whole point of the sweep: flattening
+// to curated names would otherwise mean the publisher and the policy drift
+// silently.
+func TestMCPUnmappedKeysAreSweptUp(t *testing.T) {
+	event := restEvent()
+	event.API.APIType = "Mcp"
+	event.Properties["mcpAnalytics"] = map[string]interface{}{
+		"jsonRpcMethod": "tools/call",
+		// Hypothetical future additions, at both levels.
+		"toolInvocationCount": float64(3),
+		"cacheWasWarm":        true,
+		"upstreamLatencyMs":   12.5,
+		"clientInfo": map[string]interface{}{
+			"name":       "claude-desktop",
+			"platformId": "darwin-arm64",
+		},
+	}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string]interface{}{
+		// camelCase becomes snake_case under the custom namespace.
+		"wso2.mcp.tool_invocation_count": "3", // integral float -> IntValue, formatted as a string
+		"wso2.mcp.cache_was_warm":        true,
+		"wso2.mcp.upstream_latency_ms":   12.5,
+		"wso2.mcp.client.platform_id":    "darwin-arm64",
+		// The curated name still wins for a key that has one.
+		"mcp.method.name":      "tools/call",
+		"wso2.mcp.client.name": "claude-desktop",
+	} {
+		if got[key] != want {
+			t.Errorf("%s = %#v, want %#v", key, got[key], want)
+		}
+	}
+
+	// A key with a curated name must not also appear under the sweep prefix.
+	for _, absent := range []string{
+		"wso2.mcp.json_rpc_method", "wso2.mcp.client_info", "wso2.mcp.client.name_",
+	} {
+		if _, present := got[absent]; present {
+			t.Errorf("%s was emitted twice / under the wrong name", absent)
+		}
+	}
+}
+
+// `capability` is read but deliberately not emitted — which attribute is
+// populated already says it. It must not reappear via the sweep.
+func TestMCPCapabilityIsNotSwept(t *testing.T) {
+	event := restEvent()
+	event.API.APIType = "Mcp"
+	event.Properties["mcpAnalytics"] = map[string]interface{}{
+		"jsonRpcMethod":  "tools/call",
+		"capability":     "TOOL",
+		"capabilityName": "search_docs",
+	}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for _, absent := range []string{"wso2.mcp.capability", "wso2.mcp.capability_name"} {
+		if _, present := got[absent]; present {
+			t.Errorf("%s must not be swept up; it has a curated mapping", absent)
+		}
+	}
+	if got["gen_ai.tool.name"] != "search_docs" {
+		t.Errorf("gen_ai.tool.name = %v, want search_docs", got["gen_ai.tool.name"])
+	}
+}
+
+func TestOTelSnakeCase(t *testing.T) {
+	for input, want := range map[string]string{
+		"jsonRpcMethod":            "json_rpc_method",
+		"resourceUri":              "resource_uri",
+		"isError":                  "is_error",
+		"requestedProtocolVersion": "requested_protocol_version",
+		"sessionId":                "session_id",
+		"already_snake":            "already_snake",
+		"name":                     "name",
+		"":                         "",
+	} {
+		if got := otelSnakeCase(input); got != want {
+			t.Errorf("otelSnakeCase(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+// An integral JSON number must not be reported as a double: a backend types the
+// column from the first value it sees, and a consumer summing 3.0 and 3 does not
+// reliably get the same answer.
+func TestAnyScalarNumberKinds(t *testing.T) {
+	attrs := newOTelAttrs()
+	attrs.anyScalar("whole", float64(3))
+	attrs.anyScalar("fractional", 12.5)
+	attrs.anyScalar("text", "hello")
+	attrs.anyScalar("flag", true)
+	attrs.anyScalar("unsupported", []string{"nope"})
+
+	encoded, err := json.Marshal(attrs.list())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{
+		`{"key":"whole","value":{"intValue":"3"}}`,
+		`{"key":"fractional","value":{"doubleValue":12.5}}`,
+		`{"key":"text","value":{"stringValue":"hello"}}`,
+		`{"key":"flag","value":{"boolValue":true}}`,
+	} {
+		if !strings.Contains(string(encoded), want) {
+			t.Errorf("missing %s in %s", want, encoded)
+		}
+	}
+	if strings.Contains(string(encoded), "unsupported") {
+		t.Error("an unsupported type produced an attribute")
 	}
 }
