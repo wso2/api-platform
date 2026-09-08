@@ -20,6 +20,7 @@ import { useState, type FC } from "react";
 import {
   Box,
   Button,
+  CircularProgress,
   FormControl,
   FormControlLabel,
   FormLabel,
@@ -34,6 +35,7 @@ import {
 import { ChevronLeft } from "@wso2/oxygen-ui-icons-react";
 import type { NotifySeverity } from "./hostPort";
 import type { EnvironmentPort } from "./types";
+import { validateEnvironmentName } from "./utils/name";
 
 export type EnvironmentFormProps = {
   port: EnvironmentPort;
@@ -41,15 +43,38 @@ export type EnvironmentFormProps = {
   notify?: (message: string, severity?: NotifySeverity) => void;
 };
 
+/** Shown until the name breaks a rule, so the constraint is known up front. */
+const NAME_HELPER_TEXT =
+  "Lowercase letters, numbers and hyphens only. The name cannot be changed later.";
+
 const EnvironmentForm: FC<EnvironmentFormProps> = ({ port, onBack, notify }) => {
   const [name, setName] = useState("");
   const [critical, setCritical] = useState(false);
-  const canSubmit = name.trim().length > 0;
+  const [saving, setSaving] = useState(false);
+  const nameError = validateEnvironmentName(name);
+  const canSubmit = name.trim().length > 0 && !nameError && !saving;
 
   const handleSubmit = async () => {
-    const created = await port.create({ name: name.trim(), critical });
-    notify?.(`Environment "${created.name}" created.`, "success");
-    onBack();
+    // Guard against a second click issuing a duplicate create while the first is
+    // still in flight.
+    if (saving) return;
+    setSaving(true);
+    try {
+      const created = await port.create({ name: name.trim(), critical });
+      notify?.(`Environment "${created.name}" created.`, "success");
+      onBack();
+    } catch (error) {
+      // Without this the rejection is unhandled: the form sits there having said
+      // nothing, and the user has no way to tell the create failed.
+      notify?.(
+        error instanceof Error
+          ? error.message
+          : "Unable to create the environment.",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -78,6 +103,8 @@ const EnvironmentForm: FC<EnvironmentFormProps> = ({ port, onBack, notify }) => 
             placeholder="Enter environment name"
             value={name}
             onChange={(event) => setName(event.target.value)}
+            error={Boolean(nameError)}
+            helperText={nameError ?? NAME_HELPER_TEXT}
           />
         </FormControl>
 
@@ -98,19 +125,33 @@ const EnvironmentForm: FC<EnvironmentFormProps> = ({ port, onBack, notify }) => 
         </Box>
 
         <Stack direction="row" spacing={1.5}>
-          <Button variant="outlined" color="secondary" onClick={onBack}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            disabled={saving}
+            onClick={onBack}
+          >
             Cancel
           </Button>
           <Tooltip
-            title={canSubmit ? "" : "Enter an environment name to continue."}
+            title={
+              canSubmit || saving
+                ? ""
+                : nameError ?? "Enter an environment name to continue."
+            }
           >
             <span>
               <Button
                 variant="contained"
                 disabled={!canSubmit}
                 onClick={handleSubmit}
+                startIcon={
+                  saving ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : undefined
+                }
               >
-                Create
+                {saving ? "Creating…" : "Create"}
               </Button>
             </span>
           </Tooltip>

@@ -20,6 +20,7 @@ import { useState, type FC } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
   FormControl,
   FormLabel,
   Grid,
@@ -32,7 +33,7 @@ import {
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import EnvironmentSelect from './components/EnvironmentSelect';
 import GatewayTypeSelector from './components/GatewayTypeSelector';
-import { validateGatewayName } from './utils/name';
+import { gatewayHandleFromName, validateGatewayName } from './utils/name';
 import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
 export type GatewayFormProps = {
@@ -44,8 +45,12 @@ export type GatewayFormProps = {
   types: GatewayType[];
   environments: Environment[];
   onBack: () => void;
-  onSubmit: (input: GatewayInput) => void;
+  /** Returning a promise lets the form keep its submit button busy until the save settles. */
+  onSubmit: (input: GatewayInput) => void | Promise<void>;
 };
+
+/** Shown before a name is typed, so the naming rule is known up front. */
+const NAME_HELPER_TEXT = 'The gateway handle is derived from this name and cannot be changed later.';
 
 const GatewayForm: FC<GatewayFormProps> = ({
   mode = 'create',
@@ -72,16 +77,33 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // apply to what it changes.
   const nameError = isEdit ? undefined : validateGatewayName(name, environmentId);
 
-  const missingRequired = name.trim().length === 0 || environmentId.length === 0;
-  const canSubmit = !missingRequired && !nameError;
+  // The handle is what the gateway is addressed by and cannot be changed later,
+  // so show what the name will become instead of leaving the user to guess.
+  const derivedHandle = isEdit ? '' : gatewayHandleFromName(name);
+  const nameHelperText =
+    nameError ??
+    (derivedHandle ? `Handle: ${derivedHandle}` : isEdit ? undefined : NAME_HELPER_TEXT);
 
-  const handleSubmit = () => {
-    onSubmit({
-      name: name.trim(),
-      description: description.trim() || undefined,
-      type,
-      environmentId,
-    });
+  const [submitting, setSubmitting] = useState(false);
+
+  const missingRequired = name.trim().length === 0 || environmentId.length === 0;
+  const canSubmit = !missingRequired && !nameError && !submitting;
+
+  const handleSubmit = async () => {
+    // Provisioning a gateway takes seconds, so the button has to show the work is
+    // under way — and a second click must not issue a second create.
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        type,
+        environmentId,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -117,7 +139,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 error={Boolean(nameError)}
-                helperText={nameError}
+                helperText={nameHelperText}
                 autoFocus
               />
             </FormControl>
@@ -152,15 +174,20 @@ const GatewayForm: FC<GatewayFormProps> = ({
         </Grid>
 
         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
-          <Button variant="outlined" color="secondary" onClick={onBack}>
+          <Button variant="outlined" color="secondary" disabled={submitting} onClick={onBack}>
             Cancel
           </Button>
           {/* An invalid name explains itself in the field's helper text, so the
               tooltip only covers the still-empty case. */}
           <Tooltip title={missingRequired ? 'Fill in the required fields to continue.' : ''}>
             <span>
-              <Button variant="contained" disabled={!canSubmit} onClick={handleSubmit}>
-                {isEdit ? 'Save Changes' : 'Add Gateway'}
+              <Button
+                variant="contained"
+                disabled={!canSubmit}
+                onClick={handleSubmit}
+                startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : undefined}
+              >
+                {submitting ? (isEdit ? 'Saving…' : 'Adding…') : isEdit ? 'Save Changes' : 'Add Gateway'}
               </Button>
             </span>
           </Tooltip>
