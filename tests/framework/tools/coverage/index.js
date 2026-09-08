@@ -3,7 +3,11 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const root = path.resolve(process.argv[2] || '')
+if (!process.argv[2]) {
+  console.error('usage: index.js <coverage-root>')
+  process.exit(2)
+}
+const root = path.resolve(process.argv[2])
 if (!root || !fs.existsSync(root)) {
   console.error('usage: index.js <coverage-root>')
   process.exit(2)
@@ -25,9 +29,11 @@ function readJSON(relative) {
 
 function metric(summary) {
   if (!summary) return null
-  if (summary.total?.statements) return summary.total.statements
-  if (summary.statements) return summary.statements
-  return summary
+  const selected = summary.total?.statements || summary.statements || summary
+  const percent = selected.pct ?? selected.percent
+  if (typeof selected !== 'object' || selected === null || Array.isArray(selected)
+    || ![selected.covered, selected.total, percent].every(Number.isFinite)) return null
+  return selected
 }
 
 function escape(value) {

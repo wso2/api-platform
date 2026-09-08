@@ -46,6 +46,9 @@ func (u *UI) opensProxyProviderTab(ctx context.Context) error {
 // page's Save button — editing stages the change locally; Save is what persists it,
 // recording the calls the save makes.
 func (u *UI) changesProxyCredential(ctx context.Context, newValue string) error {
+	if err := markSensitiveArtifacts(ctx); err != nil {
+		return err
+	}
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err
 	}
@@ -100,7 +103,7 @@ func (u *UI) proxyCallCarriesAPlaceholder(ctx context.Context, method, plaintext
 		return err
 	}
 	if !strings.Contains(authValue, `{{ secret "`) {
-		return fmt.Errorf("the credential carries no secret placeholder: %s", authValue)
+		return fmt.Errorf("the credential carries no secret placeholder")
 	}
 	if strings.Contains(authValue, plaintext) {
 		return fmt.Errorf("the credential still carries the plaintext value")
@@ -124,7 +127,7 @@ func (u *UI) proxyCallCarriesPlaceholderFor(ctx context.Context, method, handle 
 		return err
 	}
 	if !strings.Contains(authValue, secretPlaceholder(handle)) {
-		return fmt.Errorf("the credential does not reference secret %q: %s", handle, authValue)
+		return fmt.Errorf("the credential does not reference secret %q", handle)
 	}
 	return nil
 }

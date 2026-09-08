@@ -27,3 +27,4 @@ taxonomy-check: ## Verify capability annotations and the generated coverage tree
 
 standards-check: ## Check step and feature isolation rules
 	go run ./cmd/standards -root . -unit-root . -steps suites/it/steps -features suites/it/features -scripts tools -suites suites/it/it-suite.yaml,suites/ui/ui-suite.yaml -docs core
+	go run ./cmd/standards -root "" -unit-root "" -steps "" -features suites/ui/features -scripts "" -suites "" -docs ""

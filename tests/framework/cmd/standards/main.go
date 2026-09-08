@@ -29,9 +29,11 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -101,27 +103,59 @@ func checkSteps(root string) []string {
 			issues = append(issues, fmt.Sprintf("%s: parse error: %v", path, parseErr))
 			return nil
 		}
+		imports := make(map[string]string, len(file.Imports))
+		dotImports := make(map[string]struct{})
+		for _, spec := range file.Imports {
+			importPath := strings.Trim(spec.Path.Value, `"`)
+			localName := pathpkg.Base(importPath)
+			if spec.Name != nil {
+				localName = spec.Name.Name
+			}
+			if localName == "." {
+				dotImports[importPath] = struct{}{}
+				continue
+			}
+			if localName != "." && localName != "_" {
+				imports[importPath] = localName
+			}
+		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch n := node.(type) {
 			case *ast.CallExpr:
 				if selector, ok := n.Fun.(*ast.SelectorExpr); ok {
-					if selector.Sel.Name == "Sleep" && isPackageSelector(selector.X, "time") {
+					if selector.Sel.Name == "Sleep" && isPackageSelector(selector.X, imports["time"]) {
 						issues = append(issues, fmt.Sprintf("%s:%d: fixed sleeps are prohibited; use bounded polling", path, fileSet.Position(n.Pos()).Line))
 					}
 					if selector.Sel.Name == "NewRequest" || selector.Sel.Name == "NewRequestWithContext" ||
 						selector.Sel.Name == "Get" || selector.Sel.Name == "Post" || selector.Sel.Name == "Head" {
-						if isPackageSelector(selector.X, "http") {
+						if isPackageSelector(selector.X, imports["net/http"]) {
 							issues = append(issues, fmt.Sprintf("%s:%d: direct HTTP construction bypasses the suite funnel", path, fileSet.Position(n.Pos()).Line))
 						}
 					}
 					if selector.Sel.Name == "Step" && len(n.Args) > 0 {
 						if value, ok := n.Args[0].(*ast.BasicLit); ok && value.Kind == token.STRING {
-							pattern := strings.Trim(value.Value, "`")
+							pattern, unquoteErr := strconv.Unquote(value.Value)
+							if unquoteErr != nil {
+								pattern = strings.Trim(value.Value, "`")
+							}
 							if previous, exists := patterns[pattern]; exists {
 								issues = append(issues, fmt.Sprintf("%s:%d: duplicate step pattern %q (first at %s)", path, fileSet.Position(n.Pos()).Line, pattern, previous))
 							} else {
 								patterns[pattern] = fmt.Sprintf("%s:%d", path, fileSet.Position(n.Pos()).Line)
 							}
+						}
+					}
+				}
+				if ident, ok := n.Fun.(*ast.Ident); ok {
+					if ident.Name == "Sleep" {
+						if _, imported := dotImports["time"]; imported {
+							issues = append(issues, fmt.Sprintf("%s:%d: fixed sleeps are prohibited; use bounded polling", path, fileSet.Position(n.Pos()).Line))
+						}
+					}
+					if ident.Name == "NewRequest" || ident.Name == "NewRequestWithContext" ||
+						ident.Name == "Get" || ident.Name == "Post" || ident.Name == "Head" {
+						if _, imported := dotImports["net/http"]; imported {
+							issues = append(issues, fmt.Sprintf("%s:%d: direct HTTP construction bypasses the suite funnel", path, fileSet.Position(n.Pos()).Line))
 						}
 					}
 				}

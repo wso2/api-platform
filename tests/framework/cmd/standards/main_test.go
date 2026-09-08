@@ -46,6 +46,22 @@ func bind(sc interface{}) { _, _ = http.NewRequest("", "", nil); _, _ = http.Get
 	joined := strings.Join(issues, "\n")
 	require.Contains(t, joined, "direct HTTP construction")
 	require.Contains(t, joined, "fixed sleeps")
+
+	aliased := `package steps
+import (clock "time"; web "net/http")
+func bind(sc interface{}) { _, _ = web.NewRequest("", "", nil); _, _ = web.Get(""); clock.Sleep(0) }
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root, "aliased.go"), []byte(aliased), 0o600))
+	issues = checkSteps(root)
+	require.Len(t, issues, 6)
+
+	dotImported := `package steps
+import (. "net/http"; . "time")
+func bind(sc interface{}) { _, _ = NewRequest("", "", nil); _, _ = Get(""); Sleep(0) }
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root, "dot_imported.go"), []byte(dotImported), 0o600))
+	issues = checkSteps(root)
+	require.Len(t, issues, 9)
 }
 
 func TestChecksSkipEmptyRoots(t *testing.T) {
@@ -61,7 +77,7 @@ func TestChecksSkipEmptyRoots(t *testing.T) {
 func TestCheckStepsFindsDuplicateBindings(t *testing.T) {
 	root := t.TempDir()
 	source := `package steps
-func bind(sc interface{}) { sc.Step("^same$", nil); sc.Step("^same$", nil) }
+func bind(sc interface{}) { sc.Step("^same$", nil); sc.Step(` + "`^same$`" + `, nil) }
 `
 	require.NoError(t, os.WriteFile(filepath.Join(root, "duplicate.go"), []byte(source), 0o600))
 	require.Len(t, checkSteps(root), 1)

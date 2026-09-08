@@ -39,6 +39,22 @@ func (u *UI) platformAPIBaseURL() (string, error) {
 	return inst.InternalURL("https")
 }
 
+func (u *UI) platformAPI(ctx context.Context) (playwright.Page, string, string, error) {
+	page, err := u.page(ctx)
+	if err != nil {
+		return nil, "", "", err
+	}
+	base, err := u.platformAPIBaseURL()
+	if err != nil {
+		return nil, "", "", err
+	}
+	token, err := u.platformAPIToken(ctx)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return page, base, token, nil
+}
+
 // platformAPIToken returns a bearer token for the fixed admin identity, authenticating
 // once per scenario and caching the result.
 func (u *UI) platformAPIToken(ctx context.Context) (string, error) {
@@ -63,6 +79,9 @@ func (u *UI) platformAPIToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("authenticating against platform-api: %w", err)
 	}
+	if status := resp.Status(); status < 200 || status >= 300 {
+		return "", fmt.Errorf("platform-api login returned HTTP status %d", status)
+	}
 	var body struct {
 		Token string `json:"token"`
 	}
@@ -80,15 +99,7 @@ func (u *UI) platformAPIToken(ctx context.Context) (string, error) {
 
 // createSecretDirectly stores a secret through platform-api's own API, bypassing the UI.
 func (u *UI) createSecretDirectly(ctx context.Context, handle, value string) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	base, err := u.platformAPIBaseURL()
-	if err != nil {
-		return err
-	}
-	token, err := u.platformAPIToken(ctx)
+	page, base, token, err := u.platformAPI(ctx)
 	if err != nil {
 		return err
 	}
@@ -113,15 +124,7 @@ func (u *UI) createSecretDirectly(ctx context.Context, handle, value string) err
 // deletesProviderDirectly removes a provider through platform-api's own API, bypassing the
 // UI — for tearing down a provider mid-scenario without navigating back to it.
 func (u *UI) deletesProviderDirectly(ctx context.Context, name string) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	base, err := u.platformAPIBaseURL()
-	if err != nil {
-		return err
-	}
-	token, err := u.platformAPIToken(ctx)
+	page, base, token, err := u.platformAPI(ctx)
 	if err != nil {
 		return err
 	}
@@ -149,15 +152,7 @@ func (u *UI) deletesProviderDirectly(ctx context.Context, name string) error {
 // fetchSecretDirectly reads a secret's stored fields through platform-api's own API and
 // returns the raw response body.
 func (u *UI) fetchSecretDirectly(ctx context.Context, handle string) (string, error) {
-	page, err := u.page(ctx)
-	if err != nil {
-		return "", err
-	}
-	base, err := u.platformAPIBaseURL()
-	if err != nil {
-		return "", err
-	}
-	token, err := u.platformAPIToken(ctx)
+	page, base, token, err := u.platformAPI(ctx)
 	if err != nil {
 		return "", err
 	}

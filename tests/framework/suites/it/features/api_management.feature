@@ -60,7 +60,7 @@ Feature: API management
     And the JSON response field "status" should be "error"
 
   Scenario: Get API by invalid ID format returns 404
-    When I send a "GET" request to the "gateway-controller" service at "/rest-apis/invalid@id#format"
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis/invalid@id%23format"
     Then the response status should be 404
     And the response should be valid JSON
 
@@ -391,7 +391,7 @@ Feature: API management
     Then the response should be successful
 
   Scenario: Delete API with invalid ID format returns 404
-    When I send a "DELETE" request to the "gateway-controller" service at "/rest-apis/invalid@id#format!!"
+    When I send a "DELETE" request to the "gateway-controller" service at "/rest-apis/invalid@id%23format!!"
     Then the response status should be 404
     And the response should be valid JSON
 

@@ -65,7 +65,7 @@ if [ -n "$go_inputs" ]; then
 		} > "$html_profile"
 		go tool cover -html="$html_profile" -o "$report_dir/coverage.html"
 		local covered total
-		covered=$(awk 'NR>1 && $NF>0 {n++} END {print n+0}' "$report_dir/coverage.txt")
+		covered=$(awk 'NR>1 && $NF>0 {n+=$(NF-1)} END {print n+0}' "$report_dir/coverage.txt")
 		total=$(awk 'NR>1 {n+=$(NF-1)} END {print n+0}' "$report_dir/coverage.txt")
 		[ "$covered" -gt 0 ] || die "$service Go coverage contains no executed statements"
 		awk -v covered="$covered" -v total="$total" 'BEGIN {printf "Go coverage: %.1f%% of statements (%d/%d)\n", 100*covered/total, covered, total}'
@@ -139,6 +139,7 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 	node "$@"
 	[ -s "$out/browser-report/lcov.info" ] || die "browser coverage reporter produced no LCOV report"
 	[ -s "$out/browser-report/summary.json" ] || die "browser coverage reporter produced no summary"
+	command -v rg >/dev/null 2>&1 || die "ripgrep (rg) is unavailable"
 
 	# Keep product reports separate so a combined UI percentage cannot hide which
 	# frontend produced it. The combined report above remains useful for one upload.

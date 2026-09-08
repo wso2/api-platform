@@ -22,10 +22,10 @@ Feature: AI gateway lifecycle
 
   Scenario: An administrator registers an AI gateway, then removes it
     Given the user is signed in
-    When the user creates the AI gateway "e2e-ai-gateway" at "https://localhost:8443"
+    When the user creates the AI gateway "${UNIQUE:e2e-ai-gateway}" at "https://localhost:8443"
     Then the user is on the AI gateway's overview page
-    And the user sees "e2e-ai-gateway" on the page
+    And the user sees "${UNIQUE:e2e-ai-gateway}" on the page
 
     When the user opens AI Gateways
-    And the user deletes the AI gateway "e2e-ai-gateway"
-    Then the user no longer sees "e2e-ai-gateway"
+    And the user deletes the AI gateway "${UNIQUE:e2e-ai-gateway}"
+    Then the user no longer sees "${UNIQUE:e2e-ai-gateway}"

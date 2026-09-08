@@ -225,6 +225,11 @@ func (t *callTracker) awaitFetchServerInfoCall(ctx context.Context) (recordedCal
 
 const keyCallTracker = "uiCallTracker"
 
+type callTrackerState struct {
+	tracker *callTracker
+	handler func(playwright.Request)
+}
+
 // watchSecretAndProviderCalls starts recording every /secrets, /llm-providers, and
 // /llm-proxies request for the rest of the scenario, replacing any tracker from an
 // earlier action.
@@ -233,9 +238,15 @@ func (u *UI) watchSecretAndProviderCalls(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if v, ok := tcontext.Get(ctx, keyCallTracker); ok {
+		if previous, ok := v.(*callTrackerState); ok {
+			page.RemoveListener("requestfinished", previous.handler)
+		}
+	}
 	tracker := &callTracker{}
-	page.OnRequestFinished(tracker.record)
-	return tcontext.Set(ctx, keyCallTracker, tracker)
+	handler := tracker.record
+	page.OnRequestFinished(handler)
+	return tcontext.Set(ctx, keyCallTracker, &callTrackerState{tracker: tracker, handler: handler})
 }
 
 func (u *UI) tracker(ctx context.Context) (*callTracker, error) {
@@ -243,11 +254,11 @@ func (u *UI) tracker(ctx context.Context) (*callTracker, error) {
 	if !ok {
 		return nil, fmt.Errorf("no network calls have been recorded in this scenario")
 	}
-	t, ok := v.(*callTracker)
+	state, ok := v.(*callTrackerState)
 	if !ok {
 		return nil, fmt.Errorf("recorded calls are stored as %T", v)
 	}
-	return t, nil
+	return state.tracker, nil
 }
 
 // --- provider create/update actions ---
@@ -255,6 +266,11 @@ func (u *UI) tracker(ctx context.Context) (*callTracker, error) {
 // submitsProviderWithCredential fills and submits the OpenAI template's provider form with
 // an explicit credential, recording the /secrets and /llm-providers calls it makes.
 func (u *UI) submitsProviderWithCredential(ctx context.Context, name, credential string) error {
+	if credential != "" {
+		if err := markSensitiveArtifacts(ctx); err != nil {
+			return err
+		}
+	}
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err
 	}
@@ -334,6 +350,9 @@ func (u *UI) opensProviderFromList(ctx context.Context, name string) error {
 // clicks the page's Save button — editing stages the change locally; Save is what
 // persists it, recording the calls the save makes.
 func (u *UI) changesProviderCredential(ctx context.Context, newValue string) error {
+	if err := markSensitiveArtifacts(ctx); err != nil {
+		return err
+	}
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err
 	}
@@ -462,7 +481,7 @@ func (u *UI) providerCallCarriesAPlaceholder(ctx context.Context, method, plaint
 		return err
 	}
 	if !strings.Contains(authValue, `{{ secret "`) {
-		return fmt.Errorf("the credential carries no secret placeholder: %s", authValue)
+		return fmt.Errorf("the credential carries no secret placeholder")
 	}
 	if strings.Contains(authValue, plaintext) {
 		return fmt.Errorf("the credential still carries the plaintext value")
@@ -486,7 +505,7 @@ func (u *UI) providerCallCarriesPlaceholderFor(ctx context.Context, method, hand
 		return err
 	}
 	if !strings.Contains(authValue, secretPlaceholder(handle)) {
-		return fmt.Errorf("the credential does not reference secret %q: %s", handle, authValue)
+		return fmt.Errorf("the credential does not reference the expected secret")
 	}
 	return nil
 }
@@ -582,7 +601,7 @@ func (u *UI) fetchingTheSecretDirectlyReturnsNoPlaintextValue(ctx context.Contex
 		return err
 	}
 	if strings.Contains(body, `"value"`) || strings.Contains(body, `"encryptedValue"`) {
-		return fmt.Errorf("the secret response unexpectedly carries a value field: %s", body)
+		return fmt.Errorf("the secret response unexpectedly carries a value field")
 	}
 	return nil
 }

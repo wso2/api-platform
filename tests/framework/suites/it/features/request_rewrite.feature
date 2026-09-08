@@ -159,6 +159,7 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "args.source" should be "legacy"
     And the JSON response field "args.q" should be "new-value"
+    And the JSON response field "args.debug" should not exist
 
 
   Scenario: Method rewrite changes the request method

@@ -37,6 +37,23 @@ const artifactsDir = "artifacts"
 
 var artifactNameSanitizer = regexp.MustCompile(`[^a-z0-9]+`)
 
+func prepareArtifactsDir() error {
+	if err := os.MkdirAll(artifactsDir, 0o700); err != nil {
+		return err
+	}
+	return os.Chmod(artifactsDir, 0o700)
+}
+
+func markSensitiveArtifacts(ctx context.Context) error {
+	return tcontext.Set(ctx, keySensitiveArtifacts, true)
+}
+
+func sensitiveArtifacts(ctx context.Context) bool {
+	value, ok := tcontext.Get(ctx, keySensitiveArtifacts)
+	marked, isBool := value.(bool)
+	return ok && isBool && marked
+}
+
 // artifactBaseName is the shared stem for one failure's evidence files.
 func artifactBaseName(scenario string) string {
 	name := artifactNameSanitizer.ReplaceAllString(strings.ToLower(scenario), "-")
@@ -47,19 +64,22 @@ func artifactBaseName(scenario string) string {
 // screenshot and the DOM — so a red run leaves more behind than an assertion message.
 // Best-effort: the scenario's own error is the signal, artifact trouble must not mask it.
 func (u *UI) saveFailureArtifacts(ctx context.Context, name string) {
+	if sensitiveArtifacts(ctx) {
+		return
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(artifactsDir, 0o755); err != nil {
+	if err := prepareArtifactsDir(); err != nil {
 		return
 	}
 	if shot, err := page.Screenshot(playwright.PageScreenshotOptions{
 		FullPage: playwright.Bool(true)}); err == nil {
-		_ = os.WriteFile(filepath.Join(artifactsDir, name+".png"), shot, 0o644)
+		_ = os.WriteFile(filepath.Join(artifactsDir, name+".png"), shot, 0o600)
 	}
 	if content, err := page.Content(); err == nil {
-		_ = os.WriteFile(filepath.Join(artifactsDir, name+".html"), []byte(content), 0o644)
+		_ = os.WriteFile(filepath.Join(artifactsDir, name+".html"), []byte(content), 0o600)
 	}
 }
 
@@ -78,8 +98,15 @@ func (u *UI) stopTracing(ctx context.Context, name string, keep bool) {
 		_ = bctx.Tracing().Stop()
 		return
 	}
-	if err := os.MkdirAll(artifactsDir, 0o755); err != nil {
+	if sensitiveArtifacts(ctx) {
+		_ = bctx.Tracing().Stop()
 		return
 	}
-	_ = bctx.Tracing().Stop(filepath.Join(artifactsDir, name+"-trace.zip"))
+	if err := prepareArtifactsDir(); err != nil {
+		return
+	}
+	tracePath := filepath.Join(artifactsDir, name+"-trace.zip")
+	if err := bctx.Tracing().Stop(tracePath); err == nil {
+		_ = os.Chmod(tracePath, 0o600)
+	}
 }

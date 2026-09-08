@@ -286,7 +286,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 
 		resp, err := client.Do(ctx, httpx.Request{
 			Method: http.MethodDelete,
-			URL:    base + "/api/management/v1/rest-apis/" + res.ID,
+			URL:    base + steps.ManagementBasePath + "/rest-apis/" + res.ID,
 			Headers: map[string]string{
 				"Authorization": basicAuthFor(topo),
 			},
@@ -320,7 +320,7 @@ func registerControllerDeleter(
 		}
 		resp, err := client.Do(ctx, httpx.Request{
 			Method: http.MethodDelete,
-			URL:    base + "/api/management/v1" + collection + "/" + res.ID,
+			URL:    base + steps.ManagementBasePath + collection + "/" + res.ID,
 			Headers: map[string]string{
 				"Authorization": basicAuthFor(topo),
 			},

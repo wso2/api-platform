@@ -24,11 +24,11 @@ Feature: LLM proxy credential secrecy
 
   Scenario: Creating a proxy with a plaintext credential stores it as a secret placeholder
     Given the user is signed in
-    And the user creates a project named "TC1 Secret Project"
+    And the user creates a project named "${UNIQUE:TC1-Secret-Project}"
     And the user starts adding a provider from the "OpenAI" template
-    And the user creates the provider "TC1 Secret Provider" using the template's built-in endpoint
+    And the user creates the provider "${UNIQUE:TC1-Secret-Provider}" using the template's built-in endpoint
     Then the user is on the provider's overview page
-    When the user creates an app LLM proxy "TC1 Secret Proxy" in project "TC1 Secret Project" using the API key "sk-tc1-proxy-plaintext-key"
+    When the user creates an app LLM proxy "${UNIQUE:TC1-Secret-Proxy}" in project "${UNIQUE:TC1-Secret-Project}" using the API key "sk-tc1-proxy-plaintext-key"
     Then the user is on the proxy's overview page
     And the proxy was created with a placeholder referencing that secret, not the credential "sk-tc1-proxy-plaintext-key"
     And a secret was created for that credential
@@ -37,33 +37,33 @@ Feature: LLM proxy credential secrecy
   Scenario: Creating a proxy whose credential is already a secret placeholder does not mint a new secret
     Given the user is signed in
     And a secret "tc2-existing-key" already holds the value "sk-tc2-pre-existing-value"
-    And the user creates a project named "TC2 Secret Project"
+    And the user creates a project named "${UNIQUE:TC2-Secret-Project}"
     And the user starts adding a provider from the "OpenAI" template
-    And the user creates the provider "TC2 Secret Provider" using the template's built-in endpoint
+    And the user creates the provider "${UNIQUE:TC2-Secret-Provider}" using the template's built-in endpoint
     Then the user is on the provider's overview page
-    When the user creates an app LLM proxy "TC2 Secret Proxy" in project "TC2 Secret Project" using the API key placeholder referencing "tc2-existing-key"
+    When the user creates an app LLM proxy "${UNIQUE:TC2-Secret-Proxy}" in project "${UNIQUE:TC2-Secret-Project}" using the API key placeholder referencing "tc2-existing-key"
     Then the user is on the proxy's overview page
     And the proxy was created with the placeholder referencing "tc2-existing-key"
     And no secret was created for that credential
 
   Scenario: A failure to store the credential aborts proxy creation
     Given the user is signed in
-    And the user creates a project named "TC3 Secret Project"
+    And the user creates a project named "${UNIQUE:TC3-Secret-Project}"
     And the user starts adding a provider from the "OpenAI" template
-    And the user creates the provider "TC3 Secret Provider" using the template's built-in endpoint
+    And the user creates the provider "${UNIQUE:TC3-Secret-Provider}" using the template's built-in endpoint
     Then the user is on the provider's overview page
     And creating a secret always fails
-    When the user creates an app LLM proxy "TC3 Secret Proxy" in project "TC3 Secret Project" using the API key "sk-tc3-will-fail"
+    When the user creates an app LLM proxy "${UNIQUE:TC3-Secret-Proxy}" in project "${UNIQUE:TC3-Secret-Project}" using the API key "sk-tc3-will-fail"
     Then the user sees an error notification
     And no proxy was created
 
   Scenario: Editing a proxy's credential rotates its secret and cleans up the old one
     Given the user is signed in
-    And the user creates a project named "TC4 Secret Project"
+    And the user creates a project named "${UNIQUE:TC4-Secret-Project}"
     And the user starts adding a provider from the "OpenAI" template
-    And the user creates the provider "TC4 Secret Provider" using the template's built-in endpoint
+    And the user creates the provider "${UNIQUE:TC4-Secret-Provider}" using the template's built-in endpoint
     Then the user is on the provider's overview page
-    And the user creates an app LLM proxy "TC4 Secret Proxy" in project "TC4 Secret Project" using the API key "sk-proxy-update-initial"
+    And the user creates an app LLM proxy "${UNIQUE:TC4-Secret-Proxy}" in project "${UNIQUE:TC4-Secret-Project}" using the API key "sk-proxy-update-initial"
     And the user is on the proxy's overview page
     And a secret was created for that credential
     And the current secret is remembered as the original
@@ -78,11 +78,11 @@ Feature: LLM proxy credential secrecy
   Scenario: Typing an explicit secret placeholder as the new proxy credential skips secret creation
     Given the user is signed in
     And a secret "tc5-explicit-handle" already holds the value "sk-tc5-explicit-handle-value"
-    And the user creates a project named "TC5 Secret Project"
+    And the user creates a project named "${UNIQUE:TC5-Secret-Project}"
     And the user starts adding a provider from the "OpenAI" template
-    And the user creates the provider "TC5 Secret Provider" using the template's built-in endpoint
+    And the user creates the provider "${UNIQUE:TC5-Secret-Provider}" using the template's built-in endpoint
     Then the user is on the provider's overview page
-    And the user creates an app LLM proxy "TC5 Secret Proxy" in project "TC5 Secret Project" using the API key "sk-proxy-update-initial"
+    And the user creates an app LLM proxy "${UNIQUE:TC5-Secret-Proxy}" in project "${UNIQUE:TC5-Secret-Project}" using the API key "sk-proxy-update-initial"
     And the user is on the proxy's overview page
     And the user opens the proxy's Provider tab
     When the user changes the proxy's credential to the placeholder referencing "tc5-explicit-handle"
@@ -92,11 +92,11 @@ Feature: LLM proxy credential secrecy
 
   Scenario: A failure to store the new proxy credential aborts the update
     Given the user is signed in
-    And the user creates a project named "TC6 Secret Project"
+    And the user creates a project named "${UNIQUE:TC6-Secret-Project}"
     And the user starts adding a provider from the "OpenAI" template
-    And the user creates the provider "TC6 Secret Provider" using the template's built-in endpoint
+    And the user creates the provider "${UNIQUE:TC6-Secret-Provider}" using the template's built-in endpoint
     Then the user is on the provider's overview page
-    And the user creates an app LLM proxy "TC6 Secret Proxy" in project "TC6 Secret Project" using the API key "sk-proxy-update-initial"
+    And the user creates an app LLM proxy "${UNIQUE:TC6-Secret-Proxy}" in project "${UNIQUE:TC6-Secret-Project}" using the API key "sk-proxy-update-initial"
     And the user is on the proxy's overview page
     And the user opens the proxy's Provider tab
     And creating a secret always fails

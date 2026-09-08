@@ -167,6 +167,12 @@ func TestSubstituteTemplateValues(t *testing.T) {
 	require.ErrorContains(t, err, `no value supplied for "missing"`)
 	_, err = substituteTemplateValues("name: ${VALUE:apiName", table)
 	require.ErrorContains(t, err, "unterminated")
+
+	_, err = substituteTemplateValues("name: ${VALUE:self}", templateTable("self", "${VALUE:self}"))
+	require.ErrorContains(t, err, "recursive template placeholder")
+	_, err = substituteTemplateValues("name: ${VALUE:first}", templateTable(
+		"first", "${VALUE:second}", "second", "${VALUE:first}"))
+	require.ErrorContains(t, err, "recursive template placeholder")
 }
 
 func TestTemplateValuesRejectsMalformedTables(t *testing.T) {

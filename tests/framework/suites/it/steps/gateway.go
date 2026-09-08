@@ -46,7 +46,7 @@ import (
 
 // API base paths, kept in sync with the gateway's OpenAPI documents.
 const (
-	managementBasePath = "/api/management/v1"
+	ManagementBasePath = "/api/management/v1"
 	adminBasePath      = "/api/admin/v1"
 )
 
@@ -452,7 +452,7 @@ func (g *Gateway) managementURL(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return base + managementBasePath + path, nil
+	return base + ManagementBasePath + path, nil
 }
 
 func (g *Gateway) adminURL(path string) (string, error) {
@@ -852,7 +852,7 @@ var serviceEndpoints = map[string]struct {
 	component, endpoint, basePath string
 	partitioned                   bool
 }{
-	"gateway-controller":       {component: "platform-gateway", endpoint: "rest", basePath: managementBasePath},
+	"gateway-controller":       {component: "platform-gateway", endpoint: "rest", basePath: ManagementBasePath},
 	"gateway-controller-admin": {component: "platform-gateway", endpoint: "admin", basePath: adminBasePath},
 	"policy-engine":            {component: "platform-gateway", endpoint: "policy-admin"},
 	"analytics":                {component: "testbench", endpoint: "analytics", partitioned: true},

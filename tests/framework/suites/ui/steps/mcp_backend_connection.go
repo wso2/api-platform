@@ -171,7 +171,7 @@ func (u *UI) theRefetchRequestUsedOnlyTheStoredProxy(ctx context.Context) error 
 		return fmt.Errorf("expected url to be omitted, got %q", req.URL)
 	}
 	if req.Auth != nil {
-		return fmt.Errorf("expected no auth override, got one referencing %q", req.Auth.Value)
+		return fmt.Errorf("expected no auth override, got one")
 	}
 	return nil
 }
@@ -207,7 +207,7 @@ func (u *UI) theRefetchRequestSentTheLiveCredential(ctx context.Context, url, he
 		return fmt.Errorf("auth header = %q, want %q", req.Auth.Header, header)
 	}
 	if req.Auth.Value != value {
-		return fmt.Errorf("auth value = %q, want %q", req.Auth.Value, value)
+		return fmt.Errorf("auth value did not match the expected credential")
 	}
 	return nil
 }
@@ -239,7 +239,7 @@ func (u *UI) theRefetchRequestUsedTheEditedURLAndStoredProxy(ctx context.Context
 		return fmt.Errorf("proxyId = %q, want %q", req.ProxyID, id)
 	}
 	if req.Auth != nil {
-		return fmt.Errorf("expected no auth override, got one referencing %q", req.Auth.Value)
+		return fmt.Errorf("expected no auth override, got one")
 	}
 	return nil
 }

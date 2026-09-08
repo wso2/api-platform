@@ -196,11 +196,16 @@ func substituteTemplateValues(template string, table *godog.Table) (string, erro
 	if err != nil {
 		return "", err
 	}
-	for {
-		start := strings.Index(template, templateValuePrefix)
-		if start < 0 {
+	var b strings.Builder
+	from := 0
+	for from < len(template) {
+		relStart := strings.Index(template[from:], templateValuePrefix)
+		if relStart < 0 {
+			b.WriteString(template[from:])
 			break
 		}
+		start := from + relStart
+		b.WriteString(template[from:start])
 		relEnd := strings.IndexByte(template[start+len(templateValuePrefix):], '}')
 		if relEnd < 0 {
 			return "", fmt.Errorf("unterminated template placeholder at byte %d", start)
@@ -214,9 +219,13 @@ func substituteTemplateValues(template string, table *godog.Table) (string, erro
 		if !ok {
 			return "", fmt.Errorf("no value supplied for %q", key)
 		}
-		template = template[:start] + value + template[end+1:]
+		if strings.Contains(value, templateValuePrefix) {
+			return "", fmt.Errorf("value for %q contains a recursive template placeholder", key)
+		}
+		b.WriteString(value)
+		from = end + 1
 	}
-	return template, nil
+	return b.String(), nil
 }
 
 func templateValues(table *godog.Table) (map[string]string, error) {

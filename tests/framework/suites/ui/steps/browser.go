@@ -35,8 +35,9 @@ import (
 // Scenario-scoped keys. The page is scenario state for the same reason request headers are
 // in the gateway suite: runners are parallel, and anything shared mutable belongs in a scope.
 const (
-	keyPage           = "uiPage"
-	keyBrowserContext = "uiBrowserContext"
+	keyPage               = "uiPage"
+	keyBrowserContext     = "uiBrowserContext"
+	keySensitiveArtifacts = "uiSensitiveArtifacts"
 )
 
 // driver starts the local playwright driver once per process. The driver is a multiplexer:

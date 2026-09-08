@@ -27,6 +27,7 @@ import (
 	playwright "github.com/mxschmitt/playwright-go"
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
@@ -506,10 +507,6 @@ type invocation struct {
 	body   string
 }
 
-// invokeAttempts bounds the user-perspective wait for the deployment and the freshly
-// generated key to reach the gateway: the invocation retries until the gateway serves it.
-const invokeAttempts = 15
-
 func (u *UI) deploysToGateway(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
@@ -653,8 +650,7 @@ func (u *UI) invokesChatCompletions(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("reading the invoke URL: %w", err)
 	}
-	var inv invocation
-	for attempt := 1; attempt <= invokeAttempts; attempt++ {
+	inv, err := retry.Until(ctx, retry.Options{}, func(context.Context) (invocation, error) {
 		resp, err := page.Context().Request().Post(invokeURL+"/chat/completions",
 			playwright.APIRequestContextPostOptions{
 				Data: map[string]any{
@@ -664,14 +660,13 @@ func (u *UI) invokesChatCompletions(ctx context.Context) error {
 				Headers: map[string]string{"X-API-Key": key},
 			})
 		if err != nil {
-			return fmt.Errorf("invoking %s: %w", invokeURL, err)
+			return invocation{}, err
 		}
 		body, _ := resp.Body()
-		inv = invocation{status: resp.Status(), body: string(body)}
-		if inv.status == 200 {
-			break
-		}
-		page.WaitForTimeout(2000)
+		return invocation{status: resp.Status(), body: string(body)}, nil
+	}, func(inv invocation) bool { return inv.status == 200 })
+	if err != nil {
+		return fmt.Errorf("invoking %s: %w", invokeURL, err)
 	}
 	return tcontext.Set(ctx, keyInvocation, inv)
 }

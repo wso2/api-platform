@@ -73,6 +73,11 @@ func fillsMCPProxyEndpointAndAuth(page playwright.Page, endpointURL, authHeader,
 // submitsMCPProxyWithCredential fills and submits the MCP proxy create form with an
 // explicit auth header and value, recording the /secrets and /mcp-proxies calls it makes.
 func (u *UI) submitsMCPProxyWithCredential(ctx context.Context, name, endpointURL, authHeader, authValue string) error {
+	if authValue != "" {
+		if err := markSensitiveArtifacts(ctx); err != nil {
+			return err
+		}
+	}
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err
 	}
@@ -197,7 +202,7 @@ func (u *UI) mcpProxyCallCarriesAPlaceholder(ctx context.Context, method, plaint
 		return err
 	}
 	if !strings.Contains(authValue, `{{ secret "`) {
-		return fmt.Errorf("the credential carries no secret placeholder: %s", authValue)
+		return fmt.Errorf("the credential carries no secret placeholder")
 	}
 	if strings.Contains(authValue, plaintext) {
 		return fmt.Errorf("the credential still carries the plaintext value")
@@ -276,7 +281,7 @@ func (u *UI) mcpProxyCallHasNoAuthBlock(ctx context.Context, method string) erro
 		return fmt.Errorf("parsing the request body: %w", err)
 	}
 	if body.Upstream.Main.Auth != nil {
-		return fmt.Errorf("expected no auth block, got one referencing %q", body.Upstream.Main.Auth.Value)
+		return fmt.Errorf("expected no auth block, got one")
 	}
 	return nil
 }
@@ -309,7 +314,7 @@ func (u *UI) theSecretHandleIsARandomUUID(ctx context.Context) error {
 		return fmt.Errorf("no secret handle recorded in this scenario")
 	}
 	if !secretHandleUUID.MatchString(handle) {
-		return fmt.Errorf("secret handle %q is not a random UUID", handle)
+		return fmt.Errorf("secret handle is not a random UUID")
 	}
 	return nil
 }
@@ -392,7 +397,7 @@ func (u *UI) theMCPProxyUpdateKeptTheAuthHeaderAndType(ctx context.Context, head
 		return fmt.Errorf("auth type = %q, want %q", body.Upstream.Main.Auth.Type, authType)
 	}
 	if body.Upstream.Main.Auth.Value != "" {
-		return fmt.Errorf("expected the auth value to be omitted, got %q", body.Upstream.Main.Auth.Value)
+		return fmt.Errorf("expected the auth value to be omitted")
 	}
 	return nil
 }

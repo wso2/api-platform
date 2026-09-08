@@ -53,6 +53,8 @@ Feature: Deployment search
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "${CTX:resourceName1_1}"
+    And the response body should contain "${CTX:resourceName1_2}"
     When I delete the API "${CTX:resourceName1_1}"
     Then the response should be successful
     When I delete the API "${CTX:resourceName1_2}"
@@ -94,6 +96,7 @@ Feature: Deployment search
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "Version-Search-API"
     When I delete the API "${CTX:resourceName3_1}"
     Then the response should be successful
 
@@ -113,6 +116,7 @@ Feature: Deployment search
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "Context-Search-API"
     When I delete the API "${CTX:resourceName4_1}"
     Then the response should be successful
 
@@ -129,10 +133,12 @@ Feature: Deployment search
       | spec.operations         | [{"method":"GET","path":"/test"}] |
     Then the response should be successful
     And I wait for policy snapshot sync
-    When I send a "GET" request to the "gateway-controller" service at "/rest-apis?status=DEPLOYED"
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis?status=deployed"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "Status-Search-API"
+    And the response body should contain "deployed"
     When I delete the API "${CTX:resourceName5_1}"
     Then the response should be successful
 
@@ -152,6 +158,7 @@ Feature: Deployment search
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "MultiFilterAPI"
     When I delete the API "${CTX:resourceName6_1}"
     Then the response should be successful
 
@@ -178,6 +185,7 @@ Feature: Deployment search
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "SearchMCP"
     And the response body should contain "mcpProxies"
     When I delete the MCP proxy "${CTX:mcpName1}"
     Then the response should be successful
@@ -218,6 +226,7 @@ Feature: Deployment search
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "VersionMCP"
     When I delete the MCP proxy "${CTX:mcpName3}"
     Then the response should be successful
 
