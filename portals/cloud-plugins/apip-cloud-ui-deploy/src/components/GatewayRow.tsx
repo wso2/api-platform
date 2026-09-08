@@ -33,6 +33,8 @@ export type GatewayRowProps = {
   environmentName: string;
   busy: boolean;
   onRetry: () => void;
+  /** Puts a suspended deployment back on the gateway, unchanged. */
+  onRedeploy: () => void;
   onStop: () => void;
 };
 
@@ -41,6 +43,7 @@ const GatewayRow: FC<GatewayRowProps> = ({
   environmentName,
   busy,
   onRetry,
+  onRedeploy,
   onStop,
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -48,17 +51,26 @@ const GatewayRow: FC<GatewayRowProps> = ({
   const tone = gatewayStatusTone(gateway.status);
   const scopeLabel = `${environmentName} · ${gateway.name}`;
 
-  // A failed deployment is retried; a live one is stopped. Nothing to do while a
-  // deployment is still settling, or where there is none at all.
-  const failed = gateway.status === 'FAILED';
-  const actionLabel = failed ? 'Re deploy' : 'Stop deployment';
+  // What the one action button does depends on what the gateway is doing:
+  //
+  //  - suspended (UNDEPLOYED) — put the SAME deployment back, artifact and all;
+  //  - failed — deploy its build again, which makes a new deployment;
+  //  - serving — stop it.
+  //
+  // Nothing to do while a deployment is still settling, or where there is none.
+  const action: 'redeploy' | 'retry' | 'stop' =
+    gateway.status === 'UNDEPLOYED' ? 'redeploy' : gateway.status === 'FAILED' ? 'retry' : 'stop';
+  const actionLabel = action === 'stop' ? 'Stop deployment' : 'Redeploy';
   const actionDisabled =
     busy ||
     gateway.status === 'NOT_DEPLOYED' ||
     gateway.status === 'DEPLOYING' ||
     gateway.status === 'UNDEPLOYING' ||
-    (!failed && !gateway.deploymentId);
-  const handleActionClick = failed ? onRetry : onStop;
+    // Retrying re-deploys the build, so it needs no deployment; the other two act
+    // on the deployment itself.
+    (action !== 'retry' && !gateway.deploymentId);
+  const handleActionClick =
+    action === 'redeploy' ? onRedeploy : action === 'retry' ? onRetry : onStop;
 
   return (
     <Card>
@@ -134,7 +146,13 @@ const GatewayRow: FC<GatewayRowProps> = ({
               </>
             ) : null}
 
-            <Button fullWidth variant="outlined" color="error" disabled={actionDisabled} onClick={handleActionClick}>
+            <Button
+              fullWidth
+              variant="outlined"
+              color={action === 'stop' ? 'error' : 'primary'}
+              disabled={actionDisabled}
+              onClick={handleActionClick}
+            >
               {actionLabel}
             </Button>
           </Box>

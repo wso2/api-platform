@@ -42,6 +42,7 @@ export type DeployPageProps = {
   ) => void;
   onStopGateway: (environment: Environment, gatewayId: string) => void;
   onRetryGateway: (environment: Environment, gatewayId: string) => void;
+  onRedeployGateway: (environment: Environment, gatewayId: string) => void;
 };
 
 /**
@@ -65,6 +66,7 @@ const DeployPage: FC<DeployPageProps> = ({
   onDeploy,
   onStopGateway,
   onRetryGateway,
+  onRedeployGateway,
 }) => {
   const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -168,6 +170,7 @@ const DeployPage: FC<DeployPageProps> = ({
                   }
                   onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
                   onRetryGateway={(gatewayId) => onRetryGateway(environment, gatewayId)}
+                  onRedeployGateway={(gatewayId) => onRedeployGateway(environment, gatewayId)}
                 />
               </Fragment>
             ))}

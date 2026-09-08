@@ -166,6 +166,21 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
   };
 
   /**
+   * Puts a suspended deployment back on its gateway. The deployment is immutable,
+   * so this restores exactly what was running — same build, same endpoint — and
+   * builds nothing, which is what separates it from a retry.
+   */
+  const handleRedeploy = (environment: Environment, gatewayId: string) => {
+    const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
+    if (!client || !gateway?.deploymentId) return;
+    void runAction(
+      () => client.redeploy(environment.name, gatewayId, gateway.deploymentId!),
+      `Redeploying ${gateway.name}.`,
+      `Unable to redeploy ${gateway.name}.`
+    );
+  };
+
+  /**
    * Retrying sends the gateway the build it already has, not a new one: a failed
    * deployment is retried as it was, so a retry never quietly ships something
    * else. A later environment can only be reached by promoting into it, so the
@@ -251,6 +266,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onRetryGateway={handleRetry}
+      onRedeployGateway={handleRedeploy}
     />
   );
 };

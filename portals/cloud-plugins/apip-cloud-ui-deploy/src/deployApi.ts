@@ -150,6 +150,19 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
       });
     },
 
+    /**
+     * Serves a suspended deployment again on the same gateway. The deployment is
+     * immutable, so it comes back exactly as it was — same build, same endpoint —
+     * and nothing is rendered or built.
+     */
+    async redeploy(environment: string, gatewayId: string, deploymentId: string): Promise<void> {
+      const query = `?environment=${encodeURIComponent(environment)}&gatewayId=${encodeURIComponent(gatewayId)}`;
+      await apiFetch(
+        'POST',
+        `${base}/deployments/${encodeURIComponent(deploymentId)}/redeploy${query}`
+      );
+    },
+
     /** Stops serving one deployment on one gateway; the rest are untouched. */
     async undeploy(environment: string, gatewayId: string, deploymentId: string): Promise<void> {
       const query = `?environment=${encodeURIComponent(environment)}&gatewayId=${encodeURIComponent(gatewayId)}`;
