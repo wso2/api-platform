@@ -183,7 +183,11 @@ export function AttachedPolicyList({
                 <Typography noWrap sx={{ flex: 1, fontWeight: 500 }} variant="body2">
                   {policy.name}
                 </Typography>
-                <Chip label={`v${policy.version}`} size="small" variant="outlined" />
+                <Chip
+                  label={policy.version.startsWith('v') ? policy.version : `v${policy.version}`}
+                  size="small"
+                  variant="outlined"
+                />
                 <Stack direction="row">
                   <Tooltip title={intl.formatMessage(messages.edit)}>
                     <IconButton

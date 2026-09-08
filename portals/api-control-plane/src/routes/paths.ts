@@ -39,8 +39,7 @@ export type ScopeHandle = string | null;
  */
 export const SELECT_SCOPE_SEGMENT = 'select-scope';
 
-const join = (...segments: (string | undefined)[]) =>
-  `/${segments.filter(Boolean).join('/')}`;
+const join = (...segments: (string | undefined)[]) => `/${segments.filter(Boolean).join('/')}`;
 
 /**
  * Builds a **project-level** page's path, marking an unresolved project:
@@ -67,7 +66,7 @@ const join = (...segments: (string | undefined)[]) =>
 export const projectPath = (
   orgHandle: string,
   projectHandler: ScopeHandle,
-  suffix?: string
+  suffix?: string,
 ): string =>
   projectHandler
     ? join('organizations', orgHandle, 'projects', projectHandler, suffix)
@@ -88,7 +87,7 @@ export const apiPath = (
   orgHandle: string,
   projectHandler: ScopeHandle,
   apiHandler: ScopeHandle,
-  suffix?: string
+  suffix?: string,
 ): string => {
   if (!projectHandler) return projectPath(orgHandle, null, suffix);
   if (!apiHandler) {
@@ -98,18 +97,10 @@ export const apiPath = (
       'projects',
       projectHandler,
       SELECT_SCOPE_SEGMENT,
-      suffix
+      suffix,
     );
   }
-  return join(
-    'organizations',
-    orgHandle,
-    'projects',
-    projectHandler,
-    'apis',
-    apiHandler,
-    suffix
-  );
+  return join('organizations', orgHandle, 'projects', projectHandler, 'apis', apiHandler, suffix);
 };
 
 export const routes = {
@@ -120,14 +111,10 @@ export const routes = {
   sessionExpired: '/session-expired',
   serverError: '/server-error',
   organizations: '/organizations',
-  organizationHome: (orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/home`,
-  projects: (orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/projects`,
-  gateways: (orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/gateways`,
-  newGateway: (orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/gateways/new`,
+  organizationHome: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/home`,
+  projects: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/projects`,
+  gateways: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/gateways`,
+  newGateway: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/gateways/new`,
   gateway: (orgHandle = ':orgHandle', gatewayId = ':gatewayId') =>
     `/organizations/${orgHandle}/gateways/${gatewayId}`,
   // Project and API overview are the deeper tiers of the sidebar's Overview
@@ -136,45 +123,40 @@ export const routes = {
   // without its handle, and neither needs a scope-less alias.
   projectHome: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     projectPath(orgHandle, projectHandler, 'home'),
-  apis: (
-    orgHandle = ':orgHandle',
-    projectHandler: ScopeHandle = ':projectHandler'
-  ) => projectPath(orgHandle, projectHandler, 'apis'),
+  apis: (orgHandle = ':orgHandle', projectHandler: ScopeHandle = ':projectHandler') =>
+    projectPath(orgHandle, projectHandler, 'apis'),
   // Only reachable from inside a project (the APIs page's own create button),
   // so it has no scope-less alias.
   newApi: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     projectPath(orgHandle, projectHandler, 'apis/new'),
-  api: (
-    orgHandle = ':orgHandle',
-    projectHandler = ':projectHandler',
-    apiHandler = ':apiHandler'
-  ) => apiPath(orgHandle, projectHandler, apiHandler),
+  api: (orgHandle = ':orgHandle', projectHandler = ':projectHandler', apiHandler = ':apiHandler') =>
+    apiPath(orgHandle, projectHandler, apiHandler),
   apiEdit: (
     orgHandle = ':orgHandle',
     projectHandler = ':projectHandler',
-    apiHandler = ':apiHandler'
+    apiHandler = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'edit'),
   // Develop's own submenu: the three panels that used to be tabs on the API
   // overview page.
   apiDevelopPolicies: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/policies'),
   apiDevelopRouting: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/routing'),
   apiDevelopDocuments: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/documents'),
   apiDeploy: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'deploy'),
   // Test, Observability and Manage are sidebar *parents*: in API scope they open
   // a submenu rather than a page, so only their children have paths. There is no
@@ -182,61 +164,69 @@ export const routes = {
   apiTestConsole: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/console'),
   apiTestCurl: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/curl'),
   apiTestChat: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/chat'),
   apiManageMonetize: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'manage/monetize'),
   apiManageLifecycle: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'manage/lifecycle'),
   // The doubled `api` is the child's own label ("API Insights") under the
   // Insights parent, not a stutter in the naming scheme.
   apiInsightsApi: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'insights/api'),
   apiInsightsCompliance: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'insights/compliance'),
   apiObservabilityAlerts: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/alerts'),
   apiObservabilityMetrics: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/metrics'),
   // Runtime logs, scoped to one API. Was project-wide (`observe/runtimelogs`)
   // when the sidebar had a project section; it now sits under Observability.
   apiObservabilityLogs: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
+  organizationPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals`,
+  projectPortals: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
+    projectPath(orgHandle, projectHandler, 'portals'),
+  apiPortals: (
+    orgHandle = ':orgHandle',
+    projectHandler = ':projectHandler',
+    apiHandler = ':apiHandler',
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'portals'),
   apiAdmin: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler'
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'admin'),
   // Settings is the one page with no scope requirement, so the sidebar links to
   // the organization-level path and it renders whatever the scope. It needs no
@@ -245,32 +235,24 @@ export const routes = {
   // The same page, deep-linked for one project — the gear on a project card.
   // Kept as its own builder rather than a `ScopeHandle` on `settings` because
   // these two are alternative entry points, not a scoped/scope-less pair.
-  projectSettings: (
-    orgHandle = ':orgHandle',
-    projectHandler = ':projectHandler'
-  ) => projectPath(orgHandle, projectHandler, 'settings'),
+  projectSettings: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
+    projectPath(orgHandle, projectHandler, 'settings'),
   // One Settings sub-nav tab, org- and project-scoped. `tab` is the segment
   // below `/settings/` ("general", or an extension's own `routePath` with the
   // `settings/` prefix stripped) — the sub-nav and the routes are built from
   // these two, so a tab can never link somewhere no route answers.
   settingsTab: (tab: string, orgHandle = ':orgHandle') =>
     `/organizations/${orgHandle}/settings/${tab}`,
-  projectSettingsTab: (
-    tab: string,
-    orgHandle = ':orgHandle',
-    projectHandler = ':projectHandler'
-  ) => projectPath(orgHandle, projectHandler, `settings/${tab}`),
+  projectSettingsTab: (tab: string, orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
+    projectPath(orgHandle, projectHandler, `settings/${tab}`),
 };
 
-export type ProjectPathBuilder = (
-  orgHandle: string,
-  projectHandler: ScopeHandle
-) => string;
+export type ProjectPathBuilder = (orgHandle: string, projectHandler: ScopeHandle) => string;
 
 export type ApiPathBuilder = (
   orgHandle: string,
   projectHandler: ScopeHandle,
-  apiHandler: ScopeHandle
+  apiHandler: ScopeHandle,
 ) => string;
 
 /**
@@ -286,7 +268,7 @@ export type ApiPathBuilder = (
 export type ScopedPathBuilder = (
   orgHandle: string,
   projectHandler?: string,
-  apiHandler?: string
+  apiHandler?: string,
 ) => string;
 
 /**
