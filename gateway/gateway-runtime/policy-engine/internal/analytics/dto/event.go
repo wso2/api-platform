@@ -76,6 +76,11 @@ type Event struct {
 	ErrorType         string                 `json:"errorType,omitempty" bson:"error_type"`
 	Properties        map[string]interface{} `json:"properties,omitempty" bson:"properties"`
 
+	// EventCategory and FaultCategory are derived from the Envoy access log's
+	// response flags and detail string by classifyFault
+	EventCategory     EventCategory          `json:"eventCategory,omitempty" bson:"event_category"`
+	FaultCategory     FaultCategory          `json:"faultCategory,omitempty" bson:"fault_category"`
+
 	// TrafficLogLatencies carries microsecond-precision gateway/backend timings
 	// for the stdout traffic-logging publisher. It is computed from the same ALS
 	// CommonProperties timepoints as Latencies but at full precision, and is kept

@@ -249,6 +249,46 @@ func TestBuildRecordFaults(t *testing.T) {
 	}
 }
 
+// The categories analytics.classifyFault derives must reach the record.
+func TestBuildRecordFaultCategories(t *testing.T) {
+	event := restEvent()
+	event.EventCategory = dto.EventCategoryFault
+	event.FaultCategory = dto.FaultCategoryTargetConnectivity
+	event.ErrorType = "upstream_request_timeout"
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, expected := range map[string]interface{}{
+		"wso2.event.category": "FAULT",
+		"wso2.error.category": "TARGET_CONNECTIVITY",
+		"error.type":          "upstream_request_timeout",
+	} {
+		if got[key] != expected {
+			t.Errorf("%s = %v, want %v", key, got[key], expected)
+		}
+	}
+}
+
+// A successful request must carry the SUCCESS category and no error attributes —
+// an absent wso2.error.category is what lets a consumer filter faults.
+func TestBuildRecordSuccessOmitsErrorAttributes(t *testing.T) {
+	event := restEvent()
+	event.EventCategory = dto.EventCategorySuccess
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if got["wso2.event.category"] != "SUCCESS" {
+		t.Errorf("wso2.event.category = %v, want SUCCESS", got["wso2.event.category"])
+	}
+	for _, key := range []string{"wso2.error.category", "error.type", "wso2.error.code", "wso2.error.sub_category"} {
+		if _, present := got[key]; present {
+			t.Errorf("%s is present on a successful record", key)
+		}
+	}
+}
+
 func TestBuildRecordGenAI(t *testing.T) {
 	event := restEvent()
 	event.API.APIType = "LlmProxy"
@@ -382,21 +422,59 @@ func TestBuildRecordMCPKeepsGatewayErrorType(t *testing.T) {
 	}
 }
 
+// Each capability's target goes on its own attribute, read from its own source
+// field: tools and prompts are named at params.name, a resource is addressed by
+// URI at params.uri.
 func TestMCPCapabilityRouting(t *testing.T) {
-	for capability, wantKey := range map[string]string{
-		"RESOURCE": "mcp.resource.uri",
-		"PROMPT":   "gen_ai.prompt.name",
-		"TOOL":     "gen_ai.tool.name",
-	} {
-		event := restEvent()
-		event.Properties["mcpAnalytics"] = map[string]interface{}{
-			"capability":     capability,
-			"capabilityName": "target-1",
-		}
-		o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
-		got := attrMap(t, o.buildRecord(event))
-		if got[wantKey] != "target-1" {
-			t.Errorf("capability %s: %s = %v, want target-1", capability, wantKey, got[wantKey])
+	cases := []struct {
+		capability string
+		mcp        map[string]interface{}
+		wantKey    string
+		wantValue  string
+	}{
+		{"TOOL", map[string]interface{}{"capabilityName": "search_docs"},
+			"gen_ai.tool.name", "search_docs"},
+		{"PROMPT", map[string]interface{}{"capabilityName": "summarize"},
+			"gen_ai.prompt.name", "summarize"},
+		{"RESOURCE", map[string]interface{}{"resourceUri": "file:///docs/readme.md"},
+			"mcp.resource.uri", "file:///docs/readme.md"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.capability, func(t *testing.T) {
+			event := restEvent()
+			tc.mcp["capability"] = tc.capability
+			event.Properties["mcpAnalytics"] = tc.mcp
+
+			o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+			got := attrMap(t, o.buildRecord(event))
+			if got[tc.wantKey] != tc.wantValue {
+				t.Errorf("%s = %v, want %v", tc.wantKey, got[tc.wantKey], tc.wantValue)
+			}
+		})
+	}
+}
+
+// mcp.resource.uri must come from resourceUri only. Reading capabilityName here
+// is the bug this replaced: params.name does not exist on a resources/read
+// request, so the attribute was always absent.
+func TestMCPResourceURIIgnoresCapabilityName(t *testing.T) {
+	event := restEvent()
+	event.Properties["mcpAnalytics"] = map[string]interface{}{
+		"capability":     "RESOURCE",
+		"capabilityName": "should-not-be-used",
+		"resourceUri":    "file:///docs/readme.md",
+	}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if got["mcp.resource.uri"] != "file:///docs/readme.md" {
+		t.Errorf("mcp.resource.uri = %v, want the resourceUri value", got["mcp.resource.uri"])
+	}
+	// A resource has no name, so neither name attribute may appear.
+	for _, key := range []string{"gen_ai.tool.name", "gen_ai.prompt.name"} {
+		if _, present := got[key]; present {
+			t.Errorf("%s is present on a resource read", key)
 		}
 	}
 }

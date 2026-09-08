@@ -757,8 +757,11 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 		attrs.b(ns("cache.hit"), event.Target.ResponseCacheHit)
 	}
 
-	// Faults. error.type is the one stable error attribute.
+	// Faults. error.type is the one stable error attribute; the categories are
+	// ours, derived in analytics.classifyFault from the Envoy response flags.
 	attrs.str("error.type", event.ErrorType)
+	attrs.str(ns("event.category"), string(event.EventCategory))
+	attrs.str(ns("error.category"), string(event.FaultCategory))
 	if event.Error != nil {
 		attrs.i64(ns("error.code"), int64(event.Error.ErrorCode))
 		attrs.str(ns("error.sub_category"), string(event.Error.ErrorMessage))
@@ -843,12 +846,14 @@ func (o *OTel) appendMCPAttributes(event *dto.Event, attrs *otelAttrs) {
 	attrs.anyStr("mcp.session.id", mcp["sessionId"])
 	attrs.anyStr("jsonrpc.request.id", mcp["jsonRpcId"])
 
+	// Tools and prompts are named (params.name); a resource is addressed by URI
+	// (params.uri), which the analytics policy extracts into its own field.
 	capabilityName, _ := mcp["capabilityName"].(string)
 	switch capability, _ := mcp["capability"].(string); capability {
 	case "TOOL":
 		attrs.str("gen_ai.tool.name", capabilityName)
 	case "RESOURCE":
-		attrs.str("mcp.resource.uri", capabilityName)
+		attrs.anyStr("mcp.resource.uri", mcp["resourceUri"])
 	case "PROMPT":
 		attrs.str("gen_ai.prompt.name", capabilityName)
 	}

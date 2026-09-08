@@ -356,7 +356,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	// Prepare target
 	target := dto.Target{}
-	target.ResponseCacheHit = false
+	target.ResponseCacheHit = isCacheHit(logEntry)
 	if response != nil {
 		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
 		// target.Destination = keyValuePairsFromMetadata[DestinationKey]
@@ -683,6 +683,20 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			}
 		}
 		event.Properties["mcpAnalytics"] = mcpAnalytics
+	}
+
+	// Fault classification, last so it sees the finished event. 
+	fault := classifyFault(logEntry)
+	event.EventCategory = fault.EventCategory
+	event.FaultCategory = fault.FaultCategory
+	event.ErrorType = fault.ErrorType
+	if fault.SubCategory != "" {
+		event.Error = &dto.Error{
+			// The client-visible status. The in-development fault flow owns the
+			// real WSO2 numeric codes and should supply them here instead.
+			ErrorCode:    event.ProxyResponseCode,
+			ErrorMessage: fault.SubCategory,
+		}
 	}
 
 	return event

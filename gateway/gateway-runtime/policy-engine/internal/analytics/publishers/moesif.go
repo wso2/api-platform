@@ -324,6 +324,26 @@ func (m *Moesif) Publish(event *dto.Event) {
 		metadataMap["responseMediationLatency"] = event.Latencies.ResponseMediationLatency
 	}
 
+	// Fault classification, derived in analytics.classifyFault from the Envoy
+	// response flags. eventCategory is sent unconditionally so a consumer can
+	// tell "this request succeeded" from "this event predates the field"; the
+	// rest are omitted when the request was not a fault.
+	metadataMap["eventCategory"] = string(event.EventCategory)
+	if event.FaultCategory != "" {
+		metadataMap["faultCategory"] = string(event.FaultCategory)
+	}
+	if event.ErrorType != "" {
+		metadataMap["errorType"] = event.ErrorType
+	}
+	if event.Error != nil {
+		if event.Error.ErrorCode != 0 {
+			metadataMap["errorCode"] = event.Error.ErrorCode
+		}
+		if event.Error.ErrorMessage != "" {
+			metadataMap["faultSubCategory"] = string(event.Error.ErrorMessage)
+		}
+	}
+
 	// commonName
 	if commonName, ok := event.Properties["commonName"]; ok && commonName != nil {
 		metadataMap["commonName"] = commonName
