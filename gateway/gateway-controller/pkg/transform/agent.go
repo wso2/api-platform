@@ -237,11 +237,14 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 		return nil, err
 	}
 
-	// No default to resolve here: spec.a2a.agentCard.public and its mode are both
-	// required, and the validator rejects an empty one, so the raw comparison is
-	// the whole of it. Unlike the protected block, whose absence the transformer
-	// has to read as a mode — see protectedCardPolicyInstance.
-	passthroughCard := a2a.AgentCard.Public.Mode == api.A2APublicAgentCardModePassthrough
+	// Resolved through the shared defaults helper rather than compared field by
+	// field, because agentCard, its public block, and that block's mode are each
+	// optional. The helper is the same one the validator used, which is what
+	// keeps the route this builds identical to the route that was checked for
+	// collisions — an Agent that configured no card at all still gets its
+	// default discovery route here.
+	publicCard := config.EffectivePublicCard(a2a.AgentCard)
+	passthroughCard := publicCard.Mode == api.A2APublicAgentCardModePassthrough
 
 	// Upstream credential injection. It rides in every chain whose requests
 	// actually reach the upstream — all operation chains, and the card chain
@@ -277,13 +280,9 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			t.policyDefinitions, t.latestVersions, a2a.OperationConfigs.Policies, policyv1alpha.LevelAPI)
 	}
 
-	// The internal instance the protected Agent Card adds to the canonical
-	// GetExtendedAgentCard chain, and to nothing else. Always non-nil: an absent
-	// protected block is passthrough, so every Agent's extended card is guarded.
-	protectedCard, protectedCardManaged, err := t.protectedCardPolicyInstance(a2a.AgentCard.Protected)
-	if err != nil {
-		return nil, err
-	}
+	protectedCardConfig := config.ProtectedCard(a2a.AgentCard)
+	protectedCardManaged := config.EffectiveProtectedCardMode(protectedCardConfig) ==
+		api.A2AProtectedAgentCardModeManaged
 
 	perOperationPolicies := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
 	perOperationCORS := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
@@ -304,38 +303,64 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 		}
 	}
 
-	cardPolicySource := a2a.AgentCard.Public.Policies
+	cardPolicySource := publicCard.Policies
 	if passthroughCard {
 		cardPolicySource = withPolicy(cardPolicySource, upstreamAuth)
 	}
 	cardPolicies := resolvePolicyInstances(
 		t.policyDefinitions, t.latestVersions, cardPolicySource, policyv1alpha.LevelAPI)
 
-	// The policy that answers a managed card, appended after the author's own
-	// card policies so anything they attached — a rate limit, an IP filter —
-	// runs before the request is answered. It short-circuits the chain, so a
-	// policy placed after it would never run at all.
+	if passthroughCard {
+		// The gateway proxies the upstream's card, so none of the card/policy
+		// consistency checks a managed card gets can run against it: what the
+		// document claims about the agent's interfaces and its security
+		// requirements cannot be compared with what the gateway enforces. URL
+		// rewriting does not change that — it parses only enough of the document
+		// to replace the interface URLs and never looks at the security
+		// declarations. There is no deployment-status surface on the management
+		// API to carry this yet, so it is recorded here, where it names the
+		// artifact.
+		slog.Warn("agent card consistency cannot be verified in passthrough mode; "+
+			"the upstream is responsible for advertising interfaces and security "+
+			"requirements consistent with gateway enforcement",
+			"agent_id", cfg.UUID, "handle", cfg.Handle,
+			"rewrite_urls", publicCard.RewriteUrls)
+	}
+
+	// The gateway endpoint every rewritten interface URL is built from: one entry
+	// per configured transport. Shared by both representations, since both
+	// advertise the same transports, and computed once from the same resolved
+	// transports the routes are generated from — a second derivation could
+	// advertise a path no route serves.
+	rewrite := agentCardRewriteParams(protocolVersion, agentRewriteInterfaces(transports))
+
+	// Both card-serving instances are built once and shared across routing
+	// partitions. Nothing in them varies by partition: the gateway paths are the
+	// Agent's context joined with each transport's prefix, and the host a
+	// rewritten URL advertises is resolved by the runtime from the request and
+	// the vhost the route carries, neither of which the controller supplies.
+	//
+	// The policy that answers a managed card, or rewrites a proxied one, is
+	// appended after the author's own card policies so anything they attached — a
+	// rate limit, an IP filter — decides the request first; in managed mode it
+	// short-circuits the chain, so a policy placed after it would never run.
 	//
 	// It is deliberately kept out of cardPolicies: the CORS preflight for this
 	// same path is built from those, and a preflight that answered with the card
 	// body would be worse than no preflight.
 	cardChain := cardPolicies
-	if passthroughCard {
-		// L4: the gateway proxies the upstream's card unparsed, so none of the
-		// card/policy consistency checks a managed card gets can run against it.
-		// There is no deployment-status surface on the management API to carry
-		// this yet, so it is recorded here, where it names the artifact.
-		slog.Warn("agent card consistency cannot be verified in passthrough mode; "+
-			"the upstream is responsible for advertising interfaces and security "+
-			"requirements consistent with gateway enforcement",
-			"agent_id", cfg.UUID, "handle", cfg.Handle)
-	} else {
-		cardPolicy, err := t.agentCardPolicyInstance(
-			a2a.AgentCard.Public.Content, a2a.AgentCard.Public.Signing)
-		if err != nil {
-			return nil, err
-		}
-		cardChain = append(append([]policyenginev1.PolicyInstance{}, cardPolicies...), cardPolicy)
+	if cardPolicy, err := t.publicCardPolicyInstance(publicCard, rewrite); err != nil {
+		return nil, err
+	} else if cardPolicy != nil {
+		cardChain = append(append([]policyenginev1.PolicyInstance{}, cardPolicies...), *cardPolicy)
+	}
+
+	// The internal instance the protected Agent Card adds to the canonical
+	// GetExtendedAgentCard chain, and to nothing else. Always non-nil: an absent
+	// protected block is passthrough, so every Agent's extended card is guarded.
+	protectedCard, err := t.protectedCardPolicyInstance(protectedCardConfig, rewrite)
+	if err != nil {
+		return nil, err
 	}
 
 	vhosts := agentVhosts(spec.Vhost, t.routerConfig.VHosts.Main.Default)
@@ -563,7 +588,7 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 		// known path, resolved by route identity like any other direct route.
 		// What serves it — a proxied fetch from the upstream or a gateway-held
 		// document — is decided by the card policy, not here.
-		cardRelativePath := agentCardPath(a2a.AgentCard.Public.Path)
+		cardRelativePath := publicCard.Path
 		cardPath := config.JoinAgentPath(agentContext, cardRelativePath)
 		cardRouteKey, err := addRoute(&models.Route{
 			Method:        agentCardRouteMethod,
@@ -700,15 +725,6 @@ func resolveAgentTransports(agentContext string, declared []api.A2ATransport) ([
 	return resolved, nil
 }
 
-// agentCardPath is the card's path relative to the Agent's context: the
-// configured value, or the location A2A clients probe during discovery.
-func agentCardPath(configured *string) string {
-	if configured == nil || *configured == "" {
-		return config.DefaultAgentCardPath
-	}
-	return *configured
-}
-
 // rejectUnimplementedCardSigning refuses to build a card-serving instance for a
 // card the author asked to have signed.
 //
@@ -740,7 +756,57 @@ func rejectUnimplementedCardSigning(cardKind string, signing *api.A2ACardSigning
 		cardKind)
 }
 
-// agentCardPolicyInstance builds the policy that serves a managed card.
+// agentRewriteInterfaces is the per-binding gateway endpoint mapping a rewritten
+// Agent Card advertises: one entry per configured transport, naming the binding
+// and the absolute gateway path serving it.
+//
+// The paths come from the resolved transports the routes are generated from, so
+// a rewritten card cannot advertise a path no route serves. It is a slice rather
+// than a map because policy parameters travel as JSON, and the runtime selects
+// by binding rather than by position — a card lists its interfaces in whatever
+// order its author wrote them, which has nothing to do with the order the
+// transports were configured in.
+func agentRewriteInterfaces(transports []agentTransport) []any {
+	interfaces := make([]any, 0, len(transports))
+	for _, transport := range transports {
+		interfaces = append(interfaces, map[string]any{
+			constants.A2A_POLICY_PARAM_PROTOCOL_BINDING: string(transport.binding),
+			constants.A2A_POLICY_PARAM_PATH:             transport.basePath,
+		})
+	}
+	return interfaces
+}
+
+// agentCardRewriteParams is the rewriteUrls parameter block, shared by whichever
+// representations rewrite.
+//
+// It carries what the runtime cannot derive — which gateway path serves each
+// protocol binding, and which protocol version those paths were generated for,
+// since an interface advertising another version has no correct gateway URL to
+// be given. In particular it carries no host: the
+// host a rewritten URL advertises is the Agent's configured vhost, which the
+// policy engine already puts on the route, with the port taken from the request
+// the client actually made. Sending a host from here would be a third copy of a
+// value the request and the route already agree on, and a stale one whenever
+// they disagreed.
+func agentCardRewriteParams(
+	version agentproto.ProtocolVersion, interfaces []any,
+) map[string]any {
+	return map[string]any{
+		constants.A2A_POLICY_PARAM_PROTOCOL_VERSION: string(version),
+		constants.A2A_POLICY_PARAM_INTERFACES:       interfaces,
+	}
+}
+
+// publicCardPolicyInstance builds the instance the public Agent Card route
+// needs, or nil when it needs none.
+//
+// Three configurations, and only two of them attach anything. A managed card
+// carries the document and its entity tag, and the instance answers the route.
+// A passthrough card with rewriting enabled — the default — carries the gateway
+// endpoint mapping, and the instance rewrites the proxied response. A
+// passthrough card that opted rewriting *out* is left alone entirely: no
+// instance, no buffering, and a response forwarded byte for byte.
 //
 // The policy is attached by name, so its version is resolved from the loaded
 // definitions the same way an author-attached policy's is. Unlike an
@@ -749,45 +815,51 @@ func rejectUnimplementedCardSigning(cardKind string, signing *api.A2ACardSigning
 // Dropping it would leave a route that proxies the card request to the upstream,
 // and the gateway would then serve the upstream's own unvalidated, unsigned card
 // under a configuration that says the gateway owns it — a silent substitution
-// with no error anywhere.
-func (t *AgentTransformer) agentCardPolicyInstance(
-	content *api.A2AAgentCardDocument,
-	signing *api.A2ACardSigning,
-) (policyenginev1.PolicyInstance, error) {
-	if content == nil || len(*content) == 0 {
-		// Validation rejects a managed card with no content, so this is a
-		// defensive check on a path that should be unreachable.
-		return policyenginev1.PolicyInstance{},
-			fmt.Errorf("managed agent card has no content to serve")
-	}
-	if err := rejectUnimplementedCardSigning("public", signing); err != nil {
-		return policyenginev1.PolicyInstance{}, err
-	}
+// with no error anywhere. The rewriting case is the same argument one step
+// weaker: dropping it would publish the upstream's own interface URLs, sending
+// every client straight past the gateway.
+func (t *AgentTransformer) publicCardPolicyInstance(
+	publicCard config.PublicCardConfig,
+	rewrite map[string]any,
+) (*policyenginev1.PolicyInstance, error) {
+	card := map[string]any{}
 
-	body, etag, err := agentCardBody(*content)
-	if err != nil {
-		return policyenginev1.PolicyInstance{}, err
+	if publicCard.Mode == api.A2APublicAgentCardModeManaged {
+		if publicCard.Content == nil || len(*publicCard.Content) == 0 {
+			// Validation rejects a managed card with no content, so this is a
+			// defensive check on a path that should be unreachable.
+			return nil, fmt.Errorf("managed agent card has no content to serve")
+		}
+		if err := rejectUnimplementedCardSigning("public", publicCard.Signing); err != nil {
+			return nil, err
+		}
+		body, etag, err := agentCardBody(*publicCard.Content)
+		if err != nil {
+			return nil, err
+		}
+		card[constants.A2A_POLICY_PARAM_CONTENT] = string(body)
+		card[constants.A2A_POLICY_PARAM_ETAG] = etag
+	} else if publicCard.RewriteUrls {
+		card[constants.A2A_POLICY_PARAM_REWRITE_URLS] = rewrite
+	} else {
+		return nil, nil
 	}
 
 	// The card configuration is a nested block because the policy is the A2A
 	// system policy, not the Agent Card policy: every other thing it answers
 	// brings its own block alongside this one.
 	instance, err := t.a2aSystemPolicyInstance(map[string]any{
-		constants.A2A_POLICY_PARAM_AGENT_CARD: map[string]any{
-			constants.A2A_POLICY_PARAM_CONTENT: string(body),
-			constants.A2A_POLICY_PARAM_ETAG:    etag,
-		},
+		constants.A2A_POLICY_PARAM_AGENT_CARD: card,
 	})
 	if err != nil {
-		return policyenginev1.PolicyInstance{}, fmt.Errorf(
-			"cannot serve a managed agent card: %w", err)
+		return nil, fmt.Errorf("cannot serve the public agent card: %w", err)
 	}
-	return instance, nil
+	return &instance, nil
 }
 
 // protectedCardPolicyInstance builds the internal instance an explicitly
 // configured protected Agent Card adds to the canonical GetExtendedAgentCard
-// chain, and reports whether that card is managed.
+// chain.
 //
 // It goes at the tail of the chain, after every policy the author attached at
 // either scope. Where authentication sits among those is the author's decision;
@@ -818,7 +890,8 @@ func (t *AgentTransformer) agentCardPolicyInstance(
 // it from the upstream under its own auth, not by omitting a field here.
 func (t *AgentTransformer) protectedCardPolicyInstance(
 	protected *api.A2AProtectedAgentCard,
-) (*policyenginev1.PolicyInstance, bool, error) {
+	rewrite map[string]any,
+) (*policyenginev1.PolicyInstance, error) {
 	// Resolved through the validator's own helper rather than compared here, so
 	// the two cannot disagree about what an absent block means. Reading it as a
 	// mode instead of returning early also makes the absent case and the explicit
@@ -828,12 +901,20 @@ func (t *AgentTransformer) protectedCardPolicyInstance(
 
 	var content *api.A2AAgentCardDocument
 	var signing *api.A2ACardSigning
+	var statedRewriteUrls *api.A2ACardRewriteUrls
 	if protected != nil {
 		content = protected.Content
 		signing = protected.Signing
+		statedRewriteUrls = protected.RewriteUrls
 	}
+	// Resolved from the same helper as the public representation, and with a nil
+	// flag for an omitted block, so the extended card defaults the way the public
+	// one does. An extended card proxied unchanged advertises the agent's own
+	// interface URLs just as the public one would, so an omitted block is no
+	// reason to publish them.
+	rewriteUrls := config.EffectiveRewriteUrls(statedRewriteUrls)
 	if err := rejectUnimplementedCardSigning("protected", signing); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	// Passthrough carries no content: require an authenticated request, then
@@ -847,7 +928,7 @@ func (t *AgentTransformer) protectedCardPolicyInstance(
 			// rather than degrading to passthrough matters: degrading would proxy
 			// the upstream's own unvalidated extended card under a configuration
 			// that says the gateway owns it.
-			return nil, false, fmt.Errorf("managed protected agent card has no content to serve")
+			return nil, fmt.Errorf("managed protected agent card has no content to serve")
 		}
 		// The same encoder the public card uses. A second one would produce
 		// different bytes for the same document, and the bytes are what card
@@ -857,18 +938,24 @@ func (t *AgentTransformer) protectedCardPolicyInstance(
 		// the public route has.
 		body, _, err := agentCardBody(*content)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		parameters[constants.A2A_POLICY_PARAM_CONTENT] = string(body)
+	} else if rewriteUrls {
+		// The same single tail instance, carrying the mapping alongside its
+		// authentication guard rather than gaining a second instance for the
+		// rewrite. The guard is unaffected: rewriting happens on the response of a
+		// request that was already authenticated and forwarded.
+		parameters[constants.A2A_POLICY_PARAM_REWRITE_URLS] = rewrite
 	}
 
 	instance, err := t.a2aSystemPolicyInstance(map[string]any{
 		constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD: parameters,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot serve the protected agent card: %w", err)
+		return nil, fmt.Errorf("cannot serve the protected agent card: %w", err)
 	}
-	return &instance, managed, nil
+	return &instance, nil
 }
 
 // a2aSystemPolicyInstance builds one instance of the in-repo A2A system policy

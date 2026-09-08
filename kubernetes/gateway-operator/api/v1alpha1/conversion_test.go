@@ -115,8 +115,8 @@ func TestAgentConversionRoundTrip(t *testing.T) {
 						Policies: []Policy{{Name: "advanced-ratelimit", Version: "v1"}},
 					}},
 				},
-				AgentCard: A2AAgentCard{
-					Public: A2APublicAgentCard{
+				AgentCard: &A2AAgentCard{
+					Public: &A2APublicAgentCard{
 						Mode:     "managed",
 						Path:     strPtr("/.well-known/agent-card.json"),
 						Policies: []Policy{{Name: "cors", Version: "v1"}},
@@ -158,6 +158,77 @@ func TestAgentConversionRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(orig.Status, back.Status) {
 		t.Errorf("Status round-trip mismatch:\n got  %+v\n want %+v", back.Status, orig.Status)
+	}
+}
+
+// The optional Agent Card shapes have to survive conversion as *absences*.
+//
+// Conversion runs through a JSON round-trip, so a field that gained a value on
+// the way would gain it silently: an Agent stored as v1alpha1 and served as v1
+// (or the reverse) would come back configured for something its author never
+// wrote, and for the protected block that difference is the authentication
+// guard. A stated false has to survive too, since the gateway-controller rejects
+// a stated rewriteUrls in managed mode in either polarity.
+func TestAgentConversionPreservesOptionalCardShapes(t *testing.T) {
+	disabled := false
+	enabled := true
+
+	cases := map[string]*A2AAgentCard{
+		"whole block absent":  nil,
+		"public block absent": {},
+		"public mode unstated": {
+			Public: &A2APublicAgentCard{},
+		},
+		"rewriteUrls stated false": {
+			Public:    &A2APublicAgentCard{Mode: "passthrough", RewriteUrls: &disabled},
+			Protected: &A2AProtectedAgentCard{Mode: "passthrough", RewriteUrls: &disabled},
+		},
+		"rewriteUrls enabled": {
+			Public:    &A2APublicAgentCard{Mode: "passthrough", RewriteUrls: &enabled},
+			Protected: &A2AProtectedAgentCard{Mode: "passthrough", RewriteUrls: &enabled},
+		},
+	}
+
+	for name, card := range cases {
+		t.Run(name, func(t *testing.T) {
+			orig := &Agent{
+				ObjectMeta: metav1.ObjectMeta{Name: "weather-agent", Namespace: "agents"},
+				Spec: AgentConfigData{
+					DisplayName: "Weather Agent",
+					Version:     "v1.0",
+					Upstream:    AgentUpstream{Url: "https://weather.internal"},
+					A2A: A2AConfig{
+						ProtocolVersion: "1.0",
+						OperationConfigs: A2AOperationConfigs{
+							Transports: []A2ATransport{
+								{ProtocolBinding: A2AProtocolBindingJSONRPC},
+							},
+						},
+						AgentCard: card,
+					},
+				},
+			}
+
+			hub := &v1.Agent{}
+			if err := orig.ConvertTo(hub); err != nil {
+				t.Fatalf("ConvertTo: %v", err)
+			}
+			if card == nil && hub.Spec.A2A.AgentCard != nil {
+				t.Fatalf("an absent agentCard block was materialised: %+v", hub.Spec.A2A.AgentCard)
+			}
+			if card != nil && card.Protected == nil &&
+				hub.Spec.A2A.AgentCard != nil && hub.Spec.A2A.AgentCard.Protected != nil {
+				t.Fatalf("an absent protected block was materialised: %+v", hub.Spec.A2A.AgentCard.Protected)
+			}
+
+			back := &Agent{}
+			if err := back.ConvertFrom(hub); err != nil {
+				t.Fatalf("ConvertFrom: %v", err)
+			}
+			if !reflect.DeepEqual(orig.Spec, back.Spec) {
+				t.Errorf("Spec round-trip mismatch:\n got  %+v\n want %+v", back.Spec, orig.Spec)
+			}
+		})
 	}
 }
 

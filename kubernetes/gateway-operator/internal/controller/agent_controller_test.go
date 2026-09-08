@@ -137,8 +137,8 @@ func agentWithPolicyScopes(t *testing.T) *apiv1.Agent {
 						}},
 					}},
 				},
-				AgentCard: apiv1.A2AAgentCard{
-					Public: apiv1.A2APublicAgentCard{
+				AgentCard: &apiv1.A2AAgentCard{
+					Public: &apiv1.A2APublicAgentCard{
 						Mode: "managed",
 						Policies: []apiv1.Policy{{
 							Name: "cors", Version: "v1",
@@ -381,6 +381,88 @@ func TestAgentDeploy_OmitsAnAbsentProtectedAgentCard(t *testing.T) {
 
 	card := deploySpec(t, seen())["a2a"].(map[string]interface{})["agentCard"].(map[string]interface{})
 	require.NotContains(t, card, "protected")
+}
+
+// An omitted agentCard block must stay omitted on the wire too, and an Agent
+// that omits it must still deploy.
+//
+// This is the shape most Agents have — an agent that is happy to publish its own
+// discovery document writes nothing about its card — so an operator that
+// required the block, or materialised a default one, would either reject that
+// Agent at admission or send the gateway-controller a configuration the author
+// did not write. The controller applies the defaults; the operator's job is to
+// pass the silence through.
+func TestAgentDeploy_OmitsAnAbsentAgentCardBlock(t *testing.T) {
+	k8sClient := fake.NewClientBuilder().WithScheme(agentTestScheme(t)).Build()
+
+	cr := agentWithPolicyScopes(t)
+	cr.Spec.A2A.OperationConfigs.Policies = nil
+	cr.Spec.A2A.OperationConfigs.Operations = nil
+	cr.Spec.A2A.AgentCard = nil
+
+	endpoint, seen := fakeManagementAPI(t, false)
+	_, err := (&agentAdapter{}).Deploy(context.Background(), k8sClient, endpoint, cr, nil)
+	require.NoError(t, err)
+
+	a2a := deploySpec(t, seen())["a2a"].(map[string]interface{})
+	require.NotContains(t, a2a, "agentCard")
+}
+
+// A public block with no mode must reach the management API with no mode, so the
+// controller's own default decides it. Sending "passthrough" would be the same
+// outcome today and a different one the moment either side's default moves.
+func TestAgentDeploy_PreservesAnUnstatedPublicCardMode(t *testing.T) {
+	k8sClient := fake.NewClientBuilder().WithScheme(agentTestScheme(t)).Build()
+
+	cr := agentWithPolicyScopes(t)
+	cr.Spec.A2A.OperationConfigs.Policies = nil
+	cr.Spec.A2A.OperationConfigs.Operations = nil
+	cr.Spec.A2A.AgentCard = &apiv1.A2AAgentCard{Public: &apiv1.A2APublicAgentCard{}}
+
+	endpoint, seen := fakeManagementAPI(t, false)
+	_, err := (&agentAdapter{}).Deploy(context.Background(), k8sClient, endpoint, cr, nil)
+	require.NoError(t, err)
+
+	card := deploySpec(t, seen())["a2a"].(map[string]interface{})["agentCard"].(map[string]interface{})
+	public := card["public"].(map[string]interface{})
+	require.NotContains(t, public, "mode")
+	require.NotContains(t, public, "rewriteUrls")
+	require.NotContains(t, card, "protected")
+}
+
+// rewriteUrls is a tri-state on the wire — true, false, or unstated — because
+// the gateway-controller rejects a stated flag in managed mode in either
+// polarity. An operator that dropped a false, or defaulted an unstated one to
+// false, would turn one of those rejections into a silent acceptance.
+func TestAgentDeploy_PreservesRewriteUrlsInBothRepresentations(t *testing.T) {
+	for name, want := range map[string]bool{"enabled": true, "disabled": false} {
+		t.Run(name, func(t *testing.T) {
+			k8sClient := fake.NewClientBuilder().WithScheme(agentTestScheme(t)).Build()
+
+			flag := want
+			cr := agentWithPolicyScopes(t)
+			cr.Spec.A2A.OperationConfigs.Policies = nil
+			cr.Spec.A2A.OperationConfigs.Operations = nil
+			cr.Spec.A2A.AgentCard = &apiv1.A2AAgentCard{
+				Public: &apiv1.A2APublicAgentCard{
+					Mode:        "passthrough",
+					RewriteUrls: &flag,
+				},
+				Protected: &apiv1.A2AProtectedAgentCard{
+					Mode:        "passthrough",
+					RewriteUrls: &flag,
+				},
+			}
+
+			endpoint, seen := fakeManagementAPI(t, false)
+			_, err := (&agentAdapter{}).Deploy(context.Background(), k8sClient, endpoint, cr, nil)
+			require.NoError(t, err)
+
+			card := deploySpec(t, seen())["a2a"].(map[string]interface{})["agentCard"].(map[string]interface{})
+			require.Equal(t, want, card["public"].(map[string]interface{})["rewriteUrls"])
+			require.Equal(t, want, card["protected"].(map[string]interface{})["rewriteUrls"])
+		})
+	}
 }
 
 // TestAgentDeploy_TargetsTheAgentsPath asserts the adapter addresses /agents,

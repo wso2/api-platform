@@ -39,6 +39,7 @@ const a2aPolicyDefinitionPath = "../../../system-policies/a2a/policy-definition.
 type jsonSchemaObject struct {
 	Required   []string                    `yaml:"required"`
 	Properties map[string]jsonSchemaObject `yaml:"properties"`
+	Items      *jsonSchemaObject           `yaml:"items"`
 }
 
 // The transformer names the A2A system policy and its parameters as string
@@ -77,32 +78,70 @@ func TestA2APolicyDefinitionMatchesTheTransformerContract(t *testing.T) {
 	require.True(t, present, "the %q parameter block is missing from the policy definition",
 		constants.A2A_POLICY_PARAM_AGENT_CARD)
 
-	// Exactly the two fields the transformer writes, both required: a field the
-	// transformer does not write would arrive absent, and one it writes that the
-	// definition does not declare is a name the policy will not read.
-	require.Len(t, agentCard.Properties, 2)
+	// Exactly the three fields the transformer writes, and none of them required:
+	// a managed card writes content and etag, a rewriting passthrough card writes
+	// rewriteUrls, and no instance writes both sets. A field the transformer does
+	// not write would arrive absent, and one it writes that the definition does
+	// not declare is a name the policy will not read.
+	require.Len(t, agentCard.Properties, 3)
 	assert.Contains(t, agentCard.Properties, constants.A2A_POLICY_PARAM_CONTENT)
 	assert.Contains(t, agentCard.Properties, constants.A2A_POLICY_PARAM_ETAG)
-	assert.ElementsMatch(t,
-		[]string{constants.A2A_POLICY_PARAM_CONTENT, constants.A2A_POLICY_PARAM_ETAG},
-		agentCard.Required)
+	assert.Contains(t, agentCard.Properties, constants.A2A_POLICY_PARAM_REWRITE_URLS)
+	assert.Empty(t, agentCard.Required,
+		"neither the managed pair nor the rewrite block may be required: each alone is a complete card configuration")
+
+	assertRewriteUrlsBlock(t, agentCard.Properties[constants.A2A_POLICY_PARAM_REWRITE_URLS])
 
 	protectedCard, present := definition.Parameters.Properties[constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD]
 	require.True(t, present, "the %q parameter block is missing from the policy definition",
 		constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD)
 
-	// Content only, and optional. Its presence is what tells managed from
-	// passthrough, so a definition that required it would make a passthrough
-	// protected card — which has no content by definition — undeployable.
-	require.Len(t, protectedCard.Properties, 1)
+	// Content and the rewrite block, both optional. Content's presence is what
+	// tells managed from passthrough, so a definition that required it would make
+	// a passthrough protected card — which has no content by definition —
+	// undeployable, and the same holds for a rewrite the author did not ask for.
+	require.Len(t, protectedCard.Properties, 2)
 	assert.Contains(t, protectedCard.Properties, constants.A2A_POLICY_PARAM_CONTENT)
+	assert.Contains(t, protectedCard.Properties, constants.A2A_POLICY_PARAM_REWRITE_URLS)
 	assert.Empty(t, protectedCard.Required,
 		"content must stay optional: an empty block is how passthrough is expressed")
+
+	assertRewriteUrlsBlock(t, protectedCard.Properties[constants.A2A_POLICY_PARAM_REWRITE_URLS])
 
 	// No etag beside it. The response is authenticated and uncacheable, and the
 	// JSON-RPC binding is a POST — there is no conditional GET for a validator to
 	// take part in, and shipping one would invite a cached protected card.
 	assert.NotContains(t, protectedCard.Properties, constants.A2A_POLICY_PARAM_ETAG)
+}
+
+// assertRewriteUrlsBlock pins the rewriteUrls block's own shape.
+//
+// It is the same block under both representations, and it is the one parameter
+// block the runtime reads *before* a request arrives — it decides whether the
+// chain buffers its response body — so a field name the policy does not read is
+// not a degraded rewrite, it is a card route that fails closed on every request.
+func assertRewriteUrlsBlock(t *testing.T, rewrite jsonSchemaObject) {
+	t.Helper()
+
+	// Two properties, both required. There is deliberately no host property: the
+	// host a rewritten URL advertises comes from the vhost the policy engine puts
+	// on the route and the authority the request carried, so the schema having one
+	// would mean the controller was expected to send a third opinion.
+	require.Len(t, rewrite.Properties, 2)
+	assert.Contains(t, rewrite.Properties, constants.A2A_POLICY_PARAM_PROTOCOL_VERSION)
+	assert.Contains(t, rewrite.Properties, constants.A2A_POLICY_PARAM_INTERFACES)
+	assert.ElementsMatch(t,
+		[]string{constants.A2A_POLICY_PARAM_PROTOCOL_VERSION, constants.A2A_POLICY_PARAM_INTERFACES},
+		rewrite.Required,
+		"a rewrite with no interface mapping cannot name a gateway endpoint for anything")
+
+	entry := rewrite.Properties[constants.A2A_POLICY_PARAM_INTERFACES].Items
+	require.Len(t, entry.Properties, 2)
+	assert.Contains(t, entry.Properties, constants.A2A_POLICY_PARAM_PROTOCOL_BINDING)
+	assert.Contains(t, entry.Properties, constants.A2A_POLICY_PARAM_PATH)
+	assert.ElementsMatch(t,
+		[]string{constants.A2A_POLICY_PARAM_PROTOCOL_BINDING, constants.A2A_POLICY_PARAM_PATH},
+		entry.Required)
 }
 
 // The policy must be registered in the system build lock, or the gateway is

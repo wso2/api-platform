@@ -136,7 +136,10 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 		}
 	}
 
-	if cardPolicies := agentConfig.Spec.A2a.AgentCard.Public.Policies; cardPolicies != nil {
+	// Read through the shared defaults helper: agentCard and its public block are
+	// both optional, and an Agent that omitted them has no card policies rather
+	// than a missing scope to fail on.
+	if cardPolicies := EffectivePublicCard(agentConfig.Spec.A2a.AgentCard).Policies; cardPolicies != nil {
 		for i, policy := range *cardPolicies {
 			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.agentCard.public.policies[%d]", i))
 			errors = append(errors, errs...)
@@ -362,7 +365,11 @@ func (pv *PolicyValidator) CoerceAgentPolicies(agentConfig *api.AgentConfigurati
 			}
 		}
 	}
-	if cardPolicies := agentConfig.Spec.A2a.AgentCard.Public.Policies; cardPolicies != nil {
+	// Same optional-block tolerance as ValidateAgentPolicies, and it has to be the
+	// same reading: coercion writes back into the configuration that gets stored,
+	// so a scope skipped here but validated there would validate coerced values it
+	// never received.
+	if cardPolicies := EffectivePublicCard(agentConfig.Spec.A2a.AgentCard).Policies; cardPolicies != nil {
 		pv.coercePolicySlice(*cardPolicies)
 	}
 }

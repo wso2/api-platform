@@ -265,11 +265,15 @@ func TestParseAgent_WorkedExample_OperationConfigs(t *testing.T) {
 // eventually signed as the user supplied it, so parsing must not reshape it.
 func TestParseAgent_WorkedExample_AgentCard(t *testing.T) {
 	card := parseAgentWorkedExample(t).Spec.A2a.AgentCard
+	require.NotNil(t, card, "the worked example configures an agent card")
 
 	assert.Nil(t, card.Protected, "the worked example configures no protected card")
 
 	pub := card.Public
-	assert.Equal(t, api.A2APublicAgentCardModeManaged, pub.Mode)
+	require.NotNil(t, pub, "the worked example configures a public card")
+	require.NotNil(t, pub.Mode)
+	assert.Equal(t, api.A2APublicAgentCardModeManaged, *pub.Mode)
+	assert.Nil(t, pub.RewriteUrls, "the worked example states no rewriteUrls flag")
 	require.NotNil(t, pub.Path)
 	assert.Equal(t, "/.well-known/agent-card.json", *pub.Path)
 

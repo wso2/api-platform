@@ -79,9 +79,9 @@ func testAgent(options ...agentOption) *models.StoredConfig {
 						{ProtocolBinding: api.HTTPJSON, PathPrefix: ptrStr("/")},
 					},
 				},
-				AgentCard: api.A2AAgentCard{
-					Public: api.A2APublicAgentCard{
-						Mode:    api.A2APublicAgentCardModeManaged,
+				AgentCard: &api.A2AAgentCard{
+					Public: &api.A2APublicAgentCard{
+						Mode:    publicCardMode(api.A2APublicAgentCardModeManaged),
 						Content: &cardContent,
 					},
 				},
@@ -145,7 +145,7 @@ func withCardPolicies(policies ...api.Policy) agentOption {
 // proxied card, so carrying content alongside the mode is rejected.
 func withPassthroughCard() agentOption {
 	return func(cfg *api.AgentConfiguration) {
-		cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
+		cfg.Spec.A2a.AgentCard.Public.Mode = publicCardMode(api.A2APublicAgentCardModePassthrough)
 		cfg.Spec.A2a.AgentCard.Public.Content = nil
 	}
 }
@@ -743,11 +743,20 @@ func TestAgentUpstreamAuthReachesOperationChainsOnly(t *testing.T) {
 		policyNames(managed.PolicyChains["GET|/weather/.well-known/agent-card.json|main.local"]),
 		"a managed card is served by the gateway and never reaches the upstream")
 
+	// A proxied card is fetched from the upstream, which may require the
+	// credential. The A2A instance after it is the rewrite that a passthrough card
+	// gets by default; it acts on the response, not on the upstream request.
 	passthrough, err := transformer.Transform(testAgent(withAuth, withPassthroughCard()))
 	require.NoError(t, err)
+	assert.Equal(t, []string{"set-headers", constants.A2A_SYSTEM_POLICY_NAME},
+		policyNames(passthrough.PolicyChains["GET|/weather/.well-known/agent-card.json|main.local"]))
+
+	// With rewriting opted out there is nothing after the credential at all.
+	plain, err := transformer.Transform(testAgent(
+		withAuth, withPassthroughCard(), withPublicCardRewriteUrls(false)))
+	require.NoError(t, err)
 	assert.Equal(t, []string{"set-headers"},
-		policyNames(passthrough.PolicyChains["GET|/weather/.well-known/agent-card.json|main.local"]),
-		"a proxied card is fetched from the upstream, which may require the credential")
+		policyNames(plain.PolicyChains["GET|/weather/.well-known/agent-card.json|main.local"]))
 }
 
 // ─── Agent Card serving ─────────────────────────────────────────────────────
@@ -901,18 +910,239 @@ func TestAgentCardPolicyIsAttachedToTheCardRouteOnly(t *testing.T) {
 
 // A proxied card is the upstream's document. Serving a gateway-held one instead
 // would answer with a card the gateway does not have.
-func TestAgentPassthroughCardHasNoCardPolicy(t *testing.T) {
+//
+// Rewriting does not change that: it edits the upstream's response, so the block
+// on the card chain carries the endpoint mapping and never a document. With
+// rewriting opted out there is no block at all.
+func TestAgentPassthroughCardServesNoDocument(t *testing.T) {
 	rdc, err := agentTransformer().Transform(testAgent(withPassthroughCard()))
+	require.NoError(t, err)
+
+	for key, chain := range rdc.PolicyChains {
+		block, carries := publicCardParams(chain)
+		if !carries {
+			continue
+		}
+		assert.Equal(t, testCardRouteKey, key,
+			"only the card route may carry the card-serving block")
+		assert.NotContains(t, block, constants.A2A_POLICY_PARAM_CONTENT,
+			"the gateway holds no document for a proxied card")
+		assert.NotContains(t, block, constants.A2A_POLICY_PARAM_ETAG)
+	}
+
+	plain, err := agentTransformer().Transform(testAgent(
+		withPassthroughCard(), withPublicCardRewriteUrls(false)))
 	require.NoError(t, err)
 
 	// The card-serving block, not the policy name. A passthrough public card
 	// means the gateway holds no document to serve; it does not mean the Agent's
 	// extended card stops being guarded, and that guard is the same policy.
-	for key, chain := range rdc.PolicyChains {
+	for key, chain := range plain.PolicyChains {
 		_, carries := publicCardParams(chain)
 		assert.False(t, carries,
-			"chain %q carries the card-serving block in passthrough mode", key)
+			"chain %q carries the card-serving block for a card that opted rewriting out", key)
 	}
+}
+
+// An Agent that says nothing about its card still gets a card route, in
+// passthrough mode, at the well-known discovery path — with the URLs in the
+// proxied response rewritten to the gateway, and no document, because the
+// gateway holds none.
+//
+// Both halves are worth pinning. An omitted block that produced no route would
+// leave the most common Agent shape with no discovery endpoint at all, and an
+// A2A client's first request would 404 with nothing in the configuration to
+// explain why. An omitted block that produced no rewrite would leave that same
+// most common shape publishing the agent's own address, so every client
+// configured from the card would talk straight past the gateway.
+func TestAgentOmittedCardBlockServesTheDefaultPassthroughRoute(t *testing.T) {
+	for name, omit := range map[string]agentOption{
+		"whole agentCard block omitted": func(cfg *api.AgentConfiguration) {
+			cfg.Spec.A2a.AgentCard = nil
+		},
+		"public block omitted": func(cfg *api.AgentConfiguration) {
+			cfg.Spec.A2a.AgentCard = &api.A2AAgentCard{}
+		},
+		"public mode omitted": func(cfg *api.AgentConfiguration) {
+			cfg.Spec.A2a.AgentCard.Public.Mode = nil
+			cfg.Spec.A2a.AgentCard.Public.Content = nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rdc, err := agentTransformer().Transform(testAgent(omit))
+			require.NoError(t, err)
+
+			route, exists := rdc.Routes[testCardRouteKey]
+			require.True(t, exists, "the default card route is missing")
+			assert.Equal(t, config.DefaultAgentCardPath, route.OperationPath)
+			assert.Equal(t, config.DefaultAgentCardPath, route.UpstreamPathOverride)
+			require.NotNil(t, rdc.PolicyChains[testCardRouteKey])
+
+			// Passthrough with the default rewrite: the endpoint mapping, and no
+			// document, because the gateway holds none for a proxied card.
+			block, carries := publicCardParams(rdc.PolicyChains[testCardRouteKey])
+			require.True(t, carries, "an omitted card block must still rewrite the proxied card")
+			assert.NotContains(t, block, constants.A2A_POLICY_PARAM_CONTENT)
+			assert.NotContains(t, block, constants.A2A_POLICY_PARAM_ETAG)
+			assertRewriteBlock(t, block)
+
+			// The protected representation defaults the same way, off the same
+			// omission — its extended card advertises the same interface URLs.
+			protected, guarded := protectedCardParams(rdc.PolicyChains[protectedChainKey(t, rdc)])
+			require.True(t, guarded)
+			assertRewriteBlock(t, protected)
+		})
+	}
+}
+
+// A passthrough card that opted into rewriting gets the A2A policy on its card
+// chain, carrying the gateway endpoint mapping and no document.
+//
+// The mapping is what the runtime cannot derive: the gateway path for a binding
+// is the context joined with that transport's pathPrefix, which the policy
+// engine never sees. Sending a bare flag would put a second copy of the route
+// arithmetic in the data plane, and a rewritten card advertising a path no route
+// serves fails silently — every client would be sent somewhere that 404s.
+func TestAgentPassthroughCardRewriteCarriesTheGatewayEndpoints(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(
+		withPassthroughCard(), withPublicCardRewriteUrls(true)))
+	require.NoError(t, err)
+
+	block, carries := publicCardParams(rdc.PolicyChains[testCardRouteKey])
+	require.True(t, carries, "a rewriting passthrough card needs the A2A policy on its card chain")
+	assert.NotContains(t, block, constants.A2A_POLICY_PARAM_CONTENT,
+		"a passthrough card has no document for the gateway to serve")
+	assert.NotContains(t, block, constants.A2A_POLICY_PARAM_ETAG)
+
+	assertRewriteBlock(t, block)
+}
+
+// The same flag on an explicit protected passthrough card extends the single
+// tail instance it already has, rather than adding a second one. The
+// authentication guard is that instance; a rewrite is something the same
+// instance does to the response of a request it already let through.
+func TestAgentProtectedPassthroughCardRewriteExtendsTheGuardInstance(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(
+		withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil),
+		withProtectedCardRewriteUrls(true)))
+	require.NoError(t, err)
+
+	chain := rdc.PolicyChains[protectedChainKey(t, rdc)]
+	block, carries := protectedCardParams(chain)
+	require.True(t, carries)
+	assert.NotContains(t, block, constants.A2A_POLICY_PARAM_CONTENT,
+		"a passthrough protected card has no document to serve")
+	assertRewriteBlock(t, block)
+
+	instances := 0
+	for _, policy := range chain.Policies {
+		if policy.Name == constants.A2A_SYSTEM_POLICY_NAME {
+			instances++
+		}
+	}
+	assert.Equal(t, 1, instances,
+		"rewriting must extend the existing tail instance rather than add a second one")
+}
+
+// Only the two chains a card is served on may carry a rewrite, whichever
+// representations asked for one.
+//
+// This is the buffering claim, asserted where it is decided: the rewrite block
+// is what makes a chain buffer its response body, so a block that leaked onto
+// another operation's chain would buffer that operation's response — and on
+// SendStreamingMessage or SubscribeToTask, buffering the response is the
+// difference between an event stream and a reply that arrives when the stream
+// ends.
+func TestAgentRewriteReachesOnlyTheCardChains(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(
+		withPassthroughCard(), withPublicCardRewriteUrls(true),
+		withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil),
+		withProtectedCardRewriteUrls(true)))
+	require.NoError(t, err)
+
+	allowed := map[string]bool{
+		testCardRouteKey:          true,
+		protectedChainKey(t, rdc): true,
+	}
+	for key, chain := range rdc.PolicyChains {
+		public, _ := publicCardParams(chain)
+		protected, _ := protectedCardParams(chain)
+		carriesRewrite := public[constants.A2A_POLICY_PARAM_REWRITE_URLS] != nil ||
+			protected[constants.A2A_POLICY_PARAM_REWRITE_URLS] != nil
+		if carriesRewrite && !allowed[key] {
+			t.Errorf("chain %q carries a rewrite block; only the card route and the "+
+				"GetExtendedAgentCard chain may", key)
+		}
+	}
+}
+
+// Rewriting is opted out of per representation. Turning it off on the public
+// card must not turn it off on the protected operation, which is a different
+// response with a different shape and its own authentication guard — and the
+// reverse must not silently stop rewriting the unauthenticated discovery
+// document, which is the one every client reads first.
+func TestAgentCardRewritingIsPerRepresentation(t *testing.T) {
+	t.Run("public opted out", func(t *testing.T) {
+		rdc, err := agentTransformer().Transform(testAgent(
+			withPassthroughCard(), withPublicCardRewriteUrls(false),
+			withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil)))
+		require.NoError(t, err)
+
+		_, carries := publicCardParams(rdc.PolicyChains[testCardRouteKey])
+		assert.False(t, carries, "the public card opted out and must carry no instance")
+
+		block, guarded := protectedCardParams(rdc.PolicyChains[protectedChainKey(t, rdc)])
+		require.True(t, guarded)
+		assertRewriteBlock(t, block)
+	})
+
+	t.Run("protected opted out", func(t *testing.T) {
+		rdc, err := agentTransformer().Transform(testAgent(
+			withPassthroughCard(),
+			withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil),
+			withProtectedCardRewriteUrls(false)))
+		require.NoError(t, err)
+
+		block, carries := protectedCardParams(rdc.PolicyChains[protectedChainKey(t, rdc)])
+		require.True(t, carries, "the guard survives opting the rewrite out")
+		assert.NotContains(t, block, constants.A2A_POLICY_PARAM_REWRITE_URLS)
+
+		public, serves := publicCardParams(rdc.PolicyChains[testCardRouteKey])
+		require.True(t, serves, "the public card must keep rewriting")
+		assertRewriteBlock(t, public)
+	})
+}
+
+// An omitted protected block is guarded and rewritten, off that same omission.
+//
+// The block is deliberately never materialised into explicit configuration, so
+// this is the case where the default has to be applied by the transformer
+// itself. Getting it wrong would leave every Agent that never wrote a protected
+// block publishing the agent's own interface URLs on its extended card, while
+// its public card pointed at the gateway — the two representations disagreeing
+// about where the agent is.
+func TestAgentOmittedProtectedBlockRewritesByDefault(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(withPassthroughCard()))
+	require.NoError(t, err)
+
+	block, carries := protectedCardParams(rdc.PolicyChains[protectedChainKey(t, rdc)])
+	require.True(t, carries, "every Agent's extended card is guarded")
+	assert.NotContains(t, block, constants.A2A_POLICY_PARAM_CONTENT)
+	assertRewriteBlock(t, block)
+}
+
+// A managed card is authored by the gateway and its interfaces are validated
+// against the configured transports, so there is nothing to rewrite. Validation
+// rejects the flag there; the transformer must not carry it either, in case a
+// path reaches the transform without validation having run.
+func TestAgentManagedCardNeverCarriesARewriteBlock(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(withPublicCardRewriteUrls(true)))
+	require.NoError(t, err)
+
+	block, carries := publicCardParams(rdc.PolicyChains[testCardRouteKey])
+	require.True(t, carries)
+	assert.Contains(t, block, constants.A2A_POLICY_PARAM_CONTENT)
+	assert.NotContains(t, block, constants.A2A_POLICY_PARAM_REWRITE_URLS)
 }
 
 // A gateway built without the in-repo card policy cannot serve a managed card.
@@ -1815,7 +2045,12 @@ func TestAgentProtectedCardRequiresTheSystemPolicy(t *testing.T) {
 		"passthrough": withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil),
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := agentTransformerWithoutCardPolicy().Transform(testAgent(option, withPassthroughCard()))
+			// The public card opts rewriting out so it needs no instance of its
+			// own: otherwise it fails first, on the same missing policy, and the
+			// error would say nothing about the protected representation this test
+			// is about.
+			_, err := agentTransformerWithoutCardPolicy().Transform(testAgent(
+				option, withPassthroughCard(), withPublicCardRewriteUrls(false)))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "protected agent card")
 		})
@@ -1837,4 +2072,75 @@ func TestAgentManagedProtectedCardWithoutContentFails(t *testing.T) {
 			assert.Contains(t, err.Error(), "no content to serve")
 		})
 	}
+}
+
+// publicCardMode returns a pointer to a public Agent Card mode. The field is
+// optional — an omitted one means passthrough — so a fixture that states a mode
+// states it as a pointer.
+func publicCardMode(mode api.A2APublicAgentCardMode) *api.A2APublicAgentCardMode {
+	return &mode
+}
+
+// withPublicCardRewriteUrls states the public card's rewriteUrls flag. It is a
+// pointer in the contract because a stated false is rejected in managed mode
+// while an omitted one is not, so a test has to be able to state either.
+func withPublicCardRewriteUrls(enabled bool) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		cfg.Spec.A2a.AgentCard.Public.RewriteUrls = &enabled
+	}
+}
+
+// withProtectedCardRewriteUrls does the same for a protected card some earlier
+// option already declared. Options apply in order, so it follows
+// withProtectedCard rather than replacing the block.
+func withProtectedCardRewriteUrls(enabled bool) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		protected := cfg.Spec.A2a.AgentCard.Protected
+		if protected == nil {
+			panic("withProtectedCardRewriteUrls needs withProtectedCard before it")
+		}
+		protected.RewriteUrls = &enabled
+	}
+}
+
+// assertRewriteBlock pins the rewrite mapping the transformer writes: the
+// protocol version whose transports it describes, the partition's authority, and
+// one entry per configured transport naming the gateway path that serves it.
+func assertRewriteBlock(t *testing.T, card map[string]interface{}) {
+	t.Helper()
+
+	rewrite, ok := card[constants.A2A_POLICY_PARAM_REWRITE_URLS].(map[string]interface{})
+	require.True(t, ok, "the rewrite block is missing or not an object: %#v",
+		card[constants.A2A_POLICY_PARAM_REWRITE_URLS])
+
+	assert.Equal(t, string(agentproto.V1_0), rewrite[constants.A2A_POLICY_PARAM_PROTOCOL_VERSION])
+	// The block carries no host. The host a rewritten URL advertises is resolved
+	// at runtime from the vhost on the route and the request the client made, so
+	// a host sent from here would be a third copy of a value those two already
+	// agree on.
+	assert.Len(t, rewrite, 2, "the rewrite block carries only the version and the mapping: %#v", rewrite)
+
+	interfaces, ok := rewrite[constants.A2A_POLICY_PARAM_INTERFACES].([]any)
+	require.True(t, ok, "the interface mapping is missing or not a list: %#v",
+		rewrite[constants.A2A_POLICY_PARAM_INTERFACES])
+
+	// One entry per configured transport, at the gateway paths the routes were
+	// generated from — the JSON-RPC endpoint and the HTTP+JSON base.
+	assert.ElementsMatch(t, []any{
+		map[string]any{
+			constants.A2A_POLICY_PARAM_PROTOCOL_BINDING: string(api.JSONRPC),
+			constants.A2A_POLICY_PARAM_PATH:             "/weather/rpc",
+		},
+		map[string]any{
+			constants.A2A_POLICY_PARAM_PROTOCOL_BINDING: string(api.HTTPJSON),
+			constants.A2A_POLICY_PARAM_PATH:             "/weather",
+		},
+	}, interfaces)
+}
+
+// protectedChainKey is the canonical GetExtendedAgentCard chain key for the
+// fixture's single routing partition.
+func protectedChainKey(t *testing.T, rdc *models.RuntimeDeployConfig) string {
+	t.Helper()
+	return rdc.ChainKeyFor("main.local", string(agentproto.GetExtendedAgentCard))
 }

@@ -68,9 +68,9 @@ func createTestAgentConfig() *models.StoredConfig {
 						{Name: api.SendMessage},
 					},
 				},
-				AgentCard: api.A2AAgentCard{
-					Public: api.A2APublicAgentCard{
-						Mode: api.A2APublicAgentCardModeManaged,
+				AgentCard: &api.A2AAgentCard{
+					Public: &api.A2APublicAgentCard{
+						Mode: publicCardMode(api.A2APublicAgentCardModeManaged),
 						Path: &cardPath,
 						Content: &api.A2AAgentCardDocument{
 							"name":                "Test Agent",
@@ -451,4 +451,11 @@ func TestSignedCardColumnsAreAgentOnly(t *testing.T) {
 			assert.Assert(t, cfg.Agent == nil, "%s was given an AgentArtifact", cfg.Kind)
 		}
 	}
+}
+
+// publicCardMode returns a pointer to a public Agent Card mode. The field is
+// optional — an omitted one means passthrough — so a fixture that states a mode
+// states it as a pointer.
+func publicCardMode(mode api.A2APublicAgentCardMode) *api.A2APublicAgentCardMode {
+	return &mode
 }

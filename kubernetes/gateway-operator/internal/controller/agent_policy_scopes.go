@@ -44,7 +44,18 @@ func agentPolicyRefs(spec *apiv1.AgentConfigData) []agentPolicyRef {
 		return nil
 	}
 	ops := &spec.A2A.OperationConfigs
-	refs := make([]agentPolicyRef, 0, len(ops.Policies)+len(ops.Operations)+len(spec.A2A.AgentCard.Public.Policies))
+	// The agentCard block and its public block are both optional, and an Agent
+	// that omitted them has no card policies rather than a missing scope to
+	// dereference.
+	var card *apiv1.A2APublicAgentCard
+	if spec.A2A.AgentCard != nil {
+		card = spec.A2A.AgentCard.Public
+	}
+	cardPolicies := 0
+	if card != nil {
+		cardPolicies = len(card.Policies)
+	}
+	refs := make([]agentPolicyRef, 0, len(ops.Policies)+len(ops.Operations)+cardPolicies)
 
 	for i := range ops.Policies {
 		refs = append(refs, agentPolicyRef{
@@ -61,12 +72,13 @@ func agentPolicyRefs(spec *apiv1.AgentConfigData) []agentPolicyRef {
 			})
 		}
 	}
-	card := &spec.A2A.AgentCard.Public
-	for i := range card.Policies {
-		refs = append(refs, agentPolicyRef{
-			Scope:  "a2a.agentCard.public",
-			Policy: &card.Policies[i],
-		})
+	if card != nil {
+		for i := range card.Policies {
+			refs = append(refs, agentPolicyRef{
+				Scope:  "a2a.agentCard.public",
+				Policy: &card.Policies[i],
+			})
+		}
 	}
 	return refs
 }

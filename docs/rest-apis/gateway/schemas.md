@@ -1401,6 +1401,9 @@ and
     "hostRewrite": "auto",
     "auth": {
       "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
       "header": "string",
       "value": "string"
     }
@@ -1892,7 +1895,7 @@ continued
     }
   },
   "status": {
-    "id": "weather-agent-v1-0",
+    "id": "reading-list-api-v1.0",
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
@@ -1951,6 +1954,9 @@ and
     "hostRewrite": "auto",
     "auth": {
       "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
       "header": "string",
       "value": "string"
     }
@@ -2181,7 +2187,7 @@ A2A-specific agent configuration.
 |---|---|---|---|---|
 |protocolVersion|string|true|none|A2A protocol version exposed by the gateway. This selects the agent's operation set and HTTP+JSON bindings, the Agent Card model its managed card is validated against, and the field-presence rules used to sign that card — an agent exposes exactly one version and the gateway performs no protocol-version conversion. Managed Agent Card interfaces must advertise this version; in passthrough mode the upstream is responsible for advertising it.|
 |operationConfigs|[A2AOperationConfigs](#schemaa2aoperationconfigs)|true|none|Transport exposure and common or operation-specific configuration for A2A operations. These policies and transports do not apply to public Agent Card serving.|
-|agentCard|[A2AAgentCard](#schemaa2aagentcard)|true|none|Public Agent Card configuration and optional protected Agent Card configuration for the authenticated A2A GetExtendedAgentCard operation.|
+|agentCard|[A2AAgentCard](#schemaa2aagentcard)|false|none|Public Agent Card configuration and optional protected Agent Card configuration for the authenticated A2A GetExtendedAgentCard operation.<br>The whole block is optional, and so is `public`. When either is omitted the gateway serves the public Agent Card in `passthrough` mode at /.well-known/agent-card.json, with `rewriteUrls` disabled and no public Agent Card policies — the same configuration as writing that block out explicitly. Omitting `protected` is *not* equivalent to omitting `public`: it keeps the compatibility behaviour described on that schema and is never turned into an explicit protected configuration by defaulting.|
 
 ##### Enumerated Values
 
@@ -2422,13 +2428,14 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
 ```
 
 Public Agent Card configuration and optional protected Agent Card configuration for the authenticated A2A GetExtendedAgentCard operation.
+The whole block is optional, and so is `public`. When either is omitted the gateway serves the public Agent Card in `passthrough` mode at /.well-known/agent-card.json, with `rewriteUrls` disabled and no public Agent Card policies — the same configuration as writing that block out explicitly. Omitting `protected` is *not* equivalent to omitting `public`: it keeps the compatibility behaviour described on that schema and is never turned into an explicit protected configuration by defaulting.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|public|[A2APublicAgentCard](#schemaa2apublicagentcard)|true|none|Public Agent Card serving. `mode` selects whether the card is proxied unchanged from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`). Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card.|
-|protected|[A2AProtectedAgentCard](#schemaa2aprotectedagentcard)|false|none|Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.<br>This block is optional, and omitting it is the same as configuring `passthrough`: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`).<br>The gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in every mode and is not configurable: an Agent that attaches no authentication policy therefore fails closed instead of publishing its extended card, whether or not it declared this block. Where authentication sits among the configured policies is the Agent author's choice.<br>Unlike `public`, which is required and whose `mode` must be stated, this block defaults, because the safe reading of an author's silence about the more privileged of the two representations is to protect it.<br>Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.|
+|public|[A2APublicAgentCard](#schemaa2apublicagentcard)|false|none|Public Agent Card serving. `mode` selects whether the card is proxied from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`), and defaults to `passthrough` when omitted. Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`.|
+|protected|[A2AProtectedAgentCard](#schemaa2aprotectedagentcard)|false|none|Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.<br>This block is optional, and omitting it is the same as configuring `passthrough` with `rewriteUrls` disabled: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`) — and, for `passthrough`, whether the proxied response's interface URLs are rewritten. Unlike `public`, an omitted block is never materialized into an explicit protected configuration.<br>The gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in every mode and is not configurable: an Agent that attaches no authentication policy therefore fails closed instead of publishing its extended card, whether or not it declared this block. Where authentication sits among the configured policies is the Agent author's choice.<br>Unlike `public`, which is required and whose `mode` must be stated, this block defaults, because the safe reading of an author's silence about the more privileged of the two representations is to protect it.<br>Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.|
 
 ## A2APublicAgentCard
 
@@ -2449,6 +2456,7 @@ Public Agent Card configuration and optional protected Agent Card configuration 
       "params": {}
     }
   ],
+  "rewriteUrls": true,
   "content": {
     "name": "Weather Agent",
     "description": "Provides weather information",
@@ -2505,15 +2513,16 @@ Public Agent Card configuration and optional protected Agent Card configuration 
 
 ```
 
-Public Agent Card serving. `mode` selects whether the card is proxied unchanged from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`). Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card.
+Public Agent Card serving. `mode` selects whether the card is proxied from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`), and defaults to `passthrough` when omitted. Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|mode|string|true|none|How the public Agent Card is produced.|
+|mode|string|false|none|How the public Agent Card is produced. Defaults to `passthrough`, which is also what an omitted `public` or `agentCard` block resolves to.|
 |path|[A2AAgentCardPath](#schemaa2aagentcardpath)|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied only to public Agent Card serving.|
+|rewriteUrls|[A2ACardRewriteUrls](#schemaa2acardrewriteurls)|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
 |content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
 |signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
 
@@ -2534,6 +2543,7 @@ Public Agent Card serving. `mode` selects whether the card is proxied unchanged 
 ```json
 {
   "mode": "managed",
+  "rewriteUrls": true,
   "content": {
     "name": "Weather Agent",
     "description": "Provides weather information",
@@ -2591,16 +2601,17 @@ Public Agent Card serving. `mode` selects whether the card is proxied unchanged 
 ```
 
 Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.
-This block is optional, and omitting it is the same as configuring `passthrough`: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`).
+This block is optional, and omitting it is the same as configuring `passthrough` with `rewriteUrls` disabled: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`) — and, for `passthrough`, whether the proxied response's interface URLs are rewritten. Unlike `public`, an omitted block is never materialized into an explicit protected configuration.
 The gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in every mode and is not configurable: an Agent that attaches no authentication policy therefore fails closed instead of publishing its extended card, whether or not it declared this block. Where authentication sits among the configured policies is the Agent author's choice.
 Unlike `public`, which is required and whose `mode` must be stated, this block defaults, because the safe reading of an author's silence about the more privileged of the two representations is to protect it.
-Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.
+Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|mode|string|true|none|How the protected Agent Card is produced. `managed` serves the supplied `content` from the gateway, and the request never reaches the upstream. `passthrough` forwards the authenticated request and proxies the upstream's own response unchanged.|
+|mode|string|true|none|How the protected Agent Card is produced. `managed` serves the supplied `content` from the gateway, and the request never reaches the upstream. `passthrough` forwards the authenticated request and proxies the upstream's own response, unchanged unless `rewriteUrls` is enabled.|
+|rewriteUrls|[A2ACardRewriteUrls](#schemaa2acardrewriteurls)|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
 |content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
 |signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
 
@@ -2610,6 +2621,29 @@ Mode-specific rules are enforced at deploy time, not by this schema: `managed` r
 |---|---|
 |mode|managed|
 |mode|passthrough|
+
+## A2ACardRewriteUrls
+
+<a id="schemaa2acardrewriteurls"></a>
+<a id="schema_A2ACardRewriteUrls"></a>
+<a id="tocSa2acardrewriteurls"></a>
+<a id="tocsa2acardrewriteurls"></a>
+
+```json
+true
+
+```
+
+Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.
+Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.
+Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.
+Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|boolean|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
 
 ## A2AAgentCardPath
 
@@ -3882,6 +3916,9 @@ and
     "hostRewrite": "auto",
     "auth": {
       "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
       "header": "string",
       "value": "string"
     }
@@ -3998,6 +4035,9 @@ continued
 {
   "auth": {
     "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
     "header": "string",
     "value": "string"
   }
@@ -4010,15 +4050,19 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |auth|object|false|none|none|
-|» type|string|true|none|none|
-|» header|string|false|none|none|
-|» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
+|» type|string|true|none|"api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.|
+|» policyName|string|false|none|Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".|
+|» policyVersion|string|false|none|Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.|
+|» policyParams|object|false|none|Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.|
+|» header|string|false|none|Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.|
+|» value|string|false|write-only|Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|api-key|
+|type|oauth2|
 |type|other|
 |type|none|
 
@@ -4032,6 +4076,9 @@ continued
 ```json
 {
   "type": "api-key",
+  "policyName": "string",
+  "policyVersion": "string",
+  "policyParams": {},
   "header": "string",
   "value": "string"
 }
@@ -4042,15 +4089,19 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|type|string|true|none|none|
-|header|string|false|none|none|
-|value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
+|type|string|true|none|"api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.|
+|policyName|string|false|none|Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".|
+|policyVersion|string|false|none|Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.|
+|policyParams|object|false|none|Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.|
+|header|string|false|none|Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.|
+|value|string|false|write-only|Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|api-key|
+|type|oauth2|
 |type|other|
 |type|none|
 
@@ -4066,6 +4117,9 @@ continued
   "id": "wso2-openai-provider",
   "auth": {
     "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
     "header": "string",
     "value": "string"
   }
@@ -4093,6 +4147,9 @@ continued
   "as": "anthropic-upstream",
   "auth": {
     "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
     "header": "string",
     "value": "string"
   },
@@ -4429,6 +4486,9 @@ and
     "id": "wso2-openai-provider",
     "auth": {
       "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
       "header": "string",
       "value": "string"
     }
@@ -4463,6 +4523,9 @@ and
       "as": "anthropic-upstream",
       "auth": {
         "type": "api-key",
+        "policyName": "string",
+        "policyVersion": "string",
+        "policyParams": {},
         "header": "string",
         "value": "string"
       },

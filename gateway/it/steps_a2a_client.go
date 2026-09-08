@@ -20,6 +20,7 @@ package it
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -54,6 +55,13 @@ import (
 // card and following the URL in it. A passthrough card legitimately advertises
 // the *upstream agent's* address, so a client that followed it would bypass the
 // gateway entirely and pass having exercised no route and no policy.
+//
+// The one exception is createClientFromCard, and it exists to test exactly that
+// hazard: an Agent whose passthrough card opted into URL rewriting is supposed
+// to advertise the gateway, so a client built from its card must reach the
+// gateway's policies. There, following the card is the assertion rather than a
+// shortcut — and the scenario using it attaches an authentication policy, so a
+// client that reached the agent directly would succeed where it must fail.
 
 // a2aSDKCallTimeout bounds one unary SDK call.
 const a2aSDKCallTimeout = 30 * time.Second
@@ -135,6 +143,9 @@ func RegisterA2AClientSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	// ---- Client construction ----
 
 	ctx.Step(`^I create an A2A client "([^"]*)" for the "(JSONRPC|HTTP\+JSON)" binding at "([^"]*)"$`, a.createClient)
+	ctx.Step(`^I create an A2A client "([^"]*)" for the "(JSONRPC|HTTP\+JSON)" binding from the Agent Card at "([^"]*)"$`,
+		a.createClientFromCard)
+	ctx.Step(`^the A2A client "([^"]*)" should be talking to "([^"]*)"$`, a.clientURLShouldBe)
 
 	// ---- Operations ----
 
@@ -217,6 +228,59 @@ func (a *A2AClientSteps) createClient(name, binding, url string) error {
 		_ = existing.destroy()
 	}
 	a.clients[name] = &a2aSDKClient{name: name, binding: protocol, url: url, client: client}
+	return nil
+}
+
+// createClientFromCard builds a client the way a real A2A client bootstraps:
+// fetch the Agent Card, pick the interface for the binding it speaks, and dial
+// the URL that interface advertises.
+//
+// This is the only step that follows a card, and it is what makes interface URL
+// rewriting testable end to end. A client that ends up at the upstream agent's
+// own address has not been through the gateway, and the scenarios using this
+// step are written so that such a client fails rather than passes: the Agent
+// carries an authentication policy the agent itself does not.
+//
+// The card is fetched with the scenario's current headers, so a card behind a
+// policy can be fetched the same way any other request is.
+func (a *A2AClientSteps) createClientFromCard(name, binding, cardURL string) error {
+	if err := a.httpSteps.SendGETRequest(cardURL); err != nil {
+		return fmt.Errorf("failed to fetch the Agent Card at %s: %w", cardURL, err)
+	}
+	body := a.httpSteps.LastBody()
+
+	var card a2a.AgentCard
+	if err := json.Unmarshal(body, &card); err != nil {
+		return fmt.Errorf("the Agent Card at %s is not a card: %w\n%s", cardURL, err, body)
+	}
+
+	protocol := a2a.TransportProtocol(binding)
+	for _, iface := range card.SupportedInterfaces {
+		if iface == nil || iface.ProtocolBinding != protocol {
+			continue
+		}
+		if iface.URL == "" {
+			return fmt.Errorf("the %s interface in the Agent Card at %s advertises no url", binding, cardURL)
+		}
+		return a.createClient(name, binding, iface.URL)
+	}
+	return fmt.Errorf("the Agent Card at %s advertises no %s interface: %s", cardURL, binding, body)
+}
+
+// clientURLShouldBe asserts which endpoint a client is actually dialling.
+//
+// For a card-derived client this is the whole point: it names the URL the card
+// advertised, so a rewrite that produced the upstream's address fails here with
+// the address it produced, rather than several steps later as an opaque
+// connection error.
+func (a *A2AClientSteps) clientURLShouldBe(name, url string) error {
+	client, err := a.require(name)
+	if err != nil {
+		return err
+	}
+	if client.url != url {
+		return fmt.Errorf("A2A client %q is talking to %s, want %s", name, client.url, url)
+	}
 	return nil
 }
 

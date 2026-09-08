@@ -182,11 +182,29 @@ spec:
       # tells a client the operation exists at all.
       # protected:
       #   mode: passthrough
+      #   rewriteUrls: true       # see the note under `public` below
 
-      # `passthrough` for the public card instead proxies the agent's own
-      # document unchanged, and accepts neither `content` nor `signing` — the
-      # gateway does not parse, transform, or sign a proxied card. Swap the
-      # whole `public` block above for this to use it:
+      # The whole `agentCard` block is optional. Omitting it — or omitting just
+      # `public` — is the same as the block below: the agent's own card, proxied
+      # at /.well-known/agent-card.json, with no rewriting and no card policies.
+      #
+      # `passthrough` proxies the agent's own document and accepts neither
+      # `content` nor `signing`: the gateway does not author or sign a card it
+      # did not write. Swap the whole `public` block above for this to use it:
       #
       # public:
       #   mode: passthrough
+      #   # The agent's card advertises the addresses the *agent* is reachable
+      #   # at, so a client configured from an unrewritten card talks to the
+      #   # agent directly — past this gateway and its policies. Rewriting is
+      #   # therefore on by default: each advertised interface URL is replaced
+      #   # by the gateway endpoint for that binding, on the scheme and
+      #   # authority the client reached the gateway on. Only the bindings the
+      #   # transports above expose are rewritten; an interface this gateway
+      #   # does not serve keeps the agent's own URL. The card's `signatures`
+      #   # block is dropped, because it no longer covers what is returned.
+      #   #
+      #   # Set it to false to forward the proxied response — signatures
+      #   # included — byte for byte, accepting that clients configured from
+      #   # the card will not traverse the gateway.
+      #   rewriteUrls: false
