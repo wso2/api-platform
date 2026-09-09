@@ -21,6 +21,8 @@ import {
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
+import { routes } from '../../../../api-control-plane/src/routes/paths';
+import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 
 /**
@@ -53,7 +55,12 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
  * the same way `gateways` does: the nav entry and route stay native, and only
  * what renders there changes. It is the one API-scoped feature here, so it needs
- * the API in scope, which the Port carries as `apiHandle`.
+ * the API in scope, which the Port carries as `apiHandle`. Because the override
+ * replaces the whole page, it also replaces the `ScopeGate` the built-in page
+ * wraps itself in — so it is re-applied here. Without it, reaching Deploy from an
+ * organization- or project-level page (which the sidebar allows, and is a normal
+ * thing to do) left a dead end instead of the project/API picker that navigates
+ * to the scoped URL.
  */
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
   defineCloudPlugin({
@@ -113,7 +120,15 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         // Settings-tab pipeline, which only match `sidebar.*` / `settings.*.tabs`.
         order: 0,
         routePath: 'deploy',
-        render: (port) => <DeployFeature port={port} />,
+        render: (port) => (
+          <ScopeGate
+            prompt="Deployments are made for a single API."
+            requires="api"
+            to={routes.apiDeploy}
+          >
+            <DeployFeature port={port} />
+          </ScopeGate>
+        ),
         label: 'Deploy',
         level: 'api',
       },

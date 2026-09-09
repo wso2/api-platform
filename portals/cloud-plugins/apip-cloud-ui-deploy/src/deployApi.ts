@@ -51,6 +51,15 @@ type ManagedGatewayDTO = {
 };
 
 /**
+ * The API's own record. Only its upstream is read: `main.url` is the backend the
+ * API is defined against, which is what a deployment serves unless it is given
+ * an endpoint of its own.
+ */
+type RestApiDTO = {
+  upstream?: { main?: { url?: string } };
+};
+
+/**
  * The deployment data client, built from the host-injected `apiFetch`.
  *
  * Everything is addressed by project and API handle, and the server resolves the
@@ -109,6 +118,16 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
     },
 
     /**
+     * The backend URL the API is defined against, which the deploy and promote
+     * forms start from so a first deployment does not have to be typed out.
+     * Absent when the API declares its upstream by reference rather than by URL.
+     */
+    async readApiEndpointUrl(): Promise<string | undefined> {
+      const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
+      return api?.upstream?.main?.url;
+    },
+
+    /**
      * Deploys to one gateway of an environment with the endpoint it should serve.
      *
      * Deploying without a `buildId` snapshots the API and deploys the new build.
@@ -129,6 +148,19 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
         ...(input.buildId ? { buildId: input.buildId } : {}),
         ...(input.endpointUrl ? { parameters: { productionEndpoint: input.endpointUrl } } : {}),
       });
+    },
+
+    /**
+     * Serves a suspended deployment again on the same gateway. The deployment is
+     * immutable, so it comes back exactly as it was — same build, same endpoint —
+     * and nothing is rendered or built.
+     */
+    async redeploy(environment: string, gatewayId: string, deploymentId: string): Promise<void> {
+      const query = `?environment=${encodeURIComponent(environment)}&gatewayId=${encodeURIComponent(gatewayId)}`;
+      await apiFetch(
+        'POST',
+        `${base}/deployments/${encodeURIComponent(deploymentId)}/redeploy${query}`
+      );
     },
 
     /** Stops serving one deployment on one gateway; the rest are untouched. */

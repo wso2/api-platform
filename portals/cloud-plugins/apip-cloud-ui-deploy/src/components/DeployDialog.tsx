@@ -44,6 +44,8 @@ export type DeployDialogProps = {
   /** The environment a promotion carries the build out of. */
   sourceEnvironment?: Environment;
   builds: Build[];
+  /** The backend URL the API is defined against; the endpoint field starts from it. */
+  apiEndpointUrl?: string;
   initialBuildId?: string;
   /** A new build will be created on confirmation; the latest build is informational. */
   createBuild: boolean;
@@ -72,6 +74,7 @@ const DeployDialog: FC<DeployDialogProps> = ({
   environment,
   sourceEnvironment,
   builds,
+  apiEndpointUrl,
   initialBuildId,
   createBuild,
   submitting,
@@ -105,13 +108,14 @@ const DeployDialog: FC<DeployDialogProps> = ({
           sourceEnvironment?.gateways.some((gateway) => gateway.buildId === build.buildId)
         )
       : builds;
-  const selectedBuildId = createBuild
-    ? (builds[0]?.buildId ?? '')
-    : (buildId || initialBuildId || availableBuilds[0]?.buildId || '');
+  const selectedBuildId = buildId || initialBuildId || availableBuilds[0]?.buildId || '';
   const selectedGateway =
     environment.gateways.find((gateway) => gateway.id === gatewayId) ??
     pickDefaultGateway(environment.gateways);
-  const endpointUrl = endpointDraft ?? selectedGateway?.endpointUrl ?? '';
+  // What this gateway already serves comes first, so re-deploying to it keeps the
+  // endpoint it is running; a gateway with nothing on it starts from the API's own
+  // backend URL rather than an empty field.
+  const endpointUrl = endpointDraft ?? selectedGateway?.endpointUrl ?? apiEndpointUrl ?? '';
   const isSingleGateway = environment.gateways.length === 1;
   // Whether the gateway can receive a deployment is its own health, not the state
   // of what is deployed on it: a healthy gateway with nothing deployed is exactly
@@ -211,17 +215,9 @@ const DeployDialog: FC<DeployDialogProps> = ({
           </Box>
         )}
 
-        <Box sx={{ mb: 2.5 }}>
-          <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Build</FormLabel>
-          {createBuild ? (
-            <TextField
-              fullWidth
-              size="small"
-              value={selectedBuildId || 'New build'}
-              slotProps={{ input: { readOnly: true } }}
-              // helperText="A new build will be created when you deploy."
-            />
-          ) : (
+        {createBuild ? null : (
+          <Box sx={{ mb: 2.5 }}>
+            <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Build</FormLabel>
             <FormControl fullWidth size="small">
               <Select
                 value={selectedBuildId}
@@ -242,8 +238,8 @@ const DeployDialog: FC<DeployDialogProps> = ({
                 )}
               </Select>
             </FormControl>
-          )}
-        </Box>
+          </Box>
+        )}
 
         <Box>
           <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Endpoint URL</FormLabel>

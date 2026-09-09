@@ -49,6 +49,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
+  const [apiEndpointUrl, setApiEndpointUrl] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,6 +91,14 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Read once per API rather than on every settling poll: the API's own backend
+  // URL is not pipeline state, and it is only the deploy form's starting value,
+  // so failing to read it must leave the rest of the page working.
+  useEffect(() => {
+    if (!client) return;
+    void client.readApiEndpointUrl().then(setApiEndpointUrl, () => setApiEndpointUrl(undefined));
+  }, [client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
   // while anything is in flight and stop as soon as everything has settled.
@@ -153,6 +162,21 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       () => client.undeploy(environment.name, gatewayId, gateway.deploymentId!),
       `Stopping ${gateway.name}.`,
       `Unable to stop ${gateway.name}.`
+    );
+  };
+
+  /**
+   * Puts a suspended deployment back on its gateway. The deployment is immutable,
+   * so this restores exactly what was running — same build, same endpoint — and
+   * builds nothing, which is what separates it from a retry.
+   */
+  const handleRedeploy = (environment: Environment, gatewayId: string) => {
+    const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
+    if (!client || !gateway?.deploymentId) return;
+    void runAction(
+      () => client.redeploy(environment.name, gatewayId, gateway.deploymentId!),
+      `Redeploying ${gateway.name}.`,
+      `Unable to redeploy ${gateway.name}.`
     );
   };
 
@@ -237,10 +261,12 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
     <DeployPage
       environments={environments}
       builds={builds}
+      apiEndpointUrl={apiEndpointUrl}
       busy={busy}
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onRetryGateway={handleRetry}
+      onRedeployGateway={handleRedeploy}
     />
   );
 };

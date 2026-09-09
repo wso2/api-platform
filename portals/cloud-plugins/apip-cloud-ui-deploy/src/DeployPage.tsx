@@ -29,6 +29,8 @@ export type DeployPageProps = {
   environments: Environment[];
   /** The API's builds, newest first. */
   builds: Build[];
+  /** The backend URL the API is defined against; the deploy form starts from it. */
+  apiEndpointUrl?: string;
   busy: boolean;
   /** Deploys to `target`; `from` is set when this is a promotion. */
   onDeploy: (
@@ -40,6 +42,7 @@ export type DeployPageProps = {
   ) => void;
   onStopGateway: (environment: Environment, gatewayId: string) => void;
   onRetryGateway: (environment: Environment, gatewayId: string) => void;
+  onRedeployGateway: (environment: Environment, gatewayId: string) => void;
 };
 
 /**
@@ -58,10 +61,12 @@ type DialogState = {
 const DeployPage: FC<DeployPageProps> = ({
   environments,
   builds,
+  apiEndpointUrl,
   busy,
   onDeploy,
   onStopGateway,
   onRetryGateway,
+  onRedeployGateway,
 }) => {
   const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -165,6 +170,7 @@ const DeployPage: FC<DeployPageProps> = ({
                   }
                   onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
                   onRetryGateway={(gatewayId) => onRetryGateway(environment, gatewayId)}
+                  onRedeployGateway={(gatewayId) => onRedeployGateway(environment, gatewayId)}
                 />
               </Fragment>
             ))}
@@ -178,6 +184,7 @@ const DeployPage: FC<DeployPageProps> = ({
         environment={target}
         sourceEnvironment={source}
         builds={builds}
+        apiEndpointUrl={apiEndpointUrl}
         initialBuildId={dialog?.buildId}
         createBuild={dialog?.createBuild ?? false}
         submitting={busy}

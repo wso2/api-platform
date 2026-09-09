@@ -30,6 +30,7 @@ export type EnvironmentCardProps = {
   onPromoteClick: () => void;
   onStopGateway: (gatewayId: string) => void;
   onRetryGateway: (gatewayId: string) => void;
+  onRedeployGateway: (gatewayId: string) => void;
 };
 
 const sectionLabelSx = {
@@ -47,6 +48,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
   onPromoteClick,
   onStopGateway,
   onRetryGateway,
+  onRedeployGateway,
 }) => {
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
@@ -95,6 +97,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
                 environmentName={environment.name}
                 busy={busy}
                 onRetry={() => onRetryGateway(gateway.id)}
+                onRedeploy={() => onRedeployGateway(gateway.id)}
                 onStop={() => onStopGateway(gateway.id)}
               />
             ))}
