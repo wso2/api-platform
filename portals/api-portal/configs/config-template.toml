@@ -185,6 +185,26 @@ encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets
 session_secret = ""     # 64-char hex — express-session signing secret
 
 # =============================================================================
+# INTERNAL SERVICE-TO-SERVICE AUTHENTICATION
+# =============================================================================
+# Shared-key authentication for platform-api's outbound publishing calls (publish
+# / update / delete API, API content, MCP Server, MCP Server content, Subscription
+# Plan). Platform-API sends `Authorization: SharedKey <raw>`; the portal computes
+# sha256(raw) and constant-time compares against `hash` below. On match the caller
+# is granted only the five dp:*:manage scopes (via the platform-api-system role in
+# role-to-scope-mapping.yaml), so a valid shared-key call cannot reach any
+# consumer or UI endpoint.
+#
+# The hash file is generated once by portals/scripts/setup.sh alongside
+# encryption_key and session_secret; the accompanying raw file is one-time-read
+# (the operator copies it into platform-api's Create API Portal call, then
+# deletes it). If `hash` is empty, shared-key auth is disabled and every SharedKey
+# request is rejected 401 — the OAuth / session paths keep working.
+
+[api_portal.internal_auth]
+hash = ""               # 64-char hex — sha256 of the platform-api → portal shared key
+
+# =============================================================================
 # AUTHENTICATION
 # =============================================================================
 # HOW a token is verified: a mode gate plus the two backends it selects between,

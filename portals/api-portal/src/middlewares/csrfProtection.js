@@ -18,6 +18,8 @@
  
 const crypto = require('crypto');
 
+const { isSharedKeyRequest } = require('./sharedKeyAuth');
+
 const CSRF_HMAC_LABEL = 'api-portal-api-keys-csrf';
 
 function ensureCsrfSecret(req) {
@@ -75,6 +77,13 @@ function timingSafeCompare(a, b) {
  */
 function requireCsrfForMutatingApi(req, res, next) {
     if (hasBearerAuthorization(req)) {
+        return next();
+    }
+    // Shared-key S2S callers (Authorization: SharedKey ...) are non-browser
+    // clients that never touch cookies or CSRF tokens; skip CSRF for them the
+    // same way we skip it for Bearer. The shared-key middleware in
+    // authResolver is what enforces authenticity here.
+    if (isSharedKeyRequest(req)) {
         return next();
     }
     if (hasMTLSClient(req)) {

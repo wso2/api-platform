@@ -47,6 +47,7 @@ session_secret = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba98765432
 
 [api_portal.organization]
 handle = "default"
+portal_id = "test-portal"
 `;
 
 let tmpDir;

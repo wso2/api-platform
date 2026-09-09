@@ -38,6 +38,14 @@ page_role_validation = true
 admin      = "ap_admin"
 subscriber = "ap_subscriber"
 
+[api_portal.internal_auth]
+# Empty disables shared-key auth (per configLoader.js line 406: "When `hash`
+# is empty the section is treated as absent"). Local-only mod for the cloud
+# portal setup: we don't ship a shared-key hash file yet (workaround #4
+# vault only stores encryption.key + session-secret). Revert to the {{ file
+# ... }} form once the plugin generates + stages this third value.
+hash = ""
+
 [api_portal.organization]
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'

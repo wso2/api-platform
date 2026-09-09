@@ -47,6 +47,7 @@ const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { effectiveScopes, isAuthorizationEnabled, isRoleMode } = require('./authorization');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
+const sharedKeyAuth = require('./sharedKeyAuth');
 
 // In-process cache so an already-known (sub, org) pair doesn't re-hit the DB on
 // every request from the same session — resolveUserUuid runs on every
@@ -279,6 +280,29 @@ async function resolvePortalOrg(req) {
  */
 async function authResolver(req, res, next) {
     try {
+        // 0. Shared-key S2S (platform-api → this portal). Runs before every other
+        //    path so a user token can never accidentally satisfy a SharedKey
+        //    attempt, and a bad SharedKey token can never quietly retry against
+        //    the OAuth path. Only requests carrying `Authorization: SharedKey ...`
+        //    are handled here; anything else falls through.
+        //    Skips the portal-isolation gate below because shared-key traffic
+        //    is a service identity, not a portal session.
+        const sharedKeyResult = sharedKeyAuth.tryAuthenticate(req);
+        if (sharedKeyResult.matched) {
+            if (!sharedKeyResult.auth) {
+                const err = new Error('Authentication required');
+                err.status = 401;
+                return next(err);
+            }
+            // Shared-key is a service-to-service call against this portal instance;
+            // the organization is this instance's own, resolved the same way the
+            // mTLS path resolves it.
+            const orgErr = await resolvePortalOrg(req);
+            if (orgErr) return next(orgErr);
+            req.auth = sharedKeyResult.auth;
+            return next();
+        }
+
         // Portal isolation: any session-authenticated request must have been issued by this
         // portal's login flow.
         if (req.isAuthenticated && req.isAuthenticated()) {
@@ -454,7 +478,11 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
         throw err;
     }
     if (req.auth.preauthorized) return true;
-    if (req.auth.mode !== 'oauth2' && req.auth.mode !== 'platform-jwt') {
+    // Shared-key runs the normal per-operation scope check like oauth2 and
+    // platform-jwt — its synthesised scope list only carries the five
+    // dp:*:manage scopes, so the check itself is what limits the mechanism to
+    // publishing write operations. No preauthorized bypass.
+    if (req.auth.mode !== 'oauth2' && req.auth.mode !== 'platform-jwt' && req.auth.mode !== sharedKeyAuth.SHARED_KEY_AUTH_MODE) {
         const err = new Error('Authentication required');
         err.status = 401;
         throw err;

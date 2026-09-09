@@ -396,6 +396,35 @@ if (config.designMode?.enabled) {
 }
 
 /**
+ * Fail-closed check for the internal_auth section.
+ *
+ * When `hash` is configured, it must be a 64-char hex string (the sha256 of the
+ * shared key platform-api sends). A malformed value would silently degrade to
+ * "shared-key auth never accepts anything" while leaving the section present —
+ * exactly the kind of mismatch this loader exists to catch, so fail here instead.
+ *
+ * When `hash` is empty the section is treated as absent: shared-key auth is
+ * disabled at request time (see src/middlewares/sharedKeyAuth.js), the OAuth and
+ * session paths keep working, and no fatal is raised.
+ */
+function validateInternalAuthConfig(cfg) {
+    const hash = cfg.internalAuth?.hash;
+    if (!hash) return;
+    if (typeof hash !== 'string' || !/^[0-9a-fA-F]{64}$/.test(hash)) {
+        process.stderr.write(
+            '[FATAL] internal_auth.hash did not resolve to a 64-character hex string. ' +
+            'Refusing to start with a malformed shared-key hash. Regenerate the hash file ' +
+            'with portals/scripts/setup.sh (or --rotate-internal-key) and reference it from ' +
+            "configs/config.toml, e.g. hash = '{{ file \"/etc/api-portal/keys/api-portal-internal-key-hash\" }}'. " +
+            'Leave the value empty to disable shared-key auth.\n'
+        );
+        process.exit(1);
+    }
+}
+
+validateInternalAuthConfig(config);
+
+/**
  * Fail-closed startup check: database.driver must be a recognised spelling, and
  * is rewritten in place to its canonical dialect before anything reads it.
  *
