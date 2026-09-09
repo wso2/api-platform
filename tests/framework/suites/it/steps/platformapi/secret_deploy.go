@@ -50,13 +50,16 @@ const (
 )
 
 var (
-	platformDeploymentKind = cleanup.Kind{Name: "platform-api-deployment", Order: 40}
-	platformSecretKind     = cleanup.Kind{Name: "platform-api-secret", Order: 85}
-	platformProviderKind   = cleanup.Kind{Name: "platform-api-provider", Order: 84}
-	platformProxyKind      = cleanup.Kind{Name: "platform-api-proxy", Order: 82}
-	platformMCPKind        = cleanup.Kind{Name: "platform-api-mcp-proxy", Order: 52}
-	platformRESTAPIKind    = cleanup.Kind{Name: "platform-api-rest-api", Order: 50}
-	platformProjectKind    = cleanup.Kind{Name: "platform-api-project", Order: 100}
+	platformDeploymentKind       = cleanup.Kind{Name: "platform-api-deployment", Order: 40}
+	platformSecretKind           = cleanup.Kind{Name: "platform-api-secret", Order: 85}
+	platformProviderKind         = cleanup.Kind{Name: "platform-api-provider", Order: 84}
+	platformProxyKind            = cleanup.Kind{Name: "platform-api-proxy", Order: 82}
+	platformMCPKind              = cleanup.Kind{Name: "platform-api-mcp-proxy", Order: 52}
+	platformRESTAPIKind          = cleanup.Kind{Name: "platform-api-rest-api", Order: 50}
+	platformApplicationKind      = cleanup.Kind{Name: "platform-api-application", Order: 20}
+	platformSecuredAPIKind       = cleanup.Kind{Name: "platform-api-secured-rest-api", Order: 51}
+	platformSubscriptionPlanKind = cleanup.Kind{Name: "platform-api-subscription-plan", Order: 90}
+	platformProjectKind          = cleanup.Kind{Name: "platform-api-project", Order: 100}
 )
 
 // RegisterDeploy binds the steps that create and deploy an artifact THROUGH platform-api's
@@ -641,14 +644,17 @@ func (s *Steps) createSubscriptionPlan(ctx context.Context, handle string, count
 	if err != nil {
 		return err
 	}
-	return s.postJSON(ctx, base, bearer, "/subscription-plans", map[string]any{
+	if err := s.postJSON(ctx, base, bearer, "/subscription-plans", map[string]any{
 		"id":          resolvedHandle,
 		"displayName": resolvedHandle,
 		"status":      "ACTIVE",
 		"limits": []map[string]any{
 			{"limitType": "REQUEST_COUNT", "timeUnit": strings.ToUpper(unit), "limitCount": count},
 		},
-	}, nil)
+	}, nil); err != nil {
+		return err
+	}
+	return s.registerPlatformResource(ctx, platformSubscriptionPlanKind, resolvedHandle, "/subscription-plans")
 }
 
 // createSecuredRestAPI creates a PUBLISHED REST API offering the given subscription plan,
@@ -676,7 +682,7 @@ func (s *Steps) createSecuredRestAPI(ctx context.Context, id, projectHandle, api
 		return err
 	}
 
-	return s.postJSON(ctx, base, bearer, "/rest-apis", map[string]any{
+	if err := s.postJSON(ctx, base, bearer, "/rest-apis", map[string]any{
 		"displayName":       resolvedID,
 		"context":           resolvedContext,
 		"version":           "v1",
@@ -688,7 +694,10 @@ func (s *Steps) createSecuredRestAPI(ctx context.Context, id, projectHandle, api
 			{"name": "api-key-auth", "version": "v1", "params": map[string]any{"key": apiKeyHeader, "in": "header"}},
 			{"name": "subscription-validation", "version": "v1", "params": map[string]any{"subscriptionKeyHeader": subscriptionKeyHeader}},
 		},
-	}, nil)
+	}, nil); err != nil {
+		return err
+	}
+	return s.registerPlatformResource(ctx, platformSecuredAPIKind, resolvedID, "/rest-apis")
 }
 
 // createApplication creates a GenAI application under the given project.
@@ -705,12 +714,15 @@ func (s *Steps) createApplication(ctx context.Context, id, projectHandle string)
 	if err != nil {
 		return err
 	}
-	return s.postJSON(ctx, base, bearer, "/applications", map[string]any{
+	if err := s.postJSON(ctx, base, bearer, "/applications", map[string]any{
 		"id":          resolvedID,
 		"displayName": resolvedID,
 		"projectId":   resolvedProject,
 		"type":        "genai",
-	}, nil)
+	}, nil); err != nil {
+		return err
+	}
+	return s.registerPlatformResource(ctx, platformApplicationKind, resolvedID, "/applications")
 }
 
 // createSubscription subscribes an application to a REST API under a plan, storing the

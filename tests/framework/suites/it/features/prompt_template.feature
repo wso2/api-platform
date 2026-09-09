@@ -297,5 +297,5 @@ Feature: Prompt template
     Examples:
       | templateName | template                                                                            | reference                                                              | expected                                                       |
       | translate    | You are a professional translator. Translate from [[sourceLang]] to [[targetLang]]: [[text]] | template://translate?sourceLang=English&targetLang=French&text=Hello world | You are a professional translator. Translate from English to French: Hello world |
-      | review       | Review this [[language]] code for bugs: [[code]]                                   | template://review?language=Python&code=def add(a, b): return a %2B b  | Review this Python code for bugs: def add(a, b): return a + b  |
+      | review       | Review this [[language]] code for bugs: [[code]]                                   | template://review?language=Python&code=def add(a, b): return a + b     | Review this Python code for bugs: def add(a, b): return a + b  |
       | sentiment    | Classify the sentiment of the following text: [[text]]                             | template://sentiment?text=This product is amazing!                     | Classify the sentiment of the following text: This product is amazing! |

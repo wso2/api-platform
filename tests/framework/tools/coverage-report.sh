@@ -10,6 +10,20 @@ tools="$here/tools/coverage"
 die() { echo "coverage-report: $*" >&2; exit 1; }
 [ -d "$out" ] || die "no coverage output at $out — run the suite with -coverage first"
 
+# NewSink (core/coverage/sink.go) isolates every run beneath its own "$out/.run-*"
+# directory, so a stale local run's counters are never picked up alongside a fresh one.
+# Reports still render into the stable $out below (the CI workflow's Codecov steps upload
+# fixed paths under it), but the raw counters are only ever found inside whichever
+# ".run-*" directory the run that just finished actually used - the most recently
+# modified one, if more than one is present from repeated local runs.
+raw_root="$out"
+for run_dir in "$out"/.run-*; do
+	[ -d "$run_dir" ] || continue
+	if [ "$raw_root" = "$out" ] || [ "$run_dir" -nt "$raw_root" ]; then
+		raw_root="$run_dir"
+	fi
+done
+
 # Generated reports are disposable. Clear previous layouts so an index never links to
 # reports from an earlier run or an obsolete directory structure.
 rm -rf "$out/platform-gateway" "$out/platform-api" "$out/ai-workspace" \
@@ -18,15 +32,15 @@ rm -rf "$out/platform-gateway" "$out/platform-api" "$out/ai-workspace" \
 	"$out/coverage-go.html.profile" "$out/index.html"
 
 # Go coverage counters always live under raw/<block>/<service> (see core/coverage/sink.go's
-# Dir), never directly under $out - $out also holds rendered reports alongside the raw
-# inputs, so searching $out itself would mix the two together.
+# Dir), never directly under $raw_root - $raw_root also holds rendered reports alongside the
+# raw inputs, so searching $raw_root itself would mix the two together.
 go_inputs=""
-if [ -d "$out/raw" ]; then
+if [ -d "$raw_root/raw" ]; then
 	while IFS= read -r dir; do
 		if ls "$dir"/covmeta.* >/dev/null 2>&1 && ls "$dir"/covcounters.* >/dev/null 2>&1; then
 			go_inputs="${go_inputs:+$go_inputs,}$dir"
 		fi
-	done < <(find "$out/raw" -mindepth 2 -maxdepth 2 -type d | sort)
+	done < <(find "$raw_root/raw" -mindepth 2 -maxdepth 2 -type d | sort)
 fi
 
 node_files=()
@@ -70,7 +84,7 @@ if [ -n "$go_inputs" ]; then
 		} > "$html_profile"
 		go tool cover -html="$html_profile" -o "$report_dir/coverage.html"
 		local covered total
-		covered=$(awk 'NR>1 && $NF>0 {n++} END {print n+0}' "$report_dir/coverage.txt")
+		covered=$(awk 'NR>1 && $NF>0 {n+=$(NF-1)} END {print n+0}' "$report_dir/coverage.txt")
 		total=$(awk 'NR>1 {n+=$(NF-1)} END {print n+0}' "$report_dir/coverage.txt")
 		[ "$covered" -gt 0 ] || die "$service Go coverage contains no executed statements"
 		awk -v covered="$covered" -v total="$total" 'BEGIN {printf "Go coverage: %.1f%% of statements (%d/%d)\n", 100*covered/total, covered, total}'
@@ -81,7 +95,7 @@ if [ -n "$go_inputs" ]; then
 		service_inputs=""
 		while IFS= read -r dir; do
 			service_inputs="${service_inputs:+$service_inputs,}$dir"
-		done < <(find "$out/raw" -mindepth 2 -maxdepth 2 -type d -name "$service" | sort)
+		done < <(find "$raw_root/raw" -mindepth 2 -maxdepth 2 -type d -name "$service" | sort)
 		[ -n "$service_inputs" ] || continue
 		case "$service" in
 			gateway-controller) report_dir="$out/platform-gateway/controller" ;;
@@ -163,12 +177,13 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 		[ -s "$report_dir/lcov.info" ] || die "$name browser coverage reporter produced no LCOV report"
 	}
 
-	if find "$out/raw/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
-		&& rg -l 'AIWorkspace|/web/src/(App|Components|pages)/' "$out/raw/blocks" >/dev/null; then
+	command -v rg >/dev/null 2>&1 || die "browser coverage reports require rg, but rg is unavailable"
+	if find "$raw_root/raw/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
+		&& rg -l 'AIWorkspace|/web/src/(App|Components|pages)/' "$raw_root/raw/blocks" >/dev/null; then
 		run_product_browser_report ai-workspace-ui portals/ai-workspace/src portals/ai-workspace/src 'portals/ai-workspace/src/**'
 	fi
-	if find "$out/raw/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
-		&& rg -l '/web/src/scripts/' "$out/raw/blocks" >/dev/null; then
+	if find "$raw_root/raw/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
+		&& rg -l '/web/src/scripts/' "$raw_root/raw/blocks" >/dev/null; then
 		run_product_browser_report api-portal-ui portals/api-portal/src/scripts portals/api-portal/src/scripts 'portals/api-portal/src/scripts/**/*.js'
 	fi
 fi

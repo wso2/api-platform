@@ -20,6 +20,7 @@ package apiportal
 
 import (
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,4 +64,14 @@ func TestAPIPortalBuildDeclaresBrowserCoverage(t *testing.T) {
 	require.Contains(t, spec.Coverage.Types, builder.BrowserJSCoverage)
 	require.Equal(t, "portals/api-portal/src/scripts", spec.Coverage.Browser.SourceRoot)
 	require.NotEmpty(t, spec.Coverage.Browser.Include)
+}
+
+func TestAPIPortalBuildIncludesCoverageScriptsContext(t *testing.T) {
+	spec, err := BuildSpec("test")
+	require.NoError(t, err)
+	commands, err := spec.Plan("/repo", "test", spec.Coverage)
+	require.NoError(t, err)
+	require.Len(t, commands, 1)
+	require.Contains(t, strings.Join(commands[0].Args, " "),
+		"--build-context coverage-scripts=../../tests/framework/tools")
 }

@@ -48,6 +48,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique resource name from "dp2cp-chain-prov" and store it as "providerName"
     And I generate a unique value from "dp2cp-chain-prov-display" and store it as "providerDisplayName"
     And I generate a unique API version from "dp2cp-chain-prov" and store it as "providerVersion"
+    And I generate a unique API context from "/dp2cp-chain-prov" and store it as "providerContext"
     And I generate a unique resource name from "dp2cp-chain-proxy" and store it as "proxyName"
     And I generate a unique value from "dp2cp-chain-proxy-display" and store it as "proxyDisplayName"
     And I generate a unique API version from "dp2cp-chain-proxy" and store it as "proxyVersion"
@@ -66,6 +67,7 @@ Feature: Data-plane to control-plane artifact push
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response should be successful
@@ -125,6 +127,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique resource name from "dp2cp-upd-prov" and store it as "providerName"
     And I generate a unique value from "dp2cp-upd-prov-display" and store it as "providerDisplayName"
     And I generate a unique API version from "dp2cp-upd-prov" and store it as "providerVersion"
+    And I generate a unique API context from "/dp2cp-upd-prov" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:templateName}               |
@@ -139,6 +142,7 @@ Feature: Data-plane to control-plane artifact push
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response should be successful
@@ -150,6 +154,7 @@ Feature: Data-plane to control-plane artifact push
       | displayName        | ${CTX:providerDisplayName} Updated |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response should be successful

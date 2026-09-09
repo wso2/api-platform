@@ -87,7 +87,7 @@ func Testbench() *components.Definition {
 			Endpoint: "jwks", Path: "/testbench/health", ExpectStatus: 200,
 			Timeout: 60 * time.Second, Interval: time.Second,
 		},
-		Limits: components.ResourceLimits{CPUs: 0.5, MemoryMB: 256},
+		Limits: components.ResourceLimits{CPUs: 1.5, MemoryMB: 512},
 	}
 
 	// Shared across blocks. Every hosted service either derives its response from the request or

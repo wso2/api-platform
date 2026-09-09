@@ -48,6 +48,11 @@ type ComposeSpec struct {
 
 	// CoverageServices lists services and artifact formats collected after shutdown.
 	CoverageServices []CoverageService
+
+	// BootAttempts caps how many times the runtime retries a failed boot of this stack,
+	// tearing down and relaunching with a fresh stack each time. Zero or one means no
+	// retry, matching the default for every compose component that does not set this.
+	BootAttempts int
 }
 
 // CoverageService identifies a service that writes coverage artifacts.
@@ -87,6 +92,10 @@ func (d *Definition) validateCompose() error {
 	// Compose publishes ports; endpoints describe how tests address the component.
 	if len(d.Endpoints) == 0 {
 		errs.addf("%s: a compose-backed component still needs endpoints for addressing", d)
+	}
+
+	if c.BootAttempts < 0 {
+		errs.addf("%s: boot attempts must not be negative, got %d", d, c.BootAttempts)
 	}
 
 	for name, rel := range c.StagedFiles {
@@ -150,6 +159,7 @@ func (c *ComposeSpec) WithGenerated(files map[string][]byte) *ComposeSpec {
 		GeneratedFiles:   make(map[string][]byte, len(files)+len(c.GeneratedFiles)),
 		Env:              make(map[string]string, len(c.Env)),
 		CoverageServices: append([]CoverageService(nil), c.CoverageServices...),
+		BootAttempts:     c.BootAttempts,
 	}
 	for k, v := range c.StagedFiles {
 		out.StagedFiles[k] = v

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -44,6 +45,16 @@ const stagingDirName = ".wso2-apip-it-compose"
 
 // EnvComposeNetwork names the block network used by a compose stack.
 const EnvComposeNetwork = "PG_NETWORK"
+
+// EnvComposeCPULimit and EnvComposeMemoryLimitMB carry a compose component's declared
+// resource limits into the stack's substitution env, for a service's own compose file to
+// reference under its "deploy.resources.limits" (honoured by `docker compose up` without
+// swarm mode). Set only when the definition declares a limit, so a compose file that does
+// not reference them sees no behavior change.
+const (
+	EnvComposeCPULimit      = "APIP_CPU_LIMIT"
+	EnvComposeMemoryLimitMB = "APIP_MEMORY_LIMIT_MB"
+)
 
 // ComposeStack is a running compose-backed component.
 type ComposeStack struct {
@@ -117,6 +128,16 @@ func LaunchCompose(
 	}
 	// Join the block network so the stack can reach other components.
 	env[EnvComposeNetwork] = opts.Network.Name()
+	// A compose-backed component's Limits have no effect unless its own compose file opts
+	// in by referencing these under "deploy.resources.limits" - unlike a raw container
+	// (applyLimits, container.go), there is no host-config hook this runtime can apply on
+	// the component's behalf here.
+	if def.Limits.CPUs > 0 {
+		env[EnvComposeCPULimit] = strconv.FormatFloat(def.Limits.CPUs, 'f', -1, 64)
+	}
+	if def.Limits.MemoryMB > 0 {
+		env[EnvComposeMemoryLimitMB] = strconv.FormatInt(def.Limits.MemoryMB, 10)
+	}
 	stack = stack.WithEnv(env)
 
 	// Wait for application-level readiness on the primary service.
@@ -152,6 +173,35 @@ func LaunchCompose(
 	keepStageDir = false
 
 	return result, nil
+}
+
+// launchComposeWithRetry retries a failed compose boot up to attempts times. Unlike the
+// raw-container retry path (launchWithRetry), a failed launch already tears itself down
+// and stages a fresh directory and stack identifier on its own next call, so a retry
+// needs nothing beyond calling launch again.
+func launchComposeWithRetry(
+	ctx context.Context, componentName string, attempts int,
+	launch func(context.Context) (*ComposeStack, error),
+) (*ComposeStack, error) {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		stack, err := launch(ctx)
+		if err == nil {
+			return stack, nil
+		}
+		lastErr = err
+		if attempt < attempts {
+			slog.Warn("compose stack boot failed; retrying with a fresh stack",
+				"component", componentName, "attempt", attempt, "of", attempts, "error", err)
+		}
+	}
+	return nil, lastErr
 }
 
 // composeWaitStrategy builds the readiness probe for the primary service.

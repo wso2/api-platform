@@ -393,7 +393,7 @@ Feature: Model round-robin load balancing policy
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
       | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"model-round-robin","version":"v1","params":{"models":[{"model":"model-1"},{"model":"model-2"}],"suspendDuration":3,"requestModel":{"location":"payload","identifier":"$.model"}}}]},{"method":"GET","path":"/health"}] |
+      | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"model-round-robin","version":"v1","params":{"models":[{"model":"model-1"},{"model":"model-2"}],"suspendDuration":30,"requestModel":{"location":"payload","identifier":"$.model"}}}]},{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
 

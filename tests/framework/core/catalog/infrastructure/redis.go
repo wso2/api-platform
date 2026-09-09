@@ -19,6 +19,8 @@
 package infrastructure
 
 import (
+	"context"
+
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 )
@@ -44,6 +46,9 @@ func Redis() *components.Definition {
 		Alias: "redis",
 		Image: components.ImageRef{Ref: "redis/redis-stack-server:latest"},
 		Env:   map[string]string{RedisPasswordEnv: RedisPassword},
+		Provisions: func(context.Context, *components.Instance) (map[string]string, error) {
+			return map[string]string{RedisPasswordEnv: RedisPassword}, nil
+		},
 		Endpoints: []components.Endpoint{
 			{Name: "redis", Port: 6379, Scheme: "tcp", AwaitListening: true},
 		},

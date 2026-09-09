@@ -30,12 +30,14 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-lifecycle" and store it as "providerName"
     And I generate a unique value from "lpm-lifecycle" and store it as "providerDisplayName"
     And I generate a unique API version from "lpm-lifecycle" and store it as "providerVersion"
+    And I generate a unique API context from "/lpm-lifecycle" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | openai                              |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -59,6 +61,7 @@ Feature: LLM provider management
       | displayName                   | ${CTX:providerDisplayName} Updated |
       | version                       | ${CTX:providerVersion}            |
       | template                      | openai                              |
+      | spec.context                  | ${CTX:providerContext}            |
       | spec.upstream.url             | http://testbench:3008/openai/v1   |
       | accessControl.mode            | deny_all                            |
       | spec.accessControl.exceptions | [{"path":"/chat/completions","methods":["POST"]}] |
@@ -88,6 +91,7 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-list-1" and store it as "providerName1"
     And I generate a unique value from "lpm-list-1" and store it as "providerDisplayName1"
     And I generate a unique API version from "lpm-list-1" and store it as "providerVersion1"
+    And I generate a unique API context from "/lpm-list-1" and store it as "providerContext1"
     And I generate a unique resource name from "lpm-list-2" and store it as "providerName2"
     And I generate a unique value from "lpm-list-2" and store it as "providerDisplayName2"
     And I generate a unique API version from "lpm-list-2" and store it as "providerVersion2"
@@ -98,6 +102,7 @@ Feature: LLM provider management
       | displayName        | ${CTX:providerDisplayName1}       |
       | version            | ${CTX:providerVersion1}           |
       | template           | openai                              |
+      | spec.context       | ${CTX:providerContext1}           |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -146,12 +151,14 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-filter-name" and store it as "providerName"
     And I generate a unique value from "lpm-filter-name" and store it as "providerDisplayName"
     And I generate a unique API version from "lpm-filter-name" and store it as "providerVersion"
+    And I generate a unique API context from "/lpm-filter-name" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | openai                              |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -168,12 +175,14 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-filter-version" and store it as "providerName"
     And I generate a unique value from "lpm-filter-version" and store it as "providerDisplayName"
     And I generate a unique API version from "lpm-filter-version" and store it as "providerVersion"
+    And I generate a unique API context from "/lpm-filter-version" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | openai                              |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -215,12 +224,14 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-template" and store it as "providerName"
     And I generate a unique value from "lpm-template" and store it as "providerDisplayName"
     And I generate a unique API version from "lpm-template" and store it as "providerVersion"
+    And I generate a unique API context from "/lpm-template" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | openai                              |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -236,12 +247,14 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-policy" and store it as "providerName"
     And I generate a unique value from "lpm-policy" and store it as "providerDisplayName"
     And I generate a unique API version from "lpm-policy" and store it as "providerVersion"
+    And I generate a unique API context from "/lpm-policy" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion             | gateway.api-platform.wso2.com/v1 |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
       | template               | openai                              |
+      | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3008/openai/v1   |
       | accessControl.mode     | allow_all                          |
       | spec.operationPolicies | [{"name":"set-headers","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"request":{"headers":[{"name":"x-custom-header","value":"test-value"}]}}}]}] |
@@ -312,12 +325,14 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-empty-version" and store it as "providerName"
     And I generate a unique value from "lpm-empty-version" and store it as "providerDisplayName"
     And I generate a unique API version from "lpm-empty-version" and store it as "providerVersion"
+    And I generate a unique API context from "/lpm-empty-version" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion          | gateway.api-platform.wso2.com/v1 |
       | name                | ${CTX:providerName}               |
       | displayName         | ${CTX:providerDisplayName}        |
       | version             | ${CTX:providerVersion}            |
       | template            | openai                              |
+      | spec.context        | ${CTX:providerContext}            |
       | spec.upstream.url   | http://testbench:3008/openai/v1   |
       | accessControl.mode  | allow_all                          |
       | spec.globalPolicies | [{"name":"basic-ratelimit","version":"","params":{"limits":[{"requests":10,"duration":"1h"}]}}] |
@@ -358,12 +373,14 @@ Feature: LLM provider management
     Given I generate a unique resource name from "lpm-minimal" and store it as "providerName"
     And I generate a unique value from "lpm-minimal" and store it as "providerDisplayName"
     And I generate a unique API version from "lpm-minimal" and store it as "providerVersion"
+    And I generate a unique API context from "/lpm-minimal" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | openai                              |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201

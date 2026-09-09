@@ -232,6 +232,15 @@ func (t *Topology) startComponent(
 	def := rc.Def
 
 	env := map[string]string{}
+	if def.IsCompose() && def.Compose != nil {
+		// The component's own static/generated env (image ref overrides, credentials,
+		// coverage vars) reaches the container only through this map: compose's
+		// env_file is what actually sets the container's environment, and it is
+		// built from env below, not from compose-file ${VAR} substitution.
+		for k, v := range def.Compose.Env {
+			env[k] = v
+		}
+	}
 	for k, v := range t.Storage.Env[KeyFor(def.Name, 0)] {
 		env[k] = v
 	}
@@ -270,7 +279,10 @@ func (t *Topology) startComponent(
 		}
 		spec := def.Compose.WithGenerated(generated)
 
-		stack, err := LaunchCompose(ctx, def, spec, opts)
+		stack, err := launchComposeWithRetry(ctx, def.Name, spec.BootAttempts,
+			func(ctx context.Context) (*ComposeStack, error) {
+				return LaunchCompose(ctx, def, spec, opts)
+			})
 		if stack != nil {
 			t.stops = append(t.stops, stack.Stop)
 		}

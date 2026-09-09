@@ -165,6 +165,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.sendUntilHeader)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until header "([^"]*)" is "([^"]*)" with body:$`,
 		b.sendUntilHeaderWithBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until it times out after "([^"]*)" seconds with status (\d+)$`,
+		b.sendUntilTimedOut)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the JSON field "([^"]*)" has length less than (\d+) with body:$`,
 		func(ctx context.Context, method, path, field string, threshold int, body *godog.DocString) error {
 			return b.sendUntilJSONFieldStringLength(ctx, method, path, field, "less than", threshold, body)
@@ -297,18 +299,9 @@ func (b *Base) sendRequestWithHeaders(
 	for name, value := range extra {
 		headers[name] = value
 	}
-	var payload []byte
-	if body != nil {
-		content, expErr := stepscommon.Expand(ctx, body.Content)
-		if expErr != nil {
-			return expErr
-		}
-		payload = []byte(content)
-		// Default rather than override: a feature that sets Content-Type explicitly is testing
-		// how the gateway treats it. Bodyless requests get none at all.
-		if headers["Content-Type"] == "" {
-			headers["Content-Type"] = "application/json"
-		}
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
 	}
 
 	return b.invokeWith(ctx, strings.ToUpper(method), url, headers, payload)
@@ -384,6 +377,47 @@ func (b *Base) sendUntilStatusWithBody(
 		},
 		func(r *httpx.Response) bool { return r != nil && r.StatusCode == want },
 		fmt.Sprintf("waiting for %s %s to return %d", strings.ToUpper(method), url, want))
+}
+
+// sendUntilTimedOut polls a data-plane path until it fails with the wanted status AND its
+// elapsed time proves the configured timeout value is what is actually being enforced, rather
+// than accepting the first response with a matching status regardless of cause. A route whose
+// cluster has not yet fully converged can answer with the right status well before the real
+// timeout value elapses (e.g. still on a shorter default connect timeout, or not yet
+// resolvable at all); retrying through that here means the assertion never depends on a
+// separate, unrelated readiness signal to rule it out beforehand.
+func (b *Base) sendUntilTimedOut(ctx context.Context, method, path, wantSeconds string, wantStatus int) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	want, err := parseSeconds(wantSeconds)
+	if err != nil {
+		return err
+	}
+	floor := time.Duration(want * (1 - elapsedTolerance) * float64(time.Second))
+	headers := b.scenarioHeaders(ctx)
+
+	return stepscommon.AwaitResponse(ctx,
+		func(ctx context.Context) (*httpx.Response, error) {
+			response, sendErr := b.funnel.Send(ctx, httpx.Request{
+				Method: strings.ToUpper(method), URL: url, Headers: headers,
+				Host: b.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return response, nil
+		},
+		func(r *httpx.Response) bool {
+			return r != nil && r.StatusCode == wantStatus && r.Elapsed >= floor
+		},
+		fmt.Sprintf("waiting for %s %s to time out after %ss with status %d",
+			strings.ToUpper(method), url, wantSeconds, wantStatus))
 }
 
 // sendUntilHeader polls a data-plane path until a response header carries the wanted value.

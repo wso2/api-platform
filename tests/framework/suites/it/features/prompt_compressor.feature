@@ -581,13 +581,11 @@ Feature: Prompt compressor policy
       | spec.upstream.main.url | http://testbench:3002              |
       | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"prompt-compressor","version":"v0","params":{"jsonPath":"$.messages[0].content","rules":[{"upperTokenLimit":-1,"type":"ratio","value":0.30}]}}]},{"method":"GET","path":"/health"}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
-    # A status/snapshot-sync poll alone cannot tell whether THIS route's policy chain has
-    # actually refreshed: an update that only changes an existing route's policy content (no
-    # new route, no path change) can still answer 200 from the pre-update config, and policy
-    # snapshot sync's version numbers were observed to agree before the compression itself was
-    # live. Polling on the compressed length is what makes this deterministic instead of racy.
+    # A status poll alone cannot tell whether THIS route's policy chain has actually
+    # refreshed: an update that only changes an existing route's policy content (no new
+    # route, no path change) can still answer 200 from the pre-update config. Polling on
+    # the compressed length is what makes this deterministic instead of racy.
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until the JSON field "json.messages[0].content" has length less than 850 with body:
       """
       {"messages":[{"content":"The deployment pipeline for the cloud-native application underwent significant changes during the last quarter. The engineering team migrated from a monolithic architecture to a microservices-based approach. This transition involved refactoring the authentication module, updating the database connection pooling strategy, and implementing new caching mechanisms. The team also introduced automated regression testing suites that run on every pull request submission. Performance benchmarks showed a notable improvement in response latency after the migration was completed. The operations team documented all configuration changes and created runbooks for common incident response scenarios. Additionally, the security team conducted a comprehensive audit of all service endpoints and updated the firewall rules accordingly. The monitoring infrastructure was enhanced with new dashboards and alerting configurations to provide better visibility into system health and performance metrics across all environments."}]}
@@ -604,10 +602,9 @@ Feature: Prompt compressor policy
       | spec.upstream.main.url | http://testbench:3002              |
       | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"prompt-compressor","version":"v0","params":{"jsonPath":"$.messages[0].content","rules":[{"upperTokenLimit":-1,"type":"ratio","value":0.95}]}}]},{"method":"GET","path":"/health"}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Same class of race as Phase 2: poll on length until this route has moved off the
-    # Phase-2 compressed (ratio 0.30) config rather than trusting status/snapshot-sync alone.
+    # Phase-2 compressed (ratio 0.30) config rather than trusting status alone.
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until the JSON field "json.messages[0].content" has length greater than 900 with body:
       """
       {"messages":[{"content":"The deployment pipeline for the cloud-native application underwent significant changes during the last quarter. The engineering team migrated from a monolithic architecture to a microservices-based approach. This transition involved refactoring the authentication module, updating the database connection pooling strategy, and implementing new caching mechanisms. The team also introduced automated regression testing suites that run on every pull request submission. Performance benchmarks showed a notable improvement in response latency after the migration was completed. The operations team documented all configuration changes and created runbooks for common incident response scenarios. Additionally, the security team conducted a comprehensive audit of all service endpoints and updated the firewall rules accordingly. The monitoring infrastructure was enhanced with new dashboards and alerting configurations to provide better visibility into system health and performance metrics across all environments."}]}
@@ -626,7 +623,6 @@ Feature: Prompt compressor policy
       | spec.upstream.main.url | http://testbench:3002              |
       | spec.operations        | [{"method":"POST","path":"/chat"},{"method":"GET","path":"/health"}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # ratio 0.95 can still drop a small word while leaving overall length almost unchanged, so a
     # length-based poll cannot tell "policy truly removed" from "still on the Phase-3 config" -

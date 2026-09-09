@@ -281,17 +281,11 @@ Feature: Prompt decorator
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
 
-    # The configured jsonPath can never resolve for any payload, so there is no successful
-    # request to fold route readiness into - policy snapshot sync is the correct readiness
-    # signal here instead.
-    And I wait for policy snapshot sync
-
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until status 500 with body:
       """
       {"messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 500
-    And the response should be valid JSON
+    Then the response should be valid JSON
     And the response body should contain "PROMPT_DECORATOR_ERROR"
 
     When I delete the API "${CTX:apiName}"

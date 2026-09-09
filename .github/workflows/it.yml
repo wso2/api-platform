@@ -83,7 +83,7 @@ jobs:
         working-directory: tests/framework
         env:
           IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
-        run: go test ./suites/it -count=1 -timeout=45m -coverage
+        run: go test ./suites/it -count=1 -timeout=60m -coverage
 
       # Rerunnable post-step: consumes whatever the run harvested, so a failed suite
       # still reports what it covered. The script itself fails when no statement executed
@@ -107,7 +107,7 @@ jobs:
       - name: Upload gateway-controller unit coverage to Codecov
         if: always()
         continue-on-error: true
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: gateway/gateway-controller/unit-test-coverage.txt
@@ -116,7 +116,7 @@ jobs:
       - name: Upload policy-engine unit coverage to Codecov
         if: always()
         continue-on-error: true
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
@@ -125,7 +125,7 @@ jobs:
       - name: Upload platform-api unit coverage to Codecov
         if: always()
         continue-on-error: true
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: platform-api/unit-test-coverage.txt
@@ -136,7 +136,7 @@ jobs:
       - name: Upload gateway-controller integration coverage to Codecov
         if: always()
         continue-on-error: true
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: tests/framework/suites/it/coverage-out/platform-gateway/controller/coverage.txt
@@ -145,7 +145,7 @@ jobs:
       - name: Upload policy-engine integration coverage to Codecov
         if: always()
         continue-on-error: true
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: tests/framework/suites/it/coverage-out/platform-gateway/runtime/coverage.txt
@@ -154,7 +154,7 @@ jobs:
       - name: Upload platform-api integration coverage to Codecov
         if: always()
         continue-on-error: true
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: tests/framework/suites/it/coverage-out/platform-api/coverage.txt

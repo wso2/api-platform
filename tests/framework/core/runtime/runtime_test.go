@@ -605,6 +605,57 @@ func TestLaunchWithRetryStopsOnCancelledContext(t *testing.T) {
 	require.Equal(t, 1, calls, "a dead run must not keep booting containers")
 }
 
+func TestLaunchComposeWithRetrySucceedsAfterFailures(t *testing.T) {
+	calls := 0
+	stack, err := launchComposeWithRetry(context.Background(), "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			if calls < 3 {
+				return nil, errors.New("container exited with code 2")
+			}
+			return &ComposeStack{}, nil
+		})
+	require.NoError(t, err)
+	require.NotNil(t, stack)
+	require.Equal(t, 3, calls)
+}
+
+func TestLaunchComposeWithRetryReturnsLastErrorWhenBudgetSpent(t *testing.T) {
+	calls := 0
+	boom := errors.New("container exited with code 2")
+	_, err := launchComposeWithRetry(context.Background(), "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			return nil, boom
+		})
+	require.ErrorIs(t, err, boom)
+	require.Equal(t, 3, calls)
+}
+
+func TestLaunchComposeWithRetrySingleAttemptFailsFast(t *testing.T) {
+	calls := 0
+	_, err := launchComposeWithRetry(context.Background(), "gateway", 1,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			return nil, errors.New("boom")
+		})
+	require.Error(t, err)
+	require.Equal(t, 1, calls)
+}
+
+func TestLaunchComposeWithRetryStopsOnCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	_, err := launchComposeWithRetry(ctx, "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			cancel()
+			return nil, errors.New("container exited with code 2")
+		})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, calls, "a dead run must not keep booting stacks")
+}
+
 func TestEngineBootAttempts(t *testing.T) {
 	require.Equal(t, 3, sqlServerEngine{}.bootAttempts(),
 		"sqlserver retries: the arm64 SQL Edge translator crash is probabilistic")

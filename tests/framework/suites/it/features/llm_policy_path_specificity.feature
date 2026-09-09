@@ -64,20 +64,17 @@ Feature: LLM policy path and method specificity
       | accessControl.mode | allow_all                          |
       | spec.operationPolicies | [{"name":"set-headers","version":"v1","paths":[{"path":"/a/*","methods":["POST"],"params":{"response":{"headers":[{"name":"X-Matched-Policy","value":"wildcard"}]}}},{"path":"/a/b","methods":["POST"],"params":{"response":{"headers":[{"name":"X-Matched-Policy","value":"exact"}]}}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "${CTX:providerContext}/a/b" until status 200 with body:
+    And I send a "POST" request to "${CTX:providerContext}/a/b" until header "X-Matched-Policy" is "exact" with body:
       """
       {"model":"gpt-4"}
       """
-    Then the response header "X-Matched-Policy" should be "exact"
 
-    When I send a "POST" request to "${CTX:providerContext}/a/c" until status 200 with body:
+    When I send a "POST" request to "${CTX:providerContext}/a/c" until header "X-Matched-Policy" is "wildcard" with body:
       """
       {"model":"gpt-4"}
       """
-    Then the response header "X-Matched-Policy" should be "wildcard"
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
@@ -119,7 +116,6 @@ Feature: LLM policy path and method specificity
       | accessControl.mode | allow_all                          |
       | spec.operationPolicies | [{"name":"advanced-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"quotas":[{"name":"chat-quota","limits":[{"limit":4,"duration":"1h"}]}]}},{"path":"/*","methods":["*"],"params":{"quotas":[{"name":"wildcard-quota","limits":[{"limit":1,"duration":"1h"}]}]}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
 
@@ -218,16 +214,14 @@ Feature: LLM policy path and method specificity
       | accessControl.mode | allow_all                          |
       | spec.operationPolicies | [{"name":"advanced-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["*"],"params":{"quotas":[{"name":"chat-exact-quota","limits":[{"limit":4,"duration":"1h"}]}]}},{"path":"/chat/*","methods":["*"],"params":{"quotas":[{"name":"chat-wild-quota","limits":[{"limit":2,"duration":"1h"}]}]}},{"path":"/*","methods":["*"],"params":{"quotas":[{"name":"root-wild-quota","limits":[{"limit":1,"duration":"1h"}]}]}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
 
     # /chat/completions -> governed ONLY by the exact-path quota (4/hour)
-    And I send a "POST" request to "${CTX:providerContext}/chat/completions" until status 200 with body:
+    And I send a "POST" request to "${CTX:providerContext}/chat/completions" until header "X-RateLimit-Limit" is "4" with body:
       """
       {"model":"gpt-4"}
       """
-    Then the response header "X-RateLimit-Limit" should be "4"
     When I send a "POST" request to "${CTX:providerContext}/chat/completions" with body:
       """
       {"model":"gpt-4"}
@@ -319,17 +313,15 @@ Feature: LLM policy path and method specificity
       | accessControl.mode | allow_all                          |
       | spec.operationPolicies | [{"name":"advanced-ratelimit","version":"v1","paths":[{"path":"/*","methods":["*"],"params":{"quotas":[{"name":"root-quota","limits":[{"limit":1,"duration":"1h"}]}]}},{"path":"/chat/*","methods":["*"],"params":{"quotas":[{"name":"chatwild-quota","limits":[{"limit":2,"duration":"1h"}]}]}},{"path":"/chat/completions","methods":["GET"],"params":{"quotas":[{"name":"cc-get-quota","limits":[{"limit":10,"duration":"1h"}]}]}},{"path":"/chat/completions","methods":["POST"],"params":{"quotas":[{"name":"cc-post-quota","limits":[{"limit":4,"duration":"1h"}]}]}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
 
     # POST /chat/completions -> the POST-specific quota (4/hour)
-    And I send a "POST" request to "${CTX:providerContext}/chat/completions" until status 200 with body:
+    And I send a "POST" request to "${CTX:providerContext}/chat/completions" until header "X-RateLimit-Limit" is "4" with body:
       """
       {"model":"gpt-4"}
       """
-    Then the response header "X-RateLimit-Limit" should be "4"
-    And the response header "X-RateLimit-Remaining" should be "3"
+    Then the response header "X-RateLimit-Remaining" should be "3"
     When I send a "POST" request to "${CTX:providerContext}/chat/completions" with body:
       """
       {"model":"gpt-4"}
@@ -435,14 +427,12 @@ Feature: LLM policy path and method specificity
       | accessControl.mode | allow_all                          |
       | spec.operationPolicies | [{"name":"advanced-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["*"],"params":{"quotas":[{"name":"cc-all-quota","limits":[{"limit":4,"duration":"1h"}]}]}},{"path":"/chat/completions","methods":["GET"],"params":{"quotas":[{"name":"cc-get-quota","limits":[{"limit":10,"duration":"1h"}]}]}},{"path":"/*","methods":["*"],"params":{"quotas":[{"name":"root-quota","limits":[{"limit":1,"duration":"1h"}]}]}},{"path":"/chat/*","methods":["*"],"params":{"quotas":[{"name":"chatwild-quota","limits":[{"limit":2,"duration":"1h"}]}]}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
 
     # GET /chat/completions -> the GET-specific quota (10/hour), winning over the '*' entry (4)
-    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
-    Then the response header "X-RateLimit-Limit" should be "10"
-    And the response header "X-RateLimit-Remaining" should be "9"
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until header "X-RateLimit-Limit" is "10"
+    Then the response header "X-RateLimit-Remaining" should be "9"
     When I send a "GET" request to "${CTX:providerContext}/chat/completions"
     Then the response status code should be 200
     When I send a "GET" request to "${CTX:providerContext}/chat/completions"
@@ -547,14 +537,12 @@ Feature: LLM policy path and method specificity
       | accessControl.mode | allow_all                          |
       | spec.operationPolicies | [{"name":"advanced-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["GET","POST"],"params":{"quotas":[{"name":"cc-readwrite-quota","limits":[{"limit":3,"duration":"1h"}]}]}},{"path":"/chat/completions","methods":["POST"],"params":{"quotas":[{"name":"cc-write-quota","limits":[{"limit":100,"duration":"1h"}]}]}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
 
     # GET is covered only by the [GET, POST] entry -> 3/hour
-    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
-    Then the response header "X-RateLimit-Limit" should be "3"
-    And the response header "X-RateLimit-Remaining" should be "2"
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until header "X-RateLimit-Limit" is "3"
+    Then the response header "X-RateLimit-Remaining" should be "2"
     When I send a "GET" request to "${CTX:providerContext}/chat/completions"
     Then the response status code should be 200
     When I send a "GET" request to "${CTX:providerContext}/chat/completions"
@@ -641,16 +629,14 @@ Feature: LLM policy path and method specificity
       | provider.id            | ${CTX:providerName}                |
       | spec.operationPolicies | [{"name":"advanced-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["*"],"params":{"quotas":[{"name":"proxy-cc-quota","limits":[{"limit":4,"duration":"1h"}]}]}},{"path":"/*","methods":["*"],"params":{"quotas":[{"name":"proxy-root-quota","limits":[{"limit":1,"duration":"1h"}]}]}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
 
     # POST /chat/completions on the proxy -> the specific quota (4/hour)
-    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until header "X-RateLimit-Limit" is "4" with body:
       """
       {"model":"gpt-4"}
       """
-    Then the response header "X-RateLimit-Limit" should be "4"
     When I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
       """
       {"model":"gpt-4"}
@@ -726,17 +712,15 @@ Feature: LLM policy path and method specificity
       | accessControl.mode | allow_all                          |
       | spec.operationPolicies | [{"name":"set-headers","version":"v1","paths":[{"path":"/chat/completions","methods":["*"],"params":{"response":{"headers":[{"name":"X-Tier","value":"chat-all"}]}}},{"path":"/chat/completions","methods":["GET"],"params":{"response":{"headers":[{"name":"X-Tier","value":"chat-get"}]}}},{"path":"/chat/*","methods":["*"],"params":{"response":{"headers":[{"name":"X-Tier","value":"chat-wild"}]}}},{"path":"/*","methods":["*"],"params":{"response":{"headers":[{"name":"X-Tier","value":"root"}]}}}]},{"name":"set-headers","version":"v1","paths":[{"path":"/*","methods":["*"],"params":{"response":{"headers":[{"name":"X-Global","value":"global-applied"}]}}}]}] |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
 
     # POST /chat/completions -> block 1 most-specific is the [*] entry (chat-all); block 2 also applies
-    And I send a "POST" request to "${CTX:providerContext}/chat/completions" until status 200 with body:
+    And I send a "POST" request to "${CTX:providerContext}/chat/completions" until header "X-Tier" is "chat-all" with body:
       """
       {"model":"gpt-4"}
       """
-    Then the response header "X-Tier" should be "chat-all"
-    And the response header "X-Global" should be "global-applied"
+    Then the response header "X-Global" should be "global-applied"
 
     # GET /chat/completions -> block 1 most-specific is the [GET] entry (chat-get); block 2 also applies
     When I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200

@@ -580,7 +580,7 @@ func (g *Gateway) jwtToken(ctx context.Context, issuer, scope, claims, key strin
 				return nil, retry.Transient(requestErr)
 			}
 			return r, nil
-		}, func(resp *httpx.Response) bool { return resp != nil })
+		}, func(resp *httpx.Response) bool { return resp != nil && resp.Succeeded() })
 	if err != nil {
 		return fmt.Errorf("minting a JWT token: %w", err)
 	}
@@ -804,8 +804,6 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.jwtToken)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the rate limit reports (\d+) remaining$`,
 		g.sendUntilQuotaRemaining)
-
-	sc.Step(`^I wait for policy snapshot sync$`, g.awaitPolicySnapshotSync)
 
 	sc.Step(`^the response body should contain template literal:$`, g.responseBodyContainsTemplateLiteral)
 	sc.Step(`^the stored (RestApi|LlmProvider|LlmProxy|Mcp) configuration for "([^"]*)" should contain:$`,
@@ -1216,11 +1214,43 @@ func (g *Gateway) serviceURL(ctx context.Context, service, path string) (string,
 	return base + spec.basePath + resolved, nil
 }
 
+// serviceUpstreamURL resolves a service address for a request originating inside the
+// block network. Unlike serviceURL, it must not use a mapped host port: containers in
+// the block reach shared services through their Docker network alias and container port.
+func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) (string, error) {
+	spec, ok := serviceEndpoints[service]
+	if !ok {
+		return "", fmt.Errorf("unknown service %q: this suite addresses %v", service, sortedServiceNames())
+	}
+	inst, err := g.topo.Component(spec.component)
+	if err != nil {
+		return "", err
+	}
+	base, err := inst.InternalURL(spec.endpoint)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if resolved != "" && !strings.HasPrefix(resolved, "/") {
+		resolved = "/" + resolved
+	}
+	if spec.partitioned {
+		if g.topo.Block == nil {
+			return "", fmt.Errorf("service %q requires a block partition, but the topology has no block", service)
+		}
+		resolved = "/" + g.topo.Block.PartitionKey() + resolved
+	}
+	return base + resolved, nil
+}
+
 // resolveServiceURLAndStore resolves a testbench service's URL and stores it in local scope, for
 // use as an upstream target elsewhere in the scenario — most notably a partitioned service like
 // "capture", whose address includes a block key a feature cannot know in advance.
 func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, path, key string) error {
-	url, err := g.serviceURL(ctx, service, path)
+	url, err := g.serviceUpstreamURL(ctx, service, path)
 	if err != nil {
 		return err
 	}
@@ -2214,110 +2244,4 @@ func sortedElementKeys(m map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// awaitPolicySnapshotSync blocks until the policy engine is running the controller's current
-// policy chain.
-//
-// A deploy returning 200 means the CONTROL PLANE accepted it, not that the data plane routes
-// it yet, and the two are asynchronous. Both processes report the chain version they hold at
-// /xds_sync_status, so this compares them rather than sleeping: the condition is observable,
-// so waiting on it is bounded and self-explaining when it fails.
-//
-// This exists alongside the readiness send because that step cannot be
-// used for a route that is SUPPOSED to fail — a sandbox upstream configured to time out never
-// becomes ready, so readiness must be established from the control plane's own state instead.
-// policyChainVersions reads policy_chain_version from the controller and the policy frameworkruntime.
-//
-// Shared by the snapshot-sync and chain-advance waits so there is one definition of where the
-// versions come from and how they are parsed.
-func (g *Gateway) policyChainVersions(ctx context.Context) (controller, engine string, err error) {
-	controllerBase, err := g.topo.URL("platform-gateway", "admin")
-	if err != nil {
-		return "", "", err
-	}
-	engineBase, err := g.topo.URL("platform-gateway", "policy-admin")
-	if err != nil {
-		return "", "", err
-	}
-
-	read := func(url string, authenticated bool) (string, error) {
-		var headers map[string]string
-		if authenticated {
-			if v, ok := tcontext.Get(ctx, keyAuthHeader); ok {
-				if h, ok := v.(string); ok && h != "" {
-					headers = map[string]string{"Authorization": h}
-				}
-			}
-		}
-		resp, err := g.funnel.Get(ctx, url, headers)
-		if err != nil {
-			return "", err
-		}
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("%s -> %d", url, resp.StatusCode)
-		}
-		var doc map[string]interface{}
-		if err := json.Unmarshal([]byte(resp.Body), &doc); err != nil {
-			return "", err
-		}
-		v, ok := doc["policy_chain_version"]
-		if !ok {
-			return "", fmt.Errorf("%s: no policy_chain_version in %s", url, resp.Body)
-		}
-		return fmt.Sprintf("%v", v), nil
-	}
-
-	controller, err = read(controllerBase+adminBasePath+"/xds_sync_status", true)
-	if err != nil {
-		return "", "", err
-	}
-	engine, err = read(engineBase+"/xds_sync_status", false)
-	if err != nil {
-		// The controller's value is still returned so a failure names what WAS seen.
-		return controller, "", err
-	}
-	return controller, engine, nil
-}
-
-func (g *Gateway) awaitPolicySnapshotSync(ctx context.Context) error {
-
-	// Routed through retry.Until rather than a hand-rolled loop, and the change is not
-	// cosmetic: this loop set its own 30-second deadline, one sixth of
-	// retry.PropagationCeiling. Options.deadline floors every wait at the ceiling precisely so
-	// a call site cannot quietly pick a shorter one — a loaded runner has been observed ~90-100s
-	// behind a successful write, so a shorter cap could report "did not sync" for a component
-	// that was merely slow. It also inherits the tiered cadence instead of hammering a
-	// struggling engine at the base interval for the whole window.
-	type snapshotVersions struct{ controller, engine string }
-
-	seen, err := retry.Until(ctx,
-		retry.Options{Interval: 200 * time.Millisecond},
-		func(ctx context.Context) (snapshotVersions, error) {
-			// Transient: during warm-up either admin endpoint can refuse the connection or
-			// answer non-200, and a malformed body is classified the same way — neither is
-			// worth failing fast on, because both resolve as the pair comes up. The
-			// controller's value is carried through so a failure names what WAS seen.
-			ctrl, eng, err := g.policyChainVersions(ctx)
-			if err != nil {
-				return snapshotVersions{controller: ctrl}, retry.Transient(err)
-			}
-			return snapshotVersions{controller: ctrl, engine: eng}, nil
-		},
-		func(v snapshotVersions) bool {
-			return v.controller != "" && v.controller == v.engine
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("policy snapshot sync: %w", err)
-	}
-	// Until returns the last result with a nil error when every attempt succeeded but the
-	// condition never held, so the verdict is the caller's — this check is what turns that into
-	// a failure, and omitting it is exactly how a poll silently passes.
-	if seen.controller == "" || seen.controller != seen.engine {
-		return fmt.Errorf(
-			"policy snapshot did not sync within %s: controller=%q, engine=%q",
-			retry.PropagationCeiling, seen.controller, seen.engine)
-	}
-	return nil
 }

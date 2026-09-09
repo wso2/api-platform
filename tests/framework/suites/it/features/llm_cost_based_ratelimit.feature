@@ -75,11 +75,13 @@ Feature: LLM cost-based rate limiting
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat/completions" with body:
+    # The cost charge for the prior known-model request commits asynchronously after its
+    # response, so a single-shot request here can observe a not-yet-exhausted budget; poll
+    # until the charge has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat/completions" until status 429 with body:
       """
       {"model":"gpt-4.1-2025-04-14","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -112,11 +114,6 @@ Feature: LLM cost-based rate limiting
       | spec.policies      | [{"name":"llm-cost-based-ratelimit","version":"v1","paths":[{"path":"/*","methods":["*"],"params":{"budgetLimits":[{"amount":0.000236,"duration":"1m"},{"amount":0.001180,"duration":"1h"}]}}]},{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
     Then the response status code should be 201
 
-    # A policy with two simultaneous budget windows takes slightly longer to fully initialize
-    # both quota trackers than a single-window policy; wait for the policy chain to sync before
-    # folding the first request into the readiness check, so the minute window is guaranteed
-    # enforced from the very first request rather than only from the second.
-    And I wait for policy snapshot sync
     And I send a "POST" request to "${CTX:providerContext}/openai/v1/chat/completions" until status 200 with body:
       """
       {"model":"gpt-4.1-2025-04-14","messages":[{"role":"user","content":"Hello"}]}
@@ -189,11 +186,13 @@ Feature: LLM cost-based rate limiting
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages" until status 429 with body:
       """
       {"model":"claude-3-5-haiku-20241022","messages":[{"role":"user","content":"Hello"}],"max_tokens":100}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -299,11 +298,13 @@ Feature: LLM cost-based rate limiting
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContextA}/openai/v1/chat/completions" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContextA}/openai/v1/chat/completions" until status 429 with body:
       """
       {"model":"gpt-4.1-2025-04-14","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I send a "POST" request to "${CTX:providerContextB}/openai/v1/chat/completions" with body:
       """
@@ -369,11 +370,13 @@ Feature: LLM cost-based rate limiting
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat/completions" with body:
+    # The cost charge for the prior known-model request commits asynchronously after its
+    # response, so a single-shot request here can observe a not-yet-exhausted budget; poll
+    # until the charge has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat/completions" until status 429 with body:
       """
       {"model":"gpt-4.1-2025-04-14","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful

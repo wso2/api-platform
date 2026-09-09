@@ -44,6 +44,9 @@ const EnvImagePlatformAPI = "PA_IMAGE"
 
 const svcPlatformAPI = "platform-api"
 
+// platformAPIBootAttempts caps retries of a failed platform-api boot
+const platformAPIBootAttempts = 3
+
 // PlatformAPI returns the Platform API component definition.
 func PlatformAPI() *components.Definition {
 	generated := shared.ControlPlaneCrypto()
@@ -73,6 +76,7 @@ func PlatformAPI() *components.Definition {
 			CoverageServices: []components.CoverageService{{
 				Name: svcPlatformAPI, Types: []string{"go"},
 			}},
+			BootAttempts: platformAPIBootAttempts,
 		},
 
 		Endpoints: []components.Endpoint{
@@ -103,7 +107,7 @@ func PlatformAPI() *components.Definition {
 
 		Provisions: provisionGatewayRegistration,
 
-		Limits: components.ResourceLimits{CPUs: 1, MemoryMB: 1000},
+		Limits: components.ResourceLimits{CPUs: 1.5, MemoryMB: 2000},
 	}
 }
 

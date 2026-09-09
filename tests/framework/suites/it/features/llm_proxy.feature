@@ -114,6 +114,7 @@ Feature: LLM proxy management
     And I generate a unique resource name from "lpx-lifecycle-provider" and store it as "providerName"
     And I generate a unique value from "lpx-lifecycle-provider" and store it as "providerDisplayName"
     And I generate a unique API version from "lpx-lifecycle-provider" and store it as "providerVersion"
+    And I generate a unique API context from "/lpx-lifecycle-provider" and store it as "providerContext"
     And I generate a unique resource name from "lpx-lifecycle-proxy" and store it as "proxyName"
     And I generate a unique value from "lpx-lifecycle-proxy" and store it as "proxyDisplayName"
     And I generate a unique API version from "lpx-lifecycle-proxy" and store it as "proxyVersion"
@@ -130,6 +131,7 @@ Feature: LLM proxy management
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -182,6 +184,7 @@ Feature: LLM proxy management
     And I generate a unique resource name from "lpx-list-provider" and store it as "providerName"
     And I generate a unique value from "lpx-list-provider" and store it as "providerDisplayName"
     And I generate a unique API version from "lpx-list-provider" and store it as "providerVersion"
+    And I generate a unique API context from "/lpx-list-provider" and store it as "providerContext"
     And I generate a unique resource name from "lpx-list-proxy" and store it as "proxyName"
     And I generate a unique value from "lpx-list-proxy" and store it as "proxyDisplayName"
     And I generate a unique API version from "lpx-list-proxy" and store it as "proxyVersion"
@@ -198,6 +201,7 @@ Feature: LLM proxy management
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -253,6 +257,7 @@ Feature: LLM proxy management
     And I generate a unique resource name from "lpx-badver-provider" and store it as "providerName"
     And I generate a unique value from "lpx-badver-provider" and store it as "providerDisplayName"
     And I generate a unique API version from "lpx-badver-provider" and store it as "providerVersion"
+    And I generate a unique API context from "/lpx-badver-provider" and store it as "providerContext"
     And I generate a unique resource name from "lpx-badver-proxy" and store it as "proxyName"
     And I generate a unique value from "lpx-badver-proxy" and store it as "proxyDisplayName"
     And I generate a unique API version from "lpx-badver-proxy" and store it as "proxyVersion"
@@ -269,6 +274,7 @@ Feature: LLM proxy management
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -302,6 +308,7 @@ Feature: LLM proxy management
     And I generate a unique resource name from "lpx-filter-name-provider" and store it as "providerName"
     And I generate a unique value from "lpx-filter-name-provider" and store it as "providerDisplayName"
     And I generate a unique API version from "lpx-filter-name-provider" and store it as "providerVersion"
+    And I generate a unique API context from "/lpx-filter-name-provider" and store it as "providerContext"
     And I generate a unique resource name from "lpx-filter-name-proxy" and store it as "proxyName"
     And I generate a unique value from "lpx-filter-name-proxy" and store it as "proxyDisplayName"
     And I generate a unique API version from "lpx-filter-name-proxy" and store it as "proxyVersion"
@@ -318,6 +325,7 @@ Feature: LLM proxy management
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
@@ -350,6 +358,7 @@ Feature: LLM proxy management
     And I generate a unique resource name from "lpx-filter-ver-provider" and store it as "providerName"
     And I generate a unique value from "lpx-filter-ver-provider" and store it as "providerDisplayName"
     And I generate a unique API version from "lpx-filter-ver-provider" and store it as "providerVersion"
+    And I generate a unique API context from "/lpx-filter-ver-provider" and store it as "providerContext"
     And I generate a unique resource name from "lpx-filter-ver-proxy" and store it as "proxyName"
     And I generate a unique value from "lpx-filter-ver-proxy" and store it as "proxyDisplayName"
     And I generate a unique API version from "lpx-filter-ver-proxy" and store it as "proxyVersion"
@@ -366,6 +375,7 @@ Feature: LLM proxy management
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
       | template           | ${CTX:templateName}               |
+      | spec.context       | ${CTX:providerContext}            |
       | spec.upstream.url  | http://testbench:3008/openai/v1   |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
