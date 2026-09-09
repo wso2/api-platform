@@ -26,28 +26,28 @@ import (
 // APIPortal represents an API Portal registered within an organization.
 //
 // Two persisted blobs, split by consumer:
-//   - AuthConfig is consumed by Platform-API's outbound AuthProvider path.
-//     Shape depends on auth_type: `local` = empty; `oauth2` = stsTokenUrl,
-//     clientId, clientSecret. Sensitive values (clientSecret) are stored
-//     encrypted; the plaintext key is never returned in responses.
+//   - InternalAuthKey is the encrypted raw shared key Platform-API sends as
+//     `Authorization: SharedKey <raw>` on outbound publishing calls. Stored
+//     as AES-GCM ciphertext (nonce || ciphertext) via internal/vault; the
+//     plaintext key is only ever handed to the caller ONCE at Create/Update
+//     time and never returned on any read path.
 //   - Metadata is opaque pass-through data (never encrypted, always returned).
 //     Typically carries the cloud-side OIDC endpoints that the portal pod uses
 //     for consumer login (stsIssuer, stsJwksUrl, etc.); usually empty in OSS.
 type APIPortal struct {
-	ID             string                 `json:"id" db:"uuid"`
-	OrganizationID string                 `json:"organizationId" db:"organization_uuid"`
-	Handle         string                 `json:"handle" db:"handle"`
-	Name           string                 `json:"name" db:"display_name"`
-	Description    string                 `json:"description,omitempty" db:"description"`
-	URL            string                 `json:"url,omitempty" db:"url"`
-	Status         string                 `json:"status" db:"status"`
-	AuthType       string                 `json:"authType" db:"auth_type"`
-	AuthConfig     map[string]interface{} `json:"authConfig,omitempty" db:"auth_configuration"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
-	CreatedBy      string                 `json:"createdBy,omitempty" db:"created_by"`
-	UpdatedBy      string                 `json:"updatedBy,omitempty" db:"updated_by"`
-	CreatedAt      time.Time              `json:"createdAt" db:"created_at"`
-	UpdatedAt      time.Time              `json:"updatedAt" db:"updated_at"`
+	ID              string                 `json:"id" db:"uuid"`
+	OrganizationID  string                 `json:"organizationId" db:"organization_uuid"`
+	Handle          string                 `json:"handle" db:"handle"`
+	Name            string                 `json:"name" db:"display_name"`
+	Description     string                 `json:"description,omitempty" db:"description"`
+	URL             string                 `json:"url,omitempty" db:"url"`
+	Status          string                 `json:"status" db:"status"`
+	InternalAuthKey []byte                 `json:"-" db:"internal_auth_key"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
+	CreatedBy       string                 `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy       string                 `json:"updatedBy,omitempty" db:"updated_by"`
+	CreatedAt       time.Time              `json:"createdAt" db:"created_at"`
+	UpdatedAt       time.Time              `json:"updatedAt" db:"updated_at"`
 }
 
 // TableName returns the table name for the APIPortal model.

@@ -29,18 +29,6 @@ const (
 	APIKeySecurityInQuery  APIKeySecurityIn = "query"
 )
 
-// Defines values for ApiPortalListItemAuthType.
-const (
-	ApiPortalListItemAuthTypeLocal  ApiPortalListItemAuthType = "local"
-	ApiPortalListItemAuthTypeOauth2 ApiPortalListItemAuthType = "oauth2"
-)
-
-// Defines values for ApiPortalResponseAuthType.
-const (
-	ApiPortalResponseAuthTypeLocal  ApiPortalResponseAuthType = "local"
-	ApiPortalResponseAuthTypeOauth2 ApiPortalResponseAuthType = "oauth2"
-)
-
 // Defines values for ApplicationAssociationSelectorKind.
 const (
 	ApplicationAssociationSelectorKindLlmProvider ApplicationAssociationSelectorKind = "LlmProvider"
@@ -61,12 +49,6 @@ const (
 const (
 	CreateAPIKeyResponseStatusError   CreateAPIKeyResponseStatus = "error"
 	CreateAPIKeyResponseStatusSuccess CreateAPIKeyResponseStatus = "success"
-)
-
-// Defines values for CreateApiPortalRequestAuthType.
-const (
-	CreateApiPortalRequestAuthTypeLocal  CreateApiPortalRequestAuthType = "local"
-	CreateApiPortalRequestAuthTypeOauth2 CreateApiPortalRequestAuthType = "oauth2"
 )
 
 // Defines values for CreateGatewayRequestFunctionalityType.
@@ -331,12 +313,6 @@ const (
 	UpdateAPIKeyResponseStatusSuccess UpdateAPIKeyResponseStatus = "success"
 )
 
-// Defines values for UpdateApiPortalRequestAuthType.
-const (
-	UpdateApiPortalRequestAuthTypeLocal  UpdateApiPortalRequestAuthType = "local"
-	UpdateApiPortalRequestAuthTypeOauth2 UpdateApiPortalRequestAuthType = "oauth2"
-)
-
 // Defines values for UpstreamAuthType.
 const (
 	ApiKey UpstreamAuthType = "api-key"
@@ -582,37 +558,15 @@ type AddGatewayToRESTAPIRequest struct {
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 }
 
-// ApiPortalAuthConfig Platform-API's outbound authentication material for the portal admin
-// API. Shape depends on `authType`:
-//   - `local`  → must be empty.
-//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
-//
-// `clientSecret` is write-only: accepted on create/update requests, persisted
-// encrypted at rest, and never returned on read.
-type ApiPortalAuthConfig struct {
-	// ClientId Registered client identifier in the STS.
-	ClientId *string `json:"clientId,omitempty" yaml:"clientId,omitempty"`
-
-	// ClientSecret Registered client secret. Accepted only in create/update requests; never returned in responses. Persisted encrypted server-side.
-	ClientSecret *string `json:"clientSecret,omitempty" yaml:"clientSecret,omitempty"`
-
-	// StsTokenUrl Token endpoint of the STS Platform-API POSTs the client_credentials grant to.
-	StsTokenUrl *string `json:"stsTokenUrl,omitempty" yaml:"stsTokenUrl,omitempty"`
-}
-
-// ApiPortalListItem Lightweight projection returned in collection responses (excludes the `config` blob).
+// ApiPortalListItem Lightweight projection returned in collection responses (excludes the metadata blob).
 type ApiPortalListItem struct {
-	AuthType    ApiPortalListItemAuthType `binding:"required" json:"authType" yaml:"authType"`
-	CreatedAt   time.Time                 `binding:"required" json:"createdAt" yaml:"createdAt"`
-	Description *string                   `json:"description" yaml:"description"`
-	Handle      string                    `binding:"required" json:"handle" yaml:"handle"`
-	Id          string                    `binding:"required" json:"id" yaml:"id"`
-	Name        string                    `binding:"required" json:"name" yaml:"name"`
-	Url         string                    `binding:"required" json:"url" yaml:"url"`
+	CreatedAt   time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+	Description *string   `json:"description" yaml:"description"`
+	Handle      string    `binding:"required" json:"handle" yaml:"handle"`
+	Id          string    `binding:"required" json:"id" yaml:"id"`
+	Name        string    `binding:"required" json:"name" yaml:"name"`
+	Url         string    `binding:"required" json:"url" yaml:"url"`
 }
-
-// ApiPortalListItemAuthType defines model for ApiPortalListItem.AuthType.
-type ApiPortalListItemAuthType string
 
 // ApiPortalListResponse defines model for ApiPortalListResponse.
 type ApiPortalListResponse struct {
@@ -627,23 +581,13 @@ type ApiPortalMetadata map[string]interface{}
 
 // ApiPortalResponse defines model for ApiPortalResponse.
 type ApiPortalResponse struct {
-	// AuthConfig Platform-API's outbound authentication material for the portal admin
-	// API. Shape depends on `authType`:
-	//   - `local`  → must be empty.
-	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
-	// `clientSecret` is write-only: accepted on create/update requests, persisted
-	// encrypted at rest, and never returned on read.
-	AuthConfig *ApiPortalAuthConfig `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
-
-	// AuthType Determines how Platform API authenticates to the portal's admin API and selects the shape of the `config` object.
-	AuthType    ApiPortalResponseAuthType `binding:"required" json:"authType" yaml:"authType"`
-	CreatedAt   *time.Time                `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Description *string                   `json:"description" yaml:"description"`
+	CreatedAt   *time.Time `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Description *string    `json:"description" yaml:"description"`
 
 	// Handle URL-friendly slug. Immutable after creation. Equal to `id`.
 	Handle *string `binding:"required" json:"handle,omitempty" yaml:"handle,omitempty"`
 
-	// Id Handle (URL-friendly slug) of the API Portal — primary identifier.
+	// Id Handle (URL-friendly slug) of the API Portal, primary identifier.
 	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
@@ -656,9 +600,6 @@ type ApiPortalResponse struct {
 	// Url Public URL of the API Portal. Operator-supplied.
 	Url string `binding:"required" json:"url" yaml:"url"`
 }
-
-// ApiPortalResponseAuthType Determines how Platform API authenticates to the portal's admin API and selects the shape of the `config` object.
-type ApiPortalResponseAuthType string
 
 // Application defines model for Application.
 type Application struct {
@@ -834,15 +775,7 @@ type CreateAPIKeyResponseStatus string
 
 // CreateApiPortalRequest defines model for CreateApiPortalRequest.
 type CreateApiPortalRequest struct {
-	// AuthConfig Platform-API's outbound authentication material for the portal admin
-	// API. Shape depends on `authType`:
-	//   - `local`  → must be empty.
-	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
-	// `clientSecret` is write-only: accepted on create/update requests, persisted
-	// encrypted at rest, and never returned on read.
-	AuthConfig  *ApiPortalAuthConfig           `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
-	AuthType    CreateApiPortalRequestAuthType `binding:"required" json:"authType" yaml:"authType"`
-	Description *string                        `json:"description" yaml:"description"`
+	Description *string `json:"description" yaml:"description"`
 
 	// Handle URL-friendly slug. Must be unique within the org. Immutable after creation.
 	Handle string `binding:"required" json:"handle" yaml:"handle"`
@@ -851,12 +784,12 @@ type CreateApiPortalRequest struct {
 	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Name     string             `binding:"required" json:"name" yaml:"name"`
 
+	// SharedKey The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on outbound publishing calls. The portal side stores only the sha256 hash of this value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here; never returned on any read.
+	SharedKey *string `binding:"required" json:"sharedKey,omitempty" yaml:"sharedKey,omitempty"`
+
 	// Url Public URL of the API Portal to register. Operator-supplied.
 	Url string `binding:"required" json:"url" yaml:"url"`
 }
-
-// CreateApiPortalRequestAuthType defines model for CreateApiPortalRequest.AuthType.
-type CreateApiPortalRequestAuthType string
 
 // CreateApplicationRequest Request body for creating an application.
 type CreateApplicationRequest struct {
@@ -2689,26 +2622,18 @@ type UpdateAPIKeyResponse struct {
 // UpdateAPIKeyResponseStatus Status of the operation
 type UpdateAPIKeyResponseStatus string
 
-// UpdateApiPortalRequest All fields optional. Only mutable fields are accepted — see field permissions in the design doc.
+// UpdateApiPortalRequest All fields optional. Only mutable fields are accepted, see field permissions in the design doc.
 type UpdateApiPortalRequest struct {
-	// AuthConfig Platform-API's outbound authentication material for the portal admin
-	// API. Shape depends on `authType`:
-	//   - `local`  → must be empty.
-	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
-	// `clientSecret` is write-only: accepted on create/update requests, persisted
-	// encrypted at rest, and never returned on read.
-	AuthConfig  *ApiPortalAuthConfig            `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
-	AuthType    *UpdateApiPortalRequestAuthType `json:"authType,omitempty" yaml:"authType,omitempty"`
-	Description *string                         `json:"description" yaml:"description"`
+	Description *string `json:"description" yaml:"description"`
 
 	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
 	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Name     *string            `json:"name,omitempty" yaml:"name,omitempty"`
-	Url      *string            `json:"url,omitempty" yaml:"url,omitempty"`
-}
 
-// UpdateApiPortalRequestAuthType defines model for UpdateApiPortalRequest.AuthType.
-type UpdateApiPortalRequestAuthType string
+	// SharedKey Rotate the shared key. When present, replaces the stored value. Same format as on Create. Write-only; never returned.
+	SharedKey *string `json:"sharedKey,omitempty" yaml:"sharedKey,omitempty"`
+	Url       *string `json:"url,omitempty" yaml:"url,omitempty"`
+}
 
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {

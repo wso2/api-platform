@@ -8823,34 +8823,6 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    ApiPortalAuthConfig:
-      title: API Portal outbound authentication material
-      type: object
-      description: |
-        Platform-API's outbound authentication material for the portal admin
-        API. Shape depends on `authType`:
-          - `local`  → must be empty.
-          - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
-        `clientSecret` is write-only: accepted on create/update requests, persisted
-        encrypted at rest, and never returned on read.
-      additionalProperties: false
-      properties:
-        stsTokenUrl:
-          type: string
-          format: uri
-          description: Token endpoint of the STS Platform-API POSTs the client_credentials grant to.
-          example: "https://sts.example.com/oauth2/token"
-        clientId:
-          type: string
-          description: Registered client identifier in the STS.
-          example: "acme-portal-client"
-        clientSecret:
-          type: string
-          writeOnly: true
-          description: >-
-            Registered client secret. Accepted only in create/update requests;
-            never returned in responses. Persisted encrypted server-side.
-
     ApiPortalMetadata:
       title: API Portal metadata
       type: object
@@ -8869,13 +8841,12 @@ components:
         - name
         - handle
         - url
-        - authType
         - createdAt
         - updatedAt
       properties:
         id:
           type: string
-          description: Handle (URL-friendly slug) of the API Portal — primary identifier.
+          description: Handle (URL-friendly slug) of the API Portal, primary identifier.
           pattern: '^[a-z0-9-]+$'
           minLength: 3
           maxLength: 40
@@ -8904,15 +8875,6 @@ components:
           format: uri
           description: Public URL of the API Portal. Operator-supplied.
           example: "https://acme-portal.example.com"
-        authType:
-          type: string
-          enum: [local, oauth2]
-          description: >-
-            Determines how Platform API authenticates to the portal's admin API
-            and selects the shape of the `config` object.
-          example: "oauth2"
-        authConfig:
-          $ref: '#/components/schemas/ApiPortalAuthConfig'
         metadata:
           $ref: '#/components/schemas/ApiPortalMetadata'
         createdAt:
@@ -8927,15 +8889,14 @@ components:
           example: "2026-08-13T10:30:00Z"
 
     ApiPortalListItem:
-      title: API Portal — list projection
-      description: Lightweight projection returned in collection responses (excludes the `config` blob).
+      title: API Portal list projection
+      description: Lightweight projection returned in collection responses (excludes the metadata blob).
       type: object
       required:
         - id
         - name
         - handle
         - url
-        - authType
         - createdAt
       properties:
         id:
@@ -8955,9 +8916,6 @@ components:
         url:
           type: string
           format: uri
-        authType:
-          type: string
-          enum: [local, oauth2]
         createdAt:
           type: string
           format: date-time
@@ -8969,7 +8927,7 @@ components:
         - name
         - handle
         - url
-        - authType
+        - sharedKey
       properties:
         name:
           type: string
@@ -8989,17 +8947,24 @@ components:
           type: string
           format: uri
           description: Public URL of the API Portal to register. Operator-supplied.
-        authType:
+        sharedKey:
           type: string
-          enum: [local, oauth2]
-        authConfig:
-          $ref: '#/components/schemas/ApiPortalAuthConfig'
+          writeOnly: true
+          pattern: '^[0-9a-fA-F]{64}$'
+          minLength: 64
+          maxLength: 64
+          description: >-
+            The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on
+            outbound publishing calls. The portal side stores only the sha256 hash of this
+            value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here;
+            never returned on any read.
+          example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         metadata:
           $ref: '#/components/schemas/ApiPortalMetadata'
 
     UpdateApiPortalRequest:
       title: Update API Portal request
-      description: All fields optional. Only mutable fields are accepted — see field permissions in the design doc.
+      description: All fields optional. Only mutable fields are accepted, see field permissions in the design doc.
       type: object
       properties:
         name:
@@ -9013,11 +8978,15 @@ components:
         url:
           type: string
           format: uri
-        authType:
+        sharedKey:
           type: string
-          enum: [local, oauth2]
-        authConfig:
-          $ref: '#/components/schemas/ApiPortalAuthConfig'
+          writeOnly: true
+          pattern: '^[0-9a-fA-F]{64}$'
+          minLength: 64
+          maxLength: 64
+          description: >-
+            Rotate the shared key. When present, replaces the stored value. Same format as on
+            Create. Write-only; never returned.
         metadata:
           $ref: '#/components/schemas/ApiPortalMetadata'
 

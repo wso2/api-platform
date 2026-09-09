@@ -42,7 +42,7 @@ func NewAPIPortalRepo(db *database.DB) APIPortalRepository {
 // apiPortalSelectColumns are the api_portals columns selected in every query, in scan order.
 const apiPortalSelectColumns = `
 	uuid, organization_uuid, handle, display_name, description, url,
-	status, auth_type, auth_configuration, metadata,
+	status, internal_auth_key, metadata,
 	created_by, updated_by, created_at, updated_at
 `
 
@@ -52,10 +52,10 @@ func scanAPIPortalRow(scanner interface {
 }) (*model.APIPortal, error) {
 	portal := &model.APIPortal{}
 	var description, url, createdBy, updatedBy sql.NullString
-	var authConfigBytes, metadataBytes []byte
+	var metadataBytes []byte
 	if err := scanner.Scan(
 		&portal.ID, &portal.OrganizationID, &portal.Handle, &portal.Name, &description, &url,
-		&portal.Status, &portal.AuthType, &authConfigBytes, &metadataBytes,
+		&portal.Status, &portal.InternalAuthKey, &metadataBytes,
 		&createdBy, &updatedBy, &portal.CreatedAt, &portal.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -64,11 +64,6 @@ func scanAPIPortalRow(scanner interface {
 	portal.URL = url.String
 	portal.CreatedBy = createdBy.String
 	portal.UpdatedBy = updatedBy.String
-	authConfig, err := unmarshalAPIPortalBlob(authConfigBytes, "auth_configuration")
-	if err != nil {
-		return nil, err
-	}
-	portal.AuthConfig = authConfig
 	metadata, err := unmarshalAPIPortalBlob(metadataBytes, "metadata")
 	if err != nil {
 		return nil, err
@@ -112,23 +107,19 @@ func (r *APIPortalRepo) Create(portal *model.APIPortal) error {
 	now := time.Now().UTC()
 	portal.CreatedAt = now
 	portal.UpdatedAt = now
-	authConfigBytes, err := marshalAPIPortalBlob(portal.AuthConfig, "auth_configuration")
-	if err != nil {
-		return err
-	}
 	metadataBytes, err := marshalAPIPortalBlob(portal.Metadata, "metadata")
 	if err != nil {
 		return err
 	}
 	query := `
 		INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, description, url,
-		                          status, auth_type, auth_configuration, metadata,
+		                          status, internal_auth_key, metadata,
 		                          created_by, updated_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
 		portal.ID, portal.OrganizationID, portal.Handle, portal.Name, portal.Description, portal.URL,
-		portal.Status, portal.AuthType, authConfigBytes, metadataBytes,
+		portal.Status, portal.InternalAuthKey, metadataBytes,
 		portal.CreatedBy, portal.UpdatedBy, portal.CreatedAt, portal.UpdatedAt,
 	)
 	return err
@@ -223,14 +214,10 @@ func (r *APIPortalRepo) Count(orgUUID string, search string) (int, error) {
 }
 
 // Update mutates only the whitelisted fields; immutable columns (uuid, organization_uuid,
-// handle, data_version, created_by, created_at) are never touched. The caller is
+// handle, created_by, created_at) are never touched. The caller is
 // responsible for populating UpdatedBy before invoking.
 func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 	portal.UpdatedAt = time.Now().UTC()
-	authConfigBytes, err := marshalAPIPortalBlob(portal.AuthConfig, "auth_configuration")
-	if err != nil {
-		return err
-	}
 	metadataBytes, err := marshalAPIPortalBlob(portal.Metadata, "metadata")
 	if err != nil {
 		return err
@@ -238,13 +225,13 @@ func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 	query := `
 		UPDATE api_portals
 		SET display_name = ?, description = ?, url = ?, status = ?,
-		    auth_type = ?, auth_configuration = ?, metadata = ?,
+		    internal_auth_key = ?, metadata = ?,
 		    updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
 		portal.Name, portal.Description, portal.URL, portal.Status,
-		portal.AuthType, authConfigBytes, metadataBytes,
+		portal.InternalAuthKey, metadataBytes,
 		portal.UpdatedBy, portal.UpdatedAt,
 		portal.ID, portal.OrganizationID,
 	)
