@@ -20,31 +20,41 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
+	"gopkg.in/yaml.v3"
 )
 
+const importOpenAPIMaxBytes = 5 << 20 // 5 MiB
+
 type APIHandler struct {
-	apiService *service.APIService
-	identity   *service.IdentityService
-	slogger    *slog.Logger
+	apiService   *service.APIService
+	identity     *service.IdentityService
+	documentRepo repository.DocumentRepository
+	slogger      *slog.Logger
 }
 
-func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, slogger *slog.Logger) *APIHandler {
+func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, documentRepo repository.DocumentRepository, slogger *slog.Logger) *APIHandler {
 	return &APIHandler{
-		apiService: apiService,
-		identity:   identity,
-		slogger:    slogger,
+		apiService:   apiService,
+		identity:     identity,
+		documentRepo: documentRepo,
+		slogger:      slogger,
 	}
 }
 
@@ -86,7 +96,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	apiResponse, err := h.apiService.CreateAPI(&req, orgId, createdBy)
+	apiResponse, _, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create API in org %s", orgId))
 	}
@@ -283,10 +293,197 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) erro
 	return nil
 }
 
+// ImportOpenAPI handles POST /api/v0.9/rest-apis/import-openapi.
+// It accepts multipart/form-data with either a spec file upload or a URL, parses the
+// OpenAPI spec to extract operations, creates the API, and persists the raw spec.
+func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	if err := r.ParseMultipartForm(importOpenAPIMaxBytes); err != nil {
+		return apperror.ValidationFailed.New("invalid multipart form")
+	}
+
+	name := strings.TrimSpace(r.FormValue("name"))
+	version := strings.TrimSpace(r.FormValue("version"))
+	context := strings.TrimSpace(r.FormValue("context"))
+	projectId := strings.TrimSpace(r.FormValue("projectId"))
+	description := strings.TrimSpace(r.FormValue("description"))
+	upstreamURL := strings.TrimSpace(r.FormValue("upstream"))
+
+	if name == "" {
+		return apperror.ValidationFailed.New("name is required")
+	}
+	if version == "" {
+		return apperror.ValidationFailed.New("version is required")
+	}
+	if context == "" {
+		return apperror.ValidationFailed.New("context is required")
+	}
+	if projectId == "" {
+		return apperror.ValidationFailed.New("projectId is required")
+	}
+	if upstreamURL == "" {
+		return apperror.ValidationFailed.New("upstream is required")
+	}
+
+	// Obtain spec content from the uploaded file.
+	file, header, fileErr := r.FormFile("file")
+	if fileErr != nil {
+		return apperror.ValidationFailed.New("a spec file is required")
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, importOpenAPIMaxBytes+1))
+	if err != nil {
+		return apperror.ValidationFailed.New("failed to read uploaded spec file")
+	}
+	if int64(len(data)) > importOpenAPIMaxBytes {
+		return apperror.ValidationFailed.New("spec file exceeds the maximum allowed size")
+	}
+	specContent := string(data)
+	specFileName := filepath.Base(header.Filename)
+
+	// Parse the spec once; extract operations from the parsed root.
+	specRoot, err := parseSpecRoot(specContent)
+	if err != nil {
+		h.slogger.Error("Failed to parse OpenAPI spec", "error", err)
+		return apperror.ValidationFailed.New("invalid OpenAPI specification")
+	}
+	operations := extractOperationsFromRoot(specRoot)
+
+	// Build upstream.
+	upstreamConfig := api.Upstream{
+		Main: api.UpstreamDefinition{Url: &upstreamURL},
+	}
+
+	// Build the create request.
+	var descPtr *string
+	if description != "" {
+		descPtr = &description
+	}
+	req := &api.CreateRESTAPIRequest{
+		DisplayName: name,
+		Version:     version,
+		Context:     context,
+		ProjectId:   projectId,
+		Description: descPtr,
+		Upstream:    upstreamConfig,
+		Operations:  &operations,
+	}
+
+	createdBy, err := resolveActorErr(r, h.identity, "import OpenAPI")
+	if err != nil {
+		return err
+	}
+
+	apiResponse, artifactUUID, err := h.apiService.CreateAPI(req, orgId, createdBy)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to create API from OpenAPI spec in org %s", orgId))
+	}
+
+	// Persist the raw spec as a DEFINITION document.
+	if h.documentRepo != nil && artifactUUID != "" {
+		handle, handleErr := utils.GenerateHandle("OpenAPI Definition", func(candidate string) bool {
+			exists, _ := h.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, candidate)
+			return exists
+		})
+		if handleErr != nil {
+			h.slogger.Error("Failed to generate document handle", "apiId", artifactUUID, "error", handleErr)
+		} else {
+			doc := &model.Document{
+				ArtifactUUID:     artifactUUID,
+				OrganizationUUID: orgId,
+				Type:             model.DocumentTypeDefinition,
+				Handle:           handle,
+				DisplayName:      "OpenAPI Definition",
+				FileName:         specFileName,
+				Content:          []byte(specContent),
+				DataVersion:      "1.0",
+				CreatedBy:        createdBy,
+			}
+			if docErr := h.documentRepo.CreateDocument(doc); docErr != nil {
+				h.slogger.Error("Failed to persist OpenAPI spec document", "apiId", artifactUUID, "error", docErr)
+				// Non-fatal: the API was created successfully; log and continue.
+			}
+		}
+	}
+
+	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
+	httputil.WriteJSON(w, http.StatusCreated, apiResponse)
+	return nil
+}
+
+// parseSpecRoot deserialises a JSON or YAML OpenAPI spec string into a raw map.
+func parseSpecRoot(specContent string) (map[string]interface{}, error) {
+	var root map[string]interface{}
+	if err := json.Unmarshal([]byte(specContent), &root); err != nil {
+		if err2 := yaml.Unmarshal([]byte(specContent), &root); err2 != nil {
+			return nil, fmt.Errorf("spec is neither valid JSON nor YAML")
+		}
+	}
+	return root, nil
+}
+
+// extractOperationsFromRoot returns the list of HTTP operations declared in a
+// parsed OpenAPI 3.x/Swagger 2.x spec root. Returns nil when no paths exist;
+// the service layer then generates a default wildcard operation.
+func extractOperationsFromRoot(root map[string]interface{}) []api.Operation {
+	paths, _ := root["paths"].(map[string]interface{})
+	if len(paths) == 0 {
+		return nil
+	}
+
+	httpMethods := map[string]api.OperationRequestMethod{
+		"get":     "GET",
+		"post":    "POST",
+		"put":     "PUT",
+		"delete":  "DELETE",
+		"patch":   "PATCH",
+		"head":    "HEAD",
+		"options": "OPTIONS",
+	}
+
+	var ops []api.Operation
+	for path, pathItemRaw := range paths {
+		pathItem, ok := pathItemRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for method, opRaw := range pathItem {
+			opMethod, supported := httpMethods[strings.ToLower(method)]
+			if !supported {
+				continue
+			}
+			op := api.Operation{
+				Request: api.OperationRequest{
+					Method: opMethod,
+					Path:   path,
+				},
+			}
+			if opMap, ok := opRaw.(map[string]interface{}); ok {
+				if opId, ok := opMap["operationId"].(string); ok && opId != "" {
+					op.Name = &opId
+				} else if summary, ok := opMap["summary"].(string); ok && summary != "" {
+					op.Name = &summary
+				}
+				if desc, ok := opMap["description"].(string); ok && desc != "" {
+					op.Description = &desc
+				}
+			}
+			ops = append(ops, op)
+		}
+	}
+	return ops
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering REST API routes")
 	base := constants.APIBasePath + "/rest-apis"
+	mux.HandleFunc("POST "+base+"/import-openapi", middleware.MapErrors(h.slogger, h.ImportOpenAPI))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPI))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIs))
 	mux.HandleFunc("GET "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.GetAPI))

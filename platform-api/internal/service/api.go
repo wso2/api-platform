@@ -94,11 +94,13 @@ func (s *APIService) resolveRESTAPIIdentity(resp *api.RESTAPI) error {
 	return s.identity.ResolveIdentityField(&resp.UpdatedBy)
 }
 
-// CreateAPI creates a new API with validation and business logic
-func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy string) (*api.RESTAPI, error) {
+// CreateAPI creates a new API with validation and business logic.
+// The second return value is the internal artifact UUID (not the public handle);
+// callers that need to link a child resource (e.g. documents) use it directly.
+func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy string) (*api.RESTAPI, string, error) {
 	// Validate request
 	if err := s.validateCreateAPIRequest(req, orgUUID); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Validate {{ secret "..." }} placeholders anywhere in the request — the
@@ -108,10 +110,10 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	if s.secretService != nil {
 		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+			return nil, "", fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
 
@@ -119,10 +121,10 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	// Check if project exists
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if project == nil {
-		return nil, apperror.ProjectNotFound.New()
+		return nil, "", apperror.ProjectNotFound.New()
 	}
 
 	// Handle the API handle (user-facing identifier)
@@ -135,7 +137,7 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		handle, err = utils.GenerateHandle(req.DisplayName, s.HandleExistsCheck(orgUUID))
 		if err != nil {
 			s.slogger.Error("Failed to generate API handle", "apiName", req.DisplayName, "error", err)
-			return nil, err
+			return nil, "", err
 		}
 	}
 
@@ -167,7 +169,7 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		s.slogger.Error("Failed to create API in repository", "apiName", req.DisplayName, "error", err)
-		return nil, fmt.Errorf("failed to create api: %w", err)
+		return nil, "", fmt.Errorf("failed to create api: %w", err)
 	}
 
 	// Get the generated UUID from the model (set by CreateAPI)
@@ -177,7 +179,8 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 
 	_ = s.auditRepo.Record("CREATE", apiUUID, "rest_api", orgUUID, createdBy)
 
-	return s.modelToRESTAPI(apiModel)
+	restAPI, err := s.modelToRESTAPI(apiModel)
+	return restAPI, apiUUID, err
 }
 
 // modelToRESTAPIUnresolved converts an internal API model to the API

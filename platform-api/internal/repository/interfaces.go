@@ -376,6 +376,15 @@ type CustomPolicyRepository interface {
 	DeleteCustomPolicyUsage(policyUUID, apiUUID string) error
 }
 
+// DocumentRepository defines the interface for document persistence.
+type DocumentRepository interface {
+	CreateDocument(doc *model.Document) error
+	GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error)
+	UpsertDocument(doc *model.Document) error
+	DeleteDocument(artifactUUID, handle, orgUUID string) error
+	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
+}
+
 // AuditRepository defines the interface for audit record writes.
 type AuditRepository interface {
 	Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error

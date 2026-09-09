@@ -26,7 +26,7 @@ import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { ApiCreationWizardDraftState, ApiType, GeneralApiCreationFormState } from './types';
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import { ApiCreationStepKey, ApiCreationSteps } from './components/ApiCreationSteps';
-import { useCreateRestApi } from '@/api/resources/restApis';
+import { useCreateRestApi, useImportOpenApi } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
 import { toCreateRestApiBody } from './utils/createRestApiBody';
@@ -155,6 +155,7 @@ export const ApiCreationWizard = () => {
   // `handlesErrors`: a rejection this screen puts back on the form must not
   // also arrive as a snackbar that has faded by the time the user looks up.
   const createRestApiMutation = useCreateRestApi({ handlesErrors: true });
+  const importOpenApiMutation = useImportOpenApi();
   // `projectId` on the request body is the project handle from the route, not
   // something the form collects.
   const { activeScope, params } = useConsoleScope();
@@ -182,25 +183,45 @@ export const ApiCreationWizard = () => {
       return;
     }
 
-    setFormErrors(null);
-    // Clears the previous attempt's error before the next one starts: the
-    // progress screen reads its status from this mutation, and a stale
-    // `isError` would show it as failed for the frame before the retry
-    // registers as pending.
-    createRestApiMutation.reset();
-    createRestApiMutation.mutate(toCreateRestApiBody(values, { projectId }), {
-      onError: (error) => {
-        // A rejection the user can fix by editing goes straight back to the
-        // form with the reason attached. Standing on a screen that says only
-        // "we could not create this" would hide the one thing they need —
-        // which value to change — behind a second click.
-        const rejection = toCreateApiFormErrors(error);
-        if (!rejection) return; // Not the form's to fix: the progress screen keeps it.
+    if (values.contractImport?.specFile) {
+      // Import path: send multipart/form-data to POST /rest-apis/import-openapi.
+      const formData = new FormData();
+      formData.append('file', values.contractImport.specFile, 'openapi.json');
+      formData.append('name', values.displayName.trim());
+      formData.append('version', values.version.trim());
+      // Normalize context to always have a leading slash, matching the standard create path.
+      const context = `/${values.context.trim().replace(/^\/+/, '')}`;
+      formData.append('context', context);
+      formData.append('projectId', projectId);
+      if (values.description?.trim()) {
+        formData.append('description', values.description.trim());
+      }
+      const mainUrl = values.upstream?.main?.url?.trim();
+      if (mainUrl) {
+        formData.append('upstream', mainUrl);
+      }
+      importOpenApiMutation.mutate(formData);
+    } else {
+      setFormErrors(null);
+      // Clears the previous attempt's error before the next one starts: the
+      // progress screen reads its status from this mutation, and a stale
+      // `isError` would show it as failed for the frame before the retry
+      // registers as pending.
+      createRestApiMutation.reset();
+      createRestApiMutation.mutate(toCreateRestApiBody(values, { projectId }), {
+        onError: (error) => {
+          // A rejection the user can fix by editing goes straight back to the
+          // form with the reason attached. Standing on a screen that says only
+          // "we could not create this" would hide the one thing they need —
+          // which value to change — behind a second click.
+          const rejection = toCreateApiFormErrors(error);
+          if (!rejection) return; // Not the form's to fix: the progress screen keeps it.
 
-        setFormErrors(rejection);
-        setCreationStarted(false);
-      },
-    });
+          setFormErrors(rejection);
+          setCreationStarted(false);
+        },
+      });
+    }
   };
 
   const onGeneralFormSumit = (finalData: GeneralApiCreationFormState) => {
@@ -211,6 +232,10 @@ export const ApiCreationWizard = () => {
     createApi(finalData);
   };
 
+  // Resolve the active mutation based on which path the current submission took.
+  const isImportPath = Boolean(submittedValues?.contractImport);
+  const activeMutation = isImportPath ? importOpenApiMutation : createRestApiMutation;
+
   /**
    * Redirect to the created API's overview page.
    * `replace` keeps Back from returning to a finished progress screen.
@@ -219,7 +244,7 @@ export const ApiCreationWizard = () => {
     const { orgHandle, projectHandler } = params;
     if (!orgHandle || !projectHandler) return;
 
-    const createdId = createRestApiMutation.data?.id;
+    const createdId = activeMutation.data?.id;
     navigate(
       createdId
         ? routes.api(orgHandle, projectHandler, createdId)
@@ -227,11 +252,11 @@ export const ApiCreationWizard = () => {
           routes.apis(orgHandle, projectHandler),
       { replace: true },
     );
-  }, [createRestApiMutation.data?.id, navigate, params]);
+  }, [activeMutation.data?.id, navigate, params]);
 
-  const creationStatus: ApiCreationProgressStatus = createRestApiMutation.isError
+  const creationStatus: ApiCreationProgressStatus = activeMutation.isError
     ? 'failed'
-    : createRestApiMutation.isSuccess
+    : activeMutation.isSuccess
       ? 'created'
       : 'creating';
 
@@ -241,6 +266,7 @@ export const ApiCreationWizard = () => {
         displayName={submittedValues.displayName}
         onBack={() => {
           createRestApiMutation.reset();
+          importOpenApiMutation.reset();
           // Only the screen goes back; `submittedValues` stays so the form
           // returns to what was typed rather than to the imported draft.
           setCreationStarted(false);

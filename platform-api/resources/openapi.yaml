@@ -418,6 +418,47 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/import-openapi:
+    post:
+      summary: Create a REST API from an OpenAPI specification
+      description: |
+        Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
+        as a multipart file upload or a URL. The backend extracts operations from the spec,
+        creates the API, and persists the raw spec as the API definition document.
+      operationId: ImportOpenAPI
+      security:
+        - OAuth2Security:
+            - ap:rest_api:create
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImportOpenAPIRequest'
+      responses:
+        '201':
+          description: API created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{restApiId}:
     get:
       summary: Get REST API by ID
@@ -6209,6 +6250,39 @@ components:
             - context
             - version
             - projectId
+
+    ImportOpenAPIRequest:
+      type: object
+      required:
+        - file
+        - name
+        - version
+        - context
+        - projectId
+        - upstream
+      properties:
+        file:
+          type: string
+          format: binary
+          description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+        name:
+          type: string
+          description: Display name for the API
+        version:
+          type: string
+          description: Version of the API (e.g. 1.0)
+        context:
+          type: string
+          description: URL context path for the API (e.g. /petstore)
+        projectId:
+          type: string
+          description: Handle of the project this API belongs to
+        description:
+          type: string
+          description: Optional description for the API
+        upstream:
+          type: string
+          description: Upstream backend URL (maps to upstream.main.url in the created API)
 
     TimeUnit:
       type: string

@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
-import type { ApiCreationWizardDraftState, ApiType } from '../types';
+import type { ApiCreationWizardDraftState, ApiType, ContractImport } from '../types';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
 import { DesignWithAiPanel } from './DesignWithAiPanel';
@@ -164,7 +164,20 @@ export const DefineApiPanel = ({
   const edit = approach === 'scratch' ? scratchEdit : contractEdit;
   const spec = edit?.spec ?? (approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec);
 
-  const draft = useMemo(() => (spec === undefined ? null : extractApiDetails(spec)), [spec]);
+  const draft = useMemo((): ApiCreationWizardDraftState | null => {
+    if (spec === undefined) return null;
+    const base = extractApiDetails(spec);
+    if (approach !== 'contract') return base;
+    // Carry the raw spec forward so the wizard submits via import-openapi
+    // instead of the standard create endpoint.
+    const specBlob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
+    return {
+      ...base,
+      contractImport: {
+        specFile: new File([specBlob], 'openapi.json', { type: 'application/json' }),
+      },
+    };
+  }, [spec, approach]);
 
   useEffect(() => {
     onDraftChange(draft);

@@ -117,3 +117,21 @@ export const deleteRestApi = async (restApiId: string, options?: RequestOptions)
     operationName: 'DeleteRESTAPI',
   });
 };
+
+/**
+ * Creates a REST API by importing an OpenAPI specification.
+ *
+ * The body must be a `FormData` instance containing:
+ *   - `file` (File): the spec file, OR `url` (string): a URL to fetch the spec from
+ *   - `name`, `version`, `context`, `projectId` (string): required API metadata
+ *   - `description`, `endpointUrl` (string): optional
+ *
+ * The browser sets the Content-Type header (including multipart boundary) automatically
+ * when a FormData body is supplied — do not set it manually.
+ */
+export const importOpenApi = async (body: FormData, options?: RequestOptions): Promise<RestApi> => {
+  return http.post<RestApi>(`${BASE}/import-openapi`, body, {
+    ...options,
+    operationName: 'ImportOpenAPI',
+  });
+};

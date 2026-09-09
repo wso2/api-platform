@@ -30,6 +30,7 @@ import { useApiScope } from '../../core/scope';
 import {
   createRestApi,
   deleteRestApi,
+  importOpenApi,
   updateRestApi,
   type CreateRestApiBody,
   type ListRestApisQuery,
@@ -209,6 +210,28 @@ const useInvalidateRestApis = (orgId?: string) => {
     if (!org) return;
     void queryClient.invalidateQueries({ queryKey: restApiKeys.all(org) });
   };
+};
+
+/**
+ * Creates a REST API from an OpenAPI spec file or URL.
+ *
+ * The caller builds the `FormData` and passes it directly — field names must
+ * match what `POST /rest-apis/import-openapi` expects.
+ */
+export const useImportOpenApi = (overrides: { orgId?: string } = {}) => {
+  const { org, orgId } = useApiScope(overrides);
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateRestApis(orgId);
+
+  return useMutation<RestApi, ApiError, FormData>({
+    mutationFn: (formData) => importOpenApi(formData, { orgId }),
+    onSuccess: (created) => {
+      if (org && created.id) {
+        queryClient.setQueryData(restApiKeys.detail(org, created.id), created);
+      }
+      invalidate();
+    },
+  });
 };
 
 /**
