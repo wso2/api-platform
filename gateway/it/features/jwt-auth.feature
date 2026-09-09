@@ -880,3 +880,475 @@ Feature: JWT Authentication
     When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token", scope "api:read api:write" and claims "status=active,department=sales"
     And I send a GET request to "http://localhost:8080/jwt-auth-both-formats/v1.0/protected" with the JWT token
     Then the response status code should be 401
+
+  # --------------------------------------------------------------------------------------------
+  # Token verdict cache: the signature/claims verdict for a token is shared across every API whose
+  # key managers/issuer config match, but each API's own audience/scope/claim constraints must
+  # still be enforced independently on every request. These scenarios pin that isolation guarantee
+  # black-box, without relying on any internal cache introspection.
+  # --------------------------------------------------------------------------------------------
+
+  Scenario: Shared verdict cache still enforces each API's own audience constraint independently
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-cache-share-noaud-api
+      spec:
+        displayName: JWT Auth Cache Share No Audience API
+        version: v1.0
+        context: /jwt-auth-cache-share-noaud/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-cache-share-noaud/v1.0/health" to be ready
+
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-cache-share-aud-api
+      spec:
+        displayName: JWT Auth Cache Share Audience API
+        version: v1.0
+        context: /jwt-auth-cache-share-aud/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+                  audiences:
+                    - "expected-audience"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-cache-share-aud/v1.0/health" to be ready
+
+    # Same key-manager config on both APIs (only the audiences param differs, which is not part of
+    # the cache key), so the second API is expected to reuse the verdict cached by the first rather
+    # than re-verifying the signature.
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I send a GET request to "http://localhost:8080/jwt-auth-cache-share-noaud/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+    # The token has no "aud" claim, so this API's own audience requirement must still reject it —
+    # a shared cache entry must never smuggle one API's authorization outcome into another's.
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-share-aud/v1.0/protected" with the JWT token
+    Then the response status code should be 401
+    And the response body should contain "Authentication failed"
+
+    # The first API must remain unaffected by the second API's rejection of the same cached verdict.
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-share-noaud/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+  Scenario: Shared verdict cache still enforces each API's own scope constraint independently
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-cache-share-noscope-api
+      spec:
+        displayName: JWT Auth Cache Share No Scope API
+        version: v1.0
+        context: /jwt-auth-cache-share-noscope/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-cache-share-noscope/v1.0/health" to be ready
+
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-cache-share-scope-api
+      spec:
+        displayName: JWT Auth Cache Share Scope API
+        version: v1.0
+        context: /jwt-auth-cache-share-scope/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+                  scopes:
+                    allOf:
+                      - "api:admin"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-cache-share-scope/v1.0/health" to be ready
+
+    # Same key-manager config on both APIs (only the scopes param differs), so the same verified
+    # verdict is expected to be reused across both rather than re-verified per API.
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "api:read"
+    And I send a GET request to "http://localhost:8080/jwt-auth-cache-share-noscope/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+    # The token only carries "api:read", so the second API's allOf("api:admin") requirement must
+    # still reject it even though the underlying signature verdict came from cache.
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-share-scope/v1.0/protected" with the JWT token
+    Then the response status code should be 401
+    And the response body should contain "Authentication failed"
+
+    # The first API must remain unaffected by the second API's scope rejection.
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-share-noscope/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+  Scenario: A valid token is repeatedly accepted across cache hits
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-cache-repeat-valid-api
+      spec:
+        displayName: JWT Auth Cache Repeat Valid API
+        version: v1.0
+        context: /jwt-auth-cache-repeat-valid/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-cache-repeat-valid/v1.0/health" to be ready
+
+    # First request populates the verdict cache; the following requests must hit it and produce
+    # the identical outcome — a cache hit must never re-decide differently from the original miss.
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I send a GET request to "http://localhost:8080/jwt-auth-cache-repeat-valid/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-repeat-valid/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-repeat-valid/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-repeat-valid/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+  Scenario: A malformed token is repeatedly rejected across negative-cache hits
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-cache-repeat-invalid-api
+      spec:
+        displayName: JWT Auth Cache Repeat Invalid API
+        version: v1.0
+        context: /jwt-auth-cache-repeat-invalid/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-cache-repeat-invalid/v1.0/health" to be ready
+
+    # A malformed token is a deterministic failure and gets negatively cached; repeated
+    # presentations must keep returning 401 rather than ever flipping to authorized.
+    When I clear all headers
+    And I set header "Authorization" to "Bearer invalid.jwt.token"
+    And I send a GET request to "http://localhost:8080/jwt-auth-cache-repeat-invalid/v1.0/protected"
+    Then the response status code should be 401
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-repeat-invalid/v1.0/protected"
+    Then the response status code should be 401
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-cache-repeat-invalid/v1.0/protected"
+    Then the response status code should be 401
+
+  Scenario: Redeploying an API with a new audience requirement is enforced immediately, without a new token
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-redeploy-audience-api
+      spec:
+        displayName: JWT Auth Redeploy Audience API
+        version: v1.0
+        context: /jwt-auth-redeploy-audience/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-redeploy-audience/v1.0/health" to be ready
+
+    # The mock JWKS server always issues tokens with aud "test-audience". No audience constraint
+    # yet, so this succeeds and the signature verdict for this token+config gets cached.
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I send a GET request to "http://localhost:8080/jwt-auth-redeploy-audience/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+    # Redeploy the SAME API/operation (same context, version, key manager), now requiring an
+    # audience the token does not carry. A stale/leaked cache entry from before the redeploy must
+    # not keep authorizing this request. Re-authenticate as admin first: the JWT-bearer request
+    # above overwrote the shared Authorization header, which the controller call below needs back
+    # as basic auth.
+    Given I authenticate using basic auth as "admin"
+    When I update the API "jwt-auth-redeploy-audience-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-redeploy-audience-api
+      spec:
+        displayName: JWT Auth Redeploy Audience API
+        version: v1.0
+        context: /jwt-auth-redeploy-audience/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+                  audiences:
+                    - "expected-audience"
+      """
+    Then the response should be successful
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-redeploy-audience/v1.0/protected" with the JWT token
+    Then the response status code should be 401
+    And the response body should contain "Authentication failed"
+
+    # Redeploy again, now requiring the audience the token actually carries. The same token (and
+    # its underlying cached signature verdict) must be accepted again with no new token needed —
+    # the constraint check re-evaluates fresh on every request rather than being pinned to
+    # whatever was true when the verdict was first cached.
+    Given I authenticate using basic auth as "admin"
+    When I update the API "jwt-auth-redeploy-audience-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-redeploy-audience-api
+      spec:
+        displayName: JWT Auth Redeploy Audience API
+        version: v1.0
+        context: /jwt-auth-redeploy-audience/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+                  audiences:
+                    - "test-audience"
+      """
+    Then the response should be successful
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-redeploy-audience/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+  Scenario: Redeploying an API with a new scope requirement is enforced immediately, without a new token
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-redeploy-scope-api
+      spec:
+        displayName: JWT Auth Redeploy Scope API
+        version: v1.0
+        context: /jwt-auth-redeploy-scope/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/jwt-auth-redeploy-scope/v1.0/health" to be ready
+
+    # No scope constraint yet, so this succeeds and the signature verdict for this token+config
+    # gets cached.
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "api:read"
+    And I send a GET request to "http://localhost:8080/jwt-auth-redeploy-scope/v1.0/protected" with the JWT token
+    Then the response status code should be 200
+
+    # Redeploy the SAME API/operation, now requiring a scope the token does not carry. A
+    # stale/leaked cache entry from before the redeploy must not keep authorizing this request.
+    # Re-authenticate as admin first: the JWT-bearer request above overwrote the shared
+    # Authorization header, which the controller call below needs back as basic auth.
+    Given I authenticate using basic auth as "admin"
+    When I update the API "jwt-auth-redeploy-scope-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-redeploy-scope-api
+      spec:
+        displayName: JWT Auth Redeploy Scope API
+        version: v1.0
+        context: /jwt-auth-redeploy-scope/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+                  scopes:
+                    allOf:
+                      - "api:admin"
+      """
+    Then the response should be successful
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-redeploy-scope/v1.0/protected" with the JWT token
+    Then the response status code should be 401
+    And the response body should contain "Authentication failed"
+
+    # Redeploy again, now requiring exactly the scope the token carries. The same token (and its
+    # underlying cached signature verdict) must be accepted again with no new token needed.
+    Given I authenticate using basic auth as "admin"
+    When I update the API "jwt-auth-redeploy-scope-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: jwt-auth-redeploy-scope-api
+      spec:
+        displayName: JWT Auth Redeploy Scope API
+        version: v1.0
+        context: /jwt-auth-redeploy-scope/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /protected
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+                  scopes:
+                    allOf:
+                      - "api:read"
+      """
+    Then the response should be successful
+
+    When I send a GET request to "http://localhost:8080/jwt-auth-redeploy-scope/v1.0/protected" with the JWT token
+    Then the response status code should be 200
