@@ -257,6 +257,7 @@ Feature: MCP proxy CRUD and connectivity
       | version     | v1.0                                |
       | context     | ${CTX:mcpContext}                  |
       | specVersion | 2025-03-18                          |
+      | spec.upstream.url | http://testbench:3009/mcp          |
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"

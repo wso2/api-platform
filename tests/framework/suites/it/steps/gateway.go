@@ -550,7 +550,11 @@ func (g *Gateway) jwtToken(ctx context.Context, issuer, scope, claims, key strin
 	q := url.Values{}
 	q.Set("issuer", resolvedIssuer)
 	if scope != "" {
-		q.Set("scope", scope)
+		resolvedScope, err := stepscommon.Expand(ctx, scope)
+		if err != nil {
+			return err
+		}
+		q.Set("scope", resolvedScope)
 	}
 	for _, pair := range strings.Split(claims, ",") {
 		pair = strings.TrimSpace(pair)
@@ -561,7 +565,11 @@ func (g *Gateway) jwtToken(ctx context.Context, issuer, scope, claims, key strin
 		if len(kv) != 2 {
 			return fmt.Errorf("invalid claim %q: expected key=value", pair)
 		}
-		q.Set("claim_"+strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
+		claimValue, err := stepscommon.Expand(ctx, strings.TrimSpace(kv[1]))
+		if err != nil {
+			return err
+		}
+		q.Set("claim_"+strings.TrimSpace(kv[0]), claimValue)
 	}
 	resp, err := retry.Until(ctx, retry.Options{},
 		func(ctx context.Context) (*httpx.Response, error) {

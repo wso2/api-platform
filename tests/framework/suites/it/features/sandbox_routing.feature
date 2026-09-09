@@ -480,15 +480,13 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:mainHost21}"
-    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami"
-    Then the response should be successful
-    And the response should be valid JSON
+    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami" until status 200
+    Then the response should be valid JSON
     And the JSON response field "path" should be "/whoami"
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost21}"
-    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami"
-    Then the response status code should be 404
+    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami" until status 404
 
     Given I authenticate using basic auth as "admin"
     When I update API "${CTX:apiName21}" from "resources/templates/rest-api.yaml" with values:
@@ -501,9 +499,8 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost21}"
-    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami"
-    Then the response should be successful
-    And the response should be valid JSON
+    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami" until status 200
+    Then the response should be valid JSON
     And the JSON response field "environment" should be "sandbox"
     And the JSON response field "path" should be "/sandbox/whoami"
 

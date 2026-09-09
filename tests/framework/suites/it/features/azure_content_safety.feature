@@ -303,6 +303,20 @@ Feature: Azure Content Safety content moderation policy
       {"message":"Safe request content"}
       """
 
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
+      """
+      {"message":"This request contains violence"}
+      """
+    Then the response status code should be 422
+    And the response body should contain "AZURE_CONTENT_SAFETY_CONTENT_MODERATION"
+
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
+      """
+      {"message":"This response contains hate"}
+      """
+    Then the response status code should be 422
+    And the response body should contain "AZURE_CONTENT_SAFETY_CONTENT_MODERATION"
+
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
 

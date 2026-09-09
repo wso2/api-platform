@@ -17,12 +17,17 @@ rm -rf "$out/platform-gateway" "$out/platform-api" "$out/ai-workspace" \
 	"$out/coverage-go.txt" "$out/coverage-go.raw.txt" "$out/coverage-go.html" \
 	"$out/coverage-go.html.profile" "$out/index.html"
 
+# Go coverage counters always live under raw/<block>/<service> (see core/coverage/sink.go's
+# Dir), never directly under $out - $out also holds rendered reports alongside the raw
+# inputs, so searching $out itself would mix the two together.
 go_inputs=""
-while IFS= read -r dir; do
-	if ls "$dir"/covmeta.* >/dev/null 2>&1 && ls "$dir"/covcounters.* >/dev/null 2>&1; then
-		go_inputs="${go_inputs:+$go_inputs,}$dir"
-	fi
-done < <(find "$out" -mindepth 2 -maxdepth 2 -type d | sort)
+if [ -d "$out/raw" ]; then
+	while IFS= read -r dir; do
+		if ls "$dir"/covmeta.* >/dev/null 2>&1 && ls "$dir"/covcounters.* >/dev/null 2>&1; then
+			go_inputs="${go_inputs:+$go_inputs,}$dir"
+		fi
+	done < <(find "$out/raw" -mindepth 2 -maxdepth 2 -type d | sort)
+fi
 
 node_files=()
 while IFS= read -r file; do
@@ -65,7 +70,7 @@ if [ -n "$go_inputs" ]; then
 		} > "$html_profile"
 		go tool cover -html="$html_profile" -o "$report_dir/coverage.html"
 		local covered total
-		covered=$(awk 'NR>1 && $NF>0 {n+=$(NF-1)} END {print n+0}' "$report_dir/coverage.txt")
+		covered=$(awk 'NR>1 && $NF>0 {n++} END {print n+0}' "$report_dir/coverage.txt")
 		total=$(awk 'NR>1 {n+=$(NF-1)} END {print n+0}' "$report_dir/coverage.txt")
 		[ "$covered" -gt 0 ] || die "$service Go coverage contains no executed statements"
 		awk -v covered="$covered" -v total="$total" 'BEGIN {printf "Go coverage: %.1f%% of statements (%d/%d)\n", 100*covered/total, covered, total}'
@@ -76,7 +81,7 @@ if [ -n "$go_inputs" ]; then
 		service_inputs=""
 		while IFS= read -r dir; do
 			service_inputs="${service_inputs:+$service_inputs,}$dir"
-		done < <(find "$out" -mindepth 2 -maxdepth 2 -type d -name "$service" | sort)
+		done < <(find "$out/raw" -mindepth 2 -maxdepth 2 -type d -name "$service" | sort)
 		[ -n "$service_inputs" ] || continue
 		case "$service" in
 			gateway-controller) report_dir="$out/platform-gateway/controller" ;;
@@ -139,7 +144,6 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 	node "$@"
 	[ -s "$out/browser-report/lcov.info" ] || die "browser coverage reporter produced no LCOV report"
 	[ -s "$out/browser-report/summary.json" ] || die "browser coverage reporter produced no summary"
-	command -v rg >/dev/null 2>&1 || die "ripgrep (rg) is unavailable"
 
 	# Keep product reports separate so a combined UI percentage cannot hide which
 	# frontend produced it. The combined report above remains useful for one upload.

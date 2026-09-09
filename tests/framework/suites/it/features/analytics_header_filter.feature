@@ -48,6 +48,8 @@ Feature: Analytics header filter policy
 
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain request header "authorization"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain request header "x-api-key"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should contain response header "content-type"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain response header "x-custom-header"
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
@@ -98,6 +100,9 @@ Feature: Analytics header filter policy
 
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/headers" until status 200
     Then the response should be successful
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "server"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "x-powered-by"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "x-internal-debug"
 
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName}"

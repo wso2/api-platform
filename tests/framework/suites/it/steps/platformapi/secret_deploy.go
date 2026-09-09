@@ -29,6 +29,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
@@ -43,8 +44,19 @@ var deployPaths = artifactPaths
 // apiKeyHeader and subscriptionKeyHeader are the default header names the api-key-auth and
 // subscription-validation policies check, matched exactly by createSecuredRestAPI's params.
 const (
-	apiKeyHeader          = "API-Key"
-	subscriptionKeyHeader = "Subscription-Key"
+	apiKeyHeader                = "API-Key"
+	subscriptionKeyHeader       = "Subscription-Key"
+	platformDeploymentSeparator = "\x00"
+)
+
+var (
+	platformDeploymentKind = cleanup.Kind{Name: "platform-api-deployment", Order: 40}
+	platformSecretKind     = cleanup.Kind{Name: "platform-api-secret", Order: 85}
+	platformProviderKind   = cleanup.Kind{Name: "platform-api-provider", Order: 84}
+	platformProxyKind      = cleanup.Kind{Name: "platform-api-proxy", Order: 82}
+	platformMCPKind        = cleanup.Kind{Name: "platform-api-mcp-proxy", Order: 52}
+	platformRESTAPIKind    = cleanup.Kind{Name: "platform-api-rest-api", Order: 50}
+	platformProjectKind    = cleanup.Kind{Name: "platform-api-project", Order: 100}
 )
 
 // RegisterDeploy binds the steps that create and deploy an artifact THROUGH platform-api's
@@ -84,6 +96,62 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createSubscription)
 	sc.Step(`^I issue an API key "([^"]*)" for REST API "([^"]*)" via the control plane$`,
 		s.issueAPIKey)
+}
+
+func (s *Steps) registerPlatformResource(ctx context.Context, kind cleanup.Kind, id, path string) error {
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kind, func(ctx context.Context, res cleanup.Resource) error {
+		base, bearer, err := s.authed(ctx)
+		if err != nil {
+			return err
+		}
+		resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodDelete, URL: base + apiBase + path + "/" + res.ID,
+			Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
+			return fmt.Errorf("deleting %s: %s", res.ID, resp.Describe())
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return reg.Register(cleanup.Resource{Kind: kind, ID: id, Actor: "admin", Description: "created via platform-api"})
+}
+
+func (s *Steps) registerPlatformDeployment(ctx context.Context, collection, handle, deploymentID, gatewayID string) error {
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(platformDeploymentKind, func(ctx context.Context, res cleanup.Resource) error {
+		parts := strings.Split(res.ID, platformDeploymentSeparator)
+		if len(parts) != 4 {
+			return fmt.Errorf("invalid platform deployment cleanup record")
+		}
+		base, bearer, err := s.authed(ctx)
+		if err != nil {
+			return err
+		}
+		path := "/" + parts[0] + "/" + parts[1] + "/deployments/" + parts[2] + "/undeploy?gatewayId=" + parts[3]
+		resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodPost, URL: base + apiBase + path,
+			Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
+			return fmt.Errorf("undeploying platform resource: %s", resp.Describe())
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	id := strings.Join([]string{collection, handle, deploymentID, gatewayID}, platformDeploymentSeparator)
+	return reg.Register(cleanup.Resource{Kind: platformDeploymentKind, ID: id, Actor: "admin", Description: "deployed via platform-api"})
 }
 
 // authed resolves the control plane's base URL and a fresh admin bearer token together,
@@ -172,7 +240,7 @@ func (s *Steps) createSecret(ctx context.Context, handle string) error {
 	if !resp.Succeeded() {
 		return fmt.Errorf("creating control-plane secret %q: %s", resolvedHandle, resp.Describe())
 	}
-	return nil
+	return s.registerPlatformResource(ctx, platformSecretKind, resolvedHandle, "/secrets")
 }
 
 // secretPlaceholder is the template literal the gateway controller resolves on demand at
@@ -210,7 +278,7 @@ func (s *Steps) createLLMProvider(ctx context.Context, id, template, secretHandl
 		}
 	}
 
-	return s.postJSON(ctx, base, bearer, "/llm-providers", map[string]any{
+	if err := s.postJSON(ctx, base, bearer, "/llm-providers", map[string]any{
 		"id":          resolvedID,
 		"displayName": resolvedID,
 		"version":     "v1.0",
@@ -219,7 +287,10 @@ func (s *Steps) createLLMProvider(ctx context.Context, id, template, secretHandl
 		"accessControl": map[string]any{
 			"mode": "allow_all",
 		},
-	}, nil)
+	}, nil); err != nil {
+		return err
+	}
+	return s.registerPlatformResource(ctx, platformProviderKind, resolvedID, "/llm-providers")
 }
 
 // createLLMProxy creates an LLM proxy referencing an already-deployed provider by id, with
@@ -246,7 +317,7 @@ func (s *Steps) createLLMProxy(ctx context.Context, id, projectHandle, providerI
 		return err
 	}
 
-	return s.postJSON(ctx, base, bearer, "/llm-proxies", map[string]any{
+	if err := s.postJSON(ctx, base, bearer, "/llm-proxies", map[string]any{
 		"id":          resolvedID,
 		"displayName": resolvedID,
 		"version":     "v1.0",
@@ -259,7 +330,10 @@ func (s *Steps) createLLMProxy(ctx context.Context, id, projectHandle, providerI
 				"value":  secretPlaceholder(resolvedSecret),
 			},
 		},
-	}, nil)
+	}, nil); err != nil {
+		return err
+	}
+	return s.registerPlatformResource(ctx, platformProxyKind, resolvedID, "/llm-proxies")
 }
 
 // createMCPProxy creates an MCP proxy whose upstream auth value embeds a secret placeholder.
@@ -277,7 +351,7 @@ func (s *Steps) createMCPProxy(ctx context.Context, id, secretHandle string) err
 		return err
 	}
 
-	return s.postJSON(ctx, base, bearer, "/mcp-proxies", map[string]any{
+	if err := s.postJSON(ctx, base, bearer, "/mcp-proxies", map[string]any{
 		"id":             resolvedID,
 		"displayName":    resolvedID,
 		"version":        "v1.0",
@@ -292,7 +366,10 @@ func (s *Steps) createMCPProxy(ctx context.Context, id, secretHandle string) err
 				},
 			},
 		},
-	}, nil)
+	}, nil); err != nil {
+		return err
+	}
+	return s.registerPlatformResource(ctx, platformMCPKind, resolvedID, "/mcp-proxies")
 }
 
 // createRestAPIUpstreamSecret creates a REST API whose upstream auth value embeds a secret
@@ -409,7 +486,7 @@ func (s *Steps) createRestAPIWithSecret(
 	if handle != resolvedID && handle != "" {
 		return fmt.Errorf("control plane assigned REST API handle %q, expected %q — a later deploy/verify step would address the wrong resource", handle, resolvedID)
 	}
-	return nil
+	return s.registerPlatformResource(ctx, platformRESTAPIKind, resolvedID, "/rest-apis")
 }
 
 // gatewayUUID discovers the block's single registered gateway's control-plane identifier -
@@ -513,6 +590,9 @@ func (s *Steps) deployArtifactID(ctx context.Context, kind, handle string) (stri
 	}
 	if deployed.DeploymentID == "" {
 		return "", fmt.Errorf("deploying %s %q: control plane returned no deployment id", resolvedKind, resolvedHandle)
+	}
+	if err := s.registerPlatformDeployment(ctx, collection, resolvedHandle, deployed.DeploymentID, gatewayID); err != nil {
+		return "", err
 	}
 	return deployed.DeploymentID, nil
 }

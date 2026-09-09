@@ -330,7 +330,7 @@ Feature: Semantic cache policy
     And I store the JSON response field "apiKey.apiKey" as "callerKey"
     And I set header "API-Key" to "${CTX:callerKey}"
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until status 200 with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" with body:
       """
       {"prompt":"isolation test prompt about coral reefs"}
       """

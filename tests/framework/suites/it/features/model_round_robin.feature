@@ -372,6 +372,13 @@ Feature: Model round-robin load balancing policy
     Then the response status code should be 200
     And the response body should contain "second-model"
 
+    # After suspendDuration expires, first-model becomes eligible again.
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until the response body contains "first-model" with body:
+      """
+      {"model":"any"}
+      """
+    Then the response status code should be 200
+
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
 
@@ -541,7 +548,7 @@ Feature: Model round-robin load balancing policy
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
 
-  Scenario: Handle invalid JSONPath
+  Scenario: Handle an unresolved requestModel path
     Given I generate a unique value from "mrr-invalid-jsonpath" and store it as "apiName"
     And I generate a unique API version from "mrr-invalid-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-invalid-jsonpath" and store it as "apiContext"

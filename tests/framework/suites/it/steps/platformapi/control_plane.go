@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 
@@ -125,45 +126,80 @@ func artifactPath(kind, handle string) (string, error) {
 // control-plane assertion needs its own wait rather than assuming an earlier step's timing.
 func (s *Steps) awaitArtifact(
 	ctx context.Context, kind, name, what string, accept func(*httpx.Response) bool,
-) (*httpx.Response, error) {
+) error {
 	resolvedKind, err := stepscommon.Expand(ctx, kind)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	resolvedName, err := stepscommon.Expand(ctx, name)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	path, err := artifactPath(resolvedKind, resolvedName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	base, err := s.baseURL()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	bearer, err := s.bearer(ctx, base)
 	if err != nil {
-		return nil, fmt.Errorf("authenticating to the control plane: %w", err)
+		return fmt.Errorf("authenticating to the control plane: %w", err)
 	}
 
-	return nil, retry.Await(ctx, retry.Options{},
+	return retry.Await(ctx, retry.Options{},
 		func(ctx context.Context) (*httpx.Response, error) { return s.get(ctx, base, bearer, path) },
 		accept, what)
 }
 
 func (s *Steps) shouldReceive(ctx context.Context, kind, name string) error {
-	_, err := s.awaitArtifact(ctx, kind, name,
+	return s.awaitArtifact(ctx, kind, name,
 		fmt.Sprintf("waiting for the control plane to receive the %s artifact %q", kind, name),
 		func(r *httpx.Response) bool { return r != nil && r.StatusCode == http.StatusOK })
-	return err
 }
 
 func (s *Steps) shouldNotReceive(ctx context.Context, kind, name string) error {
-	_, err := s.awaitArtifact(ctx, kind, name,
-		fmt.Sprintf("waiting to confirm the control plane never receives the %s artifact %q", kind, name),
-		func(r *httpx.Response) bool { return r != nil && r.StatusCode == http.StatusNotFound })
-	return err
+	resolvedKind, err := stepscommon.Expand(ctx, kind)
+	if err != nil {
+		return err
+	}
+	resolvedName, err := stepscommon.Expand(ctx, name)
+	if err != nil {
+		return err
+	}
+	path, err := artifactPath(resolvedKind, resolvedName)
+	if err != nil {
+		return err
+	}
+	base, err := s.baseURL()
+	if err != nil {
+		return err
+	}
+	bearer, err := s.bearer(ctx, base)
+	if err != nil {
+		return fmt.Errorf("authenticating to the control plane: %w", err)
+	}
+
+	what := fmt.Sprintf("waiting to confirm the control plane never receives the %s artifact %q", kind, name)
+	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, 3*time.Second,
+		func(ctx context.Context) (int, error) {
+			resp, getErr := s.get(ctx, base, bearer, path)
+			if getErr != nil {
+				return 0, getErr
+			}
+			if resp != nil && resp.StatusCode == http.StatusNotFound {
+				return 0, nil
+			}
+			return 1, nil
+		})
+	if err != nil {
+		return fmt.Errorf("%s: %w", what, err)
+	}
+	if !settled.Quiet || settled.Value != 0 {
+		return fmt.Errorf("%s: artifact was observed during the quiet period", what)
+	}
+	return nil
 }
 
 func (s *Steps) configurationShouldContain(ctx context.Context, kind, name, want string) error {
@@ -171,19 +207,18 @@ func (s *Steps) configurationShouldContain(ctx context.Context, kind, name, want
 	if err != nil {
 		return err
 	}
-	_, err = s.awaitArtifact(ctx, kind, name,
+	return s.awaitArtifact(ctx, kind, name,
 		fmt.Sprintf("waiting for the control plane's copy of the %s artifact %q to contain %q", kind, name, resolvedWant),
 		func(r *httpx.Response) bool {
 			return r != nil && r.StatusCode == http.StatusOK && strings.Contains(r.Text(), resolvedWant)
 		})
-	return err
 }
 
 // shouldBeGatewayOriginated asserts the control plane marks the pushed artifact read-only,
 // which is how it records "this came from a data-plane gateway, not the control plane
 // itself" (see the readOnly doc comment on every artifact DTO in platform-api/api).
 func (s *Steps) shouldBeGatewayOriginated(ctx context.Context, kind, name string) error {
-	_, err := s.awaitArtifact(ctx, kind, name,
+	return s.awaitArtifact(ctx, kind, name,
 		fmt.Sprintf("waiting for the control plane's copy of the %s artifact %q to be marked gateway-originated", kind, name),
 		func(r *httpx.Response) bool {
 			if r == nil || r.StatusCode != http.StatusOK {
@@ -194,7 +229,6 @@ func (s *Steps) shouldBeGatewayOriginated(ctx context.Context, kind, name string
 			}
 			return json.Unmarshal(r.Body, &doc) == nil && doc.ReadOnly
 		})
-	return err
 }
 
 func (s *Steps) providerShouldReferenceTemplate(ctx context.Context, name, templateName string) error {
@@ -202,7 +236,7 @@ func (s *Steps) providerShouldReferenceTemplate(ctx context.Context, name, templ
 	if err != nil {
 		return err
 	}
-	_, err = s.awaitArtifact(ctx, "LlmProvider", name,
+	return s.awaitArtifact(ctx, "LlmProvider", name,
 		fmt.Sprintf("waiting for the control plane's copy of the LlmProvider artifact %q to reference template %q", name, resolvedTemplate),
 		func(r *httpx.Response) bool {
 			if r == nil || r.StatusCode != http.StatusOK {
@@ -213,7 +247,6 @@ func (s *Steps) providerShouldReferenceTemplate(ctx context.Context, name, templ
 			}
 			return json.Unmarshal(r.Body, &doc) == nil && doc.Template == resolvedTemplate
 		})
-	return err
 }
 
 func (s *Steps) proxyShouldReferenceProvider(ctx context.Context, name, providerName string) error {
@@ -221,7 +254,7 @@ func (s *Steps) proxyShouldReferenceProvider(ctx context.Context, name, provider
 	if err != nil {
 		return err
 	}
-	_, err = s.awaitArtifact(ctx, "LlmProxy", name,
+	return s.awaitArtifact(ctx, "LlmProxy", name,
 		fmt.Sprintf("waiting for the control plane's copy of the LlmProxy artifact %q to reference provider %q", name, resolvedProvider),
 		func(r *httpx.Response) bool {
 			if r == nil || r.StatusCode != http.StatusOK {
@@ -234,7 +267,6 @@ func (s *Steps) proxyShouldReferenceProvider(ctx context.Context, name, provider
 			}
 			return json.Unmarshal(r.Body, &doc) == nil && doc.Provider.Id == resolvedProvider
 		})
-	return err
 }
 
 // mcpDeploymentStatus polls the control plane's per-gateway deployment record for an MCP
@@ -316,5 +348,5 @@ func (s *Steps) createProject(ctx context.Context, handle string) error {
 	if !resp.Succeeded() {
 		return fmt.Errorf("creating control-plane project %q: %s", resolvedHandle, resp.Describe())
 	}
-	return nil
+	return s.registerPlatformResource(ctx, platformProjectKind, resolvedHandle, "/projects")
 }

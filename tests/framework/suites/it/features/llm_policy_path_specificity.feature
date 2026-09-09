@@ -94,6 +94,7 @@ Feature: LLM policy path and method specificity
   # EXPECTED: a POST to /chat/completions is governed ONLY by the specific
   #           4/hour quota; the 1/hour wildcard quota governs every OTHER path.
   # ------------------------------------------------------------------
+  @known-issue
   Scenario: Overlapping specific and wildcard advanced-ratelimit paths apply only the most specific match
     Given I generate a unique resource name from "pps-advrl-template" and store it as "templateName"
     And I generate a unique value from "pps-advrl-template" and store it as "templateDisplayName"

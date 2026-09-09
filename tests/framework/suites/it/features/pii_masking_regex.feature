@@ -38,11 +38,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/email","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/email" with body:
       """
       Contact me at john.doe@example.com for more info
       """
@@ -50,7 +50,7 @@ Feature: PII masking regex policy
     And the response body should contain "john.doe@example.com"
     And the response body should not contain "[EMAIL_"
 
-    When I send a "GET" request to the "capture" service at "/test/captured?path=/echo"
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/email"
     Then the response body should contain "[EMAIL_"
     And the response body should not contain "john.doe@example.com"
 
@@ -68,11 +68,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"PHONE","piiRegex":"\\\\b\\\\d{3}-\\\\d{3}-\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/phone","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"PHONE","piiRegex":"\\\\b\\\\d{3}-\\\\d{3}-\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/phone" with body:
       """
       Call me at 555-123-4567
       """
@@ -80,7 +80,7 @@ Feature: PII masking regex policy
     And the response body should contain "555-123-4567"
     And the response body should not contain "[PHONE_"
 
-    When I send a "GET" request to the "capture" service at "/test/captured?path=/echo"
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/phone"
     Then the response body should contain "[PHONE_"
     And the response body should not contain "555-123-4567"
 
@@ -98,11 +98,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"},{"piiEntity":"PHONE","piiRegex":"\\\\b\\\\d{3}-\\\\d{3}-\\\\d{4}\\\\b"},{"piiEntity":"SSN","piiRegex":"\\\\b\\\\d{3}-\\\\d{2}-\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/multi","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"},{"piiEntity":"PHONE","piiRegex":"\\\\b\\\\d{3}-\\\\d{3}-\\\\d{4}\\\\b"},{"piiEntity":"SSN","piiRegex":"\\\\b\\\\d{3}-\\\\d{2}-\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/multi" with body:
       """
       Reach john@example.com, call 555-123-4567, SSN 123-45-6789
       """
@@ -114,7 +114,7 @@ Feature: PII masking regex policy
     And the response body should not contain "[PHONE_"
     And the response body should not contain "[SSN_"
 
-    When I send a "GET" request to the "capture" service at "/test/captured?path=/echo"
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/multi"
     Then the response body should contain "[EMAIL_"
     And the response body should contain "[PHONE_"
     And the response body should contain "[SSN_"
@@ -136,11 +136,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":true}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/redact-email","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":true}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/redact-email" with body:
       """
       Email me at admin@company.com
       """
@@ -162,11 +162,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"SSN","piiRegex":"\\\\b\\\\d{3}-\\\\d{2}-\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":true}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/redact-ssn","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"SSN","piiRegex":"\\\\b\\\\d{3}-\\\\d{2}-\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":true}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/redact-ssn" with body:
       """
       My SSN is 987-65-4321
       """
@@ -188,11 +188,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"},{"piiEntity":"CREDIT_CARD","piiRegex":"\\\\b\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":true}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/redact-multi","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"},{"piiEntity":"CREDIT_CARD","piiRegex":"\\\\b\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":true}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/redact-multi" with body:
       """
       Send receipt to john@test.com. Card: 1234-5678-9012-3456
       """
@@ -215,11 +215,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"$.message","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/jsonpath","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"$.message","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/jsonpath" with body:
       """
       {
         "message": "Contact admin@example.com",
@@ -231,7 +231,7 @@ Feature: PII masking regex policy
     And the response body should contain "email@test.com"
     And the response body should not contain "[EMAIL_"
 
-    When I send a "GET" request to the "capture" service at "/test/captured?path=/echo"
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/jsonpath"
     Then the response body should contain "[EMAIL_"
     And the response body should not contain "admin@example.com"
     And the response body should contain "email@test.com"
@@ -250,11 +250,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"PHONE","piiRegex":"\\\\b\\\\d{3}-\\\\d{3}-\\\\d{4}\\\\b"}],"jsonPath":"$.user.contact","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/nested-jsonpath","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"PHONE","piiRegex":"\\\\b\\\\d{3}-\\\\d{3}-\\\\d{4}\\\\b"}],"jsonPath":"$.user.contact","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/nested-jsonpath" with body:
       """
       {
         "user": {
@@ -267,7 +267,7 @@ Feature: PII masking regex policy
     And the response body should contain "555-999-8888"
     And the response body should not contain "[PHONE_"
 
-    When I send a "GET" request to the "capture" service at "/test/captured?path=/echo"
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/nested-jsonpath"
     Then the response body should contain "[PHONE_"
     And the response body should not contain "555-999-8888"
 
@@ -285,11 +285,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/clean","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/clean" with body:
       """
       This is a clean message with no PII
       """
@@ -310,11 +310,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/empty","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/empty" with body:
       """
       """
     Then the response status code should be 200
@@ -333,11 +333,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"$.nonexistent.field","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/invalid-jsonpath","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"$.nonexistent.field","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/invalid-jsonpath" with body:
       """
       {
         "message": "test@example.com"
@@ -359,11 +359,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/multiple-emails","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"","redactPII":false}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/multiple-emails" with body:
       """
       Recipients john@example.com, jane@test.org, admin@company.net
       """
@@ -373,7 +373,7 @@ Feature: PII masking regex policy
     And the response body should contain "admin@company.net"
     And the response body should not contain "[EMAIL_"
 
-    When I send a "GET" request to the "capture" service at "/test/captured?path=/echo"
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/multiple-emails"
     Then the response body should contain "[EMAIL_"
     And the response body should not contain "john@example.com"
     And the response body should not contain "jane@test.org"
@@ -393,11 +393,11 @@ Feature: PII masking regex policy
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | ${CTX:captureUpstream}           |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/echo","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"CREDIT_CARD","piiRegex":"\\\\b\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":true}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/redact-card","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"CREDIT_CARD","piiRegex":"\\\\b\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}[\\\\s-]?\\\\d{4}\\\\b"}],"jsonPath":"","redactPII":true}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
 
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/echo" with body:
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/redact-card" with body:
       """
       Payment with card 4532-1234-5678-9012
       """

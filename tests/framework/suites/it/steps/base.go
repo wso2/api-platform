@@ -336,6 +336,20 @@ func (b *Base) sendUntilStatus(ctx context.Context, method, path string, want in
 	return b.sendUntilStatusWithBody(ctx, method, path, want, nil)
 }
 
+func (b *Base) expandBody(ctx context.Context, body *godog.DocString, headers map[string]string) ([]byte, error) {
+	if body == nil {
+		return nil, nil
+	}
+	content, err := stepscommon.Expand(ctx, body.Content)
+	if err != nil {
+		return nil, err
+	}
+	if headers["Content-Type"] == "" {
+		headers["Content-Type"] = "application/json"
+	}
+	return []byte(content), nil
+}
+
 // sendUntilStatusWithBody polls a data-plane path, with a body when one is given, until it answers with the wanted status.
 func (b *Base) sendUntilStatusWithBody(
 	ctx context.Context, method, path string, want int, body *godog.DocString,
@@ -350,16 +364,9 @@ func (b *Base) sendUntilStatusWithBody(
 	}
 
 	headers := b.scenarioHeaders(ctx)
-	var payload []byte
-	if body != nil {
-		content, expErr := stepscommon.Expand(ctx, body.Content)
-		if expErr != nil {
-			return expErr
-		}
-		payload = []byte(content)
-		if headers["Content-Type"] == "" {
-			headers["Content-Type"] = "application/json"
-		}
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
 	}
 
 	return stepscommon.AwaitResponse(ctx,
@@ -412,16 +419,9 @@ func (b *Base) sendUntilHeaderWithBody(
 		return err
 	}
 	headers := b.scenarioHeaders(ctx)
-	var payload []byte
-	if body != nil {
-		content, expErr := stepscommon.Expand(ctx, body.Content)
-		if expErr != nil {
-			return expErr
-		}
-		payload = []byte(content)
-		if headers["Content-Type"] == "" {
-			headers["Content-Type"] = "application/json"
-		}
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
 	}
 
 	return stepscommon.AwaitResponse(ctx,
@@ -460,16 +460,9 @@ func (b *Base) sendUntilJSONFieldStringLength(
 		return err
 	}
 	headers := b.scenarioHeaders(ctx)
-	var payload []byte
-	if body != nil {
-		content, expErr := stepscommon.Expand(ctx, body.Content)
-		if expErr != nil {
-			return expErr
-		}
-		payload = []byte(content)
-		if headers["Content-Type"] == "" {
-			headers["Content-Type"] = "application/json"
-		}
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
 	}
 
 	return stepscommon.AwaitResponse(ctx,
@@ -533,16 +526,9 @@ func (b *Base) sendUntilBodyContains(ctx context.Context, method, path, want str
 		return err
 	}
 	headers := b.scenarioHeaders(ctx)
-	var payload []byte
-	if body != nil {
-		content, expErr := stepscommon.Expand(ctx, body.Content)
-		if expErr != nil {
-			return expErr
-		}
-		payload = []byte(content)
-		if headers["Content-Type"] == "" {
-			headers["Content-Type"] = "application/json"
-		}
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
 	}
 
 	return stepscommon.AwaitResponse(ctx,

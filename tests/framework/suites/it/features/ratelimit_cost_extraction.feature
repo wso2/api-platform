@@ -254,9 +254,16 @@ Feature: Advanced rate limit dynamic cost extraction
       | spec.version           | ${CTX:apiVersion}                |
       | spec.context           | ${CTX:apiContext}/$version       |
       | spec.upstream.main.url | http://testbench:3000            |
-      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"POST","path":"/resource","policies":[{"name":"advanced-ratelimit","version":"v1","params":{"quotas":[{"name":"partial-source-quota","limits":[{"limit":10,"duration":"1h"}],"costExtraction":{"enabled":true,"sources":[{"type":"request_header","key":"X-Token-Cost"},{"type":"request_body","jsonPath":"$.missing_field"}],"default":9}}]}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"POST","path":"/default-cost","policies":[{"name":"advanced-ratelimit","version":"v1","params":{"quotas":[{"name":"default-cost-quota","limits":[{"limit":10,"duration":"1h"}],"costExtraction":{"enabled":true,"sources":[{"type":"request_header","key":"X-Token-Cost"},{"type":"request_body","jsonPath":"$.missing_field"}],"default":9}}]}}]},{"method":"POST","path":"/resource","policies":[{"name":"advanced-ratelimit","version":"v1","params":{"quotas":[{"name":"partial-source-quota","limits":[{"limit":10,"duration":"1h"}],"costExtraction":{"enabled":true,"sources":[{"type":"request_header","key":"X-Token-Cost"},{"type":"request_body","jsonPath":"$.missing_field"}],"default":9}}]}}]}] |
     Then the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
+
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/default-cost" with body:
+      """
+      {}
+      """
+    Then the response status code should be 200
+    And the response header "X-RateLimit-Remaining" should be "1"
 
     When I set header "X-Token-Cost" to "2"
     And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/resource" with body:

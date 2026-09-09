@@ -1000,6 +1000,14 @@ Feature: MCP proxy behavior under attached policies
     Then the response status code should be 204
     And the response header "Access-Control-Allow-Origin" should not exist
 
+    # Preflight request from an origin with a disallowed suffix should not return CORS headers
+    When I set header "Origin" to "http://example.com.evil.com"
+    And I set header "Access-Control-Request-Method" to "POST"
+    And I set header "Access-Control-Request-Headers" to "Content-Type"
+    And I send a "OPTIONS" request to "${CTX:mcpContext}/mcp"
+    Then the response status code should be 204
+    And the response header "Access-Control-Allow-Origin" should not exist
+
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the MCP proxy "${CTX:mcpName}"

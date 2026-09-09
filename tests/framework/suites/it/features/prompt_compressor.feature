@@ -70,7 +70,7 @@ Feature: Prompt compressor policy
       {"messages":[{"content":"The deployment pipeline for the cloud-native application underwent significant changes during the last quarter. The engineering team migrated from a monolithic architecture to a microservices-based approach. This transition involved refactoring the authentication module, updating the database connection pooling strategy, and implementing new caching mechanisms. The team also introduced automated regression testing suites that run on every pull request submission. Performance benchmarks showed a notable improvement in response latency after the migration was completed. The operations team documented all configuration changes and created runbooks for common incident response scenarios. Additionally, the security team conducted a comprehensive audit of all service endpoints and updated the firewall rules accordingly. The monitoring infrastructure was enhanced with new dashboards and alerting configurations to provide better visibility into system health and performance metrics across all environments."}]}
       """
     Then the response should be valid JSON
-    # Full length is 1013, 0.5 ratio should make it significantly less. Let's say < 600
+    # Full length is 1013, 0.5 ratio should make it significantly less than 850.
     And the JSON response string field "json.messages[0].content" should have length less than 850
     And the JSON response string field "json.messages[0].content" should have length greater than 100
     And the response body should not contain "The deployment pipeline for the cloud-native application underwent significant changes during the last quarter. The engineering team migrated from a monolithic architecture to a microservices-based approach."

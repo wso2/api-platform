@@ -317,7 +317,7 @@ Feature: Model weighted round-robin load balancing policy
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
       | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"model-weighted-round-robin","version":"v1","params":{"models":[{"model":"failing-model","weight":1},{"model":"working-model","weight":1}],"suspendDuration":3,"requestModel":{"location":"payload","identifier":"$.model"}}}]},{"method":"GET","path":"/health"}] |
+      | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"model-weighted-round-robin","version":"v1","params":{"models":[{"model":"failing-model","weight":1},{"model":"working-model","weight":1}],"suspendDuration":30,"requestModel":{"location":"payload","identifier":"$.model"}}}]},{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
 
@@ -358,7 +358,7 @@ Feature: Model weighted round-robin load balancing policy
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
       | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"model-weighted-round-robin","version":"v1","params":{"models":[{"model":"rate-limited-model","weight":1},{"model":"available-model","weight":1}],"suspendDuration":3,"requestModel":{"location":"payload","identifier":"$.model"}}}]},{"method":"GET","path":"/health"}] |
+      | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"model-weighted-round-robin","version":"v1","params":{"models":[{"model":"rate-limited-model","weight":1},{"model":"available-model","weight":1}],"suspendDuration":30,"requestModel":{"location":"payload","identifier":"$.model"}}}]},{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
 

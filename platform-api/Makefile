@@ -83,9 +83,9 @@ run-local: ## Run Platform API standalone via `go run` against config/config.loc
 		export APIP_CP_ENCRYPTION_KEY=$$(cat resources/keys/encryption.key) && \
 		go run ./cmd/main.go -config config/config.local.toml
 
-test: ## Run tests
+test: ## Run tests with coverage report
 	@echo "Running tests..."
-	@go test -v ./...
+	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
 
 it: it-sqlite ## Run cross-database integration tests on SQLite (alias of it-sqlite)
 

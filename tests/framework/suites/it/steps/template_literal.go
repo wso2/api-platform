@@ -21,6 +21,7 @@ package steps
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -159,7 +160,7 @@ func (g *Gateway) queryStoredConfiguration(ctx context.Context, table, kind, han
 
 	var configuration string
 	if err := db.QueryRowContext(ctx, query, kind, handle).Scan(&configuration); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("no %s row found for handle %q", kind, handle)
 		}
 		return "", fmt.Errorf("querying stored %s configuration for %q: %w", kind, handle, err)

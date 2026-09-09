@@ -142,7 +142,7 @@ Feature: Content length guardrail policy
 
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
       """
-      {"msg":"exactly20byte"}
+      {"msg":"1234567890"}
       """
     Then the response status code should be 200
 
@@ -166,7 +166,7 @@ Feature: Content length guardrail policy
 
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
       """
-      {"message":"This message is exactly 50 bytes."}
+      {"message":"123456789012345678901234567890123456"}
       """
     Then the response status code should be 200
 

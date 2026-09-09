@@ -65,6 +65,7 @@ Feature: JWT authentication
       | spec.operations        | [{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"jwt-auth","version":"v1","params":{"issuers":["mock-jwks"]}}]}] |
     Then the response should be successful
 
+    And I clear all headers
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/protected" until status 401
     And the response body should contain "Authentication failed"
 

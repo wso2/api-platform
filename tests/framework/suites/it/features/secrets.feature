@@ -398,6 +398,6 @@ Feature: Secret management operations
     When I send a "GET" request to the "gateway-controller" service at "/secrets/${CTX:secretName}"
     Then the response status should be 404
 
-  Scenario: Deleting a non-existent secret is idempotent
+  Scenario: Deleting a non-existent secret returns 404
     When I send a "DELETE" request to the "gateway-controller" service at "/secrets/non-existent-secret-99999"
     Then the response status should be 404

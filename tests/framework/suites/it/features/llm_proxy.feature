@@ -174,6 +174,8 @@ Feature: LLM proxy management
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
+    Then the response status code should be 200
 
   Scenario: List LLM proxies after creating one
     Given I generate a unique resource name from "lpx-list-template" and store it as "templateName"
@@ -219,6 +221,8 @@ Feature: LLM proxy management
     Then the response should be successful
 
     When I delete the LLM provider "${CTX:providerName}"
+    Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
   Scenario: Create LLM proxy with invalid JSON body returns error
@@ -282,6 +286,8 @@ Feature: LLM proxy management
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
+    Then the response status code should be 200
 
   Scenario: Update LLM proxy with invalid JSON body returns error
     When I send a "PUT" request to the "gateway-controller" service at "/llm-proxies/some-proxy" with body:
@@ -336,6 +342,8 @@ Feature: LLM proxy management
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
+    Then the response status code should be 200
 
   Scenario: List LLM proxies with version filter
     Given I generate a unique resource name from "lpx-filter-ver-template" and store it as "templateName"
@@ -380,6 +388,8 @@ Feature: LLM proxy management
     Then the response should be successful
 
     When I delete the LLM provider "${CTX:providerName}"
+    Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
   Scenario: List LLM proxies with non-matching filter returns empty
@@ -438,6 +448,8 @@ Feature: LLM proxy management
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
+    Then the response status code should be 200
 
   Scenario: Invoke LLM proxy - provider access control allows exception paths
     Given I generate a unique resource name from "lpx-acl-template" and store it as "templateName"
@@ -487,6 +499,8 @@ Feature: LLM proxy management
     Then the response should be successful
 
     When I delete the LLM provider "${CTX:providerName}"
+    Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
   Scenario: Multiple sequential requests through LLM proxy
@@ -549,4 +563,6 @@ Feature: LLM proxy management
     Then the response should be successful
 
     When I delete the LLM provider "${CTX:providerName}"
+    Then the response status code should be 200
+    When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200

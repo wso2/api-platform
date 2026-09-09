@@ -25,7 +25,7 @@ use (
 	./sdk/ai
 	./sdk/core
 	./tests/ai-workspace-cli-e2e
+	./tests/framework
 	./tests/integration-e2e
 	./tests/mock-servers/mock-platform-api
-	./tests/framework
 )

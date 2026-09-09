@@ -38,7 +38,7 @@ func PartitionRouter(inner http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key, rest, err := splitPartition(r.URL.Path)
 		if err != nil {
-			http.Error(w, "testbench: "+err.Error(), http.StatusBadRequest)
+			http.Error(w, "invalid partition path", http.StatusBadRequest)
 			return
 		}
 
