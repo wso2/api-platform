@@ -72,13 +72,14 @@ func scanAPIPortalRow(scanner interface {
 	return portal, nil
 }
 
-// marshalAPIPortalBlob serializes a JSON blob column value. A nil map becomes an
-// empty JSON object so the NOT NULL BYTEA/BLOB/VARBINARY column always has
-// valid content; readers (unmarshalAPIPortalBlob) mirror this by normalizing
-// empty/{} back to an empty map so callers never nil-check.
+// marshalAPIPortalBlob serializes a JSON blob column value. A nil or empty map
+// becomes a nil byte slice so the driver stores SQL NULL — the column is
+// nullable and there is no reason to distinguish "operator supplied nothing"
+// from "operator supplied {}". readers (unmarshalAPIPortalBlob) mirror this
+// by returning a nil map for a NULL or empty-bytes read.
 func marshalAPIPortalBlob(m map[string]interface{}, field string) ([]byte, error) {
-	if m == nil {
-		return []byte("{}"), nil
+	if len(m) == 0 {
+		return nil, nil
 	}
 	b, err := json.Marshal(m)
 	if err != nil {
@@ -87,17 +88,17 @@ func marshalAPIPortalBlob(m map[string]interface{}, field string) ([]byte, error
 	return b, nil
 }
 
-// unmarshalAPIPortalBlob deserializes a JSON blob and normalizes the result to
-// a non-nil map.
+// unmarshalAPIPortalBlob deserializes a JSON blob. Returns a nil map for a
+// NULL column value or empty bytes so the response can rely on the model's
+// `json:",omitempty"` tag to elide the field entirely for portals that carry
+// no metadata (typical OSS case).
 func unmarshalAPIPortalBlob(b []byte, field string) (map[string]interface{}, error) {
-	m := map[string]interface{}{}
-	if len(b) > 0 {
-		if err := json.Unmarshal(b, &m); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal %s: %w", field, err)
-		}
+	if len(b) == 0 {
+		return nil, nil
 	}
-	if m == nil {
-		m = map[string]interface{}{}
+	m := map[string]interface{}{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal %s: %w", field, err)
 	}
 	return m, nil
 }

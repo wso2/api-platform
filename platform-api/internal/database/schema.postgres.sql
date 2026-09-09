@@ -409,7 +409,7 @@ CREATE TABLE IF NOT EXISTS api_portals (
     url               VARCHAR(500),
     status               VARCHAR(20)  NOT NULL DEFAULT 'pending',
     internal_auth_key BYTEA        NOT NULL,
-    metadata             BYTEA        NOT NULL,
+    metadata             BYTEA,
     created_by           VARCHAR(200),
     created_at           TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
     updated_by           VARCHAR(200),
