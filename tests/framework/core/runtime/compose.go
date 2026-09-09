@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -461,6 +462,29 @@ func (c *ComposeStack) Exec(ctx context.Context, service string, cmd []string) (
 		return out, fmt.Errorf("runtime: exec in service %q exited %d: %s", service, code, strings.TrimSpace(out))
 	}
 	return out, nil
+}
+
+// CopyFileFromContainer reads one file out of a service's container.
+//
+// Used to read a component's own persisted state directly - an embedded SQLite database, for
+// instance - when no product API exposes it. This is a snapshot, not a live handle: the file is
+// fully read before this call returns, so a caller holds a copy from one instant, not a
+// connection to the container's own open file.
+func (c *ComposeStack) CopyFileFromContainer(ctx context.Context, service, path string) ([]byte, error) {
+	container, err := c.serviceContainer(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	reader, err := container.CopyFileFromContainer(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("runtime: copying %q from service %q: %w", path, service, err)
+	}
+	defer func() { _ = reader.Close() }()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("runtime: reading %q from service %q: %w", path, service, err)
+	}
+	return data, nil
 }
 
 // Logs returns each service's log output, concatenated and labelled.

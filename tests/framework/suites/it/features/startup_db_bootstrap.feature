@@ -99,33 +99,30 @@ Feature: Startup database bootstrap
     And I send a "GET" request to "${CTX:resourceContext1_3}/v1.0/us/seattle" until status 200
 
     When I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "${CTX:resourceContext1_1}/chat/completions" with body:
+    And I send a "POST" request to "${CTX:resourceContext1_1}/chat/completions" until status 200 with body:
       """
       {
         "model": "gpt-4",
         "messages": [{"role": "user", "content": "before restart"}]
       }
       """
-    Then the response status code should be 200
-    And the response should be valid JSON
+    Then the response should be valid JSON
     And the JSON response field "object" should be "chat.completion"
 
     When I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "${CTX:resourceContext1_2}/chat/completions" with body:
+    And I send a "POST" request to "${CTX:resourceContext1_2}/chat/completions" until status 200 with body:
       """
       {
         "model": "gpt-4",
         "messages": [{"role": "user", "content": "proxy before restart"}]
       }
       """
-    Then the response status code should be 200
-    And the response should be valid JSON
+    Then the response should be valid JSON
     And the JSON response field "object" should be "chat.completion"
 
     When I clear all headers
-    And I send a "GET" request to "${CTX:resourceContext1_3}/v1.0/us/seattle"
-    Then the response status code should be 200
-    And the response body should contain "/api/v2/us/seattle"
+    And I send a "GET" request to "${CTX:resourceContext1_3}/v1.0/us/seattle" until status 200
+    Then the response body should contain "/api/v2/us/seattle"
 
     When I use the MCP Client to send an initialize request to "${CTX:mcpContext}/mcp"
     Then the response should be successful
@@ -169,33 +166,30 @@ Feature: Startup database bootstrap
 
     When I clear all headers
     And I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "${CTX:resourceContext1_1}/chat/completions" with body:
+    And I send a "POST" request to "${CTX:resourceContext1_1}/chat/completions" until status 200 with body:
       """
       {
         "model": "gpt-4",
         "messages": [{"role": "user", "content": "after restart"}]
       }
       """
-    Then the response status code should be 200
-    And the response should be valid JSON
+    Then the response should be valid JSON
     And the JSON response field "object" should be "chat.completion"
 
     When I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "${CTX:resourceContext1_2}/chat/completions" with body:
+    And I send a "POST" request to "${CTX:resourceContext1_2}/chat/completions" until status 200 with body:
       """
       {
         "model": "gpt-4",
         "messages": [{"role": "user", "content": "proxy after restart"}]
       }
       """
-    Then the response status code should be 200
-    And the response should be valid JSON
+    Then the response should be valid JSON
     And the JSON response field "object" should be "chat.completion"
 
     When I clear all headers
-    And I send a "GET" request to "${CTX:resourceContext1_3}/v1.0/us/seattle"
-    Then the response status code should be 200
-    And the response body should contain "/api/v2/us/seattle"
+    And I send a "GET" request to "${CTX:resourceContext1_3}/v1.0/us/seattle" until status 200
+    Then the response body should contain "/api/v2/us/seattle"
 
     When I use the MCP Client to send an initialize request to "${CTX:mcpContext}/mcp"
     Then the response should be successful

@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
@@ -88,6 +89,7 @@ func services() ([]testbench.Service, error) {
 		embeddings.New(),
 		contentsafety.New(),
 		analytics.New(),
+		capture.New(),
 	}, nil
 }
 

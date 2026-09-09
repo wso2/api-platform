@@ -1,0 +1,4 @@
+# Suppresses the gateway-controller's DP -> CP artifact push while still connecting to the
+# control plane, so a pushed artifact stays local with cp_sync_status=pending.
+[controller.controlplane]
+deployment_sync_enabled = false

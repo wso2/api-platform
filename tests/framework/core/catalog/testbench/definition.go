@@ -26,6 +26,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
@@ -75,6 +76,10 @@ func Testbench() *components.Definition {
 			// uses is http://testbench:3007/<block> rather than the bare port. See
 			// testbench/services/analytics and testbench.Partitioned.
 			{Name: "analytics", Port: analytics.Port, Scheme: "http", AwaitListening: true},
+			// capture is also STATEFUL and block-partitioned, for the same reason as analytics:
+			// it remembers what it actually received per path, addressed as
+			// http://testbench:3010/<block>/... See testbench/services/capture.
+			{Name: "capture", Port: capture.Port, Scheme: "http", AwaitListening: true},
 		},
 		// Every service answers the same health path on its own port, so gating on one is
 		// gating on the process. AwaitListening above already proves each port is bound.

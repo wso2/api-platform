@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -92,7 +93,36 @@ type lazyDump struct {
 }
 
 type configDump struct {
-	Lazy lazyDump `json:"lazy_resources"`
+	Lazy          lazyDump          `json:"lazy_resources"`
+	RouteMetadata routeMetadataDump `json:"route_metadata"`
+	PolicyChains  policyChainsDump  `json:"policy_chains"`
+}
+
+type routeMetadataDump struct {
+	Routes []struct {
+		// Context is the API's resolved gateway-facing base path (e.g. "/admin-test/v1") -
+		// the policy engine has no field literally named "basePath".
+		Context string `json:"context"`
+	} `json:"routes"`
+}
+
+type policyChainsDump struct {
+	PolicyChains []struct {
+		// RouteKey is "METHOD|fullPath|vhost" (see GenerateRouteNameWithDiscriminator).
+		RouteKey string `json:"route_key"`
+		Policies []struct {
+			Name string `json:"name"`
+		} `json:"policies"`
+	} `json:"policy_chains"`
+}
+
+// routeKeyPath extracts the fullPath segment from a "METHOD|fullPath|vhost" route key.
+func routeKeyPath(routeKey string) string {
+	parts := strings.SplitN(routeKey, "|", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[1]
 }
 
 func (g *Gateway) lazyResources(ctx context.Context) ([]lazyResource, error) {
@@ -341,6 +371,113 @@ func (g *Gateway) routeMetadataProvider(ctx context.Context, provider string) er
 	return fmt.Errorf("route metadata does not contain provider %q", provider)
 }
 
+// awaitConfigDumpRouteAbsent polls the policy engine's own config dump until no route has the
+// given base path. The generic funnel's dump-consistency wait (awaitDumpConsistent) is capped
+// at retry.PropagationCeiling (60s); the policy engine's own route_metadata rebuild after an
+// API deletion has been measured taking well beyond that and varies widely between runs
+// (observed ~70s in one run, ~153s in another - consistent with a periodic reconciliation
+// cycle rather than a fixed propagation delay), so this polls with its own much longer timeout
+// instead of relying on that fixed ceiling.
+func (g *Gateway) awaitConfigDumpRouteAbsent(ctx context.Context, basePath string) error {
+	resolved, err := stepscommon.Expand(ctx, basePath)
+	if err != nil {
+		return err
+	}
+	url, err := g.serviceURL(ctx, "policy-engine", "/config_dump")
+	if err != nil {
+		return err
+	}
+	accept := func(resp *httpx.Response) bool {
+		if resp == nil || !resp.Succeeded() {
+			return false
+		}
+		var dump configDump
+		if err := json.Unmarshal(resp.Body, &dump); err != nil {
+			return false
+		}
+		for _, route := range dump.RouteMetadata.Routes {
+			if route.Context == resolved {
+				return false
+			}
+		}
+		return true
+	}
+	last, err := retry.Until(ctx, retry.Options{Timeout: 240 * time.Second, Interval: 2 * time.Second},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
+				Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+			}, 0, 0)
+			if requestErr != nil {
+				return nil, retry.Transient(requestErr)
+			}
+			return resp, nil
+		}, accept)
+	if err := awaited(last, err, accept,
+		fmt.Sprintf("waiting for the config dump to stop containing a route with base path %q", resolved)); err != nil {
+		return err
+	}
+	return g.funnel.Publish(ctx, last)
+}
+
+// configDumpRouteBasePath asserts whether the policy engine's config dump has a route whose
+// resolved context (its gateway-facing base path) matches basePath.
+func (g *Gateway) configDumpRouteBasePath(ctx context.Context, basePath string, want bool) error {
+	resolved, err := stepscommon.Expand(ctx, basePath)
+	if err != nil {
+		return err
+	}
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var dump configDump
+	if err := json.Unmarshal(resp.Body, &dump); err != nil {
+		return fmt.Errorf("parsing policy-engine config dump: %w", err)
+	}
+	found := false
+	for _, route := range dump.RouteMetadata.Routes {
+		if route.Context == resolved {
+			found = true
+			break
+		}
+	}
+	if found == want {
+		return nil
+	}
+	if want {
+		return fmt.Errorf("config dump does not contain a route with base path %q", resolved)
+	}
+	return fmt.Errorf("config dump still contains a route with base path %q", resolved)
+}
+
+// configDumpPolicyForRoute asserts the policy engine's config dump shows policyName attached
+// to the operation whose full path is routePath.
+func (g *Gateway) configDumpPolicyForRoute(ctx context.Context, policyName, routePath string) error {
+	resolvedPath, err := stepscommon.Expand(ctx, routePath)
+	if err != nil {
+		return err
+	}
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var dump configDump
+	if err := json.Unmarshal(resp.Body, &dump); err != nil {
+		return fmt.Errorf("parsing policy-engine config dump: %w", err)
+	}
+	for _, entry := range dump.PolicyChains.PolicyChains {
+		if routeKeyPath(entry.RouteKey) != resolvedPath {
+			continue
+		}
+		for _, p := range entry.Policies {
+			if p.Name == policyName {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("config dump does not show policy %q attached to route %q", policyName, resolvedPath)
+}
+
 func (g *Gateway) lazyResourceCount(ctx context.Context, want int, id string) error {
 	id, err := stepscommon.Expand(ctx, id)
 	if err != nil {
@@ -367,9 +504,87 @@ func (g *Gateway) mcpInitialize(ctx context.Context, path string) error {
 	return g.sendMCPRequest(ctx, path, body)
 }
 
+// mcpToolCall calls the named testbench MCP tool with arguments matching that tool's own
+// input schema - the testbench "add" tool takes numeric operands, "echo" takes a message.
 func (g *Gateway) mcpToolCall(ctx context.Context, tool, path string) error {
-	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":%q,"arguments":{"a":40,"b":60}}}`, tool)
+	args := `{"a":40,"b":60}`
+	if tool == "echo" {
+		args = `{"message":"Hello, World!"}`
+	}
+	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tool, args)
 	return g.sendMCPRequest(ctx, path, body)
+}
+
+func (g *Gateway) mcpToolsList(ctx context.Context, path string) error {
+	body := `{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`
+	return g.sendMCPRequest(ctx, path, body)
+}
+
+// mcpNotificationInitialized sends the notification a client is expected to send once, right
+// after a successful initialize response, before issuing any further request.
+func (g *Gateway) mcpNotificationInitialized(ctx context.Context, path string) error {
+	body := `{"jsonrpc":"2.0","method":"notifications/initialized"}`
+	return g.sendMCPRequest(ctx, path, body)
+}
+
+// mcpToolCallInvalidParams omits the required "name" field, which every JSON-RPC tools/call
+// request must carry.
+func (g *Gateway) mcpToolCallInvalidParams(ctx context.Context, path string) error {
+	body := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"arguments":{"a":40,"b":60}}}`
+	return g.sendMCPRequest(ctx, path, body)
+}
+
+// jwtToken mints a JWT from the testbench jwks mock and stores it in runner context under key,
+// for a later "I set header" step to attach as a bearer token. issuer becomes the token's iss
+// claim and must match a configured keymanager's issuer exactly; scope and claims are optional
+// (empty skips them) and claims is a comma-separated list of key=value pairs.
+func (g *Gateway) jwtToken(ctx context.Context, issuer, scope, claims, key string) error {
+	resolvedIssuer, err := stepscommon.Expand(ctx, issuer)
+	if err != nil {
+		return err
+	}
+	base, err := g.topo.URL("testbench", "jwks")
+	if err != nil {
+		return err
+	}
+	q := url.Values{}
+	q.Set("issuer", resolvedIssuer)
+	if scope != "" {
+		q.Set("scope", scope)
+	}
+	for _, pair := range strings.Split(claims, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		kv := strings.SplitN(pair, "=", 2)
+		if len(kv) != 2 {
+			return fmt.Errorf("invalid claim %q: expected key=value", pair)
+		}
+		q.Set("claim_"+strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
+	}
+	resp, err := retry.Until(ctx, retry.Options{},
+		func(ctx context.Context) (*httpx.Response, error) {
+			r, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
+				Method: http.MethodGet, URL: base + "/token?" + q.Encode(),
+			}, 0, 0)
+			if requestErr != nil {
+				return nil, retry.Transient(requestErr)
+			}
+			return r, nil
+		}, func(resp *httpx.Response) bool { return resp != nil })
+	if err != nil {
+		return fmt.Errorf("minting a JWT token: %w", err)
+	}
+	if !resp.Succeeded() {
+		return fmt.Errorf("minting a JWT token failed: %s", resp.Describe())
+	}
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store a JWT token without runner context")
+	}
+	local.Set(key, strings.TrimSpace(string(resp.Body)))
+	return nil
 }
 
 // sendMCPRequest sends a streamable HTTP MCP request and publishes its JSON-RPC payload.
@@ -499,13 +714,21 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the API "([^"]*)"$`, g.getAPI)
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)"$`,
+		g.getResource)
+	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
+		g.listResources)
 	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)" with configuration:$`, g.updateResource)
 	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
 		g.serviceRequestUntilStatus)
+	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until the response body does not contain "([^"]*)"$`,
+		g.serviceRequestUntilBodyNotContains)
+	sc.Step(`^I resolve the "([^"]*)" service URL at "([^"]*)" and store it as "([^"]*)"$`,
+		g.resolveServiceURLAndStore)
+	sc.Step(`^I register the "([^"]*)" "([^"]*)" for cleanup$`, g.registerAdminResourceForCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
 	sc.Step(`^the "([^"]*)" service logs should not contain "([^"]*)"$`, g.serviceLogsNotContain)
 	sc.Step(`^the "([^"]*)" service log event containing "([^"]*)" should not contain "([^"]*)"$`,
@@ -518,6 +741,16 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilLazyResourceAbsent)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (contain|not contain) (request|response) header "([^"]*)"(?: with value "([^"]*)")?$`,
 		g.analyticsHeader)
+	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
+	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
+	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
+	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
+	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
+		g.analyticsRequestMethod)
+	sc.Step(`^the latest analytics event for path "([^"]*)" should have response status (\d+)$`,
+		g.analyticsResponseStatus)
+	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
+		g.analyticsMetadataField)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
 	sc.Step(`^the lazy resources should contain template "([^"]*)" of type "([^"]*)"$`, g.lazyTemplatePresent)
 	sc.Step(`^the lazy resources should not contain template "([^"]*)"$`, g.lazyTemplateAbsent)
@@ -527,13 +760,54 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^the lazy resources should not contain resource "([^"]*)" of type "([^"]*)"$`, g.lazyTypedResourceAbsent)
 	sc.Step(`^the provider template mapping "([^"]*)" should map to template "([^"]*)"$`, g.providerTemplateMapping)
 	sc.Step(`^the policy engine route metadata should contain provider_name "([^"]*)"$`, g.routeMetadataProvider)
+	sc.Step(`^the config dump should contain route with base path "([^"]*)"$`,
+		func(ctx context.Context, basePath string) error {
+			return g.configDumpRouteBasePath(ctx, basePath, true)
+		})
+	sc.Step(`^the config dump should not contain route with base path "([^"]*)"$`,
+		func(ctx context.Context, basePath string) error {
+			return g.configDumpRouteBasePath(ctx, basePath, false)
+		})
+	sc.Step(`^the config dump should contain policy "([^"]*)" for route "([^"]*)"$`,
+		g.configDumpPolicyForRoute)
+	sc.Step(`^I wait for the config dump to stop containing a route with base path "([^"]*)"$`,
+		g.awaitConfigDumpRouteAbsent)
 	sc.Step(`^the lazy resources should have at least (\d+) resources with id "([^"]*)"$`, g.lazyResourceCount)
 	sc.Step(`^I use the MCP Client to send an initialize request to "([^"]*)"$`, g.mcpInitialize)
 	sc.Step(`^I use the MCP Client to send "([^"]*)" tools/call request to "([^"]*)"$`, g.mcpToolCall)
+	sc.Step(`^I use the MCP Client to send a tools/list request to "([^"]*)"$`, g.mcpToolsList)
+	sc.Step(`^I use the MCP Client to send a notifications/initialized notification to "([^"]*)"$`,
+		g.mcpNotificationInitialized)
+	sc.Step(`^I use the MCP Client to send a tools/call request with invalid params to "([^"]*)"$`,
+		g.mcpToolCallInvalidParams)
+	sc.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and store it as "([^"]*)"$`,
+		func(ctx context.Context, issuer, key string) error {
+			return g.jwtToken(ctx, issuer, "", "", key)
+		})
+	sc.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and scope "([^"]*)" and store it as "([^"]*)"$`,
+		func(ctx context.Context, issuer, scope, key string) error {
+			return g.jwtToken(ctx, issuer, scope, "", key)
+		})
+	sc.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and claims "([^"]*)" and store it as "([^"]*)"$`,
+		func(ctx context.Context, issuer, claims, key string) error {
+			return g.jwtToken(ctx, issuer, "", claims, key)
+		})
+	sc.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)", scope "([^"]*)" and claims "([^"]*)" and store it as "([^"]*)"$`,
+		g.jwtToken)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the rate limit reports (\d+) remaining$`,
 		g.sendUntilQuotaRemaining)
 
 	sc.Step(`^I wait for policy snapshot sync$`, g.awaitPolicySnapshotSync)
+
+	sc.Step(`^the response body should contain template literal:$`, g.responseBodyContainsTemplateLiteral)
+	sc.Step(`^the stored (RestApi|LlmProvider|LlmProxy|Mcp) configuration for "([^"]*)" should contain:$`,
+		func(ctx context.Context, kind, handle string, literal *godog.DocString) error {
+			return g.assertStoredConfiguration(ctx, kind, handle, literal, true)
+		})
+	sc.Step(`^the stored (RestApi|LlmProvider|LlmProxy|Mcp) configuration for "([^"]*)" should not contain:$`,
+		func(ctx context.Context, kind, handle string, literal *godog.DocString) error {
+			return g.assertStoredConfiguration(ctx, kind, handle, literal, false)
+		})
 
 	g.registerTimeoutSteps(sc)
 	platformgateway.Register(sc, g.topo, g.funnel)
@@ -680,6 +954,50 @@ func (g *Gateway) updateResource(
 		return g.updateAPI(ctx, name, body)
 	}
 	return g.mutateResource(ctx, http.MethodPut, spec.collection, name, body)
+}
+
+// getResource retrieves one resource of the kind named in the step.
+func (g *Gateway) getResource(ctx context.Context, kind, name string) error {
+	spec, ok := resourceKinds[kind]
+	if !ok {
+		return fmt.Errorf("unknown resource kind %q", kind)
+	}
+	if spec.collection == "" {
+		return g.getAPI(ctx, name)
+	}
+	resolved, err := stepscommon.Expand(ctx, name)
+	if err != nil {
+		return err
+	}
+	url, err := g.serviceURL(ctx, "gateway-controller", spec.collection+"/"+resolved)
+	if err != nil {
+		return err
+	}
+	_, err = g.funnel.Get(ctx, url, g.scenarioHeaders(ctx))
+	return err
+}
+
+// pluralResourceKinds maps the plural phrasing a "list all" step names to its resourceKinds key.
+var pluralResourceKinds = map[string]string{
+	"LLM providers":          "LLM provider",
+	"LLM provider templates": "LLM provider template",
+	"MCP proxies":            "MCP proxy",
+	"LLM proxies":            "LLM proxy",
+}
+
+// listResources lists every resource in the collection for the kind named in the step.
+func (g *Gateway) listResources(ctx context.Context, kindPlural string) error {
+	kind, ok := pluralResourceKinds[kindPlural]
+	if !ok {
+		return fmt.Errorf("unknown resource kind %q", kindPlural)
+	}
+	spec := resourceKinds[kind]
+	url, err := g.serviceURL(ctx, "gateway-controller", spec.collection)
+	if err != nil {
+		return err
+	}
+	_, err = g.funnel.Get(ctx, url, g.scenarioHeaders(ctx))
+	return err
 }
 
 // deleteResource removes a resource of the kind named in the step.
@@ -856,6 +1174,7 @@ var serviceEndpoints = map[string]struct {
 	"gateway-controller-admin": {component: "platform-gateway", endpoint: "admin", basePath: adminBasePath},
 	"policy-engine":            {component: "platform-gateway", endpoint: "policy-admin"},
 	"analytics":                {component: "testbench", endpoint: "analytics", partitioned: true},
+	"capture":                  {component: "testbench", endpoint: "capture", partitioned: true},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.
@@ -887,6 +1206,69 @@ func (g *Gateway) serviceURL(ctx context.Context, service, path string) (string,
 		resolved = "/" + g.topo.Block.PartitionKey() + resolved
 	}
 	return base + spec.basePath + resolved, nil
+}
+
+// resolveServiceURLAndStore resolves a testbench service's URL and stores it in local scope, for
+// use as an upstream target elsewhere in the scenario — most notably a partitioned service like
+// "capture", whose address includes a block key a feature cannot know in advance.
+func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, path, key string) error {
+	url, err := g.serviceURL(ctx, service, path)
+	if err != nil {
+		return err
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("cannot store a resolved service URL with an empty key")
+	}
+	return tcontext.Set(ctx, key, url)
+}
+
+// adminResourceKinds maps the resource-kind names features use for the generic cleanup
+// registration step onto the cleanup kind and admin-API collection path that owns it.
+var adminResourceKinds = map[string]struct {
+	kind       cleanup.Kind
+	collection string
+}{
+	"certificate": {cleanup.KindCertificate, "/certificates"},
+	"secret":      {cleanup.KindSecret, "/secrets"},
+}
+
+// registerAdminResourceForCleanup registers a resource managed through the gateway-controller
+// admin API (a certificate, a secret, ...) for cleanup, using an ID resolved from scenario
+// context. If registration itself fails, it makes a best-effort compensating delete against the
+// resource's own admin endpoint rather than leaking it.
+func (g *Gateway) registerAdminResourceForCleanup(ctx context.Context, kindName, idExpr string) error {
+	entry, ok := adminResourceKinds[kindName]
+	if !ok {
+		return fmt.Errorf("unknown cleanup resource kind %q: this suite recognizes %v",
+			kindName, sortedAdminResourceKindNames())
+	}
+	id, err := stepscommon.Expand(ctx, idExpr)
+	if err != nil {
+		return err
+	}
+	if err := cleanup.Register(ctx, cleanup.Resource{
+		Kind: entry.kind, ID: id, Actor: "admin", Description: "created by " + scenarioLabel(ctx),
+	}); err != nil {
+		deleteURL, urlErr := g.serviceURL(ctx, "gateway-controller", entry.collection+"/"+id)
+		if urlErr == nil {
+			if deleteErr := g.compensateDelete(ctx, deleteURL, g.scenarioHeaders(ctx)); deleteErr != nil {
+				return fmt.Errorf("registering %s %q for cleanup: %w; compensation failed: %v",
+					kindName, id, err, deleteErr)
+			}
+		}
+		return fmt.Errorf("registering %s %q for cleanup: %w", kindName, id, err)
+	}
+	return nil
+}
+
+func sortedAdminResourceKindNames() []string {
+	out := make([]string, 0, len(adminResourceKinds))
+	for k := range adminResourceKinds {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func sortedServiceNames() []string {
@@ -962,6 +1344,39 @@ func (g *Gateway) serviceRequestUntilStatus(ctx context.Context, method, service
 		return err
 	}
 	return nil
+}
+
+// serviceRequestUntilBodyNotContains polls a service path until its response body no longer
+// contains want - used for a diagnostic endpoint like config_dump, whose snapshot may lag a
+// moment behind a just-completed controller mutation.
+func (g *Gateway) serviceRequestUntilBodyNotContains(
+	ctx context.Context, method, service, path, want string,
+) error {
+	method = strings.ToUpper(method)
+	url, err := g.serviceURL(ctx, service, path)
+	if err != nil {
+		return err
+	}
+	resolvedWant, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	err = retry.Await(ctx, retry.Options{Interval: 500 * time.Millisecond},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, requestErr := g.funnel.Send(ctx, httpx.Request{
+				Method: method, URL: url, Headers: g.scenarioHeaders(ctx),
+			})
+			if requestErr != nil {
+				return nil, retry.Transient(requestErr)
+			}
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool {
+			return resp != nil && resp.Succeeded() && !strings.Contains(string(resp.Body), resolvedWant)
+		},
+		fmt.Sprintf("waiting for %s %s to stop containing %q", method, url, resolvedWant),
+	)
+	return err
 }
 
 // serviceLogsContain waits until a service log contains the supplied marker.
@@ -1109,11 +1524,14 @@ func lazyDisplayNameMatches(body []byte, resourceID, displayName string) bool {
 type analyticsEvent struct {
 	Request struct {
 		URI     string              `json:"uri"`
+		Verb    string              `json:"verb"`
 		Headers map[string][]string `json:"headers"`
 	} `json:"request"`
 	Response struct {
+		Status  int                 `json:"status"`
 		Headers map[string][]string `json:"headers"`
 	} `json:"response"`
+	Metadata map[string]any `json:"metadata"`
 }
 
 func (g *Gateway) analyticsHeader(
@@ -1198,6 +1616,153 @@ func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analy
 		return nil, fmt.Errorf("no analytics event found for request path %q (observed URIs: %v)", path, observed)
 	}
 	return last, nil
+}
+
+// resetAnalyticsCollector clears every event the testbench analytics collector has buffered
+// for this block, so a scenario's own counts aren't inflated by earlier scenarios' traffic.
+func (g *Gateway) resetAnalyticsCollector(ctx context.Context) error {
+	url, err := g.serviceURL(ctx, "analytics", "/test/reset")
+	if err != nil {
+		return err
+	}
+	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
+		Method: http.MethodPost, URL: url, Headers: g.scenarioHeaders(ctx),
+	}, 0, 0)
+	if err != nil {
+		return err
+	}
+	if !resp.Succeeded() {
+		return fmt.Errorf("resetting the analytics collector failed: %s", resp.Describe())
+	}
+	return nil
+}
+
+func (g *Gateway) analyticsEventCount(ctx context.Context) (int, error) {
+	url, err := g.serviceURL(ctx, "analytics", "/test/events/count")
+	if err != nil {
+		return 0, err
+	}
+	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+	}, 0, 0)
+	if err != nil {
+		return 0, retry.Transient(err)
+	}
+	if !resp.Succeeded() {
+		return 0, retry.Transient(fmt.Errorf("analytics count returned %s", resp.Describe()))
+	}
+	var out struct {
+		Count int `json:"count"`
+	}
+	if err := json.Unmarshal(resp.Body, &out); err != nil {
+		return 0, err
+	}
+	return out.Count, nil
+}
+
+// analyticsEventCountAtLeast polls until the collector has buffered at least want events.
+func (g *Gateway) analyticsEventCountAtLeast(ctx context.Context, want int) error {
+	accept := func(n int) bool { return n >= want }
+	last, err := retry.Until(ctx, retry.Options{Timeout: 15 * time.Second, Interval: 500 * time.Millisecond},
+		func(ctx context.Context) (int, error) { return g.analyticsEventCount(ctx) }, accept)
+	if err != nil {
+		return err
+	}
+	if !accept(last) {
+		return fmt.Errorf("expected at least %d analytics events, got %d", want, last)
+	}
+	return nil
+}
+
+// settleAnalyticsEventCount waits for the collector's count to stop changing for a quiet
+// period. A bare threshold poll would return the instant the count first reaches a target and
+// could miss a late-arriving duplicate event landing just after - this is what actually
+// verifies "no more are coming", used both to check an exact count and to drain a prior
+// request's own publish delay before a scenario resets the collector for its real assertion.
+func (g *Gateway) settleAnalyticsEventCount(ctx context.Context) (retry.Settled, error) {
+	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, 3*time.Second,
+		func(ctx context.Context) (int, error) { return g.analyticsEventCount(ctx) })
+	if err != nil {
+		return settled, err
+	}
+	if !settled.Quiet {
+		return settled, fmt.Errorf("analytics event count did not settle: last observed %d after %d sample(s)",
+			settled.Value, settled.Samples)
+	}
+	return settled, nil
+}
+
+func (g *Gateway) analyticsEventCountExactly(ctx context.Context, want int) error {
+	settled, err := g.settleAnalyticsEventCount(ctx)
+	if err != nil {
+		return err
+	}
+	if settled.Value != want {
+		return fmt.Errorf("expected exactly %d analytics events, got %d", want, settled.Value)
+	}
+	return nil
+}
+
+// waitForAnalyticsToSettle waits until the collector's event count stops changing, without
+// asserting a specific value. Use it before resetting the collector, so an earlier request's
+// own delayed publish (moesif_base_url's publish_interval) can't land after the reset and
+// contaminate a subsequent exact-count assertion.
+func (g *Gateway) waitForAnalyticsToSettle(ctx context.Context) error {
+	_, err := g.settleAnalyticsEventCount(ctx)
+	return err
+}
+
+// analyticsEventForPath resolves path's placeholders and returns the event latestAnalyticsEvent
+// finds for it. Filtering by the path a scenario already knows it requested is what makes this
+// robust: the events array's arrival order at the collector doesn't necessarily match request
+// chronology, so picking "the last element" can return an unrelated event.
+func (g *Gateway) analyticsEventForPath(ctx context.Context, path string) (*analyticsEvent, error) {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return g.latestAnalyticsEvent(ctx, resolved)
+}
+
+func (g *Gateway) analyticsRequestMethod(ctx context.Context, path, want string) error {
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	if event.Request.Verb != want {
+		return fmt.Errorf("analytics event for %q has request method %q, want %q", path, event.Request.Verb, want)
+	}
+	return nil
+}
+
+func (g *Gateway) analyticsResponseStatus(ctx context.Context, path string, want int) error {
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	if event.Response.Status != want {
+		return fmt.Errorf("analytics event for %q has response status %d, want %d", path, event.Response.Status, want)
+	}
+	return nil
+}
+
+func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want string) error {
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	value, ok := event.Metadata[field]
+	if !ok {
+		return fmt.Errorf("latest analytics event metadata has no field %q", field)
+	}
+	if got := fmt.Sprintf("%v", value); got != resolved {
+		return fmt.Errorf("latest analytics event metadata field %q is %q, want %q", field, got, resolved)
+	}
+	return nil
 }
 
 func analyticsHeaderValue(headers map[string][]string, wanted string) (string, bool) {
@@ -1413,6 +1978,10 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindLLMProvider, true
 	case collLLMProxies:
 		return cleanup.KindLLMProxy, true
+	case collLLMTemplates:
+		return cleanup.KindLLMProviderTemplate, true
+	case collMCPProxies:
+		return cleanup.KindMCPProxy, true
 	default:
 		return cleanup.Kind{}, false
 	}

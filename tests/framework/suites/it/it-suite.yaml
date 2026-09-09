@@ -90,6 +90,121 @@ blocks:
       - name: sandbox-routing
         features:
           - features/sandbox_routing.feature
+      - name: content-length-guardrail
+        features:
+          - features/content_length_guardrail.feature
+      - name: word-count-guardrail
+        features:
+          - features/word_count_guardrail.feature
+      - name: sentence-count-guardrail
+        features:
+          - features/sentence_count_guardrail.feature
+      - name: url-guardrail
+        features:
+          - features/url_guardrail.feature
+      - name: regex-guardrail
+        features:
+          - features/regex_guardrail.feature
+      - name: json-schema-guardrail
+        features:
+          - features/json_schema_guardrail.feature
+      - name: cel-conditions
+        features:
+          - features/cel_conditions.feature
+      - name: certificates
+        features:
+          - features/certificates.feature
+      - name: secrets
+        features:
+          - features/secrets.feature
+      - name: basic-ratelimit
+        features:
+          - features/basic_ratelimit.feature
+      - name: ratelimit-headers
+        features:
+          - features/ratelimit_headers.feature
+      - name: ratelimit-cost-extraction
+        features:
+          - features/ratelimit_cost_extraction.feature
+      - name: ratelimit-key-extraction
+        features:
+          - features/ratelimit_key_extraction.feature
+      - name: ratelimit-multi-quota
+        features:
+          - features/ratelimit_multi_quota.feature
+      - name: token-based-ratelimit
+        features:
+          - features/token_based_ratelimit.feature
+      - name: token-based-ratelimit-provider-templates
+        features:
+          - features/token_based_ratelimit_provider_templates.feature
+      - name: llm-cost-based-ratelimit
+        features:
+          - features/llm_cost_based_ratelimit.feature
+        # Excludes a scenario documenting a known product-contract gap (multi-window
+        # budgetLimits not fully enforced) - see the feature file for details.
+        tags: "~@known-issue"
+      - name: llm-cost-calculation-providers
+        features:
+          - features/llm_cost_calculation_providers.feature
+        # Excludes scenarios documenting known product-contract gaps (multi-dimensional
+        # cost calculation not charging/enforcing correctly) - see the feature file.
+        tags: "~@known-issue"
+      - name: llm-provider-global-ratelimit
+        features:
+          - features/llm_provider_global_ratelimit.feature
+      - name: llm-provider-management
+        features:
+          - features/llm_provider.feature
+      - name: llm-provider-template-management
+        features:
+          - features/llm_provider_template.feature
+      - name: llm-proxy-management
+        features:
+          - features/llm_proxy.feature
+      - name: model-round-robin
+        features:
+          - features/model_round_robin.feature
+      - name: model-round-robin-multi-provider
+        features:
+          - features/model_round_robin_multi_provider.feature
+      - name: model-weighted-round-robin
+        features:
+          - features/model_weighted_round_robin.feature
+      - name: model-weighted-round-robin-multi-provider
+        features:
+          - features/model_weighted_round_robin_multi_provider.feature
+      - name: llm-policy-path-specificity
+        features:
+          - features/llm_policy_path_specificity.feature
+      - name: prompt-template
+        features:
+          - features/prompt_template.feature
+      - name: prompt-decorator
+        features:
+          - features/prompt_decorator.feature
+      - name: prompt-compressor
+        features:
+          - features/prompt_compressor.feature
+      - name: aws-bedrock-guardrail
+        features:
+          - features/aws_bedrock_guardrail.feature
+      - name: mcp-deploy
+        features:
+          - features/mcp_deploy.feature
+      - name: config-dump
+        features:
+          - features/config_dump.feature
+      - name: policy-engine-admin
+        features:
+          - features/policy_engine_admin.feature
+      - name: template-functions
+        features:
+          - features/template_functions.feature
+        # Excludes a scenario documenting a known product-contract gap (policy chain/route
+        # config caches missing the deletion-marker workaround applied to the sibling event
+        # channel cache) - see the feature file for details.
+        tags: "~@known-issue"
 
   - name: gateway-restart
     parallel: 1
@@ -102,6 +217,18 @@ blocks:
       - name: startup-db-bootstrap
         features:
           - features/startup_db_bootstrap.feature
+
+  - name: pii-masking-regex
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: pii-masking-regex
+        features:
+          - features/pii_masking_regex.feature
 
   - name: gateway-metrics
     parallel: 1
@@ -155,6 +282,81 @@ blocks:
         features:
           - features/vhost_routing_multi.feature
 
+  - name: azure-content-safety
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/azure-content-safety.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: azure-content-safety
+        features:
+          - features/azure_content_safety.feature
+
+  - name: semantic-ai
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/semantic-ai.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: redis
+    runners:
+      - name: semantic-cache
+        features:
+          - features/semantic_cache.feature
+      - name: semantic-prompt-guard
+        features:
+          - features/semantic_prompt_guard.feature
+      - name: semantic-tool-filtering
+        features:
+          - features/semantic_tool_filtering.feature
+
+  - name: mcp-policies
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-jwt-auth.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mcp-policies
+        features:
+          - features/mcp_policies.feature
+      - name: jwt-auth
+        features:
+          - features/jwt_auth.feature
+
+  # The testbench analytics collector is a per-BLOCK partition shared by every runner in this
+  # block - a runner asserting an exact event count would be contaminated by any concurrent
+  # runner's traffic in a shared block, so analytics-basic (which resets and counts events)
+  # needs sole occupancy. analytics-header-filter is co-located for convenience; it makes no
+  # count assertions so shares no such risk.
+  # No overlay needed - the framework's own gateway-analytics.toml (an unconditional
+  # ExtraOverlay in platformgateway's Config, applied to every block) already points the
+  # moesif publisher at this block's own testbench analytics partition.
+  - name: analytics
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: analytics-basic
+        features:
+          - features/analytics_basic.feature
+      - name: analytics-header-filter
+        features:
+          - features/analytics_header_filter.feature
+      - name: subscription-analytics
+        features:
+          - features/subscription_analytics.feature
+
   - name: backend-timeout
     parallel: 1
     components:
@@ -176,3 +378,56 @@ blocks:
       - name: interceptor-service
         features:
           - features/interceptor_service.feature
+
+  # The real platform-api, not a mock: gateway-controller pushes gateway-originated
+  # artifacts up to it on create/update/delete, and these runners assert what the
+  # control plane actually received. platform-gateway depends on platform-api so its
+  # Provisions (a real gateway registration + minted token) lands in gateway-controller's
+  # environment before it boots - see core/catalog/platformapi/definition.go. Hosts runners
+  # in both directions of the platform-api <-> gateway relationship: dp-to-cp (a
+  # gateway-originated artifact pushed up to the control plane) and
+  # platform-api-secret-deploy (a control-plane-originated artifact pushed down to the
+  # gateway) - the block name reflects the two components under test, not a single direction.
+  - name: platform-api-gateway
+    parallel: 1
+    components:
+      # Only one component per block may declare a db matrix; gateway-controller's own
+      # artifact/CP-sync bookkeeping is what these scenarios exercise across dialects, so the
+      # matrix goes on platform-gateway. platform-api stays fixed - none of these assertions
+      # depend on the control plane's own storage dialect.
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: dp-to-cp
+        features:
+          - features/dp_to_cp.feature
+      - name: platform-api-secret-deploy
+        features:
+          - features/platform_api_secret_deploy.feature
+      - name: platform-api-deployment
+        features:
+          - features/api_deployment.feature
+      - name: platform-api-secured-invocation
+        features:
+          - features/secured_api_invocation.feature
+
+  - name: dp-to-cp-sync-disabled
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        overlay: tests/framework/core/catalog/overlays/dp-to-cp-sync-disabled.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: dp-to-cp-sync-disabled
+        features:
+          - features/dp_to_cp_sync_disabled.feature

@@ -784,3 +784,8 @@ func TestPhaseString(t *testing.T) {
 	require.Less(t, int(PhaseStarted), int(PhaseHealthy))
 	require.Less(t, int(PhaseHealthy), int(PhaseSchemaApplied))
 }
+
+func TestPostgresDSN(t *testing.T) {
+	got := postgresDSN("127.0.0.1", 54321, Credentials{User: "apip_it", Password: "Aa1!p@ss/word"}, "apip_test")
+	require.Equal(t, "postgres://apip_it:Aa1%21p%40ss%2Fword@127.0.0.1:54321/apip_test?sslmode=disable", got)
+}
