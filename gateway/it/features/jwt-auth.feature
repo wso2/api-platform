@@ -955,8 +955,9 @@ Feature: JWT Authentication
     And I send a GET request to "http://localhost:8080/jwt-auth-cache-share-noaud/v1.0/protected" with the JWT token
     Then the response status code should be 200
 
-    # The token has no "aud" claim, so this API's own audience requirement must still reject it —
-    # a shared cache entry must never smuggle one API's authorization outcome into another's.
+    # The token carries aud "test-audience", so this API's "expected-audience" requirement must
+    # still reject it — a shared cache entry must never smuggle one API's authorization outcome
+    # into another's.
     When I send a GET request to "http://localhost:8080/jwt-auth-cache-share-aud/v1.0/protected" with the JWT token
     Then the response status code should be 401
     And the response body should contain "Authentication failed"
