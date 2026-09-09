@@ -138,6 +138,13 @@ type ControlPlaneConfig struct {
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
 	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
+	// When set, <base>/proxy/cloud/* is proxied there instead of the primary control
+	// plane. Include the /cloud path prefix (e.g. http://host:8081/cloud).
+	CloudURL string `koanf:"cloud_url"`
+	// CloudCAFile / CloudTLSSkipVerify apply only to CloudURL when that hop uses TLS.
+	CloudCAFile        string `koanf:"cloud_ca_file"`
+	CloudTLSSkipVerify bool   `koanf:"cloud_tls_skip_verify"`
 }
 
 // SessionConfig is [ai_workspace.session]: server-side session lifetime.
@@ -334,6 +341,7 @@ func (c *Config) normalize() {
 	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
+	c.ControlPlane.CloudURL = strings.TrimRight(c.ControlPlane.CloudURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
@@ -415,6 +423,22 @@ func (c *Config) validate() error {
 	if u.Scheme == "https" && c.ControlPlane.TLSSkipVerify {
 		slog.Warn("[control_plane] tls_skip_verify = true — upstream certificate verification is DISABLED. " +
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
+	}
+
+	if c.ControlPlane.CloudURL != "" {
+		cu, err := url.Parse(c.ControlPlane.CloudURL)
+		if err != nil || (cu.Scheme != "http" && cu.Scheme != "https") || cu.Host == "" {
+			return fmt.Errorf("[control_plane] cloud_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.CloudURL)
+		}
+		if cu.Scheme == "http" {
+			if c.ControlPlane.CloudCAFile != "" || c.ControlPlane.CloudTLSSkipVerify {
+				return fmt.Errorf("[control_plane] cloud_ca_file / cloud_tls_skip_verify are set but cloud_url is http:// (no TLS on that hop)")
+			}
+		}
+		if cu.Scheme == "https" && c.ControlPlane.CloudTLSSkipVerify {
+			slog.Warn("[control_plane] cloud_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
+				"Trust the upstream certificate with [control_plane] cloud_ca_file instead.")
+		}
 	}
 
 	if c.Auth.OIDCEnabled() {

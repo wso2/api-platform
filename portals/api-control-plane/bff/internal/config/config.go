@@ -119,6 +119,9 @@ type ControlPlaneConfig struct {
 	// Upstreams are additional named backends, each proxied same-origin at
 	// {name-derived prefix}/*. Optional; empty for every standalone deployment.
 	Upstreams []UpstreamConfig `koanf:"upstreams"`
+	// MoesifAppURL is the HTTPS origin of the Moesif wrap/basic host (e.g.
+	// https://www.moesif.com). Bridged to the SPA as moesifAppUrl when set.
+	MoesifAppURL string `koanf:"moesif_app_url"`
 }
 
 // UpstreamConfig is one [[api_control_plane.control_plane.upstreams]] entry: a

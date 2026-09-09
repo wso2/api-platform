@@ -22,6 +22,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
@@ -184,6 +185,21 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 // it upstream. No server-side lookup is involved unless the token is an OIDC
 // access token that is near expiry and must be refreshed.
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
+	s.serveProxy(s.proxy, w, r)
+}
+
+// handleCloudProxy (<base>/proxy/cloud/*) — same session cookie injection as
+// handleProxy, but against the optional Moesif / cloud analytics upstream.
+func (s *Server) handleCloudProxy(w http.ResponseWriter, r *http.Request) {
+	s.serveProxy(s.cloudProxy, w, r)
+}
+
+func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r *http.Request) {
+	if rp == nil {
+		http.NotFound(w, r)
+		return
+	}
+
 	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
 		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
@@ -209,7 +225,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.proxy.ServeHTTP(w, proxy.WithToken(r, jwt))
+	rp.ServeHTTP(w, proxy.WithToken(r, jwt))
 }
 
 // ---------------------------------------------------------------------------
