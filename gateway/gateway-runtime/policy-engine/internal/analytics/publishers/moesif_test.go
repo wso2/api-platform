@@ -361,61 +361,57 @@ func TestPublish_McpAPIType(t *testing.T) {
 }
 
 // The fault taxonomy reaches Moesif, not only the OTLP publisher: both read the
-// same classification off the canonical event.
+// same classification off the canonical event. Exactly three keys, matching what
+// API Manager's Moesif integration already reads.
 func TestPublish_WithFaultClassification(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
 	event := createBaseEvent()
-	event.EventCategory = dto.EventCategoryFault
-	event.FaultCategory = dto.FaultCategoryTargetConnectivity
-	event.ErrorType = "upstream_request_timeout"
+	event.ErrorType = string(dto.FaultCategoryTargetConnectivity)
 	event.Error = &dto.Error{ErrorCode: 504, ErrorMessage: dto.TargetConnectivityConnectionTimeout}
 
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
 	metadata := getMetadata(moesif.events[0])
-	assert.Equal(t, "FAULT", metadata["eventCategory"])
-	assert.Equal(t, "TARGET_CONNECTIVITY", metadata["faultCategory"])
-	assert.Equal(t, "upstream_request_timeout", metadata["errorType"])
+	assert.Equal(t, "TARGET_CONNECTIVITY", metadata["errorType"])
 	assert.Equal(t, 504, metadata["errorCode"])
-	assert.Equal(t, "CONNECTION_TIMEOUT", metadata["faultSubCategory"])
+	assert.Equal(t, "CONNECTION_TIMEOUT", metadata["errorMessage"])
+	// The category/event-category enums belong to the in-development fault flow
+	// and must not be published from here.
+	for _, absent := range []string{"eventCategory", "faultCategory", "faultSubCategory"} {
+		assert.NotContains(t, metadata, absent)
+	}
 }
 
-// A successful request carries the category and nothing else, so a fault filter
-// in Moesif keys on presence rather than having to exclude empty strings.
+// A request that was not a gateway fault carries none of the three keys, so a
+// consumer can filter on presence.
 func TestPublish_SuccessOmitsFaultFields(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
-
-	event := createBaseEvent()
-	event.EventCategory = dto.EventCategorySuccess
-
-	moesif.Publish(event)
+	moesif.Publish(createBaseEvent())
 
 	assert.Len(t, moesif.events, 1)
 	metadata := getMetadata(moesif.events[0])
-	assert.Equal(t, "SUCCESS", metadata["eventCategory"])
-	for _, key := range []string{"faultCategory", "errorType", "errorCode", "faultSubCategory"} {
+	for _, key := range []string{"errorType", "errorCode", "errorMessage"} {
 		assert.NotContains(t, metadata, key, "%s must be absent on a successful event", key)
 	}
 }
 
-// An upstream 4xx sets errorType without recording a gateway fault: the HTTP
-// operation failed, but the gateway did its job.
-func TestPublish_UpstreamErrorTypeWithoutFault(t *testing.T) {
-	moesif := createTestMoesifWithoutAPI()
+// Every value errorType can take is one of the four categories API Manager
+// expects — never an Envoy flag name or a status code.
+func TestPublish_ErrorTypeIsAlwaysAFaultCategory(t *testing.T) {
+	for _, category := range []dto.FaultCategory{
+		dto.FaultCategoryAuth, dto.FaultCategoryThrottled,
+		dto.FaultCategoryTargetConnectivity, dto.FaultCategoryOther,
+	} {
+		moesif := createTestMoesifWithoutAPI()
+		event := createBaseEvent()
+		event.ErrorType = string(category)
+		moesif.Publish(event)
 
-	event := createBaseEvent()
-	event.EventCategory = dto.EventCategorySuccess
-	event.ErrorType = "404"
-
-	moesif.Publish(event)
-
-	assert.Len(t, moesif.events, 1)
-	metadata := getMetadata(moesif.events[0])
-	assert.Equal(t, "SUCCESS", metadata["eventCategory"])
-	assert.Equal(t, "404", metadata["errorType"])
-	assert.NotContains(t, metadata, "faultCategory")
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, string(category), metadata["errorType"])
+	}
 }
 
 func TestPublish_WithPayloads(t *testing.T) {

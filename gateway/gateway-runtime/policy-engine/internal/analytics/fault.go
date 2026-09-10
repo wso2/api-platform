@@ -18,7 +18,7 @@
 package analytics
 
 import (
-	"strconv"
+	"net/http"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 
@@ -35,17 +35,11 @@ const responseCodeDetailsViaUpstream = "via_upstream"
 // canonical event so every publisher reads one classification instead of each
 // inventing its own.
 type faultClassification struct {
-	EventCategory dto.EventCategory
-	FaultCategory dto.FaultCategory
-	// ErrorType is the value of the stable OpenTelemetry `error.type` attribute:
-	// the response flag's name for a gateway-originated fault, or the HTTP status
-	// code for a response the upstream itself produced (which is what the HTTP
-	// semantic conventions ask for).
-	ErrorType string
+	// ErrorType is the fault category: one of dto.FaultCategory's four values,
+	// or empty when the request was not a gateway fault.
+	ErrorType dto.FaultCategory
 	// SubCategory is set only where the response flag determines it. Where the
-	// flag proves the category but not the specific cause — RateLimited does not
-	// say which limit was hit — the category's own "OTHER" is used rather than a
-	// guess.
+	// flag proves the category but not the specific cause
 	SubCategory dto.FaultSubCategory
 }
 
@@ -142,6 +136,32 @@ var flagFaults = []flagFault{
 		dto.FaultCategoryOther, dto.OtherUnclassified},
 }
 
+// statusFault is the classification a gateway-synthesized status code implies.
+type statusFault struct {
+	category    dto.FaultCategory
+	subCategory dto.FaultSubCategory
+}
+
+// statusFaults names the cause for the status codes the gateway itself produces
+// for a known reason. A map is safe here where flagFaults needed a slice: these
+// are exact lookups on one status code, so there is no overlap for iteration
+// order to disturb.
+//
+// This is an interim table. It exists because the flag path cannot see these
+// faults at all: the policy engine's own denials (api-key-auth's 401,
+// basic-ratelimit's 429) reach the access log with no response flag set and an
+// empty response_code_details, so classifyFault has nothing else to key on. When
+// the fault flow lands and reports the specific cause, it supersedes this table
+// and the sub-categories become exact (which limit was exceeded, which claim
+// failed) rather than the generic value used here.
+var statusFaults = map[int]statusFault{
+	http.StatusUnauthorized:     {dto.FaultCategoryAuth, dto.AuthenticationFailure},
+	http.StatusForbidden:        {dto.FaultCategoryAuth, dto.AuthenticationAuthorizationFailure},
+	http.StatusNotFound:         {dto.FaultCategoryOther, dto.OtherResourceNotFound},
+	http.StatusMethodNotAllowed: {dto.FaultCategoryOther, dto.OtherMethodNotAllowed},
+	http.StatusTooManyRequests:  {dto.FaultCategoryThrottled, dto.ThrottlingOther},
+}
+
 // classifyFault derives the error view of a request from the Envoy access log.
 //
 // Response flags are the primary signal rather than the status code, because the
@@ -150,64 +170,46 @@ var flagFaults = []flagFault{
 // via_upstream is the backend's own answer. Those belong in different categories
 // and would be indistinguishable from a status-range table.
 //
-// Precedence: a matching response flag, then a response Envoy synthesized
-// without setting one, then an upstream-produced 5xx.
+// Precedence: a matching response flag, then — for a response the gateway
+// synthesized — the status code, then a generic error for any other 4xx/5xx.
 func classifyFault(logEntry *v3.HTTPAccessLogEntry) faultClassification {
-	success := faultClassification{EventCategory: dto.EventCategorySuccess}
-
 	flags := logEntry.GetCommonProperties().GetResponseFlags()
 	for _, candidate := range flagFaults {
 		if candidate.set(flags) {
-			return faultClassification{
-				EventCategory: dto.EventCategoryFault,
-				FaultCategory: candidate.category,
-				ErrorType:     candidate.name,
-				SubCategory:   candidate.subCategory,
-			}
+			return faultClassification{ErrorType: candidate.category, SubCategory: candidate.subCategory}
 		}
 	}
 
 	response := logEntry.GetResponse()
 	if response == nil {
-		return success
+		return faultClassification{}
 	}
 	status := int(response.GetResponseCode().GetValue())
 	details := response.GetResponseCodeDetails()
 
-	// No flag matched, but the response did not come from the upstream: a filter
-	// or Envoy produced it (a policy denial, a direct response, a redirect). The
-	// detail string itself is high-cardinality and stays on
-	// wso2.upstream.response.detail; error.type gets one stable value.
-	if details != "" && details != responseCodeDetailsViaUpstream {
-		if status < 400 {
-			return success // a synthesized redirect or 200 is not a fault
-		}
-		return faultClassification{
-			EventCategory: dto.EventCategoryFault,
-			FaultCategory: dto.FaultCategoryOther,
-			ErrorType:     "local_reply",
-			SubCategory:   dto.OtherUnclassified,
+	// Anything below 400 is not an error
+	if status < 400 {
+		return faultClassification{}
+	}
+
+	// Only a response the gateway synthesized lets the status code name the
+	// cause. via_upstream means the backend chose this status, and then the
+	// specific sub-categories would assert something false: a backend enforcing
+	// its own auth returns 401 after the gateway's authentication already
+	// succeeded, and a backend with its own rate limit returns 429 without the
+	// gateway throttling anything. Attributing either to the gateway sends
+	// triage to the wrong component and inflates the gateway's own throttling
+	// counts. The origin stays legible to consumers regardless: the detail
+	// string is published as wso2.upstream.response.detail.
+	if details != responseCodeDetailsViaUpstream {
+		if fault, ok := statusFaults[status]; ok {
+			return faultClassification{ErrorType: fault.category, SubCategory: fault.subCategory}
 		}
 	}
 
-	// The upstream answered. A 5xx is the backend's own failure — the gateway
-	// worked — so it is a fault in a category that does not blame connectivity.
-	// A 4xx is the backend's valid answer to an invalid request: error.type is
-	// set because the HTTP operation did fail, but no fault is recorded against
-	// the gateway.
-	switch {
-	case status >= 500:
-		return faultClassification{
-			EventCategory: dto.EventCategoryFault,
-			FaultCategory: dto.FaultCategoryOther,
-			ErrorType:     strconv.Itoa(status),
-			SubCategory:   dto.OtherUnclassified,
-		}
-	case status >= 400:
-		success.ErrorType = strconv.Itoa(status)
-		return success
-	}
-	return success
+	// An upstream-chosen status, or one the table does not name: still an error,
+	// in the category that claims nothing about the cause.
+	return faultClassification{ErrorType: dto.FaultCategoryOther, SubCategory: dto.OtherUnclassified}
 }
 
 // isCacheHit reports whether Envoy served the response from its cache filter.

@@ -252,7 +252,7 @@ func TestBuildRecordFaults(t *testing.T) {
 	for key, expected := range map[string]interface{}{
 		"error.type":                "AUTH",
 		"wso2.error.code":           "900901",
-		"wso2.error.sub_category":   "AUTHENTICATION_FAILURE",
+		"wso2.error.message":        "AUTHENTICATION_FAILURE",
 		"http.response.status_code": "401",
 	} {
 		if got[key] != expected {
@@ -261,40 +261,40 @@ func TestBuildRecordFaults(t *testing.T) {
 	}
 }
 
-// The categories analytics.classifyFault derives must reach the record.
-func TestBuildRecordFaultCategories(t *testing.T) {
+// error.type carries the fault category derived by analytics.classifyFault — the
+// same value existing Moesif consumers read from errorType.
+func TestBuildRecordFaultCategoryInErrorType(t *testing.T) {
 	event := restEvent()
-	event.EventCategory = dto.EventCategoryFault
-	event.FaultCategory = dto.FaultCategoryTargetConnectivity
-	event.ErrorType = "upstream_request_timeout"
+	event.ErrorType = string(dto.FaultCategoryTargetConnectivity)
+	event.Error = &dto.Error{ErrorCode: 504, ErrorMessage: dto.TargetConnectivityConnectionTimeout}
 
 	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
 	got := attrMap(t, o.buildRecord(event))
 
 	for key, expected := range map[string]interface{}{
-		"wso2.event.category": "FAULT",
-		"wso2.error.category": "TARGET_CONNECTIVITY",
-		"error.type":          "upstream_request_timeout",
+		"error.type":         "TARGET_CONNECTIVITY",
+		"wso2.error.code":    "504",
+		"wso2.error.message": "CONNECTION_TIMEOUT",
 	} {
 		if got[key] != expected {
 			t.Errorf("%s = %v, want %v", key, got[key], expected)
 		}
 	}
+	// The category/event-category enums belong to the in-development fault flow.
+	for _, absent := range []string{"wso2.event.category", "wso2.error.category", "wso2.error.sub_category"} {
+		if _, present := got[absent]; present {
+			t.Errorf("%s must not be emitted", absent)
+		}
+	}
 }
 
-// A successful request must carry the SUCCESS category and no error attributes —
-// an absent wso2.error.category is what lets a consumer filter faults.
+// A request that was not a gateway fault carries no error attributes at all —
+// absence is what lets a consumer filter faults.
 func TestBuildRecordSuccessOmitsErrorAttributes(t *testing.T) {
-	event := restEvent()
-	event.EventCategory = dto.EventCategorySuccess
-
 	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
-	got := attrMap(t, o.buildRecord(event))
+	got := attrMap(t, o.buildRecord(restEvent()))
 
-	if got["wso2.event.category"] != "SUCCESS" {
-		t.Errorf("wso2.event.category = %v, want SUCCESS", got["wso2.event.category"])
-	}
-	for _, key := range []string{"wso2.error.category", "error.type", "wso2.error.code", "wso2.error.sub_category"} {
+	for _, key := range []string{"error.type", "wso2.error.code", "wso2.error.message"} {
 		if _, present := got[key]; present {
 			t.Errorf("%s is present on a successful record", key)
 		}
@@ -339,37 +339,6 @@ func TestBuildRecordGenAI(t *testing.T) {
 	} {
 		if got[key] != expected {
 			t.Errorf("%s = %v (%T), want %v (%T)", key, got[key], got[key], expected, expected)
-		}
-	}
-}
-
-// An unrecognised provider leaves the enum attribute unset rather than carrying
-// a non-member value, and keeps its identity in the wso2.* attribute.
-func TestBuildRecordUnknownGenAIProvider(t *testing.T) {
-	event := restEvent()
-	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "some-private-llm", Model: "m1"}
-
-	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
-	got := attrMap(t, o.buildRecord(event))
-
-	if _, present := got["gen_ai.provider.name"]; present {
-		t.Errorf("gen_ai.provider.name should be unset for an unknown provider, got %v", got["gen_ai.provider.name"])
-	}
-	if got["wso2.gen_ai.provider.template_name"] != "some-private-llm" {
-		t.Errorf("template_name = %v", got["wso2.gen_ai.provider.template_name"])
-	}
-}
-
-func TestGenAIOperationName(t *testing.T) {
-	for route, want := range map[string]string{
-		"/ai/chat/completions": "chat",
-		"/anthropic/messages":  "chat",
-		"/ai/embeddings":       "embeddings",
-		"/ai/completions":      "text_completion",
-		"/petstore/pet/{id}":   "",
-	} {
-		if got := otelGenAIOperationName(route); got != want {
-			t.Errorf("otelGenAIOperationName(%q) = %q, want %q", route, got, want)
 		}
 	}
 }

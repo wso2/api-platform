@@ -18,6 +18,8 @@
 package analytics
 
 import (
+	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -52,9 +54,9 @@ func TestClassifyFault_EveryMappedFlag(t *testing.T) {
 			setFlagByErrorType(t, flags, mapped.name)
 
 			got := classifyFault(faultEntry(flags, 503, ""))
-			assert.Equal(t, dto.EventCategoryFault, got.EventCategory)
-			assert.Equal(t, mapped.name, got.ErrorType)
-			assert.Equal(t, mapped.category, got.FaultCategory)
+			// The category is what lands in ErrorType — the field existing Moesif
+			// consumers read. The flag name only identifies the table row.
+			assert.Equal(t, mapped.category, got.ErrorType)
 			assert.Equal(t, mapped.subCategory, got.SubCategory)
 		})
 	}
@@ -108,9 +110,8 @@ func TestClassifyFault_InformationalFlagsAreNotFaults(t *testing.T) {
 	for name, flags := range cases {
 		t.Run(name, func(t *testing.T) {
 			got := classifyFault(faultEntry(flags, 200, responseCodeDetailsViaUpstream))
-			assert.Equal(t, dto.EventCategorySuccess, got.EventCategory)
 			assert.Empty(t, got.ErrorType)
-			assert.Empty(t, got.FaultCategory)
+			assert.Empty(t, got.SubCategory)
 		})
 	}
 }
@@ -118,38 +119,37 @@ func TestClassifyFault_InformationalFlagsAreNotFaults(t *testing.T) {
 // The distinction the status code cannot make: same 503, two different causes.
 func TestClassifyFault_SameStatusDifferentCause(t *testing.T) {
 	gateway := classifyFault(faultEntry(&v3.ResponseFlags{NoHealthyUpstream: true}, 503, "no_healthy_upstream"))
-	assert.Equal(t, dto.FaultCategoryTargetConnectivity, gateway.FaultCategory,
+	assert.Equal(t, dto.FaultCategoryTargetConnectivity, gateway.ErrorType,
 		"a 503 the backend never saw is a connectivity fault")
-	assert.Equal(t, "no_healthy_upstream", gateway.ErrorType)
 
 	backend := classifyFault(faultEntry(&v3.ResponseFlags{}, 503, responseCodeDetailsViaUpstream))
-	assert.Equal(t, dto.FaultCategoryOther, backend.FaultCategory,
+	assert.Equal(t, dto.FaultCategoryOther, backend.ErrorType,
 		"a 503 the backend answered is not a connectivity fault")
-	assert.Equal(t, "503", backend.ErrorType,
-		"an upstream-produced error uses the status code, per the HTTP semantic conventions")
 }
 
 func TestClassifyFault_UpstreamResponses(t *testing.T) {
 	cases := []struct {
 		name     string
 		status   uint32
-		wantCat  dto.EventCategory
-		wantType string
+		wantType dto.FaultCategory
 		wantSub  dto.FaultSubCategory
 	}{
-		{"200 is a success", 200, dto.EventCategorySuccess, "", ""},
-		{"301 is a success", 301, dto.EventCategorySuccess, "", ""},
-		// The gateway did its job; the backend's 404 is a valid answer to an
-		// invalid request. error.type is still set: the HTTP operation failed.
-		{"404 sets error.type without a fault", 404, dto.EventCategorySuccess, "404", ""},
-		{"429 sets error.type without a fault", 429, dto.EventCategorySuccess, "429", ""},
-		{"500 is a backend fault", 500, dto.EventCategoryFault, "500", dto.OtherUnclassified},
-		{"502 is a backend fault", 502, dto.EventCategoryFault, "502", dto.OtherUnclassified},
+		{"200 is not a fault", 200, "", ""},
+		{"301 is not a fault", 301, "", ""},
+		// The backend chose these, so they are recorded as errors but the
+		// gateway-specific sub-categories are withheld: the gateway neither
+		// authenticated, throttled, nor failed to route.
+		{"400 is a generic error", 400, dto.FaultCategoryOther, dto.OtherUnclassified},
+		{"401 is not attributed to gateway auth", 401, dto.FaultCategoryOther, dto.OtherUnclassified},
+		{"403 is not attributed to gateway authz", 403, dto.FaultCategoryOther, dto.OtherUnclassified},
+		{"404 is a generic error", 404, dto.FaultCategoryOther, dto.OtherUnclassified},
+		{"429 is not attributed to gateway throttling", 429, dto.FaultCategoryOther, dto.OtherUnclassified},
+		{"500 is a backend fault", 500, dto.FaultCategoryOther, dto.OtherUnclassified},
+		{"502 is a backend fault", 502, dto.FaultCategoryOther, dto.OtherUnclassified},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyFault(faultEntry(&v3.ResponseFlags{}, tc.status, responseCodeDetailsViaUpstream))
-			assert.Equal(t, tc.wantCat, got.EventCategory)
 			assert.Equal(t, tc.wantType, got.ErrorType)
 			assert.Equal(t, tc.wantSub, got.SubCategory)
 		})
@@ -163,21 +163,92 @@ func TestClassifyFault_SynthesizedResponses(t *testing.T) {
 	cases := []struct {
 		details  string
 		status   uint32
-		wantCat  dto.EventCategory
-		wantType string
+		wantType dto.FaultCategory
 	}{
-		{"ext_authz_denied", 403, dto.EventCategoryFault, "local_reply"},
-		{"direct_response", 401, dto.EventCategoryFault, "local_reply"},
-		{"ext_proc_error_gRPC_error_13", 500, dto.EventCategoryFault, "local_reply"},
+		// A status in statusFaults names its own cause when the gateway
+		// synthesized the response.
+		{"ext_authz_denied", 403, dto.FaultCategoryAuth},
+		{"direct_response", 401, dto.FaultCategoryAuth},
+		{"direct_response", 404, dto.FaultCategoryOther},
+		// Not in the table: an error, with nothing claimed about the cause.
+		{"ext_proc_error_gRPC_error_13", 500, dto.FaultCategoryOther},
 		// A synthesized redirect is not a failure.
-		{"direct_response", 302, dto.EventCategorySuccess, ""},
+		{"direct_response", 302, ""},
 	}
 	for _, tc := range cases {
-		t.Run(tc.details+"_"+string(rune('0'+tc.status/100)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s_%d", tc.details, tc.status), func(t *testing.T) {
 			got := classifyFault(faultEntry(&v3.ResponseFlags{}, tc.status, tc.details))
-			assert.Equal(t, tc.wantCat, got.EventCategory)
 			assert.Equal(t, tc.wantType, got.ErrorType)
 		})
+	}
+}
+
+// Every entry in statusFaults must be reachable for a gateway-synthesized
+// response. Driven off the table itself, so an entry added without a test
+// cannot slip through. Empty details are used deliberately: that is exactly
+// what the policy engine's own denials produce.
+func TestClassifyFault_EveryMappedStatus(t *testing.T) {
+	require.NotEmpty(t, statusFaults)
+	for status, want := range statusFaults {
+		t.Run(fmt.Sprintf("status_%d", status), func(t *testing.T) {
+			got := classifyFault(faultEntry(&v3.ResponseFlags{}, uint32(status), ""))
+			assert.Equal(t, want.category, got.ErrorType)
+			assert.Equal(t, want.subCategory, got.SubCategory)
+		})
+	}
+}
+
+// The gating: an identical status code classifies differently depending on who
+// produced the response. Without this, a backend's own 401/429 would be
+// attributed to the gateway's authentication or rate limiting.
+func TestClassifyFault_StatusMappingIsGatedOnOrigin(t *testing.T) {
+	cases := []struct {
+		status      uint32
+		wantGateway dto.FaultCategory
+		wantSubGw   dto.FaultSubCategory
+	}{
+		{http.StatusUnauthorized, dto.FaultCategoryAuth, dto.AuthenticationFailure},
+		{http.StatusForbidden, dto.FaultCategoryAuth, dto.AuthenticationAuthorizationFailure},
+		{http.StatusNotFound, dto.FaultCategoryOther, dto.OtherResourceNotFound},
+		{http.StatusMethodNotAllowed, dto.FaultCategoryOther, dto.OtherMethodNotAllowed},
+		{http.StatusTooManyRequests, dto.FaultCategoryThrottled, dto.ThrottlingOther},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("status_%d", tc.status), func(t *testing.T) {
+			gw := classifyFault(faultEntry(&v3.ResponseFlags{}, tc.status, "direct_response"))
+			assert.Equal(t, tc.wantGateway, gw.ErrorType, "gateway-synthesized names the cause")
+			assert.Equal(t, tc.wantSubGw, gw.SubCategory)
+
+			up := classifyFault(faultEntry(&v3.ResponseFlags{}, tc.status, responseCodeDetailsViaUpstream))
+			assert.Equal(t, dto.FaultCategoryOther, up.ErrorType,
+				"an upstream-chosen status must not be attributed to the gateway")
+			assert.Equal(t, dto.OtherUnclassified, up.SubCategory)
+		})
+	}
+}
+
+// A response flag outranks the status table: a 429 carrying RateLimited is
+// classified by the flag, and a 404 from NoRouteFound keeps its flag-derived
+// sub-category rather than being re-derived from the status.
+func TestClassifyFault_FlagOutranksStatus(t *testing.T) {
+	got := classifyFault(faultEntry(&v3.ResponseFlags{RateLimited: true}, 429, "direct_response"))
+	assert.Equal(t, dto.FaultCategoryThrottled, got.ErrorType)
+	assert.Equal(t, dto.ThrottlingOther, got.SubCategory)
+
+	got = classifyFault(faultEntry(&v3.ResponseFlags{NoRouteFound: true}, 404, "route_not_found"))
+	assert.Equal(t, dto.FaultCategoryOther, got.ErrorType)
+	assert.Equal(t, dto.OtherResourceNotFound, got.SubCategory)
+}
+
+// The boundary is >= 400, not > 400: a 400 is an error, a 399 is not.
+func TestClassifyFault_ErrorBoundaryIncludes400(t *testing.T) {
+	got := classifyFault(faultEntry(&v3.ResponseFlags{}, 400, "direct_response"))
+	assert.Equal(t, dto.FaultCategoryOther, got.ErrorType, "400 is an error")
+	assert.Equal(t, dto.OtherUnclassified, got.SubCategory)
+
+	for _, status := range []uint32{200, 204, 301, 304, 399} {
+		got := classifyFault(faultEntry(&v3.ResponseFlags{}, status, "direct_response"))
+		assert.Empty(t, got.ErrorType, "status %d must not be a fault", status)
 	}
 }
 
@@ -191,9 +262,10 @@ func TestClassifyFault_MultipleFlagsAreDeterministic(t *testing.T) {
 	}
 	for i := 0; i < 50; i++ {
 		got := classifyFault(faultEntry(flags, 504, ""))
-		require.Equal(t, "upstream_request_timeout", got.ErrorType,
+		require.Equal(t, dto.FaultCategoryTargetConnectivity, got.ErrorType,
 			"the most specific flag must win on every call")
-		require.Equal(t, dto.TargetConnectivityConnectionTimeout, got.SubCategory)
+		require.Equal(t, dto.TargetConnectivityConnectionTimeout, got.SubCategory,
+			"upstream_request_timeout maps to CONNECTION_TIMEOUT, not the generic OTHER")
 	}
 }
 
@@ -201,7 +273,7 @@ func TestClassifyFault_MultipleFlagsAreDeterministic(t *testing.T) {
 // throttled: counting it as THROTTLED would misattribute an outage to callers.
 func TestClassifyFault_RateLimitServiceErrorIsNotThrottling(t *testing.T) {
 	got := classifyFault(faultEntry(&v3.ResponseFlags{RateLimitServiceError: true}, 500, ""))
-	assert.Equal(t, dto.FaultCategoryOther, got.FaultCategory)
+	assert.Equal(t, dto.FaultCategoryOther, got.ErrorType)
 	assert.Equal(t, dto.OtherMediationError, got.SubCategory)
 }
 
@@ -218,7 +290,7 @@ func TestClassifyFault_NilSafety(t *testing.T) {
 	for name, entry := range cases {
 		t.Run(name, func(t *testing.T) {
 			got := classifyFault(entry)
-			assert.Equal(t, dto.EventCategorySuccess, got.EventCategory)
+			assert.Empty(t, got.ErrorType)
 		})
 	}
 }
@@ -241,9 +313,8 @@ func TestPrepareAnalyticEvent_WritesFaultClassification(t *testing.T) {
 
 		event := analytics.prepareAnalyticEvent(logEntry)
 		require.NotNil(t, event)
-		assert.Equal(t, dto.EventCategoryFault, event.EventCategory)
-		assert.Equal(t, dto.FaultCategoryTargetConnectivity, event.FaultCategory)
-		assert.Equal(t, "upstream_request_timeout", event.ErrorType)
+		// The category lands in ErrorType — the field existing consumers read.
+		assert.Equal(t, string(dto.FaultCategoryTargetConnectivity), event.ErrorType)
 		require.NotNil(t, event.Error)
 		assert.Equal(t, dto.TargetConnectivityConnectionTimeout, event.Error.ErrorMessage)
 		// The client-visible status, populated before the classification runs.
@@ -260,7 +331,6 @@ func TestPrepareAnalyticEvent_WritesFaultClassification(t *testing.T) {
 
 		event := analytics.prepareAnalyticEvent(logEntry)
 		require.NotNil(t, event)
-		assert.Equal(t, dto.EventCategorySuccess, event.EventCategory)
 		assert.Empty(t, event.ErrorType)
 		assert.Nil(t, event.Error, "a successful request must not carry an error object")
 	})
@@ -275,7 +345,6 @@ func TestPrepareAnalyticEvent_WritesFaultClassification(t *testing.T) {
 		require.NotNil(t, event)
 		require.NotNil(t, event.Target)
 		assert.True(t, event.Target.ResponseCacheHit)
-		assert.Equal(t, dto.EventCategorySuccess, event.EventCategory,
-			"a cache hit is not a fault")
+		assert.Empty(t, event.ErrorType, "a cache hit is not a fault")
 	})
 }

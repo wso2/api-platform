@@ -325,13 +325,10 @@ func (m *Moesif) Publish(event *dto.Event) {
 	}
 
 	// Fault classification, derived in analytics.classifyFault from the Envoy
-	// response flags. eventCategory is sent unconditionally so a consumer can
-	// tell "this request succeeded" from "this event predates the field"; the
-	// rest are omitted when the request was not a fault.
-	metadataMap["eventCategory"] = string(event.EventCategory)
-	if event.FaultCategory != "" {
-		metadataMap["faultCategory"] = string(event.FaultCategory)
-	}
+	// response flags. Three keys only, matching what API Manager's Moesif
+	// integration already reads: errorType carries the fault category (AUTH /
+	// TARGET_CONNECTIVITY / THROTTLED / OTHER), errorMessage the sub-category.
+	// All three are omitted when the request was not a gateway fault.
 	if event.ErrorType != "" {
 		metadataMap["errorType"] = event.ErrorType
 	}
@@ -340,7 +337,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 			metadataMap["errorCode"] = event.Error.ErrorCode
 		}
 		if event.Error.ErrorMessage != "" {
-			metadataMap["faultSubCategory"] = string(event.Error.ErrorMessage)
+			metadataMap["errorMessage"] = string(event.Error.ErrorMessage)
 		}
 	}
 

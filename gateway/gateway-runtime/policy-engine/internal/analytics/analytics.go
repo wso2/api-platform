@@ -685,11 +685,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties["mcpAnalytics"] = mcpAnalytics
 	}
 
-	// Fault classification, last so it sees the finished event. 
+	// Fault classification, last so it sees the finished event.
 	fault := classifyFault(logEntry)
-	event.EventCategory = fault.EventCategory
-	event.FaultCategory = fault.FaultCategory
-	event.ErrorType = fault.ErrorType
+	event.ErrorType = string(fault.ErrorType)
 	if fault.SubCategory != "" {
 		event.Error = &dto.Error{
 			// The client-visible status. The in-development fault flow owns the

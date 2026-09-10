@@ -762,14 +762,13 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 		attrs.b(ns("cache.hit"), event.Target.ResponseCacheHit)
 	}
 
-	// Faults. error.type is the one stable error attribute; the categories are
-	// ours, derived in analytics.classifyFault from the Envoy response flags.
+	// Faults. error.type is the one stable error attribute, and it carries the
+	// fault category derived in analytics.classifyFault — the same value existing
+	// Moesif consumers read from errorType.
 	attrs.str("error.type", event.ErrorType)
-	attrs.str(ns("event.category"), string(event.EventCategory))
-	attrs.str(ns("error.category"), string(event.FaultCategory))
 	if event.Error != nil {
 		attrs.i64(ns("error.code"), int64(event.Error.ErrorCode))
-		attrs.str(ns("error.sub_category"), string(event.Error.ErrorMessage))
+		attrs.str(ns("error.message"), string(event.Error.ErrorMessage))
 	}
 
 	// Payloads, only present when body capture is enabled on the collector.
