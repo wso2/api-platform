@@ -757,6 +757,295 @@ Feature: Rate Limiting
     When I send a GET request to "http://localhost:8080/ratelimit-peruser/v1.0/user" with header "X-User-ID" value "user-B"
     Then the response status code should be 429
 
+  Scenario: Match condition restricts a quota to requests with a matching key value
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: ratelimit-match-api
+      spec:
+        displayName: RateLimit Match API
+        version: v1.0
+        context: /ratelimit-match/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /checkout
+            policies:
+              - name: advanced-ratelimit
+                version: v1
+                params:
+                  quotas:
+                    - name: guest-and-partner-checkout
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: header
+                          key: X-App-ID
+                          match:
+                            type: regex
+                            value: "^(guest-.*|channel-partner)$"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-match/v1.0/checkout" to be ready
+
+    # A matching client ID (guest-*) is counted and enforced
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "guest-42"
+    Then the response status code should be 200
+
+    When I send a GET request to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "guest-42"
+    Then the response status code should be 429
+
+    # A different matching client ID (exact match) gets its own separate bucket
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "channel-partner"
+    Then the response status code should be 200
+
+    When I send a GET request to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "channel-partner"
+    Then the response status code should be 429
+
+    # A non-matching client ID bypasses the quota entirely - never throttled, no matter how many requests
+    When I send 6 GET requests to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "internal-app-1"
+    Then the response status code should be 200
+
+  Scenario: authproperty keyExtraction with match restricts a quota to requests with a matching JWT claim
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: ratelimit-authproperty-api
+      spec:
+        displayName: RateLimit AuthProperty API
+        version: v1.0
+        context: /ratelimit-authproperty/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /checkout
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+              - name: advanced-ratelimit
+                version: v1
+                params:
+                  quotas:
+                    - name: guest-and-partner-checkout
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: authproperty
+                          key: app_id
+                          match:
+                            type: regex
+                            value: "^(guest-.*|channel-partner)$"
+      """
+    Then the response should be successful
+
+    # A JWT with a matching app_id claim is counted and enforced
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=guest-42"
+    And I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+    # A different matching app_id claim (exact match) gets its own separate bucket
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=channel-partner"
+    And I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+    # A non-matching app_id claim bypasses the quota entirely - never throttled, no matter how many requests
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=internal-app-1"
+    And I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-authproperty/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+
+  Scenario: Match filters by one JWT claim while the bucket counts by a different JWT claim
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: ratelimit-filter-count-api
+      spec:
+        displayName: RateLimit Filter-Count API
+        version: v1.0
+        context: /ratelimit-filter-count/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /checkout
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+              - name: advanced-ratelimit
+                version: v1
+                params:
+                  quotas:
+                    - name: guests-per-user
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: authproperty
+                          key: app_id
+                          match:
+                            type: regex
+                            value: "^123$"
+                        - type: authproperty
+                          key: user_id
+      """
+    Then the response should be successful
+
+    # app_id "123" matches - alice's requests are counted and enforced
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=123,user_id=alice"
+    And I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+    # bob is behind the same matching app_id "123" but gets his own independent counter
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=123,user_id=bob"
+    And I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+    # alice is still blocked - bob's traffic never touched her counter
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=123,user_id=alice"
+    And I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+    # a non-matching app_id bypasses the quota entirely, no matter the user - never throttled.
+    # A 4th request beyond the quota's limit of 3 must still be 200, proving this is a true
+    # bypass and not just a separate 3-request bucket (as bob's case above legitimately is).
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=456,user_id=alice"
+    And I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 200
+
+    # alice's app_id "123" counter is still exhausted - the non-matching app-456 traffic above
+    # did not interfere with it
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and claims "app_id=123,user_id=alice"
+    And I send a GET request to "http://localhost:8080/ratelimit-filter-count/v1.0/checkout" with the JWT token
+    Then the response status code should be 429
+
+  Scenario: Independent per-customer quotas each with their own match pattern and limit
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: ratelimit-per-customer-api
+      spec:
+        displayName: RateLimit Per-Customer API
+        version: v1.0
+        context: /ratelimit-per-customer/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /checkout
+            policies:
+              - name: advanced-ratelimit
+                version: v1
+                params:
+                  quotas:
+                    - name: customer-abc
+                      limits:
+                        - limit: 2
+                          duration: "1h"
+                      keyExtraction:
+                        - type: header
+                          key: X-App-ID
+                          match:
+                            type: regex
+                            value: "^abc-.*$"
+                    - name: customer-xyz
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: header
+                          key: X-App-ID
+                          match:
+                            type: regex
+                            value: "^xyz-.*$"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-per-customer/v1.0/checkout" to be ready
+
+    # customer-abc has its own 2/hour limit
+    When I send 2 GET requests to "http://localhost:8080/ratelimit-per-customer/v1.0/checkout" with header "X-App-ID" value "abc-1"
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-per-customer/v1.0/checkout" with header "X-App-ID" value "abc-1"
+    Then the response status code should be 429
+
+    # customer-xyz has its own separate 3/hour limit, unaffected by customer-abc being exhausted
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-per-customer/v1.0/checkout" with header "X-App-ID" value "xyz-1"
+    Then the response status code should be 200
+    When I send a GET request to "http://localhost:8080/ratelimit-per-customer/v1.0/checkout" with header "X-App-ID" value "xyz-1"
+    Then the response status code should be 429
+
+    # customer-abc is still blocked - customer-xyz's traffic never touched its counter
+    When I send a GET request to "http://localhost:8080/ratelimit-per-customer/v1.0/checkout" with header "X-App-ID" value "abc-1"
+    Then the response status code should be 429
+
+    # a client ID matching neither quota's pattern is never throttled by either one
+    When I send 6 GET requests to "http://localhost:8080/ratelimit-per-customer/v1.0/checkout" with header "X-App-ID" value "internal-app-1"
+    Then the response status code should be 200
+
   Scenario: Multiple limits per quota - enforces most restrictive limit
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
