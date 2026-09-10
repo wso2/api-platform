@@ -413,9 +413,12 @@ func (o *OTel) export(batch []*otelLogRecord) {
 			}
 		}
 
-		retryAfter, err := o.post(body, len(records))
+		retryAfter, rejected, err := o.post(body, len(records))
 		if err == nil {
-			mAnalyticsPublished(otelPublisherName, len(records))
+			// Records refused inside a 2xx are already counted as dropped, so
+			// publishing the whole batch would count them twice and let
+			// published+dropped exceed the number of events that ever existed.
+			mAnalyticsPublished(otelPublisherName, len(records)-rejected)
 			return
 		}
 		lastErr = err
@@ -440,16 +443,17 @@ func (e *otelPermanentExportError) Error() string {
 	return fmt.Sprintf("endpoint rejected the batch with status %d", e.status)
 }
 
-// post performs one export attempt, returning the endpoint's requested
+// post performs one export attempt. It returns the endpoint's requested
 // Retry-After when it supplies one so the caller can honor it over its own
-// backoff.
-func (o *OTel) post(body []byte, records int) (time.Duration, error) {
+// backoff, and how many records the endpoint refused inside a 2xx so the caller
+// does not count those as published.
+func (o *OTel) post(body []byte, records int) (time.Duration, int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), o.cfg.Timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.cfg.Endpoint, bytes.NewReader(body))
 	if err != nil {
-		return 0, fmt.Errorf("building request: %w", err)
+		return 0, 0, fmt.Errorf("building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if o.gzip {
@@ -464,7 +468,7 @@ func (o *OTel) post(body []byte, records int) (time.Duration, error) {
 		mAnalyticsExportError(otelPublisherName, errCodeTransport, 1)
 		// The error can embed the endpoint URL but never the payload, so no
 		// request data can leak into the application log here.
-		return 0, fmt.Errorf("posting batch: %w", err)
+		return 0, 0, fmt.Errorf("posting batch: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -474,42 +478,52 @@ func (o *OTel) post(body []byte, records int) (time.Duration, error) {
 	_, _ = io.Copy(io.Discard, resp.Body) // drain the rest so the connection is reusable
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		o.logPartialSuccess(respBody, records)
-		return 0, nil
+		return 0, o.recordPartialSuccess(respBody, records), nil
 	}
 	mAnalyticsExportError(otelPublisherName, strconv.Itoa(resp.StatusCode), 1)
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return parseRetryAfter(resp.Header.Get("Retry-After")),
+		return parseRetryAfter(resp.Header.Get("Retry-After")), 0,
 			fmt.Errorf("endpoint is rate limiting (429)")
 	}
 	if resp.StatusCode >= 500 {
-		return 0, fmt.Errorf("endpoint returned status %d: %s", resp.StatusCode, otelResponseExcerpt(respBody))
+		return 0, 0, fmt.Errorf("endpoint returned status %d: %s", resp.StatusCode, otelResponseExcerpt(respBody))
 	}
-	return 0, &otelPermanentExportError{status: resp.StatusCode}
+	return 0, 0, &otelPermanentExportError{status: resp.StatusCode}
 }
 
-// logPartialSuccess reports records the endpoint accepted the request for but
-// rejected. Without this a 200 carrying rejectedLogRecords looks like a clean
-// export, and the records are silently gone.
-func (o *OTel) logPartialSuccess(respBody []byte, records int) {
+// recordPartialSuccess counts the records the endpoint accepted the request for
+// but rejected, and returns that count so the caller can exclude them from the
+// published tally. Without this a 200 carrying rejectedLogRecords looks like a
+// clean export, and the records are silently gone.
+func (o *OTel) recordPartialSuccess(respBody []byte, records int) int {
 	if len(respBody) == 0 {
-		return
+		return 0
 	}
 	var parsed otelExportResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return // a non-JSON 2xx body is not an error; nothing to report
+		return 0 // a non-JSON 2xx body is not an error; nothing to report
 	}
 	// Proto3 JSON encodes int64 as a string, but some receivers emit a bare
 	// number, so the field is json.Number to accept either.
-	rejected, err := parsed.PartialSuccess.RejectedLogRecords.Int64()
-	if err != nil || rejected <= 0 {
-		return
+	reported, err := parsed.PartialSuccess.RejectedLogRecords.Int64()
+	if err != nil || reported <= 0 {
+		return 0
 	}
-	o.dropRecords(dropReasonRejected, int(rejected))
+	// The count is the endpoint's claim, and it cannot exceed what was sent. An
+	// over-report has to be clamped rather than trusted: the caller subtracts
+	// this from the batch size, and a Prometheus counter panics on a negative
+	// Add — which in the export worker would take the process down.
+	rejected := int(min(reported, int64(records)))
+	if reported > int64(records) {
+		slog.Warn("OTel endpoint reported more rejected records than were sent; clamping",
+			"reported", reported, "records", records)
+	}
+	o.dropRecords(dropReasonRejected, rejected)
 	slog.Error("OTel endpoint accepted the export but rejected records",
 		"rejected", rejected, "records", records,
 		"endpointMessage", parsed.PartialSuccess.ErrorMessage)
+	return rejected
 }
 
 // sleep waits out the backoff before a retry, returning false if shutdown was

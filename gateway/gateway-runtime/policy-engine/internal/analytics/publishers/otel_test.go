@@ -915,7 +915,19 @@ func retryConfig(endpoint string, maxRetries int) config.OTelPublisherConfig {
 
 func (o *OTel) exportOne(t *testing.T) {
 	t.Helper()
-	o.export([]*otelLogRecord{o.buildRecord(restEvent())})
+	o.exportN(t, 1)
+}
+
+// exportN exports a batch of n identical records. Any test asserting a rejected
+// count needs this: the endpoint cannot reject more records than were sent, so a
+// single-record batch can only ever exercise a rejected count of 1.
+func (o *OTel) exportN(t *testing.T, n int) {
+	t.Helper()
+	batch := make([]*otelLogRecord, 0, n)
+	for i := 0; i < n; i++ {
+		batch = append(batch, o.buildRecord(restEvent()))
+	}
+	o.export(batch)
 }
 
 // A 5xx is transient: retry until it clears, and lose nothing when it does.
@@ -1063,12 +1075,44 @@ func TestExportCountsPartialSuccessRejections(t *testing.T) {
 			defer server.Close()
 
 			o := newTestOTel(t, retryConfig(server.URL+"/v1/logs", 3))
-			o.exportOne(t)
+			before := scrapeMetrics(t)
+			o.exportN(t, 5)
 
 			if dropped := o.droppedCount(); dropped != 2 {
 				t.Errorf("dropped = %d, want 2 from partialSuccess", dropped)
 			}
+			// The request succeeded, so 3 of the 5 were published — not all 5.
+			// Counting the whole batch would report 5 published and 2 dropped for
+			// 5 events that existed.
+			published := seriesKey("policy_engine_analytics_published_total")
+			if got := delta(t, before, scrapeMetrics(t), published); got != 3 {
+				t.Errorf("published delta = %v, want 3 (5 sent, 2 rejected)", got)
+			}
 		})
+	}
+}
+
+// An endpoint claiming more rejections than were sent is claiming something
+// impossible. It has to be clamped rather than trusted: the published tally is
+// the batch size minus this count, and a Prometheus counter panics on a negative
+// Add — which on the export worker would take the process down.
+func TestExportClampsOverReportedRejections(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"partialSuccess":{"rejectedLogRecords":"99999"}}`))
+	}))
+	defer server.Close()
+
+	o := newTestOTel(t, retryConfig(server.URL+"/v1/logs", 0))
+	before := scrapeMetrics(t)
+	o.exportN(t, 2) // must not panic
+
+	if dropped := o.droppedCount(); dropped != 2 {
+		t.Errorf("dropped = %d, want 2 clamped to the batch size", dropped)
+	}
+	published := seriesKey("policy_engine_analytics_published_total")
+	if got := delta(t, before, scrapeMetrics(t), published); got != 0 {
+		t.Errorf("published delta = %v, want 0 — the whole batch was rejected", got)
 	}
 }
 
@@ -1329,7 +1373,7 @@ func TestMetricsDropReasons(t *testing.T) {
 		defer server.Close()
 
 		o := newTestOTel(t, retryConfig(server.URL+"/v1/logs", 0))
-		o.exportOne(t)
+		o.exportN(t, 5)
 
 		if got := delta(t, before, scrapeMetrics(t), key); got != 3 {
 			t.Errorf("rejected delta = %v, want 3", got)
