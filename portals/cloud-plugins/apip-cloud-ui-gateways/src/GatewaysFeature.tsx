@@ -222,6 +222,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         mode={view}
         gateway={editingGateway}
         types={gatewayTypes}
+        gateways={visibleGateways}
         environments={environments}
         onBack={() => {
           setView('list');
