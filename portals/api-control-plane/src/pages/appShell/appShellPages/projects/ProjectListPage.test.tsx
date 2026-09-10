@@ -19,8 +19,8 @@
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { ApiScopeProvider } from '../../../../api/core/ApiScopeProvider';
-import { resetHttpClient } from '../../../../api/core/http';
+import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
+import { resetHttpClient } from '@/api/core/http';
 import {
   aProject,
   collection,
@@ -29,10 +29,10 @@ import {
   recorder,
   type ProjectFixture,
   type Recorder,
-} from '../../../../test/msw';
-import { server } from '../../../../test/server';
-import { renderWithProviders, screen, waitFor, within } from '../../../../test/utils';
-import { makeConsoleScope } from '../../../../test/mockScope';
+} from '@/test/msw';
+import { server } from '@/test/server';
+import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
+import { makeConsoleScope } from '@/test/mockScope';
 import { ProjectListPage } from './ProjectListPage';
 
 const ORG = 'api-platform-demo';
@@ -158,6 +158,31 @@ describe('ProjectListPage', () => {
     expect(await screen.findByText('Project 13')).toBeInTheDocument();
   });
 
+  it('switches to the table view and deletes from a row', async () => {
+    server.use(
+      collection('/projects', projectFixtures),
+      noContent('delete', '/projects/:projectId', { record: requests }),
+    );
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    await user.click(screen.getByRole('button', { name: 'List view' }));
+
+    const rows = await screen.findByTestId('project-list-view');
+    expect(within(rows).getByText('Retail APIs')).toBeInTheDocument();
+
+    // The row's own delete button, in place of the settings action the card
+    // used to carry.
+    await user.click(within(rows).getByRole('button', { name: 'Delete Retail APIs' }));
+
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), 'Retail APIs');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(requests.last()?.url.pathname).toMatch(/\/projects\/retail$/);
+  });
+
   it('deletes a project after type-to-confirm', async () => {
     server.use(
       collection('/projects', projectFixtures),
@@ -166,7 +191,10 @@ describe('ProjectListPage', () => {
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    await user.click(screen.getByRole('button', { name: 'Delete Retail APIs' }));
+    // The card keeps its overflow menu; the row view exposes delete directly.
+    const cards = screen.getAllByRole('button', { name: 'Project actions' });
+    await user.click(cards[0]);
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
 
     // Type-to-confirm guards the irreversible delete.
     const dialog = screen.getByRole('dialog');

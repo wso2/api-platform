@@ -29,9 +29,9 @@ import { Bell, LogOut, WSO2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useLocation } from 'react-router-dom';
 
-import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
-import { HeaderSwitchersErrorFallback } from '../../components/errors/ErrorFallback';
-import { useAuth } from '../../contexts/auth/AuthProvider';
+import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
+import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
+import { useAuth } from '@/contexts/auth/AuthProvider';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
 export function AppHeader() {

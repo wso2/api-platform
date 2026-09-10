@@ -81,6 +81,35 @@ describe('GeneralCreateApiForm — initial values', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('stays quiet once the user has been into the backend field, whatever they typed', async () => {
+    // The notice is about an endpoint the user never chose. A user who types
+    // the placeholder domain deliberately has chosen one, so telling them it
+    // is a placeholder is noise — the string is not what decides this.
+    const { user } = renderForm({
+      displayName: 'Untitled API',
+      upstream: { main: { url: 'https://example.com' } },
+    });
+
+    const targetUrl = screen.getByLabelText(/Target URL/);
+    await user.clear(targetUrl);
+    await user.type(targetUrl, 'https://example.com');
+
+    expect(
+      screen.queryByText(/using https:\/\/example\.com as a placeholder backend/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says nothing about a placeholder when the draft named a real backend', () => {
+    renderForm({
+      displayName: 'Orders API',
+      upstream: { main: { url: 'https://orders.internal' } },
+    });
+
+    expect(
+      screen.queryByText(/using https:\/\/example\.com as a placeholder backend/i),
+    ).not.toBeInTheDocument();
+  });
+
   it('derives the base path from project, identifier and version when the draft names none', () => {
     renderForm({ displayName: 'Orders API', version: '2.1' });
 

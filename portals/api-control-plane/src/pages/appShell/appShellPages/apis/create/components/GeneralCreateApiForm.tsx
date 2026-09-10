@@ -43,6 +43,7 @@ import {
   isHttpUrl,
   VERSION_PATTERN,
 } from '../../utils/basicInfoRules';
+import { PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
 import type { CreateApiFormErrors, CreateApiFormField } from '../utils/serverFieldErrors';
 import { ApiCreationWizardDraftState, GeneralApiCreationFormState } from '../types';
 
@@ -369,17 +370,19 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   // lets an edited field drop its server error without tracking dismissals.
   const [formState, setFormState] = useState<GeneralApiCreationFormState>(submittedState);
 
-  // Both fields are generated until the user takes them over. Clearing one
-  // hands it back, so there is always a way to return to the default. A draft
-  // that arrives with either already filled in is a restored submission, so
-  // the field starts out taken over — otherwise the next keystroke in the
-  // display name would generate over the top of what was restored.
+  // Fields generate until edited; clearing one restores its default. Restored
+  // values start edited to prevent the next name change from overwriting them.
   const [identifierEdited, setIdentifierEdited] = useState(
     () => (props.initialValues?.id ?? '').trim() !== '',
   );
   const [basePathEdited, setBasePathEdited] = useState(
     () => (props.initialValues?.context ?? '').trim() !== '',
   );
+
+  // The notice applies only to the untouched placeholder from the scratch
+  // skeleton. Focusing the field retires it, even if the user types the same
+  // URL.
+  const [upstreamEdited, setUpstreamEdited] = useState(false);
 
   // Errors are recomputed from state on every render; `touched` decides which
   // of them the user is ready to see, so nothing shouts before it is typed in.
@@ -470,6 +473,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   };
 
   const setMainUpstreamUrl = (url: string) => {
+    setUpstreamEdited(true);
     setFormState((current) => ({
       ...current,
       upstream: {
@@ -509,6 +513,10 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
     (pinnedFieldCount === 0 ||
       props.serverErrors.unmapped.length > 0 ||
       FIELD_ORDER.some((field) => serverErrorFor(field) !== undefined));
+
+  /** True while the backend remains the untouched placeholder. */
+  const usingPlaceholderBackend =
+    !upstreamEdited && submittedState.upstream.main.url.trim() === PLACEHOLDER_UPSTREAM_URL;
 
   const nameLabel = intl.formatMessage(messages.nameLabel);
   const identifierLabel = intl.formatMessage(messages.identifierLabel);
@@ -634,7 +642,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
         </Typography>
 
         <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
-          {formState.upstream.main.url.trim() === 'https://example.com' ? (
+          {usingPlaceholderBackend ? (
             <Alert severity="info">
               <FormattedMessage {...messages.placeholderBackendNotice} />
             </Alert>

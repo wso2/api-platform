@@ -346,14 +346,15 @@ export const ApiCreationWizard = () => {
           {intl.formatMessage(messages.stepCount, { current: stepNumber })}
         </Typography>
         <Stack direction="row" spacing={1}>
-          <Button
-            disabled={step === 'apiType'}
-            onClick={() => setStep(step === 'configure' ? 'source' : 'apiType')}
-            type="button"
-            variant="text"
-          >
-            {intl.formatMessage(messages.back)}
-          </Button>
+          {step != 'apiType' && (
+            <Button
+              onClick={() => setStep(step === 'configure' ? 'source' : 'apiType')}
+              type="button"
+              variant="text"
+            >
+              {intl.formatMessage(messages.back)}
+            </Button>
+          )}
           {step === 'configure' ? (
             <Button form={CONFIGURE_FORM_ID} key="create-api" type="submit" variant="contained">
               {intl.formatMessage({
