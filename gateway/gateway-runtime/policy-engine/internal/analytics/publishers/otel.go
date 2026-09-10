@@ -64,6 +64,9 @@ const (
 	// otelCloseFlushTimeout bounds the shutdown flush when the caller's context
 	// carries no deadline.
 	otelCloseFlushTimeout = 5 * time.Second
+	// Bound retry waits to 30s to prevent an export worker from stalling and to 
+	// match the endpoint Retry-After limit.
+	otelMaxRetryBackoff = 30 * time.Second
 	// otelPublisherName is this publisher's value for the `publisher` metric
 	// label. Kept local so metric call sites need no config import.
 	otelPublisherName = "otel"
@@ -560,7 +563,17 @@ func (o *OTel) backoff(attempt int) time.Duration {
 	if shift > 10 {
 		shift = 10
 	}
+	// Cap BEFORE jittering, so the jitter still spans the full range below the
+	// ceiling. Capping afterwards would land every attempt at the cap exactly,
+	// re-synchronising the replicas the jitter exists to spread out.
+	//
+	// The <= 0 arm also covers the shift overflowing int64 into a negative
+	// duration, which needs an absurd retry_backoff (~104 days) but would
+	// otherwise skip the wait altogether rather than lengthen it.
 	delay := base << shift
+	if delay <= 0 || delay > otelMaxRetryBackoff {
+		delay = otelMaxRetryBackoff
+	}
 	if half := delay / 2; half > 0 {
 		delay = half + time.Duration(rand.Int64N(int64(half)))
 	}

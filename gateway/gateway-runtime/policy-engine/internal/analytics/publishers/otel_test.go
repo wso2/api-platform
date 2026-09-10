@@ -1930,3 +1930,68 @@ func TestBuildRecordSentinelZerosStayOmitted(t *testing.T) {
 		}
 	}
 }
+
+// --- Retry backoff ceiling ---------------------------------------------------
+//
+// One worker exports, so nothing drains the queue while a batch sleeps between
+// attempts. An uncapped exponential backoff therefore parks that worker for as
+// long as retry_backoff and max_retries multiply out to, and the queue behind it
+// fills meanwhile — the same failure retryAfterCap already prevents an endpoint
+// from causing with its own Retry-After.
+
+func TestBackoffGrowsExponentiallyWithinJitterRange(t *testing.T) {
+	o := &OTel{cfg: config.OTelPublisherConfig{RetryBackoff: time.Second}}
+	for attempt, want := range map[int]time.Duration{1: time.Second, 2: 2 * time.Second, 3: 4 * time.Second} {
+		got := o.backoff(attempt)
+		// Full jitter: [want/2, want).
+		if got < want/2 || got >= want {
+			t.Errorf("backoff(%d) = %s, want within [%s, %s)", attempt, got, want/2, want)
+		}
+	}
+}
+
+func TestBackoffIsCappedAndStillJittered(t *testing.T) {
+	// 10m base: attempt 3 alone would be 40m uncapped.
+	o := &OTel{cfg: config.OTelPublisherConfig{RetryBackoff: 10 * time.Minute}}
+
+	distinct := map[time.Duration]bool{}
+	for i := 0; i < 200; i++ {
+		got := o.backoff(3)
+		if got >= otelMaxRetryBackoff {
+			t.Fatalf("backoff = %s, want under the %s ceiling", got, otelMaxRetryBackoff)
+		}
+		if got < otelMaxRetryBackoff/2 {
+			t.Fatalf("backoff = %s, want at least half the ceiling", got)
+		}
+		distinct[got] = true
+	}
+	// Capped before jittering, so the delays still spread below the ceiling. Were
+	// the cap applied after, every attempt would land on it exactly and the
+	// replicas the jitter exists to spread out would resynchronise.
+	if len(distinct) < 2 {
+		t.Errorf("capped backoff produced %d distinct value(s); jitter was lost to the cap", len(distinct))
+	}
+}
+
+// A shift large enough to overflow int64 yields a negative duration, which would
+// skip the wait entirely rather than lengthen it. It needs an absurd
+// retry_backoff to reach, but the result must still be a real wait.
+func TestBackoffOverflowFallsBackToCeiling(t *testing.T) {
+	o := &OTel{cfg: config.OTelPublisherConfig{RetryBackoff: 200 * 24 * time.Hour}}
+	got := o.backoff(11) // shift clamps to 10; 200d << 10 overflows
+	if got <= 0 {
+		t.Fatalf("backoff = %s, want a positive wait", got)
+	}
+	if got >= otelMaxRetryBackoff {
+		t.Errorf("backoff = %s, want under the %s ceiling", got, otelMaxRetryBackoff)
+	}
+}
+
+// A zero/unset retry_backoff must still produce a real wait rather than a
+// busy retry loop.
+func TestBackoffUnsetBaseUsesOneSecond(t *testing.T) {
+	o := &OTel{cfg: config.OTelPublisherConfig{RetryBackoff: 0}}
+	if got := o.backoff(1); got < 500*time.Millisecond || got >= time.Second {
+		t.Errorf("backoff(1) = %s, want within [500ms, 1s)", got)
+	}
+}
