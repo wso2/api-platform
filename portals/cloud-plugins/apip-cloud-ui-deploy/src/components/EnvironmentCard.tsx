@@ -30,7 +30,6 @@ export type EnvironmentCardProps = {
   onPromoteClick: () => void;
   onStopGateway: (gatewayId: string) => void;
   onRetryGateway: (gatewayId: string) => void;
-  onRedeployGateway: (gatewayId: string) => void;
 };
 
 const sectionLabelSx = {
@@ -48,12 +47,22 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
   onPromoteClick,
   onStopGateway,
   onRetryGateway,
-  onRedeployGateway,
 }) => {
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
   const deployed = hasAnyDeployment(gateways);
   const canPromote = !!nextEnvironment && activeGatewayCount(nextEnvironment.gateways) > 0;
+  // What the environment is running: the distinct builds across the gateways that
+  // are actually serving. A settling or stopped gateway is not part of what the
+  // environment serves, so it does not contribute a build here.
+  const runningBuilds = Array.from(
+    new Set(
+      gateways
+        .filter((gateway) => gateway.status === 'DEPLOYED' && !!gateway.buildId)
+        .map((gateway) => gateway.buildId as string)
+    )
+  ).sort();
+
   const promoteDisabledReason =
     nextEnvironment && !canPromote
       ? `All gateways in ${nextEnvironment.name} are inactive. Activate a gateway before promoting.`
@@ -77,6 +86,45 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
           </Typography>
         </Box>
 
+        {/* The build belongs to the ENVIRONMENT now, not to each gateway: they all
+            run the same one. So it is stated once, here, rather than being left to
+            be read off the rows and compared.
+
+            More than one build showing means the environment is split — which the
+            deploy rules are meant to prevent — so it is called out rather than
+            quietly listing both. */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+          <Typography sx={sectionLabelSx}>Build</Typography>
+          {runningBuilds.length === 0 ? (
+            <Typography variant="caption" color="text.disabled">
+              Nothing deployed
+            </Typography>
+          ) : runningBuilds.length === 1 ? (
+            <Chip
+              label={runningBuilds[0]}
+              size="small"
+              variant="outlined"
+              sx={{ height: 20, fontSize: '0.7rem' }}
+            />
+          ) : (
+            <>
+              {runningBuilds.map((buildId) => (
+                <Chip
+                  key={buildId}
+                  label={buildId}
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  sx={{ height: 20, fontSize: '0.7rem' }}
+                />
+              ))}
+              <Typography variant="caption" color="warning.main">
+                Split across builds
+              </Typography>
+            </>
+          )}
+        </Box>
+
         <Divider />
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -97,7 +145,6 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
                 environmentName={environment.name}
                 busy={busy}
                 onRetry={() => onRetryGateway(gateway.id)}
-                onRedeploy={() => onRedeployGateway(gateway.id)}
                 onStop={() => onStopGateway(gateway.id)}
               />
             ))}

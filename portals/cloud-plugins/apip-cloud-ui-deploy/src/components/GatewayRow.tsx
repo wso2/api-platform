@@ -34,7 +34,6 @@ export type GatewayRowProps = {
   busy: boolean;
   onRetry: () => void;
   /** Puts a suspended deployment back on the gateway, unchanged. */
-  onRedeploy: () => void;
   onStop: () => void;
 };
 
@@ -43,7 +42,6 @@ const GatewayRow: FC<GatewayRowProps> = ({
   environmentName,
   busy,
   onRetry,
-  onRedeploy,
   onStop,
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -53,24 +51,27 @@ const GatewayRow: FC<GatewayRowProps> = ({
 
   // What the one action button does depends on what the gateway is doing:
   //
-  //  - suspended (UNDEPLOYED) — put the SAME deployment back, artifact and all;
   //  - failed — deploy its build again, which makes a new deployment;
   //  - serving — stop it.
   //
+  // A stopped gateway offers nothing here. Putting one back is a deploy, which
+  // goes through the deploy dialog so it joins the build the environment is on —
+  // reviving its old deployment from this row would put that old build back
+  // while the rest of the environment had moved on.
+  //
   // Nothing to do while a deployment is still settling, or where there is none.
-  const action: 'redeploy' | 'retry' | 'stop' =
-    gateway.status === 'UNDEPLOYED' ? 'redeploy' : gateway.status === 'FAILED' ? 'retry' : 'stop';
-  const actionLabel = action === 'stop' ? 'Stop deployment' : 'Redeploy';
+  const action: 'retry' | 'stop' = gateway.status === 'FAILED' ? 'retry' : 'stop';
+  const actionLabel = action === 'stop' ? 'Stop deployment' : 'Retry';
   const actionDisabled =
     busy ||
     gateway.status === 'NOT_DEPLOYED' ||
+    gateway.status === 'UNDEPLOYED' ||
     gateway.status === 'DEPLOYING' ||
     gateway.status === 'UNDEPLOYING' ||
-    // Retrying re-deploys the build, so it needs no deployment; the other two act
-    // on the deployment itself.
+    // Retrying re-deploys the build, so it needs no deployment; stopping acts on
+    // the deployment itself.
     (action !== 'retry' && !gateway.deploymentId);
-  const handleActionClick =
-    action === 'redeploy' ? onRedeploy : action === 'retry' ? onRetry : onStop;
+  const handleActionClick = action === 'retry' ? onRetry : onStop;
 
   return (
     <Card>

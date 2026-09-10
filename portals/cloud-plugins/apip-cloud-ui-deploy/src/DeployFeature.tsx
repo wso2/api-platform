@@ -164,41 +164,6 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
   };
 
   /**
-   * Puts a stopped gateway back by DEPLOYING to it, not by reviving what it used
-   * to run. There is no per-gateway redeploy: restoring its old deployment would
-   * put that old build back while the rest of the environment had moved on, which
-   * is the split the one-build-per-environment rule exists to prevent.
-   *
-   * So it deploys the build the environment is currently running. With nothing
-   * else deployed there, there is no build to join and the user is sent to the
-   * dialog to choose one instead.
-   */
-  const handleRedeploy = (environment: Environment, gatewayId: string) => {
-    const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
-    if (!client || !gateway) return;
-    const liveBuild = environment.gateways.find(
-      (candidate) => candidate.id !== gatewayId && candidate.status === 'DEPLOYED'
-    )?.buildId;
-    if (!liveBuild) {
-      notify(
-        `Nothing else is deployed in ${environment.name}, so there is no build to join. Use Deploy to choose one.`,
-        'info'
-      );
-      return;
-    }
-    void runAction(
-      () =>
-        client.deploy({
-          environment: environment.name,
-          gateways: [{ gatewayId, endpointUrl: gateway.endpointUrl }],
-          buildId: liveBuild,
-        }),
-      `Deploying ${gateway.name}.`,
-      `Unable to deploy ${gateway.name}.`
-    );
-  };
-
-  /**
    * Retrying sends the gateway the build it already has, not a new one: a failed
    * deployment is retried as it was, so a retry never quietly ships something
    * else. A later environment can only be reached by promoting into it, so the
@@ -286,7 +251,6 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onRetryGateway={handleRetry}
-      onRedeployGateway={handleRedeploy}
     />
   );
 };
