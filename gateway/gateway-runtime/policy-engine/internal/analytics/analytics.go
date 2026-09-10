@@ -347,6 +347,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	request := logEntry.GetRequest()
 	response := logEntry.GetResponse()
 
+	// Strip the query once at the source since it is shared across publishers and may contain credentials.
+	requestPath, _, _ := strings.Cut(request.GetPath(), "?")
+
 	// Prepare operation
 	operation := dto.Operation{}
 	// operation.APIResourceTemplate = keyValuePairsFromMetadata[APIResourceTemplateKey]
@@ -361,7 +364,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if response != nil {
 		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
 		// target.Destination = keyValuePairsFromMetadata[DestinationKey]
-		target.Destination = logEntry.GetRequest().GetAuthority() + logEntry.GetRequest().GetPath()
+		target.Destination = logEntry.GetRequest().GetAuthority() + requestPath
 		target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
 	}
 
@@ -619,9 +622,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// requestSize is common to all API kinds; mirror responseSize using the Envoy access-log byte count.
 	if request != nil {
 		event.Properties["requestSize"] = request.GetRequestBodyBytes()
-		
+
 		// Store the concrete request path (without query parameters), separate from the route template.
-		if requestPath, _, _ := strings.Cut(request.GetPath(), "?"); requestPath != "" {
+		if requestPath != "" {
 			event.Properties[constants.RequestPathPropertyKey] = requestPath
 		}
 	}

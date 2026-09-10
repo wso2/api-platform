@@ -20,6 +20,7 @@ package analytics
 import (
 	"bytes"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -1351,6 +1352,42 @@ func TestPrepareAnalyticEvent_RequestPathDropsQueryString(t *testing.T) {
 			}
 			if actual != tc.want {
 				t.Errorf("%s = %v, want %v", constants.RequestPathPropertyKey, actual, tc.want)
+			}
+		})
+	}
+}
+
+// Target.Destination reaches three consumers — the OTel publisher's
+// wso2.upstream.destination, the traffic log's destination field, and the
+// target.destination policy expression — so the query string is stripped at this
+// single point rather than in each of them. An API key or token in a query
+// parameter is an ordinary pattern here, and all three carry records off-box.
+func TestPrepareAnalyticEvent_DestinationDropsQueryString(t *testing.T) {
+	for name, tc := range map[string]struct {
+		authority string
+		path      string
+		want      string
+	}{
+		"no query":        {"api.example.com", "/orders/v1.0/listings", "api.example.com/orders/v1.0/listings"},
+		"credential":      {"api.example.com", "/orders/v1.0/listings?apikey=secret", "api.example.com/orders/v1.0/listings"},
+		"multiple params": {"localhost:8080", "/nofilter/anything?q=1&token=abc", "localhost:8080/nofilter/anything"},
+		"bare question":   {"localhost:8080", "/everything?", "localhost:8080/everything"},
+		"no path":         {"api.example.com", "", "api.example.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logEntry := createLogEntryWithMetadata(map[string]string{})
+			logEntry.Request.Authority = tc.authority
+			logEntry.Request.Path = tc.path
+
+			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(logEntry)
+			if event.Target == nil {
+				t.Fatal("event.Target is nil")
+			}
+			if event.Target.Destination != tc.want {
+				t.Errorf("Destination = %q, want %q", event.Target.Destination, tc.want)
+			}
+			if strings.Contains(event.Target.Destination, "?") {
+				t.Errorf("Destination %q still carries a query string", event.Target.Destination)
 			}
 		})
 	}

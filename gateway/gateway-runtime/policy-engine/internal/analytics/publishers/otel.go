@@ -681,7 +681,7 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 	attrs := newOTelAttrs()
 	attrs.str("event.name", otelEventName)
 
-    // Keep http.route as the route template and url.path as the literal client-requested path.
+	// Keep http.route as the route template and url.path as the literal client-requested path.
 	route := ""
 	if event.Operation != nil {
 		route = event.Operation.APIResourceTemplate
