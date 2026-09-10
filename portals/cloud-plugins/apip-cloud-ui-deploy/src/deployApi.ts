@@ -134,19 +134,29 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
      * Supplying `buildId` deploys that existing build. `fromEnvironment` promotes
      * instead, carrying that environment's build forward untouched.
      */
+    /**
+     * Deploys (or promotes) one build onto every gateway named, each with its own
+     * endpoint. An environment runs a single build of an API at a time, so this is
+     * one call rather than one per gateway: the backend puts the same build on all
+     * of them and rolls every gateway back if any one fails.
+     *
+     * The gateways must include every gateway the API is already deployed on in
+     * that environment; leaving one out is refused with 409.
+     */
     async deploy(input: {
       environment: string;
-      gatewayId: string;
-      endpointUrl?: string;
+      gateways: { gatewayId: string; endpointUrl?: string }[];
       fromEnvironment?: string;
       buildId?: string;
     }): Promise<void> {
       await apiFetch('POST', `${base}/deployments`, {
         environment: input.environment,
-        gatewayId: input.gatewayId,
+        gateways: input.gateways.map((gateway) => ({
+          gatewayId: gateway.gatewayId,
+          ...(gateway.endpointUrl ? { parameters: { productionEndpoint: gateway.endpointUrl } } : {}),
+        })),
         ...(input.fromEnvironment ? { fromEnvironment: input.fromEnvironment } : {}),
         ...(input.buildId ? { buildId: input.buildId } : {}),
-        ...(input.endpointUrl ? { parameters: { productionEndpoint: input.endpointUrl } } : {}),
       });
     },
 
