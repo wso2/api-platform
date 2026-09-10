@@ -243,15 +243,47 @@ type TokenExchangeConfig struct {
 	// it derives from. The BFF re-exchanges from the subject token.
 }
 
-// GrantTokenExchange and GrantJWTBearer are the supported grant_type values.
+// GrantTokenExchange and GrantJWTBearer are the canonical internal grant_type values.
+// They are short names rather than the wire URIs because this key selects which
+// protocol the Exchanger speaks, not what it puts on the wire: Exchanger.buildForm
+// emits the registered URI itself, along with the parameter set that goes with it
+// (subject_token vs assertion, audience vs scope). That is also why the set is closed
+// — a value with no branch behind it has no implementation, and silently falling
+// through to RFC 8693 would send a request the operator did not ask for.
 const (
 	GrantTokenExchange = "token_exchange"
 	GrantJWTBearer     = "jwt_bearer"
 )
 
-// SupportedTokenExchangeGrants is the closed set [auth.oidc.token_exchange]
-// grant_type is validated against. Adding a protocol means adding it here and to Exchanger.buildForm.
+// GrantURI* are the IANA-registered grant-type URIs for the two protocols (RFC 8693
+// §2.1 and RFC 7523 §2.1). They are what an IDP's own documentation shows, so an
+// operator copying from it reaches for these rather than the short names above.
+const (
+	GrantURITokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange"
+	GrantURIJWTBearer     = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+)
+
+// grantTypeAliases maps the registered URI spellings onto the canonical short names,
+// applied in normalize. Both spellings name the same protocol, so rejecting the
+// standard one would be pedantry: it is the more likely thing to be written, being
+// the value that appears in every vendor's docs and in the request itself.
+var grantTypeAliases = map[string]string{
+	GrantURITokenExchange: GrantTokenExchange,
+	GrantURIJWTBearer:     GrantJWTBearer,
+}
+
+// SupportedTokenExchangeGrants is the closed set [auth.oidc.token_exchange] grant_type
+// is validated against, after normalize has resolved aliases. Adding a protocol means
+// adding it here and to Exchanger.buildForm.
 var SupportedTokenExchangeGrants = []string{GrantTokenExchange, GrantJWTBearer}
+
+// supportedGrantSpellings is what the startup error lists. It names every accepted
+// spelling, not just the canonical ones: an operator who wrote the registered URI
+// needs to see that it is accepted, not be told it is unsupported.
+var supportedGrantSpellings = []string{
+	GrantTokenExchange, GrantURITokenExchange,
+	GrantJWTBearer, GrantURIJWTBearer,
+}
 
 // OIDCConfig is [ai_workspace.auth.oidc]: the confidential-client settings. The client
 // secret lives only here on the BFF and is never emitted to the browser. Whether the
@@ -409,7 +441,13 @@ func (c *Config) normalize() {
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
+	// Lowercased first so the alias lookup is case-insensitive too, then resolved:
+	// the registered URI and the short name are the same protocol, and every check
+	// downstream compares against the short name.
 	c.Auth.OIDC.TokenExchange.GrantType = strings.ToLower(c.Auth.OIDC.TokenExchange.GrantType)
+	if canonical, ok := grantTypeAliases[c.Auth.OIDC.TokenExchange.GrantType]; ok {
+		c.Auth.OIDC.TokenExchange.GrantType = canonical
+	}
 
 	if c.Auth.OIDC.TokenExchange.ClientID == "" {
 		c.Auth.OIDC.TokenExchange.ClientID = c.Auth.OIDC.ClientID
@@ -555,7 +593,7 @@ func (c *Config) validateTokenExchange() error {
 	// deploy that enables the feature.
 	if !slices.Contains(SupportedTokenExchangeGrants, te.GrantType) {
 		return fmt.Errorf("invalid [auth.oidc.token_exchange] grant_type %q: supported values are %s",
-			te.GrantType, strings.Join(SupportedTokenExchangeGrants, ", "))
+			te.GrantType, strings.Join(supportedGrantSpellings, ", "))
 	}
 
 	if !te.Enabled {

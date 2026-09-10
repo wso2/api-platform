@@ -41,9 +41,11 @@ const (
 	TokenTypeRefresh     = "urn:ietf:params:oauth:token-type:refresh_token"
 )
 
+// The wire values, aliased from config so the URI the request carries and the URI an
+// operator may spell in grant_type can never drift apart.
 const (
-	grantURITokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange"
-	grantURIJWTBearer     = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+	grantURITokenExchange = config.GrantURITokenExchange
+	grantURIJWTBearer     = config.GrantURIJWTBearer
 )
 
 const (

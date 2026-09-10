@@ -170,7 +170,7 @@ mode = "basic"
 [ai_workspace.auth.oidc.token_exchange]
 grant_type = "saml-swap"
 `,
-			wantSub: "supported values are token_exchange, jwt_bearer",
+			wantSub: "supported values are token_exchange, urn:ietf:params:oauth:grant-type:token-exchange",
 		},
 		{
 			name: "empty grant type",
@@ -182,7 +182,7 @@ mode = "basic"
 [ai_workspace.auth.oidc.token_exchange]
 grant_type = ""
 `,
-			wantSub: "supported values are token_exchange, jwt_bearer",
+			wantSub: "supported values are token_exchange, urn:ietf:params:oauth:grant-type:token-exchange",
 		},
 		{
 			// Lowercasing normalizes case, not separators.
@@ -467,5 +467,76 @@ audience = "platform-api"
 	}
 	if cfg.Auth.TokenExchangeEnabled() {
 		t.Error("the sibling [auth.token_exchange] table must not enable the feature")
+	}
+}
+
+// TestTokenExchangeGrantTypeAliases accepts the IANA-registered grant-type URIs as
+// spellings of the two short names. The URI is what an IDP's own documentation shows
+// and what the request itself carries, so it is the more likely thing for an operator
+// to write — rejecting it produced a startup failure that read as "this IDP is not
+// supported" when the protocol was in fact the configured one.
+//
+// The set stays closed either way: grant_type picks which protocol Exchanger.buildForm
+// speaks, so a value with no branch behind it has no implementation.
+func TestTokenExchangeGrantTypeAliases(t *testing.T) {
+	for _, tc := range []struct {
+		spelling string
+		want     string
+	}{
+		{"token_exchange", GrantTokenExchange},
+		{"urn:ietf:params:oauth:grant-type:token-exchange", GrantTokenExchange},
+		{"URN:IETF:params:oauth:grant-type:Token-Exchange", GrantTokenExchange},
+		{"jwt_bearer", GrantJWTBearer},
+		{"urn:ietf:params:oauth:grant-type:jwt-bearer", GrantJWTBearer},
+	} {
+		t.Run(tc.spelling, func(t *testing.T) {
+			// scope is set unconditionally: jwt_bearer requires it, and for
+			// token_exchange it is simply a narrower request than the inherited set.
+			cfg, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority = "https://idp.example.com"
+client_id = "c"
+client_secret = "s"
+redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+grant_type = "`+tc.spelling+`"
+scope = "api://platform-api/.default"
+`)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := cfg.Auth.OIDC.TokenExchange.GrantType; got != tc.want {
+				t.Errorf("grant_type = %q, want it normalized to %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestTokenExchangeUnknownGrantErrorListsEverySpelling keeps the startup error
+// actionable: an operator who wrote a near-miss must be able to see the registered
+// URI in the list, not just the short names.
+func TestTokenExchangeUnknownGrantErrorListsEverySpelling(t *testing.T) {
+	_, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "basic"
+
+[ai_workspace.auth.oidc.token_exchange]
+grant_type = "urn:ietf:params:oauth:grant-type:saml2-bearer"
+`)
+	if err == nil {
+		t.Fatal("expected a validation error for an unimplemented grant")
+	}
+	for _, want := range []string{
+		GrantTokenExchange, GrantURITokenExchange,
+		GrantJWTBearer, GrantURIJWTBearer,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error must list the %q spelling, got: %v", want, err)
+		}
 	}
 }
