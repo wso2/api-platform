@@ -1265,7 +1265,7 @@ func defaultConfig() *Config {
 				},
 				OTel: OTelPublisherConfig{
 					Endpoint:       "http://otel-collector:4318/v1/logs",
-					ServiceName:    "policy-engine",
+					ServiceName:    "gateway-runtime",
 					ServiceVersion: "",
 					BatchSize:      100,
 					FlushInterval:  5 * time.Second,

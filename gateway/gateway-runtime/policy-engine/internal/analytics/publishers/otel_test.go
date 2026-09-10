@@ -56,7 +56,7 @@ import (
 func testOTelConfig(endpoint string) config.OTelPublisherConfig {
 	return config.OTelPublisherConfig{
 		Endpoint:      endpoint,
-		ServiceName:   "policy-engine",
+		ServiceName:   "gateway-runtime",
 		BatchSize:     100,
 		FlushInterval: 50 * time.Millisecond,
 		QueueCapacity: 100,
@@ -562,7 +562,7 @@ func TestExportPayloadAndHeaders(t *testing.T) {
 		}
 	}
 	for key, want := range map[string]string{
-		"service.name":                "policy-engine",
+		"service.name":                "gateway-runtime",
 		"service.version":             "1.2.0",
 		"deployment.environment.name": "test",
 	} {

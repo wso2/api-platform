@@ -145,7 +145,7 @@ endpoint = "http://otel-collector:4318/v1/logs"
 	require.NoError(t, err)
 
 	o := cfg.Analytics.Publishers.OTel
-	assert.Equal(t, "policy-engine", o.ServiceName, "default service_name")
+	assert.Equal(t, "gateway-runtime", o.ServiceName, "default service_name")
 	assert.Equal(t, 100, o.BatchSize, "default batch_size")
 	assert.Equal(t, 5*time.Second, o.FlushInterval, "default flush_interval")
 	assert.Equal(t, 10000, o.QueueCapacity, "default queue_capacity")
