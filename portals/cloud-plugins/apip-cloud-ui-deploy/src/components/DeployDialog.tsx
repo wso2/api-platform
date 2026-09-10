@@ -120,10 +120,18 @@ const DeployDialog: FC<DeployDialogProps> = ({
         )
       : builds;
   const selectedBuildId = buildId || initialBuildId || availableBuilds[0]?.buildId || '';
-  // A gateway the API is already deployed on must stay in the set: the
-  // environment runs one build, so this deploy has to reach it too. They are
-  // shown ticked and locked, and undeploying is the way to drop one.
-  const alreadyDeployed = environment.gateways.filter((gateway) => !!gateway.deploymentId);
+  // A gateway the API is LIVE on must stay in the set: the environment runs one
+  // build, so this deploy has to reach it too. They are shown ticked and locked,
+  // and undeploying is the way to drop one.
+  //
+  // Keyed on the status, not on deploymentId: a stopped gateway keeps its
+  // deployment id — that is how it is identified — so testing for the id locked
+  // gateways that were undeployed, leaving no way to deploy or promote without
+  // them. The whole point of stopping one is to drop it from the set.
+  const liveStatuses = ['DEPLOYED', 'DEPLOYING', 'FAILED'];
+  const alreadyDeployed = environment.gateways.filter((gateway) =>
+    liveStatuses.includes(gateway.status)
+  );
   const lockedIds = alreadyDeployed.map((gateway) => gateway.id);
 
   // Until the user touches the list, the selection is the already-deployed
