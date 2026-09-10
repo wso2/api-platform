@@ -1739,3 +1739,130 @@ func TestAnyScalarNumberKinds(t *testing.T) {
 		t.Error("an unsupported type produced an attribute")
 	}
 }
+
+// --- Zero is a value, not an absence -----------------------------------------
+//
+// A record has one way to say "this attribute does not apply to this request":
+// leave it out. So a measured zero must be emitted, or "the guardrail blocked
+// this request so it produced no output tokens" and "this is a REST call with no
+// tokens at all" become the same record to a consumer — and every avg() over the
+// field drops the zeros from its denominator instead of counting them.
+
+// The wire shape is what actually carries the distinction. omitempty on a
+// pointer field tests only for nil, which is why a *string holding "0" and a
+// *bool holding false still marshal. Asserted here because a later refactor to
+// non-pointer fields would silently restore the bug this test exists to prevent.
+func TestZeroValuedAttributesReachTheWire(t *testing.T) {
+	attrs := newOTelAttrs()
+	attrs.i64("zero.int", 0)
+	attrs.f64("zero.double", 0)
+	attrs.b("zero.bool", false)
+
+	encoded, err := json.Marshal(attrs.list())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{
+		`{"key":"zero.int","value":{"intValue":"0"}}`,
+		`{"key":"zero.double","value":{"doubleValue":0}}`,
+		`{"key":"zero.bool","value":{"boolValue":false}}`,
+	} {
+		if !strings.Contains(string(encoded), want) {
+			t.Errorf("missing %s in %s", want, encoded)
+		}
+	}
+}
+
+// A guardrail-blocked completion: the prompt was tokenized, nothing was
+// generated, nothing was billed. Reporting no output tokens is the whole point
+// of the record.
+func TestBuildRecordGenAIZeroUsageIsReported(t *testing.T) {
+	event := restEvent()
+	event.API.APIType = "LlmProxy"
+	event.Operation.APIResourceTemplate = "/ai/chat/completions"
+	event.Properties["aiMetadata"] = dto.AIMetadata{
+		Model:      "claude-opus-4",
+		VendorName: "anthropic",
+		LLMCost:    float64(0),
+	}
+	event.Properties["aiTokenUsage"] = dto.AITokenUsage{PromptToken: 1841, CompletionToken: 0, TotalToken: 1841}
+	event.Properties[constants.GuardrailHitMetadataKey] = true
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string]interface{}{
+		"gen_ai.usage.input_tokens":      "1841",
+		"gen_ai.usage.output_tokens":     "0",
+		"wso2.gen_ai.usage.total_tokens": "1841",
+		"wso2.gen_ai.cost.total":         float64(0),
+		"wso2.guardrail.hit":             true,
+	} {
+		actual, present := got[key]
+		if !present {
+			t.Errorf("%s is absent; a measured zero must be emitted, not omitted", key)
+			continue
+		}
+		if actual != want {
+			t.Errorf("%s = %v (%T), want %v (%T)", key, actual, actual, want, want)
+		}
+	}
+}
+
+// A GET has no request body and a cache miss is not a cache hit. Both are
+// measurements the record must carry: without them "empty body" is
+// indistinguishable from "body size not measured", and a cache miss from an API
+// with no cache filter at all — which is what makes a hit ratio uncomputable.
+func TestBuildRecordZeroSizesAndFalseFlagsAreReported(t *testing.T) {
+	event := restEvent()
+	event.Properties["requestSize"] = uint64(0)
+	event.Properties["responseSize"] = uint64(0)
+	event.Target.ResponseCacheHit = false
+	event.Latencies = &dto.Latencies{ResponseLatency: 4, BackendLatency: 0, Duration: 4}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string]interface{}{
+		"http.request.body.size":  "0",
+		"http.response.body.size": "0",
+		"wso2.cache.hit":          false,
+		// Served from cache or sub-millisecond: zero backend time, measured.
+		"wso2.latency.backend_ms":            "0",
+		"wso2.latency.request_mediation_ms":  "0",
+		"wso2.latency.response_mediation_ms": "0",
+	} {
+		actual, present := got[key]
+		if !present {
+			t.Errorf("%s is absent; a measured zero must be emitted, not omitted", key)
+			continue
+		}
+		if actual != want {
+			t.Errorf("%s = %v (%T), want %v (%T)", key, actual, actual, want, want)
+		}
+	}
+}
+
+// The exceptions. For these four, 0 is a sentinel rather than a measurement —
+// there is no HTTP status 0, no TCP port 0, no error code 0 — so they keep
+// suppressing it via i64NonZero.
+func TestBuildRecordSentinelZerosStayOmitted(t *testing.T) {
+	event := restEvent()
+	event.ProxyResponseCode = 0
+	event.Target = &dto.Target{TargetResponseCode: 0, Destination: "backend:0/pet/1"}
+	event.Error = &dto.Error{ErrorCode: 0, ErrorMessage: dto.OtherUnclassified}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for _, key := range []string{
+		"http.response.status_code",
+		"server.port",
+		"wso2.upstream.response.status_code",
+		"wso2.error.code",
+	} {
+		if actual, present := got[key]; present {
+			t.Errorf("%s = %v; 0 is a sentinel for this attribute and must be omitted", key, actual)
+		}
+	}
+}

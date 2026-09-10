@@ -676,7 +676,7 @@ func gzipBytes(body []byte) ([]byte, error) {
 // MCP conventions (both Development-stability, and now maintained in
 // open-telemetry/semantic-conventions-genai) for AI fields, and the wso2.*
 // namespace where OpenTelemetry defines nothing — API-product concepts and cost,
-// chiefly. See gateway/spec/analytics-otel-attribute-mapping.md.
+// chiefly.
 func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 	attrs := newOTelAttrs()
 	attrs.str("event.name", otelEventName)
@@ -693,7 +693,7 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 		route = event.API.APIContext
 	}
 	attrs.str("url.path", route)
-	attrs.i64("http.response.status_code", int64(event.ProxyResponseCode))
+	attrs.i64NonZero("http.response.status_code", int64(event.ProxyResponseCode))
 	attrs.str("client.address", event.UserIP)
 	attrs.str("user_agent.original", event.UserAgentHeader)
 	attrs.anyInt("http.request.body.size", event.Properties["requestSize"])
@@ -751,13 +751,13 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 			if host, port, err := net.SplitHostPort(authority); err == nil {
 				attrs.str("server.address", host)
 				if p, convErr := strconv.Atoi(port); convErr == nil {
-					attrs.i64("server.port", int64(p))
+					attrs.i64NonZero("server.port", int64(p))
 				}
 			} else {
 				attrs.str("server.address", authority)
 			}
 		}
-		attrs.i64(ns("upstream.response.status_code"), int64(event.Target.TargetResponseCode))
+		attrs.i64NonZero(ns("upstream.response.status_code"), int64(event.Target.TargetResponseCode))
 		attrs.str(ns("upstream.response.detail"), event.Target.ResponseCodeDetail)
 		attrs.b(ns("cache.hit"), event.Target.ResponseCacheHit)
 	}
@@ -767,7 +767,7 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 	// Moesif consumers read from errorType.
 	attrs.str("error.type", event.ErrorType)
 	if event.Error != nil {
-		attrs.i64(ns("error.code"), int64(event.Error.ErrorCode))
+		attrs.i64NonZero(ns("error.code"), int64(event.Error.ErrorCode))
 		attrs.str(ns("error.message"), string(event.Error.ErrorMessage))
 	}
 
@@ -1146,8 +1146,13 @@ type otelArrayValue struct {
 	Values []otelAnyValue `json:"values"`
 }
 
-// otelAttrs accumulates attributes, skipping empty ones so a record carries only
-// what the event populated.
+// otelAttrs accumulates the attributes of one record.
+//
+// A string attribute is omitted when empty: OpenTelemetry discourages
+// empty-string attributes and nothing in this mapping means anything by "".
+//
+// Zero and false values are preserved as valid measurements; only values 
+// explicitly marked with `i64NonZero` are omitted when zero means “no value.”
 type otelAttrs struct {
 	kvs []otelKeyValue
 }
@@ -1156,6 +1161,8 @@ func newOTelAttrs() *otelAttrs {
 	return &otelAttrs{kvs: make([]otelKeyValue, 0, 48)}
 }
 
+// str sets a string attribute, omitting it when empty. Deliberately unlike
+// i64/f64/b below — see the type comment.
 func (a *otelAttrs) str(key, value string) *otelAttrs {
 	if value == "" {
 		return a
@@ -1193,28 +1200,36 @@ func (a *otelAttrs) strIfEmpty(key, value string) *otelAttrs {
 	return a.str(key, value)
 }
 
+// i64 sets an integer attribute, including when the value is 0.
 func (a *otelAttrs) i64(key string, value int64) *otelAttrs {
-	if value == 0 {
-		return a
-	}
 	v := strconv.FormatInt(value, 10)
 	a.kvs = append(a.kvs, otelKeyValue{Key: key, Value: otelAnyValue{IntValue: &v}})
 	return a
 }
 
-func (a *otelAttrs) f64(key string, value float64) *otelAttrs {
+// i64NonZero sets an integer attribute only when it is non-zero, for the fields
+// where 0 is a sentinel for "no value" rather than a measurement: there is no
+// HTTP status 0, no TCP port 0, and no error code 0. Every other integer
+// attribute uses i64 so a real zero survives.
+func (a *otelAttrs) i64NonZero(key string, value int64) *otelAttrs {
 	if value == 0 {
 		return a
 	}
+	return a.i64(key, value)
+}
+
+// f64 sets a floating-point attribute, including when the value is 0. A zero
+// cost — a free model, a cached completion, a blocked request — is a fact.
+func (a *otelAttrs) f64(key string, value float64) *otelAttrs {
 	v := value
 	a.kvs = append(a.kvs, otelKeyValue{Key: key, Value: otelAnyValue{DoubleValue: &v}})
 	return a
 }
 
+// b sets a boolean attribute, including when false. A false cache.hit is a cache
+// miss; omitting it would make a miss indistinguishable from an API with no cache
+// filter at all, which is exactly what makes a hit-ratio query unanswerable.
 func (a *otelAttrs) b(key string, value bool) *otelAttrs {
-	if !value {
-		return a
-	}
 	v := value
 	a.kvs = append(a.kvs, otelKeyValue{Key: key, Value: otelAnyValue{BoolValue: &v}})
 	return a
