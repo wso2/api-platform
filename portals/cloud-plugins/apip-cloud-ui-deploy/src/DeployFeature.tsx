@@ -184,8 +184,8 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
           buildId: gateway.buildId,
           fromEnvironment: index > 0 ? environments[index - 1]?.name : undefined,
         }),
-      `Redeploying ${gateway.name}.`,
-      `Unable to redeploy ${gateway.name}.`
+      `Retrying ${gateway.name}.`,
+      `Unable to retry ${gateway.name}.`
     );
   };
 
