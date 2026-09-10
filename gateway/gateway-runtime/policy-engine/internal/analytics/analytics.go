@@ -26,6 +26,7 @@ import (
 	"maps"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -618,6 +619,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// requestSize is common to all API kinds; mirror responseSize using the Envoy access-log byte count.
 	if request != nil {
 		event.Properties["requestSize"] = request.GetRequestBodyBytes()
+		
+		// Store the concrete request path (without query parameters), separate from the route template.
+		if requestPath, _, _ := strings.Cut(request.GetPath(), "?"); requestPath != "" {
+			event.Properties[constants.RequestPathPropertyKey] = requestPath
+		}
 	}
 
 	//Adding request and response headers for the analytics event

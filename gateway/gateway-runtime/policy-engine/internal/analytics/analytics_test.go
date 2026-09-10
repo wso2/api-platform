@@ -1312,3 +1312,46 @@ func createLogEntryWithStreamID(streamID string) *v3.HTTPAccessLogEntry {
 		},
 	}
 }
+
+// The concrete request path is the only record of what a client actually asked
+// for: the route template groups requests for an operation, and for a request
+// that matched no route there is no template at all. The query string is cut off
+// here rather than at each publisher, because an API key or token in a query
+// parameter is an ordinary pattern in this product and publishers forward
+// analytics to third parties.
+func TestPrepareAnalyticEvent_RequestPathDropsQueryString(t *testing.T) {
+	for name, tc := range map[string]struct {
+		path string
+		want interface{} // nil = the property must be absent
+	}{
+		"no query":              {"/petstore/pet/12345", "/petstore/pet/12345"},
+		"single param":          {"/petstore/pet/12345?apikey=secret", "/petstore/pet/12345"},
+		"multiple params":       {"/search?q=cat&token=abc123&page=2", "/search"},
+		"empty query":           {"/petstore/pet/12345?", "/petstore/pet/12345"},
+		"query only":            {"?apikey=secret", nil},
+		"root":                  {"/", "/"},
+		"absent path":           {"", nil},
+		"encoded question mark": {"/pet/a%3Fb", "/pet/a%3Fb"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logEntry := createLogEntryWithMetadata(map[string]string{})
+			logEntry.Request.Path = tc.path
+
+			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(logEntry)
+			actual, present := event.Properties[constants.RequestPathPropertyKey]
+
+			if tc.want == nil {
+				if present {
+					t.Errorf("%s = %v; want absent", constants.RequestPathPropertyKey, actual)
+				}
+				return
+			}
+			if !present {
+				t.Fatalf("%s is missing for path %q", constants.RequestPathPropertyKey, tc.path)
+			}
+			if actual != tc.want {
+				t.Errorf("%s = %v, want %v", constants.RequestPathPropertyKey, actual, tc.want)
+			}
+		})
+	}
+}

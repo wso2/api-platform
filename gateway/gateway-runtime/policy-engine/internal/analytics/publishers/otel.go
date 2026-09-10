@@ -681,8 +681,7 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 	attrs := newOTelAttrs()
 	attrs.str("event.name", otelEventName)
 
-	// HTTP. APIResourceTemplate already carries the full path including the API
-	// context; the context is only a fallback when there is no template.
+    // Keep http.route as the route template and url.path as the literal client-requested path.
 	route := ""
 	if event.Operation != nil {
 		route = event.Operation.APIResourceTemplate
@@ -692,7 +691,8 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 	if route == "" && event.API != nil {
 		route = event.API.APIContext
 	}
-	attrs.str("url.path", route)
+	// Query strings are omitted to avoid exposing tokens or API keys to third-party analytics.
+	attrs.anyStr("url.path", event.Properties[constants.RequestPathPropertyKey])
 	attrs.i64NonZero("http.response.status_code", int64(event.ProxyResponseCode))
 	attrs.str("client.address", event.UserIP)
 	attrs.str("user_agent.original", event.UserAgentHeader)
@@ -1151,7 +1151,7 @@ type otelArrayValue struct {
 // A string attribute is omitted when empty: OpenTelemetry discourages
 // empty-string attributes and nothing in this mapping means anything by "".
 //
-// Zero and false values are preserved as valid measurements; only values 
+// Zero and false values are preserved as valid measurements; only values
 // explicitly marked with `i64NonZero` are omitted when zero means “no value.”
 type otelAttrs struct {
 	kvs []otelKeyValue

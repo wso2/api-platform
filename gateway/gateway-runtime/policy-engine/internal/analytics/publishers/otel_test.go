@@ -94,8 +94,11 @@ func restEvent() *dto.Event {
 		Properties: map[string]interface{}{
 			dto.PropKeyAuthUserID: "user-1",
 			"requestSize":         uint64(12),
-			"responseSize":        uint64(463),
-			"responseContentType": "application/json",
+			// The concrete path, as analytics.go now supplies it: the route
+			// template is "/petstore/pet/{petId}", this is one request against it.
+			constants.RequestPathPropertyKey: "/petstore/pet/12345",
+			"responseSize":                   uint64(463),
+			"responseContentType":            "application/json",
 		},
 	}
 }
@@ -153,10 +156,11 @@ func TestBuildRecordRestAPI(t *testing.T) {
 
 	got := attrMap(t, record)
 	want := map[string]interface{}{
-		"event.name":                         "wso2.api.transaction",
-		"http.request.method":                "GET",
-		"http.route":                         "/petstore/pet/{petId}",
-		"url.path":                           "/petstore/pet/{petId}",
+		"event.name":          "wso2.api.transaction",
+		"http.request.method": "GET",
+		"http.route":          "/petstore/pet/{petId}",
+		// The template groups requests; the path identifies one. Never equal.
+		"url.path":                           "/petstore/pet/12345",
 		"http.response.status_code":          "200",
 		"client.address":                     "10.0.0.5",
 		"user_agent.original":                "curl/8.7.1",
@@ -221,22 +225,38 @@ func TestBuildRecordRestAPI(t *testing.T) {
 func TestBuildRecordDoesNotDuplicateContext(t *testing.T) {
 	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
 	got := attrMap(t, o.buildRecord(restEvent()))
-	if got["url.path"] != "/petstore/pet/{petId}" {
-		t.Errorf("url.path = %v, want /petstore/pet/{petId}", got["url.path"])
+	if got["http.route"] != "/petstore/pet/{petId}" {
+		t.Errorf("http.route = %v, want /petstore/pet/{petId}", got["http.route"])
 	}
 }
 
-// With no resource template the API context is the fallback path.
-func TestBuildRecordFallsBackToContext(t *testing.T) {
+// No resource template means no route to report — but the client still asked for
+// something, and url.path is the only record of what. This is the request that
+// most needs a path: nothing matched, so triage has the template nowhere else.
+// url.path deliberately does NOT fall back to the API context, which would put a
+// value in the attribute that was never the requested path.
+func TestBuildRecordWithNoRouteKeepsConcretePath(t *testing.T) {
 	event := restEvent()
 	event.Operation.APIResourceTemplate = ""
 	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
 	got := attrMap(t, o.buildRecord(event))
-	if got["url.path"] != "/petstore" {
-		t.Errorf("url.path = %v, want /petstore", got["url.path"])
+	if got["url.path"] != "/petstore/pet/12345" {
+		t.Errorf("url.path = %v, want /petstore/pet/12345", got["url.path"])
 	}
 	if _, present := got["http.route"]; present {
 		t.Error("http.route should be absent when there is no resource template")
+	}
+}
+
+// Absent rather than guessed: with no path on the event there is nothing
+// truthful to put in url.path, and the API context is not the requested path.
+func TestBuildRecordOmitsURLPathWhenUnavailable(t *testing.T) {
+	event := restEvent()
+	delete(event.Properties, constants.RequestPathPropertyKey)
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+	if actual, present := got["url.path"]; present {
+		t.Errorf("url.path = %v; it must be absent, not fall back to the context", actual)
 	}
 }
 
