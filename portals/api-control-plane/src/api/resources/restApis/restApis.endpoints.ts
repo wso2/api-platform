@@ -135,3 +135,48 @@ export const importOpenApi = async (body: FormData, options?: RequestOptions): P
     operationName: 'ImportOpenAPI',
   });
 };
+
+/** The parsed response from `GET /rest-apis/{id}/openapi`. Content is always YAML. */
+export type OpenAPIContent = {
+  content: string;
+};
+
+/** Fetches the raw API definition spec. Resolves to `undefined` when no spec exists (404). */
+export const getRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<OpenAPIContent> => {
+  return http.get<OpenAPIContent>(`${resourcePath(restApiId)}/openapi`, {
+    ...options,
+    operationName: 'GetRESTAPISpec',
+  });
+};
+
+/**
+ * Replaces (or creates) the API definition spec.
+ *
+ * The body must be a `FormData` with a single `file` field holding the spec file.
+ * The browser sets the Content-Type header automatically — do not set it manually.
+ */
+export const putRestApiOpenApi = async (
+  restApiId: string,
+  body: FormData,
+  options?: RequestOptions,
+): Promise<void> => {
+  return http.put<void>(`${resourcePath(restApiId)}/openapi`, body, {
+    ...options,
+    operationName: 'UpdateRESTAPISpec',
+  });
+};
+
+/** Removes the API definition spec. */
+export const deleteRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<void> => {
+  return http.delete<void>(`${resourcePath(restApiId)}/openapi`, {
+    ...options,
+    operationName: 'DeleteRESTAPISpec',
+  });
+};
+

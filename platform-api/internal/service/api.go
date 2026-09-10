@@ -260,6 +260,13 @@ func (s *APIService) HandleExistsCheck(orgUUID string) func(string) bool {
 	}
 }
 
+// GetArtifactUUID resolves the internal artifact UUID for a REST API handle.
+// Used by handlers that need the artifact UUID for document lookups without
+// fetching the full API object.
+func (s *APIService) GetArtifactUUID(handle, orgUUID string) (string, error) {
+	return s.getAPIUUIDByHandle(handle, orgUUID)
+}
+
 // getAPIUUIDByHandle retrieves the internal UUID for an API by its handle.
 // This is a lightweight operation that only fetches minimal metadata.
 func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) {

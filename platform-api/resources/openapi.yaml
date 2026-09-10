@@ -560,6 +560,97 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
 
+  /rest-apis/{restApiId}/openapi:
+    get:
+      summary: Get API definition
+      description: |
+        Returns the raw OpenAPI spec stored for this API as YAML. Returns 404 if no definition
+        has been uploaded yet. The `content` field carries the spec text.
+      operationId: GetRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '200':
+          description: API definition retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update API definition
+      description: |
+        Replaces (or creates) the OpenAPI/Swagger spec stored for this API. Accepts a
+        multipart/form-data upload with a single `file` field containing the spec.
+      operationId: UpdateRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:update
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+      responses:
+        '204':
+          description: API definition updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete API definition
+      description: |
+        Removes the OpenAPI/Swagger spec stored for this API. Returns 404 if no definition exists.
+      operationId: DeleteRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:delete
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '204':
+          description: API definition deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{restApiId}/gateways:
     get:
       summary: Get gateways for REST API
@@ -6283,6 +6374,13 @@ components:
         upstream:
           type: string
           description: Upstream backend URL (maps to upstream.main.url in the created API)
+
+    OpenAPIContent:
+      type: object
+      properties:
+        content:
+          type: string
+          description: Raw spec content (always YAML)
 
     TimeUnit:
       type: string

@@ -29,7 +29,6 @@ type Document struct {
 	DisplayName      string
 	FileName         string
 	Content          []byte
-	DataVersion      string
 	CreatedBy        string
 	UpdatedBy        string
 }

@@ -380,6 +380,7 @@ type CustomPolicyRepository interface {
 type DocumentRepository interface {
 	CreateDocument(doc *model.Document) error
 	GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error)
+	GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error)
 	UpsertDocument(doc *model.Document) error
 	DeleteDocument(artifactUUID, handle, orgUUID string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)

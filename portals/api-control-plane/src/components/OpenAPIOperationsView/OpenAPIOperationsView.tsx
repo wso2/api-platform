@@ -55,25 +55,25 @@ const methodTone = (theme: Theme, method: string) => {
   return color === 'default' ? theme.palette.text.primary : theme.palette[color].main;
 };
 
-export type SwaggerOperationsViewProps = {
+export type OpenAPIOperationsViewProps = {
   operations: Operation[];
   isOperationDisabled?: (operation: Operation, index: number) => boolean;
   onDelete?: (index: number) => void;
   showDelete?: boolean;
 };
 
-/** Compact Swagger-style operation summary shared by pages that do not need Swagger's detail UI. */
-export function SwaggerOperationsView({
+/** Compact operation summary shared by pages that do not need the full spec viewer UI. */
+export function OpenAPIOperationsView({
   operations,
   isOperationDisabled,
   onDelete,
   showDelete = false,
-}: SwaggerOperationsViewProps) {
+}: OpenAPIOperationsViewProps) {
   if (operations.length === 0) {
     return (
       <Typography color="text.secondary" variant="body2">
         <FormattedMessage
-          id="apiControlPlane.components.SwaggerOperationsView.empty"
+          id="apiControlPlane.components.OpenAPIOperationsView.empty"
           defaultMessage="No operations available."
         />
       </Typography>

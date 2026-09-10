@@ -343,16 +343,22 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if int64(len(data)) > importOpenAPIMaxBytes {
 		return apperror.ValidationFailed.New("spec file exceeds the maximum allowed size")
 	}
-	specContent := string(data)
-	specFileName := filepath.Base(header.Filename)
+	specFileName := normalizeSpecFileName(header.Filename)
 
 	// Parse the spec once; extract operations from the parsed root.
-	specRoot, err := parseSpecRoot(specContent)
+	specRoot, err := parseSpecRoot(string(data))
 	if err != nil {
 		h.slogger.Error("Failed to parse OpenAPI spec", "error", err)
 		return apperror.ValidationFailed.New("invalid OpenAPI specification")
 	}
 	operations := extractOperationsFromRoot(specRoot)
+
+	// Always persist as YAML regardless of the uploaded format.
+	yamlBytes, err := yaml.Marshal(specRoot)
+	if err != nil {
+		return serviceError(err, "failed to re-encode spec as YAML")
+	}
+	specContent := string(yamlBytes)
 
 	// Build upstream.
 	upstreamConfig := api.Upstream{
@@ -386,10 +392,8 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 
 	// Persist the raw spec as a DEFINITION document.
 	if h.documentRepo != nil && artifactUUID != "" {
-		handle, handleErr := utils.GenerateHandle("OpenAPI Definition", func(candidate string) bool {
-			exists, _ := h.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, candidate)
-			return exists
-		})
+		// Freshly created artifact has no documents yet, so no collision is possible.
+		handle, handleErr := utils.GenerateHandle("OpenAPI Definition", nil)
 		if handleErr != nil {
 			h.slogger.Error("Failed to generate document handle", "apiId", artifactUUID, "error", handleErr)
 		} else {
@@ -401,7 +405,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 				DisplayName:      "OpenAPI Definition",
 				FileName:         specFileName,
 				Content:          []byte(specContent),
-				DataVersion:      "1.0",
 				CreatedBy:        createdBy,
 			}
 			if docErr := h.documentRepo.CreateDocument(doc); docErr != nil {
@@ -414,6 +417,15 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
 	httputil.WriteJSON(w, http.StatusCreated, apiResponse)
 	return nil
+}
+
+// normalizeSpecFileName ensures the stored filename always carries a .yaml extension.
+func normalizeSpecFileName(name string) string {
+	base := filepath.Base(name)
+	if strings.EqualFold(filepath.Ext(base), ".json") {
+		return strings.TrimSuffix(base, filepath.Ext(base)) + ".yaml"
+	}
+	return base
 }
 
 // parseSpecRoot deserialises a JSON or YAML OpenAPI spec string into a raw map.
@@ -479,6 +491,168 @@ func extractOperationsFromRoot(root map[string]interface{}) []api.Operation {
 	return ops
 }
 
+// GetOpenAPISpec handles GET /rest-apis/{restApiId}/openapi.
+// Returns the raw API definition spec stored for this API, or 404 if none has been uploaded.
+func (h *APIHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	restApiId := r.PathValue("restApiId")
+	if restApiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to resolve API %s in org %s", restApiId, orgId))
+	}
+
+	doc, err := h.documentRepo.GetDocumentByArtifactAndType(artifactUUID, model.DocumentTypeDefinition, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to fetch openapi spec for API %s", restApiId))
+	}
+	if doc == nil {
+		return apperror.NotFound.New("API definition not found")
+	}
+
+	type openAPIResponse struct {
+		Content string `json:"content"`
+	}
+	httputil.WriteJSON(w, http.StatusOK, openAPIResponse{Content: string(doc.Content)})
+	return nil
+}
+
+// PutOpenAPISpec handles PUT /rest-apis/{restApiId}/openapi.
+// Replaces (or creates) the API definition spec for this API.
+func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	restApiId := r.PathValue("restApiId")
+	if restApiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, importOpenAPIMaxBytes)
+	if err := r.ParseMultipartForm(importOpenAPIMaxBytes); err != nil {
+		return apperror.ValidationFailed.New("failed to parse multipart form: request too large or malformed")
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		return apperror.ValidationFailed.New("spec file is required (field: file)")
+	}
+	defer file.Close()
+
+	specContent, err := io.ReadAll(io.LimitReader(file, importOpenAPIMaxBytes+1))
+	if err != nil {
+		return apperror.ValidationFailed.New("failed to read spec file")
+	}
+	if int64(len(specContent)) > importOpenAPIMaxBytes {
+		return apperror.ValidationFailed.New("spec file exceeds maximum allowed size (5 MiB)")
+	}
+
+	specRoot, err := parseSpecRoot(string(specContent))
+	if err != nil || specRoot == nil {
+		return apperror.ValidationFailed.New("uploaded file is not a valid OpenAPI/Swagger spec (must be JSON or YAML)")
+	}
+
+	// Always persist as YAML regardless of the uploaded format.
+	yamlBytes, err := yaml.Marshal(specRoot)
+	if err != nil {
+		return serviceError(err, "failed to re-encode spec as YAML")
+	}
+	specContent = yamlBytes
+
+	updatedBy, err := resolveActorErr(r, h.identity, "update API openapi spec")
+	if err != nil {
+		return err
+	}
+
+	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to resolve API %s in org %s", restApiId, orgId))
+	}
+
+	specFileName := normalizeSpecFileName(header.Filename)
+
+	// Re-use the existing document's handle so we update in place rather than
+	// creating a second DEFINITION document. If no document exists yet, generate
+	// a fresh handle the same way ImportOpenAPI does.
+	existing, err := h.documentRepo.GetDocumentByArtifactAndType(artifactUUID, model.DocumentTypeDefinition, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to check existing openapi spec for API %s", restApiId))
+	}
+	var docHandle string
+	if existing != nil {
+		docHandle = existing.Handle
+	} else {
+		docHandle, err = utils.GenerateHandle("OpenAPI Definition", func(candidate string) bool {
+			exists, _ := h.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, candidate)
+			return exists
+		})
+		if err != nil {
+			return serviceError(err, fmt.Sprintf("failed to generate document handle for API %s", restApiId))
+		}
+	}
+
+	doc := &model.Document{
+		ArtifactUUID:     artifactUUID,
+		OrganizationUUID: orgId,
+		Type:             model.DocumentTypeDefinition,
+		Handle:           docHandle,
+		DisplayName:      "OpenAPI Definition",
+		FileName:         specFileName,
+		Content:          specContent,
+		CreatedBy:        updatedBy,
+		UpdatedBy:        updatedBy,
+	}
+	if err := h.documentRepo.UpsertDocument(doc); err != nil {
+		return serviceError(err, fmt.Sprintf("failed to upsert openapi spec for API %s", restApiId))
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// DeleteOpenAPISpec handles DELETE /rest-apis/{restApiId}/openapi.
+// Removes the API definition spec stored for this API.
+func (h *APIHandler) DeleteOpenAPISpec(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	restApiId := r.PathValue("restApiId")
+	if restApiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to resolve API %s in org %s", restApiId, orgId))
+	}
+
+	doc, err := h.documentRepo.GetDocumentByArtifactAndType(artifactUUID, model.DocumentTypeDefinition, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to check openapi spec for API %s", restApiId))
+	}
+	if doc == nil {
+		return apperror.NotFound.New("API definition not found")
+	}
+
+	if err := h.documentRepo.DeleteDocument(artifactUUID, doc.Handle, orgId); err != nil {
+		return serviceError(err, fmt.Sprintf("failed to delete openapi spec for API %s", restApiId))
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering REST API routes")
@@ -491,6 +665,9 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("DELETE "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.DeleteAPI))
 	mux.HandleFunc("GET "+base+"/{restApiId}/gateways", middleware.MapErrors(h.slogger, h.GetAPIGateways))
 	mux.HandleFunc("POST "+base+"/{restApiId}/gateways", middleware.MapErrors(h.slogger, h.AddGatewaysToAPI))
+	mux.HandleFunc("GET "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.GetOpenAPISpec))
+	mux.HandleFunc("PUT "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.PutOpenAPISpec))
+	mux.HandleFunc("DELETE "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.DeleteOpenAPISpec))
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {

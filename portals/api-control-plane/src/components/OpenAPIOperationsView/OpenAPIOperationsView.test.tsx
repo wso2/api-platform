@@ -19,12 +19,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders, screen } from '@/test/utils';
-import { SwaggerOperationsView } from './SwaggerOperationsView';
+import { OpenAPIOperationsView } from './OpenAPIOperationsView';
 
-describe('SwaggerOperationsView', () => {
+describe('OpenAPIOperationsView', () => {
   it('renders method, path, and available descriptions from API operations', () => {
     renderWithProviders(
-      <SwaggerOperationsView
+      <OpenAPIOperationsView
         operations={[
           {
             name: 'listBooks',
@@ -43,14 +43,14 @@ describe('SwaggerOperationsView', () => {
   });
 
   it('renders an empty state when the API has no operations', () => {
-    renderWithProviders(<SwaggerOperationsView operations={[]} />);
+    renderWithProviders(<OpenAPIOperationsView operations={[]} />);
     expect(screen.getByText('No operations available.')).toBeInTheDocument();
   });
 
   it('allows an editable view to delete an operation', async () => {
     const onDelete = vi.fn();
     const { user } = renderWithProviders(
-      <SwaggerOperationsView
+      <OpenAPIOperationsView
         onDelete={onDelete}
         operations={[{ name: 'getBook', request: { method: 'GET', path: '/books/{id}' } }]}
         showDelete
@@ -63,12 +63,12 @@ describe('SwaggerOperationsView', () => {
 
   it('only shows delete controls when requested and disables staged deletions', () => {
     const operation = { name: 'getBook', request: { method: 'GET' as const, path: '/books' } };
-    const { rerender } = renderWithProviders(<SwaggerOperationsView operations={[operation]} />);
+    const { rerender } = renderWithProviders(<OpenAPIOperationsView operations={[operation]} />);
 
     expect(screen.queryByRole('button', { name: 'Delete GET /books' })).not.toBeInTheDocument();
 
     rerender(
-      <SwaggerOperationsView
+      <OpenAPIOperationsView
         isOperationDisabled={() => true}
         onDelete={vi.fn()}
         operations={[operation]}

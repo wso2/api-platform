@@ -30,7 +30,9 @@ import { useApiScope } from '../../core/scope';
 import {
   createRestApi,
   deleteRestApi,
+  deleteRestApiOpenApi,
   importOpenApi,
+  putRestApiOpenApi,
   updateRestApi,
   type CreateRestApiBody,
   type ListRestApisQuery,
@@ -378,3 +380,62 @@ export const useRestApiOptions = (filters: RestApiListFilters = {}) => {
       })),
   });
 };
+
+/**
+ * The stored OpenAPI spec for the active API.
+ *
+ * `isError` with `error.status === 404` means the API exists but has no uploaded
+ * spec yet — the definition panel renders its empty state in that case.
+ * Any other error is an unexpected failure.
+ */
+export const useRestApiOpenApi = (
+  restApiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...restApiQueries.openApi(org!, restApiId!),
+    enabled: Boolean(org && restApiId),
+  });
+};
+
+/** Replaces (or creates) the API definition spec via a multipart file upload. */
+export const usePutRestApiOpenApi = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+  const queryClient = useQueryClient();
+  const { org } = useApiScope(overrides);
+
+  return useMutation<void, ApiError, { restApiId: string; formData: FormData }>({
+    mutationFn: ({ restApiId, formData }) => putRestApiOpenApi(restApiId, formData, { orgId }),
+    onSuccess: (_result, { restApiId }) => {
+      if (org) {
+        void queryClient.invalidateQueries({
+          queryKey: restApiKeys.children(org, restApiId, 'openapi'),
+        });
+      }
+    },
+  });
+};
+
+/** Removes the API definition spec for this API. */
+export const useDeleteRestApiOpenApi = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+  const queryClient = useQueryClient();
+  const { org } = useApiScope(overrides);
+
+  return useMutation<void, ApiError, { restApiId: string }>({
+    mutationFn: ({ restApiId }) => deleteRestApiOpenApi(restApiId, { orgId }),
+    onSuccess: (_result, { restApiId }) => {
+      if (org) {
+        // Remove rather than invalidate so the cache is wiped immediately —
+        // invalidate keeps stale previous data which prevents the component
+        // from transitioning to the empty state until the refetch resolves.
+        queryClient.removeQueries({
+          queryKey: restApiKeys.children(org, restApiId, 'openapi'),
+        });
+      }
+    },
+  });
+};
+

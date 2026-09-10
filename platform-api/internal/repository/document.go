@@ -45,14 +45,14 @@ func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	query := r.db.Rebind(`
 		INSERT INTO documents
-			(uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content, data_version, created_by, created_at, updated_by, updated_at)
+			(uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content, created_by, created_at, updated_by, updated_at)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	_, err := r.db.Exec(query,
 		doc.ID, doc.ArtifactUUID, doc.OrganizationUUID, doc.Type,
 		doc.Handle, doc.DisplayName, doc.FileName, doc.Content,
-		doc.DataVersion, doc.CreatedBy, now, doc.CreatedBy, now,
+		doc.CreatedBy, now, doc.CreatedBy, now,
 	)
 	if err != nil {
 		return fmt.Errorf("create document: %w", err)
@@ -64,7 +64,7 @@ func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
 func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error) {
 	query := r.db.Rebind(`
 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
-		       COALESCE(file_name, ''), content, data_version,
+		       COALESCE(file_name, ''), content,
 		       COALESCE(created_by, ''), COALESCE(updated_by, '')
 		FROM documents
 		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
@@ -74,12 +74,38 @@ func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgU
 	if err := row.Scan(
 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.Content,
-		&doc.DataVersion, &doc.CreatedBy, &doc.UpdatedBy,
+		&doc.CreatedBy, &doc.UpdatedBy,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get document by artifact and handle: %w", err)
+	}
+	return doc, nil
+}
+
+// GetDocumentByArtifactAndType retrieves the single document of a given type for an artifact.
+// Returns nil (no error) when no matching row exists.
+func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error) {
+	query := r.db.Rebind(`
+		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
+		       COALESCE(file_name, ''), content,
+		       COALESCE(created_by, ''), COALESCE(updated_by, '')
+		FROM documents
+		WHERE artifact_uuid = ? AND type = ? AND organization_uuid = ?
+		LIMIT 1
+	`)
+	row := r.db.QueryRow(query, artifactUUID, docType, orgUUID)
+	doc := &model.Document{}
+	if err := row.Scan(
+		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
+		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.Content,
+		&doc.CreatedBy, &doc.UpdatedBy,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get document by artifact and type: %w", err)
 	}
 	return doc, nil
 }
@@ -98,11 +124,11 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	query := r.db.Rebind(`
 		UPDATE documents
-		SET file_name = ?, content = ?, data_version = ?, updated_by = ?, updated_at = ?
+		SET file_name = ?, content = ?, updated_by = ?, updated_at = ?
 		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
 	`)
 	_, err = r.db.Exec(query,
-		doc.FileName, doc.Content, doc.DataVersion, doc.UpdatedBy, now,
+		doc.FileName, doc.Content, doc.UpdatedBy, now,
 		doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
 	)
 	if err != nil {
