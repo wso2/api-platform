@@ -34,11 +34,14 @@ import {
   importOpenApi,
   putRestApiOpenApi,
   updateRestApi,
+  validateOpenApiSpec,
   type CreateRestApiBody,
   type ListRestApisQuery,
+  type OpenAPIValidationError,
   type RestApi,
   type RestApiListResponse,
   type UpdateRestApiBody,
+  type ValidateOpenAPIResponse,
 } from './restApis.endpoints';
 import { restApiKeys, restApiQueries } from './restApis.queries';
 
@@ -417,6 +420,22 @@ export const usePutRestApiOpenApi = (overrides: { orgId?: string } = {}) => {
     },
   });
 };
+
+/**
+ * Validates an OpenAPI spec string against the backend validator (kin-openapi).
+ *
+ * Errors are handled locally — the caller decides how to show them, so the
+ * global snackbar doesn't fire on a failed validation call.
+ */
+export const useValidateOpenApiSpec = () => {
+  return useMutation<ValidateOpenAPIResponse, ApiError, string>({
+    meta: HANDLED_LOCALLY,
+    mutationFn: (inlineDefinition) => validateOpenApiSpec(inlineDefinition),
+  });
+};
+
+/** Re-export so consumers can type validation errors without reaching into endpoints. */
+export type { OpenAPIValidationError, ValidateOpenAPIResponse };
 
 /** Removes the API definition spec for this API. */
 export const useDeleteRestApiOpenApi = (overrides: { orgId?: string } = {}) => {

@@ -18,7 +18,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,6 +28,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -653,10 +656,97 @@ func (h *APIHandler) DeleteOpenAPISpec(w http.ResponseWriter, r *http.Request) e
 	return nil
 }
 
+type validateOpenAPIError struct {
+	Message string `json:"message"`
+	Path    string `json:"path,omitempty"`
+}
+
+type validateOpenAPIInfo struct {
+	Title   string `json:"title,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+type validateOpenAPIResult struct {
+	IsValid bool                  `json:"isValid"`
+	Errors  []validateOpenAPIError `json:"errors"`
+	Info    *validateOpenAPIInfo   `json:"info,omitempty"`
+}
+
+// validateOpenAPIContent parses and validates an OpenAPI/Swagger spec string
+// using kin-openapi. External $refs are not resolved (loader.IsExternalRefsAllowed = false),
+// which prevents SSRF via spec $ref URLs.
+func validateOpenAPIContent(specContent string) validateOpenAPIResult {
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = false
+
+	doc, err := loader.LoadFromData([]byte(specContent))
+	if err != nil {
+		return validateOpenAPIResult{
+			IsValid: false,
+			Errors:  []validateOpenAPIError{{Message: err.Error()}},
+		}
+	}
+
+	if err := doc.Validate(context.Background(), openapi3.DisableExamplesValidation()); err != nil {
+		return validateOpenAPIResult{
+			IsValid: false,
+			Errors:  extractOpenAPIValidationErrors(err),
+		}
+	}
+
+	result := validateOpenAPIResult{
+		IsValid: true,
+		Errors:  []validateOpenAPIError{},
+	}
+	if doc.Info != nil {
+		result.Info = &validateOpenAPIInfo{
+			Title:   doc.Info.Title,
+			Version: doc.Info.Version,
+		}
+	}
+	return result
+}
+
+// extractOpenAPIValidationErrors flattens kin-openapi MultiError into a flat
+// list of message strings. Each entry in a MultiError may itself be a
+// MultiError, so the extraction is recursive.
+func extractOpenAPIValidationErrors(err error) []validateOpenAPIError {
+	var multi openapi3.MultiError
+	if errors.As(err, &multi) {
+		out := make([]validateOpenAPIError, 0, len(multi))
+		for _, e := range multi {
+			out = append(out, extractOpenAPIValidationErrors(e)...)
+		}
+		return out
+	}
+	return []validateOpenAPIError{{Message: err.Error()}}
+}
+
+// ValidateOpenAPI handles POST /api/v0.9/rest-apis/validate-openapi.
+// Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
+// any resource. Accepts multipart/form-data with an `inlineDefinition` string
+// field containing the raw spec (YAML or JSON).
+func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) error {
+	r.Body = http.MaxBytesReader(w, r.Body, importOpenAPIMaxBytes)
+	if err := r.ParseMultipartForm(importOpenAPIMaxBytes); err != nil {
+		return apperror.ValidationFailed.New("invalid multipart form")
+	}
+
+	specContent := strings.TrimSpace(r.FormValue("inlineDefinition"))
+	if specContent == "" {
+		return apperror.ValidationFailed.New("inlineDefinition is required")
+	}
+
+	result := validateOpenAPIContent(specContent)
+	httputil.WriteJSON(w, http.StatusOK, result)
+	return nil
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering REST API routes")
 	base := constants.APIBasePath + "/rest-apis"
+	mux.HandleFunc("POST "+base+"/validate-openapi", middleware.MapErrors(h.slogger, h.ValidateOpenAPI))
 	mux.HandleFunc("POST "+base+"/import-openapi", middleware.MapErrors(h.slogger, h.ImportOpenAPI))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPI))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIs))

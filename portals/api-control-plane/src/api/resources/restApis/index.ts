@@ -27,6 +27,7 @@
 export type {
   CreateRestApiBody,
   ListRestApisQuery,
+  OpenAPIValidationError,
   Operation,
   Policy,
   RestApi,
@@ -35,6 +36,7 @@ export type {
   UpdateRestApiBody,
   Upstream,
   UpstreamDefinition,
+  ValidateOpenAPIResponse,
 } from './restApis.endpoints';
 
 export type { RestApiListFilters } from './restApis.hooks';
@@ -55,4 +57,5 @@ export {
   useRestApis,
   useRestApiOpenApi,
   useUpdateRestApi,
+  useValidateOpenApiSpec,
 } from './restApis.hooks';

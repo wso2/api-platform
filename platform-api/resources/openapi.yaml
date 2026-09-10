@@ -418,6 +418,42 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/validate-openapi:
+    post:
+      summary: Validate an OpenAPI specification
+      description: |
+        Validates an OpenAPI 3.x or Swagger 2.x specification without creating
+        or modifying any resource. Returns a structured result indicating whether
+        the spec is valid and, if not, the list of validation errors.
+      operationId: ValidateOpenAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:create
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateOpenAPIRequest'
+      responses:
+        '200':
+          description: Validation result (valid or invalid — both return 200)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateOpenAPIResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/import-openapi:
     post:
       summary: Create a REST API from an OpenAPI specification
@@ -6375,6 +6411,55 @@ components:
           type: string
           description: Upstream backend URL (maps to upstream.main.url in the created API)
 
+    ValidateOpenAPIRequest:
+      type: object
+      required:
+        - inlineDefinition
+      properties:
+        inlineDefinition:
+          type: string
+          description: Raw OpenAPI 3.x or Swagger 2.x spec content (YAML or JSON)
+
+    ValidateOpenAPIResponse:
+      type: object
+      required:
+        - isValid
+        - errors
+      properties:
+        isValid:
+          type: boolean
+          description: Whether the spec passed validation
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpenAPIValidationError'
+          description: Validation errors; empty when isValid is true
+        info:
+          $ref: '#/components/schemas/OpenAPISpecInfo'
+
+    OpenAPIValidationError:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Human-readable description of the validation error
+        path:
+          type: string
+          description: JSON Pointer path within the spec where the error was found
+
+    OpenAPISpecInfo:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Value of info.title from the spec
+        version:
+          type: string
+          description: Value of info.version from the spec
+
+    SwaggerContent:
     OpenAPIContent:
       type: object
       properties:
