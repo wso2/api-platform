@@ -42,9 +42,10 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Edit, Plus, Search, Settings, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Edit, Plus, Search, Settings, Star, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
 import { gatewayTypeLabel } from './utils/gateway';
 import NoGatewaysImage from './assets/images/NoGW.svg';
@@ -57,6 +58,8 @@ export type GatewaysListProps = {
   onEditClick: (gatewayId: string) => void;
   /** Returning a promise lets the confirm dialog stay open, and busy, until the delete settles. */
   onDelete: (gatewayId: string, name: string) => void | Promise<void>;
+  /** Hand the environment's default for this gateway's type over to it. */
+  onMarkDefault: (gatewayId: string, name: string) => void | Promise<void>;
 };
 
 function truncateText(text: string, maxLength: number): string {
@@ -70,11 +73,23 @@ const GatewaysList: FC<GatewaysListProps> = ({
   onAddClick,
   onEditClick,
   onDelete,
+  onMarkDefault,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
+  const [markingDefaultId, setMarkingDefaultId] = useState<string | null>(null);
+
+  const handleMarkDefault = async (gateway: Gateway) => {
+    if (markingDefaultId) return;
+    setMarkingDefaultId(gateway.id);
+    try {
+      await onMarkDefault(gateway.id, gateway.name);
+    } finally {
+      setMarkingDefaultId(null);
+    }
+  };
 
   // Environments are keyed by name, so a gateway that points at an environment
   // missing from the list (deleted, or not yet loaded) still shows its raw
@@ -202,6 +217,12 @@ const GatewaysList: FC<GatewaysListProps> = ({
                                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                   {truncateText(gateway.name, 25)}
                                 </Typography>
+                                {/* The default is per gateway TYPE, so several
+                                    gateways in one environment can each be
+                                    marked — one per type. */}
+                                {gateway.isDefault ? (
+                                  <Chip label="Default" size="small" color="primary" />
+                                ) : null}
                               </Box>
                             </TableCell>
                             <TableCell>
@@ -235,6 +256,31 @@ const GatewaysList: FC<GatewaysListProps> = ({
                               </Typography>
                             </TableCell>
                             <TableCell align="right">
+                              {/* Only offered for a gateway that is not already
+                                  the default: a default is handed over by
+                                  marking another, never cleared. */}
+                              {gateway.isDefault ? null : (
+                                <Tooltip
+                                  title={`Make this the default ${gatewayTypeLabel(gateway.type)} gateway for ${
+                                    environmentNames.get(gateway.environmentId) || gateway.environmentId
+                                  }`}
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={markingDefaultId !== null}
+                                      onClick={() => void handleMarkDefault(gateway)}
+                                      aria-label={`Mark ${gateway.name} as the default gateway`}
+                                    >
+                                      {markingDefaultId === gateway.id ? (
+                                        <CircularProgress size={16} color="inherit" />
+                                      ) : (
+                                        <Star size={16} />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              )}
                               <IconButton size="small" onClick={() => onEditClick(gateway.id)} aria-label={`Edit ${gateway.name}`}>
                                 <Edit size={16} />
                               </IconButton>

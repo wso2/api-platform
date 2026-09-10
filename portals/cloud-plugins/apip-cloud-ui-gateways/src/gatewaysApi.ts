@@ -39,6 +39,7 @@ type ManagedGatewayDTO = {
   updatedAt?: string;
   environment?: string;
   host?: string;
+  isDefault?: boolean;
 };
 
 const normalizeType = (functionalityType?: string): GatewayType =>
@@ -59,6 +60,7 @@ const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
   url: dto.host ?? '',
   status: dto.isActive ? 'active' : 'inactive',
   isCritical: dto.isCritical ?? false,
+  isDefault: dto.isDefault ?? false,
   version: dto.version,
   createdAt: dto.createdAt ?? '',
   updatedAt: dto.updatedAt ?? '',
@@ -86,14 +88,32 @@ export function createGatewaysClient(apiFetch: ApiFetch) {
         functionalityType: input.type,
         description: input.description,
         isCritical: false,
+        isDefault: input.isDefault ?? false,
       });
     },
     async updateGateway(id: string, input: GatewayInput): Promise<void> {
-      // Only display name and description are mutable; environment, type, host
-      // and version are fixed at creation and rejected by the update endpoint.
+      // Only display name, description and the default marking are mutable;
+      // environment, type, host and version are fixed at creation and rejected by
+      // the update endpoint. isDefault is sent only when asking for the default:
+      // the API treats false as "leave it alone", never as "clear it".
       await apiFetch('PUT', `/managed-gateways/${encodeURIComponent(id)}`, {
         displayName: input.name,
         description: input.description,
+        ...(input.isDefault ? { isDefault: true } : {}),
+      });
+    },
+    /**
+     * Hands the environment's default for this gateway's type over to it.
+     *
+     * The update endpoint replaces the mutable fields rather than patching them,
+     * so the gateway's current name and description are resent alongside the
+     * marking: a body carrying only `isDefault` would blank the description.
+     */
+    async markGatewayDefault(gateway: Gateway): Promise<void> {
+      await apiFetch('PUT', `/managed-gateways/${encodeURIComponent(gateway.id)}`, {
+        displayName: gateway.name,
+        description: gateway.description,
+        isDefault: true,
       });
     },
     async deleteGateway(id: string): Promise<void> {

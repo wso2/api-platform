@@ -107,12 +107,22 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     void load();
   }, [load]);
 
+  // A host only ever manages its own kinds of gateway: the AI workspace shows AI
+  // gateways and their default, the publisher shows regular and event ones and
+  // theirs. Filtering here rather than in the list keeps the count, the status
+  // poll and the default badge consistent with what is on screen — the default is
+  // marked per type, so an AI default is meaningless in the publisher's view.
+  const visibleGateways = useMemo(
+    () => gateways.filter((gateway) => gatewayTypes.includes(gateway.type)),
+    [gateways, gatewayTypes]
+  );
+
   // Poll only while there is something to wait for: a gateway that is not yet
   // active. Once they are all active the interval is torn down, so a settled
   // list costs nothing. Creating another gateway makes this true again and the
   // poll restarts. Deliberately keyed on the boolean, not on `gateways`, so a
   // poll's own result does not reset the interval.
-  const awaitingStatus = gateways.some((gateway) => gateway.status !== 'active');
+  const awaitingStatus = visibleGateways.some((gateway) => gateway.status !== 'active');
 
   useEffect(() => {
     if (view !== 'list' || !awaitingStatus) return undefined;
@@ -150,6 +160,31 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       }
     },
     [client, load, notify]
+  );
+
+  // Handing the default over is an update on the gateway itself, so it goes
+  // through the same client as any other edit. The list refreshes afterwards
+  // because the previous holder's badge has to clear too, not just this one's.
+  const markDefault = useCallback(
+    async (id: string, name: string) => {
+      if (submittingRef.current) return;
+      const gateway = visibleGateways.find((candidate) => candidate.id === id);
+      if (!gateway) return;
+      submittingRef.current = true;
+      try {
+        await client.markGatewayDefault(gateway);
+        notify(`"${name}" is now the default gateway for its environment.`, 'success');
+        await load();
+      } catch (markError) {
+        notify(
+          markError instanceof Error ? markError.message : 'Unable to mark the gateway as default.',
+          'error'
+        );
+      } finally {
+        submittingRef.current = false;
+      }
+    },
+    [client, visibleGateways, load, notify]
   );
 
   const removeGateway = useCallback(
@@ -206,7 +241,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   if (view === 'create' || view === 'edit') {
     const editingGateway =
-      view === 'edit' ? gateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
+      view === 'edit' ? visibleGateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
     return (
       <GatewayForm
         mode={view}
@@ -230,7 +265,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   return (
     <GatewaysList
-      gateways={gateways}
+      gateways={visibleGateways}
       environments={environments}
       onAddClick={() => setView('create')}
       onEditClick={(gatewayId) => {
@@ -238,6 +273,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         setView('edit');
       }}
       onDelete={removeGateway}
+      onMarkDefault={markDefault}
     />
   );
 };

@@ -22,17 +22,21 @@ import {
   Button,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   FormLabel,
   Grid,
   PageContent,
   PageTitle,
   Stack,
+  Switch,
   TextField,
   Tooltip,
+  Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import EnvironmentSelect from './components/EnvironmentSelect';
 import GatewayTypeSelector from './components/GatewayTypeSelector';
+import { gatewayTypeLabel } from './utils/gateway';
 import { gatewayHandleFromName, validateGatewayName } from './utils/name';
 import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
@@ -67,6 +71,10 @@ const GatewayForm: FC<GatewayFormProps> = ({
   const showTypeField = types.length > 1;
 
   const [type, setType] = useState<GatewayType>(gateway?.type ?? types[0]);
+  // Marking is one-way: a default is handed over by marking another gateway, so
+  // an existing default's switch stays on and disabled rather than offering an
+  // "unset" that would leave the environment without one.
+  const [isDefault, setIsDefault] = useState(gateway?.isDefault ?? false);
   const [name, setName] = useState(gateway?.name ?? '');
   const [description, setDescription] = useState(gateway?.description ?? '');
   const [environmentId, setEnvironmentId] = useState(gateway?.environmentId ?? '');
@@ -100,6 +108,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
         description: description.trim() || undefined,
         type,
         environmentId,
+        isDefault,
       });
     } finally {
       setSubmitting(false);
@@ -157,6 +166,24 @@ const GatewayForm: FC<GatewayFormProps> = ({
                 onChange={(event) => setDescription(event.target.value)}
               />
             </FormControl>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isDefault}
+                  disabled={gateway?.isDefault ?? false}
+                  onChange={(event) => setIsDefault(event.target.checked)}
+                />
+              }
+              label="Default gateway for this environment"
+            />
+            <Typography variant="body2" color="text.secondary">
+              {gateway?.isDefault
+                ? 'This is the default. To move it, mark another gateway of the same type as the default.'
+                : `APIs deploy here by default when no gateway is chosen. One ${gatewayTypeLabel(type)} gateway per environment can be the default; marking this one takes it over from whichever holds it now.`}
+            </Typography>
           </Grid>
 
           <Grid size={{ xs: 12 }}>

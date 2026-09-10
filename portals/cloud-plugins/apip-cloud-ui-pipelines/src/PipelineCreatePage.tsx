@@ -21,7 +21,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ArrowRight, ChevronLeft, Plus } from '@wso2/oxygen-ui-icons-react';
-import EnvironmentGatewayPicker from './components/EnvironmentGatewayPicker';
+import EnvironmentPicker from './components/EnvironmentPicker';
 import PipelineStageCard from './components/PipelineStageCard';
 import type { CreatePipelineInput, Environment, Pipeline } from './types';
 import { orderEnvironments } from './utils';
@@ -38,15 +38,14 @@ export type PipelineCreatePageProps = {
 };
 
 /**
- * The linear chain the builder edits: environments in promotion order, each with
- * the gateway marked as its default. This is the builder's own working view over
- * the API shape — on submit it emits `promotionPaths` (consecutive pairs) and
- * `defaultGateways` directly; nothing else converts pipeline data.
+ * The linear chain the builder edits: environments in promotion order. This is
+ * the builder's own working view over the API shape — on submit it emits
+ * `promotionPaths` (consecutive pairs) directly; nothing else converts pipeline
+ * data.
  */
 type ChainEntry = {
   /** Environment name — the identifier the API uses everywhere. */
   environment: string;
-  defaultGatewayId: string;
 };
 
 /** Shown until the name breaks a rule, so the constraint is known up front. */
@@ -56,19 +55,9 @@ const NAME_HELPER_TEXT =
 const findEnvironment = (environments: Environment[], name: string) =>
   environments.find((environment) => environment.name === name);
 
-const findGateway = (environment: Environment | undefined, gatewayId: string) =>
-  environment?.gateways.find((gateway) => gateway.id === gatewayId);
-
 /** Reconstructs the builder's chain from an existing pipeline's promotion graph. */
-const toChain = (pipeline: Pipeline, environments: Environment[]): ChainEntry[] =>
-  orderEnvironments(pipeline.promotionPaths).map((name) => {
-    const environment = findEnvironment(environments, name);
-    const marked = pipeline.defaultGateways.find((entry) => entry.environment === name)?.gatewayId;
-    return {
-      environment: name,
-      defaultGatewayId: marked ?? (environment?.gateways.length === 1 ? environment.gateways[0].id : ''),
-    };
-  });
+const toChain = (pipeline: Pipeline): ChainEntry[] =>
+  orderEnvironments(pipeline.promotionPaths).map((name) => ({ environment: name }));
 
 const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
   environments,
@@ -80,7 +69,7 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
   const isEdit = mode === 'edit' && !!initialPipeline;
   const [name, setName] = useState(initialPipeline?.name ?? '');
   const [chain, setChain] = useState<ChainEntry[]>(
-    initialPipeline ? toChain(initialPipeline, environments) : []
+    initialPipeline ? toChain(initialPipeline) : []
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
@@ -96,8 +85,8 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
     setPickerOpen(true);
   };
 
-  const handleAddEnvironment = (environment: string, defaultGatewayId: string) => {
-    const entry: ChainEntry = { environment, defaultGatewayId };
+  const handleAddEnvironment = (environment: string) => {
+    const entry: ChainEntry = { environment };
     setChain((prev) => {
       const index = insertIndexRef.current;
       if (index === null || index >= prev.length) return [...prev, entry];
@@ -123,21 +112,14 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
     // first request is still in flight.
     if (saving) return;
     // The linear chain is emitted as the API shape directly: consecutive pairs
-    // become promotion paths, and only multi-gateway environments carry an
-    // explicit default (single-gateway environments default implicitly).
+    // become promotion paths.
     const promotionPaths = chain.slice(0, -1).map((entry, index) => ({
       sourceEnvironment: entry.environment,
       targetEnvironments: [chain[index + 1].environment],
     }));
-    const defaultGateways = chain
-      .filter((entry) => {
-        const environment = findEnvironment(environments, entry.environment);
-        return !!environment && environment.gateways.length > 1 && !!entry.defaultGatewayId;
-      })
-      .map((entry) => ({ environment: entry.environment, gatewayId: entry.defaultGatewayId }));
     setSaving(true);
     try {
-      await onSubmit({ name: name.trim(), promotionPaths, defaultGateways }, initialPipeline?.id);
+      await onSubmit({ name: name.trim(), promotionPaths }, initialPipeline?.id);
     } finally {
       setSaving(false);
     }
@@ -201,7 +183,6 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
             <>
               {chain.map((entry, index) => {
                 const environment = findEnvironment(environments, entry.environment);
-                const gateway = findGateway(environment, entry.defaultGatewayId);
                 return (
                   <Box key={entry.environment} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     {index > 0 ? (
@@ -218,7 +199,6 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
                     ) : null}
                     <PipelineStageCard
                       environmentName={environment?.name ?? entry.environment}
-                      gatewayName={gateway?.name ?? entry.defaultGatewayId}
                       critical={environment?.critical}
                       onRemove={() => handleRemoveEnvironment(entry.environment)}
                     />
@@ -241,7 +221,7 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
             </>
           )}
 
-          <EnvironmentGatewayPicker
+          <EnvironmentPicker
             open={pickerOpen}
             anchorEl={pickerAnchor}
             environments={environments}

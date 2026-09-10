@@ -47,6 +47,12 @@ export type Gateway = {
   url: string;
   status: GatewayStatus;
   isCritical: boolean;
+  /**
+   * Whether this gateway is the one its environment resolves to for its type.
+   * One gateway per environment and type carries it, so an AI gateway being the
+   * default says nothing about the regular ones in the same environment.
+   */
+  isDefault: boolean;
   version?: string;
   createdAt: string;
   updatedAt: string;
@@ -54,12 +60,19 @@ export type Gateway = {
 
 /**
  * Fields the create/edit form collects. `id`/`url` (host) are server-assigned;
- * on edit only `name`/`description` are mutable (`type`/`environmentId` are
- * fixed at creation).
+ * on edit only `name`/`description`/`isDefault` are mutable (`type` and
+ * `environmentId` are fixed at creation).
  */
 export type GatewayInput = {
   name: string;
   description?: string;
   type: GatewayType;
   environmentId: string;
+  /**
+   * Ask for this gateway to be its environment's default for its type. Only a
+   * true value acts: the default is handed over by marking another gateway,
+   * never by clearing this one, so an environment always keeps a default for a
+   * type it has gateways of.
+   */
+  isDefault?: boolean;
 };
