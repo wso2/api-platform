@@ -310,8 +310,12 @@ func (h *DeploymentHandler) CreateBuild(w http.ResponseWriter, r *http.Request) 
 	if req.Metadata != nil {
 		metadata = *req.Metadata
 	}
+	var description string
+	if req.Description != nil {
+		description = strings.TrimSpace(*req.Description)
+	}
 
-	build, err := h.deploymentService.CreateBuildByHandle(apiId, orgId, createdBy, metadata)
+	build, err := h.deploymentService.CreateBuildByHandle(apiId, orgId, createdBy, description, metadata)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to prepare a build for API %s", apiId))
 	}
@@ -373,6 +377,33 @@ func (h *DeploymentHandler) GetBuild(w http.ResponseWriter, r *http.Request) err
 	return nil
 }
 
+// DeleteBuild handles DELETE /api/v0.9/rest-apis/:apiId/builds/:buildId
+// Removes a build, unless a deployment still holds it
+func (h *DeploymentHandler) DeleteBuild(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	apiId := r.PathValue("restApiId")
+	buildId := r.PathValue("buildId")
+
+	if apiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+	if buildId == "" {
+		return apperror.ValidationFailed.New("Build ID is required")
+	}
+
+	if err := h.deploymentService.DeleteBuildByHandle(apiId, buildId, orgId); err != nil {
+		return serviceError(err, fmt.Sprintf("failed to delete API %s build %s", apiId, buildId))
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // RegisterRoutes registers all deployment-related routes
 func (h *DeploymentHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering deployment routes")
@@ -386,4 +417,5 @@ func (h *DeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/builds", middleware.MapErrors(h.slogger, h.CreateBuild))
 	mux.HandleFunc("GET "+base+"/builds", middleware.MapErrors(h.slogger, h.GetBuilds))
 	mux.HandleFunc("GET "+base+"/builds/{buildId}", middleware.MapErrors(h.slogger, h.GetBuild))
+	mux.HandleFunc("DELETE "+base+"/builds/{buildId}", middleware.MapErrors(h.slogger, h.DeleteBuild))
 }

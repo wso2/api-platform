@@ -20,18 +20,32 @@ package repository
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // Build persistence lives on DeploymentRepo: a build is the deploy path's own
 // input, and keeping it here avoids a second repository for one table.
+
+// ErrBuildLimitReached is returned when an API is at its build limit and every
+// stored build is held by a deployment, so preparing another would have to remove
+// one that is still needed. The remedy is the caller's to choose — which
+// deployment to give up — so this surfaces rather than being resolved here.
+var ErrBuildLimitReached = errors.New("build limit reached and no build is free to remove")
+
+// ErrBuildInUse is returned when a build a caller asked to delete is held by a
+// deployment.
+var ErrBuildInUse = errors.New("build is in use by a deployment")
+
+// ErrBuildNotFound is returned when the build named for deletion is not one of
+// the API's builds.
+var ErrBuildNotFound = errors.New("build not found")
 
 // buildIDAttempts bounds the retries when deriving a build id. Two prepares of the
 // same API on the same day compete for the same index, and the primary key is what
@@ -88,6 +102,12 @@ func createWithDerivedBuildID(build *model.Build, attempt func() error) error {
 		build.BuildID = ""
 		if err = attempt(); err == nil {
 			return nil
+		}
+		if errors.Is(err, ErrBuildLimitReached) {
+			// Not a race for an id — the attempt never got as far as deriving one.
+			// Retrying re-runs the same prune against the same builds and refuses
+			// again, so this is final.
+			return err
 		}
 		if i > 0 && build.BuildID == derived {
 			// The index this attempt derived is the one the last attempt already
@@ -183,12 +203,12 @@ func (r *DeploymentRepo) insertBuild(tx *sql.Tx, build *model.Build) error {
 	}
 
 	const query = `
-		INSERT INTO builds (uuid, build_id, artifact_uuid, organization_uuid, content, data_version, metadata, created_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO builds (uuid, build_id, artifact_uuid, organization_uuid, description, content, data_version, metadata, created_by, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := tx.Exec(r.db.Rebind(query),
 		build.UUID, build.BuildID, build.ArtifactID, build.OrganizationID,
-		build.Content, build.DataVersion, metadataBytes, build.CreatedBy, build.CreatedAt,
+		build.Description, build.Content, build.DataVersion, metadataBytes, build.CreatedBy, build.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create build: %w", err)
@@ -214,16 +234,16 @@ func applyBuildMetadata(build *model.Build, metadataBytes []byte) error {
 // another organization — resolving here.
 func (r *DeploymentRepo) GetBuild(buildID, artifactUUID, orgUUID string) (*model.Build, error) {
 	const query = `
-		SELECT uuid, build_id, artifact_uuid, organization_uuid, content, data_version, metadata, created_by, created_at
+		SELECT uuid, build_id, artifact_uuid, organization_uuid, description, content, data_version, metadata, created_by, created_at
 		FROM builds
 		WHERE build_id = ? AND artifact_uuid = ? AND organization_uuid = ?
 	`
 	var build model.Build
-	var createdBy sql.NullString
+	var createdBy, description sql.NullString
 	var metadataBytes []byte
 	err := r.db.QueryRow(r.db.Rebind(query), buildID, artifactUUID, orgUUID).Scan(
 		&build.UUID, &build.BuildID, &build.ArtifactID, &build.OrganizationID,
-		&build.Content, &build.DataVersion, &metadataBytes, &createdBy, &build.CreatedAt,
+		&description, &build.Content, &build.DataVersion, &metadataBytes, &createdBy, &build.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -235,6 +255,7 @@ func (r *DeploymentRepo) GetBuild(buildID, artifactUUID, orgUUID string) (*model
 		return nil, err
 	}
 	build.CreatedBy = createdBy.String
+	build.Description = description.String
 	return &build, nil
 }
 
@@ -245,7 +266,7 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 		limit = 50
 	}
 	query := `
-		SELECT uuid, build_id, artifact_uuid, organization_uuid, data_version, metadata, created_by, created_at
+		SELECT uuid, build_id, artifact_uuid, organization_uuid, description, data_version, metadata, created_by, created_at
 		FROM builds
 		WHERE artifact_uuid = ? AND organization_uuid = ?
 		ORDER BY created_at DESC, build_id DESC
@@ -263,11 +284,11 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 	builds := make([]*model.Build, 0)
 	for rows.Next() {
 		var build model.Build
-		var createdBy sql.NullString
+		var createdBy, description sql.NullString
 		var metadataBytes []byte
 		if err := rows.Scan(
 			&build.UUID, &build.BuildID, &build.ArtifactID, &build.OrganizationID,
-			&build.DataVersion, &metadataBytes, &createdBy, &build.CreatedAt,
+			&description, &build.DataVersion, &metadataBytes, &createdBy, &build.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan build: %w", err)
 		}
@@ -275,6 +296,7 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 			return nil, err
 		}
 		build.CreatedBy = createdBy.String
+		build.Description = description.String
 		builds = append(builds, &build)
 	}
 	if err := rows.Err(); err != nil {
@@ -283,20 +305,77 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 	return builds, nil
 }
 
-// pruneBuilds keeps an API's stored builds within hardLimit before another one is
-// added. The budget is per API — one API's history cannot be crowded out by
-// another's, and unlike deployments a build belongs to no gateway, so there is
-// nothing narrower to count by.
+// DeleteBuild removes one of an API's builds by its readable id.
 //
-// Age alone does not decide what goes. A build is deleted only when no gateway's
-// CURRENT deployment came from it: an old build that something is still serving is
-// exactly the one that must survive, because it is what a promotion out of that
-// environment carries and what a redeploy of that gateway sends. Age only orders
-// the builds that are free to go.
+// A build held by a deployment is NOT deleted (ErrBuildInUse). Deleting it would
+// leave a running deployment — or a suspended one that can still be restored —
+// with no snapshot to trace back to or promote onward, and there is no way to
+// re-render the definition as it stood. Which deployment to give up is the
+// caller's decision, so this reports the conflict instead of resolving it.
 //
-// It is deliberately best-effort in what it removes: at most a batch, and if every
-// old build is still in use the API simply keeps more than the limit rather than
-// failing the prepare or deleting something that is running.
+// Resolving the build, testing it and deleting it happen on one transaction, so a
+// deploy cannot claim the build between the test and the delete.
+func (r *DeploymentRepo) DeleteBuild(buildID, artifactUUID, orgUUID string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	const findQuery = `
+		SELECT uuid
+		FROM builds
+		WHERE build_id = ? AND artifact_uuid = ? AND organization_uuid = ?
+	`
+	var buildUUID string
+	if err := tx.QueryRow(r.db.Rebind(findQuery), buildID, artifactUUID, orgUUID).Scan(&buildUUID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrBuildNotFound
+		}
+		return fmt.Errorf("failed to find build %s: %w", buildID, err)
+	}
+
+	inUse, err := r.buildsInUse(tx, artifactUUID, orgUUID)
+	if err != nil {
+		return err
+	}
+	if inUse[buildUUID] {
+		return ErrBuildInUse
+	}
+
+	// releaseBuild's delete is conditional on nothing referencing the build, so a
+	// deploy that claimed it since the test above leaves the row in place — which is
+	// the same conflict, reported the same way rather than passed off as a success.
+	removed, err := r.releaseBuild(tx, buildUUID)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return ErrBuildInUse
+	}
+	return tx.Commit()
+}
+
+// pruneBuilds makes room for one more build within hardLimit. The budget is per
+// API — one API's history cannot be crowded out by another's, and unlike
+// deployments a build belongs to no gateway, so there is nothing narrower to count
+// by.
+//
+// Age alone does not decide what goes. A build is removed only when no deployment
+// holds it: a build something is still running, or still suspended and restorable
+// from, is exactly the one that must survive, because it is what a promotion out of
+// that environment carries and what restoring that deployment sends. Age only
+// orders the builds that are free to go.
+//
+// When nothing is free the prepare is REFUSED (ErrBuildLimitReached) rather than
+// quietly letting the API keep more than its budget: the limit is what an
+// organization is entitled to store, so exceeding it has to be someone's decision.
+// The caller is told to free a build, which is the one thing that can be done about
+// it — the alternative is deleting a build a gateway can still be restored from.
+//
+// It removes as many free builds as the limit demands, not a fixed batch, so a
+// limit that has been lowered converges on the first prepare instead of drifting
+// down one build at a time.
 //
 // It runs on the caller's transaction, alongside the insert it makes room for, so
 // what it reads about a build being in use still holds when it deletes.
@@ -318,6 +397,9 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 	if count < hardLimit {
 		return nil
 	}
+	// One slot for the build being added, plus whatever the API is over by — a
+	// limit lowered since the last prepare leaves it over by more than one.
+	needed := count - hardLimit + 1
 
 	inUse, err := r.buildsInUse(tx, artifactUUID, orgUUID)
 	if err != nil {
@@ -345,13 +427,16 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 			continue
 		}
 		expendable = append(expendable, buildUUID)
-		if len(expendable) == constants.BuildCleanupBatch {
+		if len(expendable) == needed {
 			break
 		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("failed to read builds for cleanup: %w", err)
+	}
+	if len(expendable) < needed {
+		return ErrBuildLimitReached
 	}
 
 	// The reference is cleared before the row goes: deployments outlive the build
@@ -362,9 +447,30 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 	// that reads committed rows per statement lets a deploy land in between. Scoping
 	// the clear to archived deployments means one that has just become current never
 	// has its origin taken away, and a delete conditional on nothing referencing the
-	// build means one that has just been claimed simply stays — no error to unwind in
-	// the transaction this shares with the build being added, and the API keeping
-	// more than its budget is already what happens when nothing is free to go.
+	// build means one that has just been claimed simply stays — which is why the
+	// rows actually deleted are counted rather than assumed, and the prepare refused
+	// if the race left the API at its limit after all.
+	freed := 0
+	for _, buildUUID := range expendable {
+		removed, err := r.releaseBuild(tx, buildUUID)
+		if err != nil {
+			return err
+		}
+		if removed {
+			freed++
+		}
+	}
+	if count-freed >= hardLimit {
+		return ErrBuildLimitReached
+	}
+	return nil
+}
+
+// releaseBuild clears the archived deployments that name a build and then deletes
+// it, reporting whether the row actually went. Both statements are conditional on
+// nothing current referencing the build, so a build claimed by a deploy since it was
+// picked stays and the caller learns it was not freed.
+func (r *DeploymentRepo) releaseBuild(tx *sql.Tx, buildUUID string) (bool, error) {
 	const clearQuery = `
 		UPDATE deployments SET build_uuid = NULL
 		WHERE build_uuid = ?
@@ -381,15 +487,21 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 		WHERE uuid = ?
 			AND NOT EXISTS (SELECT 1 FROM deployments d WHERE d.build_uuid = builds.uuid)
 	`
-	for _, buildUUID := range expendable {
-		if _, err := tx.Exec(r.db.Rebind(clearQuery), buildUUID); err != nil {
-			return fmt.Errorf("failed to clear references to build %s: %w", buildUUID, err)
-		}
-		if _, err := tx.Exec(r.db.Rebind(deleteQuery), buildUUID); err != nil {
-			return fmt.Errorf("failed to delete build %s: %w", buildUUID, err)
-		}
+	if _, err := tx.Exec(r.db.Rebind(clearQuery), buildUUID); err != nil {
+		return false, fmt.Errorf("failed to clear references to build %s: %w", buildUUID, err)
 	}
-	return nil
+	res, err := tx.Exec(r.db.Rebind(deleteQuery), buildUUID)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete build %s: %w", buildUUID, err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		// A driver that cannot report the count cannot be asked again; treating the
+		// delete as a no-op keeps the caller's accounting conservative, so the worst
+		// case is refusing a prepare that would have fit.
+		return false, nil
+	}
+	return affected > 0, nil
 }
 
 // buildsInUse returns the builds an API's gateways are currently deployed from,

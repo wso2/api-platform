@@ -19,6 +19,7 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -498,22 +499,23 @@ func TestCreateBuild_AFailedAttemptPrunesNothing(t *testing.T) {
 	}
 }
 
-// Reaching the limit prunes a batch of the API's oldest builds, so preparing
-// repeatedly cannot grow the table without bound.
-func TestCreateBuild_PrunesTheOldestBuildsAtTheLimit(t *testing.T) {
+// Reaching the limit removes the API's oldest free build — exactly the one slot the
+// new build needs — so the table stays at the limit rather than sawing down to well
+// under it every time a prepare finds it full.
+func TestCreateBuild_PrunesTheOldestBuildAtTheLimit(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
 	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
-	// The eleventh build is the one that finds the limit already reached: a batch of
-	// five older builds goes, and the new one is added to what remains.
+	// The eleventh build is the one that finds the limit already reached: the single
+	// oldest build goes, and the new one takes its place.
 	prepareBuilds(t, repo, 11, 10)
 
 	kept := storedBuildIDs(t, repo)
 	want := []string{
-		"2026-01-31-6", "2026-01-31-7", "2026-01-31-8", "2026-01-31-9", "2026-01-31-10",
-		"2026-01-31-11",
+		"2026-01-31-2", "2026-01-31-3", "2026-01-31-4", "2026-01-31-5", "2026-01-31-6",
+		"2026-01-31-7", "2026-01-31-8", "2026-01-31-9", "2026-01-31-10", "2026-01-31-11",
 	}
 	if len(kept) != len(want) {
 		t.Fatalf("kept %v, want %v", kept, want)
@@ -555,11 +557,10 @@ func TestCreateBuild_KeepsBuildsAGatewayIsDeployedFrom(t *testing.T) {
 			t.Errorf("build %s is deployed on a gateway but was pruned", inUse)
 		}
 	}
-	// Five of the unused builds went instead, oldest first.
-	for _, pruned := range []string{"2026-01-31-3", "2026-01-31-4", "2026-01-31-5", "2026-01-31-6", "2026-01-31-7"} {
-		if kept[pruned] {
-			t.Errorf("unused build %s should have been pruned, kept %v", pruned, kept)
-		}
+	// The oldest build that is free to go went instead — the third, since the two
+	// older ones are being served.
+	if kept["2026-01-31-3"] {
+		t.Errorf("unused build 2026-01-31-3 should have been pruned, kept %v", kept)
 	}
 	if !kept["2026-01-31-9"] || !kept["2026-01-31-10"] || !kept[eleventh.BuildID] {
 		t.Errorf("the newest builds should have been kept, got %v", kept)
@@ -598,9 +599,12 @@ func TestCreateBuild_AnArchivedDeploymentDoesNotHoldABuild(t *testing.T) {
 	}
 }
 
-// With every old build in use there is nothing safe to remove, so the API keeps
-// more than the limit rather than the prepare failing or a running build going.
-func TestCreateBuild_KeepsEverythingWhenNothingIsFreeToGo(t *testing.T) {
+// With every build in use there is nothing safe to remove, so the prepare is
+// REFUSED. Neither alternative is acceptable: deleting a build a gateway is serving
+// takes away what a promotion out of that environment carries, and quietly storing
+// one more puts the API over the limit it is entitled to. Which deployment to give
+// up is the caller's decision, so they are told.
+func TestCreateBuild_RefusesWhenNothingIsFreeToGo(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
@@ -614,11 +618,185 @@ func TestCreateBuild_KeepsEverythingWhenNothingIsFreeToGo(t *testing.T) {
 	}
 
 	fourth := buildOn(time.Date(2026, 1, 31, 3, 0, 0, 0, time.UTC))
-	if err := repo.CreateBuildWithLimitEnforcement(fourth, 3); err != nil {
+	err := repo.CreateBuildWithLimitEnforcement(fourth, 3)
+	if !errors.Is(err, ErrBuildLimitReached) {
+		t.Fatalf("error = %v, want ErrBuildLimitReached", err)
+	}
+	// And the refusal took nothing with it: the three in-use builds are all still
+	// there, and the one that was refused was not stored.
+	if kept := storedBuildIDs(t, repo); len(kept) != 3 {
+		t.Errorf("kept %v, want the three in-use builds and nothing more", kept)
+	}
+}
+
+// A limit lowered since the last prepare leaves the API over it by more than one.
+// Pruning removes as many free builds as the new limit demands, so the API
+// converges on the first prepare instead of drifting down one build at a time.
+func TestCreateBuild_ConvergesOnALoweredLimit(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	prepareBuilds(t, repo, 10, 0)
+
+	// Ten stored, and now a limit of three: the seven oldest go, leaving room for
+	// the new build to make three.
+	eleventh := buildOn(time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(eleventh, 3); err != nil {
 		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
 	}
-	if kept := storedBuildIDs(t, repo); len(kept) != 4 {
-		t.Errorf("kept %v, want all four builds retained", kept)
+
+	kept := storedBuildIDs(t, repo)
+	want := []string{"2026-01-31-9", "2026-01-31-10", "2026-01-31-11"}
+	if !reflect.DeepEqual(kept, want) {
+		t.Errorf("kept %v, want %v", kept, want)
+	}
+}
+
+// Deleting a build is what makes room when the limit refuses another prepare, so
+// the two have to fit together: a build no deployment holds goes, and preparing
+// then succeeds where it had just been refused.
+func TestDeleteBuild_FreesRoomForAnotherPrepare(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 3, 0)
+	// Two of the three are being served, so only the middle one is free.
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-2", buildRepoOrgUUID)
+	deployFromBuild(t, db, "gw-1", "dep-1", builds[0])
+	deployFromBuild(t, db, "gw-2", "dep-2", builds[2])
+
+	if err := repo.DeleteBuild(builds[1].BuildID, buildRepoAPIUUID, buildRepoOrgUUID); err != nil {
+		t.Fatalf("DeleteBuild: %v", err)
+	}
+	kept := storedBuildIDs(t, repo)
+	if len(kept) != 2 || kept[0] != builds[0].BuildID || kept[1] != builds[2].BuildID {
+		t.Fatalf("kept %v, want the two builds that are deployed", kept)
+	}
+
+	fourth := buildOn(time.Date(2026, 1, 31, 3, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(fourth, 3); err != nil {
+		t.Fatalf("preparing after the delete freed a slot: %v", err)
+	}
+}
+
+// A build a gateway is serving is not deletable. Removing it would leave that
+// deployment with no snapshot to promote onward, and the definition as it stood
+// cannot be rendered again — so the caller has to undeploy first, and is told so
+// rather than having the build taken out from under a running gateway.
+func TestDeleteBuild_RefusesABuildADeploymentHolds(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 2, 0)
+	deployFromBuild(t, db, "gw-1", "dep-1", builds[0])
+
+	err := repo.DeleteBuild(builds[0].BuildID, buildRepoAPIUUID, buildRepoOrgUUID)
+	if !errors.Is(err, ErrBuildInUse) {
+		t.Fatalf("error = %v, want ErrBuildInUse", err)
+	}
+	if kept := storedBuildIDs(t, repo); len(kept) != 2 {
+		t.Errorf("kept %v, want both builds still stored", kept)
+	}
+}
+
+// An archived deployment does not hold a build: it carries its own rendered
+// content, so it never needs the build back. Deleting the build only clears the
+// reference the archived deployment no longer needs.
+func TestDeleteBuild_AnArchivedDeploymentDoesNotHoldIt(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 2, 0)
+	// The first deployment is superseded by the second, so its status row moves on
+	// and it is left archived.
+	deployFromBuild(t, db, "gw-1", "dep-old", builds[0])
+	deployFromBuild(t, db, "gw-1", "dep-new", builds[1])
+
+	if err := repo.DeleteBuild(builds[0].BuildID, buildRepoAPIUUID, buildRepoOrgUUID); err != nil {
+		t.Fatalf("DeleteBuild: %v", err)
+	}
+	kept := storedBuildIDs(t, repo)
+	if len(kept) != 1 || kept[0] != builds[1].BuildID {
+		t.Errorf("kept %v, want only the build the gateway is serving", kept)
+	}
+}
+
+// A build id that is not one of this API's is a not-found, not a silent success —
+// and, since build ids are unique only per API, not another API's build either.
+func TestDeleteBuild_UnknownBuildIsNotFound(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	const otherAPIUUID = "aaaaaaaa-0000-0000-0000-00000000000e"
+	insertBuildTestArtifact(t, db, otherAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 1, 0)
+
+	if err := repo.DeleteBuild("2026-01-31-99", buildRepoAPIUUID, buildRepoOrgUUID); !errors.Is(err, ErrBuildNotFound) {
+		t.Errorf("error = %v, want ErrBuildNotFound", err)
+	}
+	// The id exists, but under a different API.
+	if err := repo.DeleteBuild(builds[0].BuildID, otherAPIUUID, buildRepoOrgUUID); !errors.Is(err, ErrBuildNotFound) {
+		t.Errorf("error for another API's build = %v, want ErrBuildNotFound", err)
+	}
+	if kept := storedBuildIDs(t, repo); len(kept) != 1 {
+		t.Errorf("kept %v, want the build untouched", kept)
+	}
+}
+
+// The description is what tells one snapshot from another when choosing which to
+// deploy or which to delete, so it has to survive the round trip — on the single
+// read and in the listing, which are separate queries.
+func TestCreateBuild_DescriptionIsStoredAndReadBack(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	build := buildOn(time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC))
+	build.Description = "Adds the /reports endpoint"
+	if err := repo.CreateBuildWithLimitEnforcement(build, 0); err != nil {
+		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+	}
+	// A build prepared without one reads back empty rather than failing to scan.
+	plain := buildOn(time.Date(2026, 1, 31, 1, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(plain, 0); err != nil {
+		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+	}
+
+	got, err := repo.GetBuild(build.BuildID, buildRepoAPIUUID, buildRepoOrgUUID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if got.Description != "Adds the /reports endpoint" {
+		t.Errorf("description = %q, want the note it was prepared with", got.Description)
+	}
+
+	listed, err := repo.GetBuilds(buildRepoAPIUUID, buildRepoOrgUUID, 0)
+	if err != nil {
+		t.Fatalf("GetBuilds: %v", err)
+	}
+	descriptions := map[string]string{}
+	for _, b := range listed {
+		descriptions[b.BuildID] = b.Description
+	}
+	if descriptions[build.BuildID] != "Adds the /reports endpoint" {
+		t.Errorf("listed description = %q, want the note", descriptions[build.BuildID])
+	}
+	if descriptions[plain.BuildID] != "" {
+		t.Errorf("a build prepared without a description listed %q", descriptions[plain.BuildID])
 	}
 }
 

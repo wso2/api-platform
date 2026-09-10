@@ -71,8 +71,11 @@ type Build struct {
 	BuildID        string `json:"buildId" db:"build_id"`
 	ArtifactID     string `json:"artifactId" db:"artifact_uuid"`
 	OrganizationID string `json:"organizationId" db:"organization_uuid"`
-	Content        []byte `json:"-" db:"content"`
-	DataVersion    string `json:"dataVersion" db:"data_version"`
+	// Description is an optional note the caller records with the build, to tell
+	// one snapshot from another when choosing what to deploy or what to delete.
+	Description string `json:"description,omitempty" db:"description"`
+	Content     []byte `json:"-" db:"content"`
+	DataVersion string `json:"dataVersion" db:"data_version"`
 	// Metadata is a free-form bag recorded with the build. It carries where the
 	// build came from — a commit for an API kept in a repository, for instance —
 	// so a running deployment can be traced back to its origin.

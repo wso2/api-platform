@@ -263,6 +263,7 @@ CREATE TABLE IF NOT EXISTS builds (
     build_id VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
     content BLOB NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     metadata BLOB,

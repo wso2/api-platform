@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -102,7 +103,7 @@ func NewDeploymentService(
 // promoted onward without being re-rendered. The artifact is stored at the
 // platform's own data version — the target gateway is not known yet, so
 // translation happens at deploy time.
-func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy string,
+func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy, description string,
 	metadata map[string]interface{}) (*api.BuildResponse, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
@@ -121,8 +122,9 @@ func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy string,
 	if err != nil {
 		return nil, err
 	}
+	build.Description = description
 	if err := s.deploymentRepo.CreateBuildWithLimitEnforcement(build, s.cfg.Deployments.MaxBuildsPerAPI); err != nil {
-		return nil, err
+		return nil, s.buildLimitError(err)
 	}
 	s.slogger.Debug("Build created", "buildID", build.BuildID, "apiUUID", apiUUID)
 	return toAPIBuildResponse(build), nil
@@ -188,11 +190,50 @@ func (s *DeploymentService) GetBuilds(apiUUID, orgUUID string, limit int) (*api.
 	return &api.BuildListResponse{Count: len(list), List: list}, nil
 }
 
+// DeleteBuild removes one of an API's builds.
+//
+// A build a deployment holds is not deleted: the deployment — running, or suspended
+// and still restorable — would be left with no snapshot to trace back to or promote
+// onward, and the definition as it stood cannot be rendered again. So the conflict
+// is reported and the caller chooses which deployment to give up, which is the same
+// judgement that preparing a build at the limit asks of them.
+func (s *DeploymentService) DeleteBuild(apiUUID, buildID, orgUUID string) error {
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
+	if err != nil {
+		return err
+	}
+	if apiModel == nil {
+		return apperror.RESTAPINotFound.New()
+	}
+	if err := s.deploymentRepo.DeleteBuild(buildID, apiUUID, orgUUID); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrBuildNotFound):
+			return apperror.BuildNotFound.New()
+		case errors.Is(err, repository.ErrBuildInUse):
+			return apperror.BuildInUse.New()
+		}
+		return err
+	}
+	s.slogger.Debug("Build deleted", "buildID", buildID, "apiUUID", apiUUID)
+	return nil
+}
+
+// buildLimitError turns the repository's "nothing free to remove" signal into the
+// conflict a caller can act on, naming the limit they are up against. Any other
+// error is passed through untouched.
+func (s *DeploymentService) buildLimitError(err error) error {
+	if errors.Is(err, repository.ErrBuildLimitReached) {
+		return apperror.BuildLimitReached.New(s.cfg.Deployments.MaxBuildsPerAPI)
+	}
+	return err
+}
+
 // toAPIBuildResponse projects a stored build onto the API response.
 func toAPIBuildResponse(build *model.Build) *api.BuildResponse {
 	out := &api.BuildResponse{
 		BuildId:     build.BuildID,
 		Uuid:        utils.ParseOpenAPIUUIDOrZero(build.UUID),
+		Description: utils.StringPtrIfNotEmpty(build.Description),
 		DataVersion: utils.StringPtrIfNotEmpty(build.DataVersion),
 		CreatedBy:   utils.StringPtrIfNotEmpty(build.CreatedBy),
 		CreatedAt:   build.CreatedAt,
@@ -439,6 +480,12 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		err = s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit)
 	}
 	if err != nil {
+		// A deploy from the API's definition stores its build, so it is refused at
+		// the build limit exactly as preparing one is — and for the same reason,
+		// which the caller has to be told rather than shown a bare 500.
+		if limitErr := s.buildLimitError(err); limitErr != err {
+			return nil, limitErr
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
@@ -995,14 +1042,14 @@ func (s *DeploymentService) backfillAPIKeysToGateway(apiUUID, gatewayID, actor s
 }
 
 // CreateBuildByHandle prepares a build of an API identified by its handle.
-func (s *DeploymentService) CreateBuildByHandle(apiHandle, orgUUID, createdBy string,
+func (s *DeploymentService) CreateBuildByHandle(apiHandle, orgUUID, createdBy, description string,
 	metadata map[string]interface{}) (*api.BuildResponse, error) {
 
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.CreateBuild(apiUUID, orgUUID, createdBy, metadata)
+	return s.CreateBuild(apiUUID, orgUUID, createdBy, description, metadata)
 }
 
 // GetBuildByHandle returns one build of an API identified by its handle.
@@ -1021,6 +1068,15 @@ func (s *DeploymentService) GetBuildsByHandle(apiHandle, orgUUID string, limit i
 		return nil, err
 	}
 	return s.GetBuilds(apiUUID, orgUUID, limit)
+}
+
+// DeleteBuildByHandle deletes one build of an API identified by its handle.
+func (s *DeploymentService) DeleteBuildByHandle(apiHandle, buildID, orgUUID string) error {
+	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return err
+	}
+	return s.DeleteBuild(apiUUID, buildID, orgUUID)
 }
 
 // DeployAPIByHandle creates a new immutable deployment artifact using API handle

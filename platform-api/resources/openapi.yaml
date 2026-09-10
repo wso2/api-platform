@@ -822,6 +822,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -894,6 +896,52 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the API's builds.
+
+        A build held by a deployment is not deleted: the request is refused with a
+        conflict. Deleting it would leave a running deployment — or a suspended one that
+        can still be restored — with no snapshot to trace back to or promote onward, and
+        the definition as it stood cannot be rendered again. Which deployment to give up
+        is the caller's decision, so it is reported rather than resolved here: undeploy
+        and delete that deployment first, then delete the build.
+
+        Deleting a build is how room is made when an API is at its build limit and every
+        stored build is in use. Access is validated against the organization in the JWT
+        token.
+      operationId: DeleteBuild
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:delete
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{restApiId}/deployments:
     post:
       summary: Create and deploy a new deployment
@@ -945,6 +993,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4972,6 +5022,10 @@ components:
             ap:rest_api:api_key:delete: Delete an API key of a REST API
             ap:rest_api:api_key:manage: Full access to a REST API's API keys
             ap:rest_api:api_key:update: Update an API key of a REST API
+            ap:rest_api:build:create: Prepare a build of a REST API
+            ap:rest_api:build:delete: Delete a build of a REST API
+            ap:rest_api:build:manage: Full access to a REST API's builds
+            ap:rest_api:build:read: Read builds of a REST API
             ap:rest_api:create: Create a REST API
             ap:rest_api:delete: Delete a REST API
             ap:rest_api:deployment:create: Deploy a REST API
@@ -6862,6 +6916,13 @@ components:
       type: object
       description: Optional details to record with a build.
       properties:
+        description:
+          type: string
+          maxLength: 1023
+          description: |
+            Optional note recorded with the build, to tell one snapshot from another when
+            choosing what to deploy or which build to delete.
+          example: "Adds the /reports endpoint"
         metadata:
           type: object
           additionalProperties: true
@@ -6891,6 +6952,9 @@ components:
           type: string
           format: uuid
           description: Globally unique identifier for the build, and what a deployment references
+        description:
+          type: string
+          description: Note recorded with the build when it was prepared
         dataVersion:
           type: string
           description: Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed

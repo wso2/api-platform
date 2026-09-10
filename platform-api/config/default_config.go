@@ -109,7 +109,7 @@ func defaultConfig() *Server {
 		},
 		Deployments: Deployments{
 			MaxPerAPIGateway: 20,
-			MaxBuildsPerAPI:  50,
+			MaxBuildsPerAPI:  5,
 			TimeoutEnabled:   true,
 			TimeoutInterval:  20,
 			TimeoutDuration:  60,

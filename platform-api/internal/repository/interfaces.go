@@ -132,6 +132,8 @@ type DeploymentRepository interface {
 	CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error
 	GetBuild(buildID, artifactUUID, orgUUID string) (*model.Build, error)
 	GetBuilds(artifactUUID, orgUUID string, limit int) ([]*model.Build, error)
+	// Refuses with ErrBuildInUse when a deployment still holds the build
+	DeleteBuild(buildID, artifactUUID, orgUUID string) error
 
 	// Deployment artifact methods (immutable deployments)
 	// Atomic: count, cleanup if needed, create. A deployment naming a build it runs

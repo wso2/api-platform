@@ -96,8 +96,10 @@ type Deployments interface {
 	// CreateBuildByHandle renders the API's current definition into an immutable
 	// snapshot without deploying it, so a later deploy can name that snapshot
 	// instead of re-rendering whatever the definition has become (Prepare).
-	// Metadata is stored with the build and returned with it, uninterpreted.
-	CreateBuildByHandle(apiHandle, orgID, actor string, metadata map[string]interface{}) (*api.BuildResponse, error)
+	// Description is an optional note recorded with the build; metadata is stored
+	// with it and returned uninterpreted. Refused when the API is at its build
+	// limit and every stored build is held by a deployment.
+	CreateBuildByHandle(apiHandle, orgID, actor, description string, metadata map[string]interface{}) (*api.BuildResponse, error)
 
 	// GetBuildByHandle returns one of an API's builds — its id, metadata and when
 	// it was prepared, not the rendered artifact itself (Read).
@@ -105,6 +107,12 @@ type Deployments interface {
 
 	// GetBuildsByHandle lists an API's builds, newest first (Read).
 	GetBuildsByHandle(apiHandle, orgID string, limit int) (*api.BuildListResponse, error)
+
+	// DeleteBuildByHandle removes one of an API's builds, so room can be made when
+	// every stored build is held and the limit refuses another (Delete). Refused
+	// while a deployment still holds the build — which deployment to give up is the
+	// caller's decision, not the platform's.
+	DeleteBuildByHandle(apiHandle, buildID, orgID string) error
 
 	// DeployAPIByHandle creates a new immutable deployment of an API onto one
 	// gateway, from a build (Create).

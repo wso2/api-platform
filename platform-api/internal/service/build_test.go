@@ -19,6 +19,7 @@ package service
 
 import (
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -72,15 +73,30 @@ type buildTestDeploymentRepo struct {
 	baseDeployment      *model.Deployment
 	getWithContentCalls int
 	created             *model.Deployment
+
+	// createBuildErr is what the store refuses a build with, and deleteErr what it
+	// refuses a delete with — the limit and in-use conflicts are decided in the
+	// transaction, so the service's job is only to turn them into the right answer.
+	createBuildErr error
+	deleteErr      error
+	deletedBuildID string
 }
 
 func (m *buildTestDeploymentRepo) CreateBuildWithLimitEnforcement(build *model.Build, hardLimit int) error {
+	if m.createBuildErr != nil {
+		return m.createBuildErr
+	}
 	if build.BuildID == "" {
 		build.BuildID = buildTestBuildID
 	}
 	m.createdBuild = build
 	m.createdWithCap = hardLimit
 	return nil
+}
+
+func (m *buildTestDeploymentRepo) DeleteBuild(buildID, artifactUUID, orgUUID string) error {
+	m.deletedBuildID = buildID
+	return m.deleteErr
 }
 
 func (m *buildTestDeploymentRepo) GetBuild(buildID, artifactUUID, orgUUID string) (*model.Build, error) {
@@ -102,6 +118,9 @@ func (m *buildTestDeploymentRepo) GetWithContent(deploymentID, artifactUUID, org
 
 func (m *buildTestDeploymentRepo) CreateWithBuild(deployment *model.Deployment, build *model.Build,
 	buildHardLimit, hardLimit int) error {
+	if m.createBuildErr != nil {
+		return m.createBuildErr
+	}
 	if build.UUID == "" {
 		build.UUID = buildTestBuildUUID
 	}
@@ -172,7 +191,7 @@ func TestCreateBuild_StoresASnapshotAtThePlatformDataVersion(t *testing.T) {
 	depRepo := &buildTestDeploymentRepo{}
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
 
-	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", nil)
+	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", "", nil)
 	if err != nil {
 		t.Fatalf("CreateBuild: %v", err)
 	}
@@ -210,7 +229,7 @@ func TestCreateBuild_RecordsTheGivenMetadata(t *testing.T) {
 	depRepo := &buildTestDeploymentRepo{}
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
 
-	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester",
+	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", "",
 		map[string]interface{}{"commitId": "9f1c2ab"})
 	if err != nil {
 		t.Fatalf("CreateBuild: %v", err)
@@ -224,10 +243,122 @@ func TestCreateBuild_RecordsTheGivenMetadata(t *testing.T) {
 	}
 }
 
+// The description is the caller's own note on the snapshot, so it is stored as
+// given and reported back — this is what makes a list of builds something a person
+// can choose from when deciding what to deploy or which one to delete.
+func TestCreateBuild_RecordsTheGivenDescription(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester",
+		"Adds the /reports endpoint", nil)
+	if err != nil {
+		t.Fatalf("CreateBuild: %v", err)
+	}
+	if depRepo.createdBuild.Description != "Adds the /reports endpoint" {
+		t.Errorf("stored description = %q", depRepo.createdBuild.Description)
+	}
+	if build.Description == nil || *build.Description != "Adds the /reports endpoint" {
+		t.Errorf("returned description = %v, want the note reported back", build.Description)
+	}
+}
+
+// A build prepared without a description reports none at all, rather than an empty
+// string a console would have to render as a blank line.
+func TestCreateBuild_NoDescriptionReportsNone(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	build, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", "", nil)
+	if err != nil {
+		t.Fatalf("CreateBuild: %v", err)
+	}
+	if build.Description != nil {
+		t.Errorf("description = %v, want none", *build.Description)
+	}
+}
+
+// Being at the limit with every build in use is a conflict the caller can act on,
+// not a server fault: they are told the limit they are up against so they know how
+// many deployments stand between them and another build.
+func TestCreateBuild_AtTheLimitIsAConflictNamingTheLimit(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{createBuildErr: repository.ErrBuildLimitReached}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	_, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", "", nil)
+	if !apperror.BuildLimitReached.Is(err) {
+		t.Fatalf("error = %v, want BuildLimitReached", err)
+	}
+	if want := strconv.Itoa(testConfig.Deployments.MaxBuildsPerAPI); !strings.Contains(err.Error(), want) {
+		t.Errorf("error %q does not name the limit %s", err.Error(), want)
+	}
+}
+
+// A deploy from the API's definition stores a build too, so it hits the same limit
+// — and has to say the same thing. Left unmapped this surfaced as a bare 500, which
+// tells the caller nothing about what to do.
+func TestDeployAPI_AtTheBuildLimitIsTheSameConflict(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{createBuildErr: repository.ErrBuildLimitReached}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	_, err := service.DeployAPI(buildTestAPIUUID, &api.DeployRequest{
+		Name:      "prod",
+		Base:      "current",
+		GatewayId: "test-gateway",
+	}, buildTestOrgUUID, "tester")
+	if !apperror.BuildLimitReached.Is(err) {
+		t.Fatalf("error = %v, want BuildLimitReached", err)
+	}
+}
+
+// Deleting a build is how the caller makes room once the limit refuses another, so
+// the id they name is the one that goes.
+func TestDeleteBuild_DeletesTheNamedBuild(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	if err := service.DeleteBuild(buildTestAPIUUID, "2026-01-31-2", buildTestOrgUUID); err != nil {
+		t.Fatalf("DeleteBuild: %v", err)
+	}
+	if depRepo.deletedBuildID != "2026-01-31-2" {
+		t.Errorf("deleted %q, want the build that was named", depRepo.deletedBuildID)
+	}
+}
+
+// A build a deployment still holds is refused, and the caller is told which step
+// comes first — undeploying is their decision to make, not the platform's.
+func TestDeleteBuild_HeldByADeploymentIsAConflict(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{deleteErr: repository.ErrBuildInUse}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	err := service.DeleteBuild(buildTestAPIUUID, "2026-01-31-2", buildTestOrgUUID)
+	if !apperror.BuildInUse.Is(err) {
+		t.Fatalf("error = %v, want BuildInUse", err)
+	}
+}
+
+func TestDeleteBuild_UnknownBuildIsNotFound(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{deleteErr: repository.ErrBuildNotFound}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	err := service.DeleteBuild(buildTestAPIUUID, "2026-01-31-99", buildTestOrgUUID)
+	if !apperror.BuildNotFound.Is(err) {
+		t.Fatalf("error = %v, want BuildNotFound", err)
+	}
+}
+
+func TestDeleteBuild_APINotFound(t *testing.T) {
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: nil}, &buildTestDeploymentRepo{})
+
+	if err := service.DeleteBuild(buildTestAPIUUID, "2026-01-31-1", buildTestOrgUUID); err == nil {
+		t.Fatal("expected an error for an API that does not exist")
+	}
+}
+
 func TestCreateBuild_APINotFound(t *testing.T) {
 	service := newBuildTestService(&buildTestAPIRepo{apiModel: nil}, &buildTestDeploymentRepo{})
 
-	if _, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", nil); err == nil {
+	if _, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", "", nil); err == nil {
 		t.Fatal("expected an error for an API that does not exist")
 	}
 }

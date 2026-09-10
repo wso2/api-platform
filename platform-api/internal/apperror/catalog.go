@@ -122,6 +122,8 @@ var (
 // kind, e.g. "API", "LLM provider".
 var (
 	BuildNotFound             = def(CodeBuildNotFound, http.StatusNotFound, "The specified build could not be found.")
+	BuildLimitReached         = def(CodeBuildLimitReached, http.StatusConflict, "All %d stored builds of this API are in use by a deployment. Undeploy and delete a deployment to free its build before preparing another.")
+	BuildInUse                = def(CodeBuildInUse, http.StatusConflict, "The build is in use by a deployment and cannot be deleted. Undeploy and delete that deployment first.")
 	DeploymentBaseNotFound    = def(CodeDeploymentBaseNotFound, http.StatusNotFound, "The specified base deployment could not be found.")
 	DeploymentRestoreConflict = def(CodeDeploymentRestoreConflict, http.StatusConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid.")
 	DeploymentNotFound        = def(CodeDeploymentNotFound, http.StatusNotFound, "The specified deployment could not be found.")

@@ -654,6 +654,10 @@ type BuildListResponse struct {
 
 // BuildRequest Optional details to record with a build.
 type BuildRequest struct {
+	// Description Optional note recorded with the build, to tell one snapshot from another when
+	// choosing what to deploy or which build to delete.
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
 	// Metadata Free-form metadata to store with the build, such as the commit an API kept in a
 	// repository was prepared from. It is returned with the build and is not
 	// interpreted by the platform.
@@ -675,6 +679,9 @@ type BuildResponse struct {
 
 	// DataVersion Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
 	DataVersion *string `json:"dataVersion,omitempty" yaml:"dataVersion,omitempty"`
+
+	// Description Note recorded with the build when it was prepared
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// Metadata Metadata recorded with the build, such as the commit it was prepared from
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`

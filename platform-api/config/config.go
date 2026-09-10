@@ -556,8 +556,9 @@ type Database struct {
 type Deployments struct {
 	MaxPerAPIGateway int `koanf:"max_per_api_gateway"`
 	// MaxBuildsPerAPI caps how many builds are stored per API. Preparing another
-	// one past this prunes the API's oldest builds that no gateway is deployed
-	// from. Zero or less keeps every build.
+	// one at the cap first removes the API's oldest builds that no deployment
+	// holds; if every build is held, the prepare is refused rather than taking a
+	// build something can still be restored from. Zero or less keeps every build.
 	MaxBuildsPerAPI int  `koanf:"max_builds_per_api"`
 	TimeoutEnabled  bool `koanf:"timeout_enabled"`
 	TimeoutInterval int  `koanf:"timeout_interval"`
