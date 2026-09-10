@@ -20,6 +20,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -54,8 +55,23 @@ type Server struct {
 	proxy     *httputil.ReverseProxy
 	handler   http.Handler
 
+	// exchanger is non-nil exactly when cfg.Auth.TokenExchangeEnabled().
+	exchanger *auth.Exchanger
+
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
+
+	exchangeMu    sync.Mutex
+	exchangeLocks map[string]*exchangeLock
+}
+
+// exchangeLock single-flights one session's exchange, so the burst of parallel calls
+// the SPA makes on page load hits the IDP once rather than once per request.
+type exchangeLock struct {
+	sync.Mutex
+	done   bool
+	result *auth.Result
+	err    error
 }
 
 // New builds a Server from config. It creates the upstream HTTP client, the
@@ -91,8 +107,9 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// The browser calls the proxy under the app's base path, so the prefix stripped
 		// on the way upstream is the base path plus the proxy prefix — the Platform API
 		// knows nothing about either.
-		proxy:        proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
-		refreshLocks: make(map[string]*refreshLock),
+		proxy:         proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
+		refreshLocks:  make(map[string]*refreshLock),
+		exchangeLocks: make(map[string]*exchangeLock),
 	}
 
 	if cfg.Auth.OIDCEnabled() {
@@ -109,6 +126,23 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		s.oidc = o
+
+		// Built after the OIDC client to reuse its endpoint discovery.
+		if cfg.Auth.TokenExchangeEnabled() {
+			endpoint := cfg.Auth.ExchangeTokenEndpoint()
+			if endpoint == "" {
+				endpoint = o.TokenEndpoint()
+			}
+			te := cfg.Auth.OIDC.TokenExchange
+			s.exchanger = auth.NewExchanger(upstream, te, endpoint)
+			slog.Info("token exchange enabled: upstream requests will carry an exchanged token",
+				"grant_type", te.GrantType,
+				"token_endpoint", endpoint,
+				"audience", te.Audience,
+				"resource", te.Resource,
+				"cache_enabled", te.CacheEnabled,
+			)
+		}
 	}
 
 	s.handler = s.routes()
