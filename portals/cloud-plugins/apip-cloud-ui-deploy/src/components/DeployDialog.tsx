@@ -22,6 +22,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -328,26 +329,50 @@ const DeployDialog: FC<DeployDialogProps> = ({
         {createBuild ? null : (
           <Box sx={{ mb: 2.5 }}>
             <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Build</FormLabel>
-            <FormControl fullWidth size="small">
-              <Select
-                value={selectedBuildId}
-                onChange={(event) => setBuildId(event.target.value as string)}
-                displayEmpty
-                disabled={availableBuilds.length === 0}
-              >
-                {availableBuilds.length === 0 ? (
-                  <MenuItem value="" disabled>
-                    No deployed builds available
-                  </MenuItem>
-                ) : (
-                  availableBuilds.map((build) => (
-                    <MenuItem key={build.buildId} value={build.buildId}>
-                      {build.buildId}
+            {/* Promoting has nothing to choose: the source environment runs one
+                build, and promoting carries that one forward. Showing a dropdown
+                implied a decision the pipeline does not offer. */}
+            {mode === 'promote' ? (
+              selectedBuildId ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Chip
+                    label={selectedBuildId}
+                    size="small"
+                    variant="outlined"
+                    sx={{ height: 20, fontSize: '0.7rem' }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    from {sourceEnvironment?.name}
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Nothing is deployed in {sourceEnvironment?.name ?? 'the source environment'} to
+                  promote.
+                </Typography>
+              )
+            ) : (
+              <FormControl fullWidth size="small">
+                <Select
+                  value={selectedBuildId}
+                  onChange={(event) => setBuildId(event.target.value as string)}
+                  displayEmpty
+                  disabled={availableBuilds.length === 0}
+                >
+                  {availableBuilds.length === 0 ? (
+                    <MenuItem value="" disabled>
+                      No builds available
                     </MenuItem>
-                  ))
-                )}
-              </Select>
-            </FormControl>
+                  ) : (
+                    availableBuilds.map((build) => (
+                      <MenuItem key={build.buildId} value={build.buildId}>
+                        {build.buildId}
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+            )}
           </Box>
         )}
 

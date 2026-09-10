@@ -211,10 +211,14 @@ const GatewayForm: FC<GatewayFormProps> = ({
               control={
                 <Switch
                   checked={isDefault}
-                  // Nothing to be the default of until an environment is chosen,
-                  // and an existing default cannot be unset here — it is handed
-                  // over by marking another gateway.
-                  disabled={(gateway?.isDefault ?? false) || environmentId.length === 0}
+                  // Locked in three cases: nothing to be the default of until an
+                  // environment is chosen; an existing default cannot be unset
+                  // here (it is handed over by marking another gateway); and the
+                  // first gateway of its type BECOMES the default whatever this
+                  // says, so offering to untick it would be a lie.
+                  disabled={
+                    (gateway?.isDefault ?? false) || environmentId.length === 0 || isFirstOfType
+                  }
                   onChange={(event) => setIsDefault(event.target.checked)}
                 />
               }

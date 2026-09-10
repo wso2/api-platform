@@ -206,7 +206,13 @@ const GatewaysList: FC<GatewaysListProps> = ({
                                     gateways in one environment can each be
                                     marked — one per type. */}
                                 {gateway.isDefault ? (
-                                  <Chip label="Default" size="small" color="primary" />
+                                  <Chip
+                                    label="Default"
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                                  />
                                 ) : null}
                               </Box>
                             </TableCell>
