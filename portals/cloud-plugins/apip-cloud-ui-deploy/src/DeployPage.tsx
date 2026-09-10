@@ -32,11 +32,14 @@ export type DeployPageProps = {
   /** The backend URL the API is defined against; the deploy form starts from it. */
   apiEndpointUrl?: string;
   busy: boolean;
-  /** Deploys to `target`; `from` is set when this is a promotion. */
+  /**
+   * Deploys to `target`; `from` is set when this is a promotion. Every gateway
+   * goes in one call with its own endpoint, because an environment runs a single
+   * build of an API at a time.
+   */
   onDeploy: (
     target: Environment,
-    gatewayId: string,
-    endpointUrl: string,
+    gateways: { gatewayId: string; endpointUrl?: string }[],
     from?: Environment,
     buildId?: string
   ) => void;
@@ -74,8 +77,11 @@ const DeployPage: FC<DeployPageProps> = ({
   const source =
     dialog?.sourceIndex !== undefined ? environments[dialog.sourceIndex] : undefined;
 
-  const handleConfirm = (gatewayId: string, endpointUrl: string, buildId?: string) => {
-    if (target) onDeploy(target, gatewayId, endpointUrl, source, buildId);
+  const handleConfirm = (
+    gateways: { gatewayId: string; endpointUrl?: string }[],
+    buildId?: string
+  ) => {
+    if (target) onDeploy(target, gateways, source, buildId);
     setDialog(null);
   };
 
