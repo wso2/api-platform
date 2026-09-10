@@ -156,3 +156,191 @@ func TestPolicyValidator_ValidateLLMProxyPolicies_NonExistentMajorVersion(t *tes
 	assert.Len(t, errors, 1, "expected one error for a non-existent major version")
 	assert.Contains(t, errors[0].Message, "major version 'v999' not found")
 }
+
+// paramDefs returns definitions whose "token-based-ratelimit" policy declares a parameter
+// schema, so per-path params on operation-level and deprecated policies can be exercised.
+// additionalProperties:false mirrors the shipped policy definitions.
+func paramDefs() map[string]models.PolicyDefinition {
+	schema := map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []interface{}{"limit"},
+		"properties": map[string]interface{}{
+			"limit":    map[string]interface{}{"type": "integer", "minimum": float64(1)},
+			"duration": map[string]interface{}{"type": "string"},
+		},
+	}
+	return map[string]models.PolicyDefinition{
+		"token-based-ratelimit|v1.0.0": {Name: "token-based-ratelimit", Version: "v1.0.0", Parameters: &schema},
+		"no-schema-policy|v1.0.0":      {Name: "no-schema-policy", Version: "v1.0.0"},
+	}
+}
+
+func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsValid(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	cfg := &api.LLMProviderConfiguration{
+		Spec: api.LLMProviderConfigData{
+			OperationPolicies: &[]api.OperationPolicy{
+				{Name: "token-based-ratelimit", Version: "v1", Paths: []api.OperationPolicyPath{
+					{Path: "/chat/completions", Params: map[string]interface{}{"limit": 100, "duration": "1m"}},
+				}},
+			},
+		},
+	}
+
+	assert.Empty(t, validator.ValidateLLMProviderPolicies(cfg))
+}
+
+func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsInvalid(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	cfg := &api.LLMProviderConfiguration{
+		Spec: api.LLMProviderConfigData{
+			OperationPolicies: &[]api.OperationPolicy{
+				{Name: "token-based-ratelimit", Version: "v1", Paths: []api.OperationPolicyPath{
+					{Path: "/chat/completions", Params: map[string]interface{}{"limit": 100}},
+					{Path: "/embeddings", Params: map[string]interface{}{"duration": "1m"}},
+					{Path: "/responses", Params: map[string]interface{}{"limit": 0}},
+					{Path: "/models", Params: map[string]interface{}{"limit": 1, "bogus": "x"}},
+				}},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMProviderPolicies(cfg)
+	assert.Len(t, errors, 3, "expected one error each for the missing, out-of-range and unknown param")
+
+	fields := make([]string, 0, len(errors))
+	for _, e := range errors {
+		fields = append(fields, e.Field)
+	}
+	assert.NotContains(t, fields, "spec.operationPolicies[0].paths[0].params",
+		"paths[0] is valid and must not be reported")
+	assert.Contains(t, fields, "spec.operationPolicies[0].paths[1].params")
+	assert.Contains(t, errors[0].Message, "limit is required")
+	assert.Equal(t, "spec.operationPolicies[0].paths[2].params.limit", errors[1].Field)
+	assert.Contains(t, errors[2].Message, "Additional property bogus is not allowed")
+}
+
+func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyMissingParamsFailsRequired(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	cfg := &api.LLMProviderConfiguration{
+		Spec: api.LLMProviderConfigData{
+			OperationPolicies: &[]api.OperationPolicy{
+				{Name: "token-based-ratelimit", Version: "v1", Paths: []api.OperationPolicyPath{
+					{Path: "/chat/completions"}, // no params at all
+				}},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMProviderPolicies(cfg)
+	assert.Len(t, errors, 1)
+	assert.Equal(t, "spec.operationPolicies[0].paths[0].params", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "limit is required")
+}
+
+func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsCoerced(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	// A rendered template ({{ env "LIMIT" }}) always produces a string; coercion must run
+	// before schema validation so "100" satisfies the integer param.
+	params := map[string]interface{}{"limit": "100", "duration": "1m"}
+	cfg := &api.LLMProviderConfiguration{
+		Spec: api.LLMProviderConfigData{
+			OperationPolicies: &[]api.OperationPolicy{
+				{Name: "token-based-ratelimit", Version: "v1", Paths: []api.OperationPolicyPath{
+					{Path: "/chat/completions", Params: params},
+				}},
+			},
+		},
+	}
+
+	assert.Empty(t, validator.ValidateLLMProviderPolicies(cfg))
+	assert.Equal(t, float64(100), params["limit"], "params must be coerced in place")
+}
+
+func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyNoSchemaSkipsParams(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	cfg := &api.LLMProviderConfiguration{
+		Spec: api.LLMProviderConfigData{
+			OperationPolicies: &[]api.OperationPolicy{
+				{Name: "no-schema-policy", Version: "v1", Paths: []api.OperationPolicyPath{
+					{Path: "/chat/completions", Params: map[string]interface{}{"anything": "goes"}},
+				}},
+			},
+		},
+	}
+
+	assert.Empty(t, validator.ValidateLLMProviderPolicies(cfg),
+		"a definition without a parameter schema must not reject params")
+}
+
+func TestPolicyValidator_ValidateLLMProviderPolicies_BadRefSkipsParamValidation(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	cfg := &api.LLMProviderConfiguration{
+		Spec: api.LLMProviderConfigData{
+			OperationPolicies: &[]api.OperationPolicy{
+				{Name: "token-based-ratelimit", Version: "v999", Paths: []api.OperationPolicyPath{
+					{Path: "/chat/completions", Params: map[string]interface{}{"bogus": "x"}},
+				}},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMProviderPolicies(cfg)
+	assert.Len(t, errors, 1, "an unresolvable reference must report once, not also per path")
+	assert.Contains(t, errors[0].Message, "major version 'v999' not found")
+}
+
+func TestPolicyValidator_ValidateLLMProxyPolicies_LegacyPolicyParamsInvalid(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	cfg := &api.LLMProxyConfiguration{
+		Spec: api.LLMProxyConfigData{
+			Policies: &[]api.LLMPolicy{
+				{Name: "token-based-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+					{Path: "/chat/completions", Params: map[string]interface{}{"limit": 100}},
+					{Path: "/embeddings", Params: map[string]interface{}{"limit": "not-a-number"}},
+				}},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMProxyPolicies(cfg)
+	assert.Len(t, errors, 1)
+	assert.Equal(t, "spec.policies[0].paths[1].params.limit", errors[0].Field)
+}
+
+// The LLM->RestAPI transform merges the provider template's extraction params
+// (requestModel, promptTokens, ...) into every operation-level policy attachment. Those keys
+// are declared by no policy schema, and most schemas set additionalProperties:false — so
+// validation must run against the user-authored params, never the post-merge result.
+func TestPolicyValidator_ValidateLLMProviderPolicies_TemplateExtractionParamsNotRequired(t *testing.T) {
+	validator := NewPolicyValidator(paramDefs())
+
+	cfg := &api.LLMProviderConfiguration{
+		Spec: api.LLMProviderConfigData{
+			OperationPolicies: &[]api.OperationPolicy{
+				{Name: "token-based-ratelimit", Version: "v1", Paths: []api.OperationPolicyPath{
+					{Path: "/chat/completions", Params: map[string]interface{}{"limit": 100}},
+				}},
+			},
+		},
+	}
+	assert.Empty(t, validator.ValidateLLMProviderPolicies(cfg),
+		"user-authored params alone must validate; template params are merged later")
+
+	// Sanity check that the merged shape would indeed be rejected, which is why the
+	// derived RestAPI is deliberately not the validation input.
+	merged := map[string]interface{}{
+		"limit":        100,
+		"requestModel": map[string]interface{}{"location": "payload", "identifier": "$.model"},
+	}
+	def := paramDefs()["token-based-ratelimit|v1.0.0"]
+	assert.NotEmpty(t, validator.validatePolicyParams(merged, *def.Parameters, "p"))
+}
