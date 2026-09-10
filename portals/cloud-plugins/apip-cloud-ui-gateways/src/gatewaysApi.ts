@@ -102,20 +102,6 @@ export function createGatewaysClient(apiFetch: ApiFetch) {
         ...(input.isDefault ? { isDefault: true } : {}),
       });
     },
-    /**
-     * Hands the environment's default for this gateway's type over to it.
-     *
-     * The update endpoint replaces the mutable fields rather than patching them,
-     * so the gateway's current name and description are resent alongside the
-     * marking: a body carrying only `isDefault` would blank the description.
-     */
-    async markGatewayDefault(gateway: Gateway): Promise<void> {
-      await apiFetch('PUT', `/managed-gateways/${encodeURIComponent(gateway.id)}`, {
-        displayName: gateway.name,
-        description: gateway.description,
-        isDefault: true,
-      });
-    },
     async deleteGateway(id: string): Promise<void> {
       await apiFetch('DELETE', `/managed-gateways/${encodeURIComponent(id)}`);
     },

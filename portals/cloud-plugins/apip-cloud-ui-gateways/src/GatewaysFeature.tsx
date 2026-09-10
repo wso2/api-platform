@@ -162,31 +162,6 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     [client, load, notify]
   );
 
-  // Handing the default over is an update on the gateway itself, so it goes
-  // through the same client as any other edit. The list refreshes afterwards
-  // because the previous holder's badge has to clear too, not just this one's.
-  const markDefault = useCallback(
-    async (id: string, name: string) => {
-      if (submittingRef.current) return;
-      const gateway = visibleGateways.find((candidate) => candidate.id === id);
-      if (!gateway) return;
-      submittingRef.current = true;
-      try {
-        await client.markGatewayDefault(gateway);
-        notify(`"${name}" is now the default gateway for its environment.`, 'success');
-        await load();
-      } catch (markError) {
-        notify(
-          markError instanceof Error ? markError.message : 'Unable to mark the gateway as default.',
-          'error'
-        );
-      } finally {
-        submittingRef.current = false;
-      }
-    },
-    [client, visibleGateways, load, notify]
-  );
-
   const removeGateway = useCallback(
     async (id: string, name: string) => {
       // One delete at a time: the confirm dialog closes on confirm, so a second
@@ -273,7 +248,6 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         setView('edit');
       }}
       onDelete={removeGateway}
-      onMarkDefault={markDefault}
     />
   );
 };

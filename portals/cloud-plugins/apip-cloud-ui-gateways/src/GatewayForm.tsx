@@ -31,12 +31,10 @@ import {
   Switch,
   TextField,
   Tooltip,
-  Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import EnvironmentSelect from './components/EnvironmentSelect';
 import GatewayTypeSelector from './components/GatewayTypeSelector';
-import { gatewayTypeLabel } from './utils/gateway';
 import { gatewayHandleFromName, validateGatewayName } from './utils/name';
 import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
@@ -179,11 +177,6 @@ const GatewayForm: FC<GatewayFormProps> = ({
               }
               label="Default gateway for this environment"
             />
-            <Typography variant="body2" color="text.secondary">
-              {gateway?.isDefault
-                ? 'This is the default. To move it, mark another gateway of the same type as the default.'
-                : `APIs deploy here by default when no gateway is chosen. One ${gatewayTypeLabel(type)} gateway per environment can be the default; marking this one takes it over from whichever holds it now.`}
-            </Typography>
           </Grid>
 
           <Grid size={{ xs: 12 }}>
