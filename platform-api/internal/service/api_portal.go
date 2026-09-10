@@ -19,6 +19,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"regexp"
@@ -130,11 +131,30 @@ func NewAPIPortalService(
 // invalidateCachedAuthProvider is a no-op when the service was constructed
 // without a registry (e.g. in unit tests that don't need outbound auth). Keeps
 // call sites clean of nil checks.
-func (s *APIPortalService) invalidateCachedAuthProvider(portalHandle string) {
+func (s *APIPortalService) invalidateCachedAuthProvider(portalHandle, orgID string) {
 	if s.authRegistry == nil {
 		return
 	}
-	s.authRegistry.Invalidate(portalHandle)
+	s.authRegistry.Invalidate(portalHandle, orgID)
+}
+
+// AuthHeaderForPortal returns the fully-formed Authorization header value the
+// outbound publisher should attach to its next call to the portal's admin
+// REST API, e.g. "SharedKey <raw>". Wraps the registry lookup + provider
+// caching so publisher code is a one-liner: `hdr, err := svc.AuthHeaderForPortal(ctx, handle, orgID)`.
+//
+// Returns APIPortalNotFound when the (handle, orgID) pair is unknown, and a
+// plain error on decryption / configuration failures (the caller treats
+// those as fatal for the publish call rather than retrying).
+func (s *APIPortalService) AuthHeaderForPortal(ctx context.Context, portalHandle, orgID string) (string, error) {
+	if s.authRegistry == nil {
+		return "", fmt.Errorf("shared-key AuthProvider registry is not initialised")
+	}
+	provider, err := s.authRegistry.Get(portalHandle, orgID)
+	if err != nil {
+		return "", err
+	}
+	return provider.AuthorizationHeader(ctx)
 }
 
 // PaginationInfo is the {total, offset, limit} triplet used to build the
@@ -333,7 +353,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 	_ = s.auditRepo.Record("UPDATE", portal.ID, "api_portal", orgID, portal.UpdatedBy)
 	// Config may have changed; drop any cached AuthProvider so the next
 	// outbound call rebuilds from the new stored values.
-	s.invalidateCachedAuthProvider(portal.Handle)
+	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)
 	return ModelToAPIPortalResponse(portal), nil
 }
 
@@ -350,6 +370,6 @@ func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
 		return err
 	}
 	_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, strings.TrimSpace(actor))
-	s.invalidateCachedAuthProvider(portal.Handle)
+	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)
 	return nil
 }
