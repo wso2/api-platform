@@ -901,15 +901,23 @@ paths:
       description: |
         Deletes one of the API's builds.
 
-        A build held by a deployment is not deleted: the request is refused with a
-        conflict. Deleting it would leave a running deployment — or a suspended one that
-        can still be restored — with no snapshot to trace back to or promote onward, and
-        the definition as it stood cannot be rendered again. Which deployment to give up
-        is the caller's decision, so it is reported rather than resolved here: undeploy
-        and delete that deployment first, then delete the build.
+        A build a deployment still HOLDS is not deleted: the request is refused with a
+        conflict. A build is held while any of the API's gateways has it as its current
+        deployment's build — deployed, deploying, failed, or undeployed and awaiting a
+        restore. Deleting it would leave that deployment with no snapshot to trace back
+        to or promote onward, and the definition as it stood cannot be rendered again.
+        Which deployment to give up is the caller's decision, so it is reported rather
+        than resolved here: undeploy and delete that deployment first, then delete the
+        build.
+
+        An ARCHIVED deployment — one a newer deployment has superseded on its gateway —
+        does NOT hold its build and does not block deletion. It kept the rendered
+        artifact it was created with, so it stays restorable without the build; only its
+        `buildId` stops being reported once the build is gone. The same is true of a
+        build removed automatically to stay within the limit.
 
         Deleting a build is how room is made when an API is at its build limit and every
-        stored build is in use. Access is validated against the organization in the JWT
+        stored build is held. Access is validated against the organization in the JWT
         token.
       operationId: DeleteBuild
       security:
