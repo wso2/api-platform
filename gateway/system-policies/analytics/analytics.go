@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
+	"net/url"
 	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	"github.com/wso2/api-platform/sdk/core/utils"
@@ -71,7 +74,97 @@ const (
 	// SharedContext.Metadata key used to accumulate streaming response body chunks.
 	// Deleted after EndOfStream processing to avoid memory leaks.
 	analyticsStreamAccKey = "__analytics_stream_acc"
+
+	// A2ARequestPropertiesKey and A2AResponsePropertiesKey carry the JSON-encoded
+	// A2A analytics properties for an Agent request and its response. Consumed by
+	// the policy-engine's prepareAnalyticEvent, which mirrors these key names as its
+	// own constants — the two live in separate Go modules and cannot share one, so
+	// each side has a test asserting the spelling (the same arrangement as the
+	// auth-context keys above).
+	A2ARequestPropertiesKey  = "a2a_request_properties"
+	A2AResponsePropertiesKey = "a2a_response_properties"
+
+	// SharedContext.Metadata keys used to time an A2A streaming response. Written
+	// only for Agent requests and deleted when the stream ends, so they cost nothing
+	// on any other kind.
+	a2aRequestStartKey = "__a2a_request_start"
+	a2aFirstEventKey   = "__a2a_first_event"
+
+	// a2aStreamScanKey is how far the forwarded bytes have been scanned for the first
+	// complete SSE event. Held so a stream that opens with a long run of heartbeats is
+	// not rescanned from the start on every chunk. Dropped once an event is found.
+	a2aStreamScanKey = "__a2a_stream_scan"
 )
+
+// A2A resolution attribute names, as the a2a resolver in the policy engine spells
+// them into SharedContext.ResolutionAttributes.
+//
+// Read, never written: the resolver owns this map and a policy treats it as
+// read-only. Mirrored string literals again, for the module boundary reason above.
+const (
+	a2aAttrMessageID       = "a2a.message.id"
+	a2aAttrContextID       = "a2a.context.id"
+	a2aAttrTaskID          = "a2a.task.id"
+	a2aAttrTransport       = "a2a.transport"
+	a2aAttrProtocolVersion = "a2a.protocol.version"
+)
+
+// a2aTransportHTTPJSON is the transport whose operation arguments travel in the path
+// and the query string rather than in a request envelope. Spelled here because the
+// value is the resolver's, mirrored across the module boundary like everything else
+// above; the JSON-RPC value is never compared against, so it is not spelled at all.
+const a2aTransportHTTPJSON = "HTTP+JSON"
+
+// A2A response payload types.
+//
+// Closed set, and deliberately so: this is a dimension a dashboard groups by, and it
+// is derived from an agent-authored document. Every value below corresponds to one of
+// the response shapes A2A 1.0 defines for its eleven operations — the four members of
+// the SendMessage/StreamResponse union, the four fixed collection and configuration
+// results, plus the three outcomes that are not a document at all. Anything else the
+// agent sends classifies as a2aPayloadUnknown rather than contributing a new value.
+const (
+	a2aPayloadTask           = "task"
+	a2aPayloadMessage        = "message"
+	a2aPayloadStatusUpdate   = "status_update"
+	a2aPayloadArtifactUpdate = "artifact_update"
+	a2aPayloadTaskList       = "task_list"
+	a2aPayloadPushConfig     = "push_notification_config"
+	a2aPayloadPushConfigList = "push_notification_config_list"
+	a2aPayloadAgentCard      = "agent_card"
+	a2aPayloadEmpty          = "empty"
+	a2aPayloadError          = "error"
+	a2aPayloadUnknown        = "unknown"
+)
+
+// maxA2AObservedValueBytes bounds an identifier or state read out of a response before
+// it reaches an event.
+//
+// It is the same ceiling the a2a resolver applies to the identifiers it takes off the
+// request (MaxResolutionAttributeValueBytes), for the same reason and with the same
+// treatment: an over-long value is dropped, never truncated, because a truncated
+// identifier is not a shorter identifier — it is a different one, and correlating on
+// it would silently group unrelated requests.
+const maxA2AObservedValueBytes = 256
+
+// a2aTaskStates is the closed set of A2A 1.0 task states, keyed by the canonical
+// protocol-enum spelling this policy reports.
+//
+// A state is validated against this set rather than passed through, because it is
+// agent-authored and the section's cardinality rule sanctions it as a metric
+// dimension — an unrecognised value is dropped, so a misbehaving agent cannot widen
+// the dimension. See normalizeA2ATaskState for the spellings accepted on the way in.
+var a2aTaskStates = map[string]struct{}{
+	"TASK_STATE_UNSPECIFIED":    {},
+	"TASK_STATE_SUBMITTED":      {},
+	"TASK_STATE_WORKING":        {},
+	"TASK_STATE_COMPLETED":      {},
+	"TASK_STATE_FAILED":         {},
+	"TASK_STATE_CANCELED":       {},
+	"TASK_STATE_INPUT_REQUIRED": {},
+	"TASK_STATE_REJECTED":       {},
+	"TASK_STATE_AUTH_REQUIRED":  {},
+}
 
 var (
 	// JSON Path expressions to extract MCP analytics properties from response body
@@ -115,6 +208,85 @@ type McpResponseAnalyticsProperties struct {
 	IsError    *bool          `json:"isError,omitempty"`
 	ErrorCode  *int           `json:"errorCode,omitempty"`
 	ServerInfo *McpServerInfo `json:"serverInfo,omitempty"`
+}
+
+// A2ARequestAnalyticsProperties are the request-side A2A dimensions.
+//
+// The first five are not parsed by this policy: the a2a resolver extracted them in the
+// same pass that identified the operation, and this copies them out of
+// SharedContext.ResolutionAttributes. That is the point — MCP's equivalent unmarshals
+// the request body here, and the body is then unmarshalled again elsewhere for the
+// same request.
+//
+// Transport and ProtocolVersion are bounded (a two-valued enum and a registry entry);
+// the three identifiers are opaque and caller-controlled, so they belong in an event
+// or a trace and never in a metric label or a rate-limit key.
+//
+// The last three are request *summaries* rather than identifiers, and they are the
+// one part of an A2A request this policy does read for itself. They are analytics-only
+// facts — nothing else in the gateway keys, routes or limits on how many parts a
+// message had — so putting them in the resolver would widen its closed attribute set
+// for a single consumer. All three are numbers or a boolean, so none of them can
+// widen a dimension the way a caller-supplied string would; they are event values and
+// histogram inputs, never metric labels.
+//
+// Each is a pointer because its zero value is meaningful: a message may genuinely
+// carry zero parts, a history length of zero is a request for no history at all, and
+// returnImmediately false is the protocol's own default rather than an absent field.
+type A2ARequestAnalyticsProperties struct {
+	Transport       string `json:"transport,omitempty"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	MessageID       string `json:"messageId,omitempty"`
+	ContextID       string `json:"contextId,omitempty"`
+	TaskID          string `json:"taskId,omitempty"`
+
+	InputPartCount    *int  `json:"inputPartCount,omitempty"`
+	ReturnImmediately *bool `json:"returnImmediately,omitempty"`
+	HistoryLength     *int  `json:"historyLength,omitempty"`
+}
+
+// A2AResponseAnalyticsProperties are the response-side A2A dimensions — the ones only
+// a policy that sees the response body can produce.
+//
+// IsError is what makes an A2A success rate correct rather than plausible: a JSON-RPC
+// error travels inside a 200, so a rate computed from the HTTP status counts failed
+// invocations as successes. It is always emitted for a response this policy could
+// read, so a consumer can distinguish "succeeded" from "not determined".
+//
+// The streaming timings are measured by this policy from the gateway's own clock,
+// because the ALS timepoints the event's Latencies come from cannot express them: a
+// streaming response's last upstream byte arrives when the stream ends, so the backend
+// latency of a stream is its whole duration and says nothing about when the first
+// event reached the client.
+//
+// The error *message* is deliberately absent. It is agent-authored free text of
+// unbounded length and unknown sensitivity; the code is the dimension a dashboard
+// groups by.
+//
+// PayloadType and TaskState are bounded enums and safe to group by. The two
+// identifiers are not, and they are reported separately from the request's rather than
+// folded into them: an agent generates a task id and a context id the caller never
+// sent, so overwriting the request's values would hide the moment correlation actually
+// begins, and a mismatch between what was asked for and what came back would stop
+// being diagnosable. The published model is one flat object, so they carry a `response`
+// prefix — the only two fields here that need one, since no other response fact has a
+// request-side counterpart.
+//
+// The field names here are the published names. This struct is serialized at the Envoy
+// metadata boundary and unmarshalled on the other side into the collector's
+// dto.A2AResponseAnalytics, so the two must agree; TestA2AKeySpellingsMatchThePolicyEngine
+// pins them, because a one-sided rename is silent — the dimension just stops appearing.
+type A2AResponseAnalyticsProperties struct {
+	IsError            *bool  `json:"isError,omitempty"`
+	ErrorCode          *int   `json:"errorCode,omitempty"`
+	TimeToFirstEventMs *int64 `json:"timeToFirstEventMs,omitempty"`
+	StreamDurationMs   *int64 `json:"streamDurationMs,omitempty"`
+	IsStreaming        *bool  `json:"isStreaming,omitempty"`
+
+	PayloadType       string `json:"payloadType,omitempty"`
+	ResponseTaskID    string `json:"responseTaskId,omitempty"`
+	ResponseContextID string `json:"responseContextId,omitempty"`
+	TaskState         string `json:"taskState,omitempty"`
 }
 
 // LLMProviderAnalyticsInfo holds extracted token-related information from LLM provider responses
@@ -186,6 +358,21 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 		if sessionIDs := reqCtx.Headers.Get("mcp-session-id"); len(sessionIDs) > 0 {
 			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
 		}
+	}
+
+	// A2A request dimensions are emitted here rather than only at the body phase
+	// because this is the phase every A2A operation reaches with everything the
+	// resolver stamped: seven of the eleven are GETs or DELETEs with no request body
+	// at all. The resolver has already stamped the identifiers on both transports — a
+	// body-resolved route runs its header policies at the request-body callback, after
+	// the chain was bound — and the query string is on the path here, which is where
+	// GetTask and ListTasks put their history length on the HTTP+JSON binding.
+	//
+	// The body-sourced summaries cannot be read here (RequestHeaderContext carries no
+	// body), so OnRequestBody re-emits this block as a superset for a request that has
+	// one. See populateA2ARequestMetadata.
+	if reqCtx.SharedContext.APIKind == policy.APIKindAgent {
+		populateA2ARequestMetadata(analyticsMetadata, reqCtx.SharedContext, reqCtx.Path, nil)
 	}
 
 	// Capture all request headers when enabled, so they flow into analytics events
@@ -263,8 +450,33 @@ func populateAuthAnalyticsMetadata(analyticsMetadata map[string]any, authChain *
 	}
 }
 
-// populateGenericMetadata JSON-encodes SharedContext.Metadata (minus the internal
-// streaming accumulator, which is never meant for export) into analyticsMetadata
+// internalMetadataKeys are the SharedContext.Metadata entries this policy writes for
+// its own bookkeeping, and the ones populateGenericMetadata leaves out of the export.
+//
+// None of them is an analytics value. The accumulator is the streamed response body
+// held for later parsing, so exporting it would duplicate the whole body — base64'd,
+// since it is a []byte — into every traffic-log line. The three A2A marks are a
+// request timestamp, a first-event timestamp and a scan offset: intermediate state the
+// policy turns into TTFB and stream duration, which are exported properly under
+// A2AResponsePropertiesKey. The marks are also written and cleared in different
+// phases from this export — a2aRequestStartKey is set in the request phase and
+// deleted only when the stream ends, while this runs at response headers — so
+// without this filter every Agent request carries an internal timestamp into its
+// traffic-log line as a "$ctx:metadata['__a2a_request_start']" field an operator has
+// no use for.
+//
+// Named individually rather than filtered by the "__" prefix they happen to share:
+// this bag is writable by any policy, third-party ones included, and a prefix rule
+// would silently swallow a key someone else chose to spell that way.
+var internalMetadataKeys = map[string]struct{}{
+	analyticsStreamAccKey: {},
+	a2aRequestStartKey:    {},
+	a2aFirstEventKey:      {},
+	a2aStreamScanKey:      {},
+}
+
+// populateGenericMetadata JSON-encodes SharedContext.Metadata (minus this policy's own
+// internal bookkeeping keys, which are never meant for export) into analyticsMetadata
 // under GenericMetadataKey, so the stdout traffic-logging publisher's
 // "$ctx:metadata['<key>']" CEL surface can reach ANY key any policy has written to
 // the shared metadata bag. Unlike populateAuthAnalyticsMetadata and the
@@ -279,7 +491,7 @@ func populateGenericMetadata(analyticsMetadata map[string]any, sharedMetadata ma
 	}
 	filtered := make(map[string]interface{}, len(sharedMetadata))
 	for k, v := range sharedMetadata {
-		if k == analyticsStreamAccKey {
+		if _, internal := internalMetadataKeys[k]; internal {
 			continue
 		}
 		filtered[k] = v
@@ -418,6 +630,22 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 				analyticsMetadata["mcp_request_properties"] = string(data)
 			}
 		}
+	case policy.APIKindAgent:
+		// Three request summaries — how many parts the message carried, whether the
+		// caller asked for an immediate return, and how much history it wanted — exist
+		// only in the request body, which the header phase cannot see. They are
+		// analytics-only facts, so unlike the identifiers they are not in the
+		// resolver's closed attribute set and are read here instead.
+		//
+		// The whole block is rebuilt and re-emitted rather than the three fields being
+		// added on their own: the metadata map is keyed, so a second partial write
+		// under the same key would replace the header phase's dimensions instead of
+		// extending them. Request-header policies always run before request-body
+		// policies — including on the JSON-RPC route, where both run at the body
+		// callback — so this superset is the value that survives.
+		if ctx.Body != nil && len(ctx.Body.Content) > 0 {
+			populateA2ARequestMetadata(analyticsMetadata, ctx.SharedContext, ctx.Path, ctx.Body.Content)
+		}
 	default:
 		slog.Error("Invalid API kind")
 	}
@@ -513,6 +741,15 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 				}
 			}
 		}
+	case policy.APIKindAgent:
+		// The buffered path: either the chain cannot stream, or the response is a
+		// single JSON document (every non-streaming A2A operation, and any error
+		// response to a streaming one — a failed SendStreamingMessage answers with a
+		// normal buffered error, not an empty stream).
+		if ctx.SharedContext.ResolvedOperation != "" {
+			populateA2AResponseMetadata(analyticsMetadata, ctx.SharedContext,
+				a2aResponseBytes(ctx), ctx.ResponseHeaders, ctx.ResponseStatus, false)
+		}
 	default:
 		slog.Error("Invalid API kind")
 	}
@@ -543,7 +780,15 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 
 	if len(chunk.Chunk) > 0 {
 		acc, _ := ctx.SharedContext.Metadata[analyticsStreamAccKey].([]byte)
-		ctx.SharedContext.Metadata[analyticsStreamAccKey] = append(acc, chunk.Chunk...)
+		acc = append(acc, chunk.Chunk...)
+		ctx.SharedContext.Metadata[analyticsStreamAccKey] = acc
+		// Recorded here and nowhere else: by EndOfStream the moment is gone, and the
+		// ALS timepoints the event's latencies come from cannot express it (a stream's
+		// "last upstream byte" is the end of the stream). Agent only — every other kind
+		// pays one comparison.
+		if ctx.SharedContext.APIKind == policy.APIKindAgent {
+			markA2AFirstEvent(ctx.SharedContext, acc, ctx.ResponseHeaders)
+		}
 	}
 
 	if !chunk.EndOfStream {
@@ -605,6 +850,13 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 					}
 				}
 			}
+		}
+	case policy.APIKindAgent:
+		// The streaming path. accumulated is the whole SSE stream by the time this
+		// runs, so a JSON-RPC error delivered as a late event is still seen.
+		if ctx.SharedContext.ResolvedOperation != "" {
+			populateA2AResponseMetadata(analyticsMetadata, ctx.SharedContext,
+				accumulated, ctx.ResponseHeaders, ctx.ResponseStatus, true)
 		}
 	default:
 		slog.Debug("Analytics streaming: unhandled API kind", "kind", apiKind)
@@ -888,6 +1140,711 @@ func populateTokenAnalyticsMetadata(analyticsMetadata map[string]any, tokenInfo 
 	if tokenInfo.ProviderDisplayName != nil {
 		analyticsMetadata[AIProviderDisplayNameMetadataKey] = *tokenInfo.ProviderDisplayName
 	}
+}
+
+// ─── A2A (Agent) analytics ───────────────────────────────────────────────────
+
+// populateA2ARequestMetadata emits the request-side A2A dimensions for one Agent
+// request, and starts the clock the streaming timings are measured against.
+//
+// Called from both request phases with whatever that phase can see: the header phase
+// passes the path and no body, the body phase passes both. The block it writes is
+// therefore the fullest one available at the time, and the body phase's — a superset —
+// is the one that survives, because the two writes share a metadata key.
+//
+// A request with no resolved operation is not an invocation of the agent — it is a
+// fetch of the public Agent Card or a CORS preflight, both of which live on the
+// Agent's own routes. Those get nothing here: the policy-engine classifies them from
+// the operation's absence, and emitting invocation-shaped dimensions for them would
+// let a downstream rollup count a client's card polling as agent traffic.
+func populateA2ARequestMetadata(
+	analyticsMetadata map[string]any,
+	shared *policy.SharedContext,
+	path string,
+	body []byte,
+) {
+	if shared == nil || shared.ResolvedOperation == "" {
+		return
+	}
+
+	// Read straight out of the resolver's output. The resolver already parsed the
+	// request body once to find the operation; re-parsing it here is the duplication
+	// SharedContext.ResolutionAttributes exists to remove.
+	//
+	// Get is right for all five rather than Lookup: an attribute the request did not
+	// carry reads as "", and every field below is `omitempty`, so an absent
+	// identifier is omitted from the event instead of being reported as empty.
+	attrs := shared.ResolutionAttributes
+	props := A2ARequestAnalyticsProperties{
+		Transport:       attrs.Get(a2aAttrTransport),
+		ProtocolVersion: attrs.Get(a2aAttrProtocolVersion),
+		MessageID:       attrs.Get(a2aAttrMessageID),
+		ContextID:       attrs.Get(a2aAttrContextID),
+		TaskID:          attrs.Get(a2aAttrTaskID),
+	}
+	applyA2ARequestSummary(&props, props.Transport, path, body)
+
+	// The canonical operation itself is not repeated here: the kernel stamps it
+	// directly, so it is present whether or not this policy is in the chain.
+	if data, err := json.Marshal(props); err != nil {
+		slog.Error("Failed to marshal A2A request analytics properties", "error", err)
+	} else {
+		analyticsMetadata[A2ARequestPropertiesKey] = string(data)
+	}
+
+	// Set once, at whichever phase got here first. Time-to-first-event measures what a
+	// caller waiting on an agent experiences, so it has to start at the earliest point
+	// in the request this policy runs; re-stamping it at the body phase would silently
+	// exclude every header policy — authentication included — from the measurement.
+	if shared.Metadata != nil {
+		if _, started := shared.Metadata[a2aRequestStartKey]; !started {
+			shared.Metadata[a2aRequestStartKey] = time.Now()
+		}
+	}
+}
+
+// applyA2ARequestSummary fills in the three summaries of what the caller actually
+// asked for: how many parts the message carried, whether it wanted an immediate
+// return, and how much task history it wanted back.
+//
+// The extraction is driven by the shape of the request rather than by its operation
+// name. That keeps the operation table — which lives in common/agentproto, on the
+// other side of a module boundary this policy cannot cross — from being transcribed
+// here to be kept in sync by hand. It is also exactly as precise: in A2A 1.0 only the
+// two message-sending operations carry a `message`, and only they, GetTask and
+// ListTasks carry a history length, each in the one place its own request shape
+// defines.
+//
+// Anything the body does not yield is left absent rather than defaulted. The single
+// exception is returnImmediately, whose absence the protocol itself defines as false,
+// so a send request that omits `configuration` still reports the effective value it
+// will be treated as having.
+func applyA2ARequestSummary(props *A2ARequestAnalyticsProperties, transport, path string, body []byte) {
+	// The HTTP+JSON binding puts GetTask's and ListTasks' history length in the query
+	// string; both are GETs, so this is the only place it exists for them. Restricted
+	// to that transport because a JSON-RPC request carries its arguments in the body
+	// and any query string on that endpoint is not the protocol's.
+	if transport == a2aTransportHTTPJSON {
+		if length, ok := a2aQueryInt(path, "historyLength"); ok {
+			props.HistoryLength = &length
+		}
+	}
+
+	root := a2aParseObject(body)
+	if root == nil {
+		return
+	}
+	// JSON-RPC nests the operation's arguments under params; HTTP+JSON sends the
+	// request message itself. A params that is not an object (a positional array, or
+	// a malformed envelope) yields nothing rather than being coerced.
+	args := root
+	if params, isObject := root["params"].(map[string]interface{}); isObject {
+		args = params
+	}
+
+	if message, isObject := args["message"].(map[string]interface{}); isObject {
+		if parts, isArray := message["parts"].([]interface{}); isArray {
+			count := len(parts)
+			props.InputPartCount = &count
+		}
+		returnImmediately := false
+		if configuration, isObject := args["configuration"].(map[string]interface{}); isObject {
+			if value, isBool := configuration["returnImmediately"].(bool); isBool {
+				returnImmediately = value
+			}
+			if length, ok := a2aInt(configuration["historyLength"]); ok {
+				props.HistoryLength = &length
+			}
+		}
+		props.ReturnImmediately = &returnImmediately
+	}
+
+	// GetTask and ListTasks put it directly in their arguments. Read after the send
+	// case so a body-borne value always wins over one seen in the query string; the
+	// two never coexist on a conformant request.
+	if length, ok := a2aInt(args["historyLength"]); ok {
+		props.HistoryLength = &length
+	}
+}
+
+// a2aParseObject decodes a request or response body that is expected to be a single
+// JSON object, and returns nil for anything else.
+//
+// Nil is not an error here. The agent is the component that validates A2A payloads,
+// and a body this policy cannot read costs only a summary dimension — reporting a
+// guess would be worse than reporting nothing.
+func a2aParseObject(body []byte) map[string]interface{} {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(trimmed, &parsed); err != nil {
+		slog.Debug("Failed to unmarshal A2A request body for analytics", "error", err)
+		return nil
+	}
+	return parsed
+}
+
+// a2aInt reads a JSON number that is meant to be a protocol int32 field.
+//
+// A fractional or out-of-range value is refused rather than rounded or wrapped: the
+// field is a count, and a value the protocol cannot hold is not a count this gateway
+// should report as one.
+func a2aInt(value interface{}) (int, bool) {
+	number, isNumber := value.(float64)
+	if !isNumber || number != math.Trunc(number) ||
+		number < math.MinInt32 || number > math.MaxInt32 {
+		return 0, false
+	}
+	return int(number), true
+}
+
+// a2aQueryInt reads one integer query parameter off a request path.
+//
+// It scans the raw pairs rather than calling url.ParseQuery for the same reason the
+// resolver's version check does: ParseQuery returns the pairs it could decode
+// alongside an error for the ones it could not, so an unrelated malformed parameter
+// elsewhere in the query string would otherwise discard this one. A parameter that is
+// not this one is never decoded and never interpreted — it stays the agent's to
+// reject. Repeats resolve first-wins, matching what a standard parser would hand the
+// agent.
+func a2aQueryInt(path, name string) (int, bool) {
+	_, query, hasQuery := strings.Cut(path, "?")
+	if !hasQuery {
+		return 0, false
+	}
+	for rest := query; rest != ""; {
+		var pair string
+		pair, rest, _ = strings.Cut(rest, "&")
+		if pair == "" {
+			continue
+		}
+		rawName, rawValue, _ := strings.Cut(pair, "=")
+		decodedName, err := url.QueryUnescape(rawName)
+		if err != nil || decodedName != name {
+			continue
+		}
+		decodedValue, err := url.QueryUnescape(rawValue)
+		if err != nil {
+			return 0, false
+		}
+		parsed, err := strconv.ParseInt(decodedValue, 10, 32)
+		if err != nil {
+			return 0, false
+		}
+		return int(parsed), true
+	}
+	return 0, false
+}
+
+// populateA2AResponseMetadata emits the response-side A2A dimensions: whether the
+// invocation actually failed, and — for a streamed response — when its first event
+// reached the client and how long the stream lasted.
+//
+// streamed distinguishes the two response paths rather than being inferred from the
+// content type: a chain that cannot stream (any policy in it needing a buffered
+// response body) delivers an SSE response through the buffered path, and reporting it
+// as streamed would put a stream duration on a response the gateway held whole.
+func populateA2AResponseMetadata(
+	analyticsMetadata map[string]any,
+	shared *policy.SharedContext,
+	responseBody []byte,
+	responseHeaders *policy.Headers,
+	responseStatus int,
+	streamed bool,
+) {
+	props := A2AResponseAnalyticsProperties{IsStreaming: &streamed}
+
+	observation := observeA2AResponse(responseBody, responseHeaders)
+
+	// isError is always emitted for a response body this policy could read, so a
+	// consumer can tell a determined success from an undetermined outcome. A body it
+	// could not read leaves it unset rather than false — claiming success for a
+	// response nobody parsed is the silently-wrong-dashboard case.
+	if payload := observation.outcomeEnvelope; payload != nil {
+		isError := false
+		if errVal, hasError := payload["error"]; hasError && errVal != nil {
+			isError = true
+		}
+		props.IsError = &isError
+		if code, err := extractIntFromJsonpath(payload, JsonRpcErrorCodeJsonPath); err == nil {
+			props.ErrorCode = &code
+		}
+	}
+
+	props.PayloadType = a2aPayloadTypeFor(observation, responseBody, responseStatus)
+	props.ResponseTaskID = observation.taskID
+	props.ResponseContextID = observation.contextID
+	props.TaskState = observation.taskState
+
+	if streamed && shared != nil {
+		populateA2AStreamTimings(&props, shared.Metadata)
+	}
+
+	if data, err := json.Marshal(props); err != nil {
+		slog.Error("Failed to marshal A2A response analytics properties", "error", err)
+	} else {
+		analyticsMetadata[A2AResponsePropertiesKey] = string(data)
+	}
+}
+
+// markA2AFirstEvent records when the first event of a streamed A2A response first
+// became deliverable to the client.
+//
+// "Event", not "byte". An SSE stream may open with keep-alive comments (": ping"), a
+// retry directive, or the front half of an event split across chunks — none of which a
+// client dispatches. An agent that thinks for thirty seconds while pinging every five
+// would otherwise report a time-to-first-event near zero, so the metric would look best
+// exactly when the agent is slowest, which is worse than not having it. The mark is
+// therefore taken when the forwarded bytes first complete an event block carrying a
+// data field: the moment a client's SSE parser fires.
+//
+// Framing is decided from the response's declared content type, never by sniffing the
+// bytes: whether a stream has event framing is a property of the response, and a first
+// chunk containing only a comment is precisely what would sniff wrong. A response that
+// declares no event framing has no events to distinguish, so its first forwarded chunk
+// is its first delivery.
+func markA2AFirstEvent(shared *policy.SharedContext, forwarded []byte, responseHeaders *policy.Headers) {
+	if _, seen := shared.Metadata[a2aFirstEventKey]; seen {
+		return
+	}
+
+	if !declaresSSEFraming(responseHeaders) {
+		shared.Metadata[a2aFirstEventKey] = time.Now()
+		return
+	}
+
+	scanned, _ := shared.Metadata[a2aStreamScanKey].(int)
+	resume, found := firstSSEDataEventEnd(forwarded, scanned)
+	if !found {
+		// Remember how far the scan got, so a stream that opens with a long run of
+		// heartbeats is not rescanned from the start on every chunk.
+		shared.Metadata[a2aStreamScanKey] = resume
+		return
+	}
+	shared.Metadata[a2aFirstEventKey] = time.Now()
+	delete(shared.Metadata, a2aStreamScanKey)
+}
+
+// declaresSSEFraming reports whether the response declared itself Server-Sent Events.
+//
+// Deliberately header-only, unlike isSSEContent, which also sniffs. Sniffing is right
+// when the whole body is in hand and the question is how to parse it; it is wrong here,
+// where the body is a prefix that may not yet contain anything recognisable.
+func declaresSSEFraming(responseHeaders *policy.Headers) bool {
+	if responseHeaders == nil {
+		return false
+	}
+	contentTypes := responseHeaders.Get("content-type")
+	return len(contentTypes) > 0 &&
+		strings.Contains(strings.ToLower(contentTypes[0]), "text/event-stream")
+}
+
+// firstSSEDataEventEnd scans body from scanFrom for the end of the first complete SSE
+// event that carries a data field.
+//
+// It returns the index just past that event and true; or, when none has arrived yet,
+// the index a later scan may resume from and false. Resuming matters because this runs
+// per chunk: without it a stream that opens with many heartbeats would rescan its whole
+// prefix every time.
+//
+// A block with no data field — a ": keep-alive" comment, a bare "retry:" directive — is
+// a real SSE block but not one a client dispatches, so it is skipped rather than
+// counted. A block with no terminator yet is incomplete: the client has not seen an
+// event, so neither have we.
+func firstSSEDataEventEnd(body []byte, scanFrom int) (int, bool) {
+	if scanFrom < 0 || scanFrom > len(body) {
+		scanFrom = 0
+	}
+	for start := scanFrom; ; {
+		end, sepLen := sseBlockEnd(body[start:])
+		if end < 0 {
+			return start, false
+		}
+		block := body[start : start+end]
+		start += end + sepLen
+		if sseBlockHasData(block) {
+			return start, true
+		}
+	}
+}
+
+// sseBlockEnd returns the offset of the blank line ending the first event block in b
+// and the length of that terminator, or -1 when the block is not terminated yet. Both
+// LF and CRLF line endings occur in practice.
+func sseBlockEnd(b []byte) (int, int) {
+	lf := bytes.Index(b, []byte("\n\n"))
+	crlf := bytes.Index(b, []byte("\r\n\r\n"))
+	switch {
+	case crlf >= 0 && (lf < 0 || crlf < lf):
+		return crlf, 4
+	case lf >= 0:
+		return lf, 2
+	default:
+		return -1, 0
+	}
+}
+
+// sseDataField is the SSE field name both scanners on the A2A path key off — the one
+// that ends the timing scan (sseBlockHasData) and the one the observation reads
+// (sseDataValue). Spelled once because the two must agree: a line one of them counts
+// as an event and the other skips is a stream that reports a first-event time and no
+// observation, which surfaces as an outcome of UNKNOWN with every field absent.
+//
+// The separator space is **not** part of the field. Per the SSE field-parsing rule
+// (WHATWG HTML, server-sent events), the value is everything after the colon with a
+// single leading space removed if present — so "data:{...}" and "data: {...}" are the
+// same field, and an agent that omits the optional space must be read the same way as
+// one that sends it.
+const sseDataField = "data:"
+
+// sseDataFieldBytes is sseDataField for the byte-oriented scanner, which runs over
+// every forwarded chunk and so avoids a per-line string conversion.
+var sseDataFieldBytes = []byte(sseDataField)
+
+// sseDataValue reports whether line is an SSE data field and returns its value, with
+// the optional single separator space removed. See sseDataField for the rule.
+func sseDataValue(line string) (string, bool) {
+	value, isData := strings.CutPrefix(line, sseDataField)
+	if !isData {
+		return "", false
+	}
+	// Exactly one space, never all leading whitespace: a second space is content the
+	// agent sent, and this must not silently rewrite a payload.
+	return strings.TrimPrefix(value, " "), true
+}
+
+// sseBlockHasData reports whether an event block carries a data field, which is what
+// separates an event a client dispatches from a comment or a directive.
+func sseBlockHasData(block []byte) bool {
+	for line := range bytes.SplitSeq(block, []byte("\n")) {
+		if bytes.HasPrefix(bytes.TrimSuffix(line, []byte("\r")), sseDataFieldBytes) {
+			return true
+		}
+	}
+	return false
+}
+
+// populateA2AStreamTimings fills in the two timings a streamed A2A response has and a
+// buffered one does not, and clears the marks it read.
+//
+// Time-to-first-event is measured from the request-header phase, not from the response
+// headers: what a caller waiting on an agent experiences is the delay from asking to
+// seeing the first event, and the agent's own think time before it emits anything is
+// the largest part of that. Stream duration is measured from the first event so the
+// two do not double-count the same wait.
+//
+// The marks are deleted after use for the same reason the chunk accumulator is: the
+// shared context outlives this callback.
+func populateA2AStreamTimings(props *A2AResponseAnalyticsProperties, metadata map[string]interface{}) {
+	if metadata == nil {
+		return
+	}
+	firstEvent, hasFirstEvent := metadata[a2aFirstEventKey].(time.Time)
+	start, hasStart := metadata[a2aRequestStartKey].(time.Time)
+	// Cleared unconditionally, including on the paths below that report nothing: a
+	// half-cleared set of marks is how a later stream on the same context would inherit
+	// a stale one.
+	delete(metadata, a2aFirstEventKey)
+	delete(metadata, a2aRequestStartKey)
+	delete(metadata, a2aStreamScanKey)
+
+	if !hasFirstEvent {
+		// A stream that ended without ever completing an event — no events at all, or
+		// only heartbeats. Neither timing is meaningful, and inventing a zero for
+		// either would read as an instant response rather than as an empty one.
+		return
+	}
+
+	if hasStart {
+		ttfe := firstEvent.Sub(start).Milliseconds()
+		props.TimeToFirstEventMs = &ttfe
+	}
+
+	duration := time.Since(firstEvent).Milliseconds()
+	props.StreamDurationMs = &duration
+}
+
+// a2aResponseObservation is everything one A2A response yielded: the envelope its
+// outcome is read from, what kind of payload it carried, and the identifiers and task
+// state the agent reported back.
+//
+// It is one struct rather than several scans because a streaming response is scanned
+// once: the identifiers and the state are cumulative over the whole stream while the
+// outcome is decided by a single event, and walking the events twice to answer the two
+// questions separately would be the duplication the resolver seam exists to avoid.
+type a2aResponseObservation struct {
+	// outcomeEnvelope is the one event or document the outcome is read from: the error
+	// if the response carried one, otherwise the last event carrying a result. Nil
+	// when nothing readable said either — which is what leaves isError absent rather
+	// than false.
+	outcomeEnvelope map[string]interface{}
+
+	// payloadType is the kind of the most recently observed payload. Empty when
+	// nothing was observed at all; the caller resolves that against the status.
+	payloadType string
+
+	// The latest non-empty value each of these had in any observed payload. Latest
+	// rather than first because a stream reports a task's progress: the final status
+	// update is the state the invocation actually reached, and an id may appear only
+	// once, in whichever event first carried it.
+	taskID    string
+	contextID string
+	taskState string
+}
+
+// observeA2AResponse scans an A2A response — a single JSON document or an SSE stream —
+// for everything the response side reports.
+//
+// On a stream it prefers an error over a result and stops there, scanning until it
+// finds one. That is the opposite of the MCP helper's first-match rule, and
+// deliberately so: an A2A streaming response is a sequence of task updates that can
+// end in a JSON-RPC error after any number of successful events, so stopping at the
+// first event carrying a result would report every late failure as a success.
+//
+// Nothing here delays or buffers the stream on its own account: the chunks were
+// forwarded as they arrived and this reads the copy the policy had already accumulated
+// for the outcome, at end of stream.
+func observeA2AResponse(body []byte, responseHeaders *policy.Headers) a2aResponseObservation {
+	var observation a2aResponseObservation
+	if len(bytes.TrimSpace(body)) == 0 {
+		return observation
+	}
+
+	if !isSSEContent(responseHeaders, body) {
+		// A body that is not a JSON object is an HTTP+JSON error document, a sterile
+		// gateway response, or something non-JSON. None of them is a payload; the
+		// status carries that outcome.
+		if payload := a2aParseObject(body); payload != nil {
+			observation.observe(payload)
+		}
+		return observation
+	}
+
+	for line := range strings.SplitSeq(string(body), "\n") {
+		data, isData := sseDataValue(strings.TrimSpace(line))
+		if !isData {
+			continue
+		}
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		if terminal := observation.observe(event); terminal {
+			break
+		}
+	}
+	return observation
+}
+
+// observe folds one response document into the observation, reporting whether it
+// terminates the scan.
+//
+// The two bindings deliver the same payloads differently: JSON-RPC wraps each in an
+// envelope with a result field, HTTP+JSON sends the document itself. Only the wrapped
+// form can state an outcome, which is why an unwrapped payload contributes its type
+// and identifiers without making outcomeEnvelope non-nil — an HTTP+JSON response's
+// outcome is its status, and claiming otherwise here would put an isError on a
+// response that never carried one.
+func (o *a2aResponseObservation) observe(document map[string]interface{}) bool {
+	if errVal, hasError := document["error"]; hasError && errVal != nil {
+		o.outcomeEnvelope = document
+		o.payloadType = a2aPayloadError
+		return true // an error anywhere in the stream decides the outcome
+	}
+
+	payload, wrapped := document["result"]
+	if wrapped {
+		o.outcomeEnvelope = document
+	} else {
+		payload = document
+	}
+	o.observePayload(payload)
+	return false
+}
+
+// observePayload classifies one A2A result payload and records what it reported.
+//
+// The A2A 1.0 response shapes are distinguishable by their own fields, so this reads
+// the document rather than the operation. Both spellings of each payload occur: the
+// send and stream operations wrap their result in the union field that names it
+// (`task`, `message`, `statusUpdate`, `artifactUpdate`), while the operations with a
+// fixed result — GetTask, CancelTask, the push-notification-config family — send the
+// bare document. The union is therefore matched first, so a Task that happens to be
+// wrapped is not mistaken for a bare one.
+func (o *a2aResponseObservation) observePayload(payload interface{}) {
+	document, isObject := payload.(map[string]interface{})
+	if !isObject {
+		// A result explicitly present and null: the JSON-RPC form of a delete, whose
+		// protocol response is google.protobuf.Empty.
+		if payload == nil {
+			o.payloadType = a2aPayloadEmpty
+		}
+		return
+	}
+
+	switch {
+	case a2aIsObject(document["task"]):
+		o.payloadType = a2aPayloadTask
+		o.observeTask(document["task"].(map[string]interface{}))
+	case a2aIsObject(document["message"]):
+		o.payloadType = a2aPayloadMessage
+		o.observeIdentifiers(document["message"].(map[string]interface{}))
+	case a2aIsObject(document["statusUpdate"]):
+		o.payloadType = a2aPayloadStatusUpdate
+		o.observeStatusUpdate(document["statusUpdate"].(map[string]interface{}))
+	case a2aIsObject(document["artifactUpdate"]):
+		o.payloadType = a2aPayloadArtifactUpdate
+		o.observeIdentifiers(document["artifactUpdate"].(map[string]interface{}))
+	case a2aIsArray(document["tasks"]):
+		// A list reports no identifiers: it describes many tasks, and picking one of
+		// them to correlate on would be arbitrary.
+		o.payloadType = a2aPayloadTaskList
+	case a2aIsArray(document["configs"]):
+		o.payloadType = a2aPayloadPushConfigList
+	case a2aIsObject(document["status"]) && a2aString(document["id"]) != "":
+		o.payloadType = a2aPayloadTask
+		o.observeTask(document)
+	case a2aString(document["messageId"]) != "":
+		o.payloadType = a2aPayloadMessage
+		o.observeIdentifiers(document)
+	case a2aString(document["url"]) != "" && a2aString(document["taskId"]) != "":
+		o.payloadType = a2aPayloadPushConfig
+		o.observeIdentifiers(document)
+	case a2aString(document["protocolVersion"]) != "" && document["skills"] != nil:
+		o.payloadType = a2aPayloadAgentCard
+	case len(document) == 0:
+		o.payloadType = a2aPayloadEmpty
+	default:
+		o.payloadType = a2aPayloadUnknown
+	}
+}
+
+// observeTask records what a Task reported. A Task names itself with `id`, unlike
+// every event, which names the task it belongs to with `taskId`.
+func (o *a2aResponseObservation) observeTask(task map[string]interface{}) {
+	o.recordTaskID(a2aString(task["id"]))
+	o.recordContextID(a2aString(task["contextId"]))
+	if status, isObject := task["status"].(map[string]interface{}); isObject {
+		o.recordTaskState(a2aString(status["state"]))
+	}
+}
+
+// observeStatusUpdate records what a TaskStatusUpdateEvent reported — the only
+// streamed event that carries a state.
+func (o *a2aResponseObservation) observeStatusUpdate(update map[string]interface{}) {
+	o.observeIdentifiers(update)
+	if status, isObject := update["status"].(map[string]interface{}); isObject {
+		o.recordTaskState(a2aString(status["state"]))
+	}
+}
+
+// observeIdentifiers records the task and context a document belongs to, for the
+// shapes that reference a task rather than being one.
+func (o *a2aResponseObservation) observeIdentifiers(document map[string]interface{}) {
+	o.recordTaskID(a2aString(document["taskId"]))
+	o.recordContextID(a2aString(document["contextId"]))
+}
+
+// recordTaskID and recordContextID keep the latest non-empty value seen. Over-long
+// values are dropped rather than truncated, per maxA2AObservedValueBytes.
+func (o *a2aResponseObservation) recordTaskID(value string) {
+	if value != "" && len(value) <= maxA2AObservedValueBytes {
+		o.taskID = value
+	}
+}
+
+func (o *a2aResponseObservation) recordContextID(value string) {
+	if value != "" && len(value) <= maxA2AObservedValueBytes {
+		o.contextID = value
+	}
+}
+
+// recordTaskState keeps the latest recognised state. An unrecognised one is dropped,
+// not reported: this is a dimension a dashboard groups by, so a value outside the
+// protocol's own set would widen it on an agent's say-so.
+func (o *a2aResponseObservation) recordTaskState(value string) {
+	if state := normalizeA2ATaskState(value); state != "" {
+		o.taskState = state
+	}
+}
+
+// normalizeA2ATaskState maps a reported state onto the canonical protocol-enum
+// spelling, or returns "" if it is not an A2A 1.0 state.
+//
+// Both spellings are accepted because both are in circulation: the 1.0 protobuf
+// enumeration serializes as TASK_STATE_COMPLETED, while the JSON forms that preceded
+// it — and the hyphenated variants of the two-word states — spell the same value
+// "completed" and "input-required". Folding them onto one spelling is what makes the
+// dimension aggregate; leaving them apart would split one state across three labels.
+func normalizeA2ATaskState(value string) string {
+	if value == "" || len(value) > 64 {
+		return ""
+	}
+	candidate := strings.ToUpper(strings.ReplaceAll(value, "-", "_"))
+	if !strings.HasPrefix(candidate, "TASK_STATE_") {
+		candidate = "TASK_STATE_" + candidate
+	}
+	if _, known := a2aTaskStates[candidate]; !known {
+		return ""
+	}
+	return candidate
+}
+
+// a2aPayloadTypeFor settles what kind of payload the response carried.
+//
+// An error status decides on its own, and has to: the HTTP+JSON binding is REST-shaped
+// and answers a failure with a real error status and an error document that is not an
+// A2A payload at all, so classifying that document by its shape would report it as
+// `unknown` rather than as the error it is. Below that, what was observed wins, and a
+// successful response with no body at all is empty rather than unknown — that is the
+// 204 from DeleteTaskPushNotificationConfig, whose emptiness is its result.
+func a2aPayloadTypeFor(observation a2aResponseObservation, body []byte, status int) string {
+	switch {
+	case status >= 400:
+		return a2aPayloadError
+	case observation.payloadType != "":
+		return observation.payloadType
+	case len(bytes.TrimSpace(body)) == 0:
+		return a2aPayloadEmpty
+	default:
+		return a2aPayloadUnknown
+	}
+}
+
+// a2aIsObject, a2aIsArray and a2aString read one field of a decoded JSON document
+// without asserting anything about the rest of it. A field of the wrong type is
+// treated as absent: the agent owns the document, and a malformed one costs a
+// dimension rather than producing a wrong one.
+func a2aIsObject(value interface{}) bool {
+	_, isObject := value.(map[string]interface{})
+	return isObject
+}
+
+func a2aIsArray(value interface{}) bool {
+	_, isArray := value.([]interface{})
+	return isArray
+}
+
+func a2aString(value interface{}) string {
+	text, isString := value.(string)
+	if !isString {
+		return ""
+	}
+	return text
+}
+
+// a2aResponseBytes returns the response body of a buffered A2A response, or nil when
+// there is none — a 204, a 304 on the card route, or a response the chain never read.
+func a2aResponseBytes(ctx *policy.ResponseContext) []byte {
+	if ctx == nil || ctx.ResponseBody == nil {
+		return nil
+	}
+	return ctx.ResponseBody.Content
 }
 
 // extractMCPPayloadFromAccumulated finds the first MCP JSON-RPC result or error event

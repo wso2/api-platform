@@ -62,17 +62,25 @@ func dumpPolicyRegistry(reg *registry.PolicyRegistry) PolicyRegistryDump {
 	}
 }
 
-// dumpPolicyChains creates a dump of all policy chain configurations from a pre-fetched snapshot.
-func dumpPolicyChains(routes map[string]*registry.PolicyChain) PolicyChainsDump {
-	entries := make([]PolicyChainEntry, 0, len(routes))
-	for routeKey, chain := range routes {
-		entries = append(entries, PolicyChainEntry{
-			RouteKey:             routeKey,
+// dumpPolicyChains creates a dump of all policy chain configurations from a pre-fetched
+// snapshot. The map is keyed by chain key, so that is what each entry reports.
+func dumpPolicyChains(chains map[string]*registry.PolicyChain) PolicyChainsDump {
+	entries := make([]PolicyChainEntry, 0, len(chains))
+	for chainKey, chain := range chains {
+		entry := PolicyChainEntry{
+			ChainKey:             chainKey,
 			RequiresRequestBody:  chain.RequiresRequestBody,
 			RequiresResponseBody: chain.RequiresResponseBody,
 			TotalPolicies:        len(chain.PolicySpecs),
 			Policies:             dumpPolicySpecs(chain.PolicySpecs),
-		})
+		}
+		// A route-key chain has no components to report, and a composed key that will
+		// not split is left whole rather than reported in pieces that do not add up to
+		// it — the key itself is still there to read.
+		if apiID, vhost, operation, ok := chainkey.Split(chainKey); ok {
+			entry.APIID, entry.Vhost, entry.Operation = apiID, vhost, operation
+		}
+		entries = append(entries, entry)
 	}
 
 	return PolicyChainsDump{
@@ -105,6 +113,7 @@ func dumpRouteMetadata(k *kernel.Kernel) RouteMetadataDump {
 			DefaultUpstream:         cfg.Metadata.DefaultUpstream,
 
 			CanonicalChainKey:   cfg.CanonicalChainKey,
+			ChainKey:            resolverStaticChainKey(cfg),
 			ResolverName:        cfg.ResolverName,
 			ChainKeyPrefix:      resolverChainKeyPrefix(cfg),
 			MaxRequestBodyBytes: resolverBufferLimit(cfg),
@@ -128,6 +137,19 @@ func resolverChainKeyPrefix(cfg *kernel.RouteConfig) string {
 		return ""
 	}
 	return chainkey.For(cfg.Metadata.APIId, cfg.Metadata.Vhost, "")
+}
+
+// resolverStaticChainKey returns the chain key a statically-resolved route binds, or ""
+// for a route that picks its chain per request.
+//
+// It is read from the resolution the route prepared at ingest — the same value BindStatic
+// looks the chain up by — rather than recomposed here, so the dump names the chain that
+// actually runs even if a resolver's composition and this file's idea of it ever diverge.
+func resolverStaticChainKey(cfg *kernel.RouteConfig) string {
+	if cfg == nil || cfg.Prepared == nil || cfg.Prepared.StaticResolution == nil {
+		return ""
+	}
+	return cfg.Prepared.StaticResolution.ChainKey
 }
 
 // resolverBuffersBody reports whether this route's resolver reads the request body,

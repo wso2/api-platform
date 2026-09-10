@@ -71,6 +71,7 @@ func TestDataMinorVersionsExhaustive(t *testing.T) {
 		KindMcp,
 		KindLlmProxy,
 		KindLlmProvider,
+		KindAgent,
 	}
 	for _, k := range allKinds {
 		if _, ok := dataMinorVersions[k]; !ok {

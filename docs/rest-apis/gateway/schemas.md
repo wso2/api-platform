@@ -1401,6 +1401,9 @@ and
     "hostRewrite": "auto",
     "auth": {
       "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
       "header": "string",
       "value": "string"
     }
@@ -1592,6 +1595,1163 @@ continued
 |» description|string|false|none|Description of the argument|
 |» required|boolean|false|none|Whether the argument is required|
 |» title|string|false|none|Optional human-readable title of the argument|
+
+## AgentConfigurationRequest
+
+<a id="schemaagentconfigurationrequest"></a>
+<a id="schema_AgentConfigurationRequest"></a>
+<a id="tocSagentconfigurationrequest"></a>
+<a id="tocsagentconfigurationrequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Agent",
+  "metadata": {
+    "name": "weather-agent-v1-0"
+  },
+  "spec": {
+    "displayName": "Weather Agent",
+    "version": "v1.0",
+    "context": "/weather",
+    "vhost": "agents.example.com",
+    "upstream": {
+      "url": "https://weather.internal"
+    },
+    "resilience": {
+      "timeout": "30s",
+      "idleTimeout": "5m"
+    },
+    "a2a": {
+      "protocolVersion": "1.0",
+      "operationConfigs": {
+        "transports": [
+          {
+            "protocolBinding": "JSONRPC",
+            "pathPrefix": "/rpc"
+          },
+          {
+            "protocolBinding": "HTTP+JSON",
+            "pathPrefix": "/rest"
+          }
+        ],
+        "policies": [
+          {
+            "name": "jwt-auth",
+            "version": "v1",
+            "params": {
+              "issuer": "https://idp.example.com",
+              "requiredScopes": [
+                "a2a.invoke"
+              ]
+            }
+          }
+        ],
+        "operations": [
+          {
+            "name": "SendMessage",
+            "policies": [
+              {
+                "name": "advanced-ratelimit",
+                "version": "v1",
+                "params": {
+                  "quotas": [
+                    {
+                      "name": "send-message-limit",
+                      "limits": [
+                        {
+                          "limit": 100,
+                          "duration": "1m"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "agentCard": {
+        "public": {
+          "mode": "managed",
+          "path": "/.well-known/agent-card.json",
+          "policies": [
+            {
+              "name": "cors",
+              "version": "v1"
+            }
+          ],
+          "content": {
+            "name": "Weather Agent",
+            "description": "Provides weather information",
+            "version": "1.0.0",
+            "supportedInterfaces": [
+              {
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0",
+                "url": "https://agents.example.com/weather/rpc"
+              },
+              {
+                "protocolBinding": "HTTP+JSON",
+                "protocolVersion": "1.0",
+                "url": "https://agents.example.com/weather/rest"
+              }
+            ],
+            "capabilities": {
+              "streaming": true
+            },
+            "securitySchemes": {
+              "gateway-jwt": {
+                "openIdConnectSecurityScheme": {
+                  "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
+                }
+              }
+            },
+            "securityRequirements": [
+              {
+                "schemes": {
+                  "gateway-jwt": {
+                    "list": [
+                      "a2a.invoke"
+                    ]
+                  }
+                }
+              }
+            ],
+            "defaultInputModes": [
+              "text/plain"
+            ],
+            "defaultOutputModes": [
+              "text/plain"
+            ],
+            "skills": [
+              {
+                "id": "get_weather",
+                "name": "Get weather",
+                "description": "Gets weather information",
+                "tags": [
+                  "weather"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|Agent specification version|
+|kind|string|true|none|Agent type|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[AgentConfigData](#schemaagentconfigdata)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|Agent|
+
+## AgentConfiguration
+
+<a id="schemaagentconfiguration"></a>
+<a id="schema_AgentConfiguration"></a>
+<a id="tocSagentconfiguration"></a>
+<a id="tocsagentconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Agent",
+  "metadata": {
+    "name": "weather-agent-v1-0"
+  },
+  "spec": {
+    "displayName": "Weather Agent",
+    "version": "v1.0",
+    "context": "/weather",
+    "vhost": "agents.example.com",
+    "upstream": {
+      "url": "https://weather.internal"
+    },
+    "resilience": {
+      "timeout": "30s",
+      "idleTimeout": "5m"
+    },
+    "a2a": {
+      "protocolVersion": "1.0",
+      "operationConfigs": {
+        "transports": [
+          {
+            "protocolBinding": "JSONRPC",
+            "pathPrefix": "/rpc"
+          },
+          {
+            "protocolBinding": "HTTP+JSON",
+            "pathPrefix": "/rest"
+          }
+        ],
+        "policies": [
+          {
+            "name": "jwt-auth",
+            "version": "v1",
+            "params": {
+              "issuer": "https://idp.example.com",
+              "requiredScopes": [
+                "a2a.invoke"
+              ]
+            }
+          }
+        ],
+        "operations": [
+          {
+            "name": "SendMessage",
+            "policies": [
+              {
+                "name": "advanced-ratelimit",
+                "version": "v1",
+                "params": {
+                  "quotas": [
+                    {}
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "agentCard": {
+        "public": {
+          "mode": "managed",
+          "path": "/.well-known/agent-card.json",
+          "policies": [
+            {
+              "name": "cors",
+              "version": "v1"
+            }
+          ],
+          "content": {
+            "name": "Weather Agent",
+            "description": "Provides weather information",
+            "version": "1.0.0",
+            "supportedInterfaces": [
+              {
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0",
+                "url": "https://agents.example.com/weather/rpc"
+              },
+              {
+                "protocolBinding": "HTTP+JSON",
+                "protocolVersion": "1.0",
+                "url": "https://agents.example.com/weather/rest"
+              }
+            ],
+            "capabilities": {
+              "streaming": true
+            },
+            "securitySchemes": {
+              "gateway-jwt": {
+                "openIdConnectSecurityScheme": {
+                  "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
+                }
+              }
+            },
+            "securityRequirements": [
+              {
+                "schemes": {
+                  "gateway-jwt": {
+                    "list": []
+                  }
+                }
+              }
+            ],
+            "defaultInputModes": [
+              "text/plain"
+            ],
+            "defaultOutputModes": [
+              "text/plain"
+            ],
+            "skills": [
+              {
+                "id": "get_weather",
+                "name": "Get weather",
+                "description": "Gets weather information",
+                "tags": [
+                  "weather"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "status": {
+    "id": "reading-list-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[AgentConfigurationRequest](#schemaagentconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+## AgentConfigData
+
+<a id="schemaagentconfigdata"></a>
+<a id="schema_AgentConfigData"></a>
+<a id="tocSagentconfigdata"></a>
+<a id="tocsagentconfigdata"></a>
+
+```json
+{
+  "displayName": "Weather Agent",
+  "version": "v1.0",
+  "context": "/weather",
+  "vhost": "agents.example.com",
+  "upstreamDefinitions": [
+    {
+      "name": "my-upstream-1",
+      "basePath": "/api/v2",
+      "timeout": {
+        "connect": "5s"
+      },
+      "upstreams": [
+        {
+          "url": "http://prod-backend-1:5000",
+          "weight": 80
+        }
+      ]
+    }
+  ],
+  "upstream": {
+    "url": "http://prod-backend:5000/api/v2",
+    "ref": "string",
+    "hostRewrite": "auto",
+    "auth": {
+      "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
+      "header": "string",
+      "value": "string"
+    }
+  },
+  "deploymentState": "deployed",
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  },
+  "a2a": {
+    "protocolVersion": "1.0",
+    "operationConfigs": {
+      "transports": [
+        {
+          "protocolBinding": "JSONRPC",
+          "pathPrefix": "/rpc"
+        }
+      ],
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "operations": [
+        {
+          "name": "SendMessage",
+          "policies": [
+            {
+              "name": "cors",
+              "version": "v1",
+              "executionCondition": "request.metadata[authenticated] != true",
+              "params": {}
+            }
+          ],
+          "resilience": {
+            "timeout": "15s",
+            "idleTimeout": "0s"
+          }
+        }
+      ]
+    },
+    "agentCard": {
+      "public": {
+        "mode": "managed",
+        "content": {
+          "name": "Weather Agent",
+          "version": "1.0.0",
+          "supportedInterfaces": [
+            {
+              "protocolBinding": "JSONRPC",
+              "protocolVersion": "1.0",
+              "url": "https://agents.example.com/weather/rpc"
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "extendedAgentCard": true
+          }
+        }
+      },
+      "protected": {
+        "mode": "managed",
+        "content": {
+          "name": "Weather Agent",
+          "version": "1.0.0",
+          "supportedInterfaces": [
+            {
+              "protocolBinding": "JSONRPC",
+              "protocolVersion": "1.0",
+              "url": "https://agents.example.com/weather/rpc"
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "extendedAgentCard": true
+          },
+          "skills": [
+            {
+              "id": "get_forecast_history",
+              "name": "Get forecast history"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable agent display name|
+|version|string|true|none|Agent version|
+|context|string|false|none|Gateway context path for the agent (must start with /, no trailing slash). Optional: when omitted the agent is served at the root of its virtual host, which is where an A2A client probes for `/.well-known/agent-card.json` during cold discovery. Every A2A route the gateway generates — the transport base paths and the Agent Card path — is relative to this value.|
+|vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
+|upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
+|upstream|any|true|none|The backend A2A agent url and auth configuration. The URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[Upstream](#schemaupstream)|false|none|Upstream backend configuration (single target or reference)|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[UpstreamAuth](#schemaupstreamauth)|false|none|none|
+
+continued
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the Agent is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+|resilience|[Resilience](#schemaresilience)|false|none|Agent-level backend/route timeout configuration. Applies to the traffic-forwarding routes generated for this Agent. Because A2A streaming operations are long-lived streams, the route timeout defaults to disabled ("0s") for the JSON-RPC route and for streaming HTTP+JSON routes unless a timeout is set here (unlike REST/LLM, which fall back to the gateway's global route timeout); the idle timeout remains the liveness guard.|
+|a2a|[A2AConfig](#schemaa2aconfig)|true|none|A2A-specific agent configuration.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
+## A2AConfig
+
+<a id="schemaa2aconfig"></a>
+<a id="schema_A2AConfig"></a>
+<a id="tocSa2aconfig"></a>
+<a id="tocsa2aconfig"></a>
+
+```json
+{
+  "protocolVersion": "1.0",
+  "operationConfigs": {
+    "transports": [
+      {
+        "protocolBinding": "JSONRPC",
+        "pathPrefix": "/rpc"
+      }
+    ],
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
+    "operations": [
+      {
+        "name": "SendMessage",
+        "policies": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ],
+        "resilience": {
+          "timeout": "15s",
+          "idleTimeout": "0s"
+        }
+      }
+    ]
+  },
+  "agentCard": {
+    "public": {
+      "mode": "managed",
+      "content": {
+        "name": "Weather Agent",
+        "version": "1.0.0",
+        "supportedInterfaces": [
+          {
+            "protocolBinding": "JSONRPC",
+            "protocolVersion": "1.0",
+            "url": "https://agents.example.com/weather/rpc"
+          }
+        ],
+        "capabilities": {
+          "streaming": true,
+          "extendedAgentCard": true
+        }
+      }
+    },
+    "protected": {
+      "mode": "managed",
+      "content": {
+        "name": "Weather Agent",
+        "version": "1.0.0",
+        "supportedInterfaces": [
+          {
+            "protocolBinding": "JSONRPC",
+            "protocolVersion": "1.0",
+            "url": "https://agents.example.com/weather/rpc"
+          }
+        ],
+        "capabilities": {
+          "streaming": true,
+          "extendedAgentCard": true
+        },
+        "skills": [
+          {
+            "id": "get_forecast_history",
+            "name": "Get forecast history"
+          }
+        ]
+      }
+    }
+  }
+}
+
+```
+
+A2A-specific agent configuration.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|protocolVersion|string|true|none|A2A protocol version exposed by the gateway. This selects the agent's operation set and HTTP+JSON bindings, the Agent Card model its managed card is validated against, and the field-presence rules used to sign that card — an agent exposes exactly one version and the gateway performs no protocol-version conversion. Managed Agent Card interfaces must advertise this version; in passthrough mode the upstream is responsible for advertising it.|
+|operationConfigs|[A2AOperationConfigs](#schemaa2aoperationconfigs)|true|none|Transport exposure and common or operation-specific configuration for A2A operations. These policies and transports do not apply to public Agent Card serving.|
+|agentCard|[A2AAgentCard](#schemaa2aagentcard)|false|none|Public Agent Card configuration and optional protected Agent Card configuration for the authenticated A2A GetExtendedAgentCard operation.<br>The whole block is optional, and so is `public`. When either is omitted the gateway serves the public Agent Card in `passthrough` mode at /.well-known/agent-card.json, with `rewriteUrls` disabled and no public Agent Card policies — the same configuration as writing that block out explicitly. Omitting `protected` is *not* equivalent to omitting `public`: it keeps the compatibility behaviour described on that schema and is never turned into an explicit protected configuration by defaulting.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|protocolVersion|1.0|
+
+## A2AOperationConfigs
+
+<a id="schemaa2aoperationconfigs"></a>
+<a id="schema_A2AOperationConfigs"></a>
+<a id="tocSa2aoperationconfigs"></a>
+<a id="tocsa2aoperationconfigs"></a>
+
+```json
+{
+  "transports": [
+    {
+      "protocolBinding": "JSONRPC",
+      "pathPrefix": "/rpc"
+    }
+  ],
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operations": [
+    {
+      "name": "SendMessage",
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "resilience": {
+        "timeout": "15s",
+        "idleTimeout": "0s"
+      }
+    }
+  ]
+}
+
+```
+
+Transport exposure and common or operation-specific configuration for A2A operations. These policies and transports do not apply to public Agent Card serving.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|transports|[[A2ATransport](#schemaa2atransport)]|true|none|Ordered A2A protocol bindings and their gateway-facing path prefixes. This is runtime routing configuration, not Agent Card transformation or transport conversion.|
+|policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied to every A2A operation, before operation-level policies. These policies do not apply to the public Agent Card discovery route.|
+|operations|[[A2AOperationConfig](#schemaa2aoperationconfig)]|false|none|Optional per-operation configuration keyed by canonical A2A operation name. This array is not an allowlist: unlisted standard operations still receive spec.a2a.operationConfigs.policies. Public Agent Card discovery is configured separately.|
+
+## A2ATransport
+
+<a id="schemaa2atransport"></a>
+<a id="schema_A2ATransport"></a>
+<a id="tocSa2atransport"></a>
+<a id="tocsa2atransport"></a>
+
+```json
+{
+  "protocolBinding": "JSONRPC",
+  "pathPrefix": "/rpc"
+}
+
+```
+
+One A2A protocol binding exposed by the gateway and the path prefix at which that binding is served relative to spec.context.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|protocolBinding|[A2AProtocolBinding](#schemaa2aprotocolbinding)|true|none|A2A protocol binding exposed at a transport's path prefix.|
+|pathPrefix|string|false|none|Gateway-facing path prefix relative to spec.context. The root value / means that no additional path segment is inserted. For JSONRPC, this is the endpoint path; for HTTP+JSON, canonical operation paths are appended below it. This field does not select or replace the generic upstream.|
+
+## A2AProtocolBinding
+
+<a id="schemaa2aprotocolbinding"></a>
+<a id="schema_A2AProtocolBinding"></a>
+<a id="tocSa2aprotocolbinding"></a>
+<a id="tocsa2aprotocolbinding"></a>
+
+```json
+"JSONRPC"
+
+```
+
+A2A protocol binding exposed at a transport's path prefix.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|A2A protocol binding exposed at a transport's path prefix.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|JSONRPC|
+|*anonymous*|HTTP+JSON|
+
+## A2AOperationName
+
+<a id="schemaa2aoperationname"></a>
+<a id="schema_A2AOperationName"></a>
+<a id="tocSa2aoperationname"></a>
+<a id="tocsa2aoperationname"></a>
+
+```json
+"SendMessage"
+
+```
+
+Canonical A2A operation name. These names match the standard JSON-RPC and gRPC method names, but identify the binding-independent A2A operation. The effective set is closed and is the one defined by the agent's spec.a2a.protocolVersion; the values below are A2A 1.0's eleven operations, that being the only protocol version currently supported. A name outside the selected version's set is rejected at deploy time.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|Canonical A2A operation name. These names match the standard JSON-RPC and gRPC method names, but identify the binding-independent A2A operation. The effective set is closed and is the one defined by the agent's spec.a2a.protocolVersion; the values below are A2A 1.0's eleven operations, that being the only protocol version currently supported. A name outside the selected version's set is rejected at deploy time.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|SendMessage|
+|*anonymous*|SendStreamingMessage|
+|*anonymous*|GetTask|
+|*anonymous*|ListTasks|
+|*anonymous*|CancelTask|
+|*anonymous*|SubscribeToTask|
+|*anonymous*|CreateTaskPushNotificationConfig|
+|*anonymous*|GetTaskPushNotificationConfig|
+|*anonymous*|ListTaskPushNotificationConfigs|
+|*anonymous*|DeleteTaskPushNotificationConfig|
+|*anonymous*|GetExtendedAgentCard|
+
+## A2AOperationConfig
+
+<a id="schemaa2aoperationconfig"></a>
+<a id="schema_A2AOperationConfig"></a>
+<a id="tocSa2aoperationconfig"></a>
+<a id="tocsa2aoperationconfig"></a>
+
+```json
+{
+  "name": "SendMessage",
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  }
+}
+
+```
+
+Configuration for one standard A2A 1.0 operation, identified by its canonical operation name. The gateway maps each exposed transport to this name before choosing the policy chain.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|[A2AOperationName](#schemaa2aoperationname)|true|none|Canonical A2A operation name. These names match the standard JSON-RPC and gRPC method names, but identify the binding-independent A2A operation. The effective set is closed and is the one defined by the agent's spec.a2a.protocolVersion; the values below are A2A 1.0's eleven operations, that being the only protocol version currently supported. A name outside the selected version's set is rejected at deploy time.|
+|policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied after spec.a2a.operationConfigs.policies when this operation is selected.|
+|resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
+
+## A2AAgentCard
+
+<a id="schemaa2aagentcard"></a>
+<a id="schema_A2AAgentCard"></a>
+<a id="tocSa2aagentcard"></a>
+<a id="tocsa2aagentcard"></a>
+
+```json
+{
+  "public": {
+    "mode": "managed",
+    "content": {
+      "name": "Weather Agent",
+      "version": "1.0.0",
+      "supportedInterfaces": [
+        {
+          "protocolBinding": "JSONRPC",
+          "protocolVersion": "1.0",
+          "url": "https://agents.example.com/weather/rpc"
+        }
+      ],
+      "capabilities": {
+        "streaming": true,
+        "extendedAgentCard": true
+      }
+    }
+  },
+  "protected": {
+    "mode": "managed",
+    "content": {
+      "name": "Weather Agent",
+      "version": "1.0.0",
+      "supportedInterfaces": [
+        {
+          "protocolBinding": "JSONRPC",
+          "protocolVersion": "1.0",
+          "url": "https://agents.example.com/weather/rpc"
+        }
+      ],
+      "capabilities": {
+        "streaming": true,
+        "extendedAgentCard": true
+      },
+      "skills": [
+        {
+          "id": "get_forecast_history",
+          "name": "Get forecast history"
+        }
+      ]
+    }
+  }
+}
+
+```
+
+Public Agent Card configuration and optional protected Agent Card configuration for the authenticated A2A GetExtendedAgentCard operation.
+The whole block is optional, and so is `public`. When either is omitted the gateway serves the public Agent Card in `passthrough` mode at /.well-known/agent-card.json, with `rewriteUrls` disabled and no public Agent Card policies — the same configuration as writing that block out explicitly. Omitting `protected` is *not* equivalent to omitting `public`: it keeps the compatibility behaviour described on that schema and is never turned into an explicit protected configuration by defaulting.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|public|[A2APublicAgentCard](#schemaa2apublicagentcard)|false|none|Public Agent Card serving. `mode` selects whether the card is proxied from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`), and defaults to `passthrough` when omitted. Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`.|
+|protected|[A2AProtectedAgentCard](#schemaa2aprotectedagentcard)|false|none|Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.<br>This block is optional, and omitting it is the same as configuring `passthrough` with `rewriteUrls` disabled: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`) — and, for `passthrough`, whether the proxied response's interface URLs are rewritten. Unlike `public`, an omitted block is never materialized into an explicit protected configuration.<br>The gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in every mode and is not configurable: an Agent that attaches no authentication policy therefore fails closed instead of publishing its extended card, whether or not it declared this block. Where authentication sits among the configured policies is the Agent author's choice.<br>Unlike `public`, which is required and whose `mode` must be stated, this block defaults, because the safe reading of an author's silence about the more privileged of the two representations is to protect it.<br>Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.|
+
+## A2APublicAgentCard
+
+<a id="schemaa2apublicagentcard"></a>
+<a id="schema_A2APublicAgentCard"></a>
+<a id="tocSa2apublicagentcard"></a>
+<a id="tocsa2apublicagentcard"></a>
+
+```json
+{
+  "mode": "managed",
+  "path": "/.well-known/agent-card.json",
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "rewriteUrls": true,
+  "content": {
+    "name": "Weather Agent",
+    "description": "Provides weather information",
+    "version": "1.0.0",
+    "supportedInterfaces": [
+      {
+        "protocolBinding": "JSONRPC",
+        "protocolVersion": "1.0",
+        "url": "https://agents.example.com/weather/rpc"
+      }
+    ],
+    "capabilities": {
+      "streaming": true
+    },
+    "securitySchemes": {
+      "gateway-jwt": {
+        "openIdConnectSecurityScheme": {
+          "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
+        }
+      }
+    },
+    "securityRequirements": [
+      {
+        "schemes": {
+          "gateway-jwt": {
+            "list": [
+              "a2a.invoke"
+            ]
+          }
+        }
+      }
+    ],
+    "defaultInputModes": [
+      "text/plain"
+    ],
+    "defaultOutputModes": [
+      "text/plain"
+    ],
+    "skills": [
+      {
+        "id": "get_weather",
+        "name": "Get weather",
+        "description": "Gets weather information",
+        "tags": [
+          "weather"
+        ]
+      }
+    ]
+  },
+  "signing": {
+    "enabled": false
+  }
+}
+
+```
+
+Public Agent Card serving. `mode` selects whether the card is proxied from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`), and defaults to `passthrough` when omitted. Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|mode|string|false|none|How the public Agent Card is produced. Defaults to `passthrough`, which is also what an omitted `public` or `agentCard` block resolves to.|
+|path|[A2AAgentCardPath](#schemaa2aagentcardpath)|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
+|policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied only to public Agent Card serving.|
+|rewriteUrls|[A2ACardRewriteUrls](#schemaa2acardrewriteurls)|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
+|content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
+|signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|mode|managed|
+|mode|passthrough|
+
+## A2AProtectedAgentCard
+
+<a id="schemaa2aprotectedagentcard"></a>
+<a id="schema_A2AProtectedAgentCard"></a>
+<a id="tocSa2aprotectedagentcard"></a>
+<a id="tocsa2aprotectedagentcard"></a>
+
+```json
+{
+  "mode": "managed",
+  "rewriteUrls": true,
+  "content": {
+    "name": "Weather Agent",
+    "description": "Provides weather information",
+    "version": "1.0.0",
+    "supportedInterfaces": [
+      {
+        "protocolBinding": "JSONRPC",
+        "protocolVersion": "1.0",
+        "url": "https://agents.example.com/weather/rpc"
+      }
+    ],
+    "capabilities": {
+      "streaming": true
+    },
+    "securitySchemes": {
+      "gateway-jwt": {
+        "openIdConnectSecurityScheme": {
+          "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
+        }
+      }
+    },
+    "securityRequirements": [
+      {
+        "schemes": {
+          "gateway-jwt": {
+            "list": [
+              "a2a.invoke"
+            ]
+          }
+        }
+      }
+    ],
+    "defaultInputModes": [
+      "text/plain"
+    ],
+    "defaultOutputModes": [
+      "text/plain"
+    ],
+    "skills": [
+      {
+        "id": "get_weather",
+        "name": "Get weather",
+        "description": "Gets weather information",
+        "tags": [
+          "weather"
+        ]
+      }
+    ]
+  },
+  "signing": {
+    "enabled": false
+  }
+}
+
+```
+
+Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.
+This block is optional, and omitting it is the same as configuring `passthrough` with `rewriteUrls` disabled: the extended Agent Card is guarded for every Agent. Writing the block out only chooses how the card is produced — whether the gateway serves a document of its own (`managed`) or forwards the authenticated request (`passthrough`) — and, for `passthrough`, whether the proxied response's interface URLs are rewritten. Unlike `public`, an omitted block is never materialized into an explicit protected configuration.
+The gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in every mode and is not configurable: an Agent that attaches no authentication policy therefore fails closed instead of publishing its extended card, whether or not it declared this block. Where authentication sits among the configured policies is the Agent author's choice.
+Unlike `public`, which is required and whose `mode` must be stated, this block defaults, because the safe reading of an author's silence about the more privileged of the two representations is to protect it.
+Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|mode|string|true|none|How the protected Agent Card is produced. `managed` serves the supplied `content` from the gateway, and the request never reaches the upstream. `passthrough` forwards the authenticated request and proxies the upstream's own response, unchanged unless `rewriteUrls` is enabled.|
+|rewriteUrls|[A2ACardRewriteUrls](#schemaa2acardrewriteurls)|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
+|content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
+|signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|mode|managed|
+|mode|passthrough|
+
+## A2ACardRewriteUrls
+
+<a id="schemaa2acardrewriteurls"></a>
+<a id="schema_A2ACardRewriteUrls"></a>
+<a id="tocSa2acardrewriteurls"></a>
+<a id="tocsa2acardrewriteurls"></a>
+
+```json
+true
+
+```
+
+Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.
+Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.
+Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.
+Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|boolean|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
+
+## A2AAgentCardPath
+
+<a id="schemaa2aagentcardpath"></a>
+<a id="schema_A2AAgentCardPath"></a>
+<a id="tocSa2aagentcardpath"></a>
+<a id="tocsa2aagentcardpath"></a>
+
+```json
+"/.well-known/agent-card.json"
+
+```
+
+Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
+
+## A2AAgentCardDocument
+
+<a id="schemaa2aagentcarddocument"></a>
+<a id="schema_A2AAgentCardDocument"></a>
+<a id="tocSa2aagentcarddocument"></a>
+<a id="tocsa2aagentcarddocument"></a>
+
+```json
+{
+  "name": "Weather Agent",
+  "description": "Provides weather information",
+  "version": "1.0.0",
+  "supportedInterfaces": [
+    {
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0",
+      "url": "https://agents.example.com/weather/rpc"
+    }
+  ],
+  "capabilities": {
+    "streaming": true
+  },
+  "securitySchemes": {
+    "gateway-jwt": {
+      "openIdConnectSecurityScheme": {
+        "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
+      }
+    }
+  },
+  "securityRequirements": [
+    {
+      "schemes": {
+        "gateway-jwt": {
+          "list": [
+            "a2a.invoke"
+          ]
+        }
+      }
+    }
+  ],
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "get_weather",
+      "name": "Get weather",
+      "description": "Gets weather information",
+      "tags": [
+        "weather"
+      ]
+    }
+  ]
+}
+
+```
+
+Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.
+
+#### Properties
+
+*None*
+
+## A2ACardSigning
+
+<a id="schemaa2acardsigning"></a>
+<a id="schema_A2ACardSigning"></a>
+<a id="tocSa2acardsigning"></a>
+<a id="tocsa2acardsigning"></a>
+
+```json
+{
+  "enabled": false
+}
+
+```
+
+Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|enabled|boolean|true|none|Whether the gateway signs the managed card it serves, using the active Agent Card signing key configured by the gateway administrator.|
 
 ## ErrorResponse
 
@@ -2756,6 +3916,9 @@ and
     "hostRewrite": "auto",
     "auth": {
       "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
       "header": "string",
       "value": "string"
     }
@@ -2872,6 +4035,9 @@ continued
 {
   "auth": {
     "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
     "header": "string",
     "value": "string"
   }
@@ -2884,15 +4050,19 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |auth|object|false|none|none|
-|» type|string|true|none|none|
-|» header|string|false|none|none|
-|» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
+|» type|string|true|none|"api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.|
+|» policyName|string|false|none|Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".|
+|» policyVersion|string|false|none|Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.|
+|» policyParams|object|false|none|Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.|
+|» header|string|false|none|Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.|
+|» value|string|false|write-only|Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|api-key|
+|type|oauth2|
 |type|other|
 |type|none|
 
@@ -2906,6 +4076,9 @@ continued
 ```json
 {
   "type": "api-key",
+  "policyName": "string",
+  "policyVersion": "string",
+  "policyParams": {},
   "header": "string",
   "value": "string"
 }
@@ -2916,15 +4089,19 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|type|string|true|none|none|
-|header|string|false|none|none|
-|value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
+|type|string|true|none|"api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.|
+|policyName|string|false|none|Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".|
+|policyVersion|string|false|none|Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.|
+|policyParams|object|false|none|Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.|
+|header|string|false|none|Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.|
+|value|string|false|write-only|Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|api-key|
+|type|oauth2|
 |type|other|
 |type|none|
 
@@ -2940,6 +4117,9 @@ continued
   "id": "wso2-openai-provider",
   "auth": {
     "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
     "header": "string",
     "value": "string"
   }
@@ -2967,6 +4147,9 @@ continued
   "as": "anthropic-upstream",
   "auth": {
     "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
     "header": "string",
     "value": "string"
   },
@@ -3303,6 +4486,9 @@ and
     "id": "wso2-openai-provider",
     "auth": {
       "type": "api-key",
+      "policyName": "string",
+      "policyVersion": "string",
+      "policyParams": {},
       "header": "string",
       "value": "string"
     }
@@ -3337,6 +4523,9 @@ and
       "as": "anthropic-upstream",
       "auth": {
         "type": "api-key",
+        "policyName": "string",
+        "policyVersion": "string",
+        "policyParams": {},
         "header": "string",
         "value": "string"
       },

@@ -144,6 +144,13 @@ class Translator:
             api_context=proto_ctx.api_context,
             operation_path=proto_ctx.operation_path,
             auth_context=auth_context,
+            resolved_operation=proto_ctx.resolved_operation,
+            # dict() rather than the ScalarMapContainer itself: a policy gets a
+            # plain dict it can treat like any other, and one that is already its
+            # own — the container is owned by the proto message this request
+            # deserialized, and handing it out would tie the policy's view to the
+            # lifetime of that message.
+            resolution_attributes=dict(proto_ctx.resolution_attributes),
         )
 
     @staticmethod

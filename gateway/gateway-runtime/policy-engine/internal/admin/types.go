@@ -84,9 +84,29 @@ type PolicyChainsDump struct {
 	PolicyChains      []PolicyChainEntry `json:"policy_chains"`
 }
 
-// PolicyChainEntry contains the policy chain configuration for a single route
+// PolicyChainEntry contains the configuration of a single policy chain.
 type PolicyChainEntry struct {
-	RouteKey             string       `json:"route_key"`
+	// ChainKey is the key this chain is registered under in the kernel — the key a
+	// route's resolver composes and looks up, not necessarily a route key. For an
+	// identity route the two are the same string; for a protocol-resolved one (A2A)
+	// the chain is keyed by apiID/vhost/operation and no route bears this name.
+	//
+	// It replaces the former route_key field, which held this same value under a name
+	// that predates composed chain keys — from when every chain was keyed by the route
+	// that carried it. The name was not merely redundant: on an A2A operation chain it
+	// named a route that does not exist.
+	ChainKey string `json:"chain_key"`
+
+	// APIID, Vhost and Operation are ChainKey decomposed, populated only for a
+	// composed key. They exist because the key's components are joined by an
+	// unprintable separator that JSON renders as an escape sequence: without these,
+	// finding one API's chains, or one operation across partitions, means decoding
+	// the key by eye. Split with the same shared helper that composes it, so the
+	// parts cannot disagree with the whole.
+	APIID     string `json:"api_id,omitempty"`
+	Vhost     string `json:"vhost,omitempty"`
+	Operation string `json:"operation,omitempty"`
+
 	RequiresRequestBody  bool         `json:"requires_request_body"`
 	RequiresResponseBody bool         `json:"requires_response_body"`
 	TotalPolicies        int          `json:"total_policies"`
@@ -131,6 +151,14 @@ type RouteMetadataEntry struct {
 	// operation out of the request, and ChainKeyPrefix is what the engine joins that
 	// operation onto.
 	CanonicalChainKey string `json:"canonical_chain_key"`
+	// ChainKey is the chain this route actually binds, matching a policy_chains entry
+	// of the same name. Present on every statically-resolved route — an identity one,
+	// where it restates the route's own key, and an A2A HTTP+JSON one, where it is the
+	// composed operation key the route was generated for. Absent on a body-resolved
+	// route, which picks one of its protocol's operation chains per request: there the
+	// answer is ChainKeyPrefix plus whatever the resolver reads, and naming a single
+	// key here would be a claim the route cannot honour.
+	ChainKey string `json:"chain_key,omitempty"`
 	// ResolverName is empty for an identity route.
 	ResolverName string `json:"resolver_name,omitempty"`
 	// ChainKeyPrefix is the composed-key prefix for this route: the apiID and vhost

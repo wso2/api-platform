@@ -36,6 +36,35 @@ const (
 	OperationPathKey   = Wso2MetadataPrefix + "operation-path"
 	APIKindKey         = Wso2MetadataPrefix + "api-kind"
 	ProjectIDKey       = Wso2MetadataPrefix + "project-id"
+
+	// ResolvedOperationKey carries the canonical protocol operation the request
+	// resolved to, on an API kind whose operation is not knowable from the route.
+	//
+	// It is stamped by the engine rather than by the analytics system policy on
+	// purpose. That policy is conditionally injected — it is only in the chain when
+	// a collector is enabled — so anything sourced from it is silently absent
+	// otherwise; and the operation is the one dimension the whole A2A event is keyed
+	// by. Stamping it here also means it cannot disagree with the chain that ran:
+	// the value comes from SharedContext.ResolvedOperation, which the kernel derived
+	// from the same chain key it bound.
+	//
+	// Absent for every kind whose route fixes its own chain, where OperationPath
+	// already says what ran.
+	ResolvedOperationKey = Wso2MetadataPrefix + "resolved-operation"
+
+	// TerminalReasonKey names why the engine terminated a request, for the events
+	// whose outcome the HTTP status alone does not explain.
+	//
+	// A denial raised by a policy and a failure returned by the upstream can arrive
+	// downstream as the same status code, so without this an analytics consumer
+	// computing a success rate cannot attribute a failure to the right component.
+	// Only the engine can tell them apart, and only at the moment it emits the
+	// response.
+	//
+	// Absent on a pass-through, which is the overwhelmingly common case: its outcome
+	// is the upstream's and its status says so. The value is one of the
+	// constants.TerminalReason* strings — a closed set, safe as a metric label.
+	TerminalReasonKey = Wso2MetadataPrefix + "terminal-reason"
 )
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
@@ -95,6 +124,12 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		}
 		if sharedCtx.ProjectID != "" {
 			fields[ProjectIDKey] = structpb.NewStringValue(sharedCtx.ProjectID)
+		}
+		// Omitted rather than empty-stringed when the route resolved directly, so a
+		// consumer can tell "this kind has no operation dimension" from "the
+		// operation was not determined".
+		if sharedCtx.ResolvedOperation != "" {
+			fields[ResolvedOperationKey] = structpb.NewStringValue(sharedCtx.ResolvedOperation)
 		}
 	}
 
