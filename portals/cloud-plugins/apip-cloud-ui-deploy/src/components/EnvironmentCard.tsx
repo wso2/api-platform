@@ -51,7 +51,6 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
   const deployed = hasAnyDeployment(gateways);
-  const canPromote = !!nextEnvironment && activeGatewayCount(nextEnvironment.gateways) > 0;
   // What the environment is running: the distinct builds across the gateways that
   // are actually serving. A settling or stopped gateway is not part of what the
   // environment serves, so it does not contribute a build here.
@@ -63,10 +62,21 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
     )
   ).sort();
 
-  const promoteDisabledReason =
-    nextEnvironment && !canPromote
-      ? `All gateways in ${nextEnvironment.name} are inactive. Activate a gateway before promoting.`
-      : '';
+  // A promotion carries THIS environment's build forward, so there has to be one:
+  // once every gateway here is stopped the environment is running nothing and the
+  // backend refuses the promotion. Gating it here means the button does not offer
+  // an action that can only fail.
+  const hasBuildToPromote = runningBuilds.length > 0;
+  const canPromote =
+    !!nextEnvironment && activeGatewayCount(nextEnvironment.gateways) > 0 && hasBuildToPromote;
+
+  const promoteDisabledReason = !nextEnvironment
+    ? ''
+    : !hasBuildToPromote
+      ? `Nothing is deployed in ${environment.name} to promote. Deploy here first.`
+      : activeGatewayCount(nextEnvironment.gateways) === 0
+        ? `All gateways in ${nextEnvironment.name} are inactive. Activate a gateway before promoting.`
+        : '';
 
   return (
     <Card
@@ -79,50 +89,54 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
       <CardContent
         sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 1.5, '&:last-child': { pb: 2.5 } }}
       >
-        <Box>
-          <Typography sx={{ fontSize: 16, fontWeight: 600 }}>{environment.name}</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {activeCount} of {gateways.length} gateway{gateways.length === 1 ? '' : 's'} active
-          </Typography>
-        </Box>
+        {/* Name on the left, the environment's build on the right: the build is a
+            property of the ENVIRONMENT now — every gateway in it runs the same one
+            — so it sits beside the name rather than being read off the rows and
+            compared, and it uses the space the header was leaving empty.
 
-        {/* The build belongs to the ENVIRONMENT now, not to each gateway: they all
-            run the same one. So it is stated once, here, rather than being left to
-            be read off the rows and compared.
-
-            More than one build showing means the environment is split — which the
-            deploy rules are meant to prevent — so it is called out rather than
+            More than one build showing means the environment is split, which the
+            deploy rules are meant to prevent, so it is called out rather than
             quietly listing both. */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-          <Typography sx={sectionLabelSx}>Build</Typography>
-          {runningBuilds.length === 0 ? (
-            <Typography variant="caption" color="text.disabled">
-              Nothing deployed
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontSize: 16, fontWeight: 600 }}>{environment.name}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {activeCount} of {gateways.length} gateway{gateways.length === 1 ? '' : 's'} active
             </Typography>
-          ) : runningBuilds.length === 1 ? (
-            <Chip
-              label={runningBuilds[0]}
-              size="small"
-              variant="outlined"
-              sx={{ height: 20, fontSize: '0.7rem' }}
-            />
-          ) : (
-            <>
-              {runningBuilds.map((buildId) => (
-                <Chip
-                  key={buildId}
-                  label={buildId}
-                  size="small"
-                  color="warning"
-                  variant="outlined"
-                  sx={{ height: 20, fontSize: '0.7rem' }}
-                />
-              ))}
-              <Typography variant="caption" color="warning.main">
-                Split across builds
+          </Box>
+          <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+            <Typography sx={{ ...sectionLabelSx, display: 'block' }}>Build</Typography>
+            {runningBuilds.length === 0 ? (
+              <Typography variant="caption" color="text.disabled">
+                Nothing deployed
               </Typography>
-            </>
-          )}
+            ) : runningBuilds.length === 1 ? (
+              <Chip
+                label={runningBuilds[0]}
+                size="small"
+                variant="outlined"
+                sx={{ height: 20, fontSize: '0.7rem', mt: 0.25 }}
+              />
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.25 }}>
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {runningBuilds.map((buildId) => (
+                    <Chip
+                      key={buildId}
+                      label={buildId}
+                      size="small"
+                      color="warning"
+                      variant="outlined"
+                      sx={{ height: 20, fontSize: '0.7rem' }}
+                    />
+                  ))}
+                </Box>
+                <Typography variant="caption" color="warning.main">
+                  Split across builds
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Box>
 
         <Divider />
