@@ -36,32 +36,20 @@ import { useManagedPortalList } from './hooks';
 import type { ManagedPortal } from './types';
 
 export type ManagedPortalsListProps = {
-  /**
-   * Called when a row's non-action area is clicked, so the page shell can
-   * open the detail view. The delete icon stops event propagation so it does
-   * not double-fire into onSelect.
-   */
+  /** Invoked when a row's non-action area is clicked; the delete icon stops propagation to avoid double-firing. */
   onSelect: (id: string) => void;
 };
 
 export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps) {
   const { portals, isLoading, error, create, remove } = useManagedPortalList();
 
-  // Create dialog state.
-  //
-  // No loginEnvironment field in the Create form: the backend picks the org's
-  // preferred login env from environments.Service.List (see the plugin's
-  // Service.Create). Rationale — the "which env authenticates consumers" pick
-  // is server authority (matches the operator's org bootstrap), not the
-  // portal creator's choice on first-create. Editing switches later via the
-  // Edit form's env dropdown.
+  // No loginEnvironment on create: server is authoritative on org bootstrap; Edit exposes the switch later.
   const [createOpen, setCreateOpen] = useState(false);
   const [handle, setHandle] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Delete confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
 
   const resetCreateForm = () => {
@@ -77,13 +65,12 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
         handle: handle.trim(),
         name: name.trim(),
         description: description.trim() || undefined,
-        // loginEnvironment omitted — backend picks from environments.Service.List
+        // loginEnvironment omitted; server picks the org's preferred env.
       });
       resetCreateForm();
       setCreateOpen(false);
     } catch {
-      // Notification already handled inside the hook; keep dialog open so the
-      // caller can fix and retry without losing typed values.
+      // Hook already notified; leave the dialog open with user input for retry.
     } finally {
       setSubmitting(false);
     }
@@ -94,7 +81,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
     try {
       await remove(deleteTarget.id);
     } catch {
-      // notified by hook
+      // Hook already notified.
     } finally {
       setDeleteTarget(null);
     }
@@ -177,8 +164,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                         color="error"
                         aria-label={`Delete ${portal.name}`}
                         onClick={(event) => {
-                          // Prevent the row click from also firing onSelect —
-                          // deleting is an explicit action, not a navigation.
+                          // Stop the row's onSelect from firing on delete.
                           event.stopPropagation();
                           setDeleteTarget(portal);
                         }}
@@ -236,12 +222,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                 disabled={submitting}
               />
             </FormControl>
-            {/*
-             * No Login-environment field on Create. The backend picks the
-             * org's preferred login env from the environments list (see the
-             * plugin's Service.Create). The Edit form (ManagedPortalDetail)
-             * exposes the picker for switching later.
-             */}
+            {/* No Login-environment field on Create; the server picks the org's preferred env, and Edit exposes the picker later. */}
           </Stack>
         </DialogContent>
         <DialogActions>

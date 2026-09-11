@@ -65,11 +65,8 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  *
  * `managed-api-portals` is an organization-level sidebar item, one WSO2-managed
  * developer portal per entry in the org. Talks to apip-platform-api's cloud-only
- * `/managed-api-portals` resource (apim-saas PR #2957) via the host port. The
- * open-source console has no counterpart; this is a SaaS-only surface. Distinct
- * from the OSS `/api-portals` REST added by api-platform PR #3219, per product
- * decision, managed portals and OSS api-portals stay two systems forever
- * (SaaS lifecycle vs plain registry).
+ * `/managed-api-portals` resource via the host port; SaaS-only, distinct from
+ * the OSS `/api-portals` registry (SaaS lifecycle vs plain registry).
  */
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
   defineCloudPlugin({
@@ -180,7 +177,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
       {
         id: 'managed-api-portals',
         slot: 'sidebar.organization',
-        // After Pipelines (50); no built-in item competes for this position.
+        // Placed after Pipelines (50); no built-in item competes for 60.
         order: 60,
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,

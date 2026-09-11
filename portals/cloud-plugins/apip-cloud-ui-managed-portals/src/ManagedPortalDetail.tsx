@@ -32,19 +32,11 @@ import { useManagedPortal, useOrgEnvironments } from './hooks';
 
 export type ManagedPortalDetailProps = {
   id: string;
-  /**
-   * Called when the user is done with the detail view — either via the back
-   * button or after a successful delete. The page shell owns the list ↔ detail
-   * switch so this component does not need to know about routing.
-   */
+  /** Invoked on back button or after a successful delete; the page shell owns list/detail switching. */
   onBack: () => void;
 };
 
-/**
- * Small labelled read-only field used by the detail summary — kept inline
- * rather than pulled into its own file since the layout is trivial and this
- * component is the only caller today.
- */
+/** Labelled read-only field for the detail summary. */
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <Stack spacing={0.5}>
@@ -60,10 +52,7 @@ function Field({ label, value }: { label: string; value: string }) {
 
 export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailProps) {
   const { portal, isLoading, error, update, remove } = useManagedPortal(id);
-  // Populate the login-environment picker from the org's real env list.
-  // Fetched on mount; the dropdown renders empty options + a helper text if
-  // the fetch fails so the operator sees something actionable rather than a
-  // silently blank dropdown.
+  // Populates the login-environment picker with the org's real envs so the operator can't type an env that fails at provision-time.
   const { environments, isLoading: envsLoading, error: envsError } = useOrgEnvironments();
 
   const [editOpen, setEditOpen] = useState(false);
@@ -73,9 +62,7 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
   const [submitting, setSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Seed the edit form from the loaded portal whenever the dialog opens, so a
-  // Cancel-then-reopen picks up the latest server-side values (matters after
-  // a successful save; keeps the form idempotent otherwise).
+  // Reseed on each open so Cancel-then-reopen reflects the latest server-side values.
   useEffect(() => {
     if (editOpen && portal) {
       setName(portal.name);
@@ -88,9 +75,7 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
     if (!portal) return;
     setSubmitting(true);
     try {
-      // Send only the fields the user actually changed. This keeps updates
-      // idempotent (a no-op save does not stamp identical values) and avoids
-      // an accidental clear of a field the user did not touch.
+      // Send only changed fields so a no-op save doesn't restamp values and untouched fields aren't cleared.
       const patch = {
         ...(name.trim() !== portal.name ? { name: name.trim() } : {}),
         ...(description !== (portal.description ?? '') ? { description: description.trim() } : {}),
@@ -105,8 +90,7 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
       await update(patch);
       setEditOpen(false);
     } catch {
-      // Notification handled by the hook; keep the dialog open with the
-      // user's typed values so they can adjust and retry.
+      // Hook already notified; leave the dialog open with user input for retry.
     } finally {
       setSubmitting(false);
     }
@@ -160,8 +144,7 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
                   <Button
                     variant="contained"
                     startIcon={<ArrowUpRight size={18} />}
-                    // noreferrer for external navigation; opens in a new tab so
-                    // the operator's console session isn't left behind.
+                    // New tab preserves the console session; noreferrer for external navigation.
                     href={portal.url}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -237,16 +220,7 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
             </FormControl>
             <FormControl fullWidth>
               <FormLabel>Login environment</FormLabel>
-              {/*
-               * Sourced from the org's real env list (useOrgEnvironments) so
-               * the operator can only pick a name that actually exists on
-               * the DP — a free-text TextField would let them save a value
-               * that fails at portal-provision time. If the portal's current
-               * env is somehow absent from the fetched list (e.g. deleted
-               * out-of-band), it's still included as a synthetic option so
-               * the user sees the mismatch rather than a silent selection
-               * swap.
-               */}
+              {/* Current env is added as a synthetic option if missing from the list, so an out-of-band deletion shows as a mismatch rather than a silent swap. */}
               <Select
                 fullWidth
                 value={loginEnvironment}

@@ -5,13 +5,9 @@
  * Dissemination of any information or reproduction of any material contained
  * herein in any form is strictly forbidden, unless permitted by WSO2 expressly.
  * You may not alter or remove any copyright or other notice from copies of this content.
- *
- * This feature's own data-injection seam — local to this package only, never
- * crossing the api-platform/apim-saas boundary (the boundary-crossing shape
- * is `CloudHostPort`, received as a plain prop by `ManagedPortalsPage`).
- * Kept as a context purely so `useManagedPortalList` doesn't need
- * `PortalPort`/`notify` prop-drilled through every list/dialog component.
  */
+
+// Package-local context so hooks aren't forced to prop-drill port/notify through every dialog.
 import { createContext, useContext, type ReactNode } from 'react';
 
 import type { CloudHostPort } from './hostPort';

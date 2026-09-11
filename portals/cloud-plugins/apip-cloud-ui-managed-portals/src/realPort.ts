@@ -5,17 +5,10 @@
  * Dissemination of any information or reproduction of any material contained
  * herein in any form is strictly forbidden, unless permitted by WSO2 expressly.
  * You may not alter or remove any copyright or other notice from copies of this content.
- *
- * The real PortalPort — talks to apip-platform-api through the console BFF's
- * same-origin proxy. Mirrors how ManagedGatewaysPage's realPort reaches
- * apip-platform-api's `/managed-gateways` resource; here we hit the sibling
- * `/managed-api-portals` resource added by the same plugin.
- *
- * LIST projects the cloud OAS ManagedApiPortalList; the core row's list
- * projection strips metadata by design, so `loginEnvironment` is empty on list
- * results and populated only by GET (matching the plugin service's own
- * projection). CREATE, PUT and DELETE go to the same resource.
  */
+
+// PortalPort backed by apip-platform-api via the console BFF's same-origin proxy.
+// LIST strips metadata by design so loginEnvironment is empty on list rows and only populated by GET.
 
 import type {
   CreateManagedPortalInput,
@@ -45,11 +38,7 @@ function windowConfig(): WindowRuntimeConfig {
   return { ...(w.__RUNTIME_CONFIG__ ?? {}), ...(w.config ?? {}) };
 }
 
-/**
- * The same-origin request base for platform-api calls
- * (`${platformApiBaseUrl}/api/${version}`, e.g. `/proxy/api/v0.9`), or `null`
- * when the console has no platform-api base configured (tests → mock port).
- */
+/** Same-origin request base for platform-api calls, or null when unconfigured (tests fall back to mock). */
 export function resolveApiBase(): string | null {
   const cfg = windowConfig();
   const base = cfg.platformApiBaseUrl || cfg.PLATFORM_API_BASE_URL || '';
@@ -88,7 +77,7 @@ async function request<T>(
       };
       message = errBody.description || errBody.message || errBody.error || message;
     } catch {
-      // non-JSON error body — keep the status-based message
+      // Non-JSON body; keep the status-based message.
     }
     throw new Error(message);
   }
@@ -97,7 +86,7 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-// Wire shapes from the plugin's OAS (services/apip-platform-api/resources/openapi.yaml).
+// Wire shapes match the plugin's OAS.
 type WirePortal = {
   id?: string;
   handle?: string;
@@ -109,8 +98,7 @@ type WirePortal = {
 };
 type WirePortalList = { count?: number; list?: WirePortal[] };
 
-// EnvironmentList shape from the plugin's OAS. `name` is what the plugin's
-// loginEnvironment field expects; the response carries more fields we ignore.
+// `name` is the value loginEnvironment expects; other response fields are ignored.
 type WireEnvironment = { name?: string; displayName?: string };
 type WireEnvironmentList = { count?: number; list?: WireEnvironment[] };
 
@@ -126,10 +114,7 @@ function fromWire(w: WirePortal): ManagedPortal {
   };
 }
 
-/**
- * A PortalPort backed by the console BFF proxy at `base`
- * (e.g. `/proxy/api/v0.9`), scoped to `orgHandle` (sent as X-Org-Id).
- */
+/** PortalPort backed by the BFF proxy at `base`, scoped to `orgHandle` via the X-Org-Id header. */
 export function createRealPortalPort(base: string, orgHandle: string): PortalPort {
   const url = (id: string) => `/managed-api-portals/${encodeURIComponent(id)}`;
   return {
@@ -162,9 +147,7 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       await request<void>(base, orgHandle, 'DELETE', url(id));
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
-      // Sibling endpoint served by the same cloud plugin
-      // (services/apip-platform-api/internal/environments/handler.go);
-      // reached via the same BFF proxy + org-id header as the portal calls.
+      // Sibling endpoint reached via the same BFF proxy and org-id header as the portal calls.
       const body = await request<WireEnvironmentList>(base, orgHandle, 'GET', '/environments');
       return (body.list ?? [])
         .filter((e): e is WireEnvironment & { name: string } => typeof e.name === 'string' && e.name.length > 0)

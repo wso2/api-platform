@@ -21,13 +21,7 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
-/**
- * Loads a single managed portal by id and exposes update + delete against it.
- * A separate hook (rather than reusing useManagedPortalList) so the detail
- * page can render without waiting on the whole list to load — the id-scoped
- * fetch also returns metadata fields (loginEnvironment) the list projection
- * strips, so a fresh get is the right shape for the detail view.
- */
+/** Loads one portal by id (GET returns metadata the list projection strips) and exposes update/delete. */
 export function useManagedPortal(id: string) {
   const { port, host } = usePortalFeature();
 
@@ -150,19 +144,7 @@ export function useManagedPortalList() {
   return { portals, isLoading, error, refetch, create, update, remove };
 }
 
-/**
- * Loads the caller-org's data-plane environments once (on mount) and exposes
- * a stable list + loading/error signals. Used by:
- *   - the Create form, to pick a default env silently rather than asking the
- *     operator to type one,
- *   - the Edit form, to render a Select of the real available envs (rather
- *     than a free-text TextField that lets operators name envs that don't
- *     exist and trigger a runtime provisioning error).
- *
- * Kept as its own hook (not folded into useManagedPortalList) so:
- *   - a page that only edits a single portal doesn't pay for the list call, and
- *   - callers can render the env selector while the portal list is still loading.
- */
+/** Loads the org's data-plane environments once on mount; used to populate env selectors. */
 export function useOrgEnvironments() {
   const { port } = usePortalFeature();
 

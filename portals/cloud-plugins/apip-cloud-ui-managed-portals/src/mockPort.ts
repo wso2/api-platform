@@ -7,11 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-// An in-memory PortalPort — used only as a fallback when no platform-api base
-// is configured (tests / storybook). The console always constructs the real,
-// BFF-backed port in a normal deployment. Both satisfy the same PortalPort
-// interface, so ManagedPortalsList/useManagedPortalList never know which is
-// in play.
+// In-memory PortalPort fallback for tests / storybook when no platform-api base is configured.
 
 import type {
   CreateManagedPortalInput,
@@ -26,7 +22,7 @@ const delay = <T>(value: T, ms = 300): Promise<T> =>
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
-/** Builds a fresh in-memory port, optionally seeded with portals. */
+/** Builds an in-memory PortalPort, optionally seeded. */
 export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
   const portals: ManagedPortal[] = seed ?? [];
 
@@ -85,9 +81,7 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
       await delay(undefined);
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
-      // Small fixed list for storybook / tests. Real org data comes from the
-      // BFF-backed port. Kept intentionally short and non-empty so form
-      // interactions render sensibly during offline development.
+      // Fixed non-empty list so form interactions render sensibly offline.
       return delay([
         { name: 'development', displayName: 'Development' },
         { name: 'staging', displayName: 'Staging' },

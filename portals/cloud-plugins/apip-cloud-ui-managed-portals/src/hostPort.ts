@@ -5,15 +5,9 @@
  * Dissemination of any information or reproduction of any material contained
  * herein in any form is strictly forbidden, unless permitted by WSO2 expressly.
  * You may not alter or remove any copyright or other notice from copies of this content.
- *
- * Mirrors `CloudHostPort` from api-platform's `portals/api-control-plane/src/hostPort.tsx`.
- * Duplicated, not imported — api-platform and apim-saas are separate git
- * repos. Kept deliberately small and stable; keep this in sync by hand if
- * the upstream shape changes. This feature package only ever receives a
- * value of this shape as a plain prop (`render(port)` / `<ManagedPortalsPage
- * port={port} />`) — never a shared context object, so there's no
- * cross-repo context-identity problem to worry about.
  */
+
+// Duplicated (not imported) from api-platform's api-control-plane/hostPort so the two repos stay decoupled; keep in sync by hand.
 
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
 
