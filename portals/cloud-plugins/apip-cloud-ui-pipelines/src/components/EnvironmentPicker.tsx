@@ -90,7 +90,14 @@ const EnvironmentPicker: FC<EnvironmentPickerProps> = ({
               </Tooltip>
             );
           })}
-          {environments.every((environment) => isEnvironmentUsed(environment.name)) ? (
+          {/* An empty list is checked first: `every` is true of no elements, so an
+              organization with no environments at all would otherwise be told they
+              had all been added — the opposite of what it needs to do next. */}
+          {environments.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
+              No environments yet. Create one before building a pipeline.
+            </Typography>
+          ) : environments.every((environment) => isEnvironmentUsed(environment.name)) ? (
             <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
               All environments have been added.
             </Typography>
