@@ -2087,3 +2087,80 @@ func TestNewOTelStoresRedactedEndpoint(t *testing.T) {
 		t.Errorf("cfg.Endpoint must keep the full URL for the request, got %q", o.cfg.Endpoint)
 	}
 }
+
+// An unrecognized capability emits no capability-target attribute, so
+// capabilityName/resourceUri must stay unclaimed and reach the sweep rather than
+// being dropped. Moesif already receives capabilityName for these methods.
+func TestMCPUnrecognizedCapabilityFallsToSweep(t *testing.T) {
+	event := restEvent()
+	event.Properties["mcpAnalytics"] = map[string]interface{}{
+		"jsonRpcMethod":  "completion/complete",
+		"capability":     "", // deriveMCPCapability returns "" for a non tools/prompts/resources prefix
+		"capabilityName": "greet",
+	}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if got["wso2.mcp.capability_name"] != "greet" {
+		t.Errorf("wso2.mcp.capability_name = %v, want greet", got["wso2.mcp.capability_name"])
+	}
+	for _, k := range []string{"gen_ai.tool.name", "gen_ai.prompt.name", "mcp.resource.uri"} {
+		if _, present := got[k]; present {
+			t.Errorf("%s must not be emitted for an unrecognized capability", k)
+		}
+	}
+}
+
+// The sweep must not duplicate a value a branch already emitted under its
+// curated name.
+func TestMCPRecognizedCapabilityIsNotAlsoSwept(t *testing.T) {
+	cases := []struct {
+		capability, key, curated string
+	}{
+		{"TOOL", "capabilityName", "gen_ai.tool.name"},
+		{"PROMPT", "capabilityName", "gen_ai.prompt.name"},
+		{"RESOURCE", "resourceUri", "mcp.resource.uri"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.capability, func(t *testing.T) {
+			event := restEvent()
+			event.Properties["mcpAnalytics"] = map[string]interface{}{
+				"capability": tc.capability,
+				tc.key:       "value-x",
+			}
+
+			o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+			got := attrMap(t, o.buildRecord(event))
+
+			if got[tc.curated] != "value-x" {
+				t.Errorf("%s = %v, want value-x", tc.curated, got[tc.curated])
+			}
+			swept := ns("mcp." + otelSnakeCase(tc.key))
+			if _, present := got[swept]; present {
+				t.Errorf("%s was swept as well as emitted under %s", swept, tc.curated)
+			}
+		})
+	}
+}
+
+// The unused sibling key stays unclaimed, so a request carrying both still
+// reports the one its capability does not use.
+func TestMCPUnusedSiblingKeyIsSwept(t *testing.T) {
+	event := restEvent()
+	event.Properties["mcpAnalytics"] = map[string]interface{}{
+		"capability":     "TOOL",
+		"capabilityName": "search_docs",
+		"resourceUri":    "file:///unexpected.md",
+	}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if got["gen_ai.tool.name"] != "search_docs" {
+		t.Errorf("gen_ai.tool.name = %v, want search_docs", got["gen_ai.tool.name"])
+	}
+	if got["wso2.mcp.resource_uri"] != "file:///unexpected.md" {
+		t.Errorf("wso2.mcp.resource_uri = %v, want the unused sibling to be swept", got["wso2.mcp.resource_uri"])
+	}
+}

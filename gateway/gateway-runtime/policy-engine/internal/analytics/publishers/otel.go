@@ -948,20 +948,15 @@ func (o *OTel) appendMCPAttributes(event *dto.Event, attrs *otelAttrs) {
 	attrs.anyStr("mcp.session.id", take("sessionId"))
 	attrs.anyStr("jsonrpc.request.id", take("jsonRpcId"))
 
-	// Tools and prompts are named (params.name); a resource is addressed by URI
-	// (params.uri), which the analytics policy extracts into its own field.
-	capabilityName, _ := take("capabilityName").(string)
-	resourceURI := take("resourceUri")
-	// capability itself is not emitted: which attribute below is populated says
-	// it, and it is derivable from mcp.method.name's prefix. Taking it still
-	// claims it, so the sweep does not put it back.
+	// Emit tool/prompt names or resource URIs only for recognized capabilities; 
+	// leave unrecognized fields for the sweep.
 	switch capability, _ := take("capability").(string); capability {
 	case "TOOL":
-		attrs.str("gen_ai.tool.name", capabilityName)
-	case "RESOURCE":
-		attrs.anyStr("mcp.resource.uri", resourceURI)
+		attrs.anyStr("gen_ai.tool.name", take("capabilityName"))
 	case "PROMPT":
-		attrs.str("gen_ai.prompt.name", capabilityName)
+		attrs.anyStr("gen_ai.prompt.name", take("capabilityName"))
+	case "RESOURCE":
+		attrs.anyStr("mcp.resource.uri", take("resourceUri"))
 	}
 
 	// A JSON-RPC error code is a string in rpc.response.status_code.
