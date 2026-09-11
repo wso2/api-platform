@@ -157,8 +157,7 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
               {confirming ? (
                 <Box sx={{ mt: 1 }}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-                    Delete this build? Deployments that ran it stay on their gateways but can no
-                    longer be promoted onward.
+                    Delete this build?
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                     <Button

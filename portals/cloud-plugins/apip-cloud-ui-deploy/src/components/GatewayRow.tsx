@@ -18,7 +18,7 @@
 
 import { useState, type FC } from 'react';
 import { Box, Button, Card, CardContent, Collapse, Typography } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronUp, Eye } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronUp, Clock, Eye } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
 import EndpointUrlDrawer from './EndpointUrlDrawer';
 import StatusDot from './StatusDot';
@@ -118,26 +118,20 @@ const GatewayRow: FC<GatewayRowProps> = ({
 
             {gateway.status !== 'NOT_DEPLOYED' ? (
               <>
-                <Card>
-                  <CardContent
-                    sx={{
-                      p: 1.25,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      '&:last-child': { pb: 1.25 },
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        ID {gateway.buildId}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Deployed {gateway.deployedAt ? relativeTime(gateway.deployedAt) : '—'}
-                      </Typography>
-                    </Box>
-                  </CardContent>
-                </Card>
+                {/*
+                  When the deployment landed, as a plain line rather than a card: the
+                  build it runs is shown once on the environment, so repeating it per
+                  gateway only added a label with nothing beside it whenever the build
+                  had since been reclaimed.
+                */}
+                {gateway.deployedAt ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Clock size={13} />
+                    <Typography variant="caption" color="text.secondary">
+                      Deployed {relativeTime(gateway.deployedAt)}
+                    </Typography>
+                  </Box>
+                ) : null}
 
                 <ActionRow
                   label="Endpoint URL"
