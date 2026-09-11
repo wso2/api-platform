@@ -135,23 +135,36 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
    */
   const handleDeploy = (
     target: Environment,
-    gatewayId: string,
-    endpointUrl: string,
+    gateways: { gatewayId: string; endpointUrl?: string }[],
     from?: Environment,
     buildId?: string
   ) => {
-    if (!client) return;
+    if (!client || gateways.length === 0) return;
     void runAction(
       () =>
         client.deploy({
           environment: target.name,
-          gatewayId,
-          endpointUrl,
+          gateways,
           fromEnvironment: from?.name,
           buildId,
         }),
       `${from ? 'Promoting to' : 'Deploying to'} ${target.name}.`,
       `Unable to ${from ? 'promote to' : 'deploy to'} ${target.name}.`
+    );
+  };
+
+  /**
+   * Deleting a build is how a slot is freed once the API is at its limit and
+   * deploying is refused for it. The platform is the authority on whether a build
+   * can go — a gateway may have claimed it since the page last loaded — so a
+   * refusal surfaces as it comes back rather than being predicted here.
+   */
+  const handleDeleteBuild = (buildId: string) => {
+    if (!client) return;
+    void runAction(
+      () => client.deleteBuild(buildId),
+      `Deleted build ${buildId}.`,
+      `Unable to delete build ${buildId}.`
     );
   };
 
@@ -162,21 +175,6 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       () => client.undeploy(environment.name, gatewayId, gateway.deploymentId!),
       `Stopping ${gateway.name}.`,
       `Unable to stop ${gateway.name}.`
-    );
-  };
-
-  /**
-   * Puts a suspended deployment back on its gateway. The deployment is immutable,
-   * so this restores exactly what was running — same build, same endpoint — and
-   * builds nothing, which is what separates it from a retry.
-   */
-  const handleRedeploy = (environment: Environment, gatewayId: string) => {
-    const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
-    if (!client || !gateway?.deploymentId) return;
-    void runAction(
-      () => client.redeploy(environment.name, gatewayId, gateway.deploymentId!),
-      `Redeploying ${gateway.name}.`,
-      `Unable to redeploy ${gateway.name}.`
     );
   };
 
@@ -192,15 +190,17 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
     const index = environments.findIndex((candidate) => candidate.name === environment.name);
     void runAction(
       () =>
+        // Only this gateway: the retry ships the build its peers are already
+        // running, so the environment stays on one build and the backend does not
+        // require them to be redeployed alongside it.
         client.deploy({
           environment: environment.name,
-          gatewayId,
-          endpointUrl: gateway.endpointUrl,
+          gateways: [{ gatewayId, endpointUrl: gateway.endpointUrl }],
           buildId: gateway.buildId,
           fromEnvironment: index > 0 ? environments[index - 1]?.name : undefined,
         }),
-      `Redeploying ${gateway.name}.`,
-      `Unable to redeploy ${gateway.name}.`
+      `Retrying ${gateway.name}.`,
+      `Unable to retry ${gateway.name}.`
     );
   };
 
@@ -266,7 +266,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onRetryGateway={handleRetry}
-      onRedeployGateway={handleRedeploy}
+      onDeleteBuild={handleDeleteBuild}
     />
   );
 };

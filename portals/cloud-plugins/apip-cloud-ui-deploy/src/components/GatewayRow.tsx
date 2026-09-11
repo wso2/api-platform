@@ -18,7 +18,7 @@
 
 import { useState, type FC } from 'react';
 import { Box, Button, Card, CardContent, Collapse, Typography } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronUp, Eye } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronUp, Clock, Eye } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
 import EndpointUrlDrawer from './EndpointUrlDrawer';
 import StatusDot from './StatusDot';
@@ -34,7 +34,6 @@ export type GatewayRowProps = {
   busy: boolean;
   onRetry: () => void;
   /** Puts a suspended deployment back on the gateway, unchanged. */
-  onRedeploy: () => void;
   onStop: () => void;
 };
 
@@ -43,7 +42,6 @@ const GatewayRow: FC<GatewayRowProps> = ({
   environmentName,
   busy,
   onRetry,
-  onRedeploy,
   onStop,
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -53,24 +51,27 @@ const GatewayRow: FC<GatewayRowProps> = ({
 
   // What the one action button does depends on what the gateway is doing:
   //
-  //  - suspended (UNDEPLOYED) — put the SAME deployment back, artifact and all;
   //  - failed — deploy its build again, which makes a new deployment;
   //  - serving — stop it.
   //
+  // A stopped gateway offers nothing here. Putting one back is a deploy, which
+  // goes through the deploy dialog so it joins the build the environment is on —
+  // reviving its old deployment from this row would put that old build back
+  // while the rest of the environment had moved on.
+  //
   // Nothing to do while a deployment is still settling, or where there is none.
-  const action: 'redeploy' | 'retry' | 'stop' =
-    gateway.status === 'UNDEPLOYED' ? 'redeploy' : gateway.status === 'FAILED' ? 'retry' : 'stop';
-  const actionLabel = action === 'stop' ? 'Stop deployment' : 'Redeploy';
+  const action: 'retry' | 'stop' = gateway.status === 'FAILED' ? 'retry' : 'stop';
+  const actionLabel = action === 'stop' ? 'Stop deployment' : 'Retry';
   const actionDisabled =
     busy ||
     gateway.status === 'NOT_DEPLOYED' ||
+    gateway.status === 'UNDEPLOYED' ||
     gateway.status === 'DEPLOYING' ||
     gateway.status === 'UNDEPLOYING' ||
-    // Retrying re-deploys the build, so it needs no deployment; the other two act
-    // on the deployment itself.
+    // Retrying re-deploys the build, so it needs no deployment; stopping acts on
+    // the deployment itself.
     (action !== 'retry' && !gateway.deploymentId);
-  const handleActionClick =
-    action === 'redeploy' ? onRedeploy : action === 'retry' ? onRetry : onStop;
+  const handleActionClick = action === 'retry' ? onRetry : onStop;
 
   return (
     <Card>
@@ -117,26 +118,20 @@ const GatewayRow: FC<GatewayRowProps> = ({
 
             {gateway.status !== 'NOT_DEPLOYED' ? (
               <>
-                <Card>
-                  <CardContent
-                    sx={{
-                      p: 1.25,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      '&:last-child': { pb: 1.25 },
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        ID {gateway.buildId}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Deployed {gateway.deployedAt ? relativeTime(gateway.deployedAt) : '—'}
-                      </Typography>
-                    </Box>
-                  </CardContent>
-                </Card>
+                {/*
+                  When the deployment landed, as a plain line rather than a card: the
+                  build it runs is shown once on the environment, so repeating it per
+                  gateway only added a label with nothing beside it whenever the build
+                  had since been reclaimed.
+                */}
+                {gateway.deployedAt ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Clock size={13} />
+                    <Typography variant="caption" color="text.secondary">
+                      Deployed {relativeTime(gateway.deployedAt)}
+                    </Typography>
+                  </Box>
+                ) : null}
 
                 <ActionRow
                   label="Endpoint URL"

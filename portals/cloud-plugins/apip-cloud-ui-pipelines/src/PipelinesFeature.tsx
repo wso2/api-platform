@@ -54,8 +54,12 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
     setLoading(true);
     setError(null);
     try {
-      const environmentList = await apiFetch<EnvironmentListDTO>('GET', '/environments');
-      const pipelineList = await apiFetch<PipelineListDTO>('GET', '/pipelines');
+      // Independent of each other, so they go together rather than one after the
+      // other: the page waits for the slower of the two instead of their sum.
+      const [environmentList, pipelineList] = await Promise.all([
+        apiFetch<EnvironmentListDTO>('GET', '/environments'),
+        apiFetch<PipelineListDTO>('GET', '/pipelines'),
+      ]);
       const assembledEnvironments = assembleEnvironments(environmentList?.list ?? []);
       setEnvironments(assembledEnvironments);
       setPipelines(

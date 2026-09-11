@@ -36,7 +36,12 @@ type StageDTO = {
   gateways?: GatewayDeploymentDTO[];
 };
 
-type BuildDTO = { buildId: string; createdBy?: string; createdAt?: string };
+type BuildDTO = {
+  buildId: string;
+  description?: string;
+  createdBy?: string;
+  createdAt?: string;
+};
 
 /**
  * The gateways resource, which owns a gateway's identity and health. The
@@ -112,9 +117,28 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
       const response = await apiFetch<{ list?: BuildDTO[] }>('GET', `${base}/builds`);
       return (response?.list ?? []).map((dto) => ({
         buildId: dto.buildId,
+        description: dto.description,
         createdBy: dto.createdBy,
         createdAt: dto.createdAt,
       }));
+    },
+
+    /**
+     * Deletes one of the API's builds, which is how room is made once an API is at
+     * its build limit and deploying is refused.
+     *
+     * This goes straight to the API's own resource rather than through the project
+     * path: a build belongs to the API, not to a pipeline, and the platform already
+     * scopes the call to the caller's organization. Refused with 409 while a gateway
+     * is serving the build; undeploying releases it. Deployments that ran the build
+     * survive and stay redeployable from their own artifact, but stop reporting it,
+     * so they can no longer be promoted onward.
+     */
+    async deleteBuild(buildId: string): Promise<void> {
+      await apiFetch(
+        'DELETE',
+        `/rest-apis/${encodeURIComponent(apiHandle)}/builds/${encodeURIComponent(buildId)}`
+      );
     },
 
     /**
@@ -128,39 +152,29 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
     },
 
     /**
-     * Deploys to one gateway of an environment with the endpoint it should serve.
+     * Deploys (or promotes) one build onto every gateway named, each with its own
+     * endpoint. An environment runs a single build of an API at a time, so this is
+     * one call rather than one per gateway: the backend puts the same build on all
+     * of them and rolls every gateway back if any one fails.
      *
-     * Deploying without a `buildId` snapshots the API and deploys the new build.
-     * Supplying `buildId` deploys that existing build. `fromEnvironment` promotes
-     * instead, carrying that environment's build forward untouched.
+     * The gateways must include every gateway the API is already deployed on in
+     * that environment; leaving one out is refused with 409.
      */
     async deploy(input: {
       environment: string;
-      gatewayId: string;
-      endpointUrl?: string;
+      gateways: { gatewayId: string; endpointUrl?: string }[];
       fromEnvironment?: string;
       buildId?: string;
     }): Promise<void> {
       await apiFetch('POST', `${base}/deployments`, {
         environment: input.environment,
-        gatewayId: input.gatewayId,
+        gateways: input.gateways.map((gateway) => ({
+          gatewayId: gateway.gatewayId,
+          ...(gateway.endpointUrl ? { parameters: { productionEndpoint: gateway.endpointUrl } } : {}),
+        })),
         ...(input.fromEnvironment ? { fromEnvironment: input.fromEnvironment } : {}),
         ...(input.buildId ? { buildId: input.buildId } : {}),
-        ...(input.endpointUrl ? { parameters: { productionEndpoint: input.endpointUrl } } : {}),
       });
-    },
-
-    /**
-     * Serves a suspended deployment again on the same gateway. The deployment is
-     * immutable, so it comes back exactly as it was — same build, same endpoint —
-     * and nothing is rendered or built.
-     */
-    async redeploy(environment: string, gatewayId: string, deploymentId: string): Promise<void> {
-      const query = `?environment=${encodeURIComponent(environment)}&gatewayId=${encodeURIComponent(gatewayId)}`;
-      await apiFetch(
-        'POST',
-        `${base}/deployments/${encodeURIComponent(deploymentId)}/redeploy${query}`
-      );
     },
 
     /** Stops serving one deployment on one gateway; the rest are untouched. */

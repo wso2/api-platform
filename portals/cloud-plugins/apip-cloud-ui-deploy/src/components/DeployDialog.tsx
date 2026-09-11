@@ -21,15 +21,19 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   FormLabel,
   MenuItem,
   Select,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import StatusDot from './StatusDot';
@@ -51,7 +55,15 @@ export type DeployDialogProps = {
   createBuild: boolean;
   submitting: boolean;
   onClose: () => void;
-  onConfirm: (gatewayId: string, endpointUrl: string, buildId?: string) => void;
+  /**
+   * Confirms the deploy with every selected gateway and its endpoint. Plural
+   * because an environment runs a single build of an API at a time, so the
+   * gateways go in one call.
+   */
+  onConfirm: (
+    gateways: { gatewayId: string; endpointUrl?: string }[],
+    buildId?: string
+  ) => void;
 };
 
 const sectionLabelSx = {
@@ -86,16 +98,16 @@ const DeployDialog: FC<DeployDialogProps> = ({
   // Holding the resolved values instead would leave the first render of a freshly
   // opened dialog with nothing selected, since the effect that filled them ran
   // after it, and would let a background refresh overwrite a half-typed URL.
-  const [gatewayId, setGatewayId] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [buildId, setBuildId] = useState('');
-  const [endpointDraft, setEndpointDraft] = useState<string | null>(null);
+  const [endpointDrafts, setEndpointDrafts] = useState<Record<string, string>>({});
   const [urlTouched, setUrlTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setGatewayId('');
+    setSelectedIds(null);
     setBuildId('');
-    setEndpointDraft(null);
+    setEndpointDrafts({});
     setUrlTouched(false);
   }, [open]);
 
@@ -109,29 +121,62 @@ const DeployDialog: FC<DeployDialogProps> = ({
         )
       : builds;
   const selectedBuildId = buildId || initialBuildId || availableBuilds[0]?.buildId || '';
-  const selectedGateway =
-    environment.gateways.find((gateway) => gateway.id === gatewayId) ??
-    pickDefaultGateway(environment.gateways);
-  // What this gateway already serves comes first, so re-deploying to it keeps the
-  // endpoint it is running; a gateway with nothing on it starts from the API's own
-  // backend URL rather than an empty field.
-  const endpointUrl = endpointDraft ?? selectedGateway?.endpointUrl ?? apiEndpointUrl ?? '';
+  // A gateway the API is LIVE on must stay in the set: the environment runs one
+  // build, so this deploy has to reach it too. They are shown ticked and locked,
+  // and undeploying is the way to drop one.
+  //
+  // Keyed on the status, not on deploymentId: a stopped gateway keeps its
+  // deployment id — that is how it is identified — so testing for the id locked
+  // gateways that were undeployed, leaving no way to deploy or promote without
+  // them. The whole point of stopping one is to drop it from the set.
+  const liveStatuses = ['DEPLOYED', 'DEPLOYING', 'FAILED'];
+  const alreadyDeployed = environment.gateways.filter((gateway) =>
+    liveStatuses.includes(gateway.status)
+  );
+  const lockedIds = alreadyDeployed.map((gateway) => gateway.id);
+
+  // Until the user touches the list, the selection is the already-deployed
+  // gateways, or the environment's default for a first deploy.
+  const defaultSelection =
+    lockedIds.length > 0
+      ? lockedIds
+      : [pickDefaultGateway(environment.gateways)?.id].filter((id): id is string => !!id);
+  const selection = selectedIds ?? defaultSelection;
+  const selected = environment.gateways.filter((gateway) => selection.includes(gateway.id));
+
+  // What a gateway already serves comes first, so redeploying keeps the endpoint
+  // it is running; one with nothing on it starts from the API's own backend URL.
+  const endpointFor = (gateway: Gateway) =>
+    endpointDrafts[gateway.id] ?? gateway.endpointUrl ?? apiEndpointUrl ?? '';
+
   const isSingleGateway = environment.gateways.length === 1;
-  // Whether the gateway can receive a deployment is its own health, not the state
-  // of what is deployed on it: a healthy gateway with nothing deployed is exactly
-  // what a first deployment targets.
-  const isSelectedInactive = selectedGateway ? selectedGateway.health !== 'active' : false;
-  const urlMissing = endpointUrl.trim().length === 0;
+  // Whether a gateway can receive a deployment is its own health, not the state of
+  // what is on it: a healthy gateway with nothing deployed is exactly what a first
+  // deployment targets.
+  const inactiveSelected = selected.filter((gateway) => gateway.health !== 'active');
+  // A locked gateway cannot be unticked, so telling its owner to unselect it would
+  // be an instruction they cannot follow. Both still block — deploying an
+  // environment is one call that rolls every gateway back if any fails, so letting
+  // it through would only trade a dead end for a failed deploy — but the way out
+  // differs, so the two are said separately.
+  const inactiveLocked = inactiveSelected.filter((gateway) => lockedIds.includes(gateway.id));
+  const inactiveSelectable = inactiveSelected.filter(
+    (gateway) => !lockedIds.includes(gateway.id)
+  );
+  const missingUrls = selected.filter((gateway) => endpointFor(gateway).trim().length === 0);
   const canConfirm =
-    !!selectedGateway &&
-    !isSelectedInactive &&
-    !urlMissing &&
+    selected.length > 0 &&
+    inactiveSelected.length === 0 &&
+    missingUrls.length === 0 &&
     (createBuild || selectedBuildId.length > 0);
 
-  const handleSelectGateway = (id: string) => {
-    setGatewayId(id);
-    setEndpointDraft(null);
-    setUrlTouched(false);
+  const toggleGateway = (id: string) => {
+    // Locked gateways cannot be unticked — the backend refuses a deploy that drops
+    // them, so offering it here would only produce an error.
+    if (lockedIds.includes(id)) return;
+    setSelectedIds(
+      selection.includes(id) ? selection.filter((each) => each !== id) : [...selection, id]
+    );
   };
 
   return (
@@ -146,115 +191,210 @@ const DeployDialog: FC<DeployDialogProps> = ({
             : `Carries a build running in ${sourceEnvironment?.name ?? 'the previous environment'} forward to ${environment.name}, with the endpoint you give here.`}
         </Typography>
 
-        {isSelectedInactive ? (
+        {inactiveSelectable.length > 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            {selectedGateway?.name} is inactive and can't receive a deployment. Choose an active gateway to continue.
+            {inactiveSelectable.map((gateway) => gateway.name).join(', ')}
+            {inactiveSelectable.length === 1 ? ' is inactive and ' : ' are inactive and '}
+            can't receive a deployment. Unselect
+            {inactiveSelectable.length === 1 ? ' it' : ' them'} to continue.
           </Alert>
         ) : null}
 
-        {isSingleGateway && selectedGateway ? (
+        {inactiveLocked.length > 0 ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {inactiveLocked.map((gateway) => gateway.name).join(', ')}
+            {inactiveLocked.length === 1
+              ? ' is inactive and already has this API deployed on it, so it cannot be left out of this deployment. Activate it, or stop its deployment in '
+              : ' are inactive and already have this API deployed on them, so they cannot be left out of this deployment. Activate them, or stop their deployments in '}
+            {environment.name}, to continue.
+          </Alert>
+        ) : null}
+
+        {isSingleGateway && selected.length === 1 ? (
           <Box sx={{ mb: 2.5 }}>
             <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateway</FormLabel>
             <Box
               sx={{
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: 1,
-                px: 1.5,
-                py: 1,
                 border: '1px solid',
                 borderColor: 'divider',
-                borderRadius: 1.5,
+                borderRadius: 1,
+                px: 1.5,
+                py: 1,
               }}
             >
-              <StatusDot tone={selectedGateway.health === 'active' ? 'success' : 'default'} />
-              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                  {selectedGateway.name}
-                </Typography>
-                {selectedGateway.host ? (
-                  <Typography variant="caption" color="text.secondary" noWrap display="block">
-                    {selectedGateway.host}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <StatusDot tone={selected[0].health === 'active' ? 'success' : 'default'} />
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {selected[0].name}
                   </Typography>
-                ) : null}
+                  {selected[0].host ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {selected[0].host}
+                    </Typography>
+                  ) : null}
+                </Box>
               </Box>
-              <StatusPill tone={gatewayStatusTone(selectedGateway.status)} />
+              <StatusPill tone={gatewayStatusTone(selected[0].status)} />
             </Box>
+            <TextField
+              fullWidth
+              size="small"
+              required
+              sx={{ mt: 1 }}
+              label="Endpoint URL"
+              placeholder="https://api.example.com"
+              value={endpointFor(selected[0])}
+              onChange={(event) =>
+                setEndpointDrafts({ ...endpointDrafts, [selected[0].id]: event.target.value })
+              }
+              onBlur={() => setUrlTouched(true)}
+              error={urlTouched && endpointFor(selected[0]).trim().length === 0}
+              helperText={
+                urlTouched && endpointFor(selected[0]).trim().length === 0
+                  ? 'Endpoint URL is required.'
+                  : ' '
+              }
+            />
           </Box>
         ) : (
           <Box sx={{ mb: 2.5 }}>
-            <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateway</FormLabel>
-            <FormControl fullWidth size="small">
-              <Select
-                value={selectedGateway?.id ?? ''}
-                onChange={(event) => handleSelectGateway(event.target.value as string)}
-                renderValue={(value) => {
-                  const gateway = environment.gateways.find((candidate) => candidate.id === value);
-                  if (!gateway) return null;
-                  return (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <StatusDot tone={gateway.health === 'active' ? 'success' : 'default'} />
-                      <Typography variant="body2">{gateway.name}</Typography>
+            <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateways</FormLabel>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              {lockedIds.length > 0
+                ? 'Every gateway this API is already deployed on stays selected — an environment runs one build at a time. Undeploy a gateway to stop deploying to it.'
+                : 'Select the gateways to deploy to. They all receive the same build.'}
+            </Typography>
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+              {environment.gateways.map((gateway, index) => {
+                const isSelected = selection.includes(gateway.id);
+                const isLocked = lockedIds.includes(gateway.id);
+                return (
+                  <Box
+                    key={gateway.id}
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderTop: index === 0 ? 'none' : '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                      <Tooltip
+                        title={
+                          isLocked
+                            ? 'Already deployed here. Undeploy it first to stop deploying to it.'
+                            : ''
+                        }
+                      >
+                        <FormControlLabel
+                          sx={{ mr: 0 }}
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={isSelected}
+                              disabled={isLocked}
+                              onChange={() => toggleGateway(gateway.id)}
+                            />
+                          }
+                          label={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <StatusDot tone={gateway.health === 'active' ? 'success' : 'default'} />
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {gateway.name}
+                                {gateway.isDefault ? ' · Default' : ''}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      </Tooltip>
+                      <StatusPill tone={gatewayStatusTone(gateway.status)} />
                     </Box>
-                  );
-                }}
-              >
-                {environment.gateways.map((gateway) => (
-                  <MenuItem key={gateway.id} value={gateway.id}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <StatusDot tone={gateway.health === 'active' ? 'success' : 'default'} />
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {gateway.name}
-                        {gateway.isDefault ? ' · Default' : ''}
-                      </Typography>
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                    {/* The endpoint is per gateway: two gateways of one environment
+                        can serve different backends, so each selected one gets its
+                        own field rather than sharing a single value. */}
+                    {isSelected ? (
+                      <TextField
+                        fullWidth
+                        size="small"
+                        required
+                        sx={{ mt: 1 }}
+                        label="Endpoint URL"
+                        placeholder="https://api.example.com"
+                        value={endpointFor(gateway)}
+                        onChange={(event) =>
+                          setEndpointDrafts({ ...endpointDrafts, [gateway.id]: event.target.value })
+                        }
+                        onBlur={() => setUrlTouched(true)}
+                        error={urlTouched && endpointFor(gateway).trim().length === 0}
+                        helperText={
+                          urlTouched && endpointFor(gateway).trim().length === 0
+                            ? 'Endpoint URL is required.'
+                            : ' '
+                        }
+                      />
+                    ) : null}
+                  </Box>
+                );
+              })}
+            </Box>
           </Box>
         )}
 
         {createBuild ? null : (
           <Box sx={{ mb: 2.5 }}>
             <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Build</FormLabel>
-            <FormControl fullWidth size="small">
-              <Select
-                value={selectedBuildId}
-                onChange={(event) => setBuildId(event.target.value as string)}
-                displayEmpty
-                disabled={availableBuilds.length === 0}
-              >
-                {availableBuilds.length === 0 ? (
-                  <MenuItem value="" disabled>
-                    No deployed builds available
-                  </MenuItem>
-                ) : (
-                  availableBuilds.map((build) => (
-                    <MenuItem key={build.buildId} value={build.buildId}>
-                      {build.buildId}
+            {/* Promoting has nothing to choose: the source environment runs one
+                build, and promoting carries that one forward. Showing a dropdown
+                implied a decision the pipeline does not offer. */}
+            {mode === 'promote' ? (
+              selectedBuildId ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Chip
+                    label={selectedBuildId}
+                    size="small"
+                    variant="outlined"
+                    sx={{ height: 20, fontSize: '0.7rem' }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    from {sourceEnvironment?.name}
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Nothing is deployed in {sourceEnvironment?.name ?? 'the source environment'} to
+                  promote.
+                </Typography>
+              )
+            ) : (
+              <FormControl fullWidth size="small">
+                <Select
+                  value={selectedBuildId}
+                  onChange={(event) => setBuildId(event.target.value as string)}
+                  displayEmpty
+                  disabled={availableBuilds.length === 0}
+                >
+                  {availableBuilds.length === 0 ? (
+                    <MenuItem value="" disabled>
+                      No builds available
                     </MenuItem>
-                  ))
-                )}
-              </Select>
-            </FormControl>
+                  ) : (
+                    availableBuilds.map((build) => (
+                      <MenuItem key={build.buildId} value={build.buildId}>
+                        {build.buildId}
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+            )}
           </Box>
         )}
 
-        <Box>
-          <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Endpoint URL</FormLabel>
-          <TextField
-            fullWidth
-            size="small"
-            required
-            placeholder="https://api.example.com"
-            value={endpointUrl}
-            onChange={(event) => setEndpointDraft(event.target.value)}
-            onBlur={() => setUrlTouched(true)}
-            error={urlTouched && urlMissing}
-            helperText={urlTouched && urlMissing ? 'Endpoint URL is required.' : ' '}
-          />
-        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={submitting}>
@@ -263,15 +403,15 @@ const DeployDialog: FC<DeployDialogProps> = ({
         <Button
           variant="contained"
           disabled={!canConfirm || submitting}
-          onClick={() => {
-            if (selectedGateway) {
-              onConfirm(
-                selectedGateway.id,
-                endpointUrl.trim(),
-                createBuild ? undefined : selectedBuildId
-              );
-            }
-          }}
+          onClick={() =>
+            onConfirm(
+              selected.map((gateway) => ({
+                gatewayId: gateway.id,
+                endpointUrl: endpointFor(gateway).trim(),
+              })),
+              createBuild ? undefined : selectedBuildId
+            )
+          }
         >
           {submitting ? `${actionLabel}ing...` : actionLabel}
         </Button>
