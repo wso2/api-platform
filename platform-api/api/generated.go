@@ -1315,6 +1315,7 @@ func (e UpstreamAuthType) Valid() bool {
 // Defines values for UserAPIKeyItemArtifactType.
 const (
 	UserAPIKeyItemArtifactTypeAgentProxy  UserAPIKeyItemArtifactType = "AgentProxy"
+	UserAPIKeyItemArtifactTypeGraphQLApi  UserAPIKeyItemArtifactType = "GraphQLApi"
 	UserAPIKeyItemArtifactTypeLlmProvider UserAPIKeyItemArtifactType = "LlmProvider"
 	UserAPIKeyItemArtifactTypeLlmProxy    UserAPIKeyItemArtifactType = "LlmProxy"
 	UserAPIKeyItemArtifactTypeRestApi     UserAPIKeyItemArtifactType = "RestApi"
@@ -1324,6 +1325,8 @@ const (
 func (e UserAPIKeyItemArtifactType) Valid() bool {
 	switch e {
 	case UserAPIKeyItemArtifactTypeAgentProxy:
+		return true
+	case UserAPIKeyItemArtifactTypeGraphQLApi:
 		return true
 	case UserAPIKeyItemArtifactTypeLlmProvider:
 		return true
@@ -1876,6 +1879,7 @@ func (e GetMCPProxyDeploymentsParamsStatus) Valid() bool {
 // Defines values for ListUserAPIKeysParamsType.
 const (
 	ListUserAPIKeysParamsTypeAgentProxy  ListUserAPIKeysParamsType = "AgentProxy"
+	ListUserAPIKeysParamsTypeGraphQLApi  ListUserAPIKeysParamsType = "GraphQLApi"
 	ListUserAPIKeysParamsTypeLlmProvider ListUserAPIKeysParamsType = "LlmProvider"
 	ListUserAPIKeysParamsTypeLlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
 	ListUserAPIKeysParamsTypeRestApi     ListUserAPIKeysParamsType = "RestApi"
@@ -1885,6 +1889,8 @@ const (
 func (e ListUserAPIKeysParamsType) Valid() bool {
 	switch e {
 	case ListUserAPIKeysParamsTypeAgentProxy:
+		return true
+	case ListUserAPIKeysParamsTypeGraphQLApi:
 		return true
 	case ListUserAPIKeysParamsTypeLlmProvider:
 		return true
