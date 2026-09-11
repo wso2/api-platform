@@ -1571,7 +1571,7 @@ func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
 	if err != nil || u.Host == "" {
 		return fmt.Errorf("analytics.publishers.otel.endpoint must be a valid URL (e.g. http://otel-collector:4318/v1/logs), got %q", cfg.Endpoint)
 	}
-	// Reject URL credentials to prevent endpoint leakage through logs and HTTP errors; 
+	// Reject URL credentials to prevent endpoint leakage through logs and HTTP errors;
 	// use headers for authentication.
 	if u.User != nil {
 		return fmt.Errorf("analytics.publishers.otel.endpoint must not contain credentials in the "+
@@ -1651,6 +1651,27 @@ func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
 	return nil
 }
 
+// tlsKeyPermMask is the set of permission bits that must be clear on a TLS
+// private key: anything readable by group or other.
+const tlsKeyPermMask os.FileMode = 0o077
+
+// verifyTLSKeyPerms fails when a TLS private key is readable by group or other
+// (GO-AUTH-018). Shared so traffic_logging.http.tls can adopt the same check.
+func verifyTLSKeyPerms(field, path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("cannot stat %s %q: %w", field, path, err)
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("%s %q is a directory, not a private key file", field, path)
+	}
+	if perm := fi.Mode().Perm(); perm&tlsKeyPermMask != 0 {
+		return fmt.Errorf("%s %q has permissions %#o, which allow group/other access to a private "+
+			"key; fix it with `chmod 600 %s` and restart", field, path, perm, path)
+	}
+	return nil
+}
+
 // validateOTelTLS checks that any referenced TLS material exists and parses, so a
 // bad path fails at startup rather than on the first export.
 func validateOTelTLS(cfg OTelTLSConfig, host string) error {
@@ -1672,6 +1693,10 @@ func validateOTelTLS(cfg OTelTLSConfig, host string) error {
 		return fmt.Errorf("cert_file and key_file must be set together for mTLS (one is set, the other is not)")
 	}
 	if cfg.CertFile != "" {
+		// Permissions first: a key anyone can read is a finding whether or not it parses.
+		if err := verifyTLSKeyPerms("key_file", cfg.KeyFile); err != nil {
+			return err
+		}
 		if _, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile); err != nil {
 			return fmt.Errorf("cannot load client certificate/key pair: %w", err)
 		}

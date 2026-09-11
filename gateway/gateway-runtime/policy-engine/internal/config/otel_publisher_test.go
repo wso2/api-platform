@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -371,4 +372,64 @@ func TestValidate_OTelPublisherRetry(t *testing.T) {
 				"capacity %d ratio %v", tc.capacity, tc.ratio)
 		}
 	})
+}
+
+// GO-AUTH-018: a group/other-readable client key must abort startup, not warn.
+func TestValidate_OTelPublisherRejectsPermissiveKey(t *testing.T) {
+	for _, mode := range []os.FileMode{0o644, 0o640, 0o604, 0o660, 0o666, 0o777} {
+		t.Run(fmt.Sprintf("mode_%#o", mode), func(t *testing.T) {
+			certPath, keyPath := writeSelfSignedPair(t)
+			require.NoError(t, os.Chmod(keyPath, mode))
+
+			cfg := otelConfig(func(o *OTelPublisherConfig) {
+				o.Endpoint = "https://collector.example.com:4318/v1/logs"
+				o.TLS.CertFile = certPath
+				o.TLS.KeyFile = keyPath
+			})
+			err := cfg.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "allow group/other access to a private key")
+		})
+	}
+
+	for _, mode := range []os.FileMode{0o600, 0o400} {
+		t.Run(fmt.Sprintf("owner_only_%#o_passes", mode), func(t *testing.T) {
+			certPath, keyPath := writeSelfSignedPair(t)
+			require.NoError(t, os.Chmod(keyPath, mode))
+
+			cfg := otelConfig(func(o *OTelPublisherConfig) {
+				o.Endpoint = "https://collector.example.com:4318/v1/logs"
+				o.TLS.CertFile = certPath
+				o.TLS.KeyFile = keyPath
+			})
+			assert.NoError(t, cfg.Validate())
+		})
+	}
+}
+
+// Permissions are checked before the key is parsed, so a readable key is reported
+// as a permissions problem rather than a parse failure.
+func TestValidate_OTelPublisherKeyPermsCheckedBeforeParse(t *testing.T) {
+	certPath, _ := writeSelfSignedPair(t)
+	badKey := filepath.Join(t.TempDir(), "garbage.key")
+	require.NoError(t, os.WriteFile(badKey, []byte("not a key"), 0o644))
+
+	cfg := otelConfig(func(o *OTelPublisherConfig) {
+		o.Endpoint = "https://collector.example.com:4318/v1/logs"
+		o.TLS.CertFile = certPath
+		o.TLS.KeyFile = badKey
+	})
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "allow group/other access to a private key")
+	assert.NotContains(t, err.Error(), "cannot load client certificate/key pair")
+}
+
+func TestVerifyTLSKeyPerms(t *testing.T) {
+	_, keyPath := writeSelfSignedPair(t)
+	assert.NoError(t, verifyTLSKeyPerms("key_file", keyPath))
+
+	assert.ErrorContains(t, verifyTLSKeyPerms("key_file", filepath.Join(t.TempDir(), "absent.key")),
+		"cannot stat")
+	assert.ErrorContains(t, verifyTLSKeyPerms("key_file", t.TempDir()), "is a directory")
 }
