@@ -45,6 +45,34 @@ export type DeployPageProps = {
   ) => void;
   onStopGateway: (environment: Environment, gatewayId: string) => void;
   onRetryGateway: (environment: Environment, gatewayId: string) => void;
+  /** Deletes a build, freeing a slot when the API is at its build limit. */
+  onDeleteBuild: (buildId: string) => void;
+};
+
+/**
+ * The statuses that mean a gateway is holding a build — on it, going on, or coming
+ * off. The platform refuses to delete a build in any of them, so the page says so
+ * up front instead of offering the action and having it rejected. Suspended and
+ * failed deployments are deliberately absent: their builds ARE deletable, and they
+ * are the ones automatic cleanup will not reclaim.
+ */
+const GATEWAY_HELD_STATUSES = ['DEPLOYED', 'DEPLOYING', 'UNDEPLOYING'];
+
+/**
+ * Why each build cannot be deleted, by build id, naming the environment that is
+ * holding it so the reason is actionable rather than just a refusal.
+ */
+const undeletableBuildReasons = (environments: Environment[]): Record<string, string> => {
+  const reasons: Record<string, string> = {};
+  environments.forEach((environment) => {
+    environment.gateways.forEach((gateway) => {
+      if (!gateway.buildId || !gateway.status) return;
+      if (!GATEWAY_HELD_STATUSES.includes(gateway.status)) return;
+      reasons[gateway.buildId] =
+        `This build is on a gateway in ${environment.name}. Undeploy it before deleting the build.`;
+    });
+  });
+  return reasons;
 };
 
 /**
@@ -68,6 +96,7 @@ const DeployPage: FC<DeployPageProps> = ({
   onDeploy,
   onStopGateway,
   onRetryGateway,
+  onDeleteBuild,
 }) => {
   const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -156,10 +185,12 @@ const DeployPage: FC<DeployPageProps> = ({
             <BuildAreaCard
               builds={builds}
               targetEnvironment={environments[0]}
+              undeletableBuilds={undeletableBuildReasons(environments)}
               busy={busy}
               onDeployClick={(buildId, createBuild) =>
                 setDialog({ targetIndex: 0, buildId, createBuild })
               }
+              onDeleteBuild={onDeleteBuild}
             />
 
             {environments.map((environment, index) => (

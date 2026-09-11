@@ -153,6 +153,21 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
     );
   };
 
+  /**
+   * Deleting a build is how a slot is freed once the API is at its limit and
+   * deploying is refused for it. The platform is the authority on whether a build
+   * can go — a gateway may have claimed it since the page last loaded — so a
+   * refusal surfaces as it comes back rather than being predicted here.
+   */
+  const handleDeleteBuild = (buildId: string) => {
+    if (!client) return;
+    void runAction(
+      () => client.deleteBuild(buildId),
+      `Deleted build ${buildId}.`,
+      `Unable to delete build ${buildId}.`
+    );
+  };
+
   const handleStop = (environment: Environment, gatewayId: string) => {
     const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
     if (!client || !gateway?.deploymentId) return;
@@ -251,6 +266,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onRetryGateway={handleRetry}
+      onDeleteBuild={handleDeleteBuild}
     />
   );
 };

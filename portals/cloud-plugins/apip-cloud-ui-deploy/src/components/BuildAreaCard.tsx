@@ -31,7 +31,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, Clock, X } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, Clock, Trash2, X } from '@wso2/oxygen-ui-icons-react';
 import { relativeTime } from '../utils/time';
 import { activeGatewayCount } from '../utils/status';
 import type { Build, Environment } from '../types';
@@ -40,9 +40,20 @@ export type BuildAreaCardProps = {
   /** The API's builds, newest first. */
   builds: Build[];
   targetEnvironment: Environment;
+  /**
+   * Why each build cannot be deleted, by build id. A build a gateway is serving is
+   * refused by the platform, so it is shown disabled with the reason rather than
+   * offered and then rejected. Builds absent from this map are deletable.
+   */
+  undeletableBuilds: Record<string, string>;
   busy: boolean;
   /** Opens deployment using an existing build, or creates a build when omitted. */
   onDeployClick: (buildId?: string, createBuild?: boolean) => void;
+  /**
+   * Deletes a build. An API keeps a limited number, so this is how room is made
+   * once deploying is refused for having no free slot.
+   */
+  onDeleteBuild: (buildId: string) => void;
 };
 
 const VISIBLE_BUILD_COUNT = 5;
@@ -55,12 +66,18 @@ type DeployAction = 'deploy' | 'build-and-deploy';
 const BuildAreaCard: FC<BuildAreaCardProps> = ({
   builds,
   targetEnvironment,
+  undeletableBuilds,
   busy,
   onDeployClick,
+  onDeleteBuild,
 }) => {
   const [deployMenuAnchor, setDeployMenuAnchor] = useState<HTMLElement | null>(null);
   const [buildsDrawerOpen, setBuildsDrawerOpen] = useState(false);
   const [selectedDeployAction, setSelectedDeployAction] = useState<DeployAction>('deploy');
+  // Deleting a build cannot be undone, so the trash icon asks first rather than
+  // acting. Confirming inline keeps it out of a modal, which the All Builds drawer
+  // would otherwise have to stack one inside.
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const latestBuild = builds[0] ?? null;
   const visibleBuilds = builds.slice(0, VISIBLE_BUILD_COUNT);
   const canDeploy = activeGatewayCount(targetEnvironment.gateways) > 0;
@@ -86,30 +103,86 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
 
   const renderBuilds = (items: Build[]) => (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      {items.map((build) => (
-        <Card key={build.buildId} variant="outlined">
-          <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
-            <Typography
-              variant="body2"
-              sx={{
-                color: 'text.primary',
-                fontWeight: 700,
-                fontSize: 14,
-              }}
-            >
-              {build.buildId}
-            </Typography>
-            {build.createdAt ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                <Clock size={13} />
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-                  {relativeTime(build.createdAt)}
-                </Typography>
+      {items.map((build) => {
+        const blockedReason = undeletableBuilds[build.buildId];
+        const confirming = pendingDelete === build.buildId;
+        return (
+          <Card key={build.buildId} variant="outlined">
+            <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: 'text.primary',
+                      fontWeight: 700,
+                      fontSize: 14,
+                    }}
+                  >
+                    {build.buildId}
+                  </Typography>
+                  {build.description ? (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 0.25, fontSize: 12 }}
+                    >
+                      {build.description}
+                    </Typography>
+                  ) : null}
+                  {build.createdAt ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                      <Clock size={13} />
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
+                        {relativeTime(build.createdAt)}
+                      </Typography>
+                    </Box>
+                  ) : null}
+                </Box>
+                {confirming ? null : (
+                  <Tooltip title={blockedReason || 'Delete this build'}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={`Delete build ${build.buildId}`}
+                        disabled={busy || Boolean(blockedReason)}
+                        onClick={() => setPendingDelete(build.buildId)}
+                      >
+                        <Trash2 size={15} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                )}
               </Box>
-            ) : null}
-          </CardContent>
-        </Card>
-      ))}
+              {confirming ? (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
+                    Delete this build? Deployments that ran it stay on their gateways but can no
+                    longer be promoted onward.
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="contained"
+                      disabled={busy}
+                      onClick={() => {
+                        setPendingDelete(null);
+                        onDeleteBuild(build.buildId);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                    <Button size="small" disabled={busy} onClick={() => setPendingDelete(null)}>
+                      Cancel
+                    </Button>
+                  </Box>
+                </Box>
+              ) : null}
+            </CardContent>
+          </Card>
+        );
+      })}
     </Box>
   );
 
