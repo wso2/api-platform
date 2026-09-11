@@ -300,3 +300,99 @@ test('role mode is usable by the shipped local-auth quickstart out of the box', 
     assert.ok(scopes.includes('dp:organization:manage'), 'ap_admin must reach admin scopes');
     assert.ok(scopes.includes('dp:api:manage'));
 });
+
+// ---------------------------------------------------------------------------
+// Reach guard: the operations a verified shared-key caller can invoke
+// ---------------------------------------------------------------------------
+//
+// Whereas the assertion above pins the SCOPES granted to the
+// platform-api-system role, this one pins the set of OpenAPI OPERATIONS those
+// scopes actually let a shared-key caller reach. The two together bracket the
+// caller's authority from both sides: what the role is granted, and what those
+// grants add up to at the wire.
+//
+// Why guard the reach set explicitly:
+//
+//   - Silent widening. Adding one of the five dp:*:manage scopes to a new
+//     operation's `security` block (a copy-paste from a neighbouring op, say)
+//     hands that operation to the shared-key caller without any code change
+//     visible in a review of sharedKeyAuth.js or role-to-scope-mapping.yaml.
+//     A drift here means Platform-API's outbound identity can suddenly reach
+//     a route it was never meant to.
+//   - Silent narrowing. Renaming a scope on an existing publish operation
+//     (e.g. dp:api:manage -> dp:api:publish) drops it out of the reach set;
+//     Platform-API's publish calls start 403ing at runtime with no test
+//     failure until someone tries to publish.
+//   - There is no per-handler wrap list in this architecture (unlike the
+//     original design sketch's "wrap-list drift" risk): the whole gate is
+//     "does one of the role's scopes match one of the operation's declared
+//     scopes." This test is the equivalent guard for that model.
+//
+// The pinned set below reflects the intent that these five scopes carry
+// *manage* over the five publish-touching resources — which today means the
+// full CRUD surface on each (list, get, create, update, delete, plus the
+// content-blob variants). If a review-approved change alters the set, update
+// this list in the same commit; that is the whole point of the guard.
+test('the shipped platform-api-system role reaches exactly the pinned publish-operation set', () => {
+    const yaml = require('js-yaml');
+    const spec = yaml.load(fs.readFileSync(SPEC_PATH, 'utf8'));
+    roleScopeMap.init(SHIPPED_MAPPING_PATH, SPEC_PATH);
+    const granted = new Set(roleScopeMap.expandRoles(['platform-api-system']));
+
+    const reachable = [];
+    for (const [pathKey, pathItem] of Object.entries(spec.paths)) {
+        for (const method of ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']) {
+            const op = pathItem[method];
+            if (!op || !op.security) continue;
+            const scopes = new Set();
+            for (const req of op.security) {
+                for (const scopeList of Object.values(req)) {
+                    for (const sc of scopeList) scopes.add(sc);
+                }
+            }
+            // Reachable iff any of the operation's declared scopes intersects
+            // the role's grants — the OAuth2Security check is a plain OR.
+            for (const sc of scopes) {
+                if (granted.has(sc)) {
+                    reachable.push(op.operationId);
+                    break;
+                }
+            }
+        }
+    }
+    reachable.sort();
+
+    // Update in lockstep with any intentional widening / narrowing of the
+    // five dp:*:manage grants OR the operation `security` blocks. Deliberately
+    // exhaustive rather than a count check, so a rename or a swap between two
+    // operations still tripping the same count is caught.
+    assert.deepEqual(reachable, [
+        // APIs (dp:api:manage)
+        'createApiMetadata',
+        'deleteApiMetadata',
+        'getAllApiMetadataForOrganization',
+        'getApiMetadata',
+        'updateApiMetadata',
+        // API content (dp:api_content:manage)
+        'createApiContent',
+        'deleteApiContentFile',
+        'replaceApiContent',
+        // MCP servers (dp:mcp_server:manage)
+        'createMcpServer',
+        'deleteMcpServer',
+        'getAllMcpServersForOrganization',
+        'getMcpServer',
+        'updateMcpServer',
+        // MCP server content (dp:mcp_server_content:manage)
+        'createMcpServerContent',
+        'deleteMcpServerContentFile',
+        'getMcpServerContentFile',
+        'replaceMcpServerContent',
+        // Subscription plans (dp:subscription_plan:manage)
+        'addSubscriptionPlans',
+        'deleteSubscriptionPlan',
+        'getSubscriptionPlan',
+        'listSubscriptionPlans',
+        'putSubscriptionPlans',
+    ].sort());
+});
