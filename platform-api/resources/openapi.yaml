@@ -7030,7 +7030,7 @@ paths:
             type: array
             items:
               type: string
-              enum: [RestApi, LlmProvider, LlmProxy]
+              enum: [RestApi, LlmProvider, LlmProxy, GraphQLApi]
           style: form
           explode: false
           example: LlmProxy,LlmProvider
@@ -7511,7 +7511,7 @@ components:
               example: wso2-openai-provider
             artifactType:
               type: string
-              enum: [RestApi, LlmProvider, LlmProxy]
+              enum: [RestApi, LlmProvider, LlmProxy, GraphQLApi]
               description: Type of the artifact this key belongs to
 
     UserAPIKeyListResponse:
