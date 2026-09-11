@@ -612,10 +612,13 @@ max_reconnect_delay = "60s"
 # POLICY_ENGINE_XDS_CLIENT_* explicitly, as this repo's own docker-compose
 # files do.
 #
-# Literal default is "true" (enabled), matching server.xds_tls/
-# policy_server.tls above -- set XDS_TLS_ENABLED=false (api-platform.env)
-# to fall back to plaintext xDS across all three legs at once.
-enabled = '{{ env "POLICY_ENGINE_XDS_TLS_ENABLED" (env "XDS_TLS_ENABLED" "true") }}'
+# Literal (fully-unset-env) default is "false", same as server.xds_tls/
+# policy_server.tls above -- this template has no cert/key/ca paths of its
+# own to fall back to, so enabling TLS with no env vars set would leave
+# cert_path/key_path/ca_path empty and fail validation. This repo's own
+# docker-compose files set XDS_TLS_ENABLED=true explicitly (enabling all
+# three legs together) rather than relying on this literal default.
+enabled = '{{ env "POLICY_ENGINE_XDS_TLS_ENABLED" (env "XDS_TLS_ENABLED" "false") }}'
 cert_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CERT_PATH" (env "XDS_CLIENT_CERT_PATH" "") }}'
 key_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_KEY_PATH" (env "XDS_CLIENT_KEY_PATH" "") }}'
 ca_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CA_PATH" (env "XDS_CLIENT_CA_PATH" "") }}'
