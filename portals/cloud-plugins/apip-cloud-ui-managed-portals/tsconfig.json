@@ -5,10 +5,10 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@wso2/oxygen-ui": ["../../api-control-plane/node_modules/@wso2/oxygen-ui"],
-      "@wso2/oxygen-ui-icons-react": ["../../api-control-plane/node_modules/@wso2/oxygen-ui-icons-react"],
-      "react": ["../../api-control-plane/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["../../api-control-plane/node_modules/@types/react/jsx-runtime.d.ts"]
+      "@wso2/oxygen-ui": ["../../ai-workspace/node_modules/@wso2/oxygen-ui"],
+      "@wso2/oxygen-ui-icons-react": ["../../ai-workspace/node_modules/@wso2/oxygen-ui-icons-react"],
+      "react": ["../../ai-workspace/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../ai-workspace/node_modules/@types/react/jsx-runtime.d.ts"]
     },
     "jsx": "react-jsx",
     "strict": true,
