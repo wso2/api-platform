@@ -98,7 +98,9 @@ type Deployments interface {
 	// instead of re-rendering whatever the definition has become (Prepare).
 	// Description is an optional note recorded with the build; metadata is stored
 	// with it and returned uninterpreted. Refused when the API is at its build
-	// limit and every stored build is held by a deployment.
+	// limit and every stored build is in use by a current deployment; redeploying to
+	// the same gateway does not run the limit down, since a superseded deployment
+	// stops holding its build.
 	CreateBuildByHandle(apiHandle, orgID, actor, description string, metadata map[string]interface{}) (*api.BuildResponse, error)
 
 	// GetBuildByHandle returns one of an API's builds — its id, metadata and when
@@ -108,10 +110,13 @@ type Deployments interface {
 	// GetBuildsByHandle lists an API's builds, newest first (Read).
 	GetBuildsByHandle(apiHandle, orgID string, limit int) (*api.BuildListResponse, error)
 
-	// DeleteBuildByHandle removes one of an API's builds, so room can be made when
-	// every stored build is held and the limit refuses another (Delete). Refused
-	// while a deployment still holds the build — which deployment to give up is the
-	// caller's decision, not the platform's.
+	// DeleteBuildByHandle removes one of an API's builds, and is how room is made
+	// once the limit refuses another (Delete). Refused only while the build is on a
+	// gateway — DEPLOYED, DEPLOYING or UNDEPLOYING; undeployed, failed and archived
+	// deployments all release it, so this reaches the builds automatic cleanup will
+	// not take. Those deployments stay redeployable from their own artifact but stop
+	// naming a build, so they can no longer be promoted onward — which is why
+	// reclaiming them is a request rather than something cleanup decides.
 	DeleteBuildByHandle(apiHandle, buildID, orgID string) error
 
 	// DeployAPIByHandle creates a new immutable deployment of an API onto one

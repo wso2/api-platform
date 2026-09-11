@@ -47,6 +47,33 @@ var ErrBuildInUse = errors.New("build is in use by a deployment")
 // the API's builds.
 var ErrBuildNotFound = errors.New("build not found")
 
+// buildHoldRule says which deployments count as HOLDING a build, and so whose
+// references keep it alive. The two callers differ on purpose.
+type buildHoldRule int
+
+const (
+	// heldByAnyCurrent — a build is held while any deployment the status table
+	// still names references it, whatever that status is. Automatic pruning uses
+	// this. An ARCHIVED deployment (no status row) does NOT hold its build, which is
+	// what keeps repeated deploys to one gateway working: each supersedes the last,
+	// the superseded ones stop holding anything, and their builds become reclaimable
+	// without anyone being asked. A pipeline deploying to a single gateway would
+	// otherwise wedge on the first deploy past the limit.
+	heldByAnyCurrent buildHoldRule = iota
+	// heldByGateway — only a deployment that is on its gateway, or moving on or off
+	// it, holds the build. Deleting a build uses this, so a user can also reclaim
+	// the build behind a SUSPENDED or FAILED deployment — ones pruning deliberately
+	// leaves alone, because suspending something is not the same as being done with
+	// it.
+	heldByGateway
+)
+
+// gatewayStatusFilter narrows a deployment_status join to the deployments a gateway
+// is involved with right now. UNDEPLOYED and FAILED are absent on purpose: neither
+// is on a gateway, so neither blocks a delete — though both still block pruning,
+// which does not apply this filter.
+const gatewayStatusFilter = ` AND s.status IN ('DEPLOYED', 'DEPLOYING', 'UNDEPLOYING')`
+
 // buildIDAttempts bounds the retries when deriving a build id. Two prepares of the
 // same API on the same day compete for the same index, and the primary key is what
 // settles it; a handful of attempts is far more than a real race needs.
@@ -307,11 +334,18 @@ func (r *DeploymentRepo) GetBuilds(artifactUUID, orgUUID string, limit int) ([]*
 
 // DeleteBuild removes one of an API's builds by its readable id.
 //
-// A build held by a deployment is NOT deleted (ErrBuildInUse). Deleting it would
-// leave a running deployment — or a suspended one that can still be restored —
-// with no snapshot to trace back to or promote onward, and there is no way to
-// re-render the definition as it stood. Which deployment to give up is the
-// caller's decision, so this reports the conflict instead of resolving it.
+// A build a gateway is involved with is not deleted (ErrBuildInUse): taking the
+// snapshot out from under a DEPLOYED, DEPLOYING or UNDEPLOYING deployment would
+// leave it with nothing to trace back to or promote onward, and the definition as
+// it stood cannot be rendered again.
+//
+// Everything else releases the build — SUSPENDED, FAILED, and ARCHIVED deployments
+// alike. This is where the limit is actually reclaimed, and it is a request rather
+// than a cleanup because of what it costs: those deployments each keep the rendered
+// artifact they were created with, so they stay REDEPLOYABLE without their build,
+// but they stop naming one, and so stop being something a later environment can be
+// promoted from. Giving that up is the caller's call, which is why automatic
+// pruning never makes it.
 //
 // Resolving the build, testing it and deleting it happen on one transaction, so a
 // deploy cannot claim the build between the test and the delete.
@@ -335,18 +369,18 @@ func (r *DeploymentRepo) DeleteBuild(buildID, artifactUUID, orgUUID string) erro
 		return fmt.Errorf("failed to find build %s: %w", buildID, err)
 	}
 
-	inUse, err := r.buildsInUse(tx, artifactUUID, orgUUID)
+	live, err := r.buildsInUse(tx, artifactUUID, orgUUID, heldByGateway)
 	if err != nil {
 		return err
 	}
-	if inUse[buildUUID] {
+	if live[buildUUID] {
 		return ErrBuildInUse
 	}
 
 	// releaseBuild's delete is conditional on nothing referencing the build, so a
 	// deploy that claimed it since the test above leaves the row in place — which is
 	// the same conflict, reported the same way rather than passed off as a success.
-	removed, err := r.releaseBuild(tx, buildUUID)
+	removed, err := r.releaseBuild(tx, buildUUID, heldByGateway)
 	if err != nil {
 		return err
 	}
@@ -361,21 +395,29 @@ func (r *DeploymentRepo) DeleteBuild(buildID, artifactUUID, orgUUID string) erro
 // deployments a build belongs to no gateway, so there is nothing narrower to count
 // by.
 //
-// Age alone does not decide what goes. A build is removed only when no deployment
-// holds it: a build something is still running, or still suspended and restorable
-// from, is exactly the one that must survive, because it is what a promotion out of
-// that environment carries and what restoring that deployment sends. Age only
-// orders the builds that are free to go.
+// Age alone does not decide what goes. A build is removed only when no CURRENT
+// deployment names it: a build something is still running, still suspended and
+// redeployable, or still retryable after a failure, is one the status table points
+// at, and the cleanup will not cut that link. Age only orders the builds that are
+// free to go.
+//
+// An ARCHIVED deployment does not hold its build. That is what keeps a pipeline
+// working: deploying repeatedly to one gateway supersedes the previous deployment
+// each time, so the builds behind those deployments become reclaimable on their own
+// and the limit is never reached by ordinary redeployment. The archived deployment
+// keeps its own rendered artifact and stays redeployable; it simply stops naming a
+// build, so it can no longer be promoted onward.
 //
 // When nothing is free the prepare is REFUSED (ErrBuildLimitReached) rather than
 // quietly letting the API keep more than its budget: the limit is what an
 // organization is entitled to store, so exceeding it has to be someone's decision.
-// The caller is told to free a build, which is the one thing that can be done about
-// it — the alternative is deleting a build a gateway can still be restored from.
+// That happens when the API's builds are spread across gateways that are each
+// running or holding one, and the remedy is to delete a build (DeleteBuild), which
+// can also reclaim the ones behind suspended and failed deployments that pruning
+// leaves alone.
 //
 // It removes as many free builds as the limit demands, not a fixed batch, so a
-// limit that has been lowered converges on the first prepare instead of drifting
-// down one build at a time.
+// limit that has been lowered converges on the first prepare.
 //
 // It runs on the caller's transaction, alongside the insert it makes room for, so
 // what it reads about a build being in use still holds when it deletes.
@@ -401,7 +443,7 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 	// limit lowered since the last prepare leaves it over by more than one.
 	needed := count - hardLimit + 1
 
-	inUse, err := r.buildsInUse(tx, artifactUUID, orgUUID)
+	inUse, err := r.buildsInUse(tx, artifactUUID, orgUUID, heldByAnyCurrent)
 	if err != nil {
 		return err
 	}
@@ -452,7 +494,7 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 	// if the race left the API at its limit after all.
 	freed := 0
 	for _, buildUUID := range expendable {
-		removed, err := r.releaseBuild(tx, buildUUID)
+		removed, err := r.releaseBuild(tx, buildUUID, heldByAnyCurrent)
 		if err != nil {
 			return err
 		}
@@ -466,12 +508,22 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 	return nil
 }
 
-// releaseBuild clears the archived deployments that name a build and then deletes
-// it, reporting whether the row actually went. Both statements are conditional on
-// nothing current referencing the build, so a build claimed by a deploy since it was
-// picked stays and the caller learns it was not freed.
-func (r *DeploymentRepo) releaseBuild(tx *sql.Tx, buildUUID string) (bool, error) {
-	const clearQuery = `
+// releaseBuild deletes a build, first clearing the references held by deployments
+// that do not stand in its way.
+//
+// Deployments outlive the build they came from: an archived one — and, for a
+// delete, a suspended or failed one — keeps the rendered artifact it was created
+// with, so it stays redeployable and simply stops naming a build it can no longer
+// resolve. The scope of what gets cleared is exactly the complement of the caller's
+// hold rule, so pruning never takes a build from a deployment the status table
+// still names.
+//
+// The DELETE re-tests that nothing references the build, because a database that
+// reads committed rows per statement lets a deploy land between the caller's check
+// and this one. A build claimed in that window simply stays, and the caller is told
+// it was not freed rather than having the claim silently broken.
+func (r *DeploymentRepo) releaseBuild(tx *sql.Tx, buildUUID string, rule buildHoldRule) (bool, error) {
+	clearQuery := `
 		UPDATE deployments SET build_uuid = NULL
 		WHERE build_uuid = ?
 			AND NOT EXISTS (
@@ -479,17 +531,22 @@ func (r *DeploymentRepo) releaseBuild(tx *sql.Tx, buildUUID string) (bool, error
 				WHERE s.deployment_uuid = deployments.uuid
 					AND s.artifact_uuid = deployments.artifact_uuid
 					AND s.organization_uuid = deployments.organization_uuid
-					AND s.gateway_uuid = deployments.gateway_uuid
+					AND s.gateway_uuid = deployments.gateway_uuid`
+	if rule == heldByGateway {
+		clearQuery += gatewayStatusFilter
+	}
+	clearQuery += `
 			)
 	`
+	if _, err := tx.Exec(r.db.Rebind(clearQuery), buildUUID); err != nil {
+		return false, fmt.Errorf("failed to clear references to build %s: %w", buildUUID, err)
+	}
+
 	const deleteQuery = `
 		DELETE FROM builds
 		WHERE uuid = ?
 			AND NOT EXISTS (SELECT 1 FROM deployments d WHERE d.build_uuid = builds.uuid)
 	`
-	if _, err := tx.Exec(r.db.Rebind(clearQuery), buildUUID); err != nil {
-		return false, fmt.Errorf("failed to clear references to build %s: %w", buildUUID, err)
-	}
 	res, err := tx.Exec(r.db.Rebind(deleteQuery), buildUUID)
 	if err != nil {
 		return false, fmt.Errorf("failed to delete build %s: %w", buildUUID, err)
@@ -504,15 +561,16 @@ func (r *DeploymentRepo) releaseBuild(tx *sql.Tx, buildUUID string) (bool, error
 	return affected > 0, nil
 }
 
-// buildsInUse returns the builds an API's gateways are currently deployed from,
-// by uuid.
+// buildsInUse returns the builds of an API that are held under the given rule, by
+// uuid.
 //
-// One deployment per gateway is current — the one deployment_status names — and its
-// build_uuid says which build it came from. Only those rows count: an archived
-// deployment carries its own rendered content and never needs its build back, so it
-// is not a reason to keep one.
-func (r *DeploymentRepo) buildsInUse(tx *sql.Tx, artifactUUID, orgUUID string) (map[string]bool, error) {
-	const query = `
+// Both rules join the status table, so an archived deployment never holds a build
+// either way. heldByGateway narrows further to the deployments a gateway is
+// involved with, which is what lets a delete reclaim a suspended or failed
+// deployment's build while pruning leaves it alone.
+func (r *DeploymentRepo) buildsInUse(tx *sql.Tx, artifactUUID, orgUUID string,
+	rule buildHoldRule) (map[string]bool, error) {
+	query := `
 		SELECT DISTINCT d.build_uuid
 		FROM deployments d
 		JOIN deployment_status s ON d.uuid = s.deployment_uuid
@@ -521,6 +579,9 @@ func (r *DeploymentRepo) buildsInUse(tx *sql.Tx, artifactUUID, orgUUID string) (
 			AND d.gateway_uuid = s.gateway_uuid
 		WHERE d.artifact_uuid = ? AND d.organization_uuid = ? AND d.build_uuid IS NOT NULL
 	`
+	if rule == heldByGateway {
+		query += gatewayStatusFilter
+	}
 	rows, err := tx.Query(r.db.Rebind(query), artifactUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read deployed builds: %w", err)

@@ -220,6 +220,34 @@ func deployFromBuild(t *testing.T, db *database.DB, gatewayUUID, deploymentID st
 	}
 }
 
+// deployFromBuildWithStatus is deployFromBuild for a gateway whose current
+// deployment is in some state other than DEPLOYED — a suspended one, for the tests
+// that separate "held by a live deployment" from "named by a current one".
+func deployFromBuildWithStatus(t *testing.T, db *database.DB, gatewayUUID, deploymentID string,
+	build *model.Build, status string) {
+	t.Helper()
+	deployFromBuild(t, db, gatewayUUID, deploymentID, build)
+	_, err := db.Exec(`
+		UPDATE deployment_status SET status = ?
+		WHERE artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ? AND deployment_uuid = ?`,
+		status, buildRepoAPIUUID, buildRepoOrgUUID, gatewayUUID, deploymentID)
+	if err != nil {
+		t.Fatalf("Failed to set deployment status to %s: %v", status, err)
+	}
+}
+
+// buildUUIDOfDeployment reads back the build a deployment names, and whether it
+// names one at all.
+func buildUUIDOfDeployment(t *testing.T, db *database.DB, deploymentID string) (string, bool) {
+	t.Helper()
+	var buildUUID sql.NullString
+	err := db.QueryRow(`SELECT build_uuid FROM deployments WHERE uuid = ?`, deploymentID).Scan(&buildUUID)
+	if err != nil {
+		t.Fatalf("Failed to read deployment %s: %v", deploymentID, err)
+	}
+	return buildUUID.String, buildUUID.Valid
+}
+
 // storedBuildIDs lists what the API has kept, oldest first.
 func storedBuildIDs(t *testing.T, repo DeploymentRepository) []string {
 	t.Helper()
@@ -527,9 +555,9 @@ func TestCreateBuild_PrunesTheOldestBuildAtTheLimit(t *testing.T) {
 	}
 }
 
-// The rule that matters: a build a gateway is currently deployed from survives,
-// however old it is, and a newer unused build goes instead. Age only orders the
-// builds that are free to go.
+// The rule that matters: a build any deployment names survives, however old it is,
+// and a newer build that nothing points at goes instead. Age only orders the builds
+// that are free to go.
 func TestCreateBuild_KeepsBuildsAGatewayIsDeployedFrom(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -567,8 +595,9 @@ func TestCreateBuild_KeepsBuildsAGatewayIsDeployedFrom(t *testing.T) {
 	}
 }
 
-// An archived deployment is not a reason to keep a build: it carries its own
-// rendered content, so restoring it never needs the build back.
+// An archived deployment does not hold its build: it carries its own rendered
+// content, so redeploying it never needs the build back. This is what keeps the
+// limit from being reached by ordinary redeployment.
 func TestCreateBuild_AnArchivedDeploymentDoesNotHoldABuild(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -596,6 +625,11 @@ func TestCreateBuild_AnArchivedDeploymentDoesNotHoldABuild(t *testing.T) {
 	}
 	if !kept["2026-01-31-10"] {
 		t.Error("the build the gateway is now serving was pruned")
+	}
+	// The archived deployment stays redeployable from its own artifact, but stops
+	// naming a build it can no longer resolve.
+	if _, named := buildUUIDOfDeployment(t, db, "dep-old"); named {
+		t.Error("the archived deployment still names a build that was pruned")
 	}
 }
 
@@ -684,11 +718,11 @@ func TestDeleteBuild_FreesRoomForAnotherPrepare(t *testing.T) {
 	}
 }
 
-// A build a gateway is serving is not deletable. Removing it would leave that
+// A build a gateway is SERVING is not deletable. Removing it would leave that
 // deployment with no snapshot to promote onward, and the definition as it stood
 // cannot be rendered again — so the caller has to undeploy first, and is told so
 // rather than having the build taken out from under a running gateway.
-func TestDeleteBuild_RefusesABuildADeploymentHolds(t *testing.T) {
+func TestDeleteBuild_RefusesABuildALiveDeploymentHolds(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
@@ -729,6 +763,177 @@ func TestDeleteBuild_AnArchivedDeploymentDoesNotHoldIt(t *testing.T) {
 	kept := storedBuildIDs(t, repo)
 	if len(kept) != 1 || kept[0] != builds[1].BuildID {
 		t.Errorf("kept %v, want only the build the gateway is serving", kept)
+	}
+}
+
+// Undeploying is what releases a build for deletion. The deployment stays — it
+// keeps its own rendered content and can still be restored — but it stops naming a
+// build, and so stops being something a later environment can promote from. That
+// consequence is the user's to accept, which is why this is a request and not
+// something the cleanup does on its own.
+func TestDeleteBuild_AllowsABuildOnlyASuspendedDeploymentHolds(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 2, 0)
+	deployFromBuildWithStatus(t, db, "gw-1", "dep-1", builds[0], "UNDEPLOYED")
+
+	if err := repo.DeleteBuild(builds[0].BuildID, buildRepoAPIUUID, buildRepoOrgUUID); err != nil {
+		t.Fatalf("DeleteBuild on a suspended deployment's build: %v", err)
+	}
+	kept := storedBuildIDs(t, repo)
+	if len(kept) != 1 || kept[0] != builds[1].BuildID {
+		t.Errorf("kept %v, want only the build that was not deleted", kept)
+	}
+	// The deployment survives and is still restorable; it just no longer names a build.
+	if _, named := buildUUIDOfDeployment(t, db, "dep-1"); named {
+		t.Error("the suspended deployment still names a build that was deleted")
+	}
+}
+
+// The asymmetry that matters: automatic pruning does NOT take a build a suspended
+// deployment names, even though deleting it on request is allowed. A suspended
+// deployment is one someone may still restore, so the cleanup refuses at the limit
+// rather than making that call for them — the user undeploys and deletes the build
+// themselves, which is the same two steps the limit error asks for.
+func TestCreateBuild_PruningSparesASuspendedDeploymentsBuild(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 2, 0)
+	for i, build := range builds {
+		gatewayID := fmt.Sprintf("gw-%d", i+1)
+		createTestGateway(t, db, gatewayID, buildRepoOrgUUID)
+		deployFromBuildWithStatus(t, db, gatewayID, fmt.Sprintf("dep-%d", i+1), build, "UNDEPLOYED")
+	}
+
+	third := buildOn(time.Date(2026, 1, 31, 2, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(third, 2); !errors.Is(err, ErrBuildLimitReached) {
+		t.Fatalf("error = %v, want ErrBuildLimitReached — pruning must not take a suspended deployment's build", err)
+	}
+	if kept := storedBuildIDs(t, repo); len(kept) != 2 {
+		t.Errorf("kept %v, want both suspended deployments' builds untouched", kept)
+	}
+	// Both still name their build, so both are still restorable AND promotable.
+	for _, deploymentID := range []string{"dep-1", "dep-2"} {
+		if _, named := buildUUIDOfDeployment(t, db, deploymentID); !named {
+			t.Errorf("%s lost its build to pruning", deploymentID)
+		}
+	}
+}
+
+// A FAILED deployment never reached its gateway, so it does not stand in the way of
+// reclaiming its build.
+func TestDeleteBuild_AllowsABuildAFailedDeploymentHolds(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 2, 0)
+	deployFromBuildWithStatus(t, db, "gw-1", "dep-1", builds[0], "FAILED")
+
+	if err := repo.DeleteBuild(builds[0].BuildID, buildRepoAPIUUID, buildRepoOrgUUID); err != nil {
+		t.Fatalf("DeleteBuild on a failed deployment's build: %v", err)
+	}
+	if _, named := buildUUIDOfDeployment(t, db, "dep-1"); named {
+		t.Error("the failed deployment still names a build that was deleted")
+	}
+}
+
+// UNDEPLOYING is still on its gateway, on the way off, so it holds its build like a
+// live deployment does. Undeploying has to finish before the build can go.
+func TestDeleteBuild_RefusesWhileUndeploying(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	builds := prepareBuilds(t, repo, 2, 0)
+	deployFromBuildWithStatus(t, db, "gw-1", "dep-1", builds[0], "UNDEPLOYING")
+
+	if err := repo.DeleteBuild(builds[0].BuildID, buildRepoAPIUUID, buildRepoOrgUUID); !errors.Is(err, ErrBuildInUse) {
+		t.Fatalf("error = %v, want ErrBuildInUse while the gateway is still letting go", err)
+	}
+}
+
+// The regression this rule exists for: a pipeline that deploys the same API to one
+// gateway over and over must never hit the build limit. Each deploy supersedes the
+// last, so the deployments behind it are archived and stop holding their builds,
+// and pruning reclaims them without anyone being asked. If archived deployments
+// held their builds instead, the first deploy past the limit would fail and every
+// one after it would too.
+func TestCreateBuild_RepeatedDeploysToOneGatewayNeverHitTheLimit(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	createTestGateway(t, db, "gw-1", buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	// Twelve deploys against a limit of 5 — well past the point where a stricter
+	// rule would wedge.
+	day := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 12; i++ {
+		build := buildOn(day.Add(time.Duration(i) * time.Hour))
+		if err := repo.CreateBuildWithLimitEnforcement(build, 5); err != nil {
+			t.Fatalf("deploy %d of 12 was refused: %v", i+1, err)
+		}
+		deployFromBuild(t, db, "gw-1", fmt.Sprintf("dep-%d", i+1), build)
+	}
+
+	// The table stayed within budget rather than growing with every deploy.
+	if kept := storedBuildIDs(t, repo); len(kept) > 5 {
+		t.Errorf("kept %d builds (%v), want no more than the limit of 5", len(kept), kept)
+	}
+	// And the gateway's current deployment still names the build it runs.
+	if _, named := buildUUIDOfDeployment(t, db, "dep-12"); !named {
+		t.Error("the live deployment lost the build it runs")
+	}
+}
+
+// The limit is still real: it is reached when the API's builds are held by
+// deployments the status table names — spread across gateways that are each running
+// one, or left suspended — and then deleting a build is what clears it. This is the
+// flow the deploy page has to offer a way out of.
+func TestCreateBuild_LimitIsReachedAcrossGatewaysAndClearedByDeleting(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	// Three builds, each the current deployment of its own gateway: two live, one
+	// suspended. Pruning may take none of them.
+	builds := prepareBuilds(t, repo, 3, 0)
+	for i, build := range builds {
+		gatewayID := fmt.Sprintf("gw-%d", i+1)
+		createTestGateway(t, db, gatewayID, buildRepoOrgUUID)
+		deploymentID := fmt.Sprintf("dep-%d", i+1)
+		if i == 2 {
+			// The third gateway's deployment is suspended, not live.
+			deployFromBuildWithStatus(t, db, gatewayID, deploymentID, build, "UNDEPLOYED")
+			continue
+		}
+		deployFromBuild(t, db, gatewayID, deploymentID, build)
+	}
+
+	fourth := buildOn(time.Date(2026, 1, 31, 3, 0, 0, 0, time.UTC))
+	if err := repo.CreateBuildWithLimitEnforcement(fourth, 3); !errors.Is(err, ErrBuildLimitReached) {
+		t.Fatalf("error = %v, want ErrBuildLimitReached", err)
+	}
+
+	// The suspended one is the build a user can give up — pruning would not have.
+	if err := repo.DeleteBuild(builds[2].BuildID, buildRepoAPIUUID, buildRepoOrgUUID); err != nil {
+		t.Fatalf("DeleteBuild on the suspended deployment's build: %v", err)
+	}
+	if err := repo.CreateBuildWithLimitEnforcement(fourth, 3); err != nil {
+		t.Fatalf("preparing after the delete freed a slot: %v", err)
 	}
 }
 
@@ -832,7 +1037,7 @@ func TestCreateBuild_PruningIsScopedToOneAPI(t *testing.T) {
 // Pruning a build clears the references to it rather than leaving them dangling,
 // and the deployment keeps the readable build id in its metadata — so the origin
 // stays legible after the snapshot itself is gone.
-func TestCreateBuild_PruningClearsTheReferenceOnArchivedDeployments(t *testing.T) {
+func TestDeleteBuild_ClearsTheReferenceOnArchivedDeployments(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	createTestAPI(t, db, buildRepoAPIUUID, buildRepoOrgUUID)
@@ -840,14 +1045,13 @@ func TestCreateBuild_PruningClearsTheReferenceOnArchivedDeployments(t *testing.T
 	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
 
 	builds := prepareBuilds(t, repo, 10, 0)
-	// Deployed from the oldest build, then superseded, so that build is free to go
-	// while a deployment still points at it.
+	// Deployed from the oldest build, then superseded, so a deployment still points
+	// at that build while no gateway is serving it.
 	deployFromBuild(t, db, "gw-1", "dep-old", builds[0])
 	deployFromBuild(t, db, "gw-1", "dep-new", builds[9])
 
-	eleventh := buildOn(time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC))
-	if err := repo.CreateBuildWithLimitEnforcement(eleventh, 10); err != nil {
-		t.Fatalf("CreateBuildWithLimitEnforcement: %v", err)
+	if err := repo.DeleteBuild(builds[0].BuildID, buildRepoAPIUUID, buildRepoOrgUUID); err != nil {
+		t.Fatalf("DeleteBuild: %v", err)
 	}
 
 	var buildUUID sql.NullString
@@ -856,16 +1060,17 @@ func TestCreateBuild_PruningClearsTheReferenceOnArchivedDeployments(t *testing.T
 		t.Fatalf("read deployment: %v", err)
 	}
 	if buildUUID.Valid {
-		t.Errorf("build_uuid = %q, want NULL once the build is pruned", buildUUID.String)
+		t.Errorf("build_uuid = %q, want NULL once the build is deleted", buildUUID.String)
 	}
-	// The deployment still runs, but it now reports no build — which is the honest
-	// answer, because the snapshot it came from is gone and cannot be promoted.
+	// The deployment can still be redeployed from its own artifact, but it now
+	// reports no build — the honest answer, since the snapshot it came from is gone
+	// and there is nothing left to promote.
 	dep, err := repo.GetWithContent("dep-old", buildRepoAPIUUID, buildRepoOrgUUID)
 	if err != nil {
 		t.Fatalf("GetWithContent: %v", err)
 	}
 	if dep.BuildID != nil {
-		t.Errorf("buildId = %q, want none once the build is pruned", *dep.BuildID)
+		t.Errorf("buildId = %q, want none once the build is deleted", *dep.BuildID)
 	}
 
 	// The build the other gateway is still serving keeps both.
