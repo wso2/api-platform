@@ -469,9 +469,6 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 			continue
 		}
 		expendable = append(expendable, buildUUID)
-		if len(expendable) == needed {
-			break
-		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -489,11 +486,18 @@ func (r *DeploymentRepo) pruneBuilds(tx *sql.Tx, artifactUUID, orgUUID string, h
 	// that reads committed rows per statement lets a deploy land in between. Scoping
 	// the clear to archived deployments means one that has just become current never
 	// has its origin taken away, and a delete conditional on nothing referencing the
-	// build means one that has just been claimed simply stays — which is why the
-	// rows actually deleted are counted rather than assumed, and the prepare refused
-	// if the race left the API at its limit after all.
+	// build means one that has just been claimed simply stays.
+	//
+	// So the rows actually deleted are counted rather than assumed, and a candidate
+	// lost to that race is replaced by the next one rather than failing the prepare:
+	// every free build was collected above, not just the first `needed` of them, so
+	// there is something to fall back on. Only running out of candidates altogether
+	// refuses.
 	freed := 0
 	for _, buildUUID := range expendable {
+		if freed == needed {
+			break
+		}
 		removed, err := r.releaseBuild(tx, buildUUID, heldByAnyCurrent)
 		if err != nil {
 			return err
