@@ -42,8 +42,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "${APIP_CPU_LIMIT:-1.5}"
-          memory: ${APIP_MEMORY_LIMIT_MB:-2000}M
+          cpus: "${APIP_CPU_LIMIT:-1}"
+          memory: ${APIP_MEMORY_LIMIT_MB:-1000}M
 
 networks:
   gateway:

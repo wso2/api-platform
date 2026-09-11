@@ -61,6 +61,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
+      # The suite's own concurrency (it-suite.yaml) boots many short-lived containers and
+      # published ports across the run. Under enough concurrent connection churn the default
+      # conntrack table fills, and the kernel silently drops new NAT'd connections to an
+      # otherwise healthy, unaffected container - surfacing as an intermittent
+      # "connection refused" to a container that never actually crashed or restarted.
+      - name: Raise the conntrack table limit
+        run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+
       # Unit tests run first and gate the job like everything else here - a broken unit
       # test should fail this workflow, not just quietly under-report coverage.
       - name: Gateway-controller unit tests
