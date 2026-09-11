@@ -36,6 +36,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
@@ -66,9 +67,13 @@ type Deps struct {
 	// counters at teardown. Nil in a default run — the suite decides, because only it
 	// knows whether the images are instrumented.
 	Coverage *coverage.Sink
+
+	// Logs, when non-nil, makes every block stream its containers' combined stdout/stderr
+	// into one file for the block's whole lifetime. Nil in a default run — the suite
+	// decides whether container output is being collected at all.
+	Logs *logcapture.Sink
 }
 
-// Run executes a resolved suite with parallel blocks and sequential scenarios per runner.
 var runnerOutputMu sync.Mutex
 
 // flushRunnerOutput writes one runner report without interleaving it with another report.
@@ -79,6 +84,7 @@ func flushRunnerOutput(dst io.Writer, label string, buf *bytes.Buffer) {
 	_, _ = io.Copy(dst, buf)
 }
 
+// Run executes a resolved suite with parallel blocks and sequential scenarios per runner.
 func Run(t *testing.T, resolved *topology.Resolved, deps Deps) {
 	t.Helper()
 	if resolved == nil {
@@ -133,8 +139,29 @@ func runBlock(
 	bootCtx, cancel := context.WithTimeout(context.Background(), resolved.Timeouts.Boot)
 	defer cancel()
 
+	var logWriter *logcapture.Writer
+	if deps.Logs != nil {
+		path, err := deps.Logs.FileFor(block.Name)
+		if err != nil {
+			log.Warn("log capture disabled for block", "block", block.Name, "error", err)
+		} else if w, err := logcapture.NewWriter(path); err != nil {
+			log.Warn("log capture disabled for block", "block", block.Name, "error", err)
+		} else {
+			logWriter = w
+			// Registered before BootBlock so a boot failure still flushes and closes the
+			// file, rather than leaking it whenever the block never reaches the main
+			// teardown cleanup below.
+			t.Cleanup(func() {
+				w.Close()
+				if dropped := w.Dropped(); dropped > 0 {
+					log.Warn("log capture dropped lines", "block", block.Name, "dropped", dropped)
+				}
+			})
+		}
+	}
+
 	start := time.Now()
-	topo, err := BootBlock(bootCtx, block, deps.RepoRoot)
+	topo, err := BootBlock(bootCtx, block, deps.RepoRoot, logWriter)
 	if err != nil {
 		t.Fatalf("block %q failed to boot after %s: %v",
 			block.Name, time.Since(start).Round(time.Millisecond), err)

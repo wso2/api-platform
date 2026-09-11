@@ -76,11 +76,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/gemini/v1/models/gemini-1.5-flash-002:generateContent" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/gemini/v1/models/gemini-1.5-flash-002:generateContent" until status 429 with body:
       """
       {"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -281,11 +283,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/gemini/v1/cached/gemini-2.0-flash:generateContent" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/gemini/v1/cached/gemini-2.0-flash:generateContent" until status 429 with body:
       """
       {"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -339,11 +343,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" until status 429 with body:
       """
       {"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -397,11 +403,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-cache-read" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-cache-read" until status 429 with body:
       """
       {"model":"claude-3-5-haiku-20241022","messages":[{"role":"user","content":"Hello"}],"max_tokens":100}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -745,11 +753,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/mistral/v1/chat/completions" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/mistral/v1/chat/completions" until status 429 with body:
       """
       {"model":"mistral-small-latest","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -852,11 +862,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/model/apac.amazon.nova-micro-v1:0/converse" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/model/apac.amazon.nova-micro-v1:0/converse" until status 429 with body:
       """
       {"messages":[{"role":"user","content":[{"text":"Hello"}]}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful

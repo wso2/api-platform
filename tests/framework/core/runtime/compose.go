@@ -38,6 +38,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
 
 // stagingDirName is the directory used for compose files and bind-mount sources.
@@ -64,6 +65,10 @@ type ComposeStack struct {
 	def      *components.Definition
 	stageDir string
 	block    string
+
+	// stopLogProducers stops each service's attached log producer, populated only when
+	// the block is capturing container output.
+	stopLogProducers []func() error
 }
 
 // LaunchCompose starts a compose-backed component and presents it as one instance.
@@ -164,6 +169,15 @@ func LaunchCompose(
 		return nil, fmt.Errorf("runtime: bringing up %s: %w", def, errors.Join(err, cleanupErr))
 	}
 
+	if opts.LogWriter != nil {
+		stops, err := attachComposeLogProducers(ctx, stack, spec.Services, opts.LogWriter)
+		result.stopLogProducers = stops
+		if err != nil {
+			cleanupErr := result.Stop(context.Background())
+			return nil, fmt.Errorf("runtime: attaching log capture for %s: %w", def, errors.Join(err, cleanupErr))
+		}
+	}
+
 	inst, err := composeInstance(ctx, def, spec, stack)
 	if err != nil {
 		cleanupErr := result.Stop(context.Background())
@@ -173,6 +187,31 @@ func LaunchCompose(
 	keepStageDir = false
 
 	return result, nil
+}
+
+// attachComposeLogProducers streams every service's stdout/stderr into writer, tagged
+// with its service name. Compose services have no pre-creation log-consumer hook (unlike
+// a raw container's ContainerRequest.LogConsumerCfg — see container.go's buildRequest),
+// so this uses testcontainers' older FollowOutput/StartLogProducer API, the only
+// mechanism available for a container the compose module already created. Returns the
+// stop function for every service successfully attached, even when a later service
+// fails, so the caller can still release what succeeded.
+func attachComposeLogProducers(
+	ctx context.Context, stack tccompose.ComposeStack, services []string, writer *logcapture.Writer,
+) ([]func() error, error) {
+	stops := make([]func() error, 0, len(services))
+	for _, svc := range services {
+		container, err := stack.ServiceContainer(ctx, svc)
+		if err != nil {
+			return stops, fmt.Errorf("runtime: locating service %q for log capture: %w", svc, err)
+		}
+		container.FollowOutput(writer.Consumer(svc)) //nolint:staticcheck // no LogConsumerCfg hook exists for an already-created compose service container
+		if err := container.StartLogProducer(ctx); err != nil {
+			return stops, fmt.Errorf("runtime: starting log producer for service %q: %w", svc, err)
+		}
+		stops = append(stops, container.StopLogProducer)
+	}
+	return stops, nil
 }
 
 // launchComposeWithRetry retries a failed compose boot up to attempts times. Unlike the
@@ -454,6 +493,10 @@ func (c *ComposeStack) Stop(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
+	for _, stop := range c.stopLogProducers {
+		_ = stop()
+	}
+	c.stopLogProducers = nil
 	var err error
 	if c.stack != nil {
 		stack := c.stack
