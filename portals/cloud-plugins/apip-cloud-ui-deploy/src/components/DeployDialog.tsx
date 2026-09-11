@@ -154,6 +154,15 @@ const DeployDialog: FC<DeployDialogProps> = ({
   // what is on it: a healthy gateway with nothing deployed is exactly what a first
   // deployment targets.
   const inactiveSelected = selected.filter((gateway) => gateway.health !== 'active');
+  // A locked gateway cannot be unticked, so telling its owner to unselect it would
+  // be an instruction they cannot follow. Both still block — deploying an
+  // environment is one call that rolls every gateway back if any fails, so letting
+  // it through would only trade a dead end for a failed deploy — but the way out
+  // differs, so the two are said separately.
+  const inactiveLocked = inactiveSelected.filter((gateway) => lockedIds.includes(gateway.id));
+  const inactiveSelectable = inactiveSelected.filter(
+    (gateway) => !lockedIds.includes(gateway.id)
+  );
   const missingUrls = selected.filter((gateway) => endpointFor(gateway).trim().length === 0);
   const canConfirm =
     selected.length > 0 &&
@@ -182,12 +191,22 @@ const DeployDialog: FC<DeployDialogProps> = ({
             : `Carries a build running in ${sourceEnvironment?.name ?? 'the previous environment'} forward to ${environment.name}, with the endpoint you give here.`}
         </Typography>
 
-        {inactiveSelected.length > 0 ? (
+        {inactiveSelectable.length > 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            {inactiveSelected.map((gateway) => gateway.name).join(', ')}
-            {inactiveSelected.length === 1 ? ' is inactive and ' : ' are inactive and '}
-            can't receive a deployment. Unselect{inactiveSelected.length === 1 ? ' it' : ' them'} to
-            continue.
+            {inactiveSelectable.map((gateway) => gateway.name).join(', ')}
+            {inactiveSelectable.length === 1 ? ' is inactive and ' : ' are inactive and '}
+            can't receive a deployment. Unselect
+            {inactiveSelectable.length === 1 ? ' it' : ' them'} to continue.
+          </Alert>
+        ) : null}
+
+        {inactiveLocked.length > 0 ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {inactiveLocked.map((gateway) => gateway.name).join(', ')}
+            {inactiveLocked.length === 1
+              ? ' is inactive and already has this API deployed on it, so it cannot be left out of this deployment. Activate it, or stop its deployment in '
+              : ' are inactive and already have this API deployed on them, so they cannot be left out of this deployment. Activate them, or stop their deployments in '}
+            {environment.name}, to continue.
           </Alert>
         ) : null}
 
