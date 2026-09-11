@@ -30,8 +30,9 @@ import { FileCode2, Pencil } from '@wso2/oxygen-ui-icons-react';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
+import { useValidateOpenApiSpec } from '@/api/resources/restApis';
 import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
-import type { ApiCreationWizardDraftState, ApiType } from '../types';
+import type { ApiCreationWizardDraftState, ApiType, ContractImport } from '../types';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
 import { DesignWithAiPanel } from './DesignWithAiPanel';
@@ -129,6 +130,7 @@ export const DefineApiPanel = ({
   onRefreshSwaggerHubOrganizations,
 }: DefineApiPanelProps) => {
   const intl = useIntl();
+  const validateSpec = useValidateOpenApiSpec();
   const [approach, setApproach] = useState<ApproachKey>('contract');
   const [contract, setContract] = useState<FetchedContract | null>(null);
   // One edit per approach, so switching tabs to look at the other one and back
@@ -149,8 +151,22 @@ export const DefineApiPanel = ({
     setContractEdit(null);
   }, []);
 
-  const handleSpecChange = (next: SpecDocument, warnings: SpecIssue[]) => {
-    const edit: EditedSpec = { spec: next, warnings };
+  const handleBeforeSave = useCallback(
+    async (specText: string): Promise<string[] | null> => {
+      try {
+        const result = await validateSpec.mutateAsync(specText);
+        if (!result.isValid) return result.errors.map((e) => e.message);
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [validateSpec.mutateAsync],
+  );
+
+  const handleSpecChange = (next: SpecDocument) => {
+    const edit: EditedSpec = { spec: next, warnings: [] };
     if (approach === 'scratch') {
       setScratchEdit(edit);
       return;
@@ -164,7 +180,19 @@ export const DefineApiPanel = ({
   const edit = approach === 'scratch' ? scratchEdit : contractEdit;
   const spec = edit?.spec ?? (approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec);
 
-  const draft = useMemo(() => (spec === undefined ? null : extractApiDetails(spec)), [spec]);
+  const draft = useMemo((): ApiCreationWizardDraftState | null => {
+    if (spec === undefined) return null;
+    const base = extractApiDetails(spec);
+    // Both approaches submit via import-openapi: contract passes the fetched spec,
+    // scratch passes the skeleton (or whatever the user has edited).
+    const specBlob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
+    return {
+      ...base,
+      contractImport: {
+        specFile: new File([specBlob], 'openapi.json', { type: 'application/json' }),
+      },
+    };
+  }, [spec]);
 
   useEffect(() => {
     onDraftChange(draft);
@@ -298,6 +326,7 @@ export const DefineApiPanel = ({
 
           <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
             <ApiResourcesPreview
+              onBeforeSave={handleBeforeSave}
               onSpecChange={handleSpecChange}
               spec={spec}
               warnings={edit?.warnings}

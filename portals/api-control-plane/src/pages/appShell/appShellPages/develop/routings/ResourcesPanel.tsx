@@ -38,7 +38,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useUpdateRestApi, type Operation, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
-import { SwaggerOperationsView } from '@/components/SwaggerOperationsView';
+import { OpenAPIOperationsView } from '@/components/OpenAPIOperationsView';
 import { SaveBar } from '../SaveBar';
 import { useDirtyTracking } from '../useDirtyTracking';
 
@@ -253,7 +253,7 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
           pr: 0.5,
         }}
       >
-        <SwaggerOperationsView
+        <OpenAPIOperationsView
           isOperationDisabled={(operation) =>
             update.isPending || deletedOperations.has(operationKey(operation))
           }

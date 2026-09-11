@@ -57,11 +57,17 @@ const PANE_HEIGHT = 'clamp(420px, calc(100vh - 260px), 560px)';
 
 export type ApiResourcesPreviewProps = {
   /**
-   * Adopts a definition edited in the Source view, alongside the warnings its
-   * re-check raised. Supplying it is what makes the Source view editable at
-   * all; without it the pane stays a read-only print of `spec`.
+   * Called with the serialized spec text before the editor save is committed.
+   * Return a non-empty array to block the save and display the messages inline;
+   * return null or an empty array to proceed. When absent the editor skips
+   * backend validation and relies on the frontend check alone.
    */
-  onSpecChange?: (spec: SpecDocument, warnings: SpecIssue[]) => void;
+  onBeforeSave?: (specText: string) => Promise<string[] | null>;
+  /**
+   * Adopts a definition edited in the Source view. Supplying it is what makes
+   * the Source view editable at all; without it the pane stays read-only.
+   */
+  onSpecChange?: (spec: SpecDocument) => void;
   /**
    * The fetched definition, as a parsed object rather than a URL, so the viewer
    * never re-downloads the document and the Source view prints the same object
@@ -84,7 +90,7 @@ export type ApiResourcesPreviewProps = {
  * Right-hand pane of the contract step: the resources of the fetched
  * definition, or an empty state saying that is what will land here.
  */
-export const ApiResourcesPreview = ({ onSpecChange, spec, warnings }: ApiResourcesPreviewProps) => {
+export const ApiResourcesPreview = ({ onBeforeSave, onSpecChange, spec, warnings }: ApiResourcesPreviewProps) => {
   const intl = useIntl();
   const [showSource, setShowSource] = useState(false);
   const hasContract = spec !== undefined;
@@ -158,7 +164,7 @@ export const ApiResourcesPreview = ({ onSpecChange, spec, warnings }: ApiResourc
         }}
       >
         {hasContract && showSource && editable ? (
-          <SpecSourceEditor onSave={onSpecChange} spec={spec} />
+          <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSpecChange} spec={spec} />
         ) : null}
 
         {hasContract && showSource && !editable ? (

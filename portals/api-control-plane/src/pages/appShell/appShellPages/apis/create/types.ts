@@ -48,7 +48,7 @@ export interface UpStreamTarget {
 }
 
 export interface Operationrequest {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
   path: string;
 }
 
@@ -56,6 +56,15 @@ export interface ApiOperation {
   name: string;
   description?: string;
   request: Operationrequest;
+}
+
+/**
+ * Carries the serialized OpenAPI spec chosen by the user in the "from contract"
+ * creation flow. Held in wizard draft state and submitted via multipart/form-data
+ * to POST /rest-apis/import-openapi instead of the standard JSON endpoint.
+ */
+export interface ContractImport {
+  specFile: File;
 }
 
 export interface GeneralApiCreationFormState {
@@ -73,6 +82,7 @@ export interface GeneralApiCreationFormState {
   kind: 'RestApis'; // currently support only RestApis
   transports: Array<'http' | 'https'>;
   operations: ApiOperation[];
+  contractImport?: ContractImport;
 }
 
 // This is what Api Creation wizard holds and all the sub compoennt emits.

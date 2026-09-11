@@ -22,6 +22,7 @@ import { staleTimes } from '../../core/queryClient';
 import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
 import {
   getRestApi,
+  getRestApiOpenApi,
   listRestApis,
   type ListRestApisQuery,
 } from './restApis.endpoints';
@@ -54,5 +55,13 @@ export const restApiQueries = {
       queryKey: restApiKeys.detail(org, restApiId),
       queryFn: ({ signal }) => getRestApi(restApiId, { orgId: org, signal }),
       staleTime: staleTimes.standard,
+    }),
+
+  openApi: (org: OrgScope, restApiId: string) =>
+    queryOptions({
+      queryKey: restApiKeys.children(org, restApiId, 'openapi'),
+      queryFn: ({ signal }) => getRestApiOpenApi(restApiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+      retry: false,
     }),
 };

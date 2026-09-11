@@ -418,6 +418,83 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/validate-openapi:
+    post:
+      summary: Validate an OpenAPI specification
+      description: |
+        Validates an OpenAPI 3.x or Swagger 2.x specification without creating
+        or modifying any resource. Returns a structured result indicating whether
+        the spec is valid and, if not, the list of validation errors.
+      operationId: ValidateOpenAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:create
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateOpenAPIRequest'
+      responses:
+        '200':
+          description: Validation result (valid or invalid — both return 200)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateOpenAPIResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/import-openapi:
+    post:
+      summary: Create a REST API from an OpenAPI specification
+      description: |
+        Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
+        as a multipart file upload or a URL. The backend extracts operations from the spec,
+        creates the API, and persists the raw spec as the API definition document.
+      operationId: ImportOpenAPI
+      security:
+        - OAuth2Security:
+            - ap:rest_api:create
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImportOpenAPIRequest'
+      responses:
+        '201':
+          description: API created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{restApiId}:
     get:
       summary: Get REST API by ID
@@ -518,6 +595,97 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+
+  /rest-apis/{restApiId}/openapi:
+    get:
+      summary: Get API definition
+      description: |
+        Returns the raw OpenAPI spec stored for this API as YAML. Returns 404 if no definition
+        has been uploaded yet. The `content` field carries the spec text.
+      operationId: GetRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '200':
+          description: API definition retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update API definition
+      description: |
+        Replaces (or creates) the OpenAPI/Swagger spec stored for this API. Accepts a
+        multipart/form-data upload with a single `file` field containing the spec.
+      operationId: UpdateRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:update
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+      responses:
+        '204':
+          description: API definition updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete API definition
+      description: |
+        Removes the OpenAPI/Swagger spec stored for this API. Returns 404 if no definition exists.
+      operationId: DeleteRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:delete
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '204':
+          description: API definition deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /rest-apis/{restApiId}/gateways:
     get:
@@ -6209,6 +6377,95 @@ components:
             - context
             - version
             - projectId
+
+    ImportOpenAPIRequest:
+      type: object
+      required:
+        - file
+        - name
+        - version
+        - context
+        - projectId
+        - upstream
+      properties:
+        file:
+          type: string
+          format: binary
+          description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+        name:
+          type: string
+          description: Display name for the API
+        version:
+          type: string
+          description: Version of the API (e.g. 1.0)
+        context:
+          type: string
+          description: URL context path for the API (e.g. /petstore)
+        projectId:
+          type: string
+          description: Handle of the project this API belongs to
+        description:
+          type: string
+          description: Optional description for the API
+        upstream:
+          type: string
+          description: Upstream backend URL (maps to upstream.main.url in the created API)
+
+    ValidateOpenAPIRequest:
+      type: object
+      required:
+        - inlineDefinition
+      properties:
+        inlineDefinition:
+          type: string
+          description: Raw OpenAPI 3.x or Swagger 2.x spec content (YAML or JSON)
+
+    ValidateOpenAPIResponse:
+      type: object
+      required:
+        - isValid
+        - errors
+      properties:
+        isValid:
+          type: boolean
+          description: Whether the spec passed validation
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpenAPIValidationError'
+          description: Validation errors; empty when isValid is true
+        info:
+          $ref: '#/components/schemas/OpenAPISpecInfo'
+
+    OpenAPIValidationError:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Human-readable description of the validation error
+        path:
+          type: string
+          description: JSON Pointer path within the spec where the error was found
+
+    OpenAPISpecInfo:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Value of info.title from the spec
+        version:
+          type: string
+          description: Value of info.version from the spec
+
+    SwaggerContent:
+    OpenAPIContent:
+      type: object
+      properties:
+        content:
+          type: string
+          description: Raw spec content (always YAML)
 
     TimeUnit:
       type: string

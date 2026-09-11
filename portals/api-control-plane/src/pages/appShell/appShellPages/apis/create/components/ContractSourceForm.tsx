@@ -88,6 +88,7 @@ import {
   swaggerHubSpecUrl,
   type SwaggerHubApi,
 } from '../utils/swaggerHub';
+import { useValidateOpenApiSpec, type OpenAPIValidationError } from '@/api/resources/restApis';
 import { isValidUrl } from '../../utils/developEdit';
 import { validateApiSpec, type SpecDialect, type SpecIssue } from '../utils/specValidation';
 import { SpecIssueList } from './SpecIssueList';
@@ -434,6 +435,11 @@ const messages = defineMessages({
   urlRequired: {
     id: 'api.create.fromContract.url.required',
     defaultMessage: 'The URL for the API contract cannot be empty',
+  },
+  specInvalidByBackend: {
+    id: 'api.create.fromContract.spec.invalidByBackend',
+    defaultMessage: 'The specification is not a valid OpenAPI document:',
+    description: 'Heading above the list of backend validation errors.',
   },
 });
 
@@ -1061,6 +1067,7 @@ export const ContractSourceForm = ({
   onRefreshSwaggerHubOrganizations,
 }: ContractSourceFormProps) => {
   const intl = useIntl();
+  const validateSpec = useValidateOpenApiSpec();
 
   const [apiTypeKey] = useState(() => initialApiTypeKey ?? apiTypes[0]?.key ?? '');
   const [sourceKey, setSourceKey] = useState<ContractSourceKey>(
@@ -1118,6 +1125,9 @@ export const ContractSourceForm = ({
     { status: 'fetched' }
   > | null>(null);
   const [fetching, setFetching] = useState(false);
+  const [backendValidationErrors, setBackendValidationErrors] = useState<
+    OpenAPIValidationError[] | null
+  >(null);
   /**
    * The source a fetch has been asked for, or `null` while none has. Held as
    * state so the request is made by an effect rather than inside the handler
@@ -1419,6 +1429,10 @@ export const ContractSourceForm = ({
    * Reads whatever was last asked for. An effect rather than an `await` in the
    * handler that asked: a request the form has already moved past is dropped
    * on arrival instead of landing in the preview behind the current one.
+   *
+   * After the frontend parse succeeds the spec is sent to the backend
+   * validator (kin-openapi). Backend errors are shown as a separate Alert;
+   * the contract is only handed to the preview if both passes succeed.
    */
   useEffect(() => {
     if (request === null) {
@@ -1427,24 +1441,46 @@ export const ContractSourceForm = ({
 
     let current = true;
     setFetchError(null);
+    setBackendValidationErrors(null);
     setFetching(true);
-    void fetchContractForPreview(request).then((result) => {
-      if (!current) {
-        return;
-      }
-      setFetching(false);
+
+    void (async () => {
+      const result = await fetchContractForPreview(request);
+      if (!current) return;
+
       if (result.status !== 'fetched') {
+        setFetching(false);
         setFetchError(result);
         return;
       }
-      // Fetched: the effect further down hands it to the panel, which renders
-      // it in the preview and unlocks Next.
+
+      // Backend validation — serialise the parsed spec back to YAML for the
+      // validate endpoint. A network failure is non-fatal: we proceed so a
+      // temporary outage doesn't block the create flow entirely.
+      try {
+        const specYaml = yaml.dump(result.contract.spec);
+        const validation = await validateSpec.mutateAsync(specYaml);
+        if (!current) return;
+
+        if (!validation.isValid) {
+          setFetching(false);
+          setBackendValidationErrors(validation.errors);
+          return;
+        }
+      } catch {
+        // Network/auth error — don't block the user; validation is best-effort here.
+      }
+
+      if (!current) return;
+      setFetching(false);
       setFetched(result.contract);
-    });
+    })();
 
     return () => {
       current = false;
     };
+    // validateSpec.mutateAsync is stable across renders (TanStack Query guarantee).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request]);
 
   /**
@@ -1491,6 +1527,7 @@ export const ContractSourceForm = ({
    */
   useEffect(() => {
     setFetchError(null);
+    setBackendValidationErrors(null);
   }, [
     branch,
     contractFile,
@@ -1970,6 +2007,21 @@ export const ContractSourceForm = ({
 
       {/* Fetch errors appear under the active source panel. */}
       {fetchErrorText === null ? null : <Alert severity="error">{fetchErrorText}</Alert>}
+
+      {/* Backend validation errors — shown when kin-openapi rejects the spec. */}
+      {backendValidationErrors !== null && backendValidationErrors.length > 0 ? (
+        <Alert severity="error">
+          <FormattedMessage {...messages.specInvalidByBackend} />
+          <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+            {backendValidationErrors.map((e, i) => (
+              // eslint-disable-next-line react/no-array-index-key
+              <Typography component="li" key={i} variant="body2">
+                {e.message}
+              </Typography>
+            ))}
+          </Box>
+        </Alert>
+      ) : null}
 
       {/* Definition warnings; cleared with the contract, and withdrawn once
           the definition has been edited past the one they were raised on. */}

@@ -117,3 +117,101 @@ export const deleteRestApi = async (restApiId: string, options?: RequestOptions)
     operationName: 'DeleteRESTAPI',
   });
 };
+
+/**
+ * Creates a REST API by importing an OpenAPI specification.
+ *
+ * The body must be a `FormData` instance containing:
+ *   - `file` (File): the spec file, OR `url` (string): a URL to fetch the spec from
+ *   - `name`, `version`, `context`, `projectId` (string): required API metadata
+ *   - `description`, `endpointUrl` (string): optional
+ *
+ * The browser sets the Content-Type header (including multipart boundary) automatically
+ * when a FormData body is supplied — do not set it manually.
+ */
+export const importOpenApi = async (body: FormData, options?: RequestOptions): Promise<RestApi> => {
+  return http.post<RestApi>(`${BASE}/import-openapi`, body, {
+    ...options,
+    operationName: 'ImportOpenAPI',
+  });
+};
+
+/** A single error entry from `POST /rest-apis/validate-openapi`. */
+export type OpenAPIValidationError = {
+  message: string;
+  path?: string;
+};
+
+/** `info` block extracted from the spec if validation passes. */
+export type OpenAPISpecInfo = {
+  title?: string;
+  version?: string;
+};
+
+export type ValidateOpenAPIResponse = {
+  isValid: boolean;
+  errors: OpenAPIValidationError[];
+  info?: OpenAPISpecInfo;
+};
+
+/**
+ * Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
+ * any resource. The caller serialises the spec to a string and passes it as
+ * `inlineDefinition` in multipart form data.
+ */
+export const validateOpenApiSpec = async (
+  inlineDefinition: string,
+  options?: RequestOptions,
+): Promise<ValidateOpenAPIResponse> => {
+  const formData = new FormData();
+  formData.append('inlineDefinition', inlineDefinition);
+  return http.post<ValidateOpenAPIResponse>(`${BASE}/validate-openapi`, formData, {
+    ...options,
+    operationName: 'ValidateOpenAPISpec',
+  });
+};
+
+/** The parsed response from `GET /rest-apis/{id}/openapi`. Content is always YAML. */
+export type OpenAPIContent = {
+  content: string;
+};
+
+/** Fetches the raw API definition spec. Resolves to `undefined` when no spec exists (404). */
+export const getRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<OpenAPIContent> => {
+  return http.get<OpenAPIContent>(`${resourcePath(restApiId)}/openapi`, {
+    ...options,
+    operationName: 'GetRESTAPISpec',
+  });
+};
+
+/**
+ * Replaces (or creates) the API definition spec.
+ *
+ * The body must be a `FormData` with a single `file` field holding the spec file.
+ * The browser sets the Content-Type header automatically — do not set it manually.
+ */
+export const putRestApiOpenApi = async (
+  restApiId: string,
+  body: FormData,
+  options?: RequestOptions,
+): Promise<void> => {
+  return http.put<void>(`${resourcePath(restApiId)}/openapi`, body, {
+    ...options,
+    operationName: 'UpdateRESTAPISpec',
+  });
+};
+
+/** Removes the API definition spec. */
+export const deleteRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<void> => {
+  return http.delete<void>(`${resourcePath(restApiId)}/openapi`, {
+    ...options,
+    operationName: 'DeleteRESTAPISpec',
+  });
+};
+
