@@ -1879,6 +1879,17 @@
   "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.title": {
     "defaultMessage": "Page not found"
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationAccessDeniedPage.goToMyOrganization": {
+    "defaultMessage": "Go to my organization",
+    "description": "Button returning to the signed-in user's own organization home. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationAccessDeniedPage.subtitle": {
+    "defaultMessage": "Check the link, or go to your own organization instead."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationAccessDeniedPage.title": {
+    "defaultMessage": "You do not have access to this organization",
+    "description": "Shown when the URL names an organization the signed-in session is not scoped to."
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyDescription": {
     "defaultMessage": "Your account is authenticated, but it is not associated with an organization."
   },

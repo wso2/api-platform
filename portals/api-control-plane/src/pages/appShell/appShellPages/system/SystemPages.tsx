@@ -77,6 +77,23 @@ const unauthorizedMessages = defineMessages({
   },
 });
 
+const organizationAccessDeniedMessages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.system.OrganizationAccessDeniedPage.title',
+    defaultMessage: 'You do not have access to this organization',
+    description: 'Shown when the URL names an organization the signed-in session is not scoped to.',
+  },
+  subtitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.system.OrganizationAccessDeniedPage.subtitle',
+    defaultMessage: 'Check the link, or go to your own organization instead.',
+  },
+  goToMyOrganization: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.system.OrganizationAccessDeniedPage.goToMyOrganization',
+    defaultMessage: 'Go to my organization',
+    description: 'Button returning to the signed-in user\'s own organization home. Verb phrase.',
+  },
+});
+
 const sessionExpiredMessages = defineMessages({
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.system.SessionExpiredPage.title',
@@ -178,6 +195,50 @@ export function UnauthorizedPage() {
           <FormattedMessage {...unauthorizedMessages.clearSession} />
         </Button>
       </Stack>
+    </PageContent>
+  );
+}
+
+/**
+ * Rendered by `ConsoleScopeProvider` in place of the app shell when the URL's
+ * `:orgHandle` doesn't match the signed-in session's own organization —
+ * e.g. a link to someone else's org, still carrying your own session. There
+ * is no per-org token exchange in this console (the BFF forwards one bearer
+ * token per session, see `AuthProvider`), so a mismatch here can never be
+ * resolved client-side; the only way in is signing in to that organization.
+ *
+ * `myOrgHandle` is passed in rather than independently read from `useAuth()`
+ * here: `ConsoleScopeProvider` already read `user.org.handle` once to decide
+ * `orgAccessDenied` in the first place, and the recovery link must point at
+ * that exact same value — a second, independent read of "the session's own
+ * org handle" is only guaranteed to agree with the first by convention, not
+ * by anything the type system enforces.
+ */
+export function OrganizationAccessDeniedPage({
+  myOrgHandle,
+}: {
+  myOrgHandle?: string;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <PageContent>
+      <PageTitle>
+        <PageTitle.Header>
+          <FormattedMessage {...organizationAccessDeniedMessages.title} />
+        </PageTitle.Header>
+        <PageTitle.SubHeader>
+          <FormattedMessage {...organizationAccessDeniedMessages.subtitle} />
+        </PageTitle.SubHeader>
+      </PageTitle>
+      {myOrgHandle && (
+        <Button
+          variant="contained"
+          onClick={() => navigate(routes.organizationHome(myOrgHandle))}
+        >
+          <FormattedMessage {...organizationAccessDeniedMessages.goToMyOrganization} />
+        </Button>
+      )}
     </PageContent>
   );
 }

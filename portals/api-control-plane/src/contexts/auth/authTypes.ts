@@ -56,6 +56,5 @@ export type AuthState = {
     password: string,
     returnTo?: string
   ) => Promise<boolean>;
-  exchangeOrgToken: (orgHandle: string) => Promise<boolean>;
   logout: () => void;
 };
