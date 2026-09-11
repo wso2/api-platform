@@ -121,6 +121,9 @@ var (
 // MCP proxy deployment operations. DeploymentNotActive's verb is the artifact
 // kind, e.g. "API", "LLM provider".
 var (
+	BuildNotFound             = def(CodeBuildNotFound, http.StatusNotFound, "The specified build could not be found.")
+	BuildLimitReached         = def(CodeBuildLimitReached, http.StatusConflict, "This API already has its maximum of %d builds, and every one is in use by a deployment. Undeploy one, or delete a build you no longer need, to make room for another.")
+	BuildInUse                = def(CodeBuildInUse, http.StatusConflict, "The build is on a gateway and cannot be deleted. Undeploy it first, then delete the build.")
 	DeploymentBaseNotFound    = def(CodeDeploymentBaseNotFound, http.StatusNotFound, "The specified base deployment could not be found.")
 	DeploymentRestoreConflict = def(CodeDeploymentRestoreConflict, http.StatusConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid.")
 	DeploymentNotFound        = def(CodeDeploymentNotFound, http.StatusNotFound, "The specified deployment could not be found.")

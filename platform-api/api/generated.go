@@ -643,6 +643,53 @@ type AssociatedGateway struct {
 	Id string `binding:"required" json:"id" yaml:"id"`
 }
 
+// BuildListResponse defines model for BuildListResponse.
+type BuildListResponse struct {
+	// Count Number of builds in current response
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List Builds, newest first
+	List []BuildResponse `binding:"required" json:"list" yaml:"list"`
+}
+
+// BuildRequest Optional details to record with a build.
+type BuildRequest struct {
+	// Description Optional note recorded with the build, to tell one snapshot from another when
+	// choosing what to deploy or which build to delete.
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Metadata Free-form metadata to store with the build, such as the commit an API kept in a
+	// repository was prepared from. It is returned with the build and is not
+	// interpreted by the platform.
+	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+}
+
+// BuildResponse An immutable, rendered snapshot of an API's definition, not bound to any gateway.
+type BuildResponse struct {
+	// BuildId Identifier for the build, supplied as `buildId` when a deployment's `base` is
+	// `build`. It is the date the build was prepared followed by that day's index for
+	// the API, and is unique per API.
+	BuildId string `binding:"required" json:"buildId" yaml:"buildId"`
+
+	// CreatedAt Timestamp when the build was prepared
+	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy Who prepared the build
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// DataVersion Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
+	DataVersion *string `json:"dataVersion,omitempty" yaml:"dataVersion,omitempty"`
+
+	// Description Note recorded with the build when it was prepared
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Metadata Metadata recorded with the build, such as the commit it was prepared from
+	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+
+	// Uuid Globally unique identifier for the build, and what a deployment references
+	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
+}
+
 // Channel Defines a single channel within the Async API
 type Channel struct {
 	// Description Description of the channel
@@ -1026,8 +1073,22 @@ type CustomPolicyResponse struct {
 
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
-	// Base The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+	// Base Where the artifact comes from:
+	//
+	// - `current` — render the artifact from the definition as it stands now.
+	// - `build` — deploy a build prepared earlier, named by `buildId`.
+	//
+	// REST API deployments accept only these two and always run a build: `current`
+	// stores what it renders as one, so a running deployment is always traceable to
+	// a stored snapshot. MCP proxy, LLM and event API deployments accept a
+	// `deploymentId` here as well, to promote that deployment by reusing its
+	// rendered artifact.
 	Base string `binding:"required" json:"base" yaml:"base"`
+
+	// BuildId The build to deploy, such as `2026-01-31-2`. Required when `base` is `build`,
+	// and rejected otherwise. Deploying a build ships that exact snapshot, so it
+	// cannot pick up edits made since it was prepared.
+	BuildId *string `json:"buildId,omitempty" yaml:"buildId,omitempty"`
 
 	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
@@ -1053,6 +1114,17 @@ type DeploymentListResponse struct {
 type DeploymentResponse struct {
 	// BaseDeploymentId UUID of the base deployment this was created from
 	BaseDeploymentId *openapi_types.UUID `json:"baseDeploymentId" yaml:"baseDeploymentId"`
+
+	// BuildId Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
+	// has one: `base: build` runs the build it names, and `base: current` stores what
+	// it renders as a build and runs that.
+	//
+	// Null for artifact kinds that have no builds — MCP proxy, LLM and event API
+	// deployments — including one promoted from another deployment, which reuses that
+	// deployment's rendered artifact. Also null once the build it ran has been pruned.
+	// Null means only that no build can be named; the deployment keeps its own
+	// rendered artifact either way.
+	BuildId *string `json:"buildId" yaml:"buildId"`
 
 	// CreatedAt Timestamp when the deployment artifact was created
 	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
@@ -3104,6 +3176,12 @@ type ListRESTAPIsParamsSortBy string
 // ListRESTAPIsParamsSortOrder defines parameters for ListRESTAPIs.
 type ListRESTAPIsParamsSortOrder string
 
+// GetBuildsParams defines parameters for GetBuilds.
+type GetBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -3289,6 +3367,9 @@ type CreateAPIKeyJSONRequestBody = CreateAPIKeyRequest
 
 // UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
 type UpdateAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateBuildJSONRequestBody defines body for CreateBuild for application/json ContentType.
+type CreateBuildJSONRequestBody = BuildRequest
 
 // DeployAPIJSONRequestBody defines body for DeployAPI for application/json ContentType.
 type DeployAPIJSONRequestBody = DeployRequest

@@ -49,7 +49,42 @@ func NewDeploymentRepo(db *database.DB, reg *ArtifactTableRegistry) DeploymentRe
 // If deployment count >= hardLimit, deletes oldest 5 ARCHIVED deployments before inserting new one
 // This entire operation is wrapped in a single transaction to ensure atomicity
 // and to leverage row-level locks during deletion to reduce race conditions.
+//
+// A deployment that names a build it runs has that build re-read inside the
+// transaction, so a deploy that lost its build to a prune between resolving it and
+// recording it is refused rather than committed with an origin it no longer has.
 func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
+	return r.createOnce(deployment, nil, 0, hardLimit)
+}
+
+// CreateWithBuild records a deployment together with the build it runs, storing
+// the build here rather than before: a committed deployment therefore always names
+// a build that exists, a failed deploy leaves no build behind, and no prune can get
+// between the two writes. The build takes its id and its place in the API's budget
+// exactly as one prepared on its own does, so buildHardLimit is enforced here too.
+// The deployment's build reference is filled in from the stored build.
+func (r *DeploymentRepo) CreateWithBuild(deployment *model.Deployment, build *model.Build,
+	buildHardLimit, hardLimit int) error {
+	// The build belongs to the deployment being recorded, so it takes that
+	// deployment's API and organization rather than carrying its own copy of them.
+	// There is then nothing for the two to disagree about, and no way to store a
+	// deployment whose recorded origin is another API's build — which the foreign
+	// key alone would accept.
+	build.ArtifactID = deployment.ArtifactID
+	build.OrganizationID = deployment.OrganizationID
+	if err := initBuild(build); err != nil {
+		return err
+	}
+	return createWithDerivedBuildID(build, func() error {
+		return r.createOnce(deployment, build, buildHardLimit, hardLimit)
+	})
+}
+
+// createOnce is a single attempt at recording a deployment: it either commits the
+// deployment — and the build it carries, when it carries one — or leaves the
+// database untouched.
+func (r *DeploymentRepo) createOnce(deployment *model.Deployment,
+	build *model.Build, buildHardLimit, hardLimit int) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -140,15 +175,44 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		}
 	}
 
+	// The build this deployment runs. One rendered for it is stored here, on the
+	// transaction that records the deployment, so the two cannot come apart. One
+	// prepared earlier was resolved before this transaction opened, so it is read
+	// again: a prepare running alongside this one may have pruned it since, and it
+	// must belong to the same API and organization as the deployment — the foreign
+	// key alone would accept any build, and a deployment carrying another API's
+	// build would report that build's id as its own origin.
+	switch {
+	case build != nil:
+		if err := r.storeBuild(tx, build, buildHardLimit); err != nil {
+			return err
+		}
+		deployment.BuildUUID = &build.UUID
+		deployment.BuildID = &build.BuildID
+	case deployment.BuildUUID != nil:
+		owned, err := r.buildBelongsTo(tx, *deployment.BuildUUID, deployment.ArtifactID, deployment.OrganizationID)
+		if err != nil {
+			return err
+		}
+		if !owned {
+			return apperror.BuildNotFound.New()
+		}
+	}
+
 	// 3. Insert new deployment artifact
 	deploymentQuery := `
-		INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, build_uuid, content, metadata, created_by, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var baseDeploymentID interface{}
 	if deployment.BaseDeploymentID != nil {
 		baseDeploymentID = *deployment.BaseDeploymentID
+	}
+
+	var buildUUID interface{}
+	if deployment.BuildUUID != nil {
+		buildUUID = *deployment.BuildUUID
 	}
 
 	var metadataBytes []byte
@@ -161,7 +225,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	}
 
 	_, err = tx.Exec(r.db.Rebind(deploymentQuery), deployment.DeploymentID, deployment.Name, deployment.ArtifactID, deployment.OrganizationID,
-		deployment.GatewayID, baseDeploymentID, deployment.Content, metadataBytes, deployment.CreatedBy, deployment.CreatedAt)
+		deployment.GatewayID, baseDeploymentID, buildUUID, deployment.Content, metadataBytes, deployment.CreatedBy, deployment.CreatedAt)
 	if err != nil {
 		return err
 	}
@@ -194,10 +258,30 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	return tx.Commit()
 }
 
+// buildBelongsTo reports whether the build exists under that API and organization.
+func (r *DeploymentRepo) buildBelongsTo(tx *sql.Tx, buildUUID, artifactUUID, orgUUID string) (bool, error) {
+	const query = `SELECT 1 FROM builds WHERE uuid = ? AND artifact_uuid = ? AND organization_uuid = ?`
+	var found int
+	err := tx.QueryRow(r.db.Rebind(query), buildUUID, artifactUUID, orgUUID).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to check the build this deployment comes from: %w", err)
+	}
+	return true, nil
+}
+
 // applyDeploymentBase populates the nullable base fields shared by all deployment scan paths.
-func applyDeploymentBase(d *model.Deployment, baseID sql.NullString, createdBy sql.NullString, metadataBytes []byte) error {
+func applyDeploymentBase(d *model.Deployment, baseID, buildUUID, buildID sql.NullString, createdBy sql.NullString, metadataBytes []byte) error {
 	if baseID.Valid {
 		d.BaseDeploymentID = &baseID.String
+	}
+	if buildUUID.Valid {
+		d.BuildUUID = &buildUUID.String
+	}
+	if buildID.Valid {
+		d.BuildID = &buildID.String
 	}
 	if createdBy.Valid {
 		d.CreatedBy = createdBy.String
@@ -235,18 +319,20 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 	deployment := &model.Deployment{}
 
 	query := `
-		SELECT uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, base_deployment_uuid, content, metadata, created_by, created_at
-		FROM deployments
-		WHERE uuid = ? AND artifact_uuid = ? AND organization_uuid = ?
+		SELECT d.uuid, d.display_name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
+			d.base_deployment_uuid, d.build_uuid, b.build_id, d.content, d.metadata, d.created_by, d.created_at
+		FROM deployments d
+		LEFT JOIN builds b ON d.build_uuid = b.uuid
+		WHERE d.uuid = ? AND d.artifact_uuid = ? AND d.organization_uuid = ?
 	`
 
-	var baseDeploymentID sql.NullString
+	var baseDeploymentID, buildUUID, buildID sql.NullString
 	var metadataBytes []byte
 	var createdBy sql.NullString
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, artifactUUID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID,
-		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataBytes, &createdBy, &deployment.CreatedAt)
+		&deployment.GatewayID, &baseDeploymentID, &buildUUID, &buildID, &deployment.Content, &metadataBytes, &createdBy, &deployment.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -255,7 +341,7 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 		return nil, err
 	}
 
-	if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+	if err := applyDeploymentBase(deployment, baseDeploymentID, buildUUID, buildID, createdBy, metadataBytes); err != nil {
 		return nil, err
 	}
 	return deployment, nil
@@ -290,9 +376,10 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 	query := `
 		SELECT
 			d.uuid, d.display_name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
-			d.base_deployment_uuid, d.content, d.metadata, d.created_by, d.created_at,
+			d.base_deployment_uuid, d.build_uuid, b.build_id, d.content, d.metadata, d.created_by, d.created_at,
 			s.status, s.updated_at AS status_updated_at
 		FROM deployments d
+		LEFT JOIN builds b ON d.build_uuid = b.uuid
 		INNER JOIN deployment_status s
 			ON d.uuid = s.deployment_uuid
 			AND d.artifact_uuid = s.artifact_uuid
@@ -304,7 +391,7 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 		` + r.db.FetchFirstClause(1) + `
 	`
 
-	var baseDeploymentID sql.NullString
+	var baseDeploymentID, buildUUID, buildID sql.NullString
 	var metadataBytes []byte
 	var createdBy sql.NullString
 	var statusStr string
@@ -312,7 +399,7 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 
 	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, gatewayID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID,
-		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataBytes, &createdBy, &deployment.CreatedAt,
+		&deployment.GatewayID, &baseDeploymentID, &buildUUID, &buildID, &deployment.Content, &metadataBytes, &createdBy, &deployment.CreatedAt,
 		&statusStr, &updatedAt)
 
 	if err != nil {
@@ -322,7 +409,7 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 		return nil, err
 	}
 
-	if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+	if err := applyDeploymentBase(deployment, baseDeploymentID, buildUUID, buildID, createdBy, metadataBytes); err != nil {
 		return nil, err
 	}
 	status := model.DeploymentStatus(statusStr)
@@ -575,9 +662,10 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 	query := `
 		SELECT
 			d.uuid, d.display_name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
-			d.base_deployment_uuid, d.metadata, d.created_by, d.created_at,
+			d.base_deployment_uuid, d.build_uuid, b.build_id, d.metadata, d.created_by, d.created_at,
 			s.status, s.updated_at AS status_updated_at, s.status_reason
 		FROM deployments d
+		LEFT JOIN builds b ON d.build_uuid = b.uuid
 		LEFT JOIN deployment_status s
 			ON d.uuid = s.deployment_uuid
 			AND d.artifact_uuid = s.artifact_uuid
@@ -586,7 +674,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 		WHERE d.uuid = ? AND d.artifact_uuid = ? AND d.organization_uuid = ?
 	`
 
-	var baseDeploymentID sql.NullString
+	var baseDeploymentID, buildUUID, buildID sql.NullString
 	var metadataBytes []byte
 	var createdBy sql.NullString
 	var statusStr sql.NullString
@@ -595,7 +683,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, artifactUUID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID, &deployment.GatewayID,
-		&baseDeploymentID, &metadataBytes, &createdBy, &deployment.CreatedAt,
+		&baseDeploymentID, &buildUUID, &buildID, &metadataBytes, &createdBy, &deployment.CreatedAt,
 		&statusStr, &updatedAtVal, &statusReasonStr)
 
 	if err != nil {
@@ -605,7 +693,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 		return nil, err
 	}
 
-	if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+	if err := applyDeploymentBase(deployment, baseDeploymentID, buildUUID, buildID, createdBy, metadataBytes); err != nil {
 		return nil, err
 	}
 	applyDeploymentStatus(deployment, statusStr, updatedAtVal, statusReasonStr)
@@ -643,7 +731,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
         WITH AnnotatedDeployments AS (
             SELECT
 				d.uuid, d.display_name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
-                d.base_deployment_uuid, d.metadata, d.created_by, d.created_at,
+                d.base_deployment_uuid, d.build_uuid, b.build_id, d.metadata, d.created_by, d.created_at,
                 s.status as current_status,
                 s.updated_at as status_updated_at,
                 s.status_reason,
@@ -654,6 +742,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
                         d.created_at DESC
                 ) as rank_idx
 			FROM deployments d
+			LEFT JOIN builds b ON d.build_uuid = b.uuid
 			LEFT JOIN deployment_status s
                 ON d.uuid = s.deployment_uuid
                 AND d.gateway_uuid = s.gateway_uuid
@@ -673,7 +762,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
         )
         SELECT
 			uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid,
-            base_deployment_uuid, metadata, created_by, created_at,
+            base_deployment_uuid, build_uuid, build_id, metadata, created_by, created_at,
             current_status, status_updated_at, status_reason
         FROM AnnotatedDeployments
         WHERE rank_idx <= ?
@@ -705,7 +794,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	var deployments []*model.Deployment
 	for rows.Next() {
 		deployment := &model.Deployment{}
-		var baseDeploymentID sql.NullString
+		var baseDeploymentID, buildUUID, buildID sql.NullString
 		var metadataBytes []byte
 		var createdBy sql.NullString
 		var statusStr sql.NullString
@@ -715,12 +804,12 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 		if err := rows.Scan(
 			&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID,
 			&deployment.OrganizationID, &deployment.GatewayID,
-			&baseDeploymentID, &metadataBytes, &createdBy, &deployment.CreatedAt,
+			&baseDeploymentID, &buildUUID, &buildID, &metadataBytes, &createdBy, &deployment.CreatedAt,
 			&statusStr, &updatedAtVal, &statusReasonStr); err != nil {
 			return nil, err
 		}
 
-		if err := applyDeploymentBase(deployment, baseDeploymentID, createdBy, metadataBytes); err != nil {
+		if err := applyDeploymentBase(deployment, baseDeploymentID, buildUUID, buildID, createdBy, metadataBytes); err != nil {
 			return nil, err
 		}
 		applyDeploymentStatus(deployment, statusStr, updatedAtVal, statusReasonStr)
