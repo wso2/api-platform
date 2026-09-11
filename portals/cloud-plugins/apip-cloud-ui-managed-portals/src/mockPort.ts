@@ -22,6 +22,10 @@ const delay = <T>(value: T, ms = 300): Promise<T> =>
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
+// Real port relies on the server to reject bad handles; the mock has to check
+// itself so a value like "team/portal" doesn't produce an invalid hostname.
+const HANDLE_PATTERN = /^[a-z0-9-]+$/;
+
 /** Builds an in-memory PortalPort, optionally seeded. Seed is copied so callers can reuse it across instances. */
 export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
   const portals: ManagedPortal[] = seed ? clone(seed) : [];
@@ -39,6 +43,9 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
       const handle = input.handle.trim();
       const name = input.name.trim();
       if (!handle) throw new Error('A portal handle is required');
+      if (!HANDLE_PATTERN.test(handle)) {
+        throw new Error('Portal handle must contain only lowercase letters, digits, and hyphens');
+      }
       if (!name) throw new Error('A portal name is required');
       if (portals.some((p) => p.handle === handle)) {
         throw new Error(`A portal "${handle}" already exists`);
