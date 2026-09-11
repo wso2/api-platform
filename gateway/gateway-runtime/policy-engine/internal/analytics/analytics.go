@@ -349,12 +349,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	// Strip the query once at the source since it is shared across publishers and may contain credentials.
 	requestPath, _, _ := strings.Cut(request.GetPath(), "?")
+	// OriginalPath is the pre-rewrite :path, so it carries the client's query too.
+	originalPath, _, _ := strings.Cut(request.GetOriginalPath(), "?")
 
 	// Prepare operation
 	operation := dto.Operation{}
 	// operation.APIResourceTemplate = keyValuePairsFromMetadata[APIResourceTemplateKey]
 	if request != nil {
-		operation.APIResourceTemplate = logEntry.GetRequest().GetOriginalPath()
+		operation.APIResourceTemplate = originalPath
 		operation.APIMethod = logEntry.Request.GetRequestMethod().String()
 	}
 

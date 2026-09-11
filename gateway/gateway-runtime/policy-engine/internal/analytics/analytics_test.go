@@ -1357,6 +1357,46 @@ func TestPrepareAnalyticEvent_RequestPathDropsQueryString(t *testing.T) {
 	}
 }
 
+// APIResourceTemplate comes from Envoy's original_path (the pre-rewrite :path,
+// which every proxied route here produces via context-path stripping), so it
+// carries the client's query string just as Path does. It reaches http.route on
+// the OTel publisher, the Moesif uri and the traffic-log path, so it is cut at
+// this same single point rather than at each of them.
+func TestPrepareAnalyticEvent_APIResourceTemplateDropsQueryString(t *testing.T) {
+	for name, tc := range map[string]struct {
+		originalPath string
+		path         string
+		want         string
+	}{
+		"no query":              {"/petstore/pet/12345", "/pet/12345", "/petstore/pet/12345"},
+		"single param":          {"/petstore/pet/12345?apikey=secret", "/pet/12345", "/petstore/pet/12345"},
+		"multiple params":       {"/search?q=cat&token=abc123", "/search", "/search"},
+		"empty query":           {"/petstore/pet?", "/pet", "/petstore/pet"},
+		"query only":            {"?apikey=secret", "/pet", ""},
+		"absent original path":  {"", "/pet/12345", ""},
+		"encoded question mark": {"/pet/a%3Fb", "/a%3Fb", "/pet/a%3Fb"},
+		// The reviewer's case: the rewritten Path is clean while the pre-rewrite
+		// OriginalPath still carries the credential.
+		"query only on original path": {"/petstore/pet?apikey=secret", "/pet", "/petstore/pet"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logEntry := createLogEntryWithMetadata(map[string]string{})
+			logEntry.Request.OriginalPath = tc.originalPath
+			logEntry.Request.Path = tc.path
+
+			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(logEntry)
+
+			if got := event.Operation.APIResourceTemplate; got != tc.want {
+				t.Errorf("APIResourceTemplate = %q, want %q", got, tc.want)
+			}
+			if strings.Contains(event.Operation.APIResourceTemplate, "?") {
+				t.Errorf("APIResourceTemplate %q still carries a query string",
+					event.Operation.APIResourceTemplate)
+			}
+		})
+	}
+}
+
 // Target.Destination reaches three consumers — the OTel publisher's
 // wso2.upstream.destination, the traffic log's destination field, and the
 // target.destination policy expression — so the query string is stripped at this
