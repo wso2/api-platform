@@ -788,12 +788,11 @@ paths:
         the target gateway's version when it is deployed.
 
         An API keeps at most `deployments.max_builds_per_api` builds. Preparing another
-        first removes the oldest builds that no current deployment is using — including
-        those behind deployments a newer one has superseded, which is why redeploying to
-        the same gateway never runs the limit down. If every stored build is in use, the
-        request is refused with a `409`, and a deployment has to be undeployed or a
-        build deleted to make room. Access is validated against the organization in the
-        JWT token.
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
       operationId: CreateBuild
       security:
         - OAuth2Security:
@@ -906,33 +905,16 @@ paths:
     delete:
       summary: Delete a build
       description: |
-        Deletes one of the API's builds.
+        Deletes one of the API's builds, freeing a slot when the API is at its build
+        limit.
 
-        Deleting a build is how room is made when an API is at its build limit and
-        automatic cleanup cannot help — which happens when the API's builds are held by
-        deployments across gateways that are each running or holding one.
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
 
-        Redeploying the same API to the same gateway does NOT need this: each deploy
-        supersedes the last, and a superseded deployment stops holding its build, so
-        the platform reclaims those on its own.
-
-        A build that is on a gateway is not deleted: the request is refused with a
-        conflict while any of the API's gateways has it as the build of a `DEPLOYED`,
-        `DEPLOYING` or `UNDEPLOYING` deployment. Undeploy it first, then delete the
-        build.
-
-        Every other state releases it. `UNDEPLOYED`, `FAILED` and `ARCHIVED` deployments
-        — the last being ones a newer deployment has superseded on its gateway — each
-        keep the rendered artifact they were created with, so they can still be
-        redeployed after their build is gone; they simply stop reporting a `buildId`.
-        Automatic cleanup reclaims only the archived ones; the suspended and failed ones
-        are left alone, because suspending a deployment is not the same as being
-        finished with it — so those are exactly the builds this call is for.
-
-        That is a real consequence and it is the caller's to accept: such a deployment
-        can be put back on its gateway, but it can no longer be promoted to a later
-        environment, because there is no snapshot left to carry. Which build to give up
-        is therefore a decision, never something the platform makes on its own.
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
 
         Access is validated against the organization in the JWT token.
       operationId: DeleteBuild
