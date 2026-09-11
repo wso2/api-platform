@@ -24,16 +24,8 @@ import (
 )
 
 // APIPortal represents an API Portal registered within an organization.
-//
-// Two persisted blobs, split by consumer:
-//   - InternalAuthKey is the encrypted raw shared key Platform-API sends as
-//     `Authorization: SharedKey <raw>` on outbound publishing calls. Stored
-//     as AES-GCM ciphertext (nonce || ciphertext) via internal/vault; the
-//     plaintext key is only ever handed to the caller ONCE at Create/Update
-//     time and never returned on any read path.
-//   - Metadata is opaque pass-through data (never encrypted, always returned).
-//     Typically carries the cloud-side OIDC endpoints that the portal pod uses
-//     for consumer login (stsIssuer, stsJwksUrl, etc.); usually empty in OSS.
+// InternalAuthKey holds the AES-GCM ciphertext of the shared key (never returned on reads);
+// Metadata is opaque pass-through JSON.
 type APIPortal struct {
 	ID              string                 `json:"id" db:"uuid"`
 	OrganizationID  string                 `json:"organizationId" db:"organization_uuid"`

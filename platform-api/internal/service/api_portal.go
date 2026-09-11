@@ -36,19 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/vault"
 )
 
-// validateAPIPortalURL enforces input-time constraints on a caller-supplied
-// portal URL:
-//   - Empty is rejected on Create (the portal must be reachable to register it),
-//     see CreateAPIPortal below.
-//   - Non-empty must parse as an absolute URL with a host, and use the https
-//     scheme. This blocks stored SSRF via `file://`, `javascript:`, and any
-//     plain-http URL that could be pointed at instance-metadata endpoints such
-//     as http://169.254.169.254/.
-//
-// Deeper outbound-hardening (private-IP blocklist, DNS-rebinding checks,
-// redirect controls) is intentionally NOT enforced here, it belongs in the
-// shared outbound HTTP client the publisher will build later, so every
-// outbound integration gets the same protection uniformly.
+// validateAPIPortalURL requires https + absolute URL with host to block stored SSRF vectors (file://, javascript:, plain-http metadata endpoints).
 func validateAPIPortalURL(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -67,16 +55,10 @@ func validateAPIPortalURL(raw string) (string, error) {
 	return u.String(), nil
 }
 
-// sharedKeyPattern matches a 64-character hex string, the exact shape the
-// devportal-side setup script produces via `openssl rand -hex 32` and the
-// portal middleware sha256's for verification. Any other shape is rejected
-// here so we never encrypt-and-store a value the portal cannot possibly match.
+// sharedKeyPattern matches the 64-hex-char shape produced by `openssl rand -hex 32`, which the portal middleware sha256s for verification.
 var sharedKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 
-// validateAndEncryptSharedKey checks the raw sharedKey format and returns the
-// AES-GCM ciphertext the row column will hold. The plaintext is discarded once
-// this function returns, the only path back to it is Decrypt, which the
-// outbound-auth provider does per publish call.
+// validateAndEncryptSharedKey returns AES-GCM ciphertext of the raw key; plaintext is discarded on return.
 func validateAndEncryptSharedKey(v vault.SecretVault, raw string) ([]byte, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -94,9 +76,6 @@ func validateAndEncryptSharedKey(v vault.SecretVault, raw string) ([]byte, error
 }
 
 // APIPortalService encapsulates business logic for the /api-portals resource.
-// The handler layer translates OpenAPI-generated request/response DTOs into
-// the service's own request structs so the service stays independent of the
-// generated code.
 type APIPortalService struct {
 	portalRepo   repository.APIPortalRepository
 	orgRepo      repository.OrganizationRepository
@@ -128,9 +107,7 @@ func NewAPIPortalService(
 	}
 }
 
-// invalidateCachedAuthProvider is a no-op when the service was constructed
-// without a registry (e.g. in unit tests that don't need outbound auth). Keeps
-// call sites clean of nil checks.
+// invalidateCachedAuthProvider drops the cached provider; no-op when registry is nil (tests without outbound auth).
 func (s *APIPortalService) invalidateCachedAuthProvider(portalHandle, orgID string) {
 	if s.authRegistry == nil {
 		return
@@ -138,14 +115,7 @@ func (s *APIPortalService) invalidateCachedAuthProvider(portalHandle, orgID stri
 	s.authRegistry.Invalidate(portalHandle, orgID)
 }
 
-// AuthHeaderForPortal returns the fully-formed Authorization header value the
-// outbound publisher should attach to its next call to the portal's admin
-// REST API, e.g. "SharedKey <raw>". Wraps the registry lookup + provider
-// caching so publisher code is a one-liner: `hdr, err := svc.AuthHeaderForPortal(ctx, handle, orgID)`.
-//
-// Returns APIPortalNotFound when the (handle, orgID) pair is unknown, and a
-// plain error on decryption / configuration failures (the caller treats
-// those as fatal for the publish call rather than retrying).
+// AuthHeaderForPortal returns the "SharedKey <raw>" Authorization header for outbound calls to the portal's admin API.
 func (s *APIPortalService) AuthHeaderForPortal(ctx context.Context, portalHandle, orgID string) (string, error) {
 	if s.authRegistry == nil {
 		return "", fmt.Errorf("shared-key AuthProvider registry is not initialised")
@@ -157,15 +127,13 @@ func (s *APIPortalService) AuthHeaderForPortal(ctx context.Context, portalHandle
 	return provider.AuthorizationHeader(ctx)
 }
 
-// PaginationInfo is the {total, offset, limit} triplet used to build the
-// list-response envelope in api_portal_translate.go.
+// PaginationInfo is the {total, offset, limit} triplet used to build the list-response envelope.
 type PaginationInfo struct {
 	Total  int
 	Offset int
 	Limit  int
 }
 
-// deref helpers used by the api-DTO-facing service methods.
 func derefStr(p *string) string {
 	if p == nil {
 		return ""
@@ -173,10 +141,7 @@ func derefStr(p *string) string {
 	return *p
 }
 
-// CreateAPIPortal validates the request, enforces uniqueness of the handle,
-// encrypts the caller-supplied shared key, and inserts a new row scoped to
-// orgID. Speaks in api-generated types directly so it satisfies the
-// pdk.APIPortals contract by shape.
+// CreateAPIPortal validates the request, enforces handle uniqueness, encrypts the shared key, and inserts a row scoped to orgID.
 func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
@@ -233,7 +198,7 @@ func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgI
 
 	if err := s.portalRepo.Create(portal); err != nil {
 		if repository.IsUniqueViolation(err) {
-			// A concurrent create won the race between Exists and INSERT.
+			// Concurrent create won the race between Exists and INSERT.
 			return nil, apperror.APIPortalExists.New()
 		}
 		return nil, err
@@ -242,7 +207,7 @@ func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgI
 	return ModelToAPIPortalResponse(portal), nil
 }
 
-// GetAPIPortal returns a single API Portal identified by its handle (wire ID) within orgID.
+// GetAPIPortal returns a single API Portal identified by its handle within orgID.
 func (s *APIPortalService) GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error) {
 	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
 	if err != nil {
@@ -254,10 +219,7 @@ func (s *APIPortalService) GetAPIPortal(handle, orgID string) (*api.ApiPortalRes
 	return ModelToAPIPortalResponse(portal), nil
 }
 
-// ListAPIPortals returns a page of API Portals in the organization, honoring
-// the requested pagination + filter args. Limit/Offset are normalized here.
-// Flat args (rather than an options struct) so the method satisfies the
-// pdk.APIPortals contract by shape, matches the Gateways pattern.
+// ListAPIPortals returns a page of API Portals in the organization; Limit/Offset are normalized here.
 func (s *APIPortalService) ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
@@ -293,15 +255,7 @@ func (s *APIPortalService) ListAPIPortals(orgID string, limit, offset int, sortB
 	return buildAPIPortalListResponse(page, PaginationInfo{Total: total, Offset: offset, Limit: limit}), nil
 }
 
-// UpdateAPIPortal loads the row, applies only the whitelisted mutations from
-// req, persists the change, and returns the updated row. Nil pointer fields
-// on the request mean "not sent" and are passed through unchanged.
-//
-// sharedKey is the rotation path: when the caller supplies a new hex value on
-// the wire, we replace the encrypted stored value with a fresh encryption of
-// the new plaintext. When sharedKey is absent, the stored bytes are left as-is,
-// this matches the "supply only the fields you want to change" contract for
-// every other field on Update.
+// UpdateAPIPortal applies whitelisted mutations from req; nil pointer fields mean "not sent" and are left unchanged. A non-nil SharedKey re-encrypts and rotates the stored value.
 func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
@@ -342,7 +296,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 		portal.InternalAuthKey = encryptedKey
 	}
 	if req.Metadata != nil {
-		// Metadata is opaque pass-through; supplied map fully replaces stored.
+		// Supplied metadata map fully replaces stored (no per-key merge).
 		portal.Metadata = derefAPIPortalMetadata(req.Metadata)
 	}
 	portal.UpdatedBy = strings.TrimSpace(updatedBy)
@@ -351,13 +305,12 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 		return nil, err
 	}
 	_ = s.auditRepo.Record("UPDATE", portal.ID, "api_portal", orgID, portal.UpdatedBy)
-	// Config may have changed; drop any cached AuthProvider so the next
-	// outbound call rebuilds from the new stored values.
+	// Config may have changed; drop cached AuthProvider so next call rebuilds.
 	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)
 	return ModelToAPIPortalResponse(portal), nil
 }
 
-// DeleteAPIPortal removes the API Portal identified by its handle, org-scoped.
+// DeleteAPIPortal removes the API Portal identified by its handle within orgID.
 func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
 	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
 	if err != nil {

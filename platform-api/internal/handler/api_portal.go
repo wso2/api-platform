@@ -34,10 +34,7 @@ import (
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
-// APIPortalHandler exposes /api-portals CRUD. The generated OpenAPI types
-// (api.CreateApiPortalRequest / api.ApiPortalResponse / …) are the wire contract
-// AND the service-layer contract — the service speaks in these directly so its
-// methods also satisfy pdk.APIPortals for plugins.
+// APIPortalHandler exposes /api-portals CRUD.
 type APIPortalHandler struct {
 	svc      *service.APIPortalService
 	identity *service.IdentityService
@@ -49,7 +46,7 @@ func NewAPIPortalHandler(svc *service.APIPortalService, identity *service.Identi
 	return &APIPortalHandler{svc: svc, identity: identity, slogger: slogger}
 }
 
-// CreateAPIPortal — POST /api-portals
+// CreateAPIPortal handles POST /api-portals.
 func (h *APIPortalHandler) CreateAPIPortal(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -76,7 +73,7 @@ func (h *APIPortalHandler) CreateAPIPortal(w http.ResponseWriter, r *http.Reques
 	return nil
 }
 
-// GetAPIPortal — GET /api-portals/{apiPortalId}
+// GetAPIPortal handles GET /api-portals/{apiPortalId}.
 func (h *APIPortalHandler) GetAPIPortal(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -96,7 +93,7 @@ func (h *APIPortalHandler) GetAPIPortal(w http.ResponseWriter, r *http.Request) 
 	return nil
 }
 
-// ListAPIPortals — GET /api-portals
+// ListAPIPortals handles GET /api-portals.
 func (h *APIPortalHandler) ListAPIPortals(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -113,7 +110,7 @@ func (h *APIPortalHandler) ListAPIPortals(w http.ResponseWriter, r *http.Request
 	return nil
 }
 
-// UpdateAPIPortal — PUT /api-portals/{apiPortalId}
+// UpdateAPIPortal handles PUT /api-portals/{apiPortalId}.
 func (h *APIPortalHandler) UpdateAPIPortal(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -143,7 +140,7 @@ func (h *APIPortalHandler) UpdateAPIPortal(w http.ResponseWriter, r *http.Reques
 	return nil
 }
 
-// DeleteAPIPortal — DELETE /api-portals/{apiPortalId}
+// DeleteAPIPortal handles DELETE /api-portals/{apiPortalId}.
 func (h *APIPortalHandler) DeleteAPIPortal(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -177,8 +174,7 @@ func (h *APIPortalHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("DELETE "+base+"/{apiPortalId}", middleware.MapErrors(h.slogger, h.DeleteAPIPortal))
 }
 
-// derefStr returns the pointed-to string or "" when nil. Local helper used by
-// setLocation to source the Location header from the api-generated response.
+// derefStr returns the pointed-to string or "" when nil.
 func derefStr(p *string) string {
 	if p == nil {
 		return ""

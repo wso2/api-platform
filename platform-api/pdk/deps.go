@@ -81,33 +81,12 @@ type Projects interface {
 	DeleteProject(handle, orgID, actor string) error
 }
 
-// APIPortals exposes CRUD access to the platform's API portals, scoped by
-// organization. Every method mirrors an existing APIPortalService method verbatim
-// and takes the organization id explicitly — handlers MUST pass the org resolved
-// from the request context, never one from request input (GO-AUTH-005).
-//
-// Portals are the outbound-publish target for APIs, MCP servers, and
-// subscription plans. Plugins consume this capability when they need to
-// register or manage a portal record on top of the platform's core row
-// (e.g. the cloud plugin's /managed-api-portals resource, which layers
-// runtime provisioning + DCR-app management on top of the same row).
+// APIPortals exposes CRUD on API Portal records, scoped by organization.
+// orgID is always the request-context org (GO-AUTH-005), never caller input.
 type APIPortals interface {
-	// CreateAPIPortal registers an API Portal in an organization (Create).
 	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
-
-	// GetAPIPortal returns a single API Portal by its handle within an
-	// organization (Read).
 	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
-
-	// ListAPIPortals returns a page of API Portals in an organization (Read).
-	// limit/offset are normalized inside the service; sortBy/sortOrder/search
-	// map to the same OpenAPI query parameters the native handler exposes.
 	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
-
-	// UpdateAPIPortal updates the whitelisted mutable fields on an API Portal
-	// within an organization (Update).
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
-
-	// DeleteAPIPortal removes an API Portal within an organization (Delete).
 	DeleteAPIPortal(handle, orgID, actor string) error
 }

@@ -22,11 +22,9 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-// APIPortal DTO <-> model translation, shared between the HTTP handler and the
-// pdk-facing wrappers on APIPortalService.
+// APIPortal DTO <-> model translation.
 
-// derefAPIPortalMetadata converts the generated Metadata type (a map alias)
-// into a plain map[string]interface{} the service works in. Nil in -> nil out.
+// derefAPIPortalMetadata converts the generated Metadata alias into a plain map; nil in -> nil out.
 func derefAPIPortalMetadata(m *api.ApiPortalMetadata) map[string]interface{} {
 	if m == nil {
 		return nil
@@ -34,12 +32,7 @@ func derefAPIPortalMetadata(m *api.ApiPortalMetadata) map[string]interface{} {
 	return map[string]interface{}(*m)
 }
 
-// ModelToAPIPortalResponse converts an internal model.APIPortal into the
-// api-generated ApiPortalResponse. Exported so the HTTP handler can serialize
-// what the service returns. The InternalAuthKey field is NEVER surfaced,
-// the only path for a client to see the shared key is the write-only field
-// on Create/Update requests, and that value is not stored in a form that can
-// be re-read.
+// ModelToAPIPortalResponse converts a model.APIPortal into the wire response; the shared key is never surfaced.
 func ModelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 	if p == nil {
 		return nil
@@ -68,8 +61,7 @@ func ModelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 	return resp
 }
 
-// modelToAPIPortalListItem projects a model.APIPortal onto the list-response
-// item type (excludes metadata by design, and never carries the shared key).
+// modelToAPIPortalListItem projects a model.APIPortal onto the list-response item (metadata and shared key are excluded).
 func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	item := api.ApiPortalListItem{
 		Id:        p.Handle,
@@ -85,8 +77,7 @@ func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	return item
 }
 
-// buildAPIPortalListResponse wraps the raw list + pagination info in the
-// api-generated ApiPortalListResponse envelope.
+// buildAPIPortalListResponse wraps the page + pagination info in the wire envelope.
 func buildAPIPortalListResponse(list []*model.APIPortal, pag PaginationInfo) *api.ApiPortalListResponse {
 	out := &api.ApiPortalListResponse{
 		Count: len(list),

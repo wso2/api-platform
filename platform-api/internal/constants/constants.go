@@ -207,29 +207,20 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
-// API Portal status constants. The column exists on api_portals for
-// future extensibility but is not surfaced on the wire in the OSS offering:
-// OSS registers a portal that's already running, so every OSS row is created
-// as APIPortalStatusActive and never mutated by clients.
+// API Portal status constants.
 const (
 	APIPortalStatusPending = "pending"
 	APIPortalStatusActive  = "active"
 	APIPortalStatusFailed  = "failed"
 )
 
-// API Portal outbound-auth constants. Platform-API authenticates to an API
-// Portal's admin REST endpoints with a shared key (RFC 7235 custom auth
-// scheme), NOT an OAuth 2.0 bearer token. See internal/service/api_portal_auth.go
-// and the design doc for the full mechanism.
+// API Portal outbound-auth constants. The scheme is a custom RFC 7235 name,
+// not OAuth 2.0 Bearer; the portal middleware sha256s the raw for verification.
 const (
-	// APIPortalSharedKeyAuthScheme is the Authorization-header scheme name
-	// Platform-API sends on outbound publishing calls. The portal side matches
-	// case-insensitively; we use the CamelCase spelling on the wire.
+	// APIPortalSharedKeyAuthScheme is the Authorization-header scheme name; matched case-insensitively by the portal.
 	APIPortalSharedKeyAuthScheme = "SharedKey"
 
-	// APIPortalSharedKeyHexLength is the required length of the raw shared key
-	// (in hex characters). 64 hex chars = 32 bytes = 256 bits of entropy, matching
-	// what `openssl rand -hex 32` produces on the portal-side setup script.
+	// APIPortalSharedKeyHexLength is the required raw-key length in hex chars (32 bytes of entropy).
 	APIPortalSharedKeyHexLength = 64
 )
 

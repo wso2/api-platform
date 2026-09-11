@@ -72,11 +72,7 @@ func scanAPIPortalRow(scanner interface {
 	return portal, nil
 }
 
-// marshalAPIPortalBlob serializes a JSON blob column value. A nil or empty map
-// becomes a nil byte slice so the driver stores SQL NULL — the column is
-// nullable and there is no reason to distinguish "operator supplied nothing"
-// from "operator supplied {}". readers (unmarshalAPIPortalBlob) mirror this
-// by returning a nil map for a NULL or empty-bytes read.
+// marshalAPIPortalBlob serializes a JSON blob column value; nil/empty map becomes nil bytes so the driver stores SQL NULL.
 func marshalAPIPortalBlob(m map[string]interface{}, field string) ([]byte, error) {
 	if len(m) == 0 {
 		return nil, nil
@@ -88,10 +84,7 @@ func marshalAPIPortalBlob(m map[string]interface{}, field string) ([]byte, error
 	return b, nil
 }
 
-// unmarshalAPIPortalBlob deserializes a JSON blob. Returns a nil map for a
-// NULL column value or empty bytes so the response can rely on the model's
-// `json:",omitempty"` tag to elide the field entirely for portals that carry
-// no metadata (typical OSS case).
+// unmarshalAPIPortalBlob deserializes a JSON blob; NULL/empty becomes nil so `omitempty` elides the field on wire.
 func unmarshalAPIPortalBlob(b []byte, field string) (map[string]interface{}, error) {
 	if len(b) == 0 {
 		return nil, nil
@@ -197,7 +190,7 @@ func (r *APIPortalRepo) ListPaginated(orgUUID string, opts ListOptions) ([]*mode
 	return portals, rows.Err()
 }
 
-// Count returns the total number of API Portals matching the org (+ optional search), independent of pagination.
+// Count returns the total matching the org (and optional search), independent of pagination.
 func (r *APIPortalRepo) Count(orgUUID string, search string) (int, error) {
 	var args []interface{}
 	conditions := []string{`organization_uuid = ?`}
@@ -214,9 +207,7 @@ func (r *APIPortalRepo) Count(orgUUID string, search string) (int, error) {
 	return total, nil
 }
 
-// Update mutates only the whitelisted fields; immutable columns (uuid, organization_uuid,
-// handle, created_by, created_at) are never touched. The caller is
-// responsible for populating UpdatedBy before invoking.
+// Update mutates only whitelisted fields; uuid, organization_uuid, handle, created_by, created_at are immutable. Caller must set UpdatedBy.
 func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 	portal.UpdatedAt = time.Now().UTC()
 	metadataBytes, err := marshalAPIPortalBlob(portal.Metadata, "metadata")
@@ -249,7 +240,7 @@ func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 	return nil
 }
 
-// Delete removes an API Portal row with organization isolation.
+// Delete removes an API Portal row, scoped to orgUUID.
 func (r *APIPortalRepo) Delete(portalID, orgUUID string) error {
 	query := `DELETE FROM api_portals WHERE uuid = ? AND organization_uuid = ?`
 	result, err := r.db.Exec(r.db.Rebind(query), portalID, orgUUID)
