@@ -80,6 +80,8 @@ export type Environment = {
  */
 export type Build = {
   buildId: string;
+  /** The note recorded when the build was prepared, if any. */
+  description?: string;
   createdAt?: string;
   createdBy?: string;
 };
