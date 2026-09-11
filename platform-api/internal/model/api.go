@@ -32,6 +32,7 @@ type API struct {
 	CreatedBy       string        `json:"createdBy,omitempty" db:"created_by"`
 	UpdatedBy       string        `json:"updatedBy,omitempty" db:"updated_by"`
 	ProjectID       string        `json:"projectId" db:"project_uuid"`           // FK to Project.ID
+	ProjectHandle   string        `json:"-" db:"-"`                              // Project handle for gateway/analytics metadata (not persisted on API row)
 	OrganizationID  string        `json:"organizationId" db:"organization_uuid"` // FK to Organization.ID
 	CreatedAt       time.Time     `json:"createdAt,omitempty" db:"created_at"`
 	UpdatedAt       time.Time     `json:"updatedAt,omitempty" db:"updated_at"`

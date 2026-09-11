@@ -2,7 +2,12 @@ package constants
 
 const (
 	// AnnotationProjectID is the domain-prefixed annotation key for project identity on API resources.
+	// Control-plane deployments stamp the internal project UUID here. Gateway import still
+	// accepts a project handle in this key for DP-originated artifacts.
 	AnnotationProjectID = "gateway.api-platform.wso2.com/project-id"
+	// AnnotationProjectHandle is the user-facing project handle used for analytics
+	// (e.g. Moesif metadata.projectId). Prefer this over AnnotationProjectID when both are set.
+	AnnotationProjectHandle = "gateway.api-platform.wso2.com/project-handle"
 	// DeprecatedLabelProjectID is the bare label key for project identity (deprecated; use AnnotationProjectID).
 	DeprecatedLabelProjectID = "project-id"
 	// AnnotationArtifactID is the annotation key that pins the artifact UUID on an API resource.

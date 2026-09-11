@@ -109,22 +109,28 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	api := &model.API{}
 
 	query := `
-		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
-			project_uuid, organization_uuid, lifecycle_status, configuration, origin, data_version, created_at, updated_at
-		FROM rest_apis
-		WHERE uuid = ? AND organization_uuid = ?
+		SELECT r.uuid, r.handle, r.display_name, r.description, r.version, r.created_by, r.updated_by,
+			r.project_uuid, r.organization_uuid, r.lifecycle_status, r.configuration, r.origin, r.data_version,
+			r.created_at, r.updated_at, p.handle
+		FROM rest_apis r
+		LEFT JOIN projects p ON p.uuid = r.project_uuid AND p.organization_uuid = r.organization_uuid
+		WHERE r.uuid = ? AND r.organization_uuid = ?
 	`
 
 	var configJSON sql.NullString
 	var createdBy, updatedBy sql.NullString
+	var projectHandle sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID).Scan(
 		&api.ID, &api.Handle, &api.Name, &api.Description,
 		&api.Version, &createdBy, &updatedBy, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
-		&configJSON, &api.Origin, &api.DataVersion, &api.CreatedAt, &api.UpdatedAt)
+		&configJSON, &api.Origin, &api.DataVersion, &api.CreatedAt, &api.UpdatedAt, &projectHandle)
 	api.Kind = constants.RestApi
 	api.CreatedBy = createdBy.String
 	if updatedBy.Valid {
 		api.UpdatedBy = updatedBy.String
+	}
+	if projectHandle.Valid {
+		api.ProjectHandle = projectHandle.String
 	}
 
 	if err != nil {
