@@ -14,11 +14,43 @@ enabled = true
 [controller.server]
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
+[controller.server.xds_tls]
+# mTLS on the main xDS server (serves Envoy), using the dev CA/certs
+# provisioned by scripts/setup.sh into gateway-controller/xds-certs (mounted
+# at /app/xds-certs, the default cert_file/key_file/client_ca_file path --
+# see defaultConfig() in pkg/config/config.go). Enabled by default -- driven
+# by the same XDS_TLS_ENABLED var (api-platform.env) that gateway-runtime's
+# entrypoint uses to decide whether Envoy dials this port in TLS or
+# plaintext, so both sides of the connection flip together. Set
+# XDS_TLS_ENABLED=false in api-platform.env to fall back to plaintext xDS.
+enabled = '{{ env "XDS_TLS_ENABLED" "true" }}'
+allowed_client_identities = ["spiffe://api-platform/gateway-runtime/envoy"]
+
+[controller.policy_server.tls]
+# Same setup as server.xds_tls above, for the policy xDS server (serves the
+# policy-engine). Distinct client identity -- the policy-engine presents its
+# own cert (POLICY_ENGINE_XDS_CLIENT_*_PATH in docker-compose.yaml), not
+# Envoy's. Also gated by XDS_TLS_ENABLED, same as above.
+enabled = '{{ env "XDS_TLS_ENABLED" "true" }}'
+allowed_client_identities = ["spiffe://api-platform/gateway-runtime/policy-engine"]
+
 [controller.storage]
 type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
 
 [controller.storage.sqlite]
 path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
+
+[policy_engine.xds.tls]
+# Client-side counterpart to controller.policy_server.tls above -- this
+# policy-engine subprocess (forked by gateway-runtime's docker-entrypoint.sh
+# into the same container as Envoy) presents its own POLICY_ENGINE_XDS_CLIENT_*
+# identity (set in docker-compose.yaml), distinct from Envoy's XDS_CLIENT_*
+# cert, since controller.policy_server.tls.allowed_client_identities only
+# allows the policy-engine identity.
+enabled = '{{ env "POLICY_ENGINE_XDS_TLS_ENABLED" (env "XDS_TLS_ENABLED" "true") }}'
+cert_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CERT_PATH" (env "XDS_CLIENT_CERT_PATH" "") }}'
+key_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_KEY_PATH" (env "XDS_CLIENT_KEY_PATH" "") }}'
+ca_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CA_PATH" (env "XDS_CLIENT_CA_PATH" "") }}'
 
 [policy_engine.logging]
 level = "info"

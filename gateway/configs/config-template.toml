@@ -53,10 +53,16 @@ ecdh_curves = "X25519,P-256"
 # Starts the main xDS gRPC server (serves Envoy) as mutual TLS on its own
 # dedicated `port` below, in place of the plaintext listener on
 # server.xds_port above -- same either/or relationship server.tls above has
-# with server.api_port. Off by default: Envoy's xds_cluster
-# (router/config/config-override.yaml) must be given a matching client
-# cert/CA and pointed at this port before this is turned on, or the
-# connection will fail closed.
+# with server.api_port. Envoy's xds_cluster (router/config/config-
+# override.yaml) must be given a matching client cert/CA and pointed at
+# this port before this is turned on, or the connection will fail closed.
+#
+# Enabled by default in this repo's shipped configs/config.toml (via the
+# XDS_TLS_ENABLED env var -- see scripts/setup.sh, which provisions the dev
+# CA/server/client certs this needs) and off by default in the binary's own
+# built-in fallback (used when no config file value is present at all, e.g.
+# most unit/integration tests) -- a hand-written config that omits this
+# section entirely gets the binary's off default, not this file's on.
 enabled = false
 port = 18443
 cert_file = ""
@@ -108,10 +114,12 @@ port = 18001
 # Starts the policy xDS gRPC server (serves the policy-engine) as mutual
 # TLS on its own dedicated `port` below, in place of the plaintext listener
 # on policy_server.port above -- same either/or relationship
-# server.xds_tls has with server.xds_port. Off by default:
-# policy_engine.xds.tls below must be given a matching client cert/CA and
-# pointed at this port before this is turned on, or the connection will
-# fail closed.
+# server.xds_tls has with server.xds_port. policy_engine.xds.tls below must
+# be given a matching client cert/CA and pointed at this port before this
+# is turned on, or the connection will fail closed.
+#
+# Same on-by-default-in-configs/config.toml / off-by-default-in-the-binary
+# split as server.xds_tls above -- see its comment.
 enabled = false
 port = 18444
 # Path to TLS certificate file (required if TLS is enabled)
@@ -571,7 +579,7 @@ max_reconnect_delay = "60s"
 
 [policy_engine.xds.tls]
 # Mutual TLS for this policy-engine's connection to gateway-controller's
-# policy xDS server. Off by default; must be enabled together with
+# policy xDS server. Must be enabled together with
 # controller.policy_server.tls above (and this cert's identity added to
 # controller.policy_server.tls.allowed_client_identities) -- the server
 # offers no server-only TLS mode for xDS, so enabling only one side leaves
@@ -603,7 +611,11 @@ max_reconnect_delay = "60s"
 # deliberately shares one client identity across both legs; otherwise set
 # POLICY_ENGINE_XDS_CLIENT_* explicitly, as this repo's own docker-compose
 # files do.
-enabled = '{{ env "POLICY_ENGINE_XDS_TLS_ENABLED" (env "XDS_TLS_ENABLED" "false") }}'
+#
+# Literal default is "true" (enabled), matching server.xds_tls/
+# policy_server.tls above -- set XDS_TLS_ENABLED=false (api-platform.env)
+# to fall back to plaintext xDS across all three legs at once.
+enabled = '{{ env "POLICY_ENGINE_XDS_TLS_ENABLED" (env "XDS_TLS_ENABLED" "true") }}'
 cert_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CERT_PATH" (env "XDS_CLIENT_CERT_PATH" "") }}'
 key_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_KEY_PATH" (env "XDS_CLIENT_KEY_PATH" "") }}'
 ca_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CA_PATH" (env "XDS_CLIENT_CA_PATH" "") }}'

@@ -237,7 +237,7 @@ dist: clean-dist ## Build standalone gateway distribution zip
 	@cp build.yaml build-manifest.yaml $(DIST_DIR)/
 	@cp -R configs/. $(DIST_DIR)/configs/
 	@cp -R observability $(DIST_DIR)/
-	@cp gateway-controller/certificates/default-listener.crt   $(DIST_DIR)/resources/certificates/
+	@cp gateway-controller/certificates/default-listener.crt $(DIST_DIR)/resources/certificates/
 	@cp gateway-controller/listener-certs/default-listener.crt $(DIST_DIR)/resources/listener-certs/
 	@cp gateway-controller/listener-certs/default-listener.key $(DIST_DIR)/resources/listener-certs/
 	@cp -R resources/secure-backend/. $(DIST_DIR)/resources/secure-backend/
