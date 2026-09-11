@@ -8,11 +8,11 @@
  */
 
 import { useMemo, useState } from 'react';
+import { PageContent, Typography } from '@wso2/oxygen-ui';
 
 import type { CloudHostPort } from './hostPort';
 import ManagedPortalDetail from './ManagedPortalDetail';
 import ManagedPortalsList from './ManagedPortalsList';
-import { createMockPortalPort } from './mockPort';
 import { PortalFeatureProvider } from './portContext';
 import { createRealPortalPort, resolveApiBase } from './realPort';
 
@@ -22,14 +22,27 @@ export type ManagedPortalsPageProps = {
 };
 
 export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
-  // Real port when a platform-api base is configured, otherwise an in-memory mock (tests / storybook).
+  // Fail closed when the platform-api base is missing; tests / storybook build the mock port directly.
   const portalPort = useMemo(() => {
     const base = resolveApiBase();
-    return base ? createRealPortalPort(base, port.orgHandle) : createMockPortalPort();
+    return base ? createRealPortalPort(base, port.orgHandle) : null;
   }, [port.orgHandle]);
 
   // Local state (no URL param) keeps react-router out of this feature package; refresh loses the selection.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  if (!portalPort) {
+    return (
+      <PageContent fullWidth>
+        <Typography variant="h5">Managed API Portals</Typography>
+        <Typography color="error" sx={{ mt: 2 }}>
+          Managed API Portals is not available: platform-api base URL is not
+          configured. Set window.__RUNTIME_CONFIG__.platformApiBaseUrl (or
+          window.config.platformApiBaseUrl) on the host to enable this feature.
+        </Typography>
+      </PageContent>
+    );
+  }
 
   return (
     <PortalFeatureProvider value={{ port: portalPort, host: port }}>

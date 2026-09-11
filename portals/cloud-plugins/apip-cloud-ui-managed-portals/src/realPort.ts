@@ -22,6 +22,9 @@ const CSRF_HEADER = 'X-Requested-By';
 const CSRF_HEADER_VALUE = 'api-control-plane';
 const ORG_HEADER = 'X-Org-Id';
 
+// Bounded so a stalled BFF request can't leave UI mutations pending indefinitely.
+const REQUEST_TIMEOUT_MS = 30_000;
+
 type WindowRuntimeConfig = Partial<{
   platformApiBaseUrl: string;
   PLATFORM_API_BASE_URL: string;
@@ -55,17 +58,30 @@ async function request<T>(
   body?: unknown
 ): Promise<T> {
   const mutating = method !== 'GET';
-  const response = await fetch(`${base}${path}`, {
-    method,
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      [ORG_HEADER]: orgRef,
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...(mutating ? { [CSRF_HEADER]: CSRF_HEADER_VALUE } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      method,
+      credentials: 'same-origin',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        [ORG_HEADER]: orgRef,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(mutating ? { [CSRF_HEADER]: CSRF_HEADER_VALUE } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  } catch (err) {
+    if ((err as { name?: string }).name === 'AbortError') {
+      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
@@ -103,9 +119,13 @@ type WireEnvironment = { name?: string; displayName?: string };
 type WireEnvironmentList = { count?: number; list?: WireEnvironment[] };
 
 function fromWire(w: WirePortal): ManagedPortal {
+  const identifier = w.id ?? w.handle;
+  if (!identifier) {
+    throw new Error('Portal response is missing both id and handle');
+  }
   return {
-    id: w.id ?? w.handle ?? '',
-    handle: w.handle ?? w.id ?? '',
+    id: identifier,
+    handle: w.handle ?? identifier,
     name: w.name,
     description: w.description ?? undefined,
     url: w.url,

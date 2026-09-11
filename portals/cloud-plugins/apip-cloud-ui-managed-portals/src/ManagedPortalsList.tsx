@@ -137,7 +137,16 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                   <TableRow
                     key={portal.id}
                     hover
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Open ${portal.name}`}
                     onClick={() => onSelect(portal.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelect(portal.id);
+                      }
+                    }}
                     sx={{ cursor: 'pointer' }}
                   >
                     <TableCell sx={{ minWidth: 240 }}>
@@ -183,7 +192,11 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
       {/* Create portal */}
       <Dialog
         open={createOpen}
-        onClose={() => (submitting ? undefined : setCreateOpen(false))}
+        onClose={() => {
+          if (submitting) return;
+          resetCreateForm();
+          setCreateOpen(false);
+        }}
         fullWidth
         maxWidth="sm"
       >
@@ -229,7 +242,10 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
           <Button
             variant="outlined"
             color="secondary"
-            onClick={() => setCreateOpen(false)}
+            onClick={() => {
+              resetCreateForm();
+              setCreateOpen(false);
+            }}
             disabled={submitting}
           >
             Cancel

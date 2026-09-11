@@ -22,9 +22,9 @@ const delay = <T>(value: T, ms = 300): Promise<T> =>
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
-/** Builds an in-memory PortalPort, optionally seeded. */
+/** Builds an in-memory PortalPort, optionally seeded. Seed is copied so callers can reuse it across instances. */
 export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
-  const portals: ManagedPortal[] = seed ?? [];
+  const portals: ManagedPortal[] = seed ? clone(seed) : [];
 
   return {
     async list() {
@@ -48,7 +48,7 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
         handle,
         name,
         description: input.description?.trim() || undefined,
-        loginEnvironment: input.loginEnvironment?.trim() || 'prod',
+        loginEnvironment: input.loginEnvironment?.trim() || 'production',
         url: `https://pending-${handle}.portals.invalid`,
         updatedAt: new Date().toISOString(),
       };
