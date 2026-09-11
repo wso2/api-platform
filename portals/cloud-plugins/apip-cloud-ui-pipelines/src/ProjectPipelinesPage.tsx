@@ -162,9 +162,6 @@ const ProjectPipelinesPage: FC<ProjectPipelinesPageProps> = ({
             <Stack direction="row" alignItems="center" spacing={1.5} useFlexGap flexWrap="wrap">
               {selectedPipeline.stages.map((stage, index) => {
                 const environment = environments.find((item) => item.id === stage.environmentId);
-                const gateway = environment?.gateways.find(
-                  (item) => item.id === stage.defaultGatewayId
-                );
                 return (
                   <Box
                     key={stage.id}
@@ -177,7 +174,6 @@ const ProjectPipelinesPage: FC<ProjectPipelinesPageProps> = ({
                     ) : null}
                     <PipelineStageCard
                       environmentName={environment?.name ?? stage.environmentId}
-                      gatewayName={gateway?.name ?? stage.defaultGatewayId}
                       critical={environment?.critical}
                     />
                   </Box>

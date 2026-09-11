@@ -9,31 +9,23 @@
 
 /**
  * The plugin speaks the platform-api pipeline shape directly — `promotionPaths`
- * and `defaultGateways` are the wire fields, read and written verbatim (no
- * intermediate model, no translation layer). Environments are referenced by
- * their name, exactly as the API does. `Environment`/`Gateway` are the only
- * derived types: reference data assembled from `/environments` + `/managed-gateways`
- * to render names, gateways, and the "Critical" badge.
+ * is the wire field, read and written verbatim (no intermediate model, no
+ * translation layer). Environments are referenced by their name, exactly as the
+ * API does. `Environment` is the only derived type: reference data from
+ * `/environments` to render names and the "Critical" badge.
+ *
+ * A pipeline says nothing about gateways. Which gateway an environment deploys
+ * to is the default marked on the gateway itself when it is onboarded, so it is
+ * the managed-gateways feature that owns it, not this one.
  */
 
 /**
- * A managed gateway available in an environment. `name` is its display label —
- * the gateway's display name, falling back to its resolved host, then its id.
- */
-export type Gateway = {
-  id: string;
-  name: string;
-};
-
-/**
- * A deployment environment plus the managed gateways bound to it (sourced from
- * `/managed-gateways`, grouped by environment name). `critical` mirrors the
- * API's `isProduction` and drives the "Critical" badge.
+ * A deployment environment. `critical` mirrors the API's `isProduction` and
+ * drives the "Critical" badge.
  */
 export type Environment = {
   id: string;
   name: string;
-  gateways: Gateway[];
   critical?: boolean;
 };
 
@@ -48,25 +40,12 @@ export type PromotionPath = {
 };
 
 /**
- * The default gateway for one environment of a pipeline. Only environments with
- * more than one gateway need an entry; a single-gateway environment defaults to
- * it implicitly (the API fills it in).
- */
-export type DefaultGateway = {
-  environment: string;
-  gatewayId: string;
-};
-
-/**
- * One environment of a pipeline in promotion order, with the default gateway APIs
- * promote to there. A view projection of `promotionPaths` + `defaultGateways`,
- * assembled for the stage-card chain (see `buildStages`). `environmentId`/
- * `defaultGatewayId` reference the assembled `Environment`/`Gateway` ids.
+ * One environment of a pipeline in promotion order. A view projection of
+ * `promotionPaths`, assembled for the stage-card chain (see `buildStages`).
  */
 export type PipelineStage = {
   id: string;
   environmentId: string;
-  defaultGatewayId: string;
 };
 
 export type Pipeline = {
@@ -74,17 +53,15 @@ export type Pipeline = {
   id: string;
   name: string;
   promotionPaths: PromotionPath[];
-  defaultGateways: DefaultGateway[];
   /** True for the organization's default pipeline (the one named `default`). */
   isDefault: boolean;
-  /** Promotion-ordered stages, derived from `promotionPaths` + `defaultGateways`. */
+  /** Promotion-ordered stages, derived from `promotionPaths`. */
   stages: PipelineStage[];
 };
 
 export type CreatePipelineInput = {
   name: string;
   promotionPaths: PromotionPath[];
-  defaultGateways: DefaultGateway[];
 };
 
 export type UpdatePipelineInput = CreatePipelineInput & {

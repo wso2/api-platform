@@ -13,15 +13,12 @@ import { X } from '@wso2/oxygen-ui-icons-react';
 
 export type PipelineStageCardProps = {
   environmentName: string;
-  /** The stage's default gateway name — the only one shown, even when the environment has others. */
-  gatewayName: string;
   critical?: boolean;
   onRemove?: () => void;
 };
 
 const PipelineStageCard: FC<PipelineStageCardProps> = ({
   environmentName,
-  gatewayName,
   critical,
   onRemove,
 }) => {
@@ -56,9 +53,6 @@ const PipelineStageCard: FC<PipelineStageCardProps> = ({
             />
           ) : null}
         </Box>
-        <Typography variant="caption" color="text.secondary">
-          {gatewayName}
-        </Typography>
       </Box>
       {onRemove ? (
         <IconButton

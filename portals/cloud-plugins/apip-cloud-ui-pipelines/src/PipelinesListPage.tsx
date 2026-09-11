@@ -35,7 +35,7 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import PipelineStageCard from './components/PipelineStageCard';
 import type { Environment, Pipeline } from './types';
-import { isLinearPipeline, orderEnvironments, resolveGatewayName } from './utils';
+import { isLinearPipeline, orderEnvironments } from './utils';
 
 export type PipelinesListPageProps = {
   pipelines: Pipeline[];
@@ -221,7 +221,6 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
                           ) : null}
                           <PipelineStageCard
                             environmentName={environment?.name ?? environmentName}
-                            gatewayName={resolveGatewayName(pipeline, environments, environmentName)}
                             critical={environment?.critical}
                           />
                         </Box>

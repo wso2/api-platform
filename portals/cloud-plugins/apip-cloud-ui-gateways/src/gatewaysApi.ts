@@ -39,6 +39,7 @@ type ManagedGatewayDTO = {
   updatedAt?: string;
   environment?: string;
   host?: string;
+  isDefault?: boolean;
 };
 
 const normalizeType = (functionalityType?: string): GatewayType =>
@@ -59,6 +60,7 @@ const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
   url: dto.host ?? '',
   status: dto.isActive ? 'active' : 'inactive',
   isCritical: dto.isCritical ?? false,
+  isDefault: dto.isDefault ?? false,
   version: dto.version,
   createdAt: dto.createdAt ?? '',
   updatedAt: dto.updatedAt ?? '',
@@ -86,14 +88,18 @@ export function createGatewaysClient(apiFetch: ApiFetch) {
         functionalityType: input.type,
         description: input.description,
         isCritical: false,
+        isDefault: input.isDefault ?? false,
       });
     },
     async updateGateway(id: string, input: GatewayInput): Promise<void> {
-      // Only display name and description are mutable; environment, type, host
-      // and version are fixed at creation and rejected by the update endpoint.
+      // Only display name, description and the default marking are mutable;
+      // environment, type, host and version are fixed at creation and rejected by
+      // the update endpoint. isDefault is sent only when asking for the default:
+      // the API treats false as "leave it alone", never as "clear it".
       await apiFetch('PUT', `/managed-gateways/${encodeURIComponent(id)}`, {
         displayName: input.name,
         description: input.description,
+        ...(input.isDefault ? { isDefault: true } : {}),
       });
     },
     async deleteGateway(id: string): Promise<void> {

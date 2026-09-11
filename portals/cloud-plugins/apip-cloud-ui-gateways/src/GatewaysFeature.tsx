@@ -107,12 +107,22 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     void load();
   }, [load]);
 
+  // A host only ever manages its own kinds of gateway: the AI workspace shows AI
+  // gateways and their default, the publisher shows regular and event ones and
+  // theirs. Filtering here rather than in the list keeps the count, the status
+  // poll and the default badge consistent with what is on screen — the default is
+  // marked per type, so an AI default is meaningless in the publisher's view.
+  const visibleGateways = useMemo(
+    () => gateways.filter((gateway) => gatewayTypes.includes(gateway.type)),
+    [gateways, gatewayTypes]
+  );
+
   // Poll only while there is something to wait for: a gateway that is not yet
   // active. Once they are all active the interval is torn down, so a settled
   // list costs nothing. Creating another gateway makes this true again and the
   // poll restarts. Deliberately keyed on the boolean, not on `gateways`, so a
   // poll's own result does not reset the interval.
-  const awaitingStatus = gateways.some((gateway) => gateway.status !== 'active');
+  const awaitingStatus = visibleGateways.some((gateway) => gateway.status !== 'active');
 
   useEffect(() => {
     if (view !== 'list' || !awaitingStatus) return undefined;
@@ -206,12 +216,13 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   if (view === 'create' || view === 'edit') {
     const editingGateway =
-      view === 'edit' ? gateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
+      view === 'edit' ? visibleGateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
     return (
       <GatewayForm
         mode={view}
         gateway={editingGateway}
         types={gatewayTypes}
+        gateways={visibleGateways}
         environments={environments}
         onBack={() => {
           setView('list');
@@ -230,7 +241,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   return (
     <GatewaysList
-      gateways={gateways}
+      gateways={visibleGateways}
       environments={environments}
       port={port}
       onAddClick={() => setView('create')}

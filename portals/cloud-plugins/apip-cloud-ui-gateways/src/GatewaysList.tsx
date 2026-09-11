@@ -206,6 +206,12 @@ const GatewaysList: FC<GatewaysListProps> = ({
                                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                   {truncateText(gateway.name, 25)}
                                 </Typography>
+                                {/* The default is per gateway TYPE, so several
+                                    gateways in one environment can each be
+                                    marked — one per type. */}
+                                {gateway.isDefault ? (
+                                  <Chip label="Default" size="small" color="primary" />
+                                ) : null}
                               </Box>
                             </TableCell>
                             <TableCell>

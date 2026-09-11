@@ -16,17 +16,19 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import {
   Box,
   Button,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   FormLabel,
   Grid,
   PageContent,
   PageTitle,
   Stack,
+  Switch,
   TextField,
   Tooltip,
 } from '@wso2/oxygen-ui';
@@ -44,6 +46,12 @@ export type GatewayFormProps = {
   /** The gateway types this host offers. A host with only one type gets no picker. */
   types: GatewayType[];
   environments: Environment[];
+  /**
+   * The gateways already in this host's view. Used only to tell whether the one
+   * being created would be the first of its type in the chosen environment, and
+   * so the environment's default.
+   */
+  gateways: Gateway[];
   onBack: () => void;
   /** Returning a promise lets the form keep its submit button busy until the save settles. */
   onSubmit: (input: GatewayInput) => void | Promise<void>;
@@ -57,6 +65,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
   gateway,
   types,
   environments,
+  gateways,
   onBack,
   onSubmit,
 }) => {
@@ -67,6 +76,10 @@ const GatewayForm: FC<GatewayFormProps> = ({
   const showTypeField = types.length > 1;
 
   const [type, setType] = useState<GatewayType>(gateway?.type ?? types[0]);
+  // Marking is one-way: a default is handed over by marking another gateway, so
+  // an existing default's switch stays on and disabled rather than offering an
+  // "unset" that would leave the environment without one.
+  const [isDefault, setIsDefault] = useState(gateway?.isDefault ?? false);
   const [name, setName] = useState(gateway?.name ?? '');
   const [description, setDescription] = useState(gateway?.description ?? '');
   const [environmentId, setEnvironmentId] = useState(gateway?.environmentId ?? '');
@@ -84,6 +97,26 @@ const GatewayForm: FC<GatewayFormProps> = ({
     nameError ??
     (derivedHandle ? `Handle: ${derivedHandle}` : isEdit ? undefined : NAME_HELPER_TEXT);
 
+  // The backend makes the first gateway of a type in an environment its default
+  // whether or not it was asked to, so the switch shows that outcome rather than
+  // letting the form claim otherwise. It needs an environment to be true of:
+  // before one is chosen there is nothing to be the first of.
+  const isFirstOfType =
+    !isEdit &&
+    environmentId.length > 0 &&
+    !gateways.some(
+      (candidate) => candidate.environmentId === environmentId && candidate.type === type
+    );
+
+  // Re-derived whenever the chosen environment or type changes, so the switch
+  // always describes the current selection. A manual toggle afterwards sticks:
+  // `isFirstOfType` does not change when the switch does, so this does not fire
+  // and undo it.
+  useEffect(() => {
+    if (isEdit) return;
+    setIsDefault(isFirstOfType);
+  }, [isEdit, isFirstOfType]);
+
   const [submitting, setSubmitting] = useState(false);
 
   const missingRequired = name.trim().length === 0 || environmentId.length === 0;
@@ -100,6 +133,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
         description: description.trim() || undefined,
         type,
         environmentId,
+        isDefault,
       });
     } finally {
       setSubmitting(false);
@@ -170,6 +204,22 @@ const GatewayForm: FC<GatewayFormProps> = ({
                 disabled={isEdit}
               />
             </FormControl>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isDefault}
+                  // Nothing to be the default of until an environment is chosen,
+                  // and an existing default cannot be unset here — it is handed
+                  // over by marking another gateway.
+                  disabled={(gateway?.isDefault ?? false) || environmentId.length === 0}
+                  onChange={(event) => setIsDefault(event.target.checked)}
+                />
+              }
+              label="Default gateway for this environment"
+            />
           </Grid>
         </Grid>
 

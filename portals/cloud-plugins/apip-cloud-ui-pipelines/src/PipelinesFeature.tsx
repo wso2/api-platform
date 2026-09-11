@@ -18,7 +18,6 @@ import {
   buildStages,
   DEFAULT_PIPELINE_NAME,
   type EnvironmentDTO,
-  type ManagedGatewayDTO,
 } from './utils';
 
 export type PipelinesFeatureProps = {
@@ -26,7 +25,6 @@ export type PipelinesFeatureProps = {
 };
 
 type EnvironmentListDTO = { count?: number; list?: EnvironmentDTO[] };
-type ManagedGatewayListDTO = { list?: ManagedGatewayDTO[] };
 // The pipeline list DTO is the API shape verbatim; only the arrays are optional
 // on the wire, so reading is a straight pass-through once they are defaulted.
 type PipelineDTO = Partial<Pipeline> & { id: string; name: string };
@@ -36,7 +34,7 @@ type PipelineListDTO = { count?: number; list?: PipelineDTO[] };
  * The extension's `render(port)` result: an organization-scoped list/create/edit
  * flow over the platform-api deployment pipelines, switching view with local
  * state rather than a nested route. Pipelines are held in the API shape
- * (`promotionPaths` + `defaultGateways`) and sent back verbatim; the host-injected
+ * (`promotionPaths`) and sent back verbatim; the host-injected
  * `apiFetch` is the only transport — the component never sees a token or a URL.
  */
 const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
@@ -56,15 +54,9 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
     setLoading(true);
     setError(null);
     try {
-      const [environmentList, gatewayList] = await Promise.all([
-        apiFetch<EnvironmentListDTO>('GET', '/environments'),
-        apiFetch<ManagedGatewayListDTO>('GET', '/managed-gateways'),
-      ]);
+      const environmentList = await apiFetch<EnvironmentListDTO>('GET', '/environments');
       const pipelineList = await apiFetch<PipelineListDTO>('GET', '/pipelines');
-      const assembledEnvironments = assembleEnvironments(
-        environmentList?.list ?? [],
-        gatewayList?.list ?? []
-      );
+      const assembledEnvironments = assembleEnvironments(environmentList?.list ?? []);
       setEnvironments(assembledEnvironments);
       setPipelines(
         (pipelineList?.list ?? []).map((dto) => {
@@ -72,7 +64,6 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
             id: dto.id,
             name: dto.name,
             promotionPaths: dto.promotionPaths ?? [],
-            defaultGateways: dto.defaultGateways ?? [],
           };
           return {
             ...base,
