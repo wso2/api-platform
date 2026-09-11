@@ -48,6 +48,7 @@ data:
             port: 18001
             tls:
               enabled: false
+              port: 18444
               cert_file: ./certs/server.crt
               key_file: ./certs/server.key
           storage:

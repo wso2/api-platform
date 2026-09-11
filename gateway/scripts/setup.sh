@@ -13,8 +13,11 @@
 # mode: this script provisions everything the gateway needs, and the server fails
 # closed with a descriptive error if a required key or certificate is missing.
 #
-# Provisions:
-#   - listener-certs/default-listener.{crt,key}   : router HTTPS listener certificate
+# Provisions (all under one listener-certs/ directory -- see CERTS_DIR below):
+#   - listener-certs/default-listener.{crt,key}                       : router HTTPS listener certificate
+#   - listener-certs/{ca,server,envoy-client,policy-engine-client}.{crt,key} : xDS mutual TLS
+#       between gateway-controller and gateway-runtime (Envoy + Policy Engine), enabled by
+#       default (XDS_TLS_ENABLED in docker-compose.yaml).
 #   - aesgcm-keys/default-aesgcm256-v1.bin         : AES-256 at-rest encryption key. The gateway's
 #       docker compose bind-mounts this host file into the controller.
 #   - api-platform.env                            : required runtime defaults for the gateway-runtime
@@ -35,10 +38,17 @@ DOTENV_FILE=".env"
 PROJECT_NAME_PREFIX="wso2apip-gateway"
 PROJECT_NAME=""
 
-# Router downstream (HTTPS ingress) listener cert/key. Referenced by
-# [router.downstream_tls] in config.toml as ./listener-certs/default-listener.{crt,key}
-# and mounted into the gateway-controller. The repo checkout keeps these under
-# gateway-controller/listener-certs; the distribution zip stages them under resources/.
+# Single directory for every TLS cert/key this script provisions: the router downstream
+# (HTTPS ingress) listener cert/key (referenced by [router.downstream_tls] in config.toml
+# as ./listener-certs/default-listener.{crt,key}, mounted into the gateway-controller at
+# that path) and the xDS mutual TLS material (gateway-controller's server.xds_tls/
+# policy_server.tls "server" cert plus the CA and Envoy/Policy-Engine client certs,
+# referenced by config.toml's default cert_file/key_file/client_ca_file paths as
+# ./xds-certs/... and mounted into both gateway-controller and gateway-runtime). One host
+# directory is bind-mounted at both container paths (see docker-compose.yaml) so there's a
+# single place to look, even though the two Go-side defaults still expect two directory
+# names inside the container. The repo checkout keeps this under gateway-controller/listener-certs;
+# the distribution zip stages it under resources/.
 if [[ -d gateway-controller/listener-certs ]]; then
   CERTS_DIR="gateway-controller/listener-certs"
 else
@@ -67,10 +77,10 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: ./scripts/setup.sh [--force] [--certs-only]
 
-  --force        regenerate the certificate and encryption key (rotates them), rewrite api-platform.env,
+  --force        regenerate the certificates and encryption key (rotates them), rewrite api-platform.env,
                  and re-provision the admin credentials (rotates the password)
-  --certs-only   generate only the listener TLS certificate (skip the encryption key, api-platform.env,
-                 and .env)
+  --certs-only   generate only the TLS certificates (listener + xDS mTLS), skip the encryption key,
+                 api-platform.env, and .env
 
 Admin credentials (gateway-controller REST/management API basic auth):
   Set ADMIN_USERNAME and/or ADMIN_PASSWORD in the environment to run non-interactively (CI).
@@ -156,6 +166,68 @@ gen_cert() {
   chmod "$FILE_MODE" "$CERTS_DIR/default-listener.crt"
   restrict_secret_file "$CERTS_DIR/default-listener.key"
   log "  - self-signed listener certificate generated at $CERTS_DIR/default-listener.crt"
+}
+
+# Issues one client certificate under $CERTS_DIR/ca.{crt,key}: $1 is the file basename
+# (envoy-client / policy-engine-client), $2 is the SPIFFE URI SAN identifying it to
+# gateway-controller's allowed_client_identities check, $3 is a scratch directory for the CSR.
+gen_xds_client_cert() {
+  local name="$1" spiffe="$2" tmp="$3"
+  openssl ecparam -name prime256v1 -genkey -noout -out "$CERTS_DIR/$name.key" 2>/dev/null
+  openssl req -new -key "$CERTS_DIR/$name.key" \
+    -subj "/O=WSO2 API Platform/CN=$name" -out "$tmp/$name.csr" >/dev/null 2>&1
+  openssl x509 -req -in "$tmp/$name.csr" -CA "$CERTS_DIR/ca.crt" -CAkey "$CERTS_DIR/ca.key" \
+    -CAcreateserial -CAserial "$tmp/ca.srl" -days 825 -sha256 \
+    -extfile <(printf 'basicConstraints=CA:FALSE\nkeyUsage=digitalSignature\nextendedKeyUsage=clientAuth\nsubjectAltName=URI:%s\n' "$spiffe") \
+    -out "$CERTS_DIR/$name.crt" >/dev/null 2>&1
+}
+
+gen_xds_certs() {
+  if [[ "$FORCE" == false && -f "$CERTS_DIR/ca.crt" && -f "$CERTS_DIR/server.crt" \
+        && -f "$CERTS_DIR/envoy-client.crt" && -f "$CERTS_DIR/policy-engine-client.crt" ]]; then
+    chmod "$FILE_MODE" "$CERTS_DIR"/*.crt
+    restrict_secret_file "$CERTS_DIR/ca.key"
+    restrict_secret_file "$CERTS_DIR/server.key"
+    restrict_secret_file "$CERTS_DIR/envoy-client.key"
+    restrict_secret_file "$CERTS_DIR/policy-engine-client.key"
+    log "  - $CERTS_DIR/*.crt already exist — keeping them"
+    return
+  fi
+  mkdir -p "$CERTS_DIR"
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  openssl ecparam -name prime256v1 -genkey -noout -out "$CERTS_DIR/ca.key" 2>/dev/null
+  openssl req -x509 -new -key "$CERTS_DIR/ca.key" -sha256 -days 3650 \
+    -subj "/O=WSO2 API Platform/CN=API Platform xDS Dev CA" \
+    -out "$CERTS_DIR/ca.crt" >/dev/null 2>&1
+
+  # Server cert presented by gateway-controller on server.xds_tls.port / policy_server.tls.port.
+  # SANs cover every docker-compose service/container name gateway-runtime dials this
+  # controller as across every compose file that shares this cert directory --
+  # docker-compose.yaml/docker-compose.debug.yaml (gateway-controller), the IT suite's
+  # single-controller composes (it-gateway-controller), and its Postgres/EventHub replica
+  # sync compose (it-gateway-controller-xds, the controller gateway-runtime actually
+  # dials there) -- plus localhost/loopback for a controller reached directly from the host
+  # while debugging.
+  openssl ecparam -name prime256v1 -genkey -noout -out "$CERTS_DIR/server.key" 2>/dev/null
+  openssl req -new -key "$CERTS_DIR/server.key" \
+    -subj "/O=WSO2 API Platform/CN=gateway-controller" -out "$tmp/server.csr" >/dev/null 2>&1
+  openssl x509 -req -in "$tmp/server.csr" -CA "$CERTS_DIR/ca.crt" -CAkey "$CERTS_DIR/ca.key" \
+    -CAcreateserial -CAserial "$tmp/ca.srl" -days 825 -sha256 \
+    -extfile <(printf 'basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:gateway-controller,DNS:it-gateway-controller,DNS:it-gateway-controller-xds,DNS:localhost,IP:127.0.0.1\n') \
+    -out "$CERTS_DIR/server.crt" >/dev/null 2>&1
+
+  gen_xds_client_cert "envoy-client" "spiffe://api-platform/gateway-runtime/envoy" "$tmp"
+  gen_xds_client_cert "policy-engine-client" "spiffe://api-platform/gateway-runtime/policy-engine" "$tmp"
+
+  chmod "$FILE_MODE" "$CERTS_DIR"/*.crt
+  restrict_secret_file "$CERTS_DIR/ca.key"
+  restrict_secret_file "$CERTS_DIR/server.key"
+  restrict_secret_file "$CERTS_DIR/envoy-client.key"
+  restrict_secret_file "$CERTS_DIR/policy-engine-client.key"
+  log "  - xDS mTLS dev CA + server/client certificates generated at $CERTS_DIR"
 }
 
 gen_encryption_key() {
@@ -309,6 +381,9 @@ provision_project_name() {
 log "Provisioning listener TLS certificate ..."
 gen_cert
 
+log "Provisioning xDS mutual TLS certificates ..."
+gen_xds_certs
+
 if [[ "$CERTS_ONLY" == true ]]; then
   exit 0
 fi
@@ -411,6 +486,10 @@ cat > "$ENV_FILE" <<EOF
 # Required runtime settings — read directly by the gateway-runtime entrypoint / policy-engine:
 GATEWAY_CONTROLLER_HOST=gateway-controller
 LOG_LEVEL=info
+
+# xDS mutual TLS between gateway-controller and gateway-runtime (Envoy + Policy Engine) is
+# enabled by default via XDS_TLS_ENABLED in docker-compose.yaml (not here) -- edit it there
+# (both services) to fall back to plaintext xDS.
 
 APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME=$ADMIN_USERNAME
 APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH=$ADMIN_PASSWORD_HASH

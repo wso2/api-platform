@@ -33,6 +33,12 @@ services:
       - "9094:9092"   # Admin API
       - "9011:9091"   # Metrics
       - "9093:9093"   # REST API TLS
+    environment:
+      # Enabled by default: mTLS on server.xds_tls (serves Envoy) and
+      # policy_server.tls (serves the Policy Engine) -- see configs/
+      # config.toml, which reads this same var. Set to "false" here (and in
+      # gateway-runtime's environment below) to fall back to plaintext xDS.
+      - XDS_TLS_ENABLED=true
     env_file:
       - path: api-platform.env
         required: true
@@ -41,7 +47,8 @@ services:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
-      - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
+      - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only: HTTPS listener certificate
+      - ./gateway-controller/listener-certs:/app/xds-certs:ro  # Read-only: mTLS server certs for server.xds_tls / policy_server.tls
       - ./gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro  # AES-256 at-rest encryption key
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -64,6 +71,24 @@ services:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
       - "9004:9004"   # Health
+    environment:
+      # Enabled by default, matching gateway-controller above -- set both to
+      # "false" together to fall back to plaintext xDS (e.g. controller and
+      # runtime are not co-located, or a peer build that doesn't support
+      # this yet). Client cert/key paths for mutual TLS to gateway-
+      # controller's xDS servers (server.xds_tls / policy_server.tls).
+      # Envoy and the policy-engine present distinct client identities, so
+      # each leg gets its own cert/key -- both are checked against the
+      # shared dev CA mounted below. See gateway-controller/listener-certs and
+      # gateway-runtime/docker-entrypoint.sh for how these paths are
+      # consumed.
+      - XDS_TLS_ENABLED=true
+      - XDS_CLIENT_CERT_PATH=/etc/xds-certs/envoy-client.crt
+      - XDS_CLIENT_KEY_PATH=/etc/xds-certs/envoy-client.key
+      - XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
+      - POLICY_ENGINE_XDS_CLIENT_CERT_PATH=/etc/xds-certs/policy-engine-client.crt
+      - POLICY_ENGINE_XDS_CLIENT_KEY_PATH=/etc/xds-certs/policy-engine-client.key
+      - POLICY_ENGINE_XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
     env_file:
       - path: api-platform.env
         required: true
@@ -71,6 +96,7 @@ services:
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
+      - ./gateway-controller/listener-certs:/etc/xds-certs:ro  # Read-only: mTLS client certs for Envoy + policy-engine xDS connections
     networks:
       - gateway-network
 

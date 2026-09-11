@@ -53,14 +53,17 @@ services:
     ports:
       - "9090:9090"   # REST API
       - "9092:9092"   # Admin API
-      - "18000:18000" # xDS gRPC
-      - "18001:18001"
+      - "18443:18443" # xDS gRPC mTLS (Router)
+      - "18444:18444" # xDS gRPC mTLS (Policy Engine)
       - "9091:9091"   # Metrics
     environment:
       - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
       - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
       - GOCOVERDIR=/coverage
+      # Enabled by default: mTLS on server.xds_tls (serves Envoy) and policy_server.tls
+      # (serves the Policy Engine) -- see test-config.toml, which reads this same var.
+      - XDS_TLS_ENABLED=true
       # Control plane (mock-platform-api) for subscription event propagation
       - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=it-mock-platform-api:9243
       - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=test-gateway-token
@@ -75,6 +78,7 @@ services:
       - ./test-config.toml:/etc/gateway-controller/config.toml:ro
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
+      - ../gateway-controller/listener-certs:/app/xds-certs:ro  # Read-only: mTLS server certs for server.xds_tls / policy_server.tls
       - ./coverage/gateway-controller:/coverage
     depends_on:
       - mock-platform-api
@@ -112,9 +116,21 @@ services:
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
       - GOCOVERDIR=/coverage
+      # Enabled by default, matching gateway-controller above. Client cert/key paths
+      # for mutual TLS to gateway-controller's xDS servers -- Envoy and the
+      # policy-engine present distinct client identities, so each leg gets its own
+      # cert/key, checked against the shared dev CA mounted below.
+      - XDS_TLS_ENABLED=true
+      - XDS_CLIENT_CERT_PATH=/etc/xds-certs/envoy-client.crt
+      - XDS_CLIENT_KEY_PATH=/etc/xds-certs/envoy-client.key
+      - XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
+      - POLICY_ENGINE_XDS_CLIENT_CERT_PATH=/etc/xds-certs/policy-engine-client.crt
+      - POLICY_ENGINE_XDS_CLIENT_KEY_PATH=/etc/xds-certs/policy-engine-client.key
+      - POLICY_ENGINE_XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
     volumes:
       - ./coverage/gateway-runtime:/coverage
       - ./test-config.toml:/etc/policy-engine/config.toml:ro
+      - ../gateway-controller/listener-certs:/etc/xds-certs:ro  # Read-only: mTLS client certs for Envoy + policy-engine xDS connections
     depends_on:
       # gateway-controller:
       #   condition: service_healthy

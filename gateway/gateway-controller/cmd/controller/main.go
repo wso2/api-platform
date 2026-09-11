@@ -419,8 +419,13 @@ func main() {
 	routerConnected := make(chan struct{})
 	policyEngineConnected := make(chan struct{})
 
-	// Start xDS gRPC server with SDS support
+	// Start xDS gRPC server with SDS support. When server.xds_tls is enabled,
+	// the server listens on its own dedicated server.xds_tls.port instead of
+	// the plaintext server.xds_port -- same either/or relationship as the
+	// REST API's server.tls, so enabling TLS never leaves the previous
+	// plaintext xDS port silently still reachable.
 	var xdsServerOpts []xds.ServerOption
+	xdsListenPort := cfg.Controller.Server.XDSPort
 	if cfg.Controller.Server.XDSTLS.Enabled {
 		xdsTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.Server.XDSTLS)
 		if err != nil {
@@ -428,8 +433,9 @@ func main() {
 			os.Exit(1)
 		}
 		xdsServerOpts = append(xdsServerOpts, xds.WithMTLS(xdsTLSConfig, cfg.Controller.Server.XDSTLS.AllowedClientIdentities))
+		xdsListenPort = cfg.Controller.Server.XDSTLS.Port
 	}
-	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Controller.Server.XDSPort, log, routerConnected, xdsServerOpts...)
+	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, xdsListenPort, log, routerConnected, xdsServerOpts...)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Error("xDS server failed", slog.Any("error", err))
@@ -450,8 +456,10 @@ func main() {
 		cancel()
 	}
 
-	// Initialize policy xDS server
-	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
+	// Initialize policy xDS server. The actual listen port (plaintext
+	// policy_server.port, or policy_server.tls.port once TLS is enabled) is
+	// logged by policyxds.Server.Start() once it's decided below.
+	log.Info("Initializing Policy xDS server")
 
 	// Initialize policy snapshot manager and runtime config store
 	policySnapshotManager := policyxds.NewSnapshotManager(log)
@@ -507,10 +515,14 @@ func main() {
 	}
 	cancel()
 
-	// Start policy xDS server in a separate goroutine
+	// Start policy xDS server in a separate goroutine. When policy_server.tls
+	// is enabled, the server listens on its own dedicated
+	// policy_server.tls.port instead of the plaintext policy_server.port --
+	// same either/or relationship as the main xDS server's server.xds_tls.
 	serverOpts := []policyxds.ServerOption{
 		policyxds.WithOnFirstConnect(policyEngineConnected),
 	}
+	policyListenPort := cfg.Controller.PolicyServer.Port
 	if cfg.Controller.PolicyServer.TLS.Enabled {
 		policyXDSTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.PolicyServer.TLS)
 		if err != nil {
@@ -518,8 +530,9 @@ func main() {
 			os.Exit(1)
 		}
 		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
+		policyListenPort = cfg.Controller.PolicyServer.TLS.Port
 	}
-	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
+	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, policyListenPort, log, serverOpts...)
 	go func() {
 		if err := policyXDSServer.Start(); err != nil {
 			log.Error("Policy xDS server failed", slog.Any("error", err))

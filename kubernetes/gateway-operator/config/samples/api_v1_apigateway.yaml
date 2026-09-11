@@ -108,6 +108,10 @@ data:
               # Enable or disable TLS
               enabled: false
 
+              # Dedicated mTLS listener port -- separate from policy_server.port
+              # above, which this replaces (not shares) once TLS is enabled.
+              port: 18444
+
               # Path to TLS certificate file (required if TLS is enabled)
               cert_file: "./certs/server.crt"
 
