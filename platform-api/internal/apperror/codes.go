@@ -133,6 +133,12 @@ const (
 	CodeApplicationExists   = "APPLICATION_EXISTS"
 )
 
+// API Portal domain codes.
+const (
+	CodeAPIPortalNotFound = "API_PORTAL_NOT_FOUND"
+	CodeAPIPortalExists   = "API_PORTAL_EXISTS"
+)
+
 // Subscription domain codes.
 const (
 	CodeSubscriptionNotFound     = "SUBSCRIPTION_NOT_FOUND"

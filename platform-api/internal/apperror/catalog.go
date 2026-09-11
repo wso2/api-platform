@@ -154,6 +154,12 @@ var (
 	ApplicationExists    = def(CodeApplicationExists, http.StatusConflict, "An application with this name already exists.")
 )
 
+// API Portal entries.
+var (
+	APIPortalNotFound = def(CodeAPIPortalNotFound, http.StatusNotFound, "The specified API Portal could not be found.")
+	APIPortalExists   = def(CodeAPIPortalExists, http.StatusConflict, "An API Portal with this handle already exists in the organization.")
+)
+
 // Subscription entries.
 var (
 	SubscriptionNotFound     = def(CodeSubscriptionNotFound, http.StatusNotFound, "The specified subscription could not be found.")

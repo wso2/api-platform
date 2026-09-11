@@ -358,6 +358,18 @@ const (
 	SortOrderQDesc SortOrderQ = "desc"
 )
 
+// Defines values for ListApiPortalsParamsSortBy.
+const (
+	ListApiPortalsParamsSortByCreatedAt ListApiPortalsParamsSortBy = "createdAt"
+	ListApiPortalsParamsSortByName      ListApiPortalsParamsSortBy = "name"
+)
+
+// Defines values for ListApiPortalsParamsSortOrder.
+const (
+	ListApiPortalsParamsSortOrderAsc  ListApiPortalsParamsSortOrder = "asc"
+	ListApiPortalsParamsSortOrderDesc ListApiPortalsParamsSortOrder = "desc"
+)
+
 // Defines values for ListApplicationsParamsSortBy.
 const (
 	ListApplicationsParamsSortByCreatedAt ListApplicationsParamsSortBy = "createdAt"
@@ -433,14 +445,14 @@ const (
 
 // Defines values for ListRESTAPIsParamsSortBy.
 const (
-	CreatedAt ListRESTAPIsParamsSortBy = "createdAt"
-	Name      ListRESTAPIsParamsSortBy = "name"
+	ListRESTAPIsParamsSortByCreatedAt ListRESTAPIsParamsSortBy = "createdAt"
+	ListRESTAPIsParamsSortByName      ListRESTAPIsParamsSortBy = "name"
 )
 
 // Defines values for ListRESTAPIsParamsSortOrder.
 const (
-	Asc  ListRESTAPIsParamsSortOrder = "asc"
-	Desc ListRESTAPIsParamsSortOrder = "desc"
+	ListRESTAPIsParamsSortOrderAsc  ListRESTAPIsParamsSortOrder = "asc"
+	ListRESTAPIsParamsSortOrderDesc ListRESTAPIsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
@@ -544,6 +556,49 @@ type AddApplicationAssociationsRequest struct {
 type AddGatewayToRESTAPIRequest struct {
 	// GatewayId Handle (URL-friendly slug) of the gateway to associate with the REST API
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// ApiPortalListItem Lightweight projection returned in collection responses (excludes the metadata blob).
+type ApiPortalListItem struct {
+	CreatedAt   time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+	Description *string   `json:"description" yaml:"description"`
+	Handle      string    `binding:"required" json:"handle" yaml:"handle"`
+	Id          string    `binding:"required" json:"id" yaml:"id"`
+	Name        string    `binding:"required" json:"name" yaml:"name"`
+	Url         string    `binding:"required" json:"url" yaml:"url"`
+}
+
+// ApiPortalListResponse defines model for ApiPortalListResponse.
+type ApiPortalListResponse struct {
+	// Count Number of items in the current response page.
+	Count      int                 `binding:"required" json:"count" yaml:"count"`
+	List       []ApiPortalListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination          `json:"pagination" yaml:"pagination"`
+}
+
+// ApiPortalMetadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+type ApiPortalMetadata map[string]interface{}
+
+// ApiPortalResponse defines model for ApiPortalResponse.
+type ApiPortalResponse struct {
+	CreatedAt   *time.Time `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Description *string    `json:"description" yaml:"description"`
+
+	// Handle URL-friendly slug. Immutable after creation. Equal to `id`.
+	Handle *string `binding:"required" json:"handle,omitempty" yaml:"handle,omitempty"`
+
+	// Id Handle (URL-friendly slug) of the API Portal, primary identifier.
+	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+
+	// Name Display name.
+	Name      string     `binding:"required" json:"name" yaml:"name"`
+	UpdatedAt *time.Time `binding:"required" json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Url Public URL of the API Portal. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
 }
 
 // Application defines model for Application.
@@ -723,6 +778,24 @@ type CreateAPIKeyResponse struct {
 
 // CreateAPIKeyResponseStatus Status of the operation
 type CreateAPIKeyResponseStatus string
+
+// CreateApiPortalRequest defines model for CreateApiPortalRequest.
+type CreateApiPortalRequest struct {
+	Description *string `json:"description" yaml:"description"`
+
+	// Handle URL-friendly slug. Must be unique within the org. Immutable after creation.
+	Handle string `binding:"required" json:"handle" yaml:"handle"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     string             `binding:"required" json:"name" yaml:"name"`
+
+	// SharedKey The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on outbound publishing calls. The portal side stores only the sha256 hash of this value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here; never returned on any read.
+	SharedKey *string `binding:"required" json:"sharedKey,omitempty" yaml:"sharedKey,omitempty"`
+
+	// Url Public URL of the API Portal to register. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
+}
 
 // CreateApplicationRequest Request body for creating an application.
 type CreateApplicationRequest struct {
@@ -2555,6 +2628,19 @@ type UpdateAPIKeyResponse struct {
 // UpdateAPIKeyResponseStatus Status of the operation
 type UpdateAPIKeyResponseStatus string
 
+// UpdateApiPortalRequest All fields optional. Only mutable fields are accepted, see field permissions in the design doc.
+type UpdateApiPortalRequest struct {
+	Description *string `json:"description" yaml:"description"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     *string            `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// SharedKey Rotate the shared key. When present, replaces the stored value. Same format as on Create. Write-only; never returned.
+	SharedKey *string `json:"sharedKey,omitempty" yaml:"sharedKey,omitempty"`
+	Url       *string `json:"url,omitempty" yaml:"url,omitempty"`
+}
+
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {
 	// Main Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
@@ -2659,6 +2745,9 @@ type UserAPIKeyListResponse struct {
 // ApiId defines model for apiId.
 type ApiId = string
 
+// ApiPortalId defines model for apiPortalId.
+type ApiPortalId = string
+
 // AppId defines model for appId.
 type AppId = string
 
@@ -2733,6 +2822,30 @@ type ServiceUnavailable = Error
 
 // Unauthorized The single error shape returned by every failed request across the API.
 type Unauthorized = Error
+
+// ListApiPortalsParams defines parameters for ListApiPortals.
+type ListApiPortalsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListApiPortalsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListApiPortalsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListApiPortalsParamsSortBy defines parameters for ListApiPortals.
+type ListApiPortalsParamsSortBy string
+
+// ListApiPortalsParamsSortOrder defines parameters for ListApiPortals.
+type ListApiPortalsParamsSortOrder string
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
@@ -3202,6 +3315,12 @@ type UpdateSubscriptionParams struct {
 	// SubscriberId Subscriber ID; must match the subscription's subscriberId.
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
+
+// CreateApiPortalJSONRequestBody defines body for CreateApiPortal for application/json ContentType.
+type CreateApiPortalJSONRequestBody = CreateApiPortalRequest
+
+// UpdateApiPortalJSONRequestBody defines body for UpdateApiPortal for application/json ContentType.
+type UpdateApiPortalJSONRequestBody = UpdateApiPortalRequest
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest

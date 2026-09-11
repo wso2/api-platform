@@ -294,6 +294,18 @@ type LLMProxyRepository interface {
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
 
+// APIPortalRepository defines the interface for API Portal persistence.
+type APIPortalRepository interface {
+	Create(portal *model.APIPortal) error
+	GetByUUID(portalID, orgUUID string) (*model.APIPortal, error)
+	GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error)
+	ListPaginated(orgUUID string, opts ListOptions) ([]*model.APIPortal, error)
+	Count(orgUUID string, search string) (int, error)
+	Update(portal *model.APIPortal) error
+	Delete(portalID, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+}
+
 // MCPProxyRepository defines the interface for MCP proxy persistence
 type MCPProxyRepository interface {
 	Create(p *model.MCPProxy) error
