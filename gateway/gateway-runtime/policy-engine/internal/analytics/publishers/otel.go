@@ -31,7 +31,6 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -64,7 +63,7 @@ const (
 	// otelCloseFlushTimeout bounds the shutdown flush when the caller's context
 	// carries no deadline.
 	otelCloseFlushTimeout = 5 * time.Second
-	// Bound retry waits to 30s to prevent an export worker from stalling and to 
+	// Bound retry waits to 30s to prevent an export worker from stalling and to
 	// match the endpoint Retry-After limit.
 	otelMaxRetryBackoff = 30 * time.Second
 	// otelPublisherName is this publisher's value for the `publisher` metric
@@ -163,10 +162,6 @@ func NewOTel(cfg *config.OTelPublisherConfig) (*OTel, error) {
 	o.initMetrics()
 	go o.run()
 
-	if u, err := url.Parse(cfg.Endpoint); err == nil && u.Scheme == "http" && !isLoopbackHost(u.Hostname()) {
-		slog.Warn("OTel publisher is exporting analytics over plaintext HTTP to a non-loopback endpoint",
-			"endpoint", cfg.Endpoint)
-	}
 	// Headers are deliberately omitted: they carry credentials.
 	slog.Info("OTel analytics publisher started",
 		"endpoint", cfg.Endpoint, "batchSize", cfg.BatchSize,
@@ -212,14 +207,6 @@ func buildOTelTLSConfig(cfg config.OTelTLSConfig) (*tls.Config, error) {
 		out.Certificates = []tls.Certificate{pair}
 	}
 	return out, nil
-}
-
-func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // Publish converts the event to an OTLP log record and enqueues it.

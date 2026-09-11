@@ -177,9 +177,9 @@ type OTelPublisherConfig struct {
 	// disables the check and lets every batch use its full budget.
 	RetryAbortQueueRatio float64 `koanf:"retry_abort_queue_ratio"`
 	// Compression is "none" (default, the OTLP spec's own default) or "gzip".
-	// gzip trades CPU on the export worker for a large egress reduction — these
-	// records are verbose JSON — and every OTLP/HTTP receiver must support it.
 	Compression string `koanf:"compression"`
+	// AllowInsecureTransport permits a plaintext http:// endpoint. Off by default
+	AllowInsecureTransport bool `koanf:"allow_insecure_transport"`
 	// TLS configures the client side of an https endpoint. Ignored for http.
 	TLS OTelTLSConfig `koanf:"tls"`
 }
@@ -1571,8 +1571,28 @@ func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
 	if err != nil || u.Host == "" {
 		return fmt.Errorf("analytics.publishers.otel.endpoint must be a valid URL (e.g. http://otel-collector:4318/v1/logs), got %q", cfg.Endpoint)
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("analytics.publishers.otel.endpoint scheme must be http or https, got %q", u.Scheme)
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !cfg.AllowInsecureTransport {
+			return fmt.Errorf("analytics.publishers.otel.endpoint uses plaintext http:// but "+
+				"analytics.publishers.otel.allow_insecure_transport is false; analytics records carry "+
+				"API keys and consumer identity, so set allow_insecure_transport = true only for a "+
+				"trusted local collector, got %q", cfg.Endpoint)
+		}
+		slog.Warn("analytics.publishers.otel endpoint is plaintext http://; analytics records are "+
+			"transmitted unencrypted", "host", u.Host)
+		// Headers are the endpoint's intake credential. Over plaintext they are on
+		// the wire in clear text on every export, which the scheme warning alone
+		// does not convey.
+		if len(cfg.Headers) > 0 {
+			slog.Warn("analytics.publishers.otel.headers are sent over a plaintext http:// endpoint; "+
+				"the credential they carry is exposed to anyone able to intercept this connection",
+				"host", u.Host, "headerCount", len(cfg.Headers))
+		}
+	default:
+		return fmt.Errorf("analytics.publishers.otel.endpoint scheme must be https (or http with "+
+			"allow_insecure_transport), got %q", u.Scheme)
 	}
 	if cfg.ServiceName == "" {
 		return fmt.Errorf("analytics.publishers.otel.service_name is required")

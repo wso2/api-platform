@@ -62,6 +62,7 @@ max_retries = 5
 retry_backoff = "250ms"
 retry_abort_queue_ratio = 0.25
 compression = "gzip"
+allow_insecure_transport = true
 
 [analytics.publishers.otel.headers]
 "x-api-key" = "secret-value"
@@ -86,6 +87,7 @@ compression = "gzip"
 	assert.Equal(t, 250*time.Millisecond, o.RetryBackoff, "retry_backoff")
 	assert.InDelta(t, 0.25, o.RetryAbortQueueRatio, 1e-9, "retry_abort_queue_ratio")
 	assert.Equal(t, OTelCompressionGzip, o.Compression, "compression")
+	assert.True(t, o.AllowInsecureTransport, "allow_insecure_transport")
 	assert.Equal(t, map[string]string{"x-api-key": "secret-value"}, o.Headers, "headers")
 	assert.Equal(t, map[string]string{
 		"deployment.environment": "staging",
@@ -140,6 +142,7 @@ enabled_publishers = ["otel"]
 
 [analytics.publishers.otel]
 endpoint = "http://otel-collector:4318/v1/logs"
+allow_insecure_transport = true
 `)
 	cfg, err := Load(path)
 	require.NoError(t, err)
@@ -155,6 +158,23 @@ endpoint = "http://otel-collector:4318/v1/logs"
 	assert.Equal(t, time.Second, o.RetryBackoff, "default retry_backoff")
 	assert.InDelta(t, DefaultOTelRetryAbortQueueRatio, o.RetryAbortQueueRatio, 1e-9, "default abort ratio")
 	assert.Equal(t, OTelCompressionNone, o.Compression, "default compression")
+}
+
+// allow_insecure_transport must default to off. Asserted against an https
+// endpoint, so the load succeeds for a reason other than the flag.
+func TestLoad_OTelPublisher_InsecureTransportDefaultsOff(t *testing.T) {
+	path := writeOTelTOML(t, `
+[analytics]
+enabled = true
+enabled_publishers = ["otel"]
+
+[analytics.publishers.otel]
+endpoint = "https://collector.example.com:4318/v1/logs"
+`)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.False(t, cfg.Analytics.Publishers.OTel.AllowInsecureTransport,
+		"plaintext must be opt-in, never the default")
 }
 
 // A bad value in the TOML must fail the load, not be silently coerced. This is
@@ -176,12 +196,14 @@ func TestLoad_OTelPublisher_InvalidTOMLValuesFailClosed(t *testing.T) {
 		{"zero flush interval", `flush_interval = "0s"`, "flush_interval must be > 0"},
 		{"zero timeout", `timeout = "0s"`, "timeout must be > 0"},
 		{"retries without backoff", "max_retries = 2\nretry_backoff = \"0s\"", "retry_backoff must be positive"},
-		{"non-http scheme", `endpoint = "ftp://collector:4318/v1/logs"`, "scheme must be http or https"},
+		{"non-http scheme", `endpoint = "ftp://collector:4318/v1/logs"`, "must be https (or http with allow_insecure_transport)"},
+		{"plaintext without opt-in", `endpoint = "http://collector.example.com:4318/v1/logs"`, "allow_insecure_transport is false"},
 		{"missing ca file", `[analytics.publishers.otel.tls]` + "\n" + `ca_file = "/nonexistent/ca.pem"`, "cannot read ca_file"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			base := "endpoint = \"http://otel-collector:4318/v1/logs\"\n"
+			base := "endpoint = \"http://otel-collector:4318/v1/logs\"\n" +
+				"allow_insecure_transport = true\n"
 			if strings.Contains(tc.body, "endpoint =") {
 				base = "" // the case sets its own; a second one is a TOML parse error
 			}

@@ -40,8 +40,82 @@ func otelConfig(mutate func(*OTelPublisherConfig)) *Config {
 	cfg := defaultConfig()
 	cfg.Analytics.Enabled = true
 	cfg.Analytics.EnabledPublishers = []string{"otel"}
+	// The default endpoint is plaintext http://, which now requires an explicit
+	// opt-in. Granting it here keeps the transport question out of every case
+	// that is really about batching, retries or TLS material; the gate itself is
+	// covered by TestValidate_OTelPublisherPlaintextTransport, and a case can
+	// still switch it back off via mutate.
+	cfg.Analytics.Publishers.OTel.AllowInsecureTransport = true
 	mutate(&cfg.Analytics.Publishers.OTel)
 	return cfg
+}
+
+// The plaintext gate, matching traffic_logging.http.allow_insecure_transport:
+// analytics records carry API keys and consumer identity, and every Headers
+// value is an intake credential put on the wire on each export.
+func TestValidate_OTelPublisherPlaintextTransport(t *testing.T) {
+	const plaintext = "http://collector.example.com:4318/v1/logs"
+
+	t.Run("http without the flag is refused", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = plaintext
+			o.AllowInsecureTransport = false
+		})
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "allow_insecure_transport is false")
+	})
+
+	t.Run("http with the flag is allowed", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = plaintext
+			o.AllowInsecureTransport = true
+		})
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("loopback is not exempt", func(t *testing.T) {
+		// The sibling sink grants no loopback exemption, so neither does this:
+		// "localhost" inside a container is not the operator's machine.
+		for _, host := range []string{"http://127.0.0.1:4318/v1/logs", "http://localhost:4318/v1/logs"} {
+			cfg := otelConfig(func(o *OTelPublisherConfig) {
+				o.Endpoint = host
+				o.AllowInsecureTransport = false
+			})
+			err := cfg.Validate()
+			require.Error(t, err, "%s must still require the opt-in", host)
+			assert.Contains(t, err.Error(), "allow_insecure_transport is false")
+		}
+	})
+
+	t.Run("https needs no flag", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = "https://collector.example.com:4318/v1/logs"
+			o.AllowInsecureTransport = false
+		})
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("credentialed plaintext is still gated", func(t *testing.T) {
+		// CWE-319: Headers authenticate to the intake, so plaintext exposes the
+		// credential itself. Covered by the same gate rather than a second rule.
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = plaintext
+			o.AllowInsecureTransport = false
+			o.Headers = map[string]string{"x-api-key": "s3cr3t"}
+		})
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "allow_insecure_transport is false")
+		assert.NotContains(t, err.Error(), "s3cr3t", "the error must not echo the credential")
+	})
+
+	t.Run("a non-http scheme names the opt-in", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) { o.Endpoint = "ftp://collector:4318/v1/logs" })
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must be https (or http with allow_insecure_transport)")
+	})
 }
 
 // writeSelfSignedPair writes a throwaway self-signed certificate and its key.

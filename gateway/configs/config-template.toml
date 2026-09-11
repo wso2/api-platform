@@ -815,6 +815,9 @@ timer_wakeup_seconds = 3
 # Full OTLP/HTTP logs URL, including the /v1/logs path. Point it at a collector
 # you run, or directly at a vendor's OTLP intake.
 endpoint = "http://otel-collector:4318/v1/logs"
+# Permits a plaintext http:// endpoint, and is required by the example endpoint
+# above. Off by default in code
+allow_insecure_transport = true
 # Identifies the service
 service_name = "gateway-runtime"
 # Identifies the deployed build for rollout correlation.
