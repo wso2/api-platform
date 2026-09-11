@@ -50,6 +50,55 @@ func otelConfig(mutate func(*OTelPublisherConfig)) *Config {
 	return cfg
 }
 
+// Credentials in the endpoint's userinfo (CWE-532). The endpoint reaches the log
+// three ways — the startup line, the export-failure line, and the HTTP client's
+// own error, which embeds the URL and is wrapped and logged in turn — so the
+// password would be on disk three times over.
+func TestValidate_OTelPublisherRejectsCredentialsInEndpoint(t *testing.T) {
+	const password = "sup3rs3cr3t"
+
+	t.Run("user and password are refused", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = "https://svc:" + password + "@collector.example.com:4318/v1/logs"
+		})
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not contain credentials")
+		// The rejection must not reproduce the leak it exists to prevent.
+		assert.NotContains(t, err.Error(), password, "the error echoed the password back")
+	})
+
+	t.Run("a bare username is refused too", func(t *testing.T) {
+		// url.Parse sets User for "user@host" with no password, and a username is
+		// still a credential half worth keeping out of logs.
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = "https://svc@collector.example.com:4318/v1/logs"
+		})
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not contain credentials")
+	})
+
+	t.Run("plaintext endpoints are covered as well", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = "http://svc:" + password + "@collector.example.com:4318/v1/logs"
+			o.AllowInsecureTransport = true
+		})
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not contain credentials")
+		assert.NotContains(t, err.Error(), password)
+	})
+
+	t.Run("headers remain the supported way to authenticate", func(t *testing.T) {
+		cfg := otelConfig(func(o *OTelPublisherConfig) {
+			o.Endpoint = "https://collector.example.com:4318/v1/logs"
+			o.Headers = map[string]string{"authorization": "Bearer " + password}
+		})
+		assert.NoError(t, cfg.Validate())
+	})
+}
+
 // The plaintext gate, matching traffic_logging.http.allow_insecure_transport:
 // analytics records carry API keys and consumer identity, and every Headers
 // value is an intake credential put on the wire on each export.

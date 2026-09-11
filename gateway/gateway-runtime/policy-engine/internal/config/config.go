@@ -1571,6 +1571,13 @@ func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
 	if err != nil || u.Host == "" {
 		return fmt.Errorf("analytics.publishers.otel.endpoint must be a valid URL (e.g. http://otel-collector:4318/v1/logs), got %q", cfg.Endpoint)
 	}
+	// Reject URL credentials to prevent endpoint leakage through logs and HTTP errors; 
+	// use headers for authentication.
+	if u.User != nil {
+		return fmt.Errorf("analytics.publishers.otel.endpoint must not contain credentials in the "+
+			"URL (user:password@%s); the endpoint is written to logs, so use "+
+			"analytics.publishers.otel.headers to authenticate instead", u.Host)
+	}
 	switch u.Scheme {
 	case "https":
 	case "http":

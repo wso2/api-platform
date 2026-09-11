@@ -321,6 +321,65 @@ func TestBuildRecordSuccessOmitsErrorAttributes(t *testing.T) {
 	}
 }
 
+// gen_ai.operation.name is the only AI attribute derived from the route rather
+// than from a property the AI pipeline wrote, and otelGenAIOperationName
+// substring-matches "/messages" and "/completions". Without a gate, ordinary REST
+// routes containing those words emit a GenAI attribute and pollute GenAI
+// dashboards with traffic that never reached a model.
+func TestBuildRecordNonAIRouteOmitsGenAIOperation(t *testing.T) {
+	for _, route := range []string{
+		"/notify/messages",     // contains "/messages"
+		"/billing/completions", // contains "/completions"
+		"/v1/chat/completions", // the real LLM shape, on a plain REST API
+		"/inbox/messages/{id}",
+	} {
+		t.Run(route, func(t *testing.T) {
+			event := restEvent()
+			event.API.APIType = "RestApi"
+			event.Operation.APIResourceTemplate = route
+			// No aiMetadata: nothing in this request went near a model.
+
+			o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+			got := attrMap(t, o.buildRecord(event))
+
+			if _, present := got["gen_ai.operation.name"]; present {
+				t.Fatalf("gen_ai.operation.name emitted for non-AI route %q (value %v)",
+					route, got["gen_ai.operation.name"])
+			}
+			for _, k := range []string{"gen_ai.provider.name", "gen_ai.request.model",
+				"gen_ai.response.model", "gen_ai.usage.input_tokens"} {
+				if _, present := got[k]; present {
+					t.Errorf("%s emitted for a non-AI request", k)
+				}
+			}
+		})
+	}
+}
+
+// The gate keys off aiMetadata, so an AI request still gets the attribute — and
+// still gets it for each recognised operation shape.
+func TestBuildRecordAIRouteKeepsGenAIOperation(t *testing.T) {
+	for route, want := range map[string]string{
+		"/v1/chat/completions": "chat",
+		"/v1/messages":         "chat",
+		"/v1/embeddings":       "embeddings",
+	} {
+		t.Run(route, func(t *testing.T) {
+			event := restEvent()
+			event.API.APIType = "LlmProxy"
+			event.Operation.APIResourceTemplate = route
+			event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
+
+			o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+			got := attrMap(t, o.buildRecord(event))
+
+			if got["gen_ai.operation.name"] != want {
+				t.Fatalf("gen_ai.operation.name = %v, want %q", got["gen_ai.operation.name"], want)
+			}
+		})
+	}
+}
+
 func TestBuildRecordGenAI(t *testing.T) {
 	event := restEvent()
 	event.API.APIType = "LlmProxy"
@@ -1993,5 +2052,38 @@ func TestBackoffUnsetBaseUsesOneSecond(t *testing.T) {
 	o := &OTel{cfg: config.OTelPublisherConfig{RetryBackoff: 0}}
 	if got := o.backoff(1); got < 500*time.Millisecond || got >= time.Second {
 		t.Errorf("backoff(1) = %s, want within [500ms, 1s)", got)
+	}
+}
+
+// endpointForLog must drop anything that can carry a credential.
+func TestEndpointForLog(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://collector:4318/v1/logs":                     "https://collector:4318/v1/logs",
+		"https://collector:4318/v1/logs?api-key=s3cr3t":      "https://collector:4318/v1/logs",
+		"https://svc:pw@collector:4318/v1/logs":              "https://collector:4318/v1/logs",
+		"https://svc:pw@collector:4318/v1/logs?token=s3cr3t": "https://collector:4318/v1/logs",
+		"http://otel-collector:4318/v1/logs":                 "http://otel-collector:4318/v1/logs",
+		"://bad url":                                         "(unparseable endpoint)",
+	} {
+		if got := endpointForLog(raw); got != want {
+			t.Errorf("endpointForLog(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// The logged endpoint must never carry the query string, whatever the config holds.
+func TestNewOTelStoresRedactedEndpoint(t *testing.T) {
+	cfg := testOTelConfig("https://collector:4318/v1/logs?api-key=s3cr3t")
+	o, err := NewOTel(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = o.Close(context.Background()) }()
+
+	if strings.Contains(o.logEndpoint, "s3cr3t") || strings.Contains(o.logEndpoint, "api-key") {
+		t.Fatalf("logEndpoint leaks the credential: %q", o.logEndpoint)
+	}
+	if o.cfg.Endpoint != "https://collector:4318/v1/logs?api-key=s3cr3t" {
+		t.Errorf("cfg.Endpoint must keep the full URL for the request, got %q", o.cfg.Endpoint)
 	}
 }

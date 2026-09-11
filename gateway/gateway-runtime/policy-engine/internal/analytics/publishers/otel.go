@@ -31,6 +31,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -102,6 +103,8 @@ func ns(name string) string { return otelAttrNamespace + "." + name }
 type OTel struct {
 	cfg    config.OTelPublisherConfig
 	client *http.Client
+	// endpoint with credential-bearing parts stripped, for logs
+	logEndpoint string
 
 	queue chan *otelLogRecord
 
@@ -136,7 +139,8 @@ func NewOTel(cfg *config.OTelPublisherConfig) (*OTel, error) {
 	}
 
 	o := &OTel{
-		cfg: *cfg,
+		cfg:         *cfg,
+		logEndpoint: endpointForLog(cfg.Endpoint),
 		client: &http.Client{
 			Timeout: cfg.Timeout,
 			Transport: &http.Transport{
@@ -164,10 +168,20 @@ func NewOTel(cfg *config.OTelPublisherConfig) (*OTel, error) {
 
 	// Headers are deliberately omitted: they carry credentials.
 	slog.Info("OTel analytics publisher started",
-		"endpoint", cfg.Endpoint, "batchSize", cfg.BatchSize,
+		"endpoint", o.logEndpoint, "batchSize", cfg.BatchSize,
 		"flushInterval", cfg.FlushInterval, "queueCapacity", cfg.QueueCapacity,
 		"onQueueFull", cfg.OnQueueFull)
 	return o, nil
+}
+
+// endpointForLog strips userinfo and the query string, either of which can carry
+// an intake credential that would then be logged.
+func endpointForLog(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(unparseable endpoint)"
+	}
+	return u.Scheme + "://" + u.Host + u.Path
 }
 
 // buildOTelTLSConfig assembles the client TLS configuration.
@@ -423,7 +437,7 @@ func (o *OTel) export(batch []*otelLogRecord) {
 	o.dropRecords(dropReasonSendFailed, len(records))
 	slog.Error("OTel publisher failed to export analytics batch; dropping records",
 		"records", len(records), "attempts", o.cfg.MaxRetries+1,
-		"endpoint", o.cfg.Endpoint, "error", lastErr)
+		"endpoint", o.logEndpoint, "error", lastErr)
 }
 
 // otelPermanentExportError marks a response that must not be retried.
@@ -878,7 +892,8 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 		return
 	}
 
-	if md, ok := event.Properties["aiMetadata"].(dto.AIMetadata); ok {
+	md, hasAIMetadata := event.Properties["aiMetadata"].(dto.AIMetadata)
+	if hasAIMetadata {
 		attrs.str("gen_ai.provider.name", otelGenAIProviderName(md.VendorName))
 		attrs.str(ns("gen_ai.provider.template_name"), md.VendorName)
 		// aitoken:modelid is the response model when the provider returns one,
@@ -891,6 +906,10 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 		case string:
 			attrs.str(ns("gen_ai.cost.total"), cost)
 		}
+
+		if op := otelGenAIOperationName(route); op != "" {
+			attrs.str("gen_ai.operation.name", op)
+		}
 	}
 	attrs.anyStr("gen_ai.request.model", event.Properties[constants.RequestModelPropertyKey])
 
@@ -898,10 +917,6 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 		attrs.i64("gen_ai.usage.input_tokens", int64(usage.PromptToken))
 		attrs.i64("gen_ai.usage.output_tokens", int64(usage.CompletionToken))
 		attrs.i64(ns("gen_ai.usage.total_tokens"), int64(usage.TotalToken))
-	}
-
-	if op := otelGenAIOperationName(route); op != "" {
-		attrs.str("gen_ai.operation.name", op)
 	}
 
 	attrs.anyBool(ns("gen_ai.egress"), event.Properties["isEgress"])

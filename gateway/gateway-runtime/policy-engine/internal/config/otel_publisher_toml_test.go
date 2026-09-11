@@ -198,6 +198,7 @@ func TestLoad_OTelPublisher_InvalidTOMLValuesFailClosed(t *testing.T) {
 		{"retries without backoff", "max_retries = 2\nretry_backoff = \"0s\"", "retry_backoff must be positive"},
 		{"non-http scheme", `endpoint = "ftp://collector:4318/v1/logs"`, "must be https (or http with allow_insecure_transport)"},
 		{"plaintext without opt-in", `endpoint = "http://collector.example.com:4318/v1/logs"`, "allow_insecure_transport is false"},
+		{"credentials in the endpoint URL", `endpoint = "https://svc:pw@collector.example.com:4318/v1/logs"`, "must not contain credentials"},
 		{"missing ca file", `[analytics.publishers.otel.tls]` + "\n" + `ca_file = "/nonexistent/ca.pem"`, "cannot read ca_file"},
 	}
 	for _, tc := range cases {
