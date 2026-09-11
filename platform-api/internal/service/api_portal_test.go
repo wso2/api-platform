@@ -19,9 +19,11 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -708,5 +710,71 @@ func TestAPIPortalService_DeleteAPIPortal_NotFound(t *testing.T) {
 	err := svc.DeleteAPIPortal("ghost", "org-1", "actor")
 	if err == nil || !apperror.APIPortalNotFound.Is(err) {
 		t.Fatalf("want APIPortalNotFound, got %v", err)
+	}
+}
+
+// --- Registry cache-fill race ---
+
+// blockingPortalRepo lets a test park a GetByHandleAndOrgID call at a known
+// point so the test can interleave an Invalidate against the in-flight Get.
+type blockingPortalRepo struct {
+	mockAPIPortalRepository
+	enter   chan struct{} // closed by the repo when Get is entered
+	release chan struct{} // read by the repo to hold until the test says go
+	portal  *model.APIPortal
+}
+
+func (r *blockingPortalRepo) GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error) {
+	close(r.enter)
+	<-r.release
+	return r.portal, nil
+}
+
+// A Get in flight when Invalidate runs must not repopulate the cache with the
+// stale provider. Locks the fix for the TOCTOU between the row read and the
+// cache fill.
+func TestAPIPortalAuthRegistry_GetDoesNotCacheAfterConcurrentInvalidate(t *testing.T) {
+	v := newTestVault(t)
+	// Row's InternalAuthKey must be a valid ciphertext so NewSharedKeyAuthProvider
+	// succeeds. Encrypt a placeholder raw here.
+	ct, err := v.Encrypt(context.Background(), testSharedKeyHex)
+	if err != nil {
+		t.Fatalf("seed encrypt: %v", err)
+	}
+	repo := &blockingPortalRepo{
+		enter:   make(chan struct{}),
+		release: make(chan struct{}),
+		portal:  &model.APIPortal{Handle: "acme", OrganizationID: "org-1", InternalAuthKey: ct},
+	}
+	reg := NewAPIPortalAuthRegistry(repo, v)
+
+	// Start the Get; it will park inside the repo call.
+	got := make(chan AuthProvider, 1)
+	go func() {
+		p, err := reg.Get("acme", "org-1")
+		if err != nil {
+			t.Errorf("Get: %v", err)
+		}
+		got <- p
+	}()
+	<-repo.enter
+
+	// Invalidate while Get is parked. This is the race the fix guards.
+	reg.Invalidate("acme", "org-1")
+
+	// Let Get complete. It builds a provider from the row we captured and
+	// must NOT cache it (generation changed).
+	close(repo.release)
+	select {
+	case <-got:
+	case <-time.After(time.Second):
+		t.Fatal("Get did not return after release")
+	}
+
+	reg.mu.Lock()
+	_, cached := reg.providers[registryKey("org-1", "acme")]
+	reg.mu.Unlock()
+	if cached {
+		t.Error("Get repopulated cache after concurrent Invalidate; stale provider would persist")
 	}
 }

@@ -4459,11 +4459,9 @@ paths:
     post:
       summary: Create an API Portal
       description: |
-        Registers a new API Portal in the caller's organization. If a URL is
-        provided, the portal is registered against that existing endpoint; if
-        omitted, a new portal is provisioned and the URL is populated when the
-        instance becomes reachable. Organization ID is extracted from the JWT
-        token.
+        Registers a new API Portal in the caller's organization against an
+        existing portal URL. The URL is required. Organization ID is extracted
+        from the JWT token.
       operationId: CreateApiPortal
       security:
         - OAuth2Security:

@@ -100,10 +100,11 @@ func (p *sharedKeyAuthProvider) InvalidateCache() {
 // next outbound call picks up whatever the row now says. Provider construction
 // (Decrypt on the row's internal_auth_key) happens on Get miss.
 type APIPortalAuthRegistry struct {
-	mu         sync.Mutex
-	providers  map[string]AuthProvider // key = registryKey(orgID, handle)
-	portalRepo repository.APIPortalRepository
-	vault      vault.SecretVault
+	mu          sync.Mutex
+	providers   map[string]AuthProvider // key = registryKey(orgID, handle)
+	generations map[string]uint64       // bumped by Invalidate; guards cache-fill races
+	portalRepo  repository.APIPortalRepository
+	vault       vault.SecretVault
 }
 
 // NewAPIPortalAuthRegistry constructs the registry. portalRepo is used to load
@@ -111,9 +112,10 @@ type APIPortalAuthRegistry struct {
 // decrypt that value.
 func NewAPIPortalAuthRegistry(portalRepo repository.APIPortalRepository, v vault.SecretVault) *APIPortalAuthRegistry {
 	return &APIPortalAuthRegistry{
-		providers:  map[string]AuthProvider{},
-		portalRepo: portalRepo,
-		vault:      v,
+		providers:   map[string]AuthProvider{},
+		generations: map[string]uint64{},
+		portalRepo:  portalRepo,
+		vault:       v,
 	}
 }
 
@@ -129,13 +131,19 @@ func registryKey(orgID, portalHandle string) string {
 // Invalidate drops the cached provider for a portal handle in an org. No-op
 // when there is no cached entry (idempotent, safe to call from Delete paths).
 // Called by the service on every Update / Delete of a portal row.
+//
+// Bumps the per-key generation so a concurrent Get that has already read the
+// pre-Invalidate row does not repopulate the cache with the stale provider
+// after Invalidate returns.
 func (r *APIPortalAuthRegistry) Invalidate(portalHandle, orgID string) {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.providers, registryKey(orgID, portalHandle))
+	key := registryKey(orgID, portalHandle)
+	delete(r.providers, key)
+	r.generations[key]++
 }
 
 // Get returns the AuthProvider for the (org, portal) pair, constructing +
@@ -145,9 +153,12 @@ func (r *APIPortalAuthRegistry) Invalidate(portalHandle, orgID string) {
 // treats as a permanent configuration problem.
 //
 // Concurrent Gets for the same key race safely: the first one wins the map
-// slot, subsequent ones return that stored provider (double-check under lock
-// avoids constructing more than once). A rare double-decrypt on a lost race
-// is preferable to holding the map lock across an I/O call to portalRepo.
+// slot, subsequent ones return that stored provider. If Invalidate runs
+// between the row read and the cache fill, the per-key generation counter
+// no longer matches the snapshot and the cache write is skipped, so an
+// invalidated key never re-appears in the cache from an in-flight Get. This
+// call still returns the just-built provider (built from the row state we
+// read); the next Get rebuilds from the updated row.
 func (r *APIPortalAuthRegistry) Get(portalHandle, orgID string) (AuthProvider, error) {
 	if r == nil {
 		return nil, fmt.Errorf("shared-key AuthProvider registry is not initialised")
@@ -159,6 +170,7 @@ func (r *APIPortalAuthRegistry) Get(portalHandle, orgID string) (AuthProvider, e
 		r.mu.Unlock()
 		return p, nil
 	}
+	genSnapshot := r.generations[key]
 	r.mu.Unlock()
 
 	portal, err := r.portalRepo.GetByHandleAndOrgID(portalHandle, orgID)
@@ -175,13 +187,15 @@ func (r *APIPortalAuthRegistry) Get(portalHandle, orgID string) (AuthProvider, e
 	}
 
 	r.mu.Lock()
-	// Another goroutine may have installed a provider while we were
-	// decrypting; prefer the existing one to keep a single instance per key.
+	defer r.mu.Unlock()
+	if r.generations[key] != genSnapshot {
+		// Invalidate ran while we were decrypting. Do not cache; caller uses
+		// the provider it has (built from the pre-Invalidate row).
+		return provider, nil
+	}
 	if existing, ok := r.providers[key]; ok {
-		r.mu.Unlock()
 		return existing, nil
 	}
 	r.providers[key] = provider
-	r.mu.Unlock()
 	return provider, nil
 }
