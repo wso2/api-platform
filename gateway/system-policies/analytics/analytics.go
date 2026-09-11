@@ -24,6 +24,7 @@ const (
 	CompletionTokenCountMetadataKey  = "aitoken:completiontokencount"
 	TotalTokenCountMetadataKey       = "aitoken:totaltokencount"
 	ModelIDMetadataKey               = "aitoken:modelid"
+	RequestModelIDMetadataKey        = "aitoken:requestmodelid"
 	AIProviderNameMetadataKey        = "ai:providername"
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
 	ApplicationIDMetadataKey         = "x-wso2-application-id"
@@ -76,6 +77,7 @@ const (
 var (
 	// JSON Path expressions to extract MCP analytics properties from response body
 	JsonRpcMethodJsonPath     = "$.method"
+	JsonRpcIDJsonPath         = "$.id"
 	McpCapabilityNameJsonPath = "$.params.name"
 	McpResourceUriJsonPath    = "$.params.uri"
 	ProtocolVersionJsonPath   = "$.params.protocolVersion"
@@ -89,14 +91,27 @@ var (
 	JsonRpcErrorCodeJsonPath      = "$.error.code"
 )
 
+// MCP capability kinds, derived from the JSON-RPC method prefix. Emitted on the
+// analytics event, so the policy-engine publishers match against these values.
+const (
+	McpCapabilityTool     = "TOOL"
+	McpCapabilityResource = "RESOURCE"
+	McpCapabilityPrompt   = "PROMPT"
+)
+
 // AnalyticsPolicy implements the default analytics data collection process.
 type AnalyticsPolicy struct{}
 
 type McpRequestAnalyticsProperties struct {
-	JsonRpcMethod  string         `json:"jsonRpcMethod,omitempty"`
-	Capability     string         `json:"capability,omitempty"`
-	CapabilityName string         `json:"capabilityName,omitempty"`
-	ClientInfo     *McpClientInfo `json:"clientInfo,omitempty"`
+	JsonRpcMethod string `json:"jsonRpcMethod,omitempty"`
+	JsonRpcID     string `json:"jsonRpcId,omitempty"`
+	Capability    string `json:"capability,omitempty"`
+	// CapabilityName is the target's name, from params.name. Tools and prompts
+	// are named; resources are not
+	CapabilityName string `json:"capabilityName,omitempty"`
+	// ResourceUri is the target of a resources/* method, from params.uri
+	ResourceUri string         `json:"resourceUri,omitempty"`
+	ClientInfo  *McpClientInfo `json:"clientInfo,omitempty"`
 }
 
 type McpClientInfo struct {
@@ -400,8 +415,23 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 			}
 
 			props.JsonRpcMethod = extractString(JsonRpcMethodJsonPath)
-			props.CapabilityName = extractString(McpCapabilityNameJsonPath)
+			// A JSON-RPC id may be a string or a number.
+			if raw, err := utils.ExtractValueFromJsonpath(mcpPayload, JsonRpcIDJsonPath); err == nil && raw != nil {
+				switch id := raw.(type) {
+				case string:
+					props.JsonRpcID = id
+				case float64:
+					props.JsonRpcID = strconv.FormatInt(int64(id), 10)
+				}
+			}
 			props.Capability = deriveMCPCapability(props.JsonRpcMethod)
+			// resources/* addresses its target by URI at params.uri; tools/* and
+			// prompts/* name theirs at params.name.
+			if props.Capability == McpCapabilityResource {
+				props.ResourceUri = extractString(McpResourceUriJsonPath)
+			} else {
+				props.CapabilityName = extractString(McpCapabilityNameJsonPath)
+			}
 
 			clientInfo := McpClientInfo{
 				RequestedProtocolVersion: extractStringFromJsonpath(mcpPayload, ProtocolVersionJsonPath),
@@ -882,6 +912,9 @@ func populateTokenAnalyticsMetadata(analyticsMetadata map[string]any, tokenInfo 
 	} else if tokenInfo.RequestModel != nil {
 		analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.RequestModel
 	}
+	if tokenInfo.RequestModel != nil {
+		analyticsMetadata[RequestModelIDMetadataKey] = *tokenInfo.RequestModel
+	}
 	if tokenInfo.ProviderName != nil {
 		analyticsMetadata[AIProviderNameMetadataKey] = *tokenInfo.ProviderName
 	}
@@ -1202,11 +1235,11 @@ func extractBoolFromJsonpath(payload map[string]interface{}, path string) (bool,
 func deriveMCPCapability(method string) string {
 	switch {
 	case strings.HasPrefix(method, "tools/"):
-		return "TOOL"
+		return McpCapabilityTool
 	case strings.HasPrefix(method, "resources/"):
-		return "RESOURCE"
+		return McpCapabilityResource
 	case strings.HasPrefix(method, "prompts/"):
-		return "PROMPT"
+		return McpCapabilityPrompt
 	default:
 		return ""
 	}

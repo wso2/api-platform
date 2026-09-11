@@ -34,25 +34,35 @@ const (
 	sinkNameHTTP   = config.TrafficLogSinkHTTP
 )
 
-// Reasons recorded on policy_engine_traffic_log_dropped_total.
+// Reasons recorded on policy_engine_traffic_log_dropped_total and
+// policy_engine_analytics_dropped_total. Shared so the two subsystems describe
+// the same failure with the same label rather than each inventing a spelling.
 const (
-	// dropReasonQueueFull: the HTTP sink's bounded queue had no room.
+	// dropReasonQueueFull: a bounded queue had no room for the incoming item.
 	dropReasonQueueFull = "queue_full"
-	// dropReasonSendFailed: the HTTP sink exhausted its retries.
+	// dropReasonSendFailed: the sender exhausted its retry budget.
 	dropReasonSendFailed = "send_failed"
 	// dropReasonWriteFailed: a local write returned an error.
 	dropReasonWriteFailed = "write_failed"
 	// dropReasonRotateFailed: the file sink could not rotate, so the line that
 	// triggered the rotation was not written.
 	dropReasonRotateFailed = "rotate_failed"
-	// dropReasonBackpressure: the HTTP sink abandoned a batch's remaining retries
-	// because the queue was filling behind it. Distinct from send_failed so an
-	// operator can tell "the receiver is slow" from "the receiver is broken".
+	// dropReasonBackpressure: a batch's remaining retries were abandoned because
+	// the queue was filling behind it. Distinct from send_failed so an operator
+	// can tell "the destination is slow" from "the destination is broken".
 	dropReasonBackpressure = "backpressure"
+	// dropReasonRejected: the destination accepted the request but refused some
+	// records (an OTLP partialSuccess). The request succeeded, so this is not an
+	// export error — but the records are gone just the same.
+	dropReasonRejected = "rejected"
+	// dropReasonSerializeFailed: the batch could not be encoded or compressed, so
+	// it was never sent. Retrying cannot help; the payload itself is the problem.
+	dropReasonSerializeFailed = "serialize_failed"
 )
 
-// Codes recorded on policy_engine_traffic_log_write_errors_total for non-HTTP
-// failures. HTTP failures use the numeric status code instead.
+// Codes recorded on policy_engine_traffic_log_write_errors_total and
+// policy_engine_analytics_export_errors_total for non-HTTP failures. HTTP
+// failures use the numeric status code instead.
 const (
 	errCodeWrite     = "write"
 	errCodeRotate    = "rotate"

@@ -370,9 +370,97 @@ data:
     {{- end }}
     {{- if .Values.gateway.config.analytics.publishers }}
     {{- range $name, $publisher := .Values.gateway.config.analytics.publishers }}
+    {{- if eq $name "otel" }}
+    {{- with $publisher }}
+    {{- /* headers carry the intake credential and config.toml renders into a ConfigMap, not a Secret — require an {{ env }}/{{ file }} token, as traffic_logging.http.auth does. */ -}}
+    {{- $allowPlain := false -}}
+    {{- if hasKey . "allow_plaintext_credentials" -}}
+      {{- $allowPlain = eq (toString .allow_plaintext_credentials) "true" -}}
+    {{- end -}}
+    {{- if not $allowPlain -}}
+      {{- $suffixed := "^[^{}]*\\{\\{-? *(env|file) [^{}]*\\}\\}$" -}}
+      {{- range $header, $value := .headers -}}
+        {{- if not (regexMatch $suffixed (trim (toString $value))) -}}
+          {{- fail (printf "gateway.config.analytics.publishers.otel.headers.%s holds a literal value, which would be written in plaintext into the gateway ConfigMap. Supply it as an interpolation token resolved at runtime instead, e.g. '{{ env \"APIP_GW_OTEL_INTAKE_TOKEN\" }}' or '{{ file \"/secrets/gateway-runtime/otel-token\" }}' (allowed source dirs: /etc/gateway-runtime, /secrets/gateway-runtime). Set gateway.config.analytics.publishers.otel.allow_plaintext_credentials=true only for local development." $header) -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end }}
+    [analytics.publishers.otel]
+    {{- if .endpoint }}
+    endpoint = {{ .endpoint | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .allow_insecure_transport }}
+    allow_insecure_transport = {{ .allow_insecure_transport }}
+    {{- end }}
+    {{- if .service_name }}
+    service_name = {{ .service_name | quote }}
+    {{- end }}
+    {{- if .service_version }}
+    service_version = {{ .service_version | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .batch_size) }}
+    batch_size = {{ .batch_size | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .flush_interval) }}
+    flush_interval = {{ .flush_interval | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .queue_capacity) }}
+    queue_capacity = {{ .queue_capacity | int64 }}
+    {{- end }}
+    {{- if .on_queue_full }}
+    on_queue_full = {{ .on_queue_full | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .timeout) }}
+    timeout = {{ .timeout | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .max_retries) }}
+    max_retries = {{ .max_retries | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .retry_backoff) }}
+    retry_backoff = {{ .retry_backoff | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .retry_abort_queue_ratio) }}
+    retry_abort_queue_ratio = {{ .retry_abort_queue_ratio }}
+    {{- end }}
+    {{- if .compression }}
+    compression = {{ .compression | quote }}
+    {{- end }}
+    {{- with .headers }}
+
+    [analytics.publishers.otel.headers]
+    {{- range $key, $value := . }}
+    {{ $key | quote }} = {{ $value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .resource_attributes }}
+
+    [analytics.publishers.otel.resource_attributes]
+    {{- range $key, $value := . }}
+    {{ $key | quote }} = {{ $value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .tls }}
+
+    [analytics.publishers.otel.tls]
+    {{- if .ca_file }}
+    ca_file = {{ .ca_file | quote }}
+    {{- end }}
+    {{- if .cert_file }}
+    cert_file = {{ .cert_file | quote }}
+    {{- end }}
+    {{- if .key_file }}
+    key_file = {{ .key_file | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .insecure_skip_verify }}
+    insecure_skip_verify = {{ .insecure_skip_verify }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- else }}
     [analytics.publishers.{{ $name }}]
     {{- range $key, $value := $publisher }}
     {{ $key }} = {{ kindIs "string" $value | ternary ($value | quote) $value }}
+    {{- end }}
     {{- end }}
     {{- end }}
     {{- end }}

@@ -26,6 +26,7 @@ import (
 	"maps"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,6 +64,8 @@ const (
 	DefaultAnalyticsPublisher = "default"
 	// MoesifAnalyticsPublisher represents the Moesif analytics publisher.
 	MoesifAnalyticsPublisher = "moesif"
+	// OTelAnalyticsPublisher represents the OpenTelemetry analytics publisher
+	OTelAnalyticsPublisher = "otel"
 
 	// HeaderKeys represents the header keys.
 	RequestHeadersKey  = "request_headers"
@@ -81,6 +84,10 @@ const (
 	AIProviderNameMetadataKey string = "ai:providername"
 	// AIProviderAPIVersionMetadataKey represents the AI provider API version metadata key.
 	AIProviderAPIVersionMetadataKey string = "ai:providerversion"
+
+	// RequestModelIDMetadataKey represents the model named in the request
+	// (Separate from ModelIDMetadataKey (which resolves to the response model).
+	RequestModelIDMetadataKey string = "aitoken:requestmodelid"
 
 	// UserIDMetadataKey represents the user ID metadata key for analytics.
 	UserIDMetadataKey string = "x-wso2-user-id"
@@ -122,6 +129,16 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 					publishers = append(publishers, publisher)
 					slog.Info("Moesif publisher added")
 				}
+			case OTelAnalyticsPublisher:
+				publisher, err := analytics_publisher.NewOTel(&analyticsCfg.Publishers.OTel)
+				if err != nil {
+					// Fail closed on invalid TLS material to avoid a healthy-looking gateway
+					// silently exporting nothing. Validation already confirms the material loads.
+					slog.Error("Failed to initialize the OTel analytics publisher; refusing to start", "error", err)
+					panic(fmt.Sprintf("otel analytics publisher configuration is unusable: %v", err))
+				}
+				publishers = append(publishers, publisher)
+				slog.Info("OTel publisher added")
 			default:
 				slog.Warn("Unknown publisher type", "type", publisherName)
 			}
@@ -330,21 +347,26 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	request := logEntry.GetRequest()
 	response := logEntry.GetResponse()
 
+	// Strip the query once at the source since it is shared across publishers and may contain credentials.
+	requestPath, _, _ := strings.Cut(request.GetPath(), "?")
+	// OriginalPath is the pre-rewrite :path, so it carries the client's query too.
+	originalPath, _, _ := strings.Cut(request.GetOriginalPath(), "?")
+
 	// Prepare operation
 	operation := dto.Operation{}
 	// operation.APIResourceTemplate = keyValuePairsFromMetadata[APIResourceTemplateKey]
 	if request != nil {
-		operation.APIResourceTemplate = logEntry.GetRequest().GetOriginalPath()
+		operation.APIResourceTemplate = originalPath
 		operation.APIMethod = logEntry.Request.GetRequestMethod().String()
 	}
 
 	// Prepare target
 	target := dto.Target{}
-	target.ResponseCacheHit = false
+	target.ResponseCacheHit = isCacheHit(logEntry)
 	if response != nil {
 		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
 		// target.Destination = keyValuePairsFromMetadata[DestinationKey]
-		target.Destination = logEntry.GetRequest().GetAuthority() + logEntry.GetRequest().GetPath()
+		target.Destination = logEntry.GetRequest().GetAuthority() + requestPath
 		target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
 	}
 
@@ -527,6 +549,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			aiMetadata.LLMCost = parsedLLMCost
 		}
 		event.Properties["aiMetadata"] = aiMetadata
+		if requestModel := keyValuePairsFromMetadata[RequestModelIDMetadataKey]; requestModel != "" {
+			event.Properties[constants.RequestModelPropertyKey] = requestModel
+		}
 
 		aiTokenUsage := dto.AITokenUsage{}
 		// Prompt tokens
@@ -599,6 +624,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// requestSize is common to all API kinds; mirror responseSize using the Envoy access-log byte count.
 	if request != nil {
 		event.Properties["requestSize"] = request.GetRequestBodyBytes()
+
+		// Store the concrete request path (without query parameters), separate from the route template.
+		if requestPath != "" {
+			event.Properties[constants.RequestPathPropertyKey] = requestPath
+		}
 	}
 
 	//Adding request and response headers for the analytics event
@@ -664,6 +694,18 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			}
 		}
 		event.Properties["mcpAnalytics"] = mcpAnalytics
+	}
+
+	// Fault classification, last so it sees the finished event.
+	fault := classifyFault(logEntry)
+	event.ErrorType = string(fault.ErrorType)
+	if fault.SubCategory != "" {
+		event.Error = &dto.Error{
+			// The client-visible status. The in-development fault flow owns the
+			// real WSO2 numeric codes and should supply them here instead.
+			ErrorCode:    event.ProxyResponseCode,
+			ErrorMessage: fault.SubCategory,
+		}
 	}
 
 	return event

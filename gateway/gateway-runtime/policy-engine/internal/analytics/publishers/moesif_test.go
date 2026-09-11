@@ -360,6 +360,60 @@ func TestPublish_McpAPIType(t *testing.T) {
 	assert.Equal(t, "search", mcpAnalytics["toolName"])
 }
 
+// The fault taxonomy reaches Moesif, not only the OTLP publisher: both read the
+// same classification off the canonical event. Exactly three keys, matching what
+// API Manager's Moesif integration already reads.
+func TestPublish_WithFaultClassification(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.ErrorType = string(dto.FaultCategoryTargetConnectivity)
+	event.Error = &dto.Error{ErrorCode: 504, ErrorMessage: dto.TargetConnectivityConnectionTimeout}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, "TARGET_CONNECTIVITY", metadata["errorType"])
+	assert.Equal(t, 504, metadata["errorCode"])
+	assert.Equal(t, "CONNECTION_TIMEOUT", metadata["errorMessage"])
+	// The category/event-category enums belong to the in-development fault flow
+	// and must not be published from here.
+	for _, absent := range []string{"eventCategory", "faultCategory", "faultSubCategory"} {
+		assert.NotContains(t, metadata, absent)
+	}
+}
+
+// A request that was not a gateway fault carries none of the three keys, so a
+// consumer can filter on presence.
+func TestPublish_SuccessOmitsFaultFields(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+	moesif.Publish(createBaseEvent())
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	for _, key := range []string{"errorType", "errorCode", "errorMessage"} {
+		assert.NotContains(t, metadata, key, "%s must be absent on a successful event", key)
+	}
+}
+
+// Every value errorType can take is one of the four categories API Manager
+// expects — never an Envoy flag name or a status code.
+func TestPublish_ErrorTypeIsAlwaysAFaultCategory(t *testing.T) {
+	for _, category := range []dto.FaultCategory{
+		dto.FaultCategoryAuth, dto.FaultCategoryThrottled,
+		dto.FaultCategoryTargetConnectivity, dto.FaultCategoryOther,
+	} {
+		moesif := createTestMoesifWithoutAPI()
+		event := createBaseEvent()
+		event.ErrorType = string(category)
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, string(category), metadata["errorType"])
+	}
+}
+
 func TestPublish_WithPayloads(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
