@@ -95,11 +95,22 @@ done
 # Default configuration
 # GATEWAY_CONTROLLER_HOST is the primary user-facing env var to configure connectivity
 # to the gateway controller. The xDS ports default to well-known values:
-#   - ROUTER_XDS_PORT (18000): Router (Envoy) route/cluster/listener configs
-#   - POLICY_ENGINE_XDS_PORT (18001): Policy Engine policy chain configs
+#   - ROUTER_XDS_PORT (18000): Router (Envoy) route/cluster/listener configs, plaintext
+#   - ROUTER_XDS_TLS_PORT (18443): same, but the dedicated mTLS listener gateway-
+#       controller's server.xds_tls.port switches to -- only used when XDS_TLS_ENABLED=true
+#       below, since enabling TLS there replaces the plaintext listener on ROUTER_XDS_PORT
+#       rather than reusing it (matching gateway-controller's server.xds_tls.port having its
+#       own dedicated port, never server.xds_port, once enabled).
+#   - POLICY_ENGINE_XDS_PORT (18001): Policy Engine policy chain configs, plaintext
+#   - POLICY_ENGINE_XDS_TLS_PORT (18444): same, but the dedicated mTLS listener
+#       gateway-controller's policy_server.tls.port switches to -- only used when
+#       policy-engine's xDS TLS is enabled (POLICY_ENGINE_XDS_TLS_ENABLED, falling back to
+#       XDS_TLS_ENABLED, same precedence as policy_engine.xds.tls.enabled in config-template.toml)
 export GATEWAY_CONTROLLER_HOST="${GATEWAY_CONTROLLER_HOST:-gateway-controller}"
 export ROUTER_XDS_PORT="${ROUTER_XDS_PORT:-18000}"
+export ROUTER_XDS_TLS_PORT="${ROUTER_XDS_TLS_PORT:-18443}"
 export POLICY_ENGINE_XDS_PORT="${POLICY_ENGINE_XDS_PORT:-18001}"
+export POLICY_ENGINE_XDS_TLS_PORT="${POLICY_ENGINE_XDS_TLS_PORT:-18444}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
 # Performance tuning configuration
@@ -144,7 +155,6 @@ export ROUTER_DRAIN_TIME_SECONDS="${ROUTER_DRAIN_TIME_SECONDS:-15}"
 
 # Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
 export XDS_SERVER_HOST="${GATEWAY_CONTROLLER_HOST}"
-export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
 
 # Mutual TLS for the Router's (Envoy's) connection to gateway-controller's main
 # xDS server, off by default (plaintext) so this stays interoperable with a
@@ -160,6 +170,18 @@ export XDS_TLS_ENABLED="${XDS_TLS_ENABLED:-false}"
 export XDS_CLIENT_CERT_PATH="${XDS_CLIENT_CERT_PATH:-}"
 export XDS_CLIENT_KEY_PATH="${XDS_CLIENT_KEY_PATH:-}"
 export XDS_CLIENT_CA_PATH="${XDS_CLIENT_CA_PATH:-}"
+
+# gateway-controller's server.xds_tls.port is a dedicated port, separate from
+# server.xds_port, that only starts listening once server.xds_tls.enabled=true
+# -- so xds_cluster must dial ROUTER_XDS_TLS_PORT instead of ROUTER_XDS_PORT
+# once TLS is turned on here, or it will try to open a plaintext connection to
+# a port gateway-controller isn't listening on (server.xds_port stops serving
+# the moment its TLS listener replaces it).
+if [ "${XDS_TLS_ENABLED}" = "true" ]; then
+    export XDS_SERVER_PORT="${ROUTER_XDS_TLS_PORT}"
+else
+    export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
+fi
 
 # TLS parameters for the same xDS connection, kept in their own vars so the
 # PQC hybrid group can be opted into independently of turning TLS on at all.
@@ -183,15 +205,27 @@ export XDS_CLIENT_TLS_ECDH_CURVES="${XDS_CLIENT_TLS_ECDH_CURVES:-X25519,P-256}"
 export XDS_CLIENT_TLS_SAN_TYPE="${XDS_CLIENT_TLS_SAN_TYPE:-DNS}"
 export XDS_CLIENT_TLS_SAN="${XDS_CLIENT_TLS_SAN:-${XDS_SERVER_HOST}}"
 
-# Policy Engine xDS address
-PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
+# Policy Engine xDS address. gateway-controller's policy_server.tls.port is a
+# dedicated port, separate from policy_server.port, that only starts listening
+# once policy_server.tls.enabled=true -- so this must dial
+# POLICY_ENGINE_XDS_TLS_PORT instead once the policy-engine's xDS TLS is
+# enabled, or it will try to open a plaintext connection to a port
+# gateway-controller isn't listening on. Same POLICY_ENGINE_XDS_TLS_ENABLED,
+# falling back to XDS_TLS_ENABLED, precedence as
+# policy_engine.xds.tls.enabled in config-template.toml.
+POLICY_ENGINE_XDS_TLS_ENABLED_EFFECTIVE="${POLICY_ENGINE_XDS_TLS_ENABLED:-${XDS_TLS_ENABLED:-false}}"
+if [ "${POLICY_ENGINE_XDS_TLS_ENABLED_EFFECTIVE}" = "true" ]; then
+    PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_TLS_PORT}"
+else
+    PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
+fi
 
 POLICY_ENGINE_SOCKET="/var/run/api-platform/policy-engine.sock"
 export PYTHON_EXECUTOR_SOCKET="/var/run/api-platform/python-executor.sock"
 
 log "Starting Gateway Runtime"
 log "  Gateway Controller: ${GATEWAY_CONTROLLER_HOST}"
-log "  Router xDS: ${GATEWAY_CONTROLLER_HOST}:${ROUTER_XDS_PORT}"
+log "  Router xDS: ${GATEWAY_CONTROLLER_HOST}:${XDS_SERVER_PORT} (TLS: ${XDS_TLS_ENABLED})"
 log "  Policy Engine xDS: ${PE_XDS_SERVER}"
 log "  Log Level: ${LOG_LEVEL}"
 log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"

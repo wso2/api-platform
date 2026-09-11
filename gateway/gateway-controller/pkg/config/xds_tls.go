@@ -27,26 +27,36 @@ import (
 )
 
 // XDSServerTLSConfig holds mutual-TLS configuration for an xDS gRPC server:
-// the main Envoy-facing ADS/SDS server on server.xds_port, and the
-// policy-engine-facing server on policy_server.port. Off by default -- both
-// servers keep working in plaintext either way, consistent with this
-// repo's "PQC/TLS is optional-but-supported, not mandatory" posture (see
-// post-quantum-cryptography.md), since not every deployment's Envoy or
-// policy-engine build is configured for mTLS yet.
+// the main Envoy-facing ADS/SDS server (plaintext on server.xds_port), and
+// the policy-engine-facing server (plaintext on policy_server.port). Off by
+// default -- both servers keep working in plaintext on their existing port
+// either way, consistent with this repo's "PQC/TLS is optional-but-supported,
+// not mandatory" posture (see post-quantum-cryptography.md), since not every
+// deployment's Envoy or policy-engine build is configured for mTLS yet.
 //
 // Unlike ServerTLSConfig (the REST management API's TLS listener, which is
 // server-only TLS), this type has no server-only mode: xDS is a
 // control-plane channel that carries per-tenant API-key hashes,
 // subscription state, and full policy chains, so authenticating only the
 // server side is not sufficient (go-control-plane-xds-security.md
-// directive 2). Whenever Enabled is true, ClientCAFile and
-// AllowedClientIdentities are both required -- see ValidateXDSServerTLS.
+// directive 2). Whenever Enabled is true, Port, ClientCAFile, and
+// AllowedClientIdentities are all required -- see ValidateXDSServerTLS.
 type XDSServerTLSConfig struct {
-	// Enabled switches the xDS server from plaintext to mutual TLS on its
-	// existing port (server.xds_port or policy_server.port) -- there is no
-	// second listener the way ServerTLSConfig adds one for the REST API,
-	// since a gRPC server serves one credential type per port.
+	// Enabled starts the mutual-TLS listener on Port, in place of the
+	// plaintext listener on the server's existing port (server.xds_port or
+	// policy_server.port) -- same either/or relationship as
+	// ServerConfig.TLS.Enabled has with APIPort, so flipping this on never
+	// leaves the previous plaintext port silently still reachable. Off by
+	// default.
 	Enabled bool `koanf:"enabled"`
+
+	// Port is this xDS server's dedicated mutual-TLS listener port --
+	// separate from, and never reusing, the plaintext port
+	// (server.xds_port/policy_server.port) it replaces once Enabled. Must
+	// differ from every other configured controller port. Required when
+	// Enabled; disabled by default, so this port is never bound unless an
+	// operator explicitly opts in.
+	Port int `koanf:"port"`
 
 	// CertFile and KeyFile are the PEM-encoded server certificate and
 	// private key this xDS server presents to connecting clients. Required
@@ -99,6 +109,9 @@ type XDSServerTLSConfig struct {
 func ValidateXDSServerTLS(fieldPrefix string, cfg XDSServerTLSConfig) error {
 	if !cfg.Enabled {
 		return nil
+	}
+	if cfg.Port < 1 || cfg.Port > 65535 {
+		return fmt.Errorf("%s.port must be between 1 and 65535, got: %d", fieldPrefix, cfg.Port)
 	}
 	if cfg.CertFile == "" {
 		return fmt.Errorf("%s.cert_file is required when %s.enabled", fieldPrefix, fieldPrefix)

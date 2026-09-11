@@ -50,13 +50,15 @@ ciphers = ""
 ecdh_curves = "X25519,P-256"
 
 [controller.server.xds_tls]
-# Switches the main xDS gRPC server (serves Envoy on server.xds_port above)
-# from plaintext to mutual TLS -- there is no second listener the way
-# server.tls above adds one; server.xds_port itself starts speaking mTLS.
-# Off by default: Envoy's xds_cluster (router/config/config-override.yaml)
-# must be given a matching client cert/CA before this is turned on, or the
+# Starts the main xDS gRPC server (serves Envoy) as mutual TLS on its own
+# dedicated `port` below, in place of the plaintext listener on
+# server.xds_port above -- same either/or relationship server.tls above has
+# with server.api_port. Off by default: Envoy's xds_cluster
+# (router/config/config-override.yaml) must be given a matching client
+# cert/CA and pointed at this port before this is turned on, or the
 # connection will fail closed.
 enabled = false
+port = 18443
 cert_file = ""
 key_file = ""
 # PEM bundle of CA certificates trusted to sign Envoy's client certificate.
@@ -103,12 +105,15 @@ mutex_profile_fraction = 0
 port = 18001
 
 [controller.policy_server.tls]
-# Switches the policy xDS gRPC server (serves the policy-engine on
-# policy_server.port above) from plaintext to mutual TLS, on that same
-# port. Off by default: policy_engine.xds.tls below must be given a
-# matching client cert/CA before this is turned on, or the connection will
+# Starts the policy xDS gRPC server (serves the policy-engine) as mutual
+# TLS on its own dedicated `port` below, in place of the plaintext listener
+# on policy_server.port above -- same either/or relationship
+# server.xds_tls has with server.xds_port. Off by default:
+# policy_engine.xds.tls below must be given a matching client cert/CA and
+# pointed at this port before this is turned on, or the connection will
 # fail closed.
 enabled = false
+port = 18444
 # Path to TLS certificate file (required if TLS is enabled)
 cert_file = "./certs/server.crt"
 # Path to TLS private key file (required if TLS is enabled)

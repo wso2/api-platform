@@ -63,6 +63,7 @@ data:
 
     [controller.policy_server.tls]
     enabled = {{ $gc.policy_server.tls.enabled }}
+    port = {{ $gc.policy_server.tls.port }}
     cert_file = {{ $gc.policy_server.tls.cert_file | quote }}
     key_file = {{ $gc.policy_server.tls.key_file | quote }}
 

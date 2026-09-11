@@ -312,10 +312,11 @@ type ServerConfig struct {
 	// default.
 	TLS ServerTLSConfig `koanf:"tls"`
 
-	// XDSTLS switches the main xDS gRPC server (serving Envoy, on XDSPort)
-	// from plaintext to mutual TLS. Unlike TLS above, this does not add a
-	// second listener -- XDSPort itself starts speaking mTLS. Off by
-	// default; see XDSServerTLSConfig for why xDS has no server-only mode.
+	// XDSTLS starts the main xDS gRPC server (serving Envoy) as mutual TLS
+	// on its own dedicated XDSTLS.Port, in place of the plaintext listener
+	// on XDSPort -- same either/or relationship TLS above has with APIPort.
+	// Off by default; see XDSServerTLSConfig for why xDS has no
+	// server-only mode.
 	XDSTLS XDSServerTLSConfig `koanf:"xds_tls"`
 
 	// ReadTimeout, ReadHeaderTimeout, WriteTimeout, and IdleTimeout bound the
@@ -420,8 +421,14 @@ type PprofConfig struct {
 
 // PolicyServerConfig holds policy xDS server-related configuration
 type PolicyServerConfig struct {
-	Port int                `koanf:"port"`
-	TLS  XDSServerTLSConfig `koanf:"tls"`
+	// Port is the plaintext policy xDS listener port.
+	Port int `koanf:"port"`
+
+	// TLS starts the policy xDS server as mutual TLS on its own dedicated
+	// TLS.Port, in place of the plaintext listener on Port -- same
+	// either/or relationship as ServerConfig.XDSTLS has with
+	// ServerConfig.XDSPort. Off by default.
+	TLS XDSServerTLSConfig `koanf:"tls"`
 }
 
 // PoliciesConfig holds policy-related configuration
@@ -1073,6 +1080,7 @@ func defaultConfig() *Config {
 				},
 				XDSTLS: XDSServerTLSConfig{
 					Enabled:                false,
+					Port:                   18443,
 					CertFile:               "./xds-certs/server.crt",
 					KeyFile:                "./xds-certs/server.key",
 					ClientCAFile:           "./xds-certs/ca.crt",
@@ -1099,6 +1107,7 @@ func defaultConfig() *Config {
 				Port: 18001,
 				TLS: XDSServerTLSConfig{
 					Enabled:                false,
+					Port:                   18444,
 					CertFile:               "./xds-certs/server.crt",
 					KeyFile:                "./xds-certs/server.key",
 					ClientCAFile:           "./xds-certs/ca.crt",
@@ -1647,6 +1656,16 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.xds_port must be between 1 and 65535, got: %d", c.Controller.Server.XDSPort)
 	}
 
+	if c.Controller.PolicyServer.Port < 1 || c.Controller.PolicyServer.Port > 65535 {
+		return fmt.Errorf("policy_server.port must be between 1 and 65535, got: %d", c.Controller.PolicyServer.Port)
+	}
+	if c.Controller.PolicyServer.Port == c.Controller.Server.APIPort {
+		return fmt.Errorf("policy_server.port cannot be same as server.api_port")
+	}
+	if c.Controller.PolicyServer.Port == c.Controller.Server.XDSPort {
+		return fmt.Errorf("policy_server.port cannot be same as server.xds_port")
+	}
+
 	if strings.TrimSpace(c.Controller.Server.GatewayID) == "" {
 		return fmt.Errorf("server.gateway_id is required and cannot be empty")
 	}
@@ -1703,6 +1722,55 @@ func (c *Config) Validate() error {
 	// Validate policy xDS server mTLS config (serves the policy-engine on policy_server.port)
 	if err := ValidateXDSServerTLS("policy_server.tls", c.Controller.PolicyServer.TLS); err != nil {
 		return err
+	}
+
+	// Each xDS TLS listener gets its own dedicated port (XDSServerTLSConfig.Port),
+	// never reusing server.xds_port/policy_server.port -- so it must be checked
+	// for collisions against every other configured controller port, the same
+	// way server.tls.port already is above.
+	if c.Controller.Server.XDSTLS.Enabled {
+		port := c.Controller.Server.XDSTLS.Port
+		switch port {
+		case c.Controller.Server.APIPort:
+			return fmt.Errorf("server.xds_tls.port cannot be same as server.api_port")
+		case c.Controller.Server.XDSPort:
+			return fmt.Errorf("server.xds_tls.port cannot be same as server.xds_port")
+		case c.Controller.PolicyServer.Port:
+			return fmt.Errorf("server.xds_tls.port cannot be same as policy_server.port")
+		}
+		if c.Controller.Server.TLS.Enabled && port == c.Controller.Server.TLS.Port {
+			return fmt.Errorf("server.xds_tls.port cannot be same as server.tls.port")
+		}
+		if c.Controller.AdminServer.Enabled && port == c.Controller.AdminServer.Port {
+			return fmt.Errorf("server.xds_tls.port cannot be same as admin_server.port")
+		}
+		if c.Controller.Metrics.Enabled && port == c.Controller.Metrics.Port {
+			return fmt.Errorf("server.xds_tls.port cannot be same as metrics.port")
+		}
+		if c.Controller.PolicyServer.TLS.Enabled && port == c.Controller.PolicyServer.TLS.Port {
+			return fmt.Errorf("server.xds_tls.port cannot be same as policy_server.tls.port")
+		}
+	}
+
+	if c.Controller.PolicyServer.TLS.Enabled {
+		port := c.Controller.PolicyServer.TLS.Port
+		switch port {
+		case c.Controller.Server.APIPort:
+			return fmt.Errorf("policy_server.tls.port cannot be same as server.api_port")
+		case c.Controller.Server.XDSPort:
+			return fmt.Errorf("policy_server.tls.port cannot be same as server.xds_port")
+		case c.Controller.PolicyServer.Port:
+			return fmt.Errorf("policy_server.tls.port cannot be same as policy_server.port")
+		}
+		if c.Controller.Server.TLS.Enabled && port == c.Controller.Server.TLS.Port {
+			return fmt.Errorf("policy_server.tls.port cannot be same as server.tls.port")
+		}
+		if c.Controller.AdminServer.Enabled && port == c.Controller.AdminServer.Port {
+			return fmt.Errorf("policy_server.tls.port cannot be same as admin_server.port")
+		}
+		if c.Controller.Metrics.Enabled && port == c.Controller.Metrics.Port {
+			return fmt.Errorf("policy_server.tls.port cannot be same as metrics.port")
+		}
 	}
 
 	if c.Controller.AdminServer.Enabled {
