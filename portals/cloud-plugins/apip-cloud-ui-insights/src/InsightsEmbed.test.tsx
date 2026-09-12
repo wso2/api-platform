@@ -102,4 +102,79 @@ describe('InsightsEmbed', () => {
     });
     expect(screen.queryByTestId('loading-state')).not.toBeInTheDocument();
   });
+
+  it('posts SET_TOKEN again when Moesif asks to refresh after handshake', async () => {
+    const postMessage = vi.fn();
+    mockFetchViewerToken
+      .mockResolvedValueOnce('viewer-token-1')
+      .mockResolvedValueOnce('viewer-token-2');
+
+    render(<InsightsEmbed scope={{ level: 'organization' }} />);
+
+    const iframe = await waitFor(() => {
+      const element = screen.getByTitle('Moesif Insights') as HTMLIFrameElement;
+      expect(element).toBeInTheDocument();
+      return element;
+    });
+
+    Object.defineProperty(iframe, 'contentWindow', {
+      configurable: true,
+      value: { postMessage },
+    });
+
+    act(() => {
+      iframe.dispatchEvent(new Event('load'));
+    });
+
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        {
+          type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SET_TOKEN,
+          token: 'viewer-token-1',
+        },
+        'https://web-dev.moesif.com'
+      );
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SCHEMA_GEN_FINISHED,
+          },
+          origin: 'https://web-dev.moesif.com',
+          source: null,
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(iframe.style.display).toBe('block');
+    });
+
+    const callsAfterHandshake = postMessage.mock.calls.length;
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.REFRESH_TOKEN,
+          },
+          origin: 'https://web-dev.moesif.com',
+          source: null,
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(postMessage.mock.calls.length).toBeGreaterThan(callsAfterHandshake);
+      expect(postMessage).toHaveBeenCalledWith(
+        {
+          type: MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SET_TOKEN,
+          token: 'viewer-token-2',
+        },
+        'https://web-dev.moesif.com'
+      );
+    });
+  });
 });

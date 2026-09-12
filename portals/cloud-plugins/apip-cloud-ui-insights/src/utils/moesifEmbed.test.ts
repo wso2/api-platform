@@ -18,13 +18,14 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { ApiFetch } from '../hostPort';
 import {
   buildAiWorkspaceIframeSrc,
   buildBasicIframeSrc,
   buildBasicProjectIframeSrc,
+  pickAllowlistedMoesifAppUrl,
   resolveInsightsScopeLevel,
   resolveMoesifEmbeddingOrigin,
-  resolveTrustedMoesifAppUrl,
 } from './moesifEmbed';
 
 describe('moesifEmbed helpers', () => {
@@ -68,40 +69,21 @@ describe('moesifEmbed helpers', () => {
     ).toBe('https://web-dev.moesif.com');
   });
 
-  it('rejects untrusted moesif hosts and uses allowlisted fallback', () => {
-    expect(
-      resolveTrustedMoesifAppUrl(
-        'https://evil.example.com',
-        'https://web-dev.moesif.com'
-      )
-    ).toBe('https://web-dev.moesif.com');
-  });
-
-  it('returns undefined when no allowlisted host is configured', () => {
-    expect(
-      resolveTrustedMoesifAppUrl(
-        'https://evil.example.com',
-        'https://also-evil.example.com'
-      )
-    ).toBeUndefined();
+  it('rejects untrusted moesif hosts', () => {
+    expect(pickAllowlistedMoesifAppUrl('https://evil.example.com')).toBeUndefined();
   });
 
   it('rejects non-https moesif hosts', () => {
-    expect(
-      resolveTrustedMoesifAppUrl(
-        'http://www.moesif.com',
-        'https://www.moesif.com'
-      )
-    ).toBe('https://www.moesif.com');
+    expect(pickAllowlistedMoesifAppUrl('http://www.moesif.com')).toBeUndefined();
   });
 
   it('accepts allowlisted https moesif hosts', () => {
-    expect(
-      resolveTrustedMoesifAppUrl(
-        'https://www.moesif.com/wrap',
-        'https://web-dev.moesif.com'
-      )
-    ).toBe('https://www.moesif.com');
+    expect(pickAllowlistedMoesifAppUrl('https://www.moesif.com/wrap')).toBe(
+      'https://www.moesif.com'
+    );
+    expect(pickAllowlistedMoesifAppUrl('https://web-dev.moesif.com')).toBe(
+      'https://web-dev.moesif.com'
+    );
   });
 });
 
@@ -161,108 +143,75 @@ describe('analyticsApi', () => {
   });
 
   it('resolveProjectScope does not reuse the org-mapping 404 copy', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: false,
-        status: 404,
-        json: async () => ({ error: 'missing' }),
-      }))
-    );
+    const apiFetch = vi.fn(async () => {
+      throw new Error('not found');
+    }) as unknown as ApiFetch;
 
     const { resolveProjectScope } = await import('../api/analyticsApi');
-    await expect(resolveProjectScope('default', 'missing-proj')).rejects.toThrow(
+    await expect(resolveProjectScope(apiFetch, 'missing-proj')).rejects.toThrow(
       /Project "missing-proj" was not found/
     );
   });
 
   it('resolveProjectScope matches platform-api project handle in id field', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => ({
-        ok: true,
-        json: async () => {
-          if (url.includes('/projects/new-project')) {
-            return {
-              id: 'new-project',
-              displayName: 'New Project',
-              organizationId: 'default',
-            };
-          }
-          return { list: [] };
-        },
-      }))
-    );
+    const apiFetch = vi.fn(async (_method: string, path: string) => {
+      if (path.includes('/projects/new-project')) {
+        return {
+          id: 'new-project',
+          displayName: 'New Project',
+          organizationId: 'default',
+        };
+      }
+      return { list: [] };
+    }) as unknown as ApiFetch;
 
     const { resolveProjectScope } = await import('../api/analyticsApi');
-    await expect(resolveProjectScope('default', 'new-project')).resolves.toEqual({
+    await expect(resolveProjectScope(apiFetch, 'new-project')).resolves.toEqual({
       projectId: 'new-project',
       projectName: 'New Project',
     });
   });
 
   it('resolveProjectScope prefers uuid when present', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({
-          id: 'new-project',
-          uuid: '019feb1e-63d9-71f7-a693-1956ac197303',
-          displayName: 'New Project',
-        }),
-      }))
-    );
+    const apiFetch = vi.fn(async () => ({
+      id: 'new-project',
+      uuid: '019feb1e-63d9-71f7-a693-1956ac197303',
+      displayName: 'New Project',
+    })) as unknown as ApiFetch;
 
     const { resolveProjectScope } = await import('../api/analyticsApi');
-    await expect(resolveProjectScope('default', 'new-project')).resolves.toEqual({
+    await expect(resolveProjectScope(apiFetch, 'new-project')).resolves.toEqual({
       projectId: '019feb1e-63d9-71f7-a693-1956ac197303',
       projectName: 'New Project',
     });
   });
 
   it('resolveProjectScope matches project id when handler differs', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({
-          id: 'proj-uuid',
-          handler: 'orders',
-          uuid: 'proj-uuid',
-          displayName: 'Orders',
-        }),
-      }))
-    );
+    const apiFetch = vi.fn(async () => ({
+      id: 'proj-uuid',
+      handler: 'orders',
+      uuid: 'proj-uuid',
+      displayName: 'Orders',
+    })) as unknown as ApiFetch;
 
     const { resolveProjectScope } = await import('../api/analyticsApi');
-    await expect(resolveProjectScope('default', 'proj-uuid')).resolves.toEqual({
+    await expect(resolveProjectScope(apiFetch, 'proj-uuid')).resolves.toEqual({
       projectId: 'proj-uuid',
       projectName: 'Orders',
     });
   });
 
-  it('resolveProjectScope sends Accept and X-Org-Id headers', async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        id: 'proj-uuid',
-        displayName: 'Orders',
-      }),
+  it('resolveProjectScope uses host apiFetch without X-Org-Id', async () => {
+    const apiFetchMock = vi.fn(async () => ({
+      id: 'proj-uuid',
+      displayName: 'Orders',
     }));
-    vi.stubGlobal('fetch', fetchMock);
+    const apiFetch = apiFetchMock as unknown as ApiFetch;
 
     const { resolveProjectScope } = await import('../api/analyticsApi');
-    await resolveProjectScope('default', 'proj-uuid');
+    await resolveProjectScope(apiFetch, 'proj-uuid');
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/projects/proj-uuid'),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          accept: 'application/json',
-          'X-Org-Id': 'default',
-        }),
-      })
-    );
+    expect(apiFetchMock).toHaveBeenCalledWith('GET', '/projects/proj-uuid');
+    expect(apiFetchMock.mock.calls[0]).toHaveLength(2);
   });
 });

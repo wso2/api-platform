@@ -92,7 +92,6 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     useState<InsightsScopeLevel>(requestedScopeLevel);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
-  const [scopeError, setScopeError] = useState<string | null>(null);
   const [scopeLoading, setScopeLoading] = useState(needsProjectResolve);
   const [resolvedScopeKey, setResolvedScopeKey] = useState<string | null>(() =>
     needsProjectResolve ? null : scopeKey
@@ -106,7 +105,6 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
         embedProfile === 'ai-workspace' ? 'organization' : requestedScopeLevel
       );
       setScopeLoading(false);
-      setScopeError(null);
       setProjectId(null);
       setProjectName(null);
       setResolvedScopeKey(scopeKey);
@@ -115,7 +113,6 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
 
     let cancelled = false;
     setScopeLoading(true);
-    setScopeError(null);
     setProjectId(null);
     setProjectName(null);
     setEmbedScopeLevel('project');
@@ -135,7 +132,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
           }
           return;
         }
-        const project = await resolveProjectScope(orgHandle, projectHandle);
+        const project = await resolveProjectScope(port.apiFetch, projectHandle);
         if (cancelled) return;
         setEmbedScopeLevel('project');
         setProjectId(project.projectId);
@@ -146,7 +143,6 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
           setEmbedScopeLevel('organization');
           setProjectId(null);
           setProjectName(null);
-          setScopeError(null);
           setResolvedScopeKey(scopeKey);
         }
       } finally {
@@ -161,6 +157,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     embedProfile,
     needsProjectResolve,
     orgHandle,
+    port.apiFetch,
     projectHandle,
     requestedScopeLevel,
     scopeKey,
@@ -173,13 +170,6 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
         message="Organization context is unavailable."
         title="Unable to load Insights"
       />
-    );
-  }
-
-  if (scopeError) {
-    return withHostPageChrome(
-      embedProfile,
-      <ErrorState message={scopeError} title="Unable to load Insights" />
     );
   }
 

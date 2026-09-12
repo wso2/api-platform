@@ -11,7 +11,10 @@ import { Boxes, Network, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
-import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
+import {
+  InsightsFeature,
+  isInsightsMoesifConfigured,
+} from '@wso2-enterprise/apip-cloud-ui-insights';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
@@ -43,6 +46,9 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * `insights` registers against `AI_WORKSPACE_INSIGHTS_SLOT` the same way —
  * see `InsightsRoute` in `ai-workspace/src/App.tsx` — so the built-in Insights
  * nav stays and only the page body is replaced when Moesif is configured.
+ * Registration is gated by `isInsightsMoesifConfigured` (single reader in the
+ * insights package) so App.tsx needs no Moesif config knowledge: no override
+ * means InsightsRoute keeps the built-in page.
  *
  * The deploy feature is deliberately NOT registered here. Deploying is scoped to
  * one API — the page reads and writes that API's deployments — and this host has
@@ -127,5 +133,10 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
   }),
 ];
 
-export const cloudExtensions = getCloudExtensions(cloudPluginFeatures);
+/** Omit Insights when Moesif is not configured so InsightsRoute keeps the built-in page. */
+export const cloudExtensions = getCloudExtensions(
+  cloudPluginFeatures.filter(
+    (feature) => feature.id !== 'insights' || isInsightsMoesifConfigured()
+  )
+);
 export type { AIWorkspaceExtension };

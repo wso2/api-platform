@@ -20,16 +20,20 @@
  * Client for WSO2 Cloud Moesif viewer-token endpoint (platform-api-service).
  * See wso2cloud/backend/core/internal/moesifmapping/handler/handler.go.
  *
- * Calls go through the portal BFF same-origin proxy so session cookies and
- * bearer injection stay server-side.
+ * Viewer tokens go through the portal BFF same-origin `/proxy/cloud/...` path so
+ * session cookies stay server-side. Project lookup goes through the host Port's
+ * `apiFetch` (platform-api via BFF) — org comes from the session token, never
+ * from an `X-Org-Id` header.
  */
 
-import { insightsRuntimeConfig, platformApiRoot } from '../config/runtimeConfig';
+import { insightsRuntimeConfig } from '../config/runtimeConfig';
+import type { ApiFetch } from '../hostPort';
 
 type ViewerTokenResponse = {
   token: string;
 };
 
+/** Same-origin BFF proxy prefix used by cloud analytics routes. */
 const cloudApiBase = () =>
   insightsRuntimeConfig.platformApiBaseUrl.replace(/\/$/, '');
 
@@ -48,28 +52,6 @@ const userFacingRequestError = (status: number): string => {
     return 'Insights are temporarily unavailable. Please try again in a few minutes.';
   }
   return 'Unable to load Insights right now. Please try again.';
-};
-
-const readJson = async <T>(response: Response): Promise<T> => {
-  if (!response.ok) {
-    throw new Error(userFacingRequestError(response.status));
-  }
-  return (await response.json().catch(() => ({}))) as T;
-};
-
-const fetchJson = async <T>(
-  url: string,
-  init?: RequestInit
-): Promise<T> => {
-  const response = await fetch(url, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      accept: 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
-  return readJson<T>(response);
 };
 
 /** GET /cloud/analytics/id-token — Moesif dashboard-viewer token for the caller org. */
@@ -114,9 +96,12 @@ const pickProjectId = (project: ProjectRecord) =>
 const pickProjectName = (project: ProjectRecord, fallback: string) =>
   project.displayName?.trim() || project.name?.trim() || fallback;
 
-/** Resolve a project id for Moesif `project_id` filtering. */
+/**
+ * Resolve a project id for Moesif `project_id` filtering via the host Port's
+ * platform-api transport (session-scoped org; no `X-Org-Id`).
+ */
 export async function resolveProjectScope(
-  orgHandle: string,
+  apiFetch: ApiFetch,
   projectHandle: string
 ): Promise<{ projectId: string; projectName: string }> {
   const trimmedHandle = projectHandle.trim();
@@ -124,14 +109,12 @@ export async function resolveProjectScope(
     throw new Error('Project scope is required for project insights.');
   }
 
-  const headers = { 'X-Org-Id': orgHandle };
-
   try {
-    const project = await fetchJson<ProjectRecord>(
-      `${platformApiRoot()}/projects/${encodeURIComponent(trimmedHandle)}`,
-      { headers }
+    const project = await apiFetch<ProjectRecord>(
+      'GET',
+      `/projects/${encodeURIComponent(trimmedHandle)}`
     );
-    if (pickProjectHandle(project) === trimmedHandle) {
+    if (project && pickProjectHandle(project) === trimmedHandle) {
       const projectId = pickProjectId(project);
       if (projectId) {
         return {
@@ -145,11 +128,8 @@ export async function resolveProjectScope(
   }
 
   try {
-    const response = await fetchJson<{ list?: unknown[] }>(
-      `${platformApiRoot()}/projects`,
-      { headers }
-    );
-    for (const item of response.list ?? []) {
+    const response = await apiFetch<{ list?: unknown[] }>('GET', '/projects');
+    for (const item of response?.list ?? []) {
       const project = asRecord(item) as ProjectRecord;
       if (pickProjectHandle(project) === trimmedHandle) {
         const projectId = pickProjectId(project);

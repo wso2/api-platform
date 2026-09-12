@@ -35,6 +35,8 @@ const messages = defineMessages({
   cloudFeature: {
     id: 'appShell.insightsPage.feature',
     defaultMessage: 'API insights',
+    description:
+      'Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud.',
   },
   panelDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelDescription',

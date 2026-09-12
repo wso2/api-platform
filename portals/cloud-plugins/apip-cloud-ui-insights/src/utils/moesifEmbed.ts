@@ -36,7 +36,10 @@ export const ALLOWED_MOESIF_ORIGINS = new Set([
 export const resolveMoesifEmbeddingOrigin = (moesifAppUrl: string): string =>
   new URL(moesifAppUrl).origin;
 
-/** Return configuredUrl when it is HTTPS and on the Moesif allowlist. */
+/**
+ * Return configuredUrl when it is HTTPS and on the Moesif allowlist.
+ * Callers must not silently fall back to web-dev in production.
+ */
 export const pickAllowlistedMoesifAppUrl = (
   configuredUrl: string
 ): string | undefined => {
@@ -49,18 +52,6 @@ export const pickAllowlistedMoesifAppUrl = (
     return undefined;
   }
 };
-
-/**
- * Return a trusted Moesif app base URL (HTTPS + allowlisted origin).
- * Returns undefined when neither URL is on the allowlist — callers must not
- * silently fall back to web-dev in production.
- */
-export const resolveTrustedMoesifAppUrl = (
-  configuredUrl: string,
-  fallbackUrl: string
-): string | undefined =>
-  pickAllowlistedMoesifAppUrl(configuredUrl) ??
-  pickAllowlistedMoesifAppUrl(fallbackUrl);
 
 /**
  * Org-level wrap/basic iframe.

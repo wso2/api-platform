@@ -18,7 +18,7 @@
 
 export { default as InsightsFeature } from './InsightsFeature';
 export type { InsightsFeatureProps } from './InsightsFeature';
-export type { InsightsHostPort, NotifySeverity } from './hostPort';
+export type { InsightsHostPort, ApiFetch, NotifySeverity } from './hostPort';
 export type {
   InsightsEmbedProfile,
   InsightsEmbedScope,

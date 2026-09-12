@@ -66,6 +66,7 @@ const basePort: InsightsHostPort = {
   orgHandle: 'acme',
   navigate: vi.fn(),
   notify: vi.fn(),
+  apiFetch: vi.fn(),
 };
 
 describe('InsightsFeature', () => {
@@ -93,7 +94,10 @@ describe('InsightsFeature', () => {
         'project:id-a'
       );
     });
-    expect(mockResolveProjectScope).toHaveBeenCalledWith('acme', 'project-a');
+    expect(mockResolveProjectScope).toHaveBeenCalledWith(
+      basePort.apiFetch,
+      'project-a'
+    );
   });
 
   it('falls back to organization Insights when project scope resolve fails', async () => {
@@ -151,7 +155,7 @@ describe('InsightsFeature', () => {
       resolveProjectB = resolve;
     });
 
-    mockResolveProjectScope.mockImplementation((_org, handle) => {
+    mockResolveProjectScope.mockImplementation((_apiFetch, handle) => {
       if (handle === 'project-a') {
         return Promise.resolve({
           projectId: 'id-a',

@@ -159,8 +159,11 @@ const InsightsEmbedConfigured: FC<
   }, [embeddingOrigin, viewerToken]);
 
   useEffect(() => {
-    if (!isIframeDomLoaded || !viewerToken || isEmbedReady) return;
+    if (!isIframeDomLoaded || !viewerToken) return;
+    // Deliver the current token immediately — this also covers the periodic
+    // refresh and REFRESH_TOKEN re-mints, which land after isEmbedReady.
     sendTokenToChild();
+    if (isEmbedReady) return;
     const intervalId = window.setInterval(sendTokenToChild, SET_TOKEN_RETRY_MS);
     return () => window.clearInterval(intervalId);
   }, [isEmbedReady, isIframeDomLoaded, sendTokenToChild, viewerToken]);

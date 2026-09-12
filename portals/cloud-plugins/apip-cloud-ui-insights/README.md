@@ -21,9 +21,6 @@ src/
     routeParams.ts         # pathname → org/project handles
   components/
     StateViews.tsx         # loading / error states
-overlays/
-  api-control-plane/
-    InsightsPage.tsx       # cloud Docker overlay (API scope Coming soon)
 ```
 
 ## Embed modes (`embedProfile`)
@@ -38,6 +35,6 @@ Do **not** put `/wrap/basic` or `/ai-overview` in env — only the Moesif origin
 ## Host registration
 
 - **API Control Plane** — org/project sidebar via `apip-cloud-ui/src/hosts/api-control-plane.tsx`
-- **AI Workspace** — `page.insights` override (like gateways) via `hosts/ai-workspace.tsx`.
-  If Moesif origin is not in runtime config, `InsightsRoute` keeps the built-in
-  Insights page instead of showing a configuration error.
+- **AI Workspace** — `page.insights` override (like gateways) via `hosts/ai-workspace.tsx`,
+  registered only when `isInsightsMoesifConfigured()` is true. Otherwise
+  `InsightsRoute` keeps the built-in Insights page (no override registered).

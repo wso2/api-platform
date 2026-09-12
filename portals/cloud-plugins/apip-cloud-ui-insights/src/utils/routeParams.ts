@@ -16,15 +16,13 @@
  * under the License.
  */
 
-/** Parse org/project/api handles from the current browser pathname. */
+/** Parse org/project handles from the current browser pathname. */
 export const parseInsightsRouteParams = (pathname: string) => {
   const orgMatch = pathname.match(/\/organizations\/([^/]+)/);
   const projectMatch = pathname.match(/\/projects\/([^/]+)/);
-  const apiMatch = pathname.match(/\/apis\/([^/]+)/);
 
   return {
     orgHandle: orgMatch?.[1],
     projectHandler: projectMatch?.[1],
-    apiHandler: apiMatch?.[1],
   };
 };

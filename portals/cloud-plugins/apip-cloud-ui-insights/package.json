@@ -6,9 +6,9 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "tsc --noEmit",
-    "_phase:build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.console.json",
+    "_phase:build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.console.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.console.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },
