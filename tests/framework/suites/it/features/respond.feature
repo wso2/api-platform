@@ -406,7 +406,7 @@ Feature: Response policy behavior
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion | gateway.api-platform.wso2.com/v1 |
       | name | ${CTX:apiName24} |
-      | spec | {"displayName":"Respond-Large-JSON-Test","version":"v1.0.0","context":"${CTX:apiContext24}/$version","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/test","policies":[{"name":"respond","version":"v1","params":{"statusCode":200,"body":"{\"users\": [{\"id\": 1, \"name\": \"User 1\"}, {\"id\": 2, \"name\": \"User 2\"}, {\"id\": 3, \"name\": \"User 3\"}, {\"id\": 4, \"name\": \"User 4\"}, {\"id\": 5, \"name\": \"User 5\"}], \"total\": 5, \"page\": 1, \"pageSize\": 10, \"metadata\": {\"timestamp\": \"2026-01-28T10:00:00Z\", \"version\": \"v1\"}}","headers":[{"name":"Content-Type","value":"application/json"}]}}]}]} |
+      | spec | {"displayName":"Respond-Large-JSON-Test","version":"v1.0.0","context":"${CTX:apiContext24}/$version","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/test","policies":[{"name":"respond","version":"v1","params":{"statusCode":200,"body":"{\"users\": [{\"id\": 1, \"name\": \"User 1\"}, {\"id\": 2, \"name\": \"User 2\"}, {\"id\": 3, \"name\": \"User 3\"}, {\"id\": 4, \"name\": \"User 4\"}, {\"id\": 5, \"name\": \"User 5\"}], \"total\": 5, \"page\": 1, \"pageSize\": 10, \"pageInfo\": {\"timestamp\": \"2026-01-28T10:00:00Z\", \"version\": \"v1\"}}","headers":[{"name":"Content-Type","value":"application/json"}]}}]}]} |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext24}/v1.0.0/test" until status 200
     When I send a "GET" request to "${CTX:apiContext24}/v1.0.0/test"

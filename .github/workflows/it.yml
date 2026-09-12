@@ -116,6 +116,11 @@ jobs:
       # show), so a scenario failure has the product's own logs available, not only the
       # client-side symptom - always uploaded, since the failing run is exactly the one
       # that needs this.
+      #
+      # include-hidden-files is required: logcapture.Sink (like coverage.Sink) isolates
+      # every run beneath its own ".run-*" directory so a stale local run's files are
+      # never mixed with a fresh run's, so every log file lives under a dot-prefixed path
+      # segment - upload-artifact excludes those by default and silently uploads nothing.
       - name: Upload container log captures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -123,6 +128,7 @@ jobs:
           name: container-logs
           path: tests/framework/suites/it/logs-out/**/*.log
           if-no-files-found: warn
+          include-hidden-files: true
 
       # Unit flags. continue-on-error here (Codecov's own availability is not this job's
       # problem to enforce), but NOT on the test/report steps above - those are ours.

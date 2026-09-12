@@ -147,9 +147,6 @@ blocks:
       - name: llm-cost-calculation-providers
         features:
           - features/llm_cost_calculation_providers.feature
-        # Excludes scenarios documenting known product-contract gaps (multi-dimensional
-        # cost calculation not charging/enforcing correctly) - see the feature file.
-        tags: "~@known-issue"
       - name: llm-provider-global-ratelimit
         features:
           - features/llm_provider_global_ratelimit.feature
@@ -206,10 +203,16 @@ blocks:
         # channel cache) - see the feature file for details.
         tags: "~@known-issue"
 
+  # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
+  # this block hosts them alone rather than alongside runners that expect it continuously
+  # reachable - see dp-to-cp-reconnect's own comment for the flake that mixing them caused.
   - name: gateway-restart
     parallel: 1
     components:
+      - name: platform-api
+        db: sqlite
       - name: platform-gateway
+        dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
@@ -217,6 +220,9 @@ blocks:
       - name: startup-db-bootstrap
         features:
           - features/startup_db_bootstrap.feature
+      - name: dp-to-cp-reconnect
+        features:
+          - features/dp_to_cp_reconnect.feature
 
   - name: pii-masking-regex
     parallel: 1

@@ -25,6 +25,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -138,15 +139,52 @@ func TestIssueTokenDefaultsIssuerAndScopeWhenOmitted(t *testing.T) {
 	}
 }
 
+func TestIssueTokenRejectsUnexpectedConfiguredSecret(t *testing.T) {
+	s := newTestService(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token?expected_secret=right", nil)
+	req.SetBasicAuth("client", "wrong")
+
+	s.issueToken(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
 func TestHandlersRejectNonGetMethods(t *testing.T) {
 	s := newTestService(t)
-	for _, path := range []string{"/jwks", "/.well-known/jwks.json", "/token"} {
+	for _, path := range []string{"/jwks", "/.well-known/jwks.json"} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, path, nil)
 		s.Handler().ServeHTTP(rec, req)
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("%s: status = %d, want %d", path, rec.Code, http.StatusMethodNotAllowed)
 		}
+	}
+}
+
+func TestIssueTokenAcceptsClientCredentialsPost(t *testing.T) {
+	s := newTestService(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader("scope=read+write"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	s.issueToken(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var response struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		Scope       string `json:"scope"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decoding token response: %v", err)
+	}
+	if response.AccessToken == "" || response.TokenType != "Bearer" || response.Scope != "read write" {
+		t.Fatalf("unexpected token response metadata: type=%q scope=%q token present=%t", response.TokenType, response.Scope, response.AccessToken != "")
 	}
 }
 

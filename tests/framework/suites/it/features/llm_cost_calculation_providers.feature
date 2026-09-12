@@ -87,7 +87,6 @@ Feature: LLM cost calculation across provider response shapes
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: Anthropic geo and speed multipliers inflate cost correctly
     # claude-opus-4-6: baseCost = 20 input x 5e-6 + 10 output x 2.5e-5 = 3.5e-4
     # multiplier = 1.1 (us) x 6.0 (fast) = 6.6 -> finalCost = $0.00231 per request
@@ -127,16 +126,17 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-geo-speed" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-geo-speed" until status 429 with body:
       """
       {"model":"claude-opus-4-6","messages":[{"role":"user","content":"Hello"}],"max_tokens":100,"speed":"fast"}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: Anthropic 1-hour TTL cache writes billed at higher rate
     # claude-opus-4-6: 10 input x 5e-6 + 5 output x 2.5e-5 + 100 5m-write x 6.25e-6 + 500 1hr-write x 1e-5
     #                 = 0.00005 + 0.000125 + 0.000625 + 0.005 = $0.0058 per request
@@ -176,16 +176,17 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-cache-1hr" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-cache-1hr" until status 429 with body:
       """
       {"model":"claude-opus-4-6","messages":[{"role":"user","content":"Hello"}],"max_tokens":100}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: Anthropic web search tool per-query cost added to token cost
     # claude-3-5-haiku-20241022: 50 input x 8e-7 + 25 output x 4e-6 + 2 web-search queries x 0.01
     #                          = 0.00004 + 0.00010 + 0.02 = $0.02014 per request
@@ -225,11 +226,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-web-search" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages-web-search" until status 429 with body:
       """
       {"model":"claude-3-5-haiku-20241022","messages":[{"role":"user","content":"Search the web"}],"max_tokens":100}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -414,7 +417,6 @@ Feature: LLM cost calculation across provider response shapes
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: OpenAI prompt caching - cached tokens billed at reduced rate
     # gpt-4.1-2025-04-14: (200-100) prompt x 2e-6 + 100 cached x 5e-7 + 50 completion x 8e-6
     #                    = 2e-4 + 5e-5 + 4e-4 = $0.00065 per request
@@ -454,16 +456,17 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" until status 429 with body:
       """
       {"model":"gpt-4.1-2025-04-14","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: OpenAI flex service tier - lower rates applied for flex tier
     # gpt-5.4 flex: 100 prompt x 1.25e-6 + 50 completion x 7.5e-6 = 1.25e-4 + 3.75e-4 = $0.0005 per request
     # Budget $0.001000 = exactly 2 requests worth
@@ -502,16 +505,17 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-flex" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-flex" until status 429 with body:
       """
       {"model":"gpt-5.4","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: OpenAI priority service tier - higher rates applied for priority tier
     # gpt-4.1 priority: 100 prompt x 3.5e-6 + 50 completion x 1.4e-5 = 3.5e-4 + 7.0e-4 = $0.00105 per request
     # Budget $0.002100 = exactly 2 requests worth
@@ -550,16 +554,17 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-priority" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-priority" until status 429 with body:
       """
       {"model":"gpt-4.1","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: OpenAI batch service tier - batch rates applied for batch tier
     # gpt-4.1 batch: 100 prompt x 1e-6 + 50 completion x 4e-6 = 1e-4 + 2e-4 = $0.0003 per request
     # Budget $0.000600 = exactly 2 requests worth
@@ -598,16 +603,17 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-batch" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-batch" until status 429 with body:
       """
       {"model":"gpt-4.1","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: OpenAI reasoning tokens billed at standard output rate
     # o4-mini-2025-04-16: 100 prompt x 1.1e-6 + 80 completion (includes 30 reasoning tokens billed
     # at the output rate) x 4.4e-6 = 1.1e-4 + 3.52e-4 = $0.000462 per request
@@ -647,16 +653,17 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-reasoning" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-reasoning" until status 429 with body:
       """
       {"model":"o4-mini-2025-04-16","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
 
-  @known-issue
   Scenario: OpenAI web search tool - url_citation annotation adds flat per-call fee
     # gpt-4.1-2025-04-14: 50 prompt x 2e-6 + 25 completion x 8e-6 + 1 web-search call x 0.01
     #                    = 1e-4 + 2e-4 + 0.01 = $0.0103 per request
@@ -696,11 +703,13 @@ Feature: LLM cost calculation across provider response shapes
       """
     Then the response status code should be 200
 
-    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-web-search" with body:
+    # The cost charge for the prior request commits asynchronously after its response, so a
+    # single-shot request here can observe a not-yet-exhausted budget; poll until the charge
+    # has settled instead of asserting on the first response.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-web-search" until status 429 with body:
       """
       {"model":"gpt-4.1-2025-04-14","messages":[{"role":"user","content":"Hello"}]}
       """
-    Then the response status code should be 429
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful

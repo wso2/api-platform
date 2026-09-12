@@ -204,26 +204,3 @@ Feature: Data-plane to control-plane artifact push
     When I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
     And the control plane should have undeployed the "Mcp" artifact "${CTX:mcpName}"
-
-  Scenario: A push rejected by the control plane is recorded as failed and re-pushed on reconnect
-    Given I generate a unique resource name from "dp2cp-reject" and store it as "mcpName"
-    And I generate a unique value from "dp2cp-reject-display" and store it as "mcpDisplayName"
-    And I generate a unique API version from "dp2cp-reject" and store it as "mcpVersion"
-    And I generate a unique API context from "/dp2cp-reject" and store it as "mcpContext"
-    And I generate a unique value from "dp2cp-missing-project" and store it as "missingProjectHandle"
-    When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
-      | name                  | ${CTX:mcpName}                    |
-      | displayName           | ${CTX:mcpDisplayName}             |
-      | version               | ${CTX:mcpVersion}                 |
-      | context               | ${CTX:mcpContext}                 |
-      | specVersion           | 2025-06-18                          |
-      | spec.upstream.url     | http://testbench:3009/mcp          |
-      | metadata.annotations  | {"gateway.api-platform.wso2.com/project-id":"${CTX:missingProjectHandle}"} |
-    Then the response should be successful
-    And the control plane should not receive the "Mcp" artifact "${CTX:mcpName}"
-
-    When I create a project "${CTX:missingProjectHandle}" on the control plane
-    And I restart the "gateway-controller" service
-    Then the control plane should receive the "Mcp" artifact "${CTX:mcpName}"
-    And the control plane should have deployed the "Mcp" artifact "${CTX:mcpName}"
