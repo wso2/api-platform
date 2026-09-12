@@ -396,6 +396,30 @@ if (config.designMode?.enabled) {
 }
 
 /**
+ * Fail-closed check for internal_auth.hash: must be 64-char hex when set.
+ * Empty means shared-key auth is disabled; OAuth and session paths keep working.
+ */
+function validateInternalAuthConfig(cfg) {
+    const hash = cfg.internalAuth?.hash;
+    // Empty string is the only disable signal; false / 0 / null fall through
+    // to the shape check so a mistyped value fails at boot instead of silently
+    // disabling shared-key auth.
+    if (hash === undefined || hash === '') return;
+    if (typeof hash !== 'string' || !/^[0-9a-fA-F]{64}$/.test(hash)) {
+        process.stderr.write(
+            '[FATAL] internal_auth.hash did not resolve to a 64-character hex string. ' +
+            'Refusing to start with a malformed shared-key hash. Regenerate the hash file ' +
+            'with portals/scripts/setup.sh (or --rotate-internal-key) and reference it from ' +
+            "configs/config.toml, e.g. hash = '{{ file \"/etc/api-portal/keys/api-portal-internal-key-hash\" }}'. " +
+            'Leave the value empty to disable shared-key auth.\n'
+        );
+        process.exit(1);
+    }
+}
+
+validateInternalAuthConfig(config);
+
+/**
  * Fail-closed startup check: database.driver must be a recognised spelling, and
  * is rewritten in place to its canonical dialect before anything reads it.
  *
@@ -622,18 +646,24 @@ function resolvePortalIdConfig(cfg) {
 resolvePortalIdConfig(config);
 
 /**
- * Refuses to start when auth.mode = "idp" is selected without the endpoints OIDC login
+ * Refuses to start when auth.mode = "idp" is selected without the settings OIDC login
  * actually needs.
  *
- * These four have no default (see configDefaults.js) because no default could be right,
- * and passport-oauth2 throws on each of them anyway — this only turns that into a message
- * that names the missing key instead of a constructor stack trace. Validating the
- * *effective* config rather than trusting a per-field default is the same fail-closed rule
- * the Go services follow (authentication_authorization.md, GO-AUTH-011).
+ * These have no default (see configDefaults.js) because no default could be right, and
+ * passport-oauth2 / the login callback throw on each of them anyway — this only turns
+ * that into a message that names the missing key instead of a constructor stack trace or
+ * a runtime rejection on the first login. Validating the *effective* config rather than
+ * trusting a per-field default is the same fail-closed rule the Go services follow
+ * (authentication_authorization.md, GO-AUTH-011).
  *
- * Deliberately not required here: jwks_url / certificate (token verification can also be
- * satisfied by an issuer-derived JWKS), and logout_url / sign_up_url, which are optional
- * features rather than prerequisites for logging in.
+ * jwks_url is required because the login callback and the REST bearer-token path both
+ * verify tokens against it (passportConfig.js's verifyIdpJwt; authMiddleware.js's
+ * verifyJwksWithRefresh). Without it, the callback and every subsequent request would
+ * fail at runtime with an "IDP jwksUrl is not configured" error — surface that at
+ * startup instead.
+ *
+ * Deliberately not required here: logout_url / sign_up_url, which are optional features
+ * rather than prerequisites for logging in.
  */
 function validateIdpConfig(cfg) {
     if (cfg.auth?.mode !== 'idp') return;
@@ -642,6 +672,7 @@ function validateIdpConfig(cfg) {
         'auth.idp.authorization_url': cfg.auth.idp?.authorizationUrl,
         'auth.idp.token_url': cfg.auth.idp?.tokenUrl,
         'auth.idp.callback_url': cfg.auth.idp?.callbackUrl,
+        'auth.idp.jwks_url': cfg.auth.idp?.jwksUrl,
     };
     const missing = Object.entries(required)
         .filter(([, value]) => !String(value ?? '').trim())
@@ -652,6 +683,26 @@ function validateIdpConfig(cfg) {
             'These describe your identity provider and have no default. Set them in ' +
             'configs/config.toml (see configs/config-template.toml), or switch to ' +
             'auth.mode = "local" to sign in against the Platform API instead.\n'
+        );
+        process.exit(1);
+    }
+    // JWKS fetches feed the signature-verification path directly, so a plain
+    // http:// URL would let a network attacker swap the key set and sign
+    // accepted tokens. jose's createRemoteJWKSet does not enforce HTTPS itself.
+    const jwksUrlRaw = String(cfg.auth.idp.jwksUrl).trim();
+    let jwksProtocol;
+    try {
+        jwksProtocol = new URL(jwksUrlRaw).protocol;
+    } catch (_) {
+        process.stderr.write(
+            `[FATAL] auth.idp.jwks_url is not a valid URL: ${jwksUrlRaw}\n`
+        );
+        process.exit(1);
+    }
+    if (jwksProtocol !== 'https:') {
+        process.stderr.write(
+            `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
+            'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
         );
         process.exit(1);
     }

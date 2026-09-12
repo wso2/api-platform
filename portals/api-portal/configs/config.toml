@@ -38,6 +38,11 @@ page_role_validation = true
 admin      = "ap_admin"
 subscriber = "ap_subscriber"
 
+[api_portal.internal_auth]
+# Empty disables shared-key auth. Cloud portal vault does not stage a hash file yet;
+# switch to {{ file "..." }} once the plugin provisions it.
+hash = ""
+
 [api_portal.organization]
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
