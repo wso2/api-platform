@@ -396,16 +396,8 @@ if (config.designMode?.enabled) {
 }
 
 /**
- * Fail-closed check for the internal_auth section.
- *
- * When `hash` is configured, it must be a 64-char hex string (the sha256 of the
- * shared key platform-api sends). A malformed value would silently degrade to
- * "shared-key auth never accepts anything" while leaving the section present —
- * exactly the kind of mismatch this loader exists to catch, so fail here instead.
- *
- * When `hash` is empty the section is treated as absent: shared-key auth is
- * disabled at request time (see src/middlewares/sharedKeyAuth.js), the OAuth and
- * session paths keep working, and no fatal is raised.
+ * Fail-closed check for internal_auth.hash: must be 64-char hex when set.
+ * Empty means shared-key auth is disabled; OAuth and session paths keep working.
  */
 function validateInternalAuthConfig(cfg) {
     const hash = cfg.internalAuth?.hash;

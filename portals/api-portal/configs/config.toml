@@ -39,11 +39,8 @@ admin      = "ap_admin"
 subscriber = "ap_subscriber"
 
 [api_portal.internal_auth]
-# Empty disables shared-key auth (per configLoader.js line 406: "When `hash`
-# is empty the section is treated as absent"). Local-only mod for the cloud
-# portal setup: we don't ship a shared-key hash file yet (workaround #4
-# vault only stores encryption.key + session-secret). Revert to the {{ file
-# ... }} form once the plugin generates + stages this third value.
+# Empty disables shared-key auth. Cloud portal vault does not stage a hash file yet;
+# switch to {{ file "..." }} once the plugin provisions it.
 hash = ""
 
 [api_portal.organization]

@@ -280,13 +280,8 @@ async function resolvePortalOrg(req) {
  */
 async function authResolver(req, res, next) {
     try {
-        // 0. Shared-key S2S (platform-api → this portal). Runs before every other
-        //    path so a user token can never accidentally satisfy a SharedKey
-        //    attempt, and a bad SharedKey token can never quietly retry against
-        //    the OAuth path. Only requests carrying `Authorization: SharedKey ...`
-        //    are handled here; anything else falls through.
-        //    Skips the portal-isolation gate below because shared-key traffic
-        //    is a service identity, not a portal session.
+        // Shared-key S2S runs first so a bad SharedKey token never falls through to another path.
+        // Skips the portal-isolation gate: this is a service identity, not a session.
         const sharedKeyResult = sharedKeyAuth.tryAuthenticate(req);
         if (sharedKeyResult.matched) {
             if (!sharedKeyResult.auth) {
@@ -294,9 +289,7 @@ async function authResolver(req, res, next) {
                 err.status = 401;
                 return next(err);
             }
-            // Shared-key is a service-to-service call against this portal instance;
-            // the organization is this instance's own, resolved the same way the
-            // mTLS path resolves it.
+            // Service-to-service call against this instance; org is this instance's own.
             const orgErr = await resolvePortalOrg(req);
             if (orgErr) return next(orgErr);
             req.auth = sharedKeyResult.auth;
@@ -478,10 +471,7 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
         throw err;
     }
     if (req.auth.preauthorized) return true;
-    // Shared-key runs the normal per-operation scope check like oauth2 and
-    // platform-jwt — its synthesised scope list only carries the five
-    // dp:*:manage scopes, so the check itself is what limits the mechanism to
-    // publishing write operations. No preauthorized bypass.
+    // Shared-key goes through the normal scope check; its narrow scope list is what limits it.
     if (req.auth.mode !== 'oauth2' && req.auth.mode !== 'platform-jwt' && req.auth.mode !== sharedKeyAuth.SHARED_KEY_AUTH_MODE) {
         const err = new Error('Authentication required');
         err.status = 401;

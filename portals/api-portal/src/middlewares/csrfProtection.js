@@ -79,10 +79,7 @@ function requireCsrfForMutatingApi(req, res, next) {
     if (hasBearerAuthorization(req)) {
         return next();
     }
-    // Shared-key S2S callers (Authorization: SharedKey ...) are non-browser
-    // clients that never touch cookies or CSRF tokens; skip CSRF for them the
-    // same way we skip it for Bearer. The shared-key middleware in
-    // authResolver is what enforces authenticity here.
+    // Shared-key is non-browser S2S: no cookies, no CSRF. Authenticity enforced in authResolver.
     if (isSharedKeyRequest(req)) {
         return next();
     }

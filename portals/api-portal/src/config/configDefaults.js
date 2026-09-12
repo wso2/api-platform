@@ -125,15 +125,9 @@ const DEFAULTS = {
         encryptionKey: '',
         sessionSecret: '',
     },
-    // Internal service-to-service authentication for platform-api's outbound
-    // publishing calls (publish / update / delete API, API content, MCP Server,
-    // MCP Server content, Subscription Plan). Platform-API sends
-    // `Authorization: SharedKey <raw>`; the portal computes sha256(raw) and
-    // constant-time compares against `hash` below. On match, the caller is
-    // granted only the five dp:*:manage scopes via the platform-api-system role
-    // in role-to-scope-mapping.yaml — nothing else. Empty means shared-key auth
-    // is disabled: every SharedKey request is rejected 401 while OAuth / session
-    // paths keep working.
+    // Shared-key S2S auth for platform-api publishing calls. Portal compares sha256(raw) against `hash`.
+    // A match grants only the platform-api-system role's five dp:*:manage scopes.
+    // Empty disables shared-key auth entirely; OAuth / session paths keep working.
     internalAuth: {
         hash: '',
     },

@@ -123,13 +123,10 @@ Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--rotate-i
                              confirmation unless ADMIN_USERNAME/ADMIN_PASSWORD
                              are set (CI), in which case passing this flag is
                              itself treated as confirmation.
-  --rotate-internal-key     Replace the API Portal internal shared key (hash file
-                             at resources/keys/api-portal-internal-key-hash and
-                             raw file at resources/keys/api-portal-internal-key.raw)
-                             even if they already exist. Platform-API can no
-                             longer publish to this portal until its stored copy
-                             is updated with the new raw value (PUT /api-portals/{id}
-                             with the new sharedKey), so rotate deliberately.
+  --rotate-internal-key     Replace the API Portal internal shared key (hash + raw
+                             files under resources/keys). Platform-API cannot publish
+                             until its stored copy is updated (PUT /api-portals/{id}
+                             with the new sharedKey).
   --profiles=<a,b,...>      override the default COMPOSE_PROFILES value this
                              script writes to .env. Valid profiles:
                              ai-workspace, api-portal, platform-api — e.g.
@@ -552,22 +549,10 @@ else
 fi
 
 log "Provisioning API Portal internal service-to-service key ..."
-# Two files:
-#   - api-portal-internal-key-hash — the SHA-256 hash of the raw key, read by
-#     config.toml via {{ file }} into config.internalAuth.hash. The API Portal
-#     middleware verifies incoming SharedKey-scheme requests against this hash.
-#     Follows the same pattern as api-portal-encryption.key: mounted into the
-#     container at /etc/api-portal/keys, restricted with restrict_secret_file so
-#     it is not world-readable.
-#   - api-portal-internal-key.raw — the raw key value the operator copies into
-#     Platform-API's Create API Portal call. Mode 600 (host-owner-only), never
-#     needed by the container. Meant to be deleted after copying: only the hash
-#     needs to survive rotation. Nothing reads this file at runtime.
-#
-# Rotating this key severs Platform-API's ability to publish to the portal until
-# Platform-API's stored copy is updated too (PUT /api-portals/{id} with the new
-# sharedKey), so it's on its own --rotate-internal-key flag rather than --force
-# (which never touches it).
+# Two files: -hash is read by the portal at runtime; .raw is one-time-read for the
+# operator to paste into Platform-API's Create API Portal call, then delete.
+# Rotation is a separate flag because it breaks Platform-API publishing until its
+# stored sharedKey is updated.
 generate_internal_key_pair() {
     local raw hash
     raw=$(openssl rand -hex 32)
