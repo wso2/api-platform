@@ -559,8 +559,16 @@ generate_internal_key_pair() {
     hash=$(printf '%s' "$raw" | openssl dgst -sha256 | awk '{print $NF}')
     printf '%s' "$hash" > "$KEYS_DIR/api-portal-internal-key-hash"
     restrict_secret_file "$KEYS_DIR/api-portal-internal-key-hash"
-    printf '%s\n' "$raw" > "$KEYS_DIR/api-portal-internal-key.raw"
-    chmod 600 "$KEYS_DIR/api-portal-internal-key.raw"
+    # Write in a subshell with a restrictive umask so a caller interrupted
+    # between the write and the chmod can never leave the raw key
+    # world-readable. Any prior file gets locked down before replacement.
+    (
+        umask 077
+        if [[ -e "$KEYS_DIR/api-portal-internal-key.raw" ]]; then
+            chmod 600 "$KEYS_DIR/api-portal-internal-key.raw"
+        fi
+        printf '%s\n' "$raw" > "$KEYS_DIR/api-portal-internal-key.raw"
+    )
 }
 if [[ -f "$KEYS_DIR/api-portal-internal-key-hash" && "$ROTATE_INTERNAL_KEY" == true ]]; then
     mkdir -p "$KEYS_DIR"

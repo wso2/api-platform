@@ -401,7 +401,10 @@ if (config.designMode?.enabled) {
  */
 function validateInternalAuthConfig(cfg) {
     const hash = cfg.internalAuth?.hash;
-    if (!hash) return;
+    // Empty string is the only disable signal; false / 0 / null fall through
+    // to the shape check so a mistyped value fails at boot instead of silently
+    // disabling shared-key auth.
+    if (hash === undefined || hash === '') return;
     if (typeof hash !== 'string' || !/^[0-9a-fA-F]{64}$/.test(hash)) {
         process.stderr.write(
             '[FATAL] internal_auth.hash did not resolve to a 64-character hex string. ' +
@@ -680,6 +683,26 @@ function validateIdpConfig(cfg) {
             'These describe your identity provider and have no default. Set them in ' +
             'configs/config.toml (see configs/config-template.toml), or switch to ' +
             'auth.mode = "local" to sign in against the Platform API instead.\n'
+        );
+        process.exit(1);
+    }
+    // JWKS fetches feed the signature-verification path directly, so a plain
+    // http:// URL would let a network attacker swap the key set and sign
+    // accepted tokens. jose's createRemoteJWKSet does not enforce HTTPS itself.
+    const jwksUrlRaw = String(cfg.auth.idp.jwksUrl).trim();
+    let jwksProtocol;
+    try {
+        jwksProtocol = new URL(jwksUrlRaw).protocol;
+    } catch (_) {
+        process.stderr.write(
+            `[FATAL] auth.idp.jwks_url is not a valid URL: ${jwksUrlRaw}\n`
+        );
+        process.exit(1);
+    }
+    if (jwksProtocol !== 'https:') {
+        process.stderr.write(
+            `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
+            'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
         );
         process.exit(1);
     }
