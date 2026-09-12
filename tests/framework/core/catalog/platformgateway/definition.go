@@ -59,6 +59,7 @@ func PlatformGateway() *components.Definition {
 				"aesgcm-keys/default-aesgcm256-v1.bin": "gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin",
 				"listener-certs":                       "gateway/gateway-controller/listener-certs",
 				"certificates":                         "gateway/gateway-controller/certificates",
+				"llm-pricing/model_prices.json":        "gateway/configs/llm-pricing/model_prices.json",
 			},
 			Env: env,
 

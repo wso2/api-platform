@@ -100,6 +100,8 @@ type TransientMatcher func(*Response) bool
 type Options struct {
 	// Timeout bounds one request.
 	Timeout time.Duration
+	// FollowRedirects enables normal HTTP redirect handling.
+	FollowRedirects bool
 	// MaxRetries bounds transient-error retries.
 	MaxRetries int
 	// RetryDelay is the pause between transient retries.
@@ -120,19 +122,22 @@ func NewClient(opts Options) *Client {
 		opts.RetryDelay = 2 * time.Second
 	}
 
-	return &Client{
-		http: &http.Client{
-			Timeout: opts.Timeout,
-			Transport: &http.Transport{
-				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-				MaxIdleConns:        200,
-				MaxIdleConnsPerHost: 50,
-				MaxConnsPerHost:     100,
-			},
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+	httpClient := &http.Client{
+		Timeout: opts.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 50,
+			MaxConnsPerHost:     100,
 		},
+	}
+	if !opts.FollowRedirects {
+		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	return &Client{
+		http:    httpClient,
 		retryOn: append([]TransientMatcher(nil), opts.RetryOn...),
 	}
 }

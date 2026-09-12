@@ -35,6 +35,8 @@ func TestPlatformAPIDefinition(t *testing.T) {
 	require.NotNil(t, definition.Health)
 	_, ok := definition.Endpoint("https")
 	require.True(t, ok)
+	require.Equal(t, platformAPIBootAttempts, definition.Compose.BootAttempts,
+		"platform-api self-heals from a transient boot crash, like the SQL Server engine")
 }
 
 func TestPlatformAPICoverageEnvironmentFollowsRunMode(t *testing.T) {

@@ -1,7 +1,7 @@
 version: v1
 policies:
     - name: advanced-ratelimit
-      version: v1.1.2
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
     - name: analytics-header-filter
       version: v1.0.1
@@ -52,7 +52,7 @@ policies:
       version: v1.0.4
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.3.0
+      version: v1.3.1
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.1.0

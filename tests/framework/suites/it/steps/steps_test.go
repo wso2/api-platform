@@ -279,6 +279,20 @@ func TestTemplatePathIsRestrictedToFeatureRoot(t *testing.T) {
 	require.ErrorContains(t, err, "escapes")
 }
 
+func TestContainsLiteralOrJSONEscaped(t *testing.T) {
+	literal := `{{ secret "tpl-auth-token" }}`
+	jsonEncoded := `Bearer {{ secret \"tpl-auth-token\" }}`
+
+	require.True(t, containsLiteralOrJSONEscaped(literal, literal), "verbatim match")
+	require.True(t, containsLiteralOrJSONEscaped(jsonEncoded, literal), "JSON-escaped match")
+	require.False(t, containsLiteralOrJSONEscaped("no template here", literal))
+	require.False(t, containsLiteralOrJSONEscaped("", literal))
+
+	// A needle with no quotes has nothing to escape - the escaped form equals the
+	// original, so it must not be treated as a second, redundant match path.
+	require.True(t, containsLiteralOrJSONEscaped("value contains plain", "plain"))
+}
+
 func TestCanonicalResourceTemplates(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)

@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/actor"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -72,6 +73,10 @@ type Topology struct {
 
 	// stacks contains compose-backed components addressable by service name.
 	stacks map[string]*ComposeStack
+
+	// logWriter, when non-nil, receives every component's stdout/stderr for the block's
+	// whole lifetime. Nil in a default run — the suite decides whether logs are captured.
+	logWriter *logcapture.Writer
 }
 
 // ServiceControl resolves a compose service or component to its controlling stack.
@@ -156,9 +161,11 @@ func (t *Topology) URL(component, endpoint string) (string, error) {
 	return inst.URL(endpoint)
 }
 
-// BootBlock starts the block's storage and components in dependency order.
+// BootBlock starts the block's storage and components in dependency order. logWriter,
+// when non-nil, receives every launched component's stdout/stderr for the block's whole
+// lifetime, into one combined file.
 func BootBlock(
-	ctx context.Context, block *topology.ResolvedBlock, repoRoot string,
+	ctx context.Context, block *topology.ResolvedBlock, repoRoot string, logWriter *logcapture.Writer,
 ) (*Topology, error) {
 	if block == nil {
 		return nil, fmt.Errorf("runtime: block is required")
@@ -166,7 +173,7 @@ func BootBlock(
 	if ctx == nil {
 		return nil, fmt.Errorf("runtime: context is required")
 	}
-	t := &Topology{Block: block, Instances: components.NewSet()}
+	t := &Topology{Block: block, Instances: components.NewSet(), logWriter: logWriter}
 
 	nw, err := NewNetwork(ctx, block.Name)
 	if err != nil {
@@ -232,6 +239,15 @@ func (t *Topology) startComponent(
 	def := rc.Def
 
 	env := map[string]string{}
+	if def.IsCompose() && def.Compose != nil {
+		// The component's own static/generated env (image ref overrides, credentials,
+		// coverage vars) reaches the container only through this map: compose's
+		// env_file is what actually sets the container's environment, and it is
+		// built from env below, not from compose-file ${VAR} substitution.
+		for k, v := range def.Compose.Env {
+			env[k] = v
+		}
+	}
 	for k, v := range t.Storage.Env[KeyFor(def.Name, 0)] {
 		env[k] = v
 	}
@@ -254,10 +270,11 @@ func (t *Topology) startComponent(
 	}
 
 	opts := Options{
-		Network:  t.network,
-		RepoRoot: repoRoot,
-		Env:      env,
-		Replicas: rc.Replicas,
+		Network:   t.network,
+		RepoRoot:  repoRoot,
+		Env:       env,
+		Replicas:  rc.Replicas,
+		LogWriter: t.logWriter,
 	}
 
 	if def.IsCompose() {
@@ -270,7 +287,10 @@ func (t *Topology) startComponent(
 		}
 		spec := def.Compose.WithGenerated(generated)
 
-		stack, err := LaunchCompose(ctx, def, spec, opts)
+		stack, err := launchComposeWithRetry(ctx, def.Name, spec.BootAttempts,
+			func(ctx context.Context) (*ComposeStack, error) {
+				return LaunchCompose(ctx, def, spec, opts)
+			})
 		if stack != nil {
 			t.stops = append(t.stops, stack.Stop)
 		}

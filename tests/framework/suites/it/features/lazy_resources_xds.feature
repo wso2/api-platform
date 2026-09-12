@@ -87,31 +87,30 @@ Feature: Lazy resources xDS synchronization
       | name        | ${CTX:resourceName4_1}           |
       | displayName | Delete Test Template             |
     Then the response status code should be 201
-    When I wait for policy snapshot sync
-    And I send a "GET" request to the "policy-engine" service at "/config_dump"
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:resourceName4_1}" has display name "Delete Test Template"
     Then the response status code should be 200
     And the lazy resources should contain template "${CTX:resourceName4_1}" of type "LlmProviderTemplate"
     When I delete the LLM provider template "${CTX:resourceName4_1}"
     Then the response status code should be 200
-    When I wait for policy snapshot sync
-    And I send a "GET" request to the "policy-engine" service at "/config_dump"
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:resourceName4_1}" of type "LlmProviderTemplate" is absent
     Then the response status code should be 200
     And the lazy resources should not contain template "${CTX:resourceName4_1}"
 
   Scenario: LLM provider creation creates a provider-template mapping
     Given I generate a unique resource name from "provider" and store it as "resourceName5_1"
+    And I generate a unique API context from "/lazy-provider" and store it as "resourceContext5_1"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:resourceName5_1}           |
       | displayName        | Test OpenAI Provider              |
       | version            | v1.0                              |
       | template           | openai                            |
+      | spec.context       | ${CTX:resourceContext5_1}        |
       | spec.upstream.url  | https://api.openai.com            |
       | accessControl.mode | allow_all                         |
     Then the response status code should be 201
     And the JSON response field "status.id" should be "${CTX:resourceName5_1}"
-    When I wait for policy snapshot sync
-    And I send a "GET" request to the "policy-engine" service at "/config_dump"
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until provider template mapping "${CTX:resourceName5_1}" maps to template "openai"
     Then the response status code should be 200
     And the lazy resources should contain resource "${CTX:resourceName5_1}" of type "ProviderTemplateMapping"
     And the provider template mapping "${CTX:resourceName5_1}" should map to template "openai"
@@ -121,6 +120,7 @@ Feature: Lazy resources xDS synchronization
   Scenario: LLM provider update changes its provider-template mapping
     Given I generate a unique resource name from "provider-template" and store it as "resourceName6_1"
     And I generate a unique resource name from "provider-update" and store it as "resourceName6_2"
+    And I generate a unique API context from "/lazy-provider-update" and store it as "resourceContext6_2"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
       | apiVersion        | gateway.api-platform.wso2.com/v1 |
       | name              | ${CTX:resourceName6_1}           |
@@ -135,6 +135,7 @@ Feature: Lazy resources xDS synchronization
       | displayName        | Update Mapping Provider            |
       | version            | v1.0                              |
       | template           | openai                            |
+      | spec.context       | ${CTX:resourceContext6_2}        |
       | spec.upstream.url  | https://api.openai.com            |
       | accessControl.mode | allow_all                         |
     Then the response status code should be 201
@@ -147,6 +148,7 @@ Feature: Lazy resources xDS synchronization
       | displayName        | Update Mapping Provider            |
       | version            | v1.0                              |
       | template           | ${CTX:resourceName6_1}            |
+      | spec.context       | ${CTX:resourceContext6_2}        |
       | spec.upstream.url  | https://api.openai.com            |
       | accessControl.mode | allow_all                         |
     Then the response status code should be 200
@@ -160,17 +162,18 @@ Feature: Lazy resources xDS synchronization
 
   Scenario: LLM provider deletion removes its provider-template mapping
     Given I generate a unique resource name from "deleting-provider" and store it as "resourceName7_1"
+    And I generate a unique API context from "/lazy-provider-delete" and store it as "resourceContext7_1"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:resourceName7_1}           |
       | displayName        | Delete Mapping Provider            |
       | version            | v1.0                              |
       | template           | anthropic                         |
+      | spec.context       | ${CTX:resourceContext7_1}        |
       | spec.upstream.url  | https://api.anthropic.com         |
       | accessControl.mode | allow_all                         |
     Then the response status code should be 201
-    When I wait for policy snapshot sync
-    And I send a "GET" request to the "policy-engine" service at "/config_dump"
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until provider template mapping "${CTX:resourceName7_1}" maps to template "anthropic"
     Then the response status code should be 200
     And the lazy resources should contain resource "${CTX:resourceName7_1}" of type "ProviderTemplateMapping"
     When I delete the LLM provider "${CTX:resourceName7_1}"
@@ -181,17 +184,18 @@ Feature: Lazy resources xDS synchronization
 
   Scenario: Provider name is propagated to route metadata
     Given I generate a unique resource name from "route-provider" and store it as "resourceName8_1"
+    And I generate a unique API context from "/lazy-route-provider" and store it as "resourceContext8_1"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
       | apiVersion         | gateway.api-platform.wso2.com/v1 |
       | name               | ${CTX:resourceName8_1}           |
       | displayName        | Route Metadata Test Provider      |
       | version            | v1.0                              |
       | template           | openai                            |
+      | spec.context       | ${CTX:resourceContext8_1}        |
       | spec.upstream.url  | https://api.openai.com            |
       | accessControl.mode | allow_all                         |
     Then the response status code should be 201
-    When I wait for policy snapshot sync
-    And I send a "GET" request to the "policy-engine" service at "/config_dump"
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until provider template mapping "${CTX:resourceName8_1}" maps to template "openai"
     Then the response status code should be 200
     And the policy engine route metadata should contain provider_name "${CTX:resourceName8_1}"
     When I delete the LLM provider "${CTX:resourceName8_1}"
@@ -199,6 +203,7 @@ Feature: Lazy resources xDS synchronization
 
   Scenario: Template and provider with the same name coexist
     Given I generate a unique resource name from "collision" and store it as "resourceName9_1"
+    And I generate a unique API context from "/lazy-collision" and store it as "resourceContext9_1"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
       | apiVersion        | gateway.api-platform.wso2.com/v1 |
       | name              | ${CTX:resourceName9_1}           |
@@ -212,11 +217,11 @@ Feature: Lazy resources xDS synchronization
       | displayName        | Collision Test Provider            |
       | version            | v1.0                              |
       | template           | ${CTX:resourceName9_1}            |
+      | spec.context       | ${CTX:resourceContext9_1}        |
       | spec.upstream.url  | https://api.example.com            |
       | accessControl.mode | allow_all                         |
     Then the response status code should be 201
-    When I wait for policy snapshot sync
-    And I send a "GET" request to the "policy-engine" service at "/config_dump"
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until provider template mapping "${CTX:resourceName9_1}" maps to template "${CTX:resourceName9_1}"
     Then the response status code should be 200
     And the lazy resources should contain template "${CTX:resourceName9_1}" of type "LlmProviderTemplate"
     And the lazy resources should contain resource "${CTX:resourceName9_1}" of type "ProviderTemplateMapping"

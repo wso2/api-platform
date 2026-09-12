@@ -24,6 +24,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,6 +38,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
 
 // stagingDirName is the directory used for compose files and bind-mount sources.
@@ -43,6 +46,16 @@ const stagingDirName = ".wso2-apip-it-compose"
 
 // EnvComposeNetwork names the block network used by a compose stack.
 const EnvComposeNetwork = "PG_NETWORK"
+
+// EnvComposeCPULimit and EnvComposeMemoryLimitMB carry a compose component's declared
+// resource limits into the stack's substitution env, for a service's own compose file to
+// reference under its "deploy.resources.limits" (honoured by `docker compose up` without
+// swarm mode). Set only when the definition declares a limit, so a compose file that does
+// not reference them sees no behavior change.
+const (
+	EnvComposeCPULimit      = "APIP_CPU_LIMIT"
+	EnvComposeMemoryLimitMB = "APIP_MEMORY_LIMIT_MB"
+)
 
 // ComposeStack is a running compose-backed component.
 type ComposeStack struct {
@@ -52,6 +65,10 @@ type ComposeStack struct {
 	def      *components.Definition
 	stageDir string
 	block    string
+
+	// stopLogProducers stops each service's attached log producer, populated only when
+	// the block is capturing container output.
+	stopLogProducers []func() error
 }
 
 // LaunchCompose starts a compose-backed component and presents it as one instance.
@@ -116,6 +133,16 @@ func LaunchCompose(
 	}
 	// Join the block network so the stack can reach other components.
 	env[EnvComposeNetwork] = opts.Network.Name()
+	// A compose-backed component's Limits have no effect unless its own compose file opts
+	// in by referencing these under "deploy.resources.limits" - unlike a raw container
+	// (applyLimits, container.go), there is no host-config hook this runtime can apply on
+	// the component's behalf here.
+	if def.Limits.CPUs > 0 {
+		env[EnvComposeCPULimit] = strconv.FormatFloat(def.Limits.CPUs, 'f', -1, 64)
+	}
+	if def.Limits.MemoryMB > 0 {
+		env[EnvComposeMemoryLimitMB] = strconv.FormatInt(def.Limits.MemoryMB, 10)
+	}
 	stack = stack.WithEnv(env)
 
 	// Wait for application-level readiness on the primary service.
@@ -142,6 +169,15 @@ func LaunchCompose(
 		return nil, fmt.Errorf("runtime: bringing up %s: %w", def, errors.Join(err, cleanupErr))
 	}
 
+	if opts.LogWriter != nil {
+		stops, err := attachComposeLogProducers(ctx, stack, spec.Services, opts.LogWriter)
+		result.stopLogProducers = stops
+		if err != nil {
+			cleanupErr := result.Stop(context.Background())
+			return nil, fmt.Errorf("runtime: attaching log capture for %s: %w", def, errors.Join(err, cleanupErr))
+		}
+	}
+
 	inst, err := composeInstance(ctx, def, spec, stack)
 	if err != nil {
 		cleanupErr := result.Stop(context.Background())
@@ -151,6 +187,60 @@ func LaunchCompose(
 	keepStageDir = false
 
 	return result, nil
+}
+
+// attachComposeLogProducers streams every service's stdout/stderr into writer, tagged
+// with its service name. Compose services have no pre-creation log-consumer hook (unlike
+// a raw container's ContainerRequest.LogConsumerCfg — see container.go's buildRequest),
+// so this uses testcontainers' older FollowOutput/StartLogProducer API, the only
+// mechanism available for a container the compose module already created. Returns the
+// stop function for every service successfully attached, even when a later service
+// fails, so the caller can still release what succeeded.
+func attachComposeLogProducers(
+	ctx context.Context, stack tccompose.ComposeStack, services []string, writer *logcapture.Writer,
+) ([]func() error, error) {
+	stops := make([]func() error, 0, len(services))
+	for _, svc := range services {
+		container, err := stack.ServiceContainer(ctx, svc)
+		if err != nil {
+			return stops, fmt.Errorf("runtime: locating service %q for log capture: %w", svc, err)
+		}
+		container.FollowOutput(writer.Consumer(svc)) //nolint:staticcheck // no LogConsumerCfg hook exists for an already-created compose service container
+		if err := container.StartLogProducer(ctx); err != nil {
+			return stops, fmt.Errorf("runtime: starting log producer for service %q: %w", svc, err)
+		}
+		stops = append(stops, container.StopLogProducer)
+	}
+	return stops, nil
+}
+
+// launchComposeWithRetry retries a failed compose boot up to attempts times. Unlike the
+// raw-container retry path (launchWithRetry), a failed launch already tears itself down
+// and stages a fresh directory and stack identifier on its own next call, so a retry
+// needs nothing beyond calling launch again.
+func launchComposeWithRetry(
+	ctx context.Context, componentName string, attempts int,
+	launch func(context.Context) (*ComposeStack, error),
+) (*ComposeStack, error) {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		stack, err := launch(ctx)
+		if err == nil {
+			return stack, nil
+		}
+		lastErr = err
+		if attempt < attempts {
+			slog.Warn("compose stack boot failed; retrying with a fresh stack",
+				"component", componentName, "attempt", attempt, "of", attempts, "error", err)
+		}
+	}
+	return nil, lastErr
 }
 
 // composeWaitStrategy builds the readiness probe for the primary service.
@@ -403,6 +493,10 @@ func (c *ComposeStack) Stop(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
+	for _, stop := range c.stopLogProducers {
+		_ = stop()
+	}
+	c.stopLogProducers = nil
 	var err error
 	if c.stack != nil {
 		stack := c.stack
@@ -461,6 +555,29 @@ func (c *ComposeStack) Exec(ctx context.Context, service string, cmd []string) (
 		return out, fmt.Errorf("runtime: exec in service %q exited %d: %s", service, code, strings.TrimSpace(out))
 	}
 	return out, nil
+}
+
+// CopyFileFromContainer reads one file out of a service's container.
+//
+// Used to read a component's own persisted state directly - an embedded SQLite database, for
+// instance - when no product API exposes it. This is a snapshot, not a live handle: the file is
+// fully read before this call returns, so a caller holds a copy from one instant, not a
+// connection to the container's own open file.
+func (c *ComposeStack) CopyFileFromContainer(ctx context.Context, service, path string) ([]byte, error) {
+	container, err := c.serviceContainer(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	reader, err := container.CopyFileFromContainer(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("runtime: copying %q from service %q: %w", path, service, err)
+	}
+	defer func() { _ = reader.Close() }()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("runtime: reading %q from service %q: %w", path, service, err)
+	}
+	return data, nil
 }
 
 // Logs returns each service's log output, concatenated and labelled.

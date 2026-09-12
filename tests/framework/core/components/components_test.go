@@ -145,6 +145,18 @@ func TestDefinitionValidationEdges(t *testing.T) {
 		require.ErrorContains(t, err, "not in the services list")
 		require.ErrorContains(t, err, "still needs endpoints")
 	})
+
+	t.Run("negative boot attempts are rejected", func(t *testing.T) {
+		d := &Definition{
+			Name: "stack", Alias: "stack",
+			Endpoints: []Endpoint{{Name: "api", Port: 8080, Scheme: "http"}},
+			Compose: &ComposeSpec{
+				ComposeFile: "compose/stack.yaml", Services: []string{"api"}, PrimaryService: "api",
+				BootAttempts: -1,
+			},
+		}
+		require.ErrorContains(t, d.Validate(), "boot attempts must not be negative")
+	})
 }
 
 func TestHealthCheckValidation(t *testing.T) {
@@ -1120,6 +1132,7 @@ func TestComposeHelpers(t *testing.T) {
 				GeneratedFiles:   map[string][]byte{"existing": []byte("value")},
 				Env:              map[string]string{"A": "B"},
 				CoverageServices: []CoverageService{{Name: "gateway", Types: []string{"go"}}},
+				BootAttempts:     3,
 			},
 		}
 		updated := definition.Compose.WithGenerated(map[string][]byte{"generated": []byte("content")})
@@ -1127,6 +1140,7 @@ func TestComposeHelpers(t *testing.T) {
 		require.Equal(t, map[string][]byte{"existing": []byte("value"), "generated": []byte("content")}, updated.GeneratedFiles)
 		require.Equal(t, map[string]string{"A": "B"}, updated.Env)
 		require.Equal(t, []CoverageService{{Name: "gateway", Types: []string{"go"}}}, updated.CoverageServices)
+		require.Equal(t, 3, updated.BootAttempts)
 		require.NotSame(t, definition.Compose, updated)
 		updated.GeneratedFiles["existing"][0] = 'X'
 		require.Equal(t, []byte("value"), definition.Compose.GeneratedFiles["existing"])

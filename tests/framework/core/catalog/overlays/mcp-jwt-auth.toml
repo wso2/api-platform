@@ -1,0 +1,15 @@
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
+
+# A second keymanager with a DIFFERENT expected issuer, same JWKS URI - used to prove a token
+# minted for "mock-jwks" is rejected when a policy is scoped to this keymanager instead.
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "wrong-issuer-km"
+issuer = "http://expected-issuer.com"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"

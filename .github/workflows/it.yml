@@ -16,7 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Runs the integration suite from the test framework.
+# Runs the integration suite from the test framework, plus unit tests for the
+# three components it currently instruments for coverage (gateway-controller,
+# policy-engine, platform-api), and reports both to Codecov.
+#
+# Also runs on push to main, not just pull_request: Codecov compares a PR against
+# whatever it last has for the base branch, so main needs its own regularly
+# refreshed upload or every PR comparison is against a stale baseline.
 
 name: Integration Tests
 
@@ -33,6 +39,8 @@ concurrency:
 jobs:
   integration:
     runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "1"
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803b # v6
@@ -45,12 +53,137 @@ jobs:
           go-version: '1.26.5'
           cache-dependency-path: '**/go.sum'
 
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # The suite's own concurrency (it-suite.yaml) boots many short-lived containers and
+      # published ports across the run. Under enough concurrent connection churn the default
+      # conntrack table fills, and the kernel silently drops new NAT'd connections to an
+      # otherwise healthy, unaffected container - surfacing as an intermittent
+      # "connection refused" to a container that never actually crashed or restarted.
+      - name: Raise the conntrack table limit
+        run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+
+      # Unit tests run first and gate the job like everything else here - a broken unit
+      # test should fail this workflow, not just quietly under-report coverage.
+      - name: Gateway-controller unit tests
+        run: cd gateway/gateway-controller && make test
+
+      - name: Policy-engine unit tests
+        run: cd gateway/gateway-runtime && make test
+
+      - name: Platform-API unit tests
+        run: cd platform-api && make test
 
       - name: Build testbench image
         run: make -C tests/framework testbench
 
-      - name: Run the suite
+      # IT_COVERAGE_OUT and IT_LOG_OUT must be set explicitly: without them, the suite
+      # defaults to a per-run temp directory (see suites/it/suite_test.go), which the
+      # report step and log upload below have no way to find. Their own defaults already
+      # match these same paths relative to tests/framework, so neither needs a matching
+      # override.
+      - name: Run the integration suite with coverage
         working-directory: tests/framework
-        run: go test ./suites/it -count=1 -timeout=25m
+        env:
+          IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
+          IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/it/logs-out
+        run: go test ./suites/it -count=1 -timeout=60m -coverage -logs
+
+      # Rerunnable post-step: consumes whatever the run harvested, so a failed suite
+      # still reports what it covered. The script itself fails when no statement executed
+      # anywhere - a hollow profile uploaded green is worse than no profile at all.
+      - name: Generate integration coverage report
+        if: always()
+        run: make -C tests/framework coverage-report
+
+      - name: Upload coverage HTML reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-reports
+          path: |
+            tests/framework/suites/it/coverage-out/**/*.html
+            tests/framework/suites/it/coverage-out/**/*.txt
+          if-no-files-found: warn
+
+      # Each block's combined, interleaved container log (like `docker compose up` would
+      # show), so a scenario failure has the product's own logs available, not only the
+      # client-side symptom - always uploaded, since the failing run is exactly the one
+      # that needs this.
+      #
+      # include-hidden-files is required: logcapture.Sink (like coverage.Sink) isolates
+      # every run beneath its own ".run-*" directory so a stale local run's files are
+      # never mixed with a fresh run's, so every log file lives under a dot-prefixed path
+      # segment - upload-artifact excludes those by default and silently uploads nothing.
+      - name: Upload container log captures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: container-logs
+          path: tests/framework/suites/it/logs-out/**/*.log
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      # Unit flags. continue-on-error here (Codecov's own availability is not this job's
+      # problem to enforce), but NOT on the test/report steps above - those are ours.
+      - name: Upload gateway-controller unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: gateway/gateway-controller/unit-test-coverage.txt
+          flags: gateway-controller-unit
+
+      - name: Upload policy-engine unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
+          flags: policy-engine-unit
+
+      - name: Upload platform-api unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: platform-api/unit-test-coverage.txt
+          flags: platform-api-unit
+
+      # Integration flags. Same component paths as codecov.yml's component_management,
+      # so unit and integration uploads for one component roll up into one component view.
+      - name: Upload gateway-controller integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tests/framework/suites/it/coverage-out/platform-gateway/controller/coverage.txt
+          flags: gateway-controller-integration
+
+      - name: Upload policy-engine integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tests/framework/suites/it/coverage-out/platform-gateway/runtime/coverage.txt
+          flags: policy-engine-integration
+
+      - name: Upload platform-api integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tests/framework/suites/it/coverage-out/platform-api/coverage.txt
+          flags: platform-api-integration

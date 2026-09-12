@@ -152,7 +152,7 @@ func TestAllDefinedKindsFollowTheirConfiguredOrder(t *testing.T) {
 	r := NewRegistry(nil)
 	kinds := []Kind{
 		KindEnvironment, KindCertificate, KindSharedScope, KindPolicy, KindMCPServer,
-		KindAPI, KindAPIProduct, KindAPIKey, KindApplication, KindSubscription,
+		KindMCPProxy, KindAPI, KindAPIProduct, KindAPIKey, KindApplication, KindSubscription,
 		KindSecret, KindLLMProxy, KindLLMProvider,
 	}
 	for i, kind := range kinds {

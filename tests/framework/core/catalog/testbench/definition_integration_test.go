@@ -5,6 +5,7 @@ package testbench
 import (
 	"context"
 	"os/exec"
+	stdruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ func TestTestbenchPortResolution(t *testing.T) {
 	}
 
 	out, err := exec.CommandContext(ctx, "docker", "ps", "--filter",
-		"ancestor="+def.Image.Resolve("arm64"), "--format", "{{.ID}} {{.Ports}}").Output()
+		"ancestor="+def.Image.Resolve(stdruntime.GOARCH), "--format", "{{.ID}} {{.Ports}}").Output()
 	require.NoError(t, err)
 	t.Logf("DOCKER   %s", strings.TrimSpace(string(out)))
 }

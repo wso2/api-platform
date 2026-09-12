@@ -36,6 +36,14 @@ services:
       - "9243"
     networks:
       - gateway
+    # Honoured by `docker compose up` without swarm mode. The framework always sets both
+    # vars from the component's declared Limits; the fallbacks only cover a manual, non-
+    # framework `docker compose up` of this file.
+    deploy:
+      resources:
+        limits:
+          cpus: "${APIP_CPU_LIMIT:-1}"
+          memory: ${APIP_MEMORY_LIMIT_MB:-1000}M
 
 networks:
   gateway:

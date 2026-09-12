@@ -41,6 +41,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
 
 const (
@@ -88,6 +89,11 @@ type Options struct {
 	// StableHostPorts publishes endpoints on explicitly selected host ports. It is required
 	// for components that may be attached to multiple networks during their lifetime.
 	StableHostPorts bool
+
+	// LogWriter, when non-nil, receives this container's stdout/stderr for the whole
+	// container lifetime, tagged with the component's name. Nil in a default run — the
+	// suite decides whether container output is being collected at all.
+	LogWriter *logcapture.Writer
 }
 
 // Container is a started component: its Instance for addressing, plus the handle needed
@@ -226,6 +232,10 @@ func buildRequest(
 	}
 
 	applyLimits(req, def.Limits)
+	if opts.LogWriter != nil {
+		consumer := opts.LogWriter.Consumer(def.Name)
+		req.LogConsumerCfg = &testcontainers.LogConsumerConfig{Consumers: []testcontainers.LogConsumer{consumer}}
+	}
 	return req, nil
 }
 

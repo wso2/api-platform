@@ -39,9 +39,7 @@ Feature: Upstream and downstream timeouts
       | spec.upstream.main.ref        | timeout-upstream                                                                                      |
       | spec.operations               | [{"method":"GET","path":"/"}]                                                                  |
     Then the response should be successful
-    And I wait for policy snapshot sync
-    When I send a "GET" request to "${CTX:apiContext1}/v1.0/" until status 503
-    And the gateway should have timed out after "8" seconds with status 503
+    When I send a "GET" request to "${CTX:apiContext1}/v1.0/" until it times out after "8" seconds with status 503
     When I delete the API "${CTX:apiName1}"
     Then the response should be successful
 
@@ -58,9 +56,7 @@ Feature: Upstream and downstream timeouts
       | spec.upstream.main.ref        | global-timeout-upstream                                                                              |
       | spec.operations               | [{"method":"GET","path":"/"}]                                                                 |
     Then the response should be successful
-    And I wait for policy snapshot sync
-    When I send a "GET" request to "${CTX:apiContext2}/v1.0/" until status 503
-    And the gateway should have timed out after "5" seconds with status 503
+    When I send a "GET" request to "${CTX:apiContext2}/v1.0/" until it times out after "5" seconds with status 503
     When I delete the API "${CTX:apiName2}"
     Then the response should be successful
 
@@ -77,7 +73,6 @@ Feature: Upstream and downstream timeouts
       | spec.upstream.main.ref        | headers-timeout-upstream                                                               |
       | spec.operations               | [{"method":"GET","path":"/"}]                                                     |
     Then the response should be successful
-    And I wait for policy snapshot sync
     And I send a "GET" request to "${CTX:apiContext3}/v1.0/" until status 200
     When I send an incomplete HTTP request to "${CTX:apiContext3}/v1.0/"
     Then the response status code should be 408
@@ -99,9 +94,7 @@ Feature: Upstream and downstream timeouts
       | spec.upstream.ref             | llm-timeout-upstream                                                   |
       | accessControl.mode            | allow_all                                                               |
     Then the response status code should be 201
-    And I wait for policy snapshot sync
-    When I send a "GET" request to "${CTX:providerContext4}/get" until status 503
-    And the gateway should have timed out after "8" seconds with status 503
+    When I send a "GET" request to "${CTX:providerContext4}/get" until it times out after "8" seconds with status 503
     When I delete the LLM provider "${CTX:providerName4}"
     Then the response should be successful
 
@@ -118,8 +111,6 @@ Feature: Upstream and downstream timeouts
       | spec.upstreamDefinitions   | [{"name":"mcp-timeout-upstream","timeout":{"connect":"8000ms"},"upstreams":[{"url":"http://192.0.2.1:3001"}]}] |
       | spec.upstream.ref          | mcp-timeout-upstream                                                                                                     |
     Then the response should be successful
-    And I wait for policy snapshot sync
-    When I send a "GET" request to "${CTX:mcpContext5}/mcp" until status 503
-    And the gateway should have timed out after "8" seconds with status 503
+    When I send a "GET" request to "${CTX:mcpContext5}/mcp" until it times out after "8" seconds with status 503
     When I delete the MCP proxy "${CTX:mcpName5}"
     Then the response should be successful

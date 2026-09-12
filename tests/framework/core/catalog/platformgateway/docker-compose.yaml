@@ -60,6 +60,7 @@ services:
       - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro
+      - ./llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
     ports:
       - "8080"
       - "8443"

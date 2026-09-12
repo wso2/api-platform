@@ -1,5 +1,23 @@
 //go:build integration
 
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package apiportal
 
 import (
@@ -115,38 +133,36 @@ func TestAPIPortalBoots(t *testing.T) {
 	sink, sinkErr := coverage.NewSink(output)
 	require.NoError(t, sinkErr)
 
-	if os.Getenv(shared.EnvCoverageMode) == "true" {
-		browserStack, launchErr := runtime.Launch(ctx, catalogbrowser.Browser(), runtime.Options{Network: nw, Replicas: 1})
-		require.NoError(t, launchErr, "launching the browser")
-		t.Cleanup(func() { _ = browserStack.Stop(context.Background()) })
-		port, portErr := browserStack.Instance.MappedPort("ws")
-		require.NoError(t, portErr)
-		ws := "ws://" + browserStack.Instance.Host() + ":" + strconv.Itoa(port) + catalogbrowser.PlaywrightWSPath
-		// The browser container shares the portal network, so it resolves the service alias.
-		pw, pwErr := playwright.Run()
-		require.NoError(t, pwErr)
-		t.Cleanup(func() { _ = pw.Stop() })
-		remote, connectErr := pw.Chromium.Connect(ws)
-		require.NoError(t, connectErr)
-		t.Cleanup(func() { _ = remote.Close() })
-		bctx, contextErr := remote.NewContext()
-		require.NoError(t, contextErr)
-		t.Cleanup(func() { _ = bctx.Close() })
-		page, pageErr := bctx.NewPage()
-		require.NoError(t, pageErr)
-		_, gotoErr := page.Goto("http://api-portal:9543/")
-		require.NoError(t, gotoErr)
-		require.Eventually(t, func() bool {
-			title, titleErr := page.Title()
-			return titleErr == nil && title != ""
-		}, 30*time.Second, time.Second)
-		istanbulReport, reportErr := page.Evaluate("globalThis.__coverage__ || null")
-		require.NoError(t, reportErr)
-		require.NotNil(t, istanbulReport, "instrumented API Portal scripts must expose Istanbul coverage")
-		dir, dirErr := sink.BrowserDir("api-portal", "portal-smoke")
-		require.NoError(t, dirErr)
-		require.NoError(t, coverage.WriteIstanbulReport(filepath.Join(dir, "raw-istanbul.json"), istanbulReport))
-	}
+	browserStack, launchErr := runtime.Launch(ctx, catalogbrowser.Browser(), runtime.Options{Network: nw, Replicas: 1})
+	require.NoError(t, launchErr, "launching the browser")
+	t.Cleanup(func() { _ = browserStack.Stop(context.Background()) })
+	port, portErr := browserStack.Instance.MappedPort("ws")
+	require.NoError(t, portErr)
+	ws := "ws://" + browserStack.Instance.Host() + ":" + strconv.Itoa(port) + catalogbrowser.PlaywrightWSPath
+	// The browser container shares the portal network, so it resolves the service alias.
+	pw, pwErr := playwright.Run()
+	require.NoError(t, pwErr)
+	t.Cleanup(func() { _ = pw.Stop() })
+	remote, connectErr := pw.Chromium.Connect(ws)
+	require.NoError(t, connectErr)
+	t.Cleanup(func() { _ = remote.Close() })
+	bctx, contextErr := remote.NewContext()
+	require.NoError(t, contextErr)
+	t.Cleanup(func() { _ = bctx.Close() })
+	page, pageErr := bctx.NewPage()
+	require.NoError(t, pageErr)
+	_, gotoErr := page.Goto("http://api-portal:9543/")
+	require.NoError(t, gotoErr)
+	require.Eventually(t, func() bool {
+		title, titleErr := page.Title()
+		return titleErr == nil && title != ""
+	}, 30*time.Second, time.Second)
+	istanbulReport, reportErr := page.Evaluate("globalThis.__coverage__ || null")
+	require.NoError(t, reportErr)
+	require.NotNil(t, istanbulReport, "instrumented API Portal scripts must expose Istanbul coverage")
+	dir, dirErr := sink.BrowserDir("api-portal", "portal-smoke")
+	require.NoError(t, dirErr)
+	require.NoError(t, coverage.WriteIstanbulReport(filepath.Join(dir, "raw-istanbul.json"), istanbulReport))
 
 	// The portal must have been handed the control plane's OWN public key, not a second draw.
 	require.Equal(t,
