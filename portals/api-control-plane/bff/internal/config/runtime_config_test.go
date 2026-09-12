@@ -51,6 +51,39 @@ func TestBuildRuntimeConfig_BillingProxyEnabledWhenUpstreamConfigured(t *testing
 	}
 }
 
+func TestBuildRuntimeConfig_CloudProxyEnabledWhenUpstreamConfigured(t *testing.T) {
+	cfg := &Config{
+		Auth: AuthConfig{Mode: "basic"},
+		ControlPlane: ControlPlaneConfig{
+			ProxyPrefix: "/proxy",
+			Upstreams:   []UpstreamConfig{{Name: "cloud", URL: "https://platform-api.example.com"}},
+		},
+	}
+	out := buildRuntimeConfig(cfg)
+
+	if out["cloudProxyEnabled"] != "true" {
+		t.Errorf(`out["cloudProxyEnabled"] = %q, want "true"`, out["cloudProxyEnabled"])
+	}
+	if _, present := out["billingProxyEnabled"]; present {
+		t.Error(`out["billingProxyEnabled"] should be absent when only "cloud" upstream is configured`)
+	}
+}
+
+func TestBuildRuntimeConfig_MoesifAppUrlWhenConfigured(t *testing.T) {
+	cfg := &Config{
+		Auth: AuthConfig{Mode: "basic"},
+		ControlPlane: ControlPlaneConfig{
+			ProxyPrefix:  "/proxy",
+			MoesifAppURL: "https://www.moesif.com",
+		},
+	}
+	out := buildRuntimeConfig(cfg)
+
+	if out["moesifAppUrl"] != "https://www.moesif.com" {
+		t.Errorf(`out["moesifAppUrl"] = %q, want "https://www.moesif.com"`, out["moesifAppUrl"])
+	}
+}
+
 func TestBuildRuntimeConfig_NeverEmitsClientSecretOrAuthority(t *testing.T) {
 	// The BFF performs the whole OIDC handshake server-side — the SPA must
 	// never receive the client identity or secret.

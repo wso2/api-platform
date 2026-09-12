@@ -68,9 +68,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+s.path("/api/llm-providers"), s.handleCreateLLMProvider)
 	mux.HandleFunc("POST "+s.path("/api/mcp-proxies"), s.handleCreateMCPServer)
 
-	// Same-origin reverse proxy to the Platform API. The proxy's Rewrite hook
-	// strips the base path and the proxy prefix before forwarding (see
-	// server.New), so we register the subtree directly.
+	// Same-origin reverse proxy to the Platform API. Optional cloud hop is more
+	// specific (/proxy/cloud/) and must be registered before the catch-all /proxy/.
+	if s.cloudProxy != nil {
+		mux.HandleFunc(s.path(paths.Proxy)+"/cloud/", s.handleCloudProxy)
+	}
 	mux.HandleFunc(s.path(paths.Proxy)+"/", s.handleProxy)
 
 	// SPA static files + client-side routing fallback (must be last). The prefix is

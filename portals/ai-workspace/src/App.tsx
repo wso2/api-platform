@@ -87,6 +87,7 @@ import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
 import {
   AI_WORKSPACE_GATEWAYS_SLOT,
+  AI_WORKSPACE_INSIGHTS_SLOT,
   AI_WORKSPACE_SIDEBAR_SLOT,
   ExtensionsProvider,
   hiddenRegionsOf,
@@ -307,6 +308,21 @@ function GatewaysRoute() {
   return (
     <Hideable name={AI_WORKSPACE_GATEWAYS_SLOT}>
       <GatewaysLayout />
+    </Hideable>
+  );
+}
+
+// Same Slot/Hideable pattern as GatewaysRoute for the built-in Insights page
+// (org + project `/insights`). Cloud only registers the override when Moesif is
+// configured (`isInsightsMoesifConfigured` in the host file) — otherwise this
+// keeps the built-in Insights page.
+function InsightsRoute() {
+  const port = usePort();
+  const [override] = useSlot<AIWorkspacePageOverride>(AI_WORKSPACE_INSIGHTS_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={AI_WORKSPACE_INSIGHTS_SLOT}>
+      <Insights />
     </Hideable>
   );
 }
@@ -584,7 +600,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
               path="insights"
               element={
                 <WithPageBoundary>
-                  <Insights />
+                  <InsightsRoute />
                 </WithPageBoundary>
               }
             />
@@ -837,7 +853,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 path="insights"
                 element={
                   <WithPageBoundary>
-                    <Insights />
+                    <InsightsRoute />
                   </WithPageBoundary>
                 }
               />
