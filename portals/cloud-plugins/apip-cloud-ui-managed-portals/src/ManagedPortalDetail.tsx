@@ -114,7 +114,7 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
             <ArrowLeft size={20} />
           </IconButton>
           <Typography variant="body2" color="text.secondary">
-            Managed API Portals
+            API Portals
           </Typography>
         </Stack>
 

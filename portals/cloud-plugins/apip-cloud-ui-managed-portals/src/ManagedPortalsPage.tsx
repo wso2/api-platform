@@ -34,9 +34,9 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
   if (!portalPort) {
     return (
       <PageContent fullWidth>
-        <Typography variant="h5">Managed API Portals</Typography>
+        <Typography variant="h5">API Portals</Typography>
         <Typography color="error" sx={{ mt: 2 }}>
-          Managed API Portals is not available: platform-api base URL is not
+          API Portals is not available: platform-api base URL is not
           configured. Set window.__RUNTIME_CONFIG__.platformApiBaseUrl (or
           window.config.platformApiBaseUrl) on the host to enable this feature.
         </Typography>

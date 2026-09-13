@@ -7,19 +7,25 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
+  Avatar,
   Box,
   Button,
+  Card,
+  Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControl,
   FormLabel,
+  Grid,
   IconButton,
+  InputAdornment,
   PageContent,
+  PageTitle,
   Stack,
   Table,
   TableBody,
@@ -30,7 +36,7 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ExternalLink, Globe, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 
 import { useManagedPortalList } from './hooks';
 import type { ManagedPortal } from './types';
@@ -51,6 +57,21 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
   const [submitting, setSubmitting] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPortals = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return portals;
+    return portals.filter(
+      (portal) =>
+        portal.name.toLowerCase().includes(q) ||
+        portal.handle.toLowerCase().includes(q) ||
+        (portal.description?.toLowerCase().includes(q) ?? false) ||
+        (portal.url?.toLowerCase().includes(q) ?? false),
+    );
+  }, [portals, searchQuery]);
 
   const resetCreateForm = () => {
     setHandle('');
@@ -77,117 +98,202 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
   };
 
   const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
+    // Mirror gateways: keep the dialog open with a busy button until the delete settles.
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
     try {
       await remove(deleteTarget.id);
+      setDeleteTarget(null);
     } catch {
       // Hook already notified.
     } finally {
-      setDeleteTarget(null);
+      setDeleting(false);
     }
   };
 
   return (
     <PageContent fullWidth>
-      <Stack spacing={3}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
-          <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="h5">Managed API Portals</Typography>
-            <Typography color="text.secondary">
-              WSO2-managed developer portals for your organization.
-            </Typography>
-          </Stack>
-          <Button
-            variant="contained"
-            startIcon={<Plus size={20} />}
-            onClick={() => setCreateOpen(true)}
-            sx={{ flexShrink: 0 }}
-          >
-            Create Portal
-          </Button>
-        </Box>
+      <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
+        <Grid size={{ xs: 12 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 2 }}>
+            <PageTitle sx={{ minWidth: 0, flex: 1 }}>
+              <PageTitle.Header>API Portals</PageTitle.Header>
+              <PageTitle.SubHeader>Manage and monitor your API portals.</PageTitle.SubHeader>
+            </PageTitle>
 
-        <Divider />
+            <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
+              {portals.length > 0 ? (
+                <Button variant="contained" onClick={() => setCreateOpen(true)} startIcon={<Plus size={20} />}>
+                  Create Portal
+                </Button>
+              ) : null}
+            </Stack>
+          </Box>
+        </Grid>
 
         {isLoading ? (
-          <Typography variant="body2" color="text.secondary">
-            Loading portals…
-          </Typography>
+          <Grid size={{ xs: 12 }}>
+            <Typography variant="body2" color="text.secondary">
+              Loading portals…
+            </Typography>
+          </Grid>
         ) : error ? (
-          <Typography variant="body2" color="error">
-            {error.message}
-          </Typography>
+          <Grid size={{ xs: 12 }}>
+            <Typography variant="body2" color="error">
+              {error.message}
+            </Typography>
+          </Grid>
         ) : portals.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            No managed portals yet.
-          </Typography>
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
+              <Stack spacing={1.5} alignItems="center" justifyContent="center" sx={{ textAlign: 'center' }}>
+                <Globe size={120} color="var(--mui-palette-action-disabled)" />
+                <Typography variant="body1" color="text.secondary">
+                  No API portals yet
+                </Typography>
+                <Button variant="contained" onClick={() => setCreateOpen(true)} startIcon={<Plus size={20} />}>
+                  Create Portal
+                </Button>
+              </Stack>
+            </Box>
+          </Grid>
         ) : (
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Portal</TableCell>
-                  <TableCell>URL</TableCell>
-                  <TableCell>Login environment</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {portals.map((portal) => (
-                  <TableRow
-                    key={portal.id}
-                    hover
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`Open ${portal.name}`}
-                    onClick={() => onSelect(portal.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        onSelect(portal.id);
-                      }
-                    }}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell sx={{ minWidth: 240 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        {portal.name}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                        {portal.handle}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                        {portal.url ?? '—'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {portal.loginEnvironment ?? '—'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        aria-label={`Delete ${portal.name}`}
-                        onClick={(event) => {
-                          // Stop the row's onSelect from firing on delete.
-                          event.stopPropagation();
-                          setDeleteTarget(portal);
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                placeholder="Search API portals..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search size={20} />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12 }}>
+              <Card>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Name</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell>Login environment</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredPortals.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4}>
+                            <Typography variant="body2" color="text.secondary">
+                              No portals found.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredPortals.map((portal) => (
+                          <TableRow
+                            key={portal.id}
+                            hover
+                            tabIndex={0}
+                            role="button"
+                            aria-label={`Open ${portal.name}`}
+                            onClick={() => onSelect(portal.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                onSelect(portal.id);
+                              }
+                            }}
+                            sx={{ cursor: 'pointer' }}
+                          >
+                            <TableCell sx={{ minWidth: 220 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Avatar
+                                  sx={{
+                                    width: 36,
+                                    height: 36,
+                                    backgroundColor: 'primary.light',
+                                    color: 'primary.contrastText',
+                                    fontSize: 16,
+                                  }}
+                                >
+                                  {portal.name.trim().slice(0, 2).toUpperCase()}
+                                </Avatar>
+                                <Stack spacing={0.25}>
+                                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                    {portal.name}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                    {portal.handle}
+                                  </Typography>
+                                </Stack>
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}
+                              >
+                                {portal.description || '—'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              {portal.loginEnvironment ? (
+                                <Chip label={portal.loginEnvironment} size="small" variant="outlined" />
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  —
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              {portal.url && (
+                                <IconButton
+                                  size="small"
+                                  aria-label={`Visit ${portal.name}`}
+                                  component="a"
+                                  href={portal.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <ExternalLink size={16} />
+                                </IconButton>
+                              )}
+                              <IconButton
+                                size="small"
+                                color="error"
+                                aria-label={`Delete ${portal.name}`}
+                                onClick={(event) => {
+                                  // Stop the row's onSelect from firing on delete.
+                                  event.stopPropagation();
+                                  setDeleteTarget(portal);
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Card>
+            </Grid>
+          </>
         )}
-      </Stack>
+      </Grid>
 
       {/* Create portal */}
       <Dialog
@@ -261,7 +367,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
       </Dialog>
 
       {/* Delete portal */}
-      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
+      <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)}>
         <DialogTitle>Delete Portal</DialogTitle>
         <DialogContent>
           <Typography>
@@ -269,11 +375,16 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button variant="outlined" color="secondary" onClick={() => setDeleteTarget(null)}>
+          <Button variant="outlined" color="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
             Cancel
           </Button>
-          <Button color="error" onClick={handleDeleteConfirm}>
-            Delete
+          <Button
+            color="error"
+            onClick={handleDeleteConfirm}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

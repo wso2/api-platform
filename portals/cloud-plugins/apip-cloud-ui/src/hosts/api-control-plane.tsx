@@ -181,7 +181,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         order: 60,
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
-        label: 'Managed API Portals',
+        label: 'API Portals',
         icon: <Globe size={20} />,
         level: 'organization',
       },
