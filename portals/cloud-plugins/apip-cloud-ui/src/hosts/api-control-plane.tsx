@@ -7,11 +7,12 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { Layers, ScrollText, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import { LogsFeature } from '@wso2-enterprise/apip-cloud-ui-logs';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
@@ -131,6 +132,31 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         ),
         label: 'Deploy',
         level: 'api',
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'logs',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'logs',
+        slot: 'sidebar.organization',
+        // After Pipelines (50). Same unnamed divider cluster as Environments,
+        // Gateways and Pipelines, which it reads alongside.
+        order: 55,
+        routePath: 'logs',
+        render: (port) => <LogsFeature port={port} />,
+        label: 'Logs',
+        icon: <ScrollText size={20} />,
+        // Organization, not project: the observability API scopes a log query
+        // by organization namespace and has no project filter that would work
+        // here — every provisioned gateway lives in the same `wc-system`
+        // project, and a gateway's log line carries no API identity to
+        // attribute it by. When RBAC lands, project scoping has to be a
+        // server-side filter in apip-platform-api rather than a second
+        // extension registered at 'project'.
+        level: 'organization',
       },
     ],
   }),
