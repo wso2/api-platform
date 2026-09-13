@@ -136,12 +136,12 @@ describe('deriveFacets', () => {
   it('lists only what the loaded lines actually carry, sorted and deduped', () => {
     const facets = deriveFacets(
       buffer(
-        entry({ projectName: 'wc-system', componentName: 'gw-b', environment: 'production' }),
-        entry({ projectName: 'wc-system', componentName: 'gw-a', environment: 'production' }),
+        entry({ projectName: 'platform', componentName: 'gw-b', environment: 'production' }),
+        entry({ projectName: 'platform', componentName: 'gw-a', environment: 'production' }),
         entry({ projectName: 'apip', componentName: 'gw-a', environment: 'development' })
       )
     );
-    expect(facets.projects).toEqual(['apip', 'wc-system']);
+    expect(facets.projects).toEqual(['apip', 'platform']);
     expect(facets.components).toEqual(['gw-a', 'gw-b']);
     expect(facets.environments).toEqual(['development', 'production']);
   });
@@ -149,11 +149,11 @@ describe('deriveFacets', () => {
   it('groups components under their project, so picking one narrows the next list', () => {
     const facets = deriveFacets(
       buffer(
-        entry({ projectName: 'wc-system', componentName: 'gw-a' }),
+        entry({ projectName: 'platform', componentName: 'gw-a' }),
         entry({ projectName: 'apip', componentName: 'gw-z' })
       )
     );
-    expect(facets.componentsByProject).toEqual({ 'wc-system': ['gw-a'], apip: ['gw-z'] });
+    expect(facets.componentsByProject).toEqual({ platform: ['gw-a'], apip: ['gw-z'] });
   });
 
   it('offers nothing when the lines carry no attribution', () => {

@@ -151,11 +151,11 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         icon: <ScrollText size={20} />,
         // Organization, not project: the observability API scopes a log query
         // by organization namespace and has no project filter that would work
-        // here — every provisioned gateway lives in the same `wc-system`
-        // project, and a gateway's log line carries no API identity to
-        // attribute it by. When RBAC lands, project scoping has to be a
-        // server-side filter in apip-platform-api rather than a second
-        // extension registered at 'project'.
+        // here — every provisioned gateway lives in one shared project, and a
+        // gateway's log line carries no API identity to attribute it by. When
+        // RBAC lands, project scoping has to be a server-side filter in
+        // apip-platform-api rather than a second extension registered at
+        // 'project'.
         level: 'organization',
       },
     ],
