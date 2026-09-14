@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import {
+  Alert,
   Box,
   Button,
   Dialog,
@@ -45,6 +46,7 @@ import { ApiError } from '@/api/core/errors';
 import {
   usePutRestApiOpenApi,
   useRestApiOpenApi,
+  useValidateOpenApiSpec,
   type OpenAPIContent,
 } from '@/api/resources/restApis';
 import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
@@ -77,10 +79,6 @@ const messages = defineMessages({
   downloadLabel: {
     id: 'develop.definition.DefinitionPanel.downloadLabel',
     defaultMessage: 'Download Definition',
-  },
-  generateTooltip: {
-    id: 'develop.definition.DefinitionPanel.generateTooltip',
-    defaultMessage: 'Coming soon — generate a spec from your configured operations.',
   },
   generateLabel: {
     id: 'develop.definition.DefinitionPanel.generateLabel',
@@ -167,6 +165,16 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.operationsParseError',
     defaultMessage: 'The current spec cannot be parsed. Fix any syntax errors to preview operations.',
   },
+  saveSpecInvalid: {
+    id: 'develop.definition.DefinitionPanel.saveSpecInvalid',
+    defaultMessage: 'Fix the following issues before saving:',
+    description: 'Heading above spec validation errors shown when Save is clicked.',
+  },
+  saveValidationUnavailable: {
+    id: 'develop.definition.DefinitionPanel.saveValidationUnavailable',
+    defaultMessage: 'Spec validation is currently unavailable. Please try again.',
+    description: 'Error shown when the validation service itself fails (network/auth error).',
+  },
 });
 
 /** Width of the expanded editor Drawer. */
@@ -208,6 +216,7 @@ export function DefinitionPanel() {
 
   const openApiQuery = useRestApiOpenApi(restApiId);
   const putOpenApi = usePutRestApiOpenApi();
+  const validateSpec = useValidateOpenApiSpec();
 
   const openApiError = openApiQuery.error as ApiError | null;
   const openApiData = openApiQuery.data as OpenAPIContent | undefined;
@@ -219,6 +228,10 @@ export function DefinitionPanel() {
   const [format, setFormat] = useState<'yaml' | 'json'>('yaml');
   // Tracks the filename for the next Save (set when user picks a file or fetches from URL).
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
+
+  // Validation errors from the backend spec validator. Cleared when edit mode is exited.
+  const [saveValidationErrors, setSaveValidationErrors] = useState<string[] | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   // Whether the editor is expanded into a full-width right Drawer.
   const [expanded, setExpanded] = useState(false);
@@ -238,6 +251,11 @@ export function DefinitionPanel() {
     setPendingFileName(null);
     setFormat('yaml');
   }, [openApiData?.content]);
+
+  // Clear save-time validation errors whenever the editor content changes.
+  useEffect(() => {
+    setSaveValidationErrors(null);
+  }, [editorText]);
 
   // Dirty check compares parsed semantic content, not raw strings.
   // Format-toggling (YAML ↔ JSON) never affects dirty state.
@@ -263,7 +281,7 @@ export function DefinitionPanel() {
     }
   }, [savedContent, format]);
 
-  const isSaving = putOpenApi.isPending;
+  const isSaving = isValidating || putOpenApi.isPending;
 
   const handleFormatToggle = useCallback(
     (newFormat: 'yaml' | 'json') => {
@@ -372,9 +390,7 @@ export function DefinitionPanel() {
     URL.revokeObjectURL(url);
   };
 
-  // Single PUT /rest-apis/{restApiId}/openapi call — backend updates both the spec
-  // document and the API's operations (syncing policies for unchanged operations).
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!restApiId || isSaving) return;
     // Always persist as YAML. Convert from JSON if the editor is in JSON mode.
     let yamlContent = editorText;
@@ -384,6 +400,25 @@ export function DefinitionPanel() {
         yamlContent = yaml.dump(parsed);
       } catch {
         // Invalid JSON — let the server reject it.
+      }
+    }
+
+    const isEmpty = !yamlContent.trim();
+
+    if (!isEmpty) {
+      setIsValidating(true);
+      setSaveValidationErrors(null);
+      try {
+        const validation = await validateSpec.mutateAsync(yamlContent);
+        if (!validation.isValid) {
+          setSaveValidationErrors(validation.errors.map((e) => e.message));
+          return;
+        }
+      } catch {
+        setSaveValidationErrors([intl.formatMessage(messages.saveValidationUnavailable)]);
+        return;
+      } finally {
+        setIsValidating(false);
       }
     }
 
@@ -624,41 +659,53 @@ export function DefinitionPanel() {
 
                 {/* Save / Reset bar — shown whenever the editor is in edit mode */}
                 {isEditing && (
-                  <Box
-                    sx={{
-                      alignItems: 'center',
-                      borderTop: '1px solid',
-                      borderColor: 'divider',
-                      display: 'flex',
-                      flexShrink: 0,
-                      gap: 1,
-                      justifyContent: 'flex-end',
-                      px: 2,
-                      py: 1.5,
-                    }}
-                  >
-                    <Button
-                      color="secondary"
-                      disabled={isSaving}
-                      onClick={() => {
-                        setEditorText(savedInCurrentFormat);
-                        setPendingFileName(null);
-                        setIsEditing(false);
+                  <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
+                    {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
+                      <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
+                        <FormattedMessage {...messages.saveSpecInvalid} />
+                        <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+                          {saveValidationErrors.map((msg, i) => (
+                            <Typography component="li" key={i} variant="body2">
+                              {msg}
+                            </Typography>
+                          ))}
+                        </Box>
+                      </Alert>
+                    )}
+                    <Box
+                      sx={{
+                        alignItems: 'center',
+                        display: 'flex',
+                        gap: 1,
+                        justifyContent: 'flex-end',
+                        px: 2,
+                        py: 1.5,
                       }}
-                      size="small"
-                      variant="outlined"
                     >
-                      {intl.formatMessage(messages.reset)}
-                    </Button>
-                    <Button
-                      disabled={!isDirty || !editorText.trim()}
-                      loading={isSaving}
-                      onClick={handleSave}
-                      size="small"
-                      variant="contained"
-                    >
-                      {intl.formatMessage(messages.save)}
-                    </Button>
+                      <Button
+                        color="secondary"
+                        disabled={isSaving}
+                        onClick={() => {
+                          setEditorText(savedInCurrentFormat);
+                          setPendingFileName(null);
+                          setIsEditing(false);
+                          setSaveValidationErrors(null);
+                        }}
+                        size="small"
+                        variant="outlined"
+                      >
+                        {intl.formatMessage(messages.reset)}
+                      </Button>
+                      <Button
+                        disabled={!isDirty || !editorText.trim()}
+                        loading={isSaving}
+                        onClick={() => void handleSave()}
+                        size="small"
+                        variant="contained"
+                      >
+                        {intl.formatMessage(messages.save)}
+                      </Button>
+                    </Box>
                   </Box>
                 )}
               </Box>
@@ -843,41 +890,53 @@ export function DefinitionPanel() {
 
                 {/* Save / Reset bar inside the Drawer — shown when in edit mode */}
                 {isEditing && (
-                  <Box
-                    sx={{
-                      alignItems: 'center',
-                      borderTop: '1px solid',
-                      borderColor: 'divider',
-                      display: 'flex',
-                      flexShrink: 0,
-                      gap: 1,
-                      justifyContent: 'flex-end',
-                      px: 3,
-                      py: 1.5,
-                    }}
-                  >
-                    <Button
-                      color="secondary"
-                      disabled={isSaving}
-                      onClick={() => {
-                        setEditorText(savedInCurrentFormat);
-                        setPendingFileName(null);
-                        setIsEditing(false);
+                  <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
+                    {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
+                      <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
+                        <FormattedMessage {...messages.saveSpecInvalid} />
+                        <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+                          {saveValidationErrors.map((msg, i) => (
+                            <Typography component="li" key={i} variant="body2">
+                              {msg}
+                            </Typography>
+                          ))}
+                        </Box>
+                      </Alert>
+                    )}
+                    <Box
+                      sx={{
+                        alignItems: 'center',
+                        display: 'flex',
+                        gap: 1,
+                        justifyContent: 'flex-end',
+                        px: 3,
+                        py: 1.5,
                       }}
-                      size="small"
-                      variant="outlined"
                     >
-                      {intl.formatMessage(messages.reset)}
-                    </Button>
-                    <Button
-                      disabled={!isDirty || !editorText.trim()}
-                      loading={isSaving}
-                      onClick={handleSave}
-                      size="small"
-                      variant="contained"
-                    >
-                      {intl.formatMessage(messages.save)}
-                    </Button>
+                      <Button
+                        color="secondary"
+                        disabled={isSaving}
+                        onClick={() => {
+                          setEditorText(savedInCurrentFormat);
+                          setPendingFileName(null);
+                          setIsEditing(false);
+                          setSaveValidationErrors(null);
+                        }}
+                        size="small"
+                        variant="outlined"
+                      >
+                        {intl.formatMessage(messages.reset)}
+                      </Button>
+                      <Button
+                        disabled={!isDirty || !editorText.trim()}
+                        loading={isSaving}
+                        onClick={() => void handleSave()}
+                        size="small"
+                        variant="contained"
+                      >
+                        {intl.formatMessage(messages.save)}
+                      </Button>
+                    </Box>
                   </Box>
                 )}
               </Stack>
@@ -913,13 +972,13 @@ export function DefinitionPanel() {
               >
                 {intl.formatMessage(messages.addDefinition)}
               </Button>
-              <Tooltip title={intl.formatMessage(messages.generateTooltip)}>
-                <span>
-                  <Button disabled startIcon={<Sparkles size={16} />} variant="outlined">
-                    {intl.formatMessage(messages.generateLabel)}
-                  </Button>
-                </span>
-              </Tooltip>
+              <Button
+                disabled
+                startIcon={<Sparkles size={16} />}
+                variant="outlined"
+              >
+                {intl.formatMessage(messages.generateLabel)}
+              </Button>
             </Stack>
           </Stack>
         </Box>

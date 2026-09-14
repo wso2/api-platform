@@ -136,6 +136,41 @@ export const importOpenApi = async (body: FormData, options?: RequestOptions): P
   });
 };
 
+/** A single error entry from `POST /rest-apis/validate-openapi`. */
+export type OpenAPIValidationError = {
+  message: string;
+  path?: string;
+};
+
+/** `info` block extracted from the spec if validation passes. */
+export type OpenAPISpecInfo = {
+  title?: string;
+  version?: string;
+};
+
+export type ValidateOpenAPIResponse = {
+  isValid: boolean;
+  errors: OpenAPIValidationError[];
+  info?: OpenAPISpecInfo;
+};
+
+/**
+ * Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
+ * any resource. The caller serialises the spec to a string and passes it as
+ * `inlineDefinition` in multipart form data.
+ */
+export const validateOpenApiSpec = async (
+  inlineDefinition: string,
+  options?: RequestOptions,
+): Promise<ValidateOpenAPIResponse> => {
+  const formData = new FormData();
+  formData.append('inlineDefinition', inlineDefinition);
+  return http.post<ValidateOpenAPIResponse>(`${BASE}/validate-openapi`, formData, {
+    ...options,
+    operationName: 'ValidateOpenAPISpec',
+  });
+};
+
 /** The parsed response from `GET /rest-apis/{id}/openapi`. Content is always YAML. */
 export type OpenAPIContent = {
   content: string;
