@@ -21,7 +21,6 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { AcrylicOrangeTheme, OxygenUIThemeProvider } from '@wso2/oxygen-ui';
 import { BrowserRouter } from 'react-router-dom';
 
-import { ApiClientProvider } from './api/ApiClientProvider';
 import { createQueryClient } from './api/core/queryClient';
 import { ErrorBoundary } from './components/errors/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './components/Notifications';
@@ -29,10 +28,7 @@ import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './contexts/auth/AuthProvider';
 import { ProductActivation } from './hooks/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
-import {
-  ExtensionsProvider,
-  type ApiControlPlaneExtension,
-} from './extensions';
+import { ExtensionsProvider, type ApiControlPlaneExtension } from './extensions';
 import { I18nProvider } from './i18n';
 
 /**
@@ -68,12 +64,10 @@ function AppQueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() =>
     createQueryClient({
       onMutationError: (error) => notify(error.message, 'error'),
-    })
+    }),
   );
 
-  return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
 export type AppProps = {
@@ -82,23 +76,20 @@ export type AppProps = {
 
 export default function App({ extensions = [] }: AppProps) {
   return (
-
     <I18nProvider>
       <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
         <NotificationProvider>
           <AppQueryProvider>
-            <ApiClientProvider>
-              <ErrorBoundary>
-                <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-                  <AuthProvider>
-                    <ProductActivation />
-                    <ExtensionsProvider extensions={extensions}>
-                      <AppRoutes extensions={extensions} />
-                    </ExtensionsProvider>
-                  </AuthProvider>
-                </BrowserRouter>
-              </ErrorBoundary>
-            </ApiClientProvider>
+            <ErrorBoundary>
+              <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
+                <AuthProvider>
+                  <ProductActivation />
+                  <ExtensionsProvider extensions={extensions}>
+                    <AppRoutes extensions={extensions} />
+                  </ExtensionsProvider>
+                </AuthProvider>
+              </BrowserRouter>
+            </ErrorBoundary>
           </AppQueryProvider>
         </NotificationProvider>
       </OxygenUIThemeProvider>

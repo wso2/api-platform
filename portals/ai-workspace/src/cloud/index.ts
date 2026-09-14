@@ -23,6 +23,6 @@
  * `portals/api-control-plane/src/cloud/index.ts`.
  */
 
-import type { AIWorkspaceExtension } from '../extensions';
+import type { AIWorkspaceCloudEntry } from '../extensions';
 
-export const cloudExtensions: AIWorkspaceExtension[] = [];
+export const cloudExtensions: AIWorkspaceCloudEntry[] = [];

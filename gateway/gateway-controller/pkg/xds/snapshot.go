@@ -137,8 +137,12 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		return fmt.Errorf("failed to translate configurations: %w", err)
 	}
 
-	// Add SDS secrets if SDS secret manager is configured
-	if sm.sdsSecretManager != nil {
+	// Add the SDS secret only when this snapshot's clusters actually reference it.
+	// Envoy never issues a watch for the Secret type URL unless a Cluster it accepted
+	// points at that secret name via SDS, so pushing it unconditionally just produces
+	// an "Ignoring unwatched type URL ... Secret" warning whenever no HTTPS-scheme
+	// upstream is configured.
+	if sm.sdsSecretManager != nil && ClusterResourcesReferenceUpstreamCASecret(resources[resource.ClusterType]) {
 		secret, err := sm.sdsSecretManager.GetSecret()
 		if err != nil {
 			log.Warn("Failed to get SDS secret, continuing without it", slog.Any("error", err))

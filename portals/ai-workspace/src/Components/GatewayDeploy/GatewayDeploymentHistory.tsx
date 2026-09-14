@@ -35,6 +35,7 @@ export default function GatewayDeploymentHistory({
     deploymentsError,
     refetchDeployments,
     deleteDeployment,
+    canDelete,
   } = useGatewayDeploy();
 
   const gatewayDeployments =
@@ -169,7 +170,7 @@ export default function GatewayDeploymentHistory({
                 deployment.deploymentId === currentDeploymentId
               }
               isInDrawer
-              onDelete={handleDeleteDeployment}
+              onDelete={canDelete ? handleDeleteDeployment : undefined}
             />
           ))}
         </Box>

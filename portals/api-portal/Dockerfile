@@ -33,6 +33,8 @@ RUN npm ci --omit=dev
 # Runtime stage
 FROM node:24-alpine
 
+ARG ENABLE_COVERAGE=false
+
 # Set the working directory inside the container
 WORKDIR /app
 
@@ -41,6 +43,16 @@ COPY --from=builder /app/node_modules ./node_modules
 
 # Copy the rest of the application files
 COPY . .
+
+# Instrument browser scripts only for framework coverage builds. The instrumenter script
+# and istanbul-lib-instrument are both mounted in only for this step (via the external
+# coverage-scripts build context and a cache mount) so neither ever lands in an image layer.
+RUN --mount=type=bind,from=coverage-scripts,source=instrument-browser-coverage.js,target=/tmp/instrument-browser-coverage.js \
+    --mount=type=cache,target=/tmp/coverage-npm-cache \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        npm install istanbul-lib-instrument@6.0.3 --no-save --prefix /tmp/coverage-npm-cache && \
+        NODE_PATH=/tmp/coverage-npm-cache/node_modules node /tmp/instrument-browser-coverage.js src/scripts; \
+    fi
 
 # Expose the application port
 EXPOSE 9543
@@ -53,6 +65,7 @@ RUN addgroup -g 10001 appgroup && adduser -u 10001 -G appgroup -s /bin/sh -D -H 
 # read-only at /etc/api-portal/tls (generated host-side by setup.sh) — never
 # written to by the container.
 RUN mkdir -p /app/logs /app/data && chown -R 10001:10001 /app/logs /app/data
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown 10001:10001 /coverage; fi
 
 RUN chmod +x /app/docker-entrypoint.sh
 

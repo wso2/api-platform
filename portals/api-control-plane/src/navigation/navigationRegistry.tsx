@@ -19,22 +19,19 @@
 import type { ReactNode } from 'react';
 import {
   Activity,
-  BellRing,
   ChartColumn,
   ChartLine,
-  CircleDollarSign,
   Code,
-  ClipboardList,
   FileCheck,
   FileText,
   Gauge,
-  GitBranch,
   Home,
   Layers,
+  List,
   MessagesSquare,
   Network,
+  PanelTop,
   Rocket,
-  Route,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -76,7 +73,7 @@ const toRouteRegex = (pattern: string): RegExp =>
   new RegExp(
     `^${pattern
       .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+')}$`
+      .replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+')}$`,
   );
 
 /**
@@ -115,11 +112,7 @@ const apiLevelTo =
   (build: ApiPathBuilder): NavigationDefinition['to'] =>
   ({ params }) =>
     params.orgHandle
-      ? build(
-          params.orgHandle,
-          params.projectHandler ?? null,
-          params.apiHandler ?? null
-        )
+      ? build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null)
       : undefined;
 
 /** One entry in a submenu: its own id, label, icon and page. */
@@ -163,7 +156,7 @@ const subItem = ({ icon, id, label, to }: SubItem): NavigationDefinition => ({
  *   scope resolves. Oxygen leaves an expanded parent unhighlighted by design.
  */
 const submenu = (
-  items: SubItem[]
+  items: SubItem[],
 ): Pick<NavigationDefinition, 'children' | 'match' | 'requires' | 'to'> => ({
   children: items.map(subItem),
   match: matchRoutes(...items.flatMap((item) => apiScopeSelectPaths(item.to))),
@@ -216,29 +209,20 @@ const tierPattern = ({ level, to }: ScopeTier): string => {
  * { id: 'overview', ...adaptive([{ level: 'api', to: routes.api }, ...]) }
  * ```
  */
-const adaptive = (
-  tiers: ScopeTier[]
-): Pick<NavigationDefinition, 'match' | 'to'> => {
+const adaptive = (tiers: ScopeTier[]): Pick<NavigationDefinition, 'match' | 'to'> => {
   const deepestFirst = [...tiers].sort(
-    (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level]
+    (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level],
   );
 
   return {
     match: matchRoutes(...tiers.map(tierPattern)),
     to: ({ params }) => {
       if (!params.orgHandle) return undefined;
-      const tier = deepestFirst.find((candidate) =>
-        isLevelInScope(candidate.level, params)
-      );
-      return tier?.to(
-        params.orgHandle,
-        params.projectHandler,
-        params.apiHandler
-      );
+      const tier = deepestFirst.find((candidate) => isLevelInScope(candidate.level, params));
+      return tier?.to(params.orgHandle, params.projectHandler, params.apiHandler);
     },
   };
 };
-
 
 /**
  * Capability gating for an API-level item, applied only once an API is actually
@@ -253,7 +237,7 @@ const adaptive = (
  */
 const apiCapability =
   (
-    isSupported: (capabilities: ApiCapabilities) => boolean
+    isSupported: (capabilities: ApiCapabilities) => boolean,
   ): NonNullable<NavigationDefinition['isVisible']> =>
   ({ capabilities, isApiScope }) =>
     !isApiScope || isSupported(capabilities);
@@ -287,7 +271,7 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     id: 'gateways',
-    label: 'API Gateways',
+    label: 'Gateways',
     group: CLUSTER.place,
     order: 30,
     icon: <Network />,
@@ -309,9 +293,9 @@ export const navigationRegistry: NavigationDefinition[] = [
         to: routes.apiDevelopPolicies,
       },
       {
-        icon: <Route />,
+        icon: <List />,
         id: 'develop-routing',
-        label: 'Routing',
+        label: 'Resources',
         to: routes.apiDevelopRouting,
       },
       {
@@ -392,12 +376,6 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <Activity />,
     ...submenu([
       {
-        icon: <BellRing />,
-        id: 'observability-alerts',
-        label: 'Alert',
-        to: routes.apiObservabilityAlerts,
-      },
-      {
         icon: <Gauge />,
         id: 'observability-metrics',
         label: 'Metrics',
@@ -412,35 +390,16 @@ export const navigationRegistry: NavigationDefinition[] = [
     ]),
   },
   {
-    id: 'manage',
-    label: 'Manage',
+    id: 'portals',
+    label: 'Portals',
     group: CLUSTER.api,
     order: 80,
-    icon: <ClipboardList />,
-    isVisible: apiCapability(({ canManage }) => canManage),
-    ...submenu([
-      {
-        icon: <CircleDollarSign />,
-        id: 'manage-monetize',
-        label: 'Monetize',
-        to: routes.apiManageMonetize,
-      },
-      {
-        icon: <GitBranch />,
-        id: 'manage-lifecycle',
-        label: 'LifeCycle',
-        to: routes.apiManageLifecycle,
-      },
+    icon: <PanelTop />,
+    ...adaptive([
+      { level: 'api', to: routes.apiPortals },
+      { level: 'project', to: routes.projectPortals },
+      { level: 'organization', to: routes.organizationPortals },
     ]),
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    group: CLUSTER.api,
-    order: 90,
-    icon: <ShieldCheck />,
-    to: apiLevelTo(routes.apiAdmin),
-    match: matchRoutes(...apiScopedPaths(routes.apiAdmin)),
   },
   {
     // The one page with no scope requirement at all, hence its own cluster.

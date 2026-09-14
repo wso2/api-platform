@@ -1416,7 +1416,7 @@ func TestClient_syncAPIKeysForExistingArtifacts_MapsControlPlaneArtifactIDToLoca
 		store:           configStore,
 		apiKeyStore:     storage.NewAPIKeyStore(logger),
 		apiKeyService:   utils.NewAPIKeyService(configStore, db, nil, nil, hub, "test-gateway"),
-		apiUtilsService: utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, logger),
+		apiUtilsService: utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, srv.Client(), logger),
 	}
 
 	client.syncAPIKeysForExistingArtifacts("test-gateway")
@@ -1475,7 +1475,7 @@ func TestClient_syncAPIKeysForExistingArtifacts_LeavesControlPlaneOriginatedKeys
 		store:           configStore,
 		apiKeyStore:     storage.NewAPIKeyStore(logger),
 		apiKeyService:   utils.NewAPIKeyService(configStore, db, nil, nil, hub, "test-gateway"),
-		apiUtilsService: utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, logger),
+		apiUtilsService: utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, srv.Client(), logger),
 	}
 
 	client.syncAPIKeysForExistingArtifacts("test-gateway")

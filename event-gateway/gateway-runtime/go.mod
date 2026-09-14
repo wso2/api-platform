@@ -15,6 +15,7 @@ require (
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine v0.0.0-00010101000000-000000000000
 	github.com/wso2/api-platform/sdk/core v0.4.0
+	github.com/wso2/api-platform/httpkit v0.0.0-local
 	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
@@ -46,7 +47,6 @@ require (
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1 // indirect
-	github.com/wso2/api-platform/httpkit v0.0.0-local // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect

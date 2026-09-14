@@ -66,7 +66,7 @@ func TestNewAPIUtilsService(t *testing.T) {
 			BaseURL: "http://localhost:8080",
 			Token:   "test-token",
 		}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 		assert.NotNil(t, svc)
 		assert.Equal(t, 30*time.Second, svc.config.Timeout)
 	})
@@ -77,7 +77,7 @@ func TestNewAPIUtilsService(t *testing.T) {
 			Token:   "test-token",
 			Timeout: 60 * time.Second,
 		}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 		assert.NotNil(t, svc)
 		assert.Equal(t, 60*time.Second, svc.config.Timeout)
 	})
@@ -101,7 +101,7 @@ func TestAPIUtilsService_FetchAPIDefinition(t *testing.T) {
 			BaseURL: server.URL,
 			Token:   "test-token",
 		}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.FetchAPIDefinition("test-api-123")
 		assert.NoError(t, err)
@@ -119,7 +119,7 @@ func TestAPIUtilsService_FetchAPIDefinition(t *testing.T) {
 			BaseURL: server.URL,
 			Token:   "test-token",
 		}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.FetchAPIDefinition("nonexistent")
 		assert.Error(t, err)
@@ -133,7 +133,7 @@ func TestAPIUtilsService_FetchAPIDefinition(t *testing.T) {
 			Token:   "test-token",
 			Timeout: 1 * time.Second,
 		}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.FetchAPIDefinition("0000-test-api-0000-000000000000")
 		assert.Error(t, err)
@@ -144,7 +144,7 @@ func TestAPIUtilsService_FetchAPIDefinition(t *testing.T) {
 func TestAPIUtilsService_ExtractYAMLFromZip(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := PlatformAPIConfig{BaseURL: "http://localhost"}
-	svc := NewAPIUtilsService(cfg, logger)
+	svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 	t.Run("Extract YAML file", func(t *testing.T) {
 		// Create a zip with a YAML file
@@ -190,7 +190,7 @@ func TestAPIUtilsService_ExtractYAMLFromZip(t *testing.T) {
 func TestAPIUtilsService_SaveAPIDefinition(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := PlatformAPIConfig{BaseURL: "http://localhost"}
-	svc := NewAPIUtilsService(cfg, logger)
+	svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 	// Create a temp directory for testing
 	tmpDir, err := os.MkdirTemp("", "api-test-*")
@@ -306,7 +306,7 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 		}))
 		defer server.Close()
 
-		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, testHTTPClient(), logger)
 		cpArtifactID, err := svc.PushArtifact("0000-test-api-0000-000000000000", createTestStoredConfig("RestApi"), "")
 		assert.NoError(t, err)
 		// The CP-minted artifact UUID from the per-dpid result is returned to the caller.
@@ -329,7 +329,7 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 		}))
 		defer server.Close()
 
-		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, testHTTPClient(), logger)
 		_, err := svc.PushArtifact("0000-test-api-0000-000000000000", createTestStoredConfig("LlmProvider"), "")
 		assert.NoError(t, err)
 	})
@@ -352,7 +352,7 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 		cfg := createTestStoredConfig(models.KindLlmProviderTemplate)
 		cfg.DeployedAt = nil // templates never set DeployedAt
 
-		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, testHTTPClient(), logger)
 		_, err := svc.PushArtifact(cfg.UUID, cfg, "")
 		require.NoError(t, err)
 
@@ -379,7 +379,7 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 		deployedAt := time.Date(2026, 5, 6, 7, 8, 9, 123456789, time.UTC)
 		cfg.DeployedAt = &deployedAt
 
-		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, testHTTPClient(), logger)
 		_, err := svc.PushArtifact(cfg.UUID, cfg, "")
 		require.NoError(t, err)
 
@@ -395,7 +395,7 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 		}))
 		defer server.Close()
 
-		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, testHTTPClient(), logger)
 		_, err := svc.PushArtifact("0000-test-api-0000-000000000000", createTestStoredConfig("RestApi"), "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
@@ -423,7 +423,7 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 			},
 		}
 
-		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, testHTTPClient(), logger)
 		_, err := svc.PushArtifact(cfg.UUID, cfg, "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "project")
@@ -583,7 +583,7 @@ func TestAPIUtilsService_FetchControlPlaneDeployments(t *testing.T) {
 		defer server.Close()
 
 		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.FetchControlPlaneDeployments(nil)
 		assert.NoError(t, err)
@@ -615,7 +615,7 @@ func TestAPIUtilsService_FetchControlPlaneDeployments(t *testing.T) {
 		defer server.Close()
 
 		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.FetchControlPlaneDeployments(&since)
 		assert.NoError(t, err)
@@ -630,7 +630,7 @@ func TestAPIUtilsService_FetchControlPlaneDeployments(t *testing.T) {
 		defer server.Close()
 
 		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.FetchControlPlaneDeployments(nil)
 		assert.Error(t, err)
@@ -640,7 +640,7 @@ func TestAPIUtilsService_FetchControlPlaneDeployments(t *testing.T) {
 
 	t.Run("Connection error", func(t *testing.T) {
 		cfg := PlatformAPIConfig{BaseURL: "http://localhost:99999", Token: "test-token", Timeout: 1 * time.Second}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.FetchControlPlaneDeployments(nil)
 		assert.Error(t, err)
@@ -678,7 +678,7 @@ func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
 		defer server.Close()
 
 		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.BatchFetchDeployments([]string{"dep-789", "dep-456"})
 		assert.NoError(t, err)
@@ -693,7 +693,7 @@ func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
 		defer server.Close()
 
 		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 		result, err := svc.BatchFetchDeployments([]string{"dep-789"})
 		assert.Error(t, err)
@@ -733,7 +733,7 @@ func TestAPIUtilsService_FetchAPIKeysByKind_WebSubAPI(t *testing.T) {
 	defer server.Close()
 
 	cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
-	svc := NewAPIUtilsService(cfg, logger)
+	svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 	keys, err := svc.FetchAPIKeysByKind(models.KindWebSubApi, "")
 	require.NoError(t, err)
@@ -747,7 +747,7 @@ func TestAPIUtilsService_FetchAPIKeysByKind_WebSubAPI(t *testing.T) {
 func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := PlatformAPIConfig{BaseURL: "http://localhost"}
-	svc := NewAPIUtilsService(cfg, logger)
+	svc := NewAPIUtilsService(cfg, testHTTPClient(), logger)
 
 	t.Run("Extract multiple deployments", func(t *testing.T) {
 		yamlContent1 := []byte("apiVersion: v1\nkind: RestApi\nmetadata:\n  name: api-1")

@@ -1,0 +1,17 @@
+# Route gateway analytics events to the block-partitioned testbench collector.
+[collector]
+request_headers = true
+response_headers = true
+
+[analytics]
+enabled = true
+allow_payloads = false
+send_request_body = false
+send_response_body = false
+enabled_publishers = ["moesif"]
+
+[analytics.publishers.moesif]
+application_id = "framework-test"
+moesif_base_url = "http://testbench:3007/${BLOCK}"
+publish_interval = 1
+timer_wakeup_seconds = 1

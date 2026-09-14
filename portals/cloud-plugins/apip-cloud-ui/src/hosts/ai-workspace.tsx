@@ -7,18 +7,72 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Workflow } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Network, Workflow } from '@wso2/oxygen-ui-icons-react';
 
-import { PipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
-import type { AIWorkspaceExtension } from '../../../../ai-workspace/src/extensions';
+import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
+import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import {
+  InsightsFeature,
+  isInsightsMoesifConfigured,
+} from '@wso2-enterprise/apip-cloud-ui-insights';
+import {
+  PipelinesFeature,
+  ProjectPipelinesFeature,
+} from '@wso2-enterprise/apip-cloud-ui-pipelines';
+import {
+  AI_WORKSPACE_GATEWAYS_NAV_REGION,
+  AI_WORKSPACE_GATEWAYS_SLOT,
+  AI_WORKSPACE_INSIGHTS_SLOT,
+  type AIWorkspaceCloudEntry,
+  type AIWorkspaceExtension,
+} from '../../../../ai-workspace/src/extensions';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 
 /**
  * Cloud features registered for the AI Workspace host. The host owns routing,
  * organization/project scope, navigation and notifications; each plugin only
  * renders against the small host port passed to it.
+ *
+ * Most entries are `sidebar.main` items (new nav entry + route). `gateways`
+ * is different: it registers against `AI_WORKSPACE_GATEWAYS_SLOT` to replace
+ * what renders at the host's existing, built-in `gateways` route/sidebar item
+ * — see `GatewaysRoute` in `ai-workspace/src/App.tsx` — rather than adding a
+ * new one. Nothing under `ai-workspace/src/pages/appShell/appShellPages/gateways`
+ * is touched by this. Every gateway in this workspace is an AI gateway, so it
+ * registers `ai` as the only type and the create form shows no type picker.
+ * It also carries nav placement so the entry sits between Environments and
+ * Pipelines, suppressing the built-in item via `hides`.
+ *
+ * `insights` registers against `AI_WORKSPACE_INSIGHTS_SLOT` the same way —
+ * see `InsightsRoute` in `ai-workspace/src/App.tsx` — so the built-in Insights
+ * nav stays and only the page body is replaced when Moesif is configured.
+ * Registration is gated by `isInsightsMoesifConfigured` (single reader in the
+ * insights package) so App.tsx needs no Moesif config knowledge: no override
+ * means InsightsRoute keeps the built-in page.
+ *
+ * The deploy feature is deliberately NOT registered here. Deploying is scoped to
+ * one API — the page reads and writes that API's deployments — and this host has
+ * no API-scoped placement, so its Port carries no `apiHandle`. Registered here
+ * the page could only tell the user to open an API. The feature package is shared
+ * and unchanged; adding it back is a matter of giving this host an API scope, not
+ * of changing the feature.
  */
-export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceExtension>[] = [
+export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = [
+  defineCloudPlugin({
+    id: 'environments',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'environments',
+        slot: 'sidebar.main',
+        order: 50,
+        path: 'environments',
+        label: 'Environments',
+        icon: <Boxes size={20} />,
+        render: (port) => <EnvironmentsFeature port={port} />,
+      },
+    ],
+  }),
   defineCloudPlugin({
     id: 'pipelines',
     version: '0.1.0',
@@ -30,11 +84,59 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceExtension>[] = [
         path: 'pipelines',
         label: 'Pipelines',
         icon: <Workflow size={20} />,
-        render: (port) => <PipelinesFeature port={port} />,
+        // One scope-adaptive "Pipelines" item: the project binding view when a
+        // project is selected, the organization list/create/edit view otherwise.
+        render: (port) =>
+          port.projectHandle ? (
+            <ProjectPipelinesFeature port={port} />
+          ) : (
+            <PipelinesFeature port={port} />
+          ),
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'gateways',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'gateways',
+        slot: AI_WORKSPACE_GATEWAYS_SLOT,
+        // Nav placement: between Environments (50) and Pipelines (60). The
+        // override carries it (rather than a second sidebar entry) so the
+        // gateways route keeps rendering here, while `hides` suppresses the
+        // built-in nav item that would otherwise appear higher up in its own
+        // category. Without `hides` both entries would show.
+        order: 55,
+        path: 'gateways',
+        label: 'AI Gateways',
+        icon: <Network size={20} />,
+        hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
+        render: (port) => <GatewaysFeature gatewayTypes={['ai']} port={port} />,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'insights',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'insights',
+        slot: AI_WORKSPACE_INSIGHTS_SLOT,
+        order: 0,
+        // Same Moesif ai-overview URL at org and project — no project_id filter.
+        render: (port) => (
+          <InsightsFeature port={port} embedProfile="ai-workspace" />
+        ),
       },
     ],
   }),
 ];
 
-export const cloudExtensions = getCloudExtensions(cloudPluginFeatures);
+/** Omit Insights when Moesif is not configured so InsightsRoute keeps the built-in page. */
+export const cloudExtensions = getCloudExtensions(
+  cloudPluginFeatures.filter(
+    (feature) => feature.id !== 'insights' || isInsightsMoesifConfigured()
+  )
+);
 export type { AIWorkspaceExtension };

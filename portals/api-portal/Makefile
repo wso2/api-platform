@@ -74,6 +74,7 @@ help: ## Show this help message
 build: ## Build API Portal Docker image
 	@echo "Building API Portal Docker image ($(VERSION))..."
 	docker buildx build \
+		--build-context coverage-scripts=../../tests/framework/tools \
 		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--load \
 		.
@@ -83,6 +84,7 @@ build-and-push-multiarch: ## Build and push multi-arch API Portal image to GHCR
 	@echo "Building and pushing multi-arch API Portal Docker image ($(VERSION))..."
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
+		--build-context coverage-scripts=../../tests/framework/tools \
 		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--push \
 		.

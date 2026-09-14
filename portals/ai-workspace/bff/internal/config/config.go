@@ -53,6 +53,7 @@ type Config struct {
 	Server       ServerConfig       `koanf:"server"`
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
+	HTTPClient   HTTPClientConfig   `koanf:"http_client"`
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 
@@ -90,6 +91,28 @@ type HTTPSListener struct {
 	Port     int    `koanf:"port"`
 	CertFile string `koanf:"cert_file"`
 	KeyFile  string `koanf:"key_file"`
+
+	// MinimumProtocolVersion and MaximumProtocolVersion bound the negotiated
+	// TLS version: one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3".
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+
+	// Ciphers is a comma-separated list of Go crypto/tls cipher suite names
+	// (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which
+	// suites this listener will negotiate. Empty by default, meaning Go's own
+	// secure default set/order applies. Only affects TLS 1.2 and below — TLS
+	// 1.3 suite selection is not configurable in Go's crypto/tls.
+	Ciphers string `koanf:"ciphers"`
+
+	// EcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups,
+	// most preferred first (e.g. "X25519,P-256"). Classical curves only by
+	// default. A hybrid post-quantum group ("X25519MLKEM768", FIPS 203
+	// ML-KEM-768 + X25519) can be prepended as an explicit opt-in once the
+	// clients that reach this listener are confirmed to support it — TLS 1.3
+	// negotiation simply falls back to a later classical entry in this same
+	// list for a client that doesn't offer the hybrid group, so enabling it
+	// never breaks a legacy peer. See post-quantum-cryptography.md.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // LoggingConfig is [ai_workspace.logging]. Level/Format are this process's own logs;
@@ -115,6 +138,13 @@ type ControlPlaneConfig struct {
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
 	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
+	// When set, <base>/proxy/cloud/* is proxied there instead of the primary control
+	// plane. Include the /cloud path prefix (e.g. http://host:8081/cloud).
+	CloudURL string `koanf:"cloud_url"`
+	// CloudCAFile / CloudTLSSkipVerify apply only to CloudURL when that hop uses TLS.
+	CloudCAFile        string `koanf:"cloud_ca_file"`
+	CloudTLSSkipVerify bool   `koanf:"cloud_tls_skip_verify"`
 }
 
 // SessionConfig is [ai_workspace.session]: server-side session lifetime.
@@ -311,6 +341,7 @@ func (c *Config) normalize() {
 	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
+	c.ControlPlane.CloudURL = strings.TrimRight(c.ControlPlane.CloudURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
@@ -350,6 +381,17 @@ func (c *Config) validate() error {
 	if c.Server.HTTP.Enabled && c.Server.HTTPS.Enabled && c.Server.HTTP.Port == c.Server.HTTPS.Port {
 		return fmt.Errorf("[server.http] port and [server.https] port must differ, both are %d", c.Server.HTTP.Port)
 	}
+	if c.Server.HTTPS.Enabled {
+		if err := ValidateHTTPSTLSVersions(c.Server.HTTPS.MinimumProtocolVersion, c.Server.HTTPS.MaximumProtocolVersion); err != nil {
+			return fmt.Errorf("[server.https]: %w", err)
+		}
+		if _, err := ParseHTTPSCiphers(c.Server.HTTPS.Ciphers); err != nil {
+			return fmt.Errorf("[server.https] ciphers: %w", err)
+		}
+		if _, err := ParseHTTPSEcdhCurves(c.Server.HTTPS.EcdhCurves); err != nil {
+			return fmt.Errorf("[server.https] ecdh_curves: %w", err)
+		}
+	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
 	if c.Session.IdleTimeout <= 0 {
 		return fmt.Errorf("[session] idle_timeout must be positive, got %s", c.Session.IdleTimeout)
@@ -381,6 +423,22 @@ func (c *Config) validate() error {
 	if u.Scheme == "https" && c.ControlPlane.TLSSkipVerify {
 		slog.Warn("[control_plane] tls_skip_verify = true — upstream certificate verification is DISABLED. " +
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
+	}
+
+	if c.ControlPlane.CloudURL != "" {
+		cu, err := url.Parse(c.ControlPlane.CloudURL)
+		if err != nil || (cu.Scheme != "http" && cu.Scheme != "https") || cu.Host == "" {
+			return fmt.Errorf("[control_plane] cloud_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.CloudURL)
+		}
+		if cu.Scheme == "http" {
+			if c.ControlPlane.CloudCAFile != "" || c.ControlPlane.CloudTLSSkipVerify {
+				return fmt.Errorf("[control_plane] cloud_ca_file / cloud_tls_skip_verify are set but cloud_url is http:// (no TLS on that hop)")
+			}
+		}
+		if cu.Scheme == "https" && c.ControlPlane.CloudTLSSkipVerify {
+			slog.Warn("[control_plane] cloud_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
+				"Trust the upstream certificate with [control_plane] cloud_ca_file instead.")
+		}
 	}
 
 	if c.Auth.OIDCEnabled() {

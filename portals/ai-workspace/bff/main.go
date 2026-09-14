@@ -273,7 +273,33 @@ func buildTLS(c config.HTTPSListener) (*tls.Config, error) {
 		return nil, err
 	}
 	slog.Info("TLS: using mounted certificate", "cert", c.CertFile)
-	return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
+
+	// Config.validate already rejects a bad version/cipher/curve value before
+	// this ever runs in production, so an error here can only come from a
+	// caller that bypassed validation.
+	if err := config.ValidateHTTPSTLSVersions(c.MinimumProtocolVersion, c.MaximumProtocolVersion); err != nil {
+		return nil, err
+	}
+	minVersion, _ := config.ParseHTTPSTLSVersion(c.MinimumProtocolVersion)
+	maxVersion, _ := config.ParseHTTPSTLSVersion(c.MaximumProtocolVersion)
+
+	cipherSuites, err := config.ParseHTTPSCiphers(c.Ciphers)
+	if err != nil {
+		return nil, err
+	}
+
+	curves, err := config.ParseHTTPSEcdhCurves(c.EcdhCurves)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		Certificates:     []tls.Certificate{cert},
+		MinVersion:       minVersion,
+		MaxVersion:       maxVersion,
+		CipherSuites:     cipherSuites, // nil == Go's own secure default set/order
+		CurvePreferences: curves,
+	}, nil
 }
 
 func fileExists(p string) bool {

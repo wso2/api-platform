@@ -441,11 +441,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways:   gatewayService,
-		Projects:   projectService,
-		APIPortals: apiPortalService,
-		Config:     cfg,
-		Logger:     slogger,
+		Gateways:    gatewayService,
+		Projects:    projectService,
+		APIPortals:  apiPortalService,
+		Deployments: deploymentService,
+		Config:      cfg,
+		Logger:      slogger,
 	}
 
 	wiring, err := initPlugins(slogger, mux, scopeRegistry, pluginDeps, pdkDeps, internalPlugins, externalPlugins)
@@ -683,7 +684,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if cfg.Auth.Mode != config.AuthModeIDP {
 		var publicKey *rsa.PublicKey
 		if cfg.Auth.InternalToken.SkipValidation {
-			slogger.Warn("Auth mode: internal_token (JWT validation DISABLED — not suitable for production)")
+			slogger.Info("Auth mode: internal_token (signature, expiry and issuer validation skipped — " +
+				"tokens are trusted as minted by a trusted platform component)")
 		} else {
 			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
 			var err error
@@ -823,9 +825,31 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 	}
 	s.logger.Info("Using mounted certificates", "certFile", certFile, "keyFile", keyFile)
 
+	// Config.Validate (validateListenersConfig) already rejects a bad
+	// version/cipher/curve value before this ever runs in production, so an
+	// error here can only come from a caller that bypassed validation.
+	if err := config.ValidateHTTPSTLSVersions(httpsCfg.MinimumProtocolVersion, httpsCfg.MaximumProtocolVersion); err != nil {
+		return nil, err
+	}
+	minVersion, _ := config.ParseHTTPSTLSVersion(httpsCfg.MinimumProtocolVersion)
+	maxVersion, _ := config.ParseHTTPSTLSVersion(httpsCfg.MaximumProtocolVersion)
+
+	cipherSuites, err := config.ParseHTTPSCiphers(httpsCfg.Ciphers)
+	if err != nil {
+		return nil, err
+	}
+
+	curves, err := config.ParseHTTPSEcdhCurves(httpsCfg.EcdhCurves)
+	if err != nil {
+		return nil, err
+	}
+
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
+		Certificates:     []tls.Certificate{cert},
+		MinVersion:       minVersion,
+		MaxVersion:       maxVersion,
+		CipherSuites:     cipherSuites, // nil == Go's own secure default set/order
+		CurvePreferences: curves,
 	}, nil
 }
 

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: perf-mock-backend
+  namespace: api-gateway
+  labels:
+    app: perf-mock-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: perf-mock-backend
+  template:
+    metadata:
+      labels:
+        app: perf-mock-backend
+    spec:
+      nodeSelector:
+        workload: backend
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "backend"
+          effect: "NoSchedule"
+      containers:
+        - name: netty
+          image: renukafernando/netty-http-echo-service:0.4.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-m"
+            - "4g"
+          ports:
+            - containerPort: 8688
+              name: http
+          resources:
+            requests:
+              cpu: "3500m"
+              memory: "3Gi"
+            limits:
+              cpu: "4"
+              memory: "4Gi"
+          readinessProbe:
+            httpGet:
+              path: /v1/chat/completions
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v1/chat/completions
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: perf-mock-backend
+  namespace: api-gateway
+spec:
+  selector:
+    app: perf-mock-backend
+  ports:
+    - name: http
+      port: 8688
+      targetPort: http
+  type: ClusterIP

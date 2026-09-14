@@ -1,0 +1,96 @@
+openapi: 3.0.3
+info:
+  title: Sample Service
+  version: "1.0.0"
+  description: |
+    The echo backend from samples/sample-service. It returns the details of
+    whatever request it receives, and remembers the last one it saw.
+
+    No changes were made to the service for this sample - this file simply
+    describes what it already does.
+
+servers:
+  # Resolved from inside the generated MCP server container, which shares a
+  # Docker network with the sample-service container.
+  - url: http://sample-service:8080
+    description: sample-service on the rest-to-mcp Docker network
+
+paths:
+  /:
+    post:
+      operationId: echoRequest
+      summary: Echo a request back
+      description: |
+        Accepts any JSON body and returns the request details the service saw -
+        method, path, query parameters, headers and body. The service also
+        stores this as the last captured request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Any JSON payload. It is echoed back verbatim.
+              additionalProperties: true
+      responses:
+        "200":
+          description: The request details, as seen by the service
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EchoedRequest"
+
+  /captured-request:
+    get:
+      operationId: getCapturedRequest
+      summary: Read the last request the service received
+      description: |
+        Returns the most recent request captured by the echo endpoint.
+        Returns 204 No Content if the service has not received one yet.
+      responses:
+        "200":
+          description: The last captured request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EchoedRequest"
+        "204":
+          description: No request has been received yet
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check that the service is running
+      responses:
+        "200":
+          description: The service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+
+components:
+  schemas:
+    EchoedRequest:
+      type: object
+      description: The details of a request, as the echo service saw it.
+      properties:
+        method:
+          type: string
+          example: POST
+        path:
+          type: string
+          example: /
+        query:
+          type: object
+          additionalProperties: true
+        headers:
+          type: object
+          additionalProperties: true
+        body:
+          type: string
+          description: The raw request body the service received

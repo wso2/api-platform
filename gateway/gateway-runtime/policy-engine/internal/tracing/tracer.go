@@ -23,11 +23,8 @@ import (
 	"log/slog"
 	"time"
 
-	"strings"
-
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 
@@ -170,38 +167,29 @@ func InitTracer(cfg *config.Config) (func(), error) {
 	}, nil
 }
 
-// ExtractTraceContext extracts W3C Trace Context from gRPC metadata
-func ExtractTraceContext(ctx context.Context) context.Context {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		slog.DebugContext(ctx, "No gRPC metadata in context")
-		return ctx
-	}
-
-	// Create carrier from gRPC metadata
-	carrier := propagation.MapCarrier{}
-
-	for key, values := range md {
-		lowerKey := strings.ToLower(key)
-		// gRPC metadata is case-insensitive
-		if lowerKey == "traceparent" || lowerKey == "tracestate" {
-			if len(values) > 0 {
-				carrier.Set(lowerKey, values[0])
-				slog.DebugContext(ctx, "Extracted trace header", "header", lowerKey, "value", values[0])
-			}
-		}
-	}
-
-	// Extract using W3C Trace Context propagator
+// ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
+// from the given carrier and returns a context parented on the remote span.
+//
+// The carrier must be built from the downstream HTTP request headers that Envoy
+// delivers inside the RequestHeaders ProcessingRequest body — NOT from the
+// ext_proc gRPC stream metadata. The request's traceparent travels in the
+// message body, and the long-lived bidirectional ext_proc stream sets its gRPC
+// metadata only once at stream establishment, so it never carries a per-request
+// traceparent. Reading it from stream metadata always yielded an empty span
+// context, producing a new (unparented) root trace for every request.
+//
+// When the carrier holds no valid traceparent, the input context is returned
+// unchanged and the caller will start a fresh root trace — an ordinary,
+// non-error condition (e.g. Envoy tracing disabled), so it is logged at debug.
+func ExtractTraceContext(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	propagator := otel.GetTextMapPropagator()
 	newCtx := propagator.Extract(ctx, carrier)
 
-	// Verify extraction
 	span := trace.SpanContextFromContext(newCtx)
 	if span.IsValid() {
-		slog.DebugContext(ctx, "Successfully extracted trace", "trace_id", span.TraceID().String())
+		slog.DebugContext(ctx, "Extracted trace context from request headers", "trace_id", span.TraceID().String())
 	} else {
-		slog.InfoContext(ctx, "No valid trace context extracted")
+		slog.DebugContext(ctx, "No trace context in request headers; starting a new root trace")
 	}
 
 	return newCtx

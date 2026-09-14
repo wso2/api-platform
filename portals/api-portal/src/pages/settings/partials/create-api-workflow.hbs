@@ -72,7 +72,7 @@
 
                 <div class="mb-4">
                     <label for="apiWorkflowDescription" class="form-label fw-semibold d-flex align-items-center gap-2">
-                        <span>Description <span class="text-danger">*</span></span>
+                        <span>Description</span>
                         <span class="af-field-status d-none" id="afDescStatus"
                             data-bs-toggle="tooltip" data-bs-placement="right" data-bs-trigger="hover focus"
                             data-bs-title="">
@@ -81,7 +81,6 @@
                     </label>
                     <textarea class="form-control" id="apiWorkflowDescription" rows="4"
                         placeholder="e.g. Orchestrates a multi-step patient booking workflow across appointment scheduling and healthcare provider systems…"></textarea>
-                    <div class="invalid-feedback">Description is required.</div>
                 </div>
 
                 {{!-- Agent visibility --}}
@@ -484,7 +483,7 @@
                 <div class="af-rp-section-card">
                     <div class="af-rp-section-card-title">Workflow File Preview</div>
                     <pre class="af-workflow-md-preview"
-                        id="afWorkflowMdPreview">Fill in name and description to see a preview.</pre>
+                        id="afWorkflowMdPreview">Enter a name to see a preview.</pre>
                 </div>
 
                 {{!-- Not visible for agents notice --}}
@@ -502,7 +501,7 @@
                 <div class="af-rp-section-card">
                     <div class="af-rp-header">Readiness</div>
                     <ul class="af-checklist">
-                        <li class="af-checklist-item is-warn" id="afReady1">Name and description set</li>
+                        <li class="af-checklist-item is-warn" id="afReady1">Name set</li>
                         <li class="af-checklist-item is-warn" id="afReady2">API workflow defined</li>
                         <li class="af-checklist-item is-warn" id="afReady3">Agent prompt generated</li>
                     </ul>

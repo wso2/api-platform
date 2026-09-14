@@ -20,6 +20,7 @@ package xds
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"sync"
@@ -36,8 +37,21 @@ import (
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/tlsauth"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+)
+
+// Bounds on the main xDS gRPC server (go-network-service-hardening.md
+// directive 2 / go-control-plane-xds-security.md directive 5) -- unbounded
+// defaults let one client (a misbehaving/compromised Envoy) exhaust memory
+// or the stream-slot budget every other connection depends on. xDS
+// snapshots can carry many routes/clusters, so the message ceiling is set
+// well above gRPC's 4MB default.
+const (
+	xdsMaxMessageSize       = 16 * 1024 * 1024
+	xdsMaxConcurrentStreams = 1000
 )
 
 // Server is the xDS gRPC server
@@ -46,12 +60,48 @@ type Server struct {
 	xdsServer       server.Server
 	snapshotManager *SnapshotManager
 	port            int
+	mtls            *serverMTLS
 	logger          *slog.Logger
 }
 
+// serverMTLS holds the resolved mutual-TLS state for the main xDS server.
+type serverMTLS struct {
+	tlsConfig         *tls.Config
+	allowedIdentities map[string]bool
+}
+
+// ServerOption is a functional option for configuring the xDS Server.
+type ServerOption func(*serverOptions)
+
+type serverOptions struct {
+	mtls *serverMTLS
+}
+
+// WithMTLS enables mutual TLS on the main xDS gRPC server (serving Envoy).
+// tlsConfig must come from config.BuildXDSServerTLSConfig, which already
+// sets ClientAuth: tls.RequireAndVerifyClientCert -- server-only TLS is not
+// offered here because this server distributes SDS secrets and full
+// route/cluster config, so authenticating only the server side is not
+// enough (go-control-plane-xds-security.md directive 2). allowedIdentities
+// restricts accepted streams to peers whose certificate identity
+// (tlsauth.PeerIdentity) is in the list.
+func WithMTLS(tlsConfig *tls.Config, allowedIdentities []string) ServerOption {
+	return func(o *serverOptions) {
+		o.mtls = &serverMTLS{
+			tlsConfig:         tlsConfig,
+			allowedIdentities: tlsauth.AllowedSet(allowedIdentities),
+		}
+	}
+}
+
 // NewServer creates a new xDS server
-func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretManager, port int, logger *slog.Logger, onFirstConnect chan struct{}) *Server {
-	grpcServer := grpc.NewServer(
+func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretManager, port int, logger *slog.Logger, onFirstConnect chan struct{}, opts ...ServerOption) *Server {
+	var o serverOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	grpcOpts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time:    30 * time.Second,
 			Timeout: 5 * time.Second,
@@ -60,11 +110,23 @@ func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretMana
 			MinTime:             5 * time.Second,
 			PermitWithoutStream: true,
 		}),
-	)
+		grpc.MaxRecvMsgSize(xdsMaxMessageSize),
+		grpc.MaxSendMsgSize(xdsMaxMessageSize),
+		grpc.MaxConcurrentStreams(xdsMaxConcurrentStreams),
+	}
+
+	var allowedIdentities map[string]bool
+	if o.mtls != nil {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(o.mtls.tlsConfig)))
+		allowedIdentities = o.mtls.allowedIdentities
+		logger.Info("mTLS enabled for main xDS server")
+	}
+
+	grpcServer := grpc.NewServer(grpcOpts...)
 
 	// Create xDS server with the snapshot cache (shared with SDS)
 	cache := snapshotManager.GetCache()
-	callbacks := NewServerCallbacks(logger, onFirstConnect)
+	callbacks := NewServerCallbacks(logger, onFirstConnect, allowedIdentities)
 	xdsServer := server.NewServer(context.Background(), cache, callbacks)
 
 	// Register xDS services
@@ -85,6 +147,7 @@ func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretMana
 		xdsServer:       xdsServer,
 		snapshotManager: snapshotManager,
 		port:            port,
+		mtls:            o.mtls,
 		logger:          logger,
 	}
 }
@@ -96,7 +159,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to listen on port %d: %w", s.port, err)
 	}
 
-	s.logger.Info("Starting xDS server", slog.Int("port", s.port))
+	protocol := "insecure"
+	if s.mtls != nil {
+		protocol = "mTLS"
+	}
+	s.logger.Info("Starting xDS server", slog.Int("port", s.port), slog.String("protocol", protocol))
 
 	if err := s.grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)
@@ -113,24 +180,33 @@ func (s *Server) Stop() {
 
 // serverCallbacks implements server.Callbacks
 type serverCallbacks struct {
-	logger           *slog.Logger
-	activeStreams    map[int64]string // stream_id -> node_id
-	activeStreamsMu  sync.Mutex
-	onFirstConnect   chan struct{}
-	firstConnectOnce sync.Once
-	pendingNonces    map[int64]string // stream_id -> last sent nonce
+	logger            *slog.Logger
+	activeStreams     map[int64]string // stream_id -> node_id
+	activeStreamsMu   sync.Mutex
+	onFirstConnect    chan struct{}
+	firstConnectOnce  sync.Once
+	pendingNonces     map[int64]string // stream_id -> last sent nonce
+	allowedIdentities map[string]bool  // nil when mTLS is not configured -- no identity check performed
 }
 
-func NewServerCallbacks(logger *slog.Logger, onFirstConnect chan struct{}) *serverCallbacks {
+func NewServerCallbacks(logger *slog.Logger, onFirstConnect chan struct{}, allowedIdentities map[string]bool) *serverCallbacks {
 	return &serverCallbacks{
-		logger:         logger,
-		activeStreams:  make(map[int64]string),
-		onFirstConnect: onFirstConnect,
-		pendingNonces:  make(map[int64]string),
+		logger:            logger,
+		activeStreams:     make(map[int64]string),
+		onFirstConnect:    onFirstConnect,
+		pendingNonces:     make(map[int64]string),
+		allowedIdentities: allowedIdentities,
 	}
 }
 
 func (cb *serverCallbacks) OnStreamOpen(ctx context.Context, id int64, typ string) error {
+	if cb.allowedIdentities != nil {
+		if err := tlsauth.VerifyStreamPeer(ctx, cb.allowedIdentities); err != nil {
+			cb.logger.Warn("xDS stream rejected: peer identity not authorized",
+				slog.Int64("stream_id", id), slog.Any("error", err))
+			return err
+		}
+	}
 	cb.logger.Info("xDS stream opened", slog.Int64("stream_id", id), slog.String("type", typ))
 	return nil
 }

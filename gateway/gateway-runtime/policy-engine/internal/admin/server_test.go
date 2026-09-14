@@ -20,10 +20,20 @@ package admin
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -34,6 +44,42 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 )
+
+// generateSelfSignedCert writes a self-signed ECDSA cert/key pair for
+// "localhost" to certPath/keyPath, for exercising the admin TLS listener in
+// tests without depending on any repo-committed certificate material.
+func generateSelfSignedCert(t *testing.T, certPath, keyPath string) {
+	t.Helper()
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		DNSNames:     []string{"localhost"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	certOut, err := os.Create(certPath)
+	require.NoError(t, err)
+	defer certOut.Close()
+	require.NoError(t, pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes}))
+
+	keyBytes, err := x509.MarshalECPrivateKey(priv)
+	require.NoError(t, err)
+
+	keyOut, err := os.Create(keyPath)
+	require.NoError(t, err)
+	defer keyOut.Close()
+	require.NoError(t, pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}))
+}
 
 // =============================================================================
 // NewServer Tests
@@ -355,4 +401,331 @@ func TestIPWhitelistMiddleware_PreservesRequestPath(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "/config_dump", capturedPath)
+}
+
+// =============================================================================
+// TLS Listener Tests
+// =============================================================================
+
+// TestServer_TLSListener verifies the admin API is reachable over the
+// additional TLS listener, using the PQC hybrid group first in the
+// preference list, while the plaintext listener keeps serving unchanged.
+func TestServer_TLSListener(t *testing.T) {
+	plainPort := getFreePort(t)
+	tlsPort := getFreePort(t)
+
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "admin.crt")
+	keyPath := filepath.Join(tmpDir, "admin.key")
+	generateSelfSignedCert(t, certPath, keyPath)
+
+	cfg := &config.AdminConfig{
+		Port:       plainPort,
+		AllowedIPs: []string{"127.0.0.1", "*"},
+		TLS: config.AdminTLSConfig{
+			Enabled:                true,
+			Port:                   tlsPort,
+			CertPath:               certPath,
+			KeyPath:                keyPath,
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_3",
+			EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+		},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+
+	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil, nil)
+	require.NotNil(t, server.tlsServer)
+
+	ctx := context.Background()
+	errChan := make(chan error, 1)
+	go func() { errChan <- server.Start(ctx) }()
+	time.Sleep(100 * time.Millisecond)
+
+	// The plaintext listener is unaffected by enabling TLS.
+	plainResp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", plainPort))
+	require.NoError(t, err)
+	plainResp.Body.Close()
+	assert.Equal(t, http.StatusOK, plainResp.StatusCode)
+
+	// The TLS listener serves the same routes, negotiating the hybrid
+	// PQC group when the client offers it.
+	httpsClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // test-only self-signed cert
+				CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.X25519},
+			},
+		},
+	}
+	tlsResp, err := httpsClient.Get(fmt.Sprintf("https://127.0.0.1:%d/health", tlsPort))
+	require.NoError(t, err)
+	defer tlsResp.Body.Close()
+	assert.Equal(t, http.StatusOK, tlsResp.StatusCode)
+	require.NotNil(t, tlsResp.TLS)
+	assert.Equal(t, tls.X25519MLKEM768, tlsResp.TLS.CurveID)
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, server.Stop(stopCtx))
+
+	select {
+	case startErr := <-errChan:
+		assert.NoError(t, startErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server did not stop within timeout")
+	}
+}
+
+// TestServer_TLSListener_ClassicalFallback verifies a client that doesn't
+// offer the PQC hybrid group still completes the handshake against the same
+// listener, falling back to the classical curve later in the preference list.
+func TestServer_TLSListener_ClassicalFallback(t *testing.T) {
+	plainPort := getFreePort(t)
+	tlsPort := getFreePort(t)
+
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "admin.crt")
+	keyPath := filepath.Join(tmpDir, "admin.key")
+	generateSelfSignedCert(t, certPath, keyPath)
+
+	cfg := &config.AdminConfig{
+		Port:       plainPort,
+		AllowedIPs: []string{"127.0.0.1", "*"},
+		TLS: config.AdminTLSConfig{
+			Enabled:                true,
+			Port:                   tlsPort,
+			CertPath:               certPath,
+			KeyPath:                keyPath,
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_3",
+			EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+		},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+
+	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil, nil)
+
+	ctx := context.Background()
+	errChan := make(chan error, 1)
+	go func() { errChan <- server.Start(ctx) }()
+	time.Sleep(100 * time.Millisecond)
+
+	httpsClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,                         //nolint:gosec // test-only self-signed cert
+				CurvePreferences:   []tls.CurveID{tls.CurveP256}, // no PQC support offered
+			},
+		},
+	}
+	resp, err := httpsClient.Get(fmt.Sprintf("https://127.0.0.1:%d/health", tlsPort))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotNil(t, resp.TLS)
+	assert.Equal(t, tls.CurveP256, resp.TLS.CurveID)
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, server.Stop(stopCtx))
+
+	select {
+	case startErr := <-errChan:
+		assert.NoError(t, startErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server did not stop within timeout")
+	}
+}
+
+// TestServer_TLSListener_InvalidEcdhCurves verifies an invalid curve name
+// disables the TLS listener rather than panicking — config validation
+// (Config.Validate) is the real gate and already rejects this in production.
+func TestServer_TLSListener_InvalidEcdhCurves(t *testing.T) {
+	cfg := &config.AdminConfig{
+		Port:       getFreePort(t),
+		AllowedIPs: []string{"127.0.0.1"},
+		TLS: config.AdminTLSConfig{
+			Enabled:                true,
+			Port:                   getFreePort(t),
+			CertPath:               "/nonexistent/cert.pem",
+			KeyPath:                "/nonexistent/key.pem",
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_3",
+			EcdhCurves:             "not-a-curve",
+		},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+
+	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil, nil)
+	assert.Nil(t, server.tlsServer)
+}
+
+// TestServer_TLSListener_CertLoadFailure verifies that a cert/key pair that
+// fails to load — unlike an invalid ecdh_curves/ciphers/protocol-version
+// value, which config validation already rejects before NewServer ever runs
+// in production — is only discoverable at Start() time, and that Start must
+// surface it as an error rather than silently continuing to serve the
+// plaintext listener with TLS quietly absent.
+func TestServer_TLSListener_CertLoadFailure(t *testing.T) {
+	plainPort := getFreePort(t)
+	tlsPort := getFreePort(t)
+
+	cfg := &config.AdminConfig{
+		Port:       plainPort,
+		AllowedIPs: []string{"127.0.0.1", "*"},
+		TLS: config.AdminTLSConfig{
+			Enabled:                true,
+			Port:                   tlsPort,
+			CertPath:               "/nonexistent/cert.pem",
+			KeyPath:                "/nonexistent/key.pem",
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_3",
+			EcdhCurves:             "X25519,P-256",
+		},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+
+	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil, nil)
+	require.NotNil(t, server.tlsServer) // config itself is valid — the cert files just don't exist
+
+	err := server.Start(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load certificate")
+
+	// The plaintext listener must never have started serving.
+	_, dialErr := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", plainPort))
+	assert.Error(t, dialErr, "plaintext listener should not be serving when TLS setup fails")
+}
+
+// TestServer_TLSListener_MinimumVersionEnforced verifies a client offering
+// only a protocol version below MinimumProtocolVersion is rejected by the
+// handshake rather than silently downgrading.
+func TestServer_TLSListener_MinimumVersionEnforced(t *testing.T) {
+	plainPort := getFreePort(t)
+	tlsPort := getFreePort(t)
+
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "admin.crt")
+	keyPath := filepath.Join(tmpDir, "admin.key")
+	generateSelfSignedCert(t, certPath, keyPath)
+
+	cfg := &config.AdminConfig{
+		Port:       plainPort,
+		AllowedIPs: []string{"127.0.0.1", "*"},
+		TLS: config.AdminTLSConfig{
+			Enabled:                true,
+			Port:                   tlsPort,
+			CertPath:               certPath,
+			KeyPath:                keyPath,
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_3",
+			EcdhCurves:             "X25519,P-256",
+		},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+
+	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil, nil)
+
+	ctx := context.Background()
+	errChan := make(chan error, 1)
+	go func() { errChan <- server.Start(ctx) }()
+	time.Sleep(100 * time.Millisecond)
+
+	// A client capped at TLS 1.1 cannot complete the handshake against a
+	// listener whose floor is TLS 1.2.
+	httpsClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // test-only self-signed cert
+				MinVersion:         tls.VersionTLS10,
+				MaxVersion:         tls.VersionTLS11,
+			},
+		},
+	}
+	_, err := httpsClient.Get(fmt.Sprintf("https://127.0.0.1:%d/health", tlsPort))
+	assert.Error(t, err)
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, server.Stop(stopCtx))
+
+	select {
+	case startErr := <-errChan:
+		assert.NoError(t, startErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server did not stop within timeout")
+	}
+}
+
+// TestServer_TLSListener_CipherRestriction verifies a configured Ciphers
+// list actually constrains which TLS 1.2 suite gets negotiated.
+func TestServer_TLSListener_CipherRestriction(t *testing.T) {
+	plainPort := getFreePort(t)
+	tlsPort := getFreePort(t)
+
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "admin.crt")
+	keyPath := filepath.Join(tmpDir, "admin.key")
+	generateSelfSignedCert(t, certPath, keyPath)
+
+	cfg := &config.AdminConfig{
+		Port:       plainPort,
+		AllowedIPs: []string{"127.0.0.1", "*"},
+		TLS: config.AdminTLSConfig{
+			Enabled:                true,
+			Port:                   tlsPort,
+			CertPath:               certPath,
+			KeyPath:                keyPath,
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_2", // pin to 1.2 so CipherSuites governs selection
+			Ciphers:                "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+			EcdhCurves:             "X25519,P-256",
+		},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+
+	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil, nil)
+	require.NotNil(t, server.tlsServer)
+
+	ctx := context.Background()
+	errChan := make(chan error, 1)
+	go func() { errChan <- server.Start(ctx) }()
+	time.Sleep(100 * time.Millisecond)
+
+	httpsClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // test-only self-signed cert
+				MaxVersion:         tls.VersionTLS12,
+				CipherSuites: []uint16{
+					tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, // offered but not configured server-side
+				},
+			},
+		},
+	}
+	resp, err := httpsClient.Get(fmt.Sprintf("https://127.0.0.1:%d/health", tlsPort))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotNil(t, resp.TLS)
+	assert.Equal(t, uint16(tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256), resp.TLS.CipherSuite)
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, server.Stop(stopCtx))
+
+	select {
+	case startErr := <-errChan:
+		assert.NoError(t, startErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server did not stop within timeout")
+	}
 }

@@ -36,6 +36,7 @@ import {
   useCreateRestApi,
   useDeleteRestApi,
   useRestApi,
+  useRestApiCounts,
   useRestApis,
   useUpdateRestApi,
 } from './restApis.hooks';
@@ -116,6 +117,18 @@ describe('useRestApis — scope gating', () => {
   });
 });
 
+describe('useRestApiCounts — organization aggregation', () => {
+  it('returns each project total and their organization-wide sum', async () => {
+    server.use(collection('/rest-apis', [aRestApi(), aRestApi(), aRestApi()]));
+
+    const { result } = renderApiHook(() => useRestApiCounts(['retail', 'wholesale']));
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.counts).toEqual({ retail: 3, wholesale: 3 });
+    expect(result.current.total).toBe(6);
+  });
+});
+
 describe('useRestApi — detail gating', () => {
   it('does not fetch without an id', async () => {
     server.use(resource('/rest-apis/:restApiId', aRestApi(), { record: requests }));
@@ -144,9 +157,9 @@ describe('useCreateRestApi — cache seeding', () => {
     result.current.mutate(aRestApi());
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(queryClient.getQueryData(restApiKeys.detail(org, 'new-api'))).toMatchObject(
-      { id: 'new-api' }
-    );
+    expect(queryClient.getQueryData(restApiKeys.detail(org, 'new-api'))).toMatchObject({
+      id: 'new-api',
+    });
   });
 
   it('means opening the new resource renders without a loading state', async () => {
@@ -161,7 +174,7 @@ describe('useCreateRestApi — cache seeding', () => {
       accepts('post', '/rest-apis', aRestApi({ id: 'new-api' })),
       resource('/rest-apis/new-api', aRestApi({ id: 'new-api' }), {
         record: requests,
-      })
+      }),
     );
 
     // Mutable holder rather than `let`: the closure below reads it on every
@@ -212,11 +225,11 @@ describe('useCreateRestApi — cache seeding', () => {
 describe('useUpdateRestApi — optimistic update', () => {
   const seedDetail = (
     queryClient: ReturnType<typeof renderApiHook>['queryClient'],
-    org: ReturnType<typeof renderApiHook>['org']
+    org: ReturnType<typeof renderApiHook>['org'],
   ) =>
     queryClient.setQueryData(
       restApiKeys.detail(org, API_ID),
-      aRestApi({ displayName: 'Pizza Shack' })
+      aRestApi({ displayName: 'Pizza Shack' }),
     );
 
   it('shows the edit immediately, before the server has answered', async () => {
@@ -232,10 +245,9 @@ describe('useUpdateRestApi — optimistic update', () => {
 
     await waitFor(() =>
       expect(
-        queryClient.getQueryData<{ displayName: string }>(
-          restApiKeys.detail(org, API_ID)
-        )?.displayName
-      ).toBe('Renamed')
+        queryClient.getQueryData<{ displayName: string }>(restApiKeys.detail(org, API_ID))
+          ?.displayName,
+      ).toBe('Renamed'),
     );
   });
 
@@ -254,9 +266,8 @@ describe('useUpdateRestApi — optimistic update', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(
-      queryClient.getQueryData<{ displayName: string }>(
-        restApiKeys.detail(org, API_ID)
-      )?.displayName
+      queryClient.getQueryData<{ displayName: string }>(restApiKeys.detail(org, API_ID))
+        ?.displayName,
     ).toBe('Pizza Shack');
   });
 
@@ -292,9 +303,7 @@ describe('useUpdateRestApi — optimistic update', () => {
 
     // The response may carry server-managed fields the optimistic merge could
     // not know, so the cache is refreshed regardless of outcome.
-    await waitFor(() =>
-      expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true)
-    );
+    await waitFor(() => expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true));
   });
 
   it('does nothing optimistic when the resource is not in cache', async () => {
@@ -310,9 +319,7 @@ describe('useUpdateRestApi — optimistic update', () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(
-      queryClient.getQueryData(restApiKeys.detail(org, API_ID))
-    ).toBeUndefined();
+    expect(queryClient.getQueryData(restApiKeys.detail(org, API_ID))).toBeUndefined();
   });
 });
 
@@ -326,9 +333,7 @@ describe('useDeleteRestApi', () => {
     result.current.mutate({ restApiId: API_ID });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(
-      queryClient.getQueryData(restApiKeys.detail(org, API_ID))
-    ).toBeUndefined();
+    expect(queryClient.getQueryData(restApiKeys.detail(org, API_ID))).toBeUndefined();
   });
 
   it('invalidates every list variant', async () => {
@@ -341,9 +346,7 @@ describe('useDeleteRestApi', () => {
     result.current.mutate({ restApiId: API_ID });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    await waitFor(() =>
-      expect(queryClient.getQueryState(pageTwo)?.isInvalidated).toBe(true)
-    );
+    await waitFor(() => expect(queryClient.getQueryState(pageTwo)?.isInvalidated).toBe(true));
   });
 
   it('leaves another organization’s cache untouched', async () => {

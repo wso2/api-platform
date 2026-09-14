@@ -18,8 +18,6 @@
 
 import { setupServer } from 'msw/node';
 
-import { handlers as legacyGraphqlHandlers } from '../api/mocks/handlers';
-
 /**
  * The single MSW server shared by every test, started once in `setup.ts`.
  *
@@ -30,7 +28,7 @@ import { handlers as legacyGraphqlHandlers } from '../api/mocks/handlers';
  *
  * Declaring handlers is a line each thanks to the builders in `./msw`:
  *
- *     import { collection, aRestApi, recorder } from '../../test/msw';
+ *     import { collection, aRestApi, recorder } from '@/test/msw';
  *
  *     const requests = recorder();
  *     server.use(collection('/rest-apis', [aRestApi()], { record: requests }));
@@ -38,15 +36,3 @@ import { handlers as legacyGraphqlHandlers } from '../api/mocks/handlers';
  * Handlers registered with `server.use(...)` are reset after every test.
  */
 export const server = setupServer();
-
-/**
- * Handlers for the legacy GraphQL project-api, opt-in rather than global.
- *
- * The old data layer is being replaced resource by resource, and no test
- * currently relies on these — verified by removing them and running the suite.
- * They stay available for anything that still needs the GraphQL transport, and
- * are deleted along with the legacy layer.
- *
- *     beforeEach(() => server.use(...legacyGraphqlHandlers));
- */
-export { legacyGraphqlHandlers };

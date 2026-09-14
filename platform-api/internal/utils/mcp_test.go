@@ -18,8 +18,12 @@
 package utils
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
@@ -91,5 +95,36 @@ func TestBuildMCPDeploymentYAML(t *testing.T) {
 	}
 	if deploymentStruct.Spec.SpecVersion != "2025-06-18" {
 		t.Errorf("SpecVersion = %q", deploymentStruct.Spec.SpecVersion)
+	}
+}
+
+// TestFetchMCPServerInfoUpstream401IsNotOurUnauthorized pins the status-code
+// separation between "the remote MCP server rejected our credentials" and "the
+// caller's own session is invalid". Clients (the AI Workspace) react to a 401
+// from this API by tearing down the session and redirecting to /login, so
+// relaying an upstream's 401 verbatim let any auth-requiring MCP server sign
+// the user out. The condition must surface as MCP_PROXY_UPSTREAM_UNAUTHORIZED
+// with a non-401 status instead.
+func TestFetchMCPServerInfoUpstream401IsNotOurUnauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	_, err := FetchMCPServerInfo(srv.URL, "", "")
+	if err == nil {
+		t.Fatal("expected an error when the MCP server rejects the initialize request")
+	}
+
+	// errors.As, not a type assertion: FetchMCPServerInfo wraps the failure.
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected a catalog error, got %T: %v", err, err)
+	}
+	if appErr.Code != apperror.CodeMCPProxyUpstreamUnauthorized {
+		t.Errorf("Code = %q, want %q", appErr.Code, apperror.CodeMCPProxyUpstreamUnauthorized)
+	}
+	if appErr.HTTPStatus != http.StatusBadRequest {
+		t.Errorf("HTTPStatus = %d, want %d", appErr.HTTPStatus, http.StatusBadRequest)
 	}
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -56,21 +57,22 @@ type SubscriptionSnapshotUpdater interface {
 // EventListener listens for events from EventHub and processes them
 // to keep the local replica synchronized with other replicas.
 type EventListener struct {
-	eventHub            eventhub.EventHub
-	store               *storage.ConfigStore
-	db                  storage.Storage
-	snapshotManager     *xds.SnapshotManager
-	subscriptionManager SubscriptionSnapshotUpdater
-	apiKeyXDSManager    APIKeyXDSManager
-	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
-	policyManager       *policyxds.PolicyManager
-	routerConfig        *config.RouterConfig
-	logger              *slog.Logger
-	systemConfig        *config.Config
-	policyDefinitions   map[string]models.PolicyDefinition
-	policyValidator     *config.PolicyValidator
-	secretResolver      funcs.SecretResolver
-	webhookSecretHandler WebhookSecretEventHandler
+	eventHub              eventhub.EventHub
+	store                 *storage.ConfigStore
+	db                    storage.Storage
+	snapshotManager       *xds.SnapshotManager
+	subscriptionManager   SubscriptionSnapshotUpdater
+	apiKeyXDSManager      APIKeyXDSManager
+	lazyResourceManager   *lazyresourcexds.LazyResourceStateManager
+	policyManager         *policyxds.PolicyManager
+	routerConfig          *config.RouterConfig
+	logger                *slog.Logger
+	systemConfig          *config.Config
+	policyDefinitions     map[string]models.PolicyDefinition
+	policyValidator       *config.PolicyValidator
+	secretResolver        funcs.SecretResolver
+	policyVersionResolver utils.PolicyVersionResolver
+	webhookSecretHandler  WebhookSecretEventHandler
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -92,6 +94,7 @@ func NewEventListener(
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
 	secretResolver funcs.SecretResolver,
+	policyVersionResolver utils.PolicyVersionResolver,
 ) *EventListener {
 	if eventHub == nil {
 		panic("event listener requires non-nil EventHub")
@@ -112,22 +115,23 @@ func NewEventListener(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventListener{
-		eventHub:            eventHub,
-		store:               store,
-		db:                  db,
-		snapshotManager:     snapshotManager,
-		subscriptionManager: subscriptionManager,
-		apiKeyXDSManager:    apiKeyXDSManager,
-		lazyResourceManager: lazyResourceManager,
-		policyManager:       policyManager,
-		routerConfig:        routerConfig,
-		logger:              logger,
-		systemConfig:        systemConfig,
-		policyDefinitions:   policyDefinitions,
-		policyValidator:     config.NewPolicyValidator(policyDefinitions),
-		secretResolver:      secretResolver,
-		ctx:                 ctx,
-		cancel:              cancel,
+		eventHub:              eventHub,
+		store:                 store,
+		db:                    db,
+		snapshotManager:       snapshotManager,
+		subscriptionManager:   subscriptionManager,
+		apiKeyXDSManager:      apiKeyXDSManager,
+		lazyResourceManager:   lazyResourceManager,
+		policyManager:         policyManager,
+		routerConfig:          routerConfig,
+		logger:                logger,
+		systemConfig:          systemConfig,
+		policyDefinitions:     policyDefinitions,
+		policyValidator:       config.NewPolicyValidator(policyDefinitions),
+		secretResolver:        secretResolver,
+		policyVersionResolver: policyVersionResolver,
+		ctx:                   ctx,
+		cancel:                cancel,
 	}
 }
 

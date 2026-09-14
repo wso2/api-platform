@@ -24,6 +24,8 @@ import (
 // trafficLogTimestampFormat is RFC 3339 with millisecond precision.
 const trafficLogTimestampFormat = "2006-01-02T15:04:05.000Z07:00"
 
+const trafficLogComponent = "pol"
+
 // TrafficLogEvent is the JSON shape written to stdout by the Log publisher.
 // It is intentionally separate from dto.Event (shaped for Moesif) so its field
 // names, schema, and presence rules can evolve independently. All string fields
@@ -32,6 +34,9 @@ const trafficLogTimestampFormat = "2006-01-02T15:04:05.000Z07:00"
 // entirely, rather than emitted as "{}") when every one of their own fields
 // resolves to its zero value — see toTrafficLogEvent.
 type TrafficLogEvent struct {
+	// Component names the emitting process, not the record type: the policy
+	// engine's application logs carry the same value.
+	Component       string                   `json:"component,omitempty"`
 	Timestamp       string                   `json:"timestamp,omitempty"`
 	CorrelationID   string                   `json:"correlationId,omitempty"`
 	Status          int                      `json:"status,omitempty"`
@@ -89,6 +94,7 @@ type TrafficLogClient struct {
 // masking, and payload truncation.
 func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) *TrafficLogEvent {
 	tl := &TrafficLogEvent{
+		Component: trafficLogComponent,
 		Status:    event.ProxyResponseCode,
 		Latencies: event.TrafficLogLatencies,
 	}

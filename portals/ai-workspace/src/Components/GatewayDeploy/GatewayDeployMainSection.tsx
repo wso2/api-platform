@@ -13,7 +13,13 @@
 
 import React, { useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Box, Button, CircularProgress, Typography } from '@wso2/oxygen-ui';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Typography,
+} from '@wso2/oxygen-ui';
 import { Plus } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import type { Gateway } from '../../apis/gateway/types';
@@ -39,7 +45,8 @@ interface GatewayDeployMainSectionProps {
 export default function GatewayDeployMainSection({
   showConfigureOption = true,
 }: GatewayDeployMainSectionProps = {}) {
-  const { gateways, isLoading, error } = useGatewayDeploy();
+  const { gateways, isLoading, error, canDeploy, canViewDeployments } =
+    useGatewayDeploy();
   const { currentOrganization } = useAppShell();
   const [searchQuery, setSearchQuery] = useState('');
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -74,6 +81,22 @@ export default function GatewayDeployMainSection({
     return (
       <Box sx={{ p: 3 }}>
         <Typography color="error">Failed to load gateways.</Typography>
+      </Box>
+    );
+  }
+
+  // Without the deployment-read scope the gateway list is empty by design, not
+  // because the organization has no gateways — say so instead of inviting the
+  // user to create one they wouldn't be able to deploy to or even see.
+  if (!canViewDeployments) {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="info">
+          <FormattedMessage
+            id="aiWorkspace.components.GatewayDeploy.GatewayDeployMainSection.no.deployment.read.access"
+            defaultMessage="You do not have access to view deployments for this artifact. Please contact your admin."
+          />
+        </Alert>
       </Box>
     );
   }
@@ -123,6 +146,17 @@ export default function GatewayDeployMainSection({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      {/* The deploy/redeploy/restore/undeploy controls below are all disabled in
+          this case; without this the page would read as broken rather than as a
+          permission boundary. */}
+      {!canDeploy && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <FormattedMessage
+            id="aiWorkspace.components.GatewayDeploy.GatewayDeployMainSection.read.only.deployments"
+            defaultMessage="You have read-only access to deployments. Please contact your admin to deploy this artifact."
+          />
+        </Alert>
+      )}
       <GatewayDeployList
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

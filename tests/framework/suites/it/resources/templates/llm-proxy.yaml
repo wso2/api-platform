@@ -1,0 +1,10 @@
+apiVersion: ${VALUE:apiVersion}
+kind: LlmProxy
+metadata:
+  name: ${VALUE:name}
+spec:
+  displayName: ${VALUE:displayName}
+  version: ${VALUE:version}
+  context: ${VALUE:context}
+  provider:
+    id: ${VALUE:provider.id}

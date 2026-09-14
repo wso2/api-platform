@@ -23,7 +23,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
-	"crypto/tls"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -73,8 +73,10 @@ type APIUtilsService struct {
 	TokenURL     string // Token endpoint URL
 }
 
-// NewAPIUtilsService creates a new API utilities service
-func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtilsService {
+// NewAPIUtilsService creates a new API utilities service. httpClient is the single shared
+// outbound *http.Client for this process (built once in cmd/controller/main.go and injected
+// by every caller), reused here rather than each service building its own.
+func NewAPIUtilsService(config PlatformAPIConfig, httpClient *http.Client, logger *slog.Logger) *APIUtilsService {
 	// Set default timeout if not provided
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
@@ -86,27 +88,10 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 		logger.Warn("TLS certificate verification disabled for API utils (insecure_skip_verify=true)")
 	}
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-			InsecureSkipVerify: config.InsecureSkipVerify,
-			MinVersion:         tls.VersionTLS12,
-		},
-		// Connection pool tuning
-		MaxIdleConns:        20,
-		MaxIdleConnsPerHost: 5,
-		MaxConnsPerHost:     10,
-		IdleConnTimeout:     30 * time.Second,
-	}
-
-	client := &http.Client{
-		Timeout:   config.Timeout,
-		Transport: transport,
-	}
-
 	return &APIUtilsService{
 		config: config,
 		logger: logger,
-		client: client,
+		client: httpClient,
 	}
 }
 
@@ -139,7 +124,9 @@ func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 	)
 
 	// Create request
-	req, err := http.NewRequest("GET", apiURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -186,7 +173,9 @@ func (s *APIUtilsService) FetchLLMProviderDefinition(providerID string) ([]byte,
 	)
 
 	// Create request
-	req, err := http.NewRequest("GET", providerURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", providerURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -233,7 +222,9 @@ func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error
 	)
 
 	// Create request
-	req, err := http.NewRequest("GET", proxyURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", proxyURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -278,23 +269,16 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 		slog.String("url", subURL),
 	)
 
-	client := &http.Client{
-		Timeout: s.config.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
-
-	req, err := http.NewRequest("GET", subURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", subURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create subscriptions request: %w", err)
 	}
 	req.Header.Add("api-key", s.config.Token)
 	req.Header.Add("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch subscriptions: %w", err)
 	}
@@ -372,7 +356,9 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 		slog.Bool("issuer_filtered", issuer != ""),
 	)
 
-	req, err := http.NewRequest("GET", endpoint, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API keys request: %w", err)
 	}
@@ -450,23 +436,16 @@ func (s *APIUtilsService) FetchSubscriptionPlans() ([]models.SubscriptionPlan, e
 
 	s.logger.Info("Fetching subscription plans", slog.String("url", planURL))
 
-	client := &http.Client{
-		Timeout: s.config.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
-
-	req, err := http.NewRequest("GET", planURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", planURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create subscription plans request: %w", err)
 	}
 	req.Header.Add("api-key", s.config.Token)
 	req.Header.Add("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch subscription plans: %w", err)
 	}
@@ -612,7 +591,9 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 	)
 
 	// Create request
-	req, err := http.NewRequest("GET", proxyURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", proxyURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -663,7 +644,9 @@ func (s *APIUtilsService) FetchResourceZip(resourcePath, resourceLabel string) (
 		slog.String("url", url),
 	)
 
-	req, err := http.NewRequest("GET", url, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -703,7 +686,9 @@ func (s *APIUtilsService) FetchResourceZip(resourcePath, resourceLabel string) (
 func (s *APIUtilsService) FetchResourceJSON(resourcePath, resourceLabel string, out any) error {
 	url := s.getBaseURL() + resourcePath
 
-	req, err := http.NewRequest("GET", url, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -768,7 +753,9 @@ func (s *APIUtilsService) FetchControlPlaneDeployments(since *time.Time) ([]mode
 		slog.String("url", deploymentsURL),
 	)
 
-	req, err := http.NewRequest("GET", deploymentsURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", deploymentsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -818,7 +805,9 @@ func (s *APIUtilsService) BatchFetchDeployments(deploymentIDs []string) ([]byte,
 		return nil, fmt.Errorf("failed to marshal batch fetch request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", batchURL, bytes.NewBuffer(jsonData))
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", batchURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1155,7 +1144,9 @@ func (s *APIUtilsService) PushArtifacts(artifacts []*models.StoredConfig) (*Impo
 	}
 
 	importURL := s.getBaseURL() + "/artifacts/import-gateway-artifacts"
-	req, err := http.NewRequest("POST", importURL, body)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", importURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1284,7 +1275,9 @@ func (s *APIUtilsService) CheckArtifactsExist(artifactIDs []string) ([]string, e
 		return nil, fmt.Errorf("failed to marshal artifact existence request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", existsURL, bytes.NewReader(jsonData))
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", existsURL, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1373,7 +1366,9 @@ func (s *APIUtilsService) FetchPlatformSecrets(updatedAfter *time.Time, includeV
 		slog.Bool("includeValues", includeValues),
 	)
 
-	req, err := http.NewRequest(http.MethodGet, secretsURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, secretsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create secrets request: %w", err)
 	}
@@ -1410,7 +1405,9 @@ func (s *APIUtilsService) FetchPlatformSecretValue(secretHandle string) (string,
 		slog.String("url", valueURL),
 	)
 
-	req, err := http.NewRequest(http.MethodGet, valueURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, valueURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create secret value request: %w", err)
 	}

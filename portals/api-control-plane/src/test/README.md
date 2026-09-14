@@ -51,9 +51,6 @@ Rules that keep this useful:
   memoised on first use.
 - **Assert absence with a settle, not `waitFor`.** `waitFor` passes immediately and proves
   nothing; to show no request fired, await a short timeout then assert `requests.count()` is 0.
-- **Legacy GraphQL handlers are opt-in**, not global:
-  `beforeEach(() => server.use(...legacyGraphqlHandlers))`. No test currently needs them; they
-  are deleted with the legacy layer.
 
 ### Which layer to test how
 

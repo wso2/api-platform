@@ -74,6 +74,7 @@ set -euo pipefail
 FORCE=false
 CERTS_ONLY=false
 ROTATE_ENCRYPTION_KEY=false
+ROTATE_INTERNAL_KEY=false
 
 # The comma-separated COMPOSE_PROFILES value this script writes to .env, so
 # that a plain `docker compose up` (no --profile flag) starts the right
@@ -101,15 +102,17 @@ for arg in "$@"; do
     --force) FORCE=true ;;
     --certs-only) CERTS_ONLY=true ;;
     --rotate-encryption-key) ROTATE_ENCRYPTION_KEY=true ;;
+    --rotate-internal-key) ROTATE_INTERNAL_KEY=true ;;
     --profiles=*) PROFILES_OVERRIDE="${arg#*=}" ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--profiles=<a,b,...>]
+Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--rotate-internal-key] [--profiles=<a,b,...>]
 
   --force                   regenerate TLS cert, JWT signing keypair, and
                              admin credentials. Never rotates the at-rest
-                             encryption key on its own — see
-                             --rotate-encryption-key.
+                             encryption key or the API Portal internal key on
+                             its own — see --rotate-encryption-key and
+                             --rotate-internal-key.
   --certs-only              generate only the TLS certificate (used by
                              `make bff-run`)
   --rotate-encryption-key   DESTRUCTIVE: replace resources/keys/encryption.key
@@ -120,6 +123,10 @@ Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--profiles
                              confirmation unless ADMIN_USERNAME/ADMIN_PASSWORD
                              are set (CI), in which case passing this flag is
                              itself treated as confirmation.
+  --rotate-internal-key     Replace the API Portal internal shared key (hash + raw
+                             files under resources/keys). Platform-API cannot publish
+                             until its stored copy is updated (PUT /api-portals/{id}
+                             with the new sharedKey).
   --profiles=<a,b,...>      override the default COMPOSE_PROFILES value this
                              script writes to .env. Valid profiles:
                              ai-workspace, api-portal, platform-api — e.g.
@@ -539,6 +546,42 @@ else
     openssl rand -hex 32 > "$KEYS_DIR/api-portal-session-secret"
     restrict_secret_file "$KEYS_DIR/api-portal-session-secret"
     log "  - API Portal session secret generated at $KEYS_DIR/api-portal-session-secret"
+fi
+
+log "Provisioning API Portal internal service-to-service key ..."
+# Two files: -hash is read by the portal at runtime; .raw is one-time-read for the
+# operator to paste into Platform-API's Create API Portal call, then delete.
+# Rotation is a separate flag because it breaks Platform-API publishing until its
+# stored sharedKey is updated.
+generate_internal_key_pair() {
+    local raw hash
+    raw=$(openssl rand -hex 32)
+    hash=$(printf '%s' "$raw" | openssl dgst -sha256 | awk '{print $NF}')
+    printf '%s' "$hash" > "$KEYS_DIR/api-portal-internal-key-hash"
+    restrict_secret_file "$KEYS_DIR/api-portal-internal-key-hash"
+    # Write in a subshell with a restrictive umask so a caller interrupted
+    # between the write and the chmod can never leave the raw key
+    # world-readable. Any prior file gets locked down before replacement.
+    (
+        umask 077
+        if [[ -e "$KEYS_DIR/api-portal-internal-key.raw" ]]; then
+            chmod 600 "$KEYS_DIR/api-portal-internal-key.raw"
+        fi
+        printf '%s\n' "$raw" > "$KEYS_DIR/api-portal-internal-key.raw"
+    )
+}
+if [[ -f "$KEYS_DIR/api-portal-internal-key-hash" && "$ROTATE_INTERNAL_KEY" == true ]]; then
+    mkdir -p "$KEYS_DIR"
+    generate_internal_key_pair
+    log "  - API Portal internal key ROTATED. Hash: $KEYS_DIR/api-portal-internal-key-hash"
+    log "  - New raw value at $KEYS_DIR/api-portal-internal-key.raw (mode 600). Copy it into a PUT /api-portals/{id} call with the new sharedKey field, then delete the raw file. Platform-API will 401 until you do."
+elif [[ -f "$KEYS_DIR/api-portal-internal-key-hash" ]]; then
+    log "  - $KEYS_DIR/api-portal-internal-key-hash already exists, leaving as-is (pass --rotate-internal-key to replace it)"
+else
+    mkdir -p "$KEYS_DIR"
+    generate_internal_key_pair
+    log "  - API Portal internal key generated. Hash: $KEYS_DIR/api-portal-internal-key-hash"
+    log "  - Raw value one-time-read at $KEYS_DIR/api-portal-internal-key.raw (mode 600). Copy it into Platform-API's Create API Portal call (sharedKey field), then delete the raw file."
 fi
 
 log "Provisioning Platform API JWT signing keypair (RS256) ..."

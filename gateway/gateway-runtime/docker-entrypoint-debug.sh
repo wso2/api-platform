@@ -225,7 +225,6 @@ log "Starting Policy Engine under dlv (listening on :2346, headless)..."
     --listen=:2346 --headless=true \
     --api-version=2 --accept-multiclient -- \
     -xds-server "${PE_XDS_SERVER}" "${PE_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[pol] $line"; done) \
     2> >(while IFS= read -r line; do echo "[pol] $line" >&2; done) &
 PE_PID=$!
 log "Policy Engine (dlv) started (PID $PE_PID)"
@@ -267,7 +266,6 @@ log "Starting Envoy..."
     --log-level "${LOG_LEVEL}" \
     --concurrency "${ROUTER_CONCURRENCY}" \
     "${ROUTER_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[rtr] $line"; done) \
     2> >(while IFS= read -r line; do echo "[rtr] $line" >&2; done) &
 ENVOY_PID=$!
 log "Envoy started (PID $ENVOY_PID)"

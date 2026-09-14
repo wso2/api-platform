@@ -19,7 +19,9 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -30,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
@@ -72,7 +75,10 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) er
 		return apperror.RESTAPIDeploymentValidationFailed.New("name is required")
 	}
 	if req.Base == "" {
-		return apperror.RESTAPIDeploymentValidationFailed.New("base is required (use 'current' or a deploymentId)")
+		return apperror.RESTAPIDeploymentValidationFailed.New("base is required (use 'current' or 'build')")
+	}
+	if req.Base == "build" && utils.ValueOrEmpty(req.BuildId) == "" {
+		return apperror.RESTAPIDeploymentValidationFailed.New("buildId is required when base is 'build'")
 	}
 	if strings.TrimSpace(req.GatewayId) == "" {
 		return apperror.RESTAPIDeploymentValidationFailed.New("gatewayId is required")
@@ -271,6 +277,133 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 	return nil
 }
 
+// CreateBuild handles POST /api/v0.9/rest-apis/:apiId/builds
+// Renders the API's current definition into an immutable snapshot, without deploying it
+func (h *DeploymentHandler) CreateBuild(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	apiId := r.PathValue("restApiId")
+	if apiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	createdBy, err := resolveActorErr(r, h.identity, "prepare API build")
+	if err != nil {
+		return err
+	}
+
+	// The body is optional: preparing a build needs nothing beyond the API, and
+	// metadata is there for callers that have an origin to record.
+	var req api.BuildRequest
+	if r.Body != nil && r.ContentLength != 0 {
+		// A chunked request carries no length, so an empty one only shows up here
+		// as EOF; that is still an absent body rather than a malformed one.
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			return apperror.ValidationFailed.New("Request body is not valid JSON")
+		}
+	}
+	var metadata map[string]interface{}
+	if req.Metadata != nil {
+		metadata = *req.Metadata
+	}
+	var description string
+	if req.Description != nil {
+		description = strings.TrimSpace(*req.Description)
+	}
+
+	build, err := h.deploymentService.CreateBuildByHandle(apiId, orgId, createdBy, description, metadata)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to prepare a build for API %s", apiId))
+	}
+
+	setLocation(w, "rest-apis", apiId, "builds", build.BuildId)
+	httputil.WriteJSON(w, http.StatusCreated, build)
+	return nil
+}
+
+// GetBuilds handles GET /api/v0.9/rest-apis/:apiId/builds
+// Lists the API's builds, newest first
+func (h *DeploymentHandler) GetBuilds(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	apiId := r.PathValue("restApiId")
+	if apiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	limit, _ := parsePagination(r)
+	builds, err := h.deploymentService.GetBuildsByHandle(apiId, orgId, limit)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to get builds for API %s", apiId))
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, builds)
+	return nil
+}
+
+// GetBuild handles GET /api/v0.9/rest-apis/:apiId/builds/:buildId
+// Retrieves metadata for a single build
+func (h *DeploymentHandler) GetBuild(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	apiId := r.PathValue("restApiId")
+	buildId := r.PathValue("buildId")
+
+	if apiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+	if buildId == "" {
+		return apperror.ValidationFailed.New("Build ID is required")
+	}
+
+	build, err := h.deploymentService.GetBuildByHandle(apiId, buildId, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to get API %s build %s", apiId, buildId))
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, build)
+	return nil
+}
+
+// DeleteBuild handles DELETE /api/v0.9/rest-apis/:apiId/builds/:buildId
+// Removes a build, unless a deployment still holds it
+func (h *DeploymentHandler) DeleteBuild(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	apiId := r.PathValue("restApiId")
+	buildId := r.PathValue("buildId")
+
+	if apiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+	if buildId == "" {
+		return apperror.ValidationFailed.New("Build ID is required")
+	}
+
+	if err := h.deploymentService.DeleteBuildByHandle(apiId, buildId, orgId); err != nil {
+		return serviceError(err, fmt.Sprintf("failed to delete API %s build %s", apiId, buildId))
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // RegisterRoutes registers all deployment-related routes
 func (h *DeploymentHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering deployment routes")
@@ -281,4 +414,8 @@ func (h *DeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/deployments", middleware.MapErrors(h.slogger, h.GetDeployments))
 	mux.HandleFunc("GET "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.GetDeployment))
 	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteDeployment))
+	mux.HandleFunc("POST "+base+"/builds", middleware.MapErrors(h.slogger, h.CreateBuild))
+	mux.HandleFunc("GET "+base+"/builds", middleware.MapErrors(h.slogger, h.GetBuilds))
+	mux.HandleFunc("GET "+base+"/builds/{buildId}", middleware.MapErrors(h.slogger, h.GetBuild))
+	mux.HandleFunc("DELETE "+base+"/builds/{buildId}", middleware.MapErrors(h.slogger, h.DeleteBuild))
 }

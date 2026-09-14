@@ -20,6 +20,7 @@ package policyxds
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"log/slog"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -164,35 +166,28 @@ func TestServerCallbacks_OnStreamDeltaResponse(t *testing.T) {
 	cb.OnStreamDeltaResponse(789, req, resp)
 }
 
-func TestWithTLS(t *testing.T) {
-	t.Run("enables TLS configuration", func(t *testing.T) {
+func TestWithMTLS(t *testing.T) {
+	t.Run("enables mTLS configuration", func(t *testing.T) {
 		s := &Server{}
-		opt := WithTLS("/path/to/cert.pem", "/path/to/key.pem")
+		tlsConfig := &tls.Config{}
+		opt := WithMTLS(tlsConfig, []string{"spiffe://cluster.local/ns/gw/sa/policy-engine"})
 		opt(s)
 
-		assert.NotNil(t, s.tlsConfig)
-		assert.True(t, s.tlsConfig.Enabled)
-		assert.Equal(t, "/path/to/cert.pem", s.tlsConfig.CertFile)
-		assert.Equal(t, "/path/to/key.pem", s.tlsConfig.KeyFile)
+		require.NotNil(t, s.mtls)
+		assert.Same(t, tlsConfig, s.mtls.tlsConfig)
+		assert.True(t, s.mtls.allowedIdentities["spiffe://cluster.local/ns/gw/sa/policy-engine"])
 	})
 }
 
-func TestTLSConfig(t *testing.T) {
-	t.Run("default values", func(t *testing.T) {
-		config := &TLSConfig{}
-		assert.False(t, config.Enabled)
-		assert.Empty(t, config.CertFile)
-		assert.Empty(t, config.KeyFile)
-	})
+func TestServerCallbacks_OnStreamOpen_RejectsUnauthorizedPeer(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cb := &serverCallbacks{
+		logger:            logger,
+		allowedIdentities: map[string]bool{"spiffe://cluster.local/ns/gw/sa/policy-engine": true},
+	}
 
-	t.Run("with values", func(t *testing.T) {
-		config := &TLSConfig{
-			Enabled:  true,
-			CertFile: "cert.pem",
-			KeyFile:  "key.pem",
-		}
-		assert.True(t, config.Enabled)
-		assert.Equal(t, "cert.pem", config.CertFile)
-		assert.Equal(t, "key.pem", config.KeyFile)
-	})
+	// No peer/TLS info in a bare background context -- must be rejected,
+	// not silently allowed through, once an identity allowlist is configured.
+	err := cb.OnStreamOpen(context.Background(), 999, "test-type-url")
+	assert.Error(t, err)
 }

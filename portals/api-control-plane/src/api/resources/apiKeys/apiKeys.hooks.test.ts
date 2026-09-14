@@ -31,12 +31,7 @@ import {
 import { renderApiHook, settle } from '../../../test/renderApiHook';
 import { server } from '../../../test/server';
 import { resetHttpClient } from '../../core/http';
-import {
-  useCreateApiKey,
-  useMyApiKeys,
-  useRevokeApiKey,
-  useUpdateApiKey,
-} from './apiKeys.hooks';
+import { useCreateApiKey, useMyApiKeys, useRevokeApiKey, useUpdateApiKey } from './apiKeys.hooks';
 import { apiKeyKeys } from './apiKeys.queries';
 
 /**
@@ -96,17 +91,11 @@ describe('useMyApiKeys', () => {
   it('keeps differently-filtered lists in separate cache entries', async () => {
     server.use(resource('/me/api-keys', listEnvelope([])));
 
-    const { result, queryClient, org } = renderApiHook(() =>
-      useMyApiKeys({ type: ['RestApi'] })
-    );
+    const { result, queryClient, org } = renderApiHook(() => useMyApiKeys({ type: ['RestApi'] }));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(
-      queryClient.getQueryData(apiKeyKeys.list(org, { type: ['RestApi'] }))
-    ).toBeDefined();
-    expect(
-      queryClient.getQueryData(apiKeyKeys.list(org, { type: ['LlmProxy'] }))
-    ).toBeUndefined();
+    expect(queryClient.getQueryData(apiKeyKeys.list(org, { type: ['RestApi'] }))).toBeDefined();
+    expect(queryClient.getQueryData(apiKeyKeys.list(org, { type: ['LlmProxy'] }))).toBeUndefined();
   });
 });
 
@@ -120,7 +109,7 @@ describe('useCreateApiKey', () => {
         message: 'created',
         keyId: 'key-1',
         apiKey: 'plaintext-once',
-      })
+      }),
     );
 
     const { result, queryClient } = renderApiHook(() => useCreateApiKey());
@@ -129,7 +118,10 @@ describe('useCreateApiKey', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const everythingCached = JSON.stringify(
-      queryClient.getQueryCache().getAll().map((query) => query.state.data)
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.state.data),
     );
     expect(everythingCached).not.toContain('plaintext-once');
   });
@@ -140,7 +132,7 @@ describe('useCreateApiKey', () => {
         status: 'success',
         message: 'created',
         apiKey: 'plaintext-once',
-      })
+      }),
     );
 
     const { result } = renderApiHook(() => useCreateApiKey());
@@ -162,9 +154,7 @@ describe('useCreateApiKey', () => {
     result.current.mutate({ restApiId: API_ID, body: { name: 'ci-key' } as never });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    await waitFor(() =>
-      expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true)
-    );
+    await waitFor(() => expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true));
   });
 });
 
@@ -195,14 +185,37 @@ describe('useRevokeApiKey', () => {
 
     const { result, queryClient, org } = renderApiHook(() => useRevokeApiKey());
     const listKey = apiKeyKeys.list(org);
-    queryClient.setQueryData(listKey, listEnvelope([]));
+    queryClient.setQueryData(
+      listKey,
+      listEnvelope([
+        {
+          id: 'key-1',
+          artifactId: API_ID,
+          artifactType: 'RestApi',
+          displayName: 'Production key',
+          status: 'active',
+        },
+        {
+          id: 'key-1',
+          artifactId: 'another-api',
+          artifactType: 'RestApi',
+          displayName: 'Other API key',
+          status: 'active',
+        },
+      ] as never[]),
+    );
 
     result.current.mutate({ restApiId: API_ID, apiKeyId: 'key-1' });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    await waitFor(() =>
-      expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true)
-    );
+    await waitFor(() => expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true));
+    expect(
+      queryClient.getQueryData<{ list: Array<{ artifactId: string }> }>(listKey)?.list,
+    ).toHaveLength(1);
+    expect(
+      queryClient.getQueryData<{ list: Array<{ artifactId: string }> }>(listKey)?.list[0]
+        ?.artifactId,
+    ).toBe('another-api');
   });
 
   it('does not invalidate when revocation fails', async () => {

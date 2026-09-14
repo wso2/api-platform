@@ -13,11 +13,11 @@ scrape_configs:
   # Policy Engine metrics
   - job_name: 'policy-engine'
     static_configs:
-      - targets: ['policy-engine:9003']
+      - targets: ['gateway-runtime:9003']
     metrics_path: /metrics
 
   # Envoy Router stats (built-in Prometheus format)
   - job_name: 'router'
     static_configs:
-      - targets: ['router:9901']
+      - targets: ['gateway-runtime:9901']
     metrics_path: /stats/prometheus

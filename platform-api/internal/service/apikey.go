@@ -41,6 +41,13 @@ const (
 	apiKeyNameMaxLength     = 63
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
+
+	// apiKeyIssuerMaxLength / apiKeyAllowedTargetsMaxLength bound the two free-form
+	// API-key fields to the width they are persisted in (VARCHAR(255)). Both are
+	// carried verbatim — issuer is an exact-match lookup key and allowedTargets is
+	// a parsed gateway allow-list — so an over-length value is rejected, not truncated.
+	apiKeyIssuerMaxLength         = 255
+	apiKeyAllowedTargetsMaxLength = 255
 )
 
 var (
@@ -49,6 +56,21 @@ var (
 	// consecutiveHyphensRegex collapses runs of hyphens into a single hyphen
 	consecutiveHyphensRegex = regexp.MustCompile(`-+`)
 )
+
+// validateAPIKeyIssuerAndTargets enforces the storage-width limit (VARCHAR(255))
+// on the issuer and allowedTargets fields of an API-key create/update request.
+// Returns a 400 validation error when either exceeds 255 characters; the values
+// are never truncated because both are matched exactly at gateway key-resolution
+// time (issuer via `AND k.issuer = ?`, allowedTargets as a parsed gateway allow-list).
+func validateAPIKeyIssuerAndTargets(issuer *string, allowedTargets string) error {
+	if issuer != nil && len(*issuer) > apiKeyIssuerMaxLength {
+		return apperror.ValidationFailed.New("issuer must be at most 255 characters.")
+	}
+	if len(allowedTargets) > apiKeyAllowedTargetsMaxLength {
+		return apperror.ValidationFailed.New("allowedTargets must be at most 255 characters.")
+	}
+	return nil
+}
 
 // APIKeyService handles API key management operations for external API key injection
 type APIKeyService struct {
@@ -441,17 +463,17 @@ func BackfillAPIKeysToGateway(apiKeyRepo repository.APIKeyRepository, gatewayRep
 
 // CreateAPIKey hashes an external API key and broadcasts it to gateways where the API is deployed.
 // This method is used when external platforms inject API keys to hybrid gateways.
-func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId, userId string, req *api.CreateAPIKeyRequest) error {
+func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId, userId string, req *api.CreateAPIKeyRequest) (*api.CreateAPIKeyResponse, error) {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
 	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get API metadata for API key creation", "apiHandle", apiHandle, "kind", kind, "error", err)
-		return fmt.Errorf("failed to get API by handle: %w", err)
+		return nil, fmt.Errorf("failed to get API by handle: %w", err)
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle", "apiHandle", apiHandle, "orgId", orgId)
-		return apperror.ArtifactNotFound.New()
+		return nil, apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
 
@@ -460,34 +482,60 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	// associated later picks it up via deployment-time sync.
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
-		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
+		return nil, fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
 	}
 
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
 	keyName, err := s.resolveUniqueKeyName(apiId, req, apiHandle)
 	if err != nil {
 		s.slogger.Error("Failed to resolve API key name", "apiHandle", apiHandle, "error", err)
-		return fmt.Errorf("failed to resolve API key name: %w", err)
+		return nil, fmt.Errorf("failed to resolve API key name: %w", err)
 	}
 
-	// Hash the API key with all configured algorithms before storage and broadcast
-	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(req.ApiKey, s.hashingAlgorithms)
-	if err != nil {
-		s.slogger.Error("Failed to hash API key", "apiHandle", apiHandle, "keyName", keyName, "error", err)
-		return fmt.Errorf("failed to hash API key: %w", err)
-	}
-
-	// Persist the API key to the database before broadcasting
-	maskedAPIKey := maskAPIKey(req.ApiKey)
 	expiresAt, err := resolveExpiresAt(req.ExpiresAt, req.ExpiresIn)
 	if err != nil {
 		s.slogger.Error("Invalid expiration for API key creation", "apiHandle", apiHandle, "keyName", keyName, "error", err)
-		return fmt.Errorf("invalid expiration: %w", err)
+		return nil, fmt.Errorf("invalid expiration: %w", err)
 	}
+
+	// A caller-supplied key is injected as-is (external platforms pushing an
+	// already-minted key to hybrid gateways). When absent, generate one with the
+	// same primitive the LLM proxy/provider key paths use; utils.GenerateAPIKey,
+	// 32 crypto/rand bytes hex-encoded.
+	var plainAPIKey string
+	generated := false
+
+	if req.ApiKey == nil {
+		var err error
+		plainAPIKey, err = utils.GenerateAPIKey()
+		if err != nil {
+			s.slogger.Error("Failed to generate API key", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+			return nil, fmt.Errorf("failed to generate API key: %w", err)
+		}
+		generated = true
+	} else {
+		// Blank is a caller mistake; return a validation error instead of a 500.
+		plainAPIKey = strings.TrimSpace(*req.ApiKey)
+		if plainAPIKey == "" {
+			return nil, apperror.ValidationFailed.New("API key value cannot be empty. Omit the apiKey field to have one generated.").
+				WithLogMessage(fmt.Sprintf("blank apiKey supplied for API key creation on API %s in org %s", apiHandle, orgId))
+		}
+	}
+
+	// Hash the API key with all configured algorithms before storage and broadcast
+	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(plainAPIKey, s.hashingAlgorithms)
+	if err != nil {
+		s.slogger.Error("Failed to hash API key", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		return nil, fmt.Errorf("failed to hash API key: %w", err)
+	}
+
+	// Persist the API key to the database before broadcasting
+	maskedAPIKey := maskAPIKey(plainAPIKey)
+
 	apiKeyUUID, err := utils.GenerateUUID()
 	if err != nil {
 		s.slogger.Error("Failed to generate UUID for API key", "apiHandle", apiHandle, "keyName", keyName, "error", err)
-		return fmt.Errorf("failed to generate API key UUID: %w", err)
+		return nil, fmt.Errorf("failed to generate API key UUID: %w", err)
 	}
 
 	// Apply defaults for issuer and allowedTargets
@@ -497,6 +545,10 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		issuer = &v
 	}
 	allowedTargets := constants.APIKeyAllowedTargetsAll
+
+	if err := validateAPIKeyIssuerAndTargets(issuer, allowedTargets); err != nil {
+		return nil, err
+	}
 
 	displayName := strings.TrimSpace(req.DisplayName)
 	if displayName == "" {
@@ -519,7 +571,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
 		s.slogger.Error("Failed to persist API key to database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
-		return fmt.Errorf("failed to persist API key: %w", err)
+		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}
 	_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
 
@@ -549,7 +601,16 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Warn("Failed to broadcast API key created event to some gateways", "apiHandle", apiHandle, "keyName", keyName, "failed", failureCount, "lastError", lastError)
 	}
 
-	return nil
+	resp := &api.CreateAPIKeyResponse{
+		Status:  api.CreateAPIKeyResponseStatusSuccess,
+		KeyId:   &keyName,
+		Message: "API key created and broadcasted to gateways successfully",
+	}
+
+	if generated {
+		resp.ApiKey = &plainAPIKey
+	}
+	return resp, nil
 }
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
@@ -615,6 +676,10 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if err != nil {
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
+	}
+
+	if err := validateAPIKeyIssuerAndTargets(req.Issuer, constants.APIKeyAllowedTargetsAll); err != nil {
+		return err
 	}
 
 	dbKey := &model.APIKey{

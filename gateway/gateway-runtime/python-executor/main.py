@@ -113,6 +113,28 @@ def _parse_args():
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info").upper()
 
 
+# LOG_COMPONENT_PREFIX identifies this process on the container's shared stdout,
+# which it writes to alongside Envoy and the policy engine.
+LOG_COMPONENT_PREFIX = '[pye] '
+
+
+class ComponentPrefixFormatter(logging.Formatter):
+    """Formatter that prefixes every physical line of a record.
+
+    The prefix cannot live in the format string: logging.Formatter appends
+    exc_text and stack_info *after* the format string has been applied, so a
+    tag placed there lands on the first line only and the remaining lines of a
+    traceback reach stdout unattributable. Attribution has to hold for every
+    line, since a traceback is exactly when knowing the emitting process matters.
+    """
+
+    def format(self, record):
+        formatted = super().format(record)
+        return '\n'.join(
+            LOG_COMPONENT_PREFIX + line for line in formatted.split('\n')
+        )
+
+
 def setup_logging():
     """Configure structured logging."""
     level = getattr(logging, LOG_LEVEL, logging.INFO)
@@ -121,8 +143,7 @@ def setup_logging():
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(level)
 
-    # Simple format with [pye] prefix for the entrypoint to identify
-    formatter = logging.Formatter(
+    formatter = ComponentPrefixFormatter(
         fmt='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )

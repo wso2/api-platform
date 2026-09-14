@@ -1214,7 +1214,7 @@ function updateWorkflowMdPreview() {
     const isMarkdown = createPathFormat === 'markdown';
 
     if (!name && !desc) {
-        el.textContent = 'Fill in name and description to see a preview.';
+        el.textContent = 'Enter a name to see a preview.';
         return;
     }
 
@@ -1304,7 +1304,6 @@ async function saveApiWorkflow(orgId, viewName, status) {
     let valid = true;
     const fieldsToValidate = [
         ['apiWorkflowName', name],
-        ['apiWorkflowDescription', description],
     ];
     if (agentVisibility !== 'HIDDEN') fieldsToValidate.push(['agentPromptField', agentPrompt]);
     if (contentType === 'ARAZZO') fieldsToValidate.push(['apiWorkflowDefinition', apiWorkflowDefinition]);
@@ -1945,10 +1944,8 @@ function goToStep(n) {
 function validateWizardStep(step) {
     if (step === 1) {
         const name = document.getElementById('apiWorkflowName');
-        const desc = document.getElementById('apiWorkflowDescription');
         let valid = true;
         if (!name?.value.trim()) { name?.classList.add('is-invalid'); valid = false; } else name?.classList.remove('is-invalid');
-        if (!desc?.value.trim()) { desc?.classList.add('is-invalid'); valid = false; } else desc?.classList.remove('is-invalid');
         return valid;
     }
     if (step === 2) {
@@ -2081,7 +2078,7 @@ function updateStep3Readiness() {
     const hasSpec = hasArazzo || hasMd;
     const hasPrompt = document.getElementById('agentPromptField')?.value?.trim().length > 0;
 
-    setChecklistItem('afReady1', (name && desc) ? 'ok' : 'warn');
+    setChecklistItem('afReady1', name ? 'ok' : 'warn');
     setChecklistItem('afReady2', hasSpec ? 'ok' : 'warn');
     setChecklistItem('afReady3', hasPrompt ? 'ok' : 'warn');
 

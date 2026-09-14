@@ -51,6 +51,16 @@ type Config struct {
 
 	// TLSCAPath is the path to the CA certificate for server verification (if TLSEnabled)
 	TLSCAPath string
+
+	// TLSCiphers is a comma-separated list of Go crypto/tls cipher suite
+	// names restricting which suites this client offers. Empty means Go's
+	// own secure default set/order applies. Only affects TLS 1.2 and below.
+	TLSCiphers string
+
+	// TLSEcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups
+	// this client offers, most preferred first (e.g. "X25519MLKEM768,X25519,P-256").
+	// Required whenever TLSEnabled -- see config.ParseAdminEcdhCurves.
+	TLSEcdhCurves string
 }
 
 // Validate validates the xDS client configuration
@@ -84,6 +94,9 @@ func (c *Config) Validate() error {
 		}
 		if c.TLSCAPath == "" {
 			return fmt.Errorf("TLS CA path is required when TLS is enabled")
+		}
+		if c.TLSEcdhCurves == "" {
+			return fmt.Errorf("TLS ECDH curves are required when TLS is enabled")
 		}
 	}
 

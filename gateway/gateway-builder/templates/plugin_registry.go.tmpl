@@ -35,9 +35,14 @@ import (
 )
 
 func init() {
-	// Set up text logger early so init() logs match main() logs
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
-	
+	// init() runs before main() installs the configured logger, so set one up here
+	// with the same tag. Format is fixed to text: policy_engine.logging.format is
+	// not known until config loads in main().
+	slog.SetDefault(slog.New(slog.NewTextHandler(
+		newComponentPrefixWriter(os.Stdout, logComponentPrefix),
+		&slog.HandlerOptions{Level: slog.LevelInfo},
+	)))
+
 	ctx := context.Background()
 	slog.InfoContext(ctx, "Registering policies from Builder compilation")
 

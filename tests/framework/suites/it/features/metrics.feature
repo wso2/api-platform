@@ -1,0 +1,164 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+@metrics
+Feature: Gateway metrics
+  As an operator
+  I want gateway services to expose Prometheus metrics
+  So that I can monitor gateway health and request processing
+
+  Background:
+    Given the gateway services are running
+
+  Scenario: Gateway controller metrics endpoint is accessible
+    When I send a "GET" request to the "controller-metrics" service at "/metrics" until status 200
+    Then the response status code should be 200
+    And the response should contain Prometheus metrics
+
+  Scenario: Policy engine metrics endpoint is accessible
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics" until status 200
+    Then the response status code should be 200
+    And the response should contain Prometheus metrics
+
+  Scenario: Gateway controller metrics reflect API operations
+    Given I authenticate using basic auth as "admin"
+    And I generate a unique value from "metrics-controller-api" and store it as "apiName"
+    And I generate a unique value from "metrics-controller-display" and store it as "apiDisplayName"
+    And I generate a unique API version from "metrics-controller" and store it as "apiVersion"
+    And I generate a unique API context from "/metrics-controller" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | name                       | ${CTX:apiName}                    |
+      | spec.displayName            | ${CTX:apiDisplayName}             |
+      | spec.version                | ${CTX:apiVersion}                 |
+      | spec.context                | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url      | http://testbench:3000/api/v2      |
+      | spec.operations             | [{"method":"GET","path":"/health"},{"method":"GET","path":"/test"},{"method":"GET","path":"/invoke"},{"method":"POST","path":"/invoke"}] |
+    Then the response should be successful
+    And the response should be valid JSON
+    And the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
+    When I send a "GET" request to the "controller-metrics" service at "/metrics"
+    Then the response status code should be 200
+    And the response should contain metric "gateway_controller_api_operations_total"
+    And the response should contain metric "gateway_controller_apis_total"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+
+  Scenario: Policy engine metrics reflect request processing
+    Given I authenticate using basic auth as "admin"
+    And I generate a unique value from "metrics-request-api" and store it as "apiName"
+    And I generate a unique value from "metrics-request-display" and store it as "apiDisplayName"
+    And I generate a unique API version from "metrics-request" and store it as "apiVersion"
+    And I generate a unique API context from "/metrics-request" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | name                       | ${CTX:apiName}                    |
+      | spec.displayName            | ${CTX:apiDisplayName}             |
+      | spec.version                | ${CTX:apiVersion}                 |
+      | spec.context                | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url      | http://testbench:3000/api/v2      |
+      | spec.operations             | [{"method":"GET","path":"/health"},{"method":"GET","path":"/test"},{"method":"GET","path":"/invoke"},{"method":"POST","path":"/invoke"}] |
+    Then the response should be successful
+    And the response should be valid JSON
+    And the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
+    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test"
+    Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics"
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_requests_total"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+
+  Scenario: Policy engine exposes system metrics
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics" until status 200
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_up"
+    And the response should contain metric "policy_engine_goroutines"
+
+  Scenario: Policy engine exposes xDS connection metrics
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics" until status 200
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_xds_connection_state"
+    And the response should contain metric "policy_engine_xds_updates_total"
+
+  Scenario: Policy engine exposes gRPC and stream metrics
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics" until status 200
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_active_streams"
+    And the response should contain metric "policy_engine_grpc_connections_active"
+
+  Scenario: Policy engine exposes Go runtime metrics
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics" until status 200
+    Then the response status code should be 200
+    And the response should contain metric "go_goroutines"
+    And the response should contain metric "go_memstats_alloc_bytes"
+    And the response should contain metric "process_cpu_seconds_total"
+
+  Scenario: Policy engine metrics track policy execution after an API request
+    Given I authenticate using basic auth as "admin"
+    And I generate a unique value from "metrics-policy-api" and store it as "apiName"
+    And I generate a unique value from "metrics-policy-display" and store it as "apiDisplayName"
+    And I generate a unique API version from "metrics-policy" and store it as "apiVersion"
+    And I generate a unique API context from "/metrics-policy" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | name                       | ${CTX:apiName}                    |
+      | spec.displayName            | ${CTX:apiDisplayName}             |
+      | spec.version                | ${CTX:apiVersion}                 |
+      | spec.context                | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url      | http://testbench:3000/api/v2      |
+      | spec.operations             | [{"method":"GET","path":"/health"},{"method":"GET","path":"/test"},{"method":"GET","path":"/invoke"},{"method":"POST","path":"/invoke"}] |
+    Then the response should be successful
+    And the response should be valid JSON
+    And the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
+    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/invoke"
+    Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics"
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_request_duration_seconds"
+    And the response should contain metric "policy_engine_context_build_duration_seconds"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+
+  Scenario: Policy engine tracks policy chain configuration
+    Given I authenticate using basic auth as "admin"
+    And I generate a unique value from "metrics-chain-api" and store it as "apiName"
+    And I generate a unique value from "metrics-chain-display" and store it as "apiDisplayName"
+    And I generate a unique API version from "metrics-chain" and store it as "apiVersion"
+    And I generate a unique API context from "/metrics-chain" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | name                       | ${CTX:apiName}                    |
+      | spec.displayName            | ${CTX:apiDisplayName}             |
+      | spec.version                | ${CTX:apiVersion}                 |
+      | spec.context                | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url      | http://testbench:3000/api/v2      |
+      | spec.operations             | [{"method":"GET","path":"/health"},{"method":"GET","path":"/test"},{"method":"GET","path":"/invoke"},{"method":"POST","path":"/invoke"}] |
+    Then the response should be successful
+    And the response should be valid JSON
+    And the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
+    When I send a "GET" request to the "policy-engine-metrics" service at "/metrics"
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_policy_chains_loaded"
+    And the response should contain metric "policy_engine_snapshot_size"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful

@@ -60,9 +60,17 @@ let unauthorizedRedirectStarted = false;
  * Start the session-expiry flow once when an authenticated API call returns
  * 401. Several requests can fail together when a session expires, so the
  * guard prevents duplicate logout calls and competing redirects.
+ *
+ * `errorCode` is the platform API's error `code` from the response body, when
+ * the caller has already parsed it. Only the unified `UNAUTHORIZED` code means
+ * *our* session is dead; any other code on a 401 describes something else the
+ * request touched (e.g. an upstream server rejecting credentials), and must not
+ * sign the user out. A 401 with no parseable code is treated as session expiry,
+ * which is the safe default.
  */
-export const handleUnauthorizedResponse = (response: Response): boolean => {
+export const handleUnauthorizedResponse = (response: Response, errorCode?: string): boolean => {
   if (response.status !== 401) return false;
+  if (errorCode !== undefined && errorCode !== 'UNAUTHORIZED') return false;
 
   if (!unauthorizedRedirectStarted) {
     unauthorizedRedirectStarted = true;
