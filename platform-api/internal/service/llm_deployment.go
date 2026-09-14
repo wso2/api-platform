@@ -52,8 +52,10 @@ const (
 // LLMProviderDeploymentService handles business logic for LLM provider deployment operations
 // using the shared deployments table and status model.
 type LLMProviderDeploymentService struct {
-	providerRepo         repository.LLMProviderRepository
-	templateRepo         repository.LLMProviderTemplateRepository
+	providerRepo repository.LLMProviderRepository
+	templateRepo repository.LLMProviderTemplateRepository
+	// builds is the shared build store every artifact kind uses.
+	builds               *BuildService
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
@@ -66,7 +68,9 @@ type LLMProviderDeploymentService struct {
 // LLMProxyDeploymentService handles business logic for LLM proxy deployment operations
 // using the shared deployments table and status model.
 type LLMProxyDeploymentService struct {
-	proxyRepo            repository.LLMProxyRepository
+	proxyRepo repository.LLMProxyRepository
+	// builds is the shared build store every artifact kind uses.
+	builds               *BuildService
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
@@ -85,10 +89,13 @@ func NewLLMProviderDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
+	artifactRepo repository.ArtifactRepository,
+	definitions ArtifactDefinitions,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *LLMProviderDeploymentService {
 	return &LLMProviderDeploymentService{
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
 		providerRepo:         providerRepo,
 		templateRepo:         templateRepo,
 		deploymentRepo:       deploymentRepo,
@@ -109,10 +116,13 @@ func NewLLMProxyDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
+	artifactRepo repository.ArtifactRepository,
+	definitions ArtifactDefinitions,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *LLMProxyDeploymentService {
 	return &LLMProxyDeploymentService{
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
 		proxyRepo:            proxyRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
@@ -122,6 +132,108 @@ func NewLLMProxyDeploymentService(
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
+}
+
+// providerUUID resolves an LLM provider's identifier to its artifact UUID, which is
+// what builds are keyed by. Resolving here keeps this kind's own not-found.
+func (s *LLMProviderDeploymentService) providerUUID(providerID, orgUUID string) (string, error) {
+	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	if provider == nil {
+		return "", apperror.LLMProviderNotFound.New()
+	}
+	return provider.UUID, nil
+}
+
+// CreateBuildByHandle prepares a build of an LLM provider without deploying it.
+//
+// Builds are the same thing for every artifact kind, so these four delegate to the
+// shared store; only resolving the identifier is this kind's own.
+func (s *LLMProviderDeploymentService) CreateBuildByHandle(providerID, orgUUID, createdBy, description string,
+	metadata map[string]interface{}) (*api.BuildResponse, error) {
+	providerUUID, err := s.providerUUID(providerID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Create(providerUUID, orgUUID, createdBy, description, metadata)
+}
+
+// GetBuildByHandle returns one of an LLM provider's builds.
+func (s *LLMProviderDeploymentService) GetBuildByHandle(providerID, buildID, orgUUID string) (*api.BuildResponse, error) {
+	providerUUID, err := s.providerUUID(providerID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Get(providerUUID, buildID, orgUUID)
+}
+
+// GetBuildsByHandle lists an LLM provider's builds, newest first.
+func (s *LLMProviderDeploymentService) GetBuildsByHandle(providerID, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	providerUUID, err := s.providerUUID(providerID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.List(providerUUID, orgUUID, limit)
+}
+
+// DeleteBuildByHandle removes one of an LLM provider's builds.
+func (s *LLMProviderDeploymentService) DeleteBuildByHandle(providerID, buildID, orgUUID string) error {
+	providerUUID, err := s.providerUUID(providerID, orgUUID)
+	if err != nil {
+		return err
+	}
+	return s.builds.Delete(providerUUID, buildID, orgUUID)
+}
+
+// proxyUUID resolves an LLM proxy's identifier to its artifact UUID.
+func (s *LLMProxyDeploymentService) proxyUUID(proxyID, orgUUID string) (string, error) {
+	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	if proxy == nil {
+		return "", apperror.LLMProxyNotFound.New()
+	}
+	return proxy.UUID, nil
+}
+
+// CreateBuildByHandle prepares a build of an LLM proxy without deploying it.
+func (s *LLMProxyDeploymentService) CreateBuildByHandle(proxyID, orgUUID, createdBy, description string,
+	metadata map[string]interface{}) (*api.BuildResponse, error) {
+	proxyUUID, err := s.proxyUUID(proxyID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Create(proxyUUID, orgUUID, createdBy, description, metadata)
+}
+
+// GetBuildByHandle returns one of an LLM proxy's builds.
+func (s *LLMProxyDeploymentService) GetBuildByHandle(proxyID, buildID, orgUUID string) (*api.BuildResponse, error) {
+	proxyUUID, err := s.proxyUUID(proxyID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Get(proxyUUID, buildID, orgUUID)
+}
+
+// GetBuildsByHandle lists an LLM proxy's builds, newest first.
+func (s *LLMProxyDeploymentService) GetBuildsByHandle(proxyID, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	proxyUUID, err := s.proxyUUID(proxyID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.List(proxyUUID, orgUUID, limit)
+}
+
+// DeleteBuildByHandle removes one of an LLM proxy's builds.
+func (s *LLMProxyDeploymentService) DeleteBuildByHandle(proxyID, buildID, orgUUID string) error {
+	proxyUUID, err := s.proxyUUID(proxyID, orgUUID)
+	if err != nil {
+		return err
+	}
+	return s.builds.Delete(proxyUUID, buildID, orgUUID)
 }
 
 // DeployLLMProvider creates a new immutable deployment artifact and deploys it to a gateway

@@ -2968,6 +2968,12 @@ type ListLLMProviderAPIKeysParams struct {
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
+// GetLLMProviderBuildsParams defines parameters for GetLLMProviderBuilds.
+type GetLLMProviderBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -3028,6 +3034,12 @@ type ListLLMProxyAPIKeysParams struct {
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
+// GetLLMProxyBuildsParams defines parameters for GetLLMProxyBuilds.
+type GetLLMProxyBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -3068,6 +3080,12 @@ type ListMCPProxiesParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// GetMCPProxyBuildsParams defines parameters for GetMCPProxyBuilds.
+type GetMCPProxyBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 }
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
@@ -3320,6 +3338,9 @@ type UpdateLLMProviderJSONRequestBody = LLMProvider
 // CreateLLMProviderAPIKeyJSONRequestBody defines body for CreateLLMProviderAPIKey for application/json ContentType.
 type CreateLLMProviderAPIKeyJSONRequestBody = CreateLLMProviderAPIKeyRequest
 
+// CreateLLMProviderBuildJSONRequestBody defines body for CreateLLMProviderBuild for application/json ContentType.
+type CreateLLMProviderBuildJSONRequestBody = BuildRequest
+
 // DeployLLMProviderJSONRequestBody defines body for DeployLLMProvider for application/json ContentType.
 type DeployLLMProviderJSONRequestBody = DeployRequest
 
@@ -3332,6 +3353,9 @@ type UpdateLLMProxyJSONRequestBody = LLMProxy
 // CreateLLMProxyAPIKeyJSONRequestBody defines body for CreateLLMProxyAPIKey for application/json ContentType.
 type CreateLLMProxyAPIKeyJSONRequestBody = CreateLLMProxyAPIKeyRequest
 
+// CreateLLMProxyBuildJSONRequestBody defines body for CreateLLMProxyBuild for application/json ContentType.
+type CreateLLMProxyBuildJSONRequestBody = BuildRequest
+
 // DeployLLMProxyJSONRequestBody defines body for DeployLLMProxy for application/json ContentType.
 type DeployLLMProxyJSONRequestBody = DeployRequest
 
@@ -3343,6 +3367,9 @@ type FetchMCPProxyServerInfoJSONRequestBody = MCPServerInfoFetchRequest
 
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
 type UpdateMCPProxyJSONRequestBody = MCPProxy
+
+// CreateMCPProxyBuildJSONRequestBody defines body for CreateMCPProxyBuild for application/json ContentType.
+type CreateMCPProxyBuildJSONRequestBody = BuildRequest
 
 // DeployMCPProxyJSONRequestBody defines body for DeployMCPProxy for application/json ContentType.
 type DeployMCPProxyJSONRequestBody = DeployRequest

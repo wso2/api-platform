@@ -47,12 +47,15 @@ type MCPDeploymentService struct {
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	utils                *utils.MCPUtils
-	slogger              *slog.Logger
+	// builds is the shared build store every artifact kind uses.
+	builds  *BuildService
+	slogger *slog.Logger
 }
 
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
-	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
+	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
+	definitions ArtifactDefinitions, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
@@ -63,8 +66,50 @@ func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRe
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		utils:                &utils.MCPUtils{},
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
 		slogger:              slogger,
 	}
+}
+
+// CreateBuildByHandle prepares a build of an MCP proxy without deploying it.
+//
+// Builds are the same thing for every artifact kind, so these four delegate to the
+// shared store; only resolving the handle is MCP's own, which keeps the not-found
+// this kind already reports.
+func (s *MCPDeploymentService) CreateBuildByHandle(proxyHandle, orgUUID, createdBy, description string,
+	metadata map[string]interface{}) (*api.BuildResponse, error) {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Create(proxyUUID, orgUUID, createdBy, description, metadata)
+}
+
+// GetBuildByHandle returns one of an MCP proxy's builds.
+func (s *MCPDeploymentService) GetBuildByHandle(proxyHandle, buildID, orgUUID string) (*api.BuildResponse, error) {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Get(proxyUUID, buildID, orgUUID)
+}
+
+// GetBuildsByHandle lists an MCP proxy's builds, newest first.
+func (s *MCPDeploymentService) GetBuildsByHandle(proxyHandle, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.List(proxyUUID, orgUUID, limit)
+}
+
+// DeleteBuildByHandle removes one of an MCP proxy's builds.
+func (s *MCPDeploymentService) DeleteBuildByHandle(proxyHandle, buildID, orgUUID string) error {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return err
+	}
+	return s.builds.Delete(proxyUUID, buildID, orgUUID)
 }
 
 // DeployMCPProxyByHandle creates a new immutable deployment artifact using MCP proxy handle
