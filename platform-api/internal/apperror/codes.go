@@ -84,6 +84,9 @@ const (
 // Deployment domain codes, shared across REST API / LLM provider / LLM proxy /
 // MCP proxy deployment operations (identical conditions across all four).
 const (
+	CodeBuildNotFound             = "BUILD_NOT_FOUND"
+	CodeBuildLimitReached         = "BUILD_LIMIT_REACHED"
+	CodeBuildInUse                = "BUILD_IN_USE"
 	CodeDeploymentBaseNotFound    = "DEPLOYMENT_BASE_NOT_FOUND"
 	CodeDeploymentRestoreConflict = "DEPLOYMENT_RESTORE_CONFLICT"
 	CodeDeploymentNotFound        = "DEPLOYMENT_NOT_FOUND"
