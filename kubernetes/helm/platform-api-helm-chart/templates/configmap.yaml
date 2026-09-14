@@ -5,6 +5,8 @@
 {{- $auth := $cfg.auth -}}
 {{- $srv := $cfg.server -}}
 {{- $https := $srv.https -}}
+{{- /* internal_token mode with validation skipped needs — and reads — no verifying key. */ -}}
+{{- $skipJwtValidation := and (eq $auth.mode "internal_token") (dig "internalToken" "skipValidation" false $auth) -}}
 {{- if $pa.deployment.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -100,10 +102,17 @@ data:
     roles = {{ $auth.claimMappings.roles | quote }}
     {{- end }}
 
+    {{- if eq $auth.mode "internal_token" }}
+    [platform_api.auth.internal_token]
+    skip_validation = {{ $skipJwtValidation }}
+    {{- end }}
+
     {{- if ne $auth.mode "idp" }}
     [platform_api.auth.jwt]
     issuer = {{ $auth.jwt.issuer | quote }}
-    public_key_file = {{ required "config.auth.jwt.publicKeyFile is required when auth.mode is \"internal_token\" or \"file\"" $auth.jwt.publicKeyFile | quote }}
+    {{- if not $skipJwtValidation }}
+    public_key_file = {{ required "config.auth.jwt.publicKeyFile is required when auth.mode is \"internal_token\" or \"file\" — or set auth.internalToken.skipValidation=true to run internal_token mode without a verifying key" $auth.jwt.publicKeyFile | quote }}
+    {{- end }}
     {{- if eq $auth.mode "file" }}
     private_key_file = {{ required "config.auth.jwt.privateKeyFile is required when auth.mode is \"file\"" $auth.jwt.privateKeyFile | quote }}
     {{- end }}

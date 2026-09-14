@@ -68,14 +68,14 @@ type AuthConfig struct {
 	// PublicKey is the RSA public key used to verify token signatures (RS256).
 	// Only asymmetric verification is supported; symmetric (HMAC) and unsigned
 	// ("none") tokens are rejected.
-	PublicKey      *rsa.PublicKey
-	TokenIssuer    string
-	SkipPaths      []string
-	SkipValidation bool
+	PublicKey   	*rsa.PublicKey
+	TokenIssuer 	string
+	SkipPaths   	[]string
+	SkipValidation	bool
 	// ClaimMappings is the same claim-name mapping used by IDP mode
 	// (PlatformClaimsMiddleware) and by the file-mode login endpoint when it
 	// signs tokens — one mapping shared by issuance and validation.
-	ClaimMappings ClaimMappings
+	ClaimMappings	ClaimMappings
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
