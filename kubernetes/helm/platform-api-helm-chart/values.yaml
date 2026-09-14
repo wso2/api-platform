@@ -121,6 +121,17 @@ config:
     #                    RS256 keys are read or mounted in this mode, so the
     #                    Secret needn't carry jwt_public.pem / jwt_private.pem.
     mode: file
+    # internal_token mode — settings specific to that mode.
+    internalToken:
+      # Turn off JWT validation for internal tokens — every check, not the
+      # signature alone: the token is read without being verified, so the
+      # signature, exp/nbf/iat and iss all go unchecked (an expired token is
+      # accepted). No verifying key is needed, so the chart neither requires
+      # config.auth.jwt.publicKeyFile nor mounts the jwt-keys volume. A
+      # well-formed JWT carrying the organization claim is still required, and
+      # its scopes/roles still drive authorization. Only read when mode is
+      # "internal_token"; "file" mode mints its own tokens and needs the pair.
+      skipValidation: false
     # --- Authorization --- applies in every auth mode above: an enterprise-IDP
     # token carries the same roles claim whether it is verified against a JWKS
     # endpoint or with a local public key.
@@ -179,7 +190,8 @@ config:
     # Local RS256 JWT keys, mounted as PEM files from the Secret
     # (secrets.keys.jwtPublicKey / jwtPrivateKey). Which of them the chart mounts
     # follows the mode, because only the mode's own code path opens them:
-    #   internal_token — public_key_file only (verifies tokens minted elsewhere)
+    #   internal_token — public_key_file only (verifies tokens minted elsewhere),
+    #                    or neither when auth.internalToken.skipValidation is true
     #   file           — both (also signs its login tokens)
     #   idp            — neither; validation goes to the IDP's JWKS instead, so
     #                    these paths are not rendered into config either
@@ -293,10 +305,12 @@ configToml: ""
 # the chart doesn't reference for your settings can simply be absent:
 #   APIP_CP_DATABASE_PASSWORD  — every non-sqlite3 driver (postgres/sqlserver)
 #   APIP_CP_WEBHOOK_SECRET     — config.webhook.enabled only
-#   jwt_public.pem             — auth.mode internal_token or file only
+#   jwt_public.pem             — auth.mode internal_token or file only, and not
+#                                when auth.internalToken.skipValidation is true
 #   jwt_private.pem            — auth.mode file only
 # The PEMs are mounted as files into config.auth.jwt.*File. In auth.mode=idp
-# neither is mounted or referenced, so an idp-mode Secret needs no PEMs at all.
+# neither is mounted or referenced, so an idp-mode Secret needs no PEMs at all;
+# the same is true of internal_token mode with skipValidation: true.
 # `keys` maps each logical name to the key inside that Secret.
 secrets:
   existingSecret: ""
@@ -310,7 +324,7 @@ secrets:
     encryptionKey: APIP_CP_ENCRYPTION_KEY
     databasePassword: APIP_CP_DATABASE_PASSWORD      # any non-sqlite3 driver (postgres/sqlserver)
     webhookSecret: APIP_CP_WEBHOOK_SECRET            # config.webhook.enabled only
-    jwtPublicKey: jwt_public.pem                     # mounted file → config.auth.jwt.publicKeyFile (internal_token/file modes)
+    jwtPublicKey: jwt_public.pem                     # mounted file → config.auth.jwt.publicKeyFile (internal_token/file modes; not internal_token + skipValidation)
     jwtPrivateKey: jwt_private.pem                   # mounted file → config.auth.jwt.privateKeyFile (file mode)
     adminUsername: APIP_CP_ADMIN_USERNAME            # auth.mode=file only
     adminPasswordHash: APIP_CP_ADMIN_PASSWORD_HASH   # auth.mode=file only

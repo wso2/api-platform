@@ -457,10 +457,17 @@ type CORS struct {
 
 // InternalToken holds settings specific to the "internal_token" auth mode.
 type InternalToken struct {
-	// SkipValidation bypasses all JWT validation — signature, expiry, and
-	// issuer checks are skipped and auth.jwt.public_key_file is not required.
-	// Intended for local development where the signing keypair is unavailable.
-	// Must be false in production.
+	// SkipValidation disables all JWT validation on the internal-token path,
+	// including signature, exp/nbf/iat, and issuer checks. The token must still
+	// be a well-formed JWT containing the configured organization claim.
+	// Claims are decoded and mapped as usual, so authorization still applies
+	// to the scopes and roles presented by the token.
+	//
+	// This is a supported trust-boundary configuration for internally minted
+	// tokens, not a development-only escape hatch. Authentication relies
+	// entirely on the upstream component that establishes the trust.
+	// Disabled by default; enabling it requires an explicit operator decision
+	// (GO-AUTH-011).
 	SkipValidation bool `koanf:"skip_validation"`
 }
 
