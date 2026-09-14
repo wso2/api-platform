@@ -26,7 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wso2/api-platform/common/agentproto"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
@@ -214,7 +214,7 @@ func TestParseAgent_WorkedExample_OperationConfigs(t *testing.T) {
 	// so the value the OpenAPI enum admits has to be one the registry answers
 	// for. Section 4 turns this into a deployment-time rejection.
 	assert.True(t, agentproto.IsSupportedVersion(agentproto.ProtocolVersion(a2a.ProtocolVersion)),
-		"protocol version %q is accepted by the management API contract but not registered in common/agentproto", a2a.ProtocolVersion)
+		"protocol version %q is accepted by the management API contract but not registered in gateway/common/agentproto", a2a.ProtocolVersion)
 
 	require.Len(t, a2a.OperationConfigs.Transports, 2)
 	assert.Equal(t, api.JSONRPC, a2a.OperationConfigs.Transports[0].ProtocolBinding)

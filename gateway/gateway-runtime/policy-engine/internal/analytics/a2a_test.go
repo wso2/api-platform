@@ -814,7 +814,7 @@ func TestA2AMetadataKeySpellingsArePinned(t *testing.T) {
 	assert.Equal(t, "agentAnalytics", AgentAnalyticsProperty)
 
 	// The transport value arrives as an opaque string out of Envoy dynamic metadata,
-	// having been spelled by common/agentproto at the other end of the pipeline. This
+	// having been spelled by gateway/common/agentproto at the other end of the pipeline. This
 	// package compares it (to decide whether a 2xx is itself an outcome), so a
 	// divergence would silently turn every HTTP+JSON success into UNKNOWN.
 	assert.Equal(t, "HTTP+JSON", a2aTransportHTTPJSON)

@@ -31,6 +31,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # is only invalidated when dependencies change, not when source code changes.
 COPY --from=sdk-core go.mod /sdk/core/
 COPY --from=common go.mod go.sum /common/
+COPY --from=gateway-common go.mod /gateway/common/
 COPY --from=httpkit go.mod go.sum /httpkit/
 COPY --from=gateway-controller go.mod go.sum /gateway/gateway-controller/
 
@@ -40,6 +41,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY --from=sdk-core . /sdk/core
 COPY --from=common . /common
+COPY --from=gateway-common . /gateway/common
 COPY --from=httpkit . /httpkit
 COPY --from=gateway-controller . /gateway/gateway-controller
 COPY . ./

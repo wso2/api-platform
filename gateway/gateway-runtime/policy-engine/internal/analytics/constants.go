@@ -270,7 +270,7 @@ const (
 	// returned, or a JSON-RPC error object in an otherwise successful response.
 	A2AFailureOriginUpstream = "UPSTREAM"
 
-	// a2aTransportHTTPJSON is the REST-shaped A2A binding, as common/agentproto spells
+	// a2aTransportHTTPJSON is the REST-shaped A2A binding, as gateway/common/agentproto spells
 	// it into a route's resolver config and the resolver carries it forward. Compared
 	// here only to decide whether a 2xx is itself an outcome (see
 	// a2aSuccessStatusOutcome); this package reports the value through, it does not

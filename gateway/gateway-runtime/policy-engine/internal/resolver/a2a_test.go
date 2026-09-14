@@ -28,8 +28,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wso2/api-platform/common/agentproto"
 	"github.com/wso2/api-platform/common/chainkey"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 )
 
 const (

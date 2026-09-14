@@ -33,7 +33,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/wso2/api-platform/common/agentproto"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/testutils"

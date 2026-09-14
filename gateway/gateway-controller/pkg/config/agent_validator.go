@@ -27,7 +27,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/wso2/api-platform/common/agentproto"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 

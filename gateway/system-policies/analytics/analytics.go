@@ -1241,7 +1241,7 @@ func populateA2ARequestMetadata(
 // return, and how much task history it wanted back.
 //
 // The extraction is driven by the shape of the request rather than by its operation
-// name. That keeps the operation table — which lives in common/agentproto, on the
+// name. That keeps the operation table — which lives in gateway/common/agentproto, on the
 // other side of a module boundary this policy cannot cross — from being transcribed
 // here to be kept in sync by hand. It is also exactly as precise: in A2A 1.0 only the
 // two message-sending operations carry a `message`, and only they, GetTask and

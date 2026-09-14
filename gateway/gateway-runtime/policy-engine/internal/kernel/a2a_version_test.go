@@ -29,7 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/wso2/api-platform/common/agentproto"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"

@@ -27,8 +27,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/api-platform/common/agentproto"
 	versionutil "github.com/wso2/api-platform/common/version"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"

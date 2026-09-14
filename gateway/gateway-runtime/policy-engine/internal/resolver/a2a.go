@@ -27,8 +27,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/wso2/api-platform/common/agentproto"
 	"github.com/wso2/api-platform/common/chainkey"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 )
 
 // A2AResolver resolves a request on an Agent route to the canonical A2A operation
@@ -45,7 +45,7 @@ import (
 // POST /message:send run the identical chain — its authentication, its rate
 // limits — rather than two chains that merely look alike.
 //
-// Everything the resolver knows about A2A comes from common/agentproto, keyed by
+// Everything the resolver knows about A2A comes from gateway/common/agentproto, keyed by
 // the protocol version the route names. The controller generated that route's
 // chains against one version's operation set, so resolving against a different
 // one would select chains that were never emitted; there is deliberately no
@@ -59,7 +59,7 @@ func init() {
 }
 
 // Name returns the wire value the controller writes into an Agent route's
-// resolver_name. It is spelled once, in common/agentproto, because a mismatch
+// resolver_name. It is spelled once, in gateway/common/agentproto, because a mismatch
 // between the two sides is silent: the route ships and every request to it fails
 // to resolve.
 func (*A2AResolver) Name() string { return agentproto.ResolverName }

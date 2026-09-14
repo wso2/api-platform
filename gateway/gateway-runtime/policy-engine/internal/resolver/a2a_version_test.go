@@ -26,7 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wso2/api-platform/common/agentproto"
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 )
 
 // The A2A request protocol-version guard: the header-only phase every prepared A2A

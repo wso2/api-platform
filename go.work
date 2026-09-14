@@ -9,6 +9,7 @@ use (
 	./event-gateway/gateway-runtime
 	./event-gateway/it
 	./event-gateway/webhook-listener
+	./gateway/common
 	./gateway/gateway-builder
 	./gateway/gateway-controller
 	./gateway/gateway-runtime/policy-engine
