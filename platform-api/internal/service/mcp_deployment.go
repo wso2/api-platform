@@ -228,8 +228,10 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if req == nil {
 		return nil, apperror.MCPProxyDeploymentValidationFailed.New("A request body is required.")
 	}
-	if req.Base == "" {
-		return nil, apperror.MCPProxyDeploymentValidationFailed.New("Base is required.")
+	base, requestedBuild, err := ValidateDeployBase(req.Base, req.BuildId,
+		apperror.MCPProxyDeploymentValidationFailed)
+	if err != nil {
+		return nil, err
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
@@ -300,67 +302,49 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, err
 	}
 
-	var baseDeploymentID *string
-	var contentBytes []byte
+	// What this deploy ships: a build prepared earlier, or a snapshot of the proxy
+	// as it stands now. Either way it comes back as one shape, and a snapshot comes
+	// back unstored so it commits with the deployment below.
+	source, err := s.builds.SourceForDeploy(proxyUUID, orgId, createdBy, base, requestedBuild)
+	if err != nil {
+		return nil, err
+	}
+	d, ok := source.Definition.(*model.MCPProxyDeploymentYAML)
+	if !ok {
+		// Only reachable if the artifact row claims another kind, which would be a
+		// corrupted row rather than anything a caller did.
+		return nil, fmt.Errorf("artifact %s did not render as an MCP proxy definition", proxyUUID)
+	}
 
-	if req.Base == "current" {
-		// Build struct directly, apply overrides on struct, marshal once
-		d, err := s.utils.BuildMCPDeploymentYAML(mcpProxy)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build MCP deployment YAML: %w", err)
-		}
-		if endpointURL != nil {
-			d.Spec.Upstream.URL = *endpointURL
-			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
-		}
-		sourceDataVersion := gatewaytranslator.PlatformDataVersion(mcpProxy.DataVersion)
-		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-		if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
-			return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
-		}
-		contentBytes, err = yaml.Marshal(d)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
-		}
-	} else {
-		// Use existing deployment as base
-		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, proxyUUID, orgId)
-		if err != nil {
-			if apperror.DeploymentNotFound.Is(err) {
-				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
-			}
-			return nil, fmt.Errorf("failed to get base deployment: %w", err)
-		}
-		contentBytes = baseDeployment.Content
-		baseDeploymentID = &req.Base
-
-		if endpointURL != nil {
-			// Unmarshal into the correct MCP type, apply override, marshal back
-			var mcpDeployment model.MCPProxyDeploymentYAML
-			if err := yaml.Unmarshal(contentBytes, &mcpDeployment); err != nil {
-				return nil, fmt.Errorf("failed to parse MCP deployment YAML: %w", err)
-			}
-			mcpDeployment.Spec.Upstream.URL = *endpointURL
-			contentBytes, err = yaml.Marshal(&mcpDeployment)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal modified MCP deployment YAML: %w", err)
-			}
-			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
-		}
+	// The build holds the definition as it stood; this deployment's own endpoint is
+	// applied here, after the snapshot, so it never reaches the build.
+	if endpointURL != nil {
+		d.Spec.Upstream.URL = *endpointURL
+		s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+	}
+	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
+	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+	if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
+		return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
+	}
+	contentBytes, err := yaml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
 	}
 
 	// Create new deployment record with limit enforcement
 	// Hard limit = soft limit (configured) + 5 buffer for concurrent deployments
 	deployment := &model.Deployment{
-		DeploymentID:     deploymentID,
-		Name:             req.Name,
-		ArtifactID:       proxyUUID,
-		OrganizationID:   orgId,
-		GatewayID:        gatewayID,
-		BaseDeploymentID: baseDeploymentID,
-		Content:          contentBytes,
-		Metadata:         metadata,
-		CreatedBy:        createdBy,
+		DeploymentID:   deploymentID,
+		Name:           req.Name,
+		ArtifactID:     proxyUUID,
+		OrganizationID: orgId,
+		GatewayID:      gatewayID,
+		BuildUUID:      source.BuildUUID,
+		BuildID:        source.BuildID,
+		Content:        contentBytes,
+		Metadata:       metadata,
+		CreatedBy:      createdBy,
 	}
 
 	// Use CreateDeploymentWithLimitEnforcement - handles count, cleanup, insert, and status update atomically
@@ -368,7 +352,19 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
-	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+	// A build rendered for this deploy is stored with the deployment, in one
+	// transaction: a recorded deployment always has the build it runs, and a deploy
+	// that fails leaves no build behind.
+	if source.NewBuild != nil {
+		err = s.deploymentRepo.CreateWithBuild(deployment, source.NewBuild,
+			s.cfg.Deployments.MaxBuildsPerAPI, hardLimit)
+	} else {
+		err = s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit)
+	}
+	if err != nil {
+		if limitErr := s.builds.LimitError(err); limitErr != err {
+			return nil, limitErr
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 

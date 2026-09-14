@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // BuildService stores and serves builds for EVERY artifact kind.
@@ -205,4 +207,90 @@ func (s *BuildService) LimitError(err error) error {
 		return apperror.BuildLimitReached.New(s.cfg.Deployments.MaxBuildsPerAPI)
 	}
 	return err
+}
+
+// DeploySource is what a deploy is about to put on a gateway: the definition to
+// translate and override, the data version to translate FROM, and how the
+// deployment records the build it runs.
+//
+// NewBuild is set only when the deploy rendered the artifact itself (base
+// "current"). It is deliberately NOT stored here — the caller stores it on the
+// transaction that records the deployment, so a deployment always has the build it
+// runs and a failed deploy leaves no build behind.
+type DeploySource struct {
+	Definition  any
+	DataVersion string
+	NewBuild    *model.Build
+	BuildUUID   *string
+	BuildID     *string
+}
+
+// ValidateDeployBase checks the two fields that say WHAT a deploy ships.
+//
+// `base` is `current` (snapshot the artifact as it stands) or `build` (ship one
+// prepared earlier, named by buildId). buildId is required with one and meaningless
+// with the other; rejecting it where it cannot apply keeps a request from looking
+// like it asked for something it did not get.
+//
+// The kind supplies its own validation error so the message names the right thing.
+func ValidateDeployBase(base string, buildID *string, invalid apperror.Def) (string, string, error) {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return "", "", invalid.New("Base is required (use 'current' or 'build').")
+	}
+	if base != deployBaseCurrent && base != deployBaseBuild {
+		return "", "", invalid.New("Base must be 'current' or 'build'.")
+	}
+	requested := strings.TrimSpace(utils.ValueOrEmpty(buildID))
+	if base == deployBaseBuild && requested == "" {
+		return "", "", invalid.New("A buildId is required when base is 'build'.")
+	}
+	if base == deployBaseCurrent && requested != "" {
+		return "", "", invalid.New("A buildId applies only when base is 'build'.")
+	}
+	return base, requested, nil
+}
+
+// SourceForDeploy resolves what a deploy ships, for any artifact kind.
+//
+// `build` loads the named snapshot and decodes it through the kind's own
+// definition; `current` renders the artifact now and hands back an unstored build
+// for the caller to commit alongside the deployment. Either way the caller gets one
+// shape back, so the deploy paths stop differing on this.
+func (s *BuildService) SourceForDeploy(artifactUUID, orgUUID, createdBy, base, requestedBuild string) (*DeploySource, error) {
+	if base == deployBaseBuild {
+		stored, err := s.deploymentRepo.GetBuild(requestedBuild, artifactUUID, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get build: %w", err)
+		}
+		if stored == nil {
+			return nil, apperror.BuildNotFound.New()
+		}
+		_, definition, err := s.resolve(artifactUUID, orgUUID)
+		if err != nil {
+			return nil, err
+		}
+		decoded, err := definition.Decode(stored.Content)
+		if err != nil {
+			return nil, err
+		}
+		return &DeploySource{
+			Definition:  decoded,
+			DataVersion: stored.DataVersion,
+			// Record which build this deployment runs, so it can be traced back to
+			// the snapshot it came from.
+			BuildUUID: &stored.UUID,
+			BuildID:   &stored.BuildID,
+		}, nil
+	}
+
+	newBuild, definition, err := s.Render(artifactUUID, orgUUID, createdBy, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &DeploySource{
+		Definition:  definition,
+		DataVersion: newBuild.DataVersion,
+		NewBuild:    newBuild,
+	}, nil
 }

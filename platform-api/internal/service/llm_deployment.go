@@ -242,8 +242,10 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if req == nil {
 		return nil, apperror.LLMProviderDeploymentValidationFailed.New("A request body is required.")
 	}
-	if req.Base == "" {
-		return nil, apperror.LLMProviderDeploymentValidationFailed.New("Base is required (use 'current' or a deploymentId).")
+	base, requestedBuild, err := ValidateDeployBase(req.Base, req.BuildId,
+		apperror.LLMProviderDeploymentValidationFailed)
+	if err != nil {
+		return nil, err
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
@@ -304,45 +306,30 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, err
 	}
 
-	var baseDeploymentID *string
-	var contentBytes []byte
-
-	// Determine the source: "current" or existing deployment
-	if req.Base == "current" {
-		tplHandle, err := s.getTemplateHandle(provider.TemplateUUID, orgUUID)
-		if err != nil {
-			return nil, err
-		}
-		providerDeployment, err := generateLLMProviderDeploymentYAML(provider, tplHandle)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
-		}
-		sourceDataVersion := gatewaytranslator.PlatformDataVersion(provider.DataVersion)
-		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-		if err := gatewaytranslator.Translate(
-			constants.LLMProvider,
-			sourceDataVersion,
-			targetDataVersion,
-			&providerDeployment,
-		); err != nil {
-			return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
-		}
-		providerYamlBytes, marshalErr := yaml.Marshal(providerDeployment)
-		if marshalErr != nil {
-			return nil, fmt.Errorf("failed to marshal LLM provider deployment YAML: %w", marshalErr)
-		}
-		contentBytes = providerYamlBytes
-	} else {
-		// Use existing deployment as base
-		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, provider.UUID, orgUUID)
-		if err != nil {
-			if apperror.DeploymentNotFound.Is(err) {
-				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
-			}
-			return nil, fmt.Errorf("failed to get base deployment: %w", err)
-		}
-		contentBytes = baseDeployment.Content
-		baseDeploymentID = &req.Base
+	// What this deploy ships: a build prepared earlier, or a snapshot of the
+	// provider as it stands now. A snapshot comes back unstored so it commits with
+	// the deployment below.
+	source, err := s.builds.SourceForDeploy(provider.UUID, orgUUID, createdBy, base, requestedBuild)
+	if err != nil {
+		return nil, err
+	}
+	providerDeployment, ok := source.Definition.(*dto.LLMProviderDeploymentYAML)
+	if !ok {
+		return nil, fmt.Errorf("artifact %s did not render as an LLM provider definition", provider.UUID)
+	}
+	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
+	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+	if err := gatewaytranslator.Translate(
+		constants.LLMProvider,
+		sourceDataVersion,
+		targetDataVersion,
+		providerDeployment,
+	); err != nil {
+		return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
+	}
+	contentBytes, err := yaml.Marshal(providerDeployment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal LLM provider deployment YAML: %w", err)
 	}
 
 	// Generate deployment ID
@@ -353,22 +340,34 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	deployed := model.DeploymentStatusDeployed
 
 	deployment := &model.Deployment{
-		DeploymentID:     deploymentID,
-		Name:             req.Name,
-		ArtifactID:       provider.UUID,
-		OrganizationID:   orgUUID,
-		GatewayID:        gatewayID,
-		BaseDeploymentID: baseDeploymentID,
-		Content:          contentBytes,
-		Metadata:         metadata,
-		Status:           &deployed,
+		DeploymentID:   deploymentID,
+		Name:           req.Name,
+		ArtifactID:     provider.UUID,
+		OrganizationID: orgUUID,
+		GatewayID:      gatewayID,
+		BuildUUID:      source.BuildUUID,
+		BuildID:        source.BuildID,
+		Content:        contentBytes,
+		Metadata:       metadata,
+		Status:         &deployed,
 	}
 
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
 		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
-	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+	// A build rendered for this deploy is stored with the deployment, in one
+	// transaction, so a recorded deployment always has the build it runs.
+	if source.NewBuild != nil {
+		err = s.deploymentRepo.CreateWithBuild(deployment, source.NewBuild,
+			s.cfg.Deployments.MaxBuildsPerAPI, hardLimit)
+	} else {
+		err = s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit)
+	}
+	if err != nil {
+		if limitErr := s.builds.LimitError(err); limitErr != err {
+			return nil, limitErr
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
@@ -1394,8 +1393,10 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if req == nil {
 		return nil, apperror.LLMProxyDeploymentValidationFailed.New("A request body is required.")
 	}
-	if req.Base == "" {
-		return nil, apperror.LLMProxyDeploymentValidationFailed.New("Base is required (use 'current' or a deploymentId).")
+	base, requestedBuild, err := ValidateDeployBase(req.Base, req.BuildId,
+		apperror.LLMProxyDeploymentValidationFailed)
+	if err != nil {
+		return nil, err
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
@@ -1452,41 +1453,30 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, err
 	}
 
-	var baseDeploymentID *string
-	var contentBytes []byte
-
-	// Determine the source: "current" or existing deployment
-	if req.Base == "current" {
-		proxyDeployment, err := generateLLMProxyDeploymentYAML(proxy)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
-		}
-		sourceDataVersion := gatewaytranslator.PlatformDataVersion(proxy.DataVersion)
-		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-		if err := gatewaytranslator.Translate(
-			constants.LLMProxy,
-			sourceDataVersion,
-			targetDataVersion,
-			&proxyDeployment,
-		); err != nil {
-			return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
-		}
-		proxyYamlBytes, marshalErr := yaml.Marshal(proxyDeployment)
-		if marshalErr != nil {
-			return nil, fmt.Errorf("failed to marshal LLM proxy deployment YAML: %w", marshalErr)
-		}
-		contentBytes = proxyYamlBytes
-	} else {
-		// Use existing deployment as base
-		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, proxy.UUID, orgUUID)
-		if err != nil {
-			if apperror.DeploymentNotFound.Is(err) {
-				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
-			}
-			return nil, fmt.Errorf("failed to get base deployment: %w", err)
-		}
-		contentBytes = baseDeployment.Content
-		baseDeploymentID = &req.Base
+	// What this deploy ships: a build prepared earlier, or a snapshot of the proxy
+	// as it stands now. A snapshot comes back unstored so it commits with the
+	// deployment below.
+	source, err := s.builds.SourceForDeploy(proxy.UUID, orgUUID, createdBy, base, requestedBuild)
+	if err != nil {
+		return nil, err
+	}
+	proxyDeployment, ok := source.Definition.(*dto.LLMProxyDeploymentYAML)
+	if !ok {
+		return nil, fmt.Errorf("artifact %s did not render as an LLM proxy definition", proxy.UUID)
+	}
+	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
+	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+	if err := gatewaytranslator.Translate(
+		constants.LLMProxy,
+		sourceDataVersion,
+		targetDataVersion,
+		proxyDeployment,
+	); err != nil {
+		return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
+	}
+	contentBytes, err := yaml.Marshal(proxyDeployment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal LLM proxy deployment YAML: %w", err)
 	}
 
 	// Generate deployment ID
@@ -1497,22 +1487,34 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	deployed := model.DeploymentStatusDeployed
 
 	deployment := &model.Deployment{
-		DeploymentID:     deploymentID,
-		Name:             req.Name,
-		ArtifactID:       proxy.UUID,
-		OrganizationID:   orgUUID,
-		GatewayID:        gatewayID,
-		BaseDeploymentID: baseDeploymentID,
-		Content:          contentBytes,
-		Metadata:         metadata,
-		Status:           &deployed,
+		DeploymentID:   deploymentID,
+		Name:           req.Name,
+		ArtifactID:     proxy.UUID,
+		OrganizationID: orgUUID,
+		GatewayID:      gatewayID,
+		BuildUUID:      source.BuildUUID,
+		BuildID:        source.BuildID,
+		Content:        contentBytes,
+		Metadata:       metadata,
+		Status:         &deployed,
 	}
 
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
 		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
-	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+	// A build rendered for this deploy is stored with the deployment, in one
+	// transaction, so a recorded deployment always has the build it runs.
+	if source.NewBuild != nil {
+		err = s.deploymentRepo.CreateWithBuild(deployment, source.NewBuild,
+			s.cfg.Deployments.MaxBuildsPerAPI, hardLimit)
+	} else {
+		err = s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit)
+	}
+	if err != nil {
+		if limitErr := s.builds.LimitError(err); limitErr != err {
+			return nil, limitErr
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 

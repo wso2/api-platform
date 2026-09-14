@@ -147,3 +147,101 @@ func TestBuildService_RefusesADataPlaneArtifactForAnyKind(t *testing.T) {
 		t.Error("a build was stored for a data-plane artifact")
 	}
 }
+
+// Every kind now deploys the same way: `current` snapshots the artifact and hands
+// back an unstored build for the caller to commit with the deployment, and `build`
+// ships a stored snapshot and names it. This is the contract the three non-REST
+// kinds moved onto, replacing `base: <deploymentId>`.
+func TestSourceForDeploy_CurrentRendersAnUnstoredBuild(t *testing.T) {
+	definition := &fakeDefinition{kind: "Mcp", yaml: "kind: McpProxy"}
+	service := newKindTestBuildService(t, "Mcp", &buildTestDeploymentRepo{}, definition)
+
+	source, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "tester", "current", "")
+	if err != nil {
+		t.Fatalf("SourceForDeploy: %v", err)
+	}
+	if source.NewBuild == nil {
+		t.Fatal("base 'current' produced no build to store with the deployment")
+	}
+	if source.BuildUUID != nil || source.BuildID != nil {
+		t.Error("an unstored build must not be named yet; the id is assigned when it is stored")
+	}
+	if definition.called != 1 {
+		t.Errorf("the renderer ran %d times, want 1", definition.called)
+	}
+}
+
+// Deploying a named build ships the STORED snapshot, decoded through the kind's own
+// definition — nothing is re-rendered, which is what makes a promotion carry the
+// artifact that was tested rather than one built again from a definition that may
+// have moved on.
+func TestSourceForDeploy_BuildShipsTheStoredSnapshot(t *testing.T) {
+	definition := &fakeDefinition{kind: "Mcp", yaml: "kind: McpProxy"}
+	depRepo := &buildTestDeploymentRepo{build: &model.Build{
+		UUID:        "build-uuid",
+		BuildID:     buildTestBuildID,
+		Content:     []byte("stored: snapshot"),
+		DataVersion: "1.0",
+	}}
+	service := newKindTestBuildService(t, "Mcp", depRepo, definition)
+
+	source, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "tester", "build", buildTestBuildID)
+	if err != nil {
+		t.Fatalf("SourceForDeploy: %v", err)
+	}
+	if source.NewBuild != nil {
+		t.Error("deploying a stored build must not render a new one")
+	}
+	if definition.called != 0 {
+		t.Error("the renderer ran while deploying an existing build")
+	}
+	if source.BuildUUID == nil || *source.BuildUUID != "build-uuid" {
+		t.Errorf("buildUUID = %v, want the stored build's", source.BuildUUID)
+	}
+	if got, ok := source.Definition.(string); !ok || got != "stored: snapshot" {
+		t.Errorf("definition = %v, want the stored content decoded", source.Definition)
+	}
+}
+
+// A build id that is not one of this artifact's is a not-found rather than a
+// silently different deployment.
+func TestSourceForDeploy_UnknownBuildIsNotFound(t *testing.T) {
+	service := newKindTestBuildService(t, "Mcp", &buildTestDeploymentRepo{},
+		&fakeDefinition{kind: "Mcp"})
+
+	_, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "tester", "build", "2026-01-31-9")
+	if !apperror.BuildNotFound.Is(err) {
+		t.Fatalf("error = %v, want BuildNotFound", err)
+	}
+}
+
+// The base contract, which is the same for every kind now.
+func TestValidateDeployBase(t *testing.T) {
+	buildID := buildTestBuildID
+	empty := ""
+	cases := []struct {
+		name    string
+		base    string
+		buildID *string
+		wantErr bool
+	}{
+		{"current alone", "current", nil, false},
+		{"build with an id", "build", &buildID, false},
+		{"no base", "", nil, true},
+		{"a deploymentId is no longer a base", "some-deployment-uuid", nil, true},
+		{"build without an id", "build", nil, true},
+		{"build with a blank id", "build", &empty, true},
+		{"current with an id", "current", &buildID, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := ValidateDeployBase(tc.base, tc.buildID, apperror.MCPProxyDeploymentValidationFailed)
+			if tc.wantErr && err == nil {
+				t.Error("expected the request to be refused")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}

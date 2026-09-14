@@ -7493,11 +7493,13 @@ components:
             - `current` — render the artifact from the definition as it stands now.
             - `build` — deploy a build prepared earlier, named by `buildId`.
 
-            REST API deployments accept only these two and always run a build: `current`
-            stores what it renders as one, so a running deployment is always traceable to
-            a stored snapshot. MCP proxy, LLM and event API deployments accept a
-            `deploymentId` here as well, to promote that deployment by reusing its
-            rendered artifact.
+            These are the only two values, for REST APIs, MCP proxies, LLM providers and
+            LLM proxies alike. Every deployment runs a build: `current` stores what it
+            renders as one, so a running deployment is always traceable to a stored
+            snapshot, and promoting carries that snapshot rather than re-rendering it.
+
+            A `deploymentId` is no longer accepted here — see the note on this
+            operation.
           example: "current"
         buildId:
           type: string
