@@ -444,3 +444,109 @@ func TestExchangeErrorsDoNotContainTokens(t *testing.T) {
 		t.Errorf("error text leaks the subject token: %q", err.Error())
 	}
 }
+
+// TestExchangeRetriesTransientKeyFetchFailure covers the observed Asgardeo behaviour
+// where a failed fetch of the trusted issuer's JWKS is reported as invalid_grant — a
+// 4xx code for a fault that is neither the caller's nor permanent. Without the retry
+// the caller destroys a perfectly valid session over a fault that clears by itself.
+func TestExchangeRetriesTransientKeyFetchFailure(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if calls < 3 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": "invalid_grant",
+				"error_description": "Error occurred while accessing remote JWKS endpoint: " +
+					"https://idp.example.com/t/org-a/oauth2/jwks",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":      "exchanged-token",
+			"issued_token_type": TokenTypeAccessToken,
+			"expires_in":        3600,
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
+	res, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	if err != nil {
+		t.Fatalf("expected the exchange to succeed after retrying, got %v", err)
+	}
+	if res.AccessToken != "exchanged-token" {
+		t.Errorf("access token = %q, want %q", res.AccessToken, "exchanged-token")
+	}
+	if calls != 3 {
+		t.Errorf("server calls = %d, want 3 (two transient failures then success)", calls)
+	}
+}
+
+// TestExchangeTransientKeyFetchFailureIsUnavailable pins the sentinel: the caller
+// keeps the session on ErrExchangeUnavailable and destroys it on ErrExchangeRejected,
+// so misclassifying this failure logs the user out.
+func TestExchangeTransientKeyFetchFailureIsUnavailable(t *testing.T) {
+	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{
+		"error":             "invalid_grant",
+		"error_description": "Error occurred while accessing remote JWKS endpoint: https://idp.example.com/jwks",
+	})
+
+	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
+	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	if !errors.Is(err, ErrExchangeUnavailable) {
+		t.Fatalf("error = %v, want ErrExchangeUnavailable (session must survive a transient IDP fault)", err)
+	}
+	if errors.Is(err, ErrExchangeRejected) {
+		t.Error("a transient key-set fetch failure must never classify as a rejection")
+	}
+	if srv.calls != exchangeMaxAttempts {
+		t.Errorf("server calls = %d, want %d", srv.calls, exchangeMaxAttempts)
+	}
+}
+
+// TestExchangeDoesNotRetryRejection guards the other side of the split: re-sending a
+// token the IDP has already refused only delays the caller's 401.
+func TestExchangeDoesNotRetryRejection(t *testing.T) {
+	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{
+		"error":             "invalid_grant",
+		"error_description": "Error while parsing the JWT",
+	})
+
+	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
+	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	if !errors.Is(err, ErrExchangeRejected) {
+		t.Fatalf("error = %v, want ErrExchangeRejected", err)
+	}
+	if srv.calls != 1 {
+		t.Errorf("server calls = %d, want 1 (a rejection must not be retried)", srv.calls)
+	}
+}
+
+// TestIsTransientKeyFetchFailure keeps the description matcher honest: it must catch
+// the key-fetch wording without swallowing verdicts about the token itself.
+func TestIsTransientKeyFetchFailure(t *testing.T) {
+	transient := []string{
+		"Error occurred while accessing remote JWKS endpoint: https://idp.example.com/jwks",
+		"Unable to retrieve the JWKS for the issuer",
+		"Failed to fetch key set from the identity provider",
+	}
+	for _, d := range transient {
+		if !isTransientKeyFetchFailure(d) {
+			t.Errorf("isTransientKeyFetchFailure(%q) = false, want true", d)
+		}
+	}
+	permanent := []string{
+		"Error while parsing the JWT",
+		"No Registered IDP found for the JWT with issuer name : https://idp.example.com/t/org-a/oauth2/token",
+		"Invalid audience values provided",
+		"Signature verification failed for the JWKS key",
+		"",
+	}
+	for _, d := range permanent {
+		if isTransientKeyFetchFailure(d) {
+			t.Errorf("isTransientKeyFetchFailure(%q) = true, want false", d)
+		}
+	}
+}

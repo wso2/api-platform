@@ -6,10 +6,11 @@ import (
 )
 
 // TestDebugOverlay covers configs/config-debug.toml, the tracked overlay
-// `make bff-run` and .vscode/launch.json layer on top of configs/config.toml. Its
-// [auth.oidc] and [auth.oidc.token_exchange] tables are entirely {{ env }} tokens so
-// no credential is committed, which means their correctness is invisible until
-// someone exports the variables and runs the BFF — hence a test.
+// `make bff-run` and .vscode/launch.json layer on top of configs/config.toml, and
+// with it the merged result the host-run BFF actually sees. The [auth.oidc] and
+// [auth.oidc.token_exchange] tables live in the base file and are entirely {{ env }}
+// tokens so no credential is committed, which means their correctness is invisible
+// until someone exports the variables and runs the BFF — hence a test.
 //
 // Two things are pinned. First, an empty environment leaves the overlay inert:
 // basic mode, exchange off, exactly as `make bff-run` behaved before the tables
