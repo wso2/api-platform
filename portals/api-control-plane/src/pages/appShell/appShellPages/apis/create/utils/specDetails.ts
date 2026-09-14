@@ -32,8 +32,8 @@ import type { ApiCreationWizardDraftState, ApiOperation, Operationrequest } from
  * are understood, since the step accepts either.
  */
 
-/** Methods the form's own operation type can hold. */
-const SUPPORTED_METHODS: Operationrequest['method'][] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+/** Methods the gateway backend accepts on an operation. TRACE is omitted — not in the wire type. */
+const SUPPORTED_METHODS: Operationrequest['method'][] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -94,11 +94,11 @@ const readTransports = (serverUrl: string | undefined): ('http' | 'https')[] | u
 };
 
 /**
- * Every operation the definition declares, flattened for the form.
+ * Every operation the definition declares, flattened into `ApiOperation` entries.
  *
- * `HEAD`, `OPTIONS` and `TRACE` are skipped rather than coerced: the form's
- * operation type has no room for them, and inventing a method would be worse
- * than leaving the row out for the user to add.
+ * `TRACE` is the only method silently skipped — the backend wire type does not
+ * accept it. All other standard HTTP methods including `HEAD` and `OPTIONS` are
+ * extracted as-is.
  */
 export const extractOperations = (spec: Record<string, unknown> | undefined): ApiOperation[] => {
   const paths = asRecord(spec?.paths);

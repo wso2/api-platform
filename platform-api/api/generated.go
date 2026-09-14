@@ -1401,6 +1401,30 @@ type GatewayTokenListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
+// ImportOpenAPIRequest defines model for ImportOpenAPIRequest.
+type ImportOpenAPIRequest struct {
+	// Context URL context path for the API (e.g. /petstore)
+	Context string `binding:"required" json:"context" yaml:"context"`
+
+	// Description Optional description for the API
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+
+	// Name Display name for the API
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// ProjectId Handle of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// Upstream Upstream backend URL (maps to upstream.main.url in the created API)
+	Upstream string `binding:"required" json:"upstream" yaml:"upstream"`
+
+	// Version Version of the API (e.g. 1.0)
+	Version string `binding:"required" json:"version" yaml:"version"`
+}
+
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
 	// Exceptions Path exceptions to the access control mode
@@ -2040,6 +2064,12 @@ type MappedAPIKeyListResponse struct {
 	Count      int            `binding:"required" json:"count" yaml:"count"`
 	List       []MappedAPIKey `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination     `json:"pagination" yaml:"pagination"`
+}
+
+// OpenAPIContent defines model for OpenAPIContent.
+type OpenAPIContent struct {
+	// Content Raw spec content (always YAML)
+	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
 }
 
 // Operation Defines a single operation (resource) within the API
@@ -3357,6 +3387,12 @@ type GetRESTAPIGatewaysParams struct {
 // AddGatewaysToAPIJSONBody defines parameters for AddGatewaysToAPI.
 type AddGatewaysToAPIJSONBody = []AddGatewayToRESTAPIRequest
 
+// UpdateRESTAPISpecMultipartBody defines parameters for UpdateRESTAPISpec.
+type UpdateRESTAPISpecMultipartBody struct {
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+	File openapi_types.File `json:"file" yaml:"file"`
+}
+
 // ListSecretsParams defines parameters for ListSecrets.
 type ListSecretsParams struct {
 	// Limit Maximum number of items to return per page.
@@ -3507,6 +3543,9 @@ type UpdateProjectJSONRequestBody = Project
 // CreateRESTAPIJSONRequestBody defines body for CreateRESTAPI for application/json ContentType.
 type CreateRESTAPIJSONRequestBody = CreateRESTAPIRequest
 
+// ImportOpenAPIMultipartRequestBody defines body for ImportOpenAPI for multipart/form-data ContentType.
+type ImportOpenAPIMultipartRequestBody = ImportOpenAPIRequest
+
 // UpdateRESTAPIJSONRequestBody defines body for UpdateRESTAPI for application/json ContentType.
 type UpdateRESTAPIJSONRequestBody = RESTAPI
 
@@ -3524,6 +3563,9 @@ type DeployAPIJSONRequestBody = DeployRequest
 
 // AddGatewaysToAPIJSONRequestBody defines body for AddGatewaysToAPI for application/json ContentType.
 type AddGatewaysToAPIJSONRequestBody = AddGatewaysToAPIJSONBody
+
+// UpdateRESTAPISpecMultipartRequestBody defines body for UpdateRESTAPISpec for multipart/form-data ContentType.
+type UpdateRESTAPISpecMultipartRequestBody UpdateRESTAPISpecMultipartBody
 
 // CreateSecretMultipartRequestBody defines body for CreateSecret for multipart/form-data ContentType.
 type CreateSecretMultipartRequestBody = SecretCreateRequest
