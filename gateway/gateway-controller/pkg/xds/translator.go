@@ -2730,6 +2730,10 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 				Timeout: durationpb.New(time.Duration(grpcConfig.GRPCRequestTimeout)),
 			},
 		},
+		// populates HTTPResponseProperties.ResponseHeaders
+		// so responseContentType can resolve for a request that matched no route and
+		// therefore never reached the policy chain.
+		AdditionalResponseHeadersToLog: []string{"content-type"},
 	}
 
 	grpcAccessLogAny, err := anypb.New(httpGrpcAccessLog)
