@@ -280,7 +280,7 @@ function ScopeSelection({
                       MenuProps={{ PaperProps: { sx: { maxHeight: 300, maxWidth: 300 } } }}
                       sx={SELECT_VALUE_SX}
                     >
-                      {apisQuery.isPending ? (
+                      {chosenProject &&apisQuery.isPending ? (
                         <MenuItem value="__loading__" disabled>
                           <FormattedMessage
                             id="scopeGate.loadingApis"

@@ -62,6 +62,25 @@ describe('CreateApiKeyDialog', () => {
     expect(screen.getByRole('button', { name: 'Create key' })).toBeEnabled();
   });
 
+  it('stays quiet about the name until the user has actually filled it in', async () => {
+    const { user } = setup();
+
+    // The name field is autofocused, so opening the dialog and moving on must
+    // not be read as "the user left this blank on purpose".
+    expect(screen.queryByText('Enter a name for this key.')).not.toBeInTheDocument();
+
+    await user.tab();
+    expect(screen.queryByText('Enter a name for this key.')).not.toBeInTheDocument();
+
+    // Typing then clearing it is a rejection, and does get flagged.
+    const name = screen.getByLabelText(/Key name/);
+    await user.type(name, 'Production key');
+    await user.clear(name);
+    await user.tab();
+
+    expect(screen.getByText('Enter a name for this key.')).toBeInTheDocument();
+  });
+
   it('restates the chosen duration as a calendar date', async () => {
     const { user } = setup();
 

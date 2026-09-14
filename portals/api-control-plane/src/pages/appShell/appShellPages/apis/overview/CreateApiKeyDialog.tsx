@@ -290,6 +290,13 @@ const parseDuration = (raw: string): number | null => {
   return value >= 1 && value <= DURATION_MAX ? value : null;
 };
 
+/** Tracks whether a field was edited and then blurred. */
+type FieldVisit = { blurred: boolean; edited: boolean };
+
+const UNVISITED: FieldVisit = { blurred: false, edited: false };
+
+const settled = (visit: FieldVisit) => visit.blurred && visit.edited;
+
 /** What the server handed back, held only for as long as the dialog shows it. */
 type IssuedKey = { apiKey: string; displayName: string; expiresAt: Date };
 
@@ -299,15 +306,7 @@ export type CreateApiKeyDialogProps = {
   onClose: () => void;
 };
 
-/**
- * Issues an API key for a REST API.
- *
- * Two steps in one dialog, because the value only exists for the length of the
- * second one: the form asks for a name and a lifetime, the server generates the
- * key, and the response is the only place that plaintext will ever appear. That
- * is why nothing here writes it to storage and why the second step can't be
- * reopened — see `useCreateApiKey`.
- */
+/** Issues an API key and displays the plaintext only in the confirmation step. */
 export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDialogProps) {
   const intl = useIntl();
   const { shortDate } = useFormatters();
@@ -317,10 +316,11 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
   const [name, setName] = useState('');
   const [duration, setDuration] = useState(DEFAULT_DURATION);
   const [unit, setUnit] = useState<OfferedUnit>('days');
-  // Errors stay quiet until a field has been visited or the form submitted, so
-  // an untouched dialog doesn't open covered in red.
-  const [nameTouched, setNameTouched] = useState(false);
-  const [durationTouched, setDurationTouched] = useState(false);
+  // Errors stay quiet until a field has been filled in and left, or the form
+  // submitted, so an untouched dialog doesn't open covered in red.
+  const [nameVisit, setNameVisit] = useState(UNVISITED);
+  const [durationVisit, setDurationVisit] = useState(UNVISITED);
+  const [submitted, setSubmitted] = useState(false);
   const [issued, setIssued] = useState<IssuedKey | null>(null);
   const [revealed, setRevealed] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -330,8 +330,9 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
     setName('');
     setDuration(DEFAULT_DURATION);
     setUnit('days');
-    setNameTouched(false);
-    setDurationTouched(false);
+    setNameVisit(UNVISITED);
+    setDurationVisit(UNVISITED);
+    setSubmitted(false);
     setIssued(null);
     setRevealed(true);
     setCopied(false);
@@ -350,15 +351,14 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
       ? intl.formatMessage(messages.expiryInvalid, { max: DURATION_MAX })
       : null;
 
-  const showNameError = nameTouched && nameError !== null;
-  const showDurationError = durationTouched && durationError !== null;
+  const showNameError = (submitted || settled(nameVisit)) && nameError !== null;
+  const showDurationError = (submitted || settled(durationVisit)) && durationError !== null;
   const canSubmit = nameError === null && durationError === null && !createMutation.isPending;
 
   const handleSubmit = (event: FormEvent) => {
     // A real submit, so Enter in the name field creates the key.
     event.preventDefault();
-    setNameTouched(true);
-    setDurationTouched(true);
+    setSubmitted(true);
     if (!canSubmit || parsedDuration === null) return;
 
     // The response carries no expiry, so the date shown next is the one this
@@ -558,8 +558,11 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
                   id={NAME_FIELD}
                   inputProps={{ maxLength: NAME_MAX }}
                   name="displayName"
-                  onBlur={() => setNameTouched(true)}
-                  onChange={(event) => setName(event.target.value)}
+                  onBlur={() => setNameVisit((visit) => ({ ...visit, blurred: true }))}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setNameVisit((visit) => ({ ...visit, edited: true }));
+                  }}
                   placeholder={intl.formatMessage(messages.namePlaceholder)}
                   value={name}
                 />
@@ -584,8 +587,11 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
                       step: 1,
                     }}
                     name="expiresInDuration"
-                    onBlur={() => setDurationTouched(true)}
-                    onChange={(event) => setDuration(event.target.value)}
+                    onBlur={() => setDurationVisit((visit) => ({ ...visit, blurred: true }))}
+                    onChange={(event) => {
+                      setDuration(event.target.value);
+                      setDurationVisit((visit) => ({ ...visit, edited: true }));
+                    }}
                     sx={{ flex: 1 }}
                     type="number"
                     value={duration}
