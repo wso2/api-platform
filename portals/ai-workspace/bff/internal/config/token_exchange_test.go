@@ -17,6 +17,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -537,6 +538,46 @@ grant_type = "urn:ietf:params:oauth:grant-type:saml2-bearer"
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error must list the %q spelling, got: %v", want, err)
+		}
+	}
+}
+
+// TestTokenExchangeRejectsPlaintextEndpoint: plaintext exposes the client secret and
+// subject token. Loopback stays allowed — a local IDP is an ordinary dev setup.
+func TestTokenExchangeRejectsPlaintextEndpoint(t *testing.T) {
+	const tmpl = `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority     = "https://idp.example.com"
+client_id     = "login-client"
+client_secret = "login-secret"
+redirect_url  = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled        = true
+audience       = "platform-api"
+token_endpoint = "%s"
+`
+
+	for _, tc := range []struct {
+		endpoint string
+		wantErr  bool
+	}{
+		{"https://idp.example.com/oauth2/token", false},
+		{"http://idp.example.com/oauth2/token", true},
+		{"http://10.0.0.5:8080/oauth2/token", true},
+		{"http://localhost:8080/oauth2/token", false},
+		{"http://127.0.0.1:8080/oauth2/token", false},
+		{"http://[::1]:8080/oauth2/token", false},
+	} {
+		_, err := loadWithAuth(t, fmt.Sprintf(tmpl, tc.endpoint))
+		if tc.wantErr && err == nil {
+			t.Errorf("token_endpoint %q: expected a validation error", tc.endpoint)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("token_endpoint %q: unexpected error: %v", tc.endpoint, err)
 		}
 	}
 }

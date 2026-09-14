@@ -27,6 +27,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -607,6 +608,19 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// isLoopbackHost reports whether host (possibly with a port) is the local machine.
+func isLoopbackHost(host string) bool {
+	h := host
+	if parsed, _, err := net.SplitHostPort(host); err == nil {
+		h = parsed
+	}
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(h, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
 // validateTokenExchange fails startup on a configuration that would break every
 // request after login. Aggressive precisely because the feature is fail-closed: a
 // misconfiguration takes the UI down, so an operator should see it at boot.
@@ -639,9 +653,12 @@ func (c *Config) validateTokenExchange() error {
 			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be an absolute http:// or https:// URL, got %q",
 				te.TokenEndpoint)
 		}
-		if u.Scheme == "http" {
-			slog.Warn("[auth.oidc.token_exchange] token_endpoint is http:// — the subject token and " +
-				"client secret will cross the network in the clear; use https://")
+		// The POST body carries the client secret and subject token. Loopback is
+		// exempt: the request never reaches a network there.
+		if u.Scheme == "http" && !isLoopbackHost(u.Host) {
+			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be https:// "+
+				"(the client secret and subject token are sent in the request body), got %q",
+				te.TokenEndpoint)
 		}
 	}
 

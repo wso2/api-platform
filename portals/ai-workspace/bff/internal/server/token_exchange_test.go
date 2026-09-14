@@ -77,6 +77,18 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 		})
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		// One endpoint, both grants. Only the exchange goes through h.idpStatus.
+		_ = r.ParseForm()
+		if r.PostForm.Get("grant_type") == "refresh_token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  "rotated-subject-token",
+				"refresh_token": "rotated-refresh-token",
+				"token_type":    "Bearer",
+				"expires_in":    3600,
+			})
+			return
+		}
 		h.idpCalls.Add(1)
 		status, body := h.idpStatus()
 		w.Header().Set("Content-Type", "application/json")
@@ -454,21 +466,35 @@ func TestRefreshDropsExchangedToken(t *testing.T) {
 		t.Fatal("expected a cached exchanged token after the first request")
 	}
 
-	// A rotated session record is built fresh by SessionFromToken, so Exchanged must
-	// come back zero rather than being copied forward.
-	rotated := &session.Session{
-		ID:             "new-subject-token",
-		Mode:           session.ModeOIDC,
-		AccessToken:    "new-subject-token",
-		AccessExpiry:   time.Now().Add(time.Hour),
-		AbsoluteExpiry: sess.AbsoluteExpiry,
-		User:           sess.User,
+	// Drive the real rotation; a hand-built literal would pass even if doRefresh
+	// copied Exchanged forward, which is the regression this guards.
+	sess.AccessExpiry = time.Now().Add(10 * time.Second) // inside the renewal window
+	if err := h.server.store.Put(context.Background(), sess); err != nil {
+		t.Fatalf("store session: %v", err)
+	}
+
+	rotated, err := h.server.refreshByToken(context.Background(), subject)
+	if err != nil {
+		t.Fatalf("refreshByToken: %v", err)
+	}
+	if rotated.AccessToken != "rotated-subject-token" {
+		t.Fatalf("access token = %q, want the IDP's rotated subject token — "+
+			"the refresh branch never ran", rotated.AccessToken)
 	}
 	if rotated.Exchanged.Token != "" {
-		t.Error("a rotated session must not carry the previous exchanged token")
+		t.Errorf("a rotated session carried the previous exchanged token %q", rotated.Exchanged.Token)
 	}
 	if rotated.Exchanged.Usable(time.Now(), time.Minute, h.server.exchanger.ConfigFingerprint()) {
 		t.Error("a zero ExchangedToken must never report itself usable")
+	}
+
+	// The rotated record is what a later request reads.
+	stored, ok, _ := h.server.store.Get(context.Background(), rotated.AccessToken)
+	if !ok {
+		t.Fatal("rotated session was not re-keyed to the new access token")
+	}
+	if stored.Exchanged.Token != "" {
+		t.Errorf("stored rotated session carried the previous exchanged token %q", stored.Exchanged.Token)
 	}
 }
 

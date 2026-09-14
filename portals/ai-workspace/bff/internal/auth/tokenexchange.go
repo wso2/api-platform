@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -52,14 +53,7 @@ const (
 	exchangeTimeout          = 15 * time.Second
 	maxExchangeResponseBytes = 1 << 20
 
-	// An IDP that cannot momentarily reach the subject token's issuer reports a
-	// client-side error code (Asgardeo answers invalid_grant when its fetch of the
-	// trusted issuer's JWKS fails), which is indistinguishable by code alone from a
-	// permanently misconfigured trust. Observed failure runs are short — three
-	// rejections followed by success, with nothing changed between them — so a few
-	// closely spaced attempts convert the whole episode into one slightly slow
-	// login rather than a forced logout. All attempts share the one exchangeTimeout
-	// budget below, so this can never extend how long a request is held.
+	// All attempts share the exchangeTimeout budget above.
 	exchangeMaxAttempts  = 3
 	exchangeRetryBackoff = 400 * time.Millisecond
 )
@@ -90,11 +84,22 @@ type Exchanger struct {
 // resolved token endpoint, so discovery stays with the OIDC client.
 func NewExchanger(client *http.Client, cfg config.TokenExchangeConfig, endpoint string) *Exchanger {
 	return &Exchanger{
-		client:          client,
+		client:          noRedirectClient(client),
 		cfg:             cfg,
 		endpoint:        endpoint,
 		requestedScopes: strings.Fields(cfg.Scopes),
 	}
+}
+
+// noRedirectClient copies client with redirects disabled: the exchange POST body
+// carries the client secret and subject token, and Go replays it on a 307/308.
+func noRedirectClient(client *http.Client) *http.Client {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	c := *client
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &c
 }
 
 func (e *Exchanger) Endpoint() string           { return e.endpoint }
@@ -131,11 +136,7 @@ type exchangeError struct {
 }
 
 // Exchange trades subjectToken for a Platform API token. subjectToken is a live
-// credential and is never logged.
-//
-// Only ErrExchangeUnavailable is retried: it is the sentinel for "this may succeed
-// if tried again". A rejection is returned on the first attempt, since re-sending a
-// token the IDP has already refused only delays the caller.
+// credential and is never logged. Only ErrExchangeUnavailable is retried.
 func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (*Result, error) {
 	if subjectToken == "" {
 		return nil, fmt.Errorf("%w: no subject token", ErrExchangeRejected)
@@ -158,8 +159,7 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (*Result,
 		if !errors.Is(err, ErrExchangeUnavailable) || attempt == exchangeMaxAttempts {
 			return nil, err
 		}
-		// Abandon the retry when the caller's deadline would expire mid-wait, so a
-		// timed-out request reports the real failure instead of a context error.
+		// Report the real failure rather than a context error on deadline.
 		timer := time.NewTimer(exchangeRetryBackoff)
 		select {
 		case <-ctx.Done():
@@ -191,7 +191,7 @@ func (e *Exchanger) exchangeOnce(ctx context.Context, subjectToken string) (*Res
 		return nil, fmt.Errorf("%w: reading response: %v", ErrExchangeUnavailable, err)
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, e.classifyError(res.StatusCode, body)
+		return nil, e.classifyError(res.StatusCode, body, subjectToken)
 	}
 
 	var tok exchangeResponse
@@ -256,7 +256,7 @@ func (e *Exchanger) buildForm(subjectToken string) url.Values {
 // classifyError logs the IDP's reason and returns a sentinel. The reason stays
 // internal: whether the subject or the target was refused maps out the deployment's
 // trust configuration.
-func (e *Exchanger) classifyError(status int, body []byte) error {
+func (e *Exchanger) classifyError(status int, body []byte, subjectToken string) error {
 	var ee exchangeError
 	_ = json.Unmarshal(body, &ee)
 
@@ -265,16 +265,18 @@ func (e *Exchanger) classifyError(status int, body []byte) error {
 		attrs = append(attrs, "idp_error", ee.Code)
 	}
 	if ee.Description != "" {
-		attrs = append(attrs, "idp_error_description", ee.Description)
+		attrs = append(attrs, "idp_error_description", e.redactSecrets(ee.Description, subjectToken))
 	}
 
-	if status >= http.StatusInternalServerError {
+	// 408/429 mean "not now", like a 5xx: a rejection here would destroy a live
+	// session over a timeout or a rate limit.
+	if status >= http.StatusInternalServerError ||
+		status == http.StatusRequestTimeout || status == http.StatusTooManyRequests {
 		slog.Error("token exchange failed: identity provider error", attrs...)
 		return fmt.Errorf("%w: status %d", ErrExchangeUnavailable, status)
 	}
 	// A failed key-set fetch is the IDP's own upstream problem, not a verdict on
-	// this token, even though it arrives with a 4xx code. Classifying it as a
-	// rejection would destroy a valid session over a fault that clears by itself.
+	// this token, despite the 4xx code.
 	if isTransientKeyFetchFailure(ee.Description) {
 		slog.Warn("token exchange failed: identity provider could not reach the subject token's "+
 			"issuer key set — treating as transient, the session is kept", attrs...)
@@ -320,11 +322,26 @@ func (e *Exchanger) grantedScopes(granted string, claims map[string]any) []strin
 	return scopes
 }
 
-// isTransientKeyFetchFailure reports whether an IDP error description describes a
-// failure to retrieve the signing key set for the subject token's issuer, rather
-// than a judgement about the token itself. Matched on the description because the
-// error *code* carries no such distinction — Asgardeo returns invalid_grant for
-// both this and a genuinely untrusted issuer.
+// jwtLikeToken is a backstop only: a token need not be a JWT, so shape cannot be
+// the primary defence.
+var jwtLikeToken = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]+)?`)
+
+// redactSecrets strips credentials an IDP echoed into error_description
+// (GO-AUTH-003). The description is kept: it is the only field distinguishing an
+// untrusted issuer from a failed key fetch from a rejected audience.
+func (e *Exchanger) redactSecrets(description, subjectToken string) string {
+	out := description
+	for _, secret := range []string{subjectToken, e.cfg.ClientSecret} {
+		if len(secret) >= 8 { // shorter values would corrupt ordinary prose
+			out = strings.ReplaceAll(out, secret, "[REDACTED]")
+		}
+	}
+	return jwtLikeToken.ReplaceAllString(out, "[REDACTED-JWT]")
+}
+
+// isTransientKeyFetchFailure matches on the description because the error code
+// carries no distinction: Asgardeo returns invalid_grant for a failed key-set fetch
+// and for a genuinely untrusted issuer alike.
 func isTransientKeyFetchFailure(description string) bool {
 	d := strings.ToLower(description)
 	if !strings.Contains(d, "jwks") && !strings.Contains(d, "key set") {

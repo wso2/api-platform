@@ -245,9 +245,8 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 		}
 	}
 
-	// Both hops are Platform API instances and both authorize the forwarded token,
-	// so the exchange applies to whichever one rp targets — the cloud hop must not
-	// silently fall back to the unexchanged login token.
+	// Both hops authorize the forwarded token, so the exchange applies to whichever
+	// one rp targets; the cloud hop must not fall back to the login token.
 	upstream, err := s.upstreamToken(r.Context(), jwt)
 	if err != nil {
 		slog.Warn("token exchange failed for proxied request", "err", err, "path", r.URL.Path)

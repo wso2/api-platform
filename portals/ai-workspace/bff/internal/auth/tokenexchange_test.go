@@ -17,10 +17,12 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -445,10 +447,8 @@ func TestExchangeErrorsDoNotContainTokens(t *testing.T) {
 	}
 }
 
-// TestExchangeRetriesTransientKeyFetchFailure covers the observed Asgardeo behaviour
-// where a failed fetch of the trusted issuer's JWKS is reported as invalid_grant — a
-// 4xx code for a fault that is neither the caller's nor permanent. Without the retry
-// the caller destroys a perfectly valid session over a fault that clears by itself.
+// TestExchangeRetriesTransientKeyFetchFailure: Asgardeo reports a failed JWKS fetch
+// as invalid_grant — a 4xx for a fault that is neither the caller's nor permanent.
 func TestExchangeRetriesTransientKeyFetchFailure(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -485,8 +485,7 @@ func TestExchangeRetriesTransientKeyFetchFailure(t *testing.T) {
 }
 
 // TestExchangeTransientKeyFetchFailureIsUnavailable pins the sentinel: the caller
-// keeps the session on ErrExchangeUnavailable and destroys it on ErrExchangeRejected,
-// so misclassifying this failure logs the user out.
+// destroys the session on ErrExchangeRejected, so misclassifying logs the user out.
 func TestExchangeTransientKeyFetchFailureIsUnavailable(t *testing.T) {
 	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{
 		"error":             "invalid_grant",
@@ -506,8 +505,7 @@ func TestExchangeTransientKeyFetchFailureIsUnavailable(t *testing.T) {
 	}
 }
 
-// TestExchangeDoesNotRetryRejection guards the other side of the split: re-sending a
-// token the IDP has already refused only delays the caller's 401.
+// TestExchangeDoesNotRetryRejection: re-sending a refused token only delays the 401.
 func TestExchangeDoesNotRetryRejection(t *testing.T) {
 	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{
 		"error":             "invalid_grant",
@@ -524,8 +522,7 @@ func TestExchangeDoesNotRetryRejection(t *testing.T) {
 	}
 }
 
-// TestIsTransientKeyFetchFailure keeps the description matcher honest: it must catch
-// the key-fetch wording without swallowing verdicts about the token itself.
+// TestIsTransientKeyFetchFailure: catch key-fetch wording, not verdicts about the token.
 func TestIsTransientKeyFetchFailure(t *testing.T) {
 	transient := []string{
 		"Error occurred while accessing remote JWKS endpoint: https://idp.example.com/jwks",
@@ -548,5 +545,106 @@ func TestIsTransientKeyFetchFailure(t *testing.T) {
 		if isTransientKeyFetchFailure(d) {
 			t.Errorf("isTransientKeyFetchFailure(%q) = true, want false", d)
 		}
+	}
+}
+
+// TestExchangeTransientHTTPStatuses: 408/429 behave like 5xx, so the session survives.
+func TestExchangeTransientHTTPStatuses(t *testing.T) {
+	for _, status := range []int{http.StatusRequestTimeout, http.StatusTooManyRequests,
+		http.StatusInternalServerError, http.StatusBadGateway} {
+		srv := newExchangeServer(t, status, map[string]any{"error": "temporarily_unavailable"})
+		ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
+		_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+		if !errors.Is(err, ErrExchangeUnavailable) {
+			t.Errorf("status %d: error = %v, want ErrExchangeUnavailable", status, err)
+		}
+	}
+	// The neighbouring 4xx must still be a rejection — the split has to stay narrow.
+	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{"error": "invalid_grant"})
+	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
+	if _, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"})); !errors.Is(err, ErrExchangeRejected) {
+		t.Errorf("status 400: error = %v, want ErrExchangeRejected", err)
+	}
+}
+
+// TestExchangeErrorDescriptionIsRedacted covers GO-AUTH-003 for the one field the
+// BFF copies from the IDP into its own log.
+func TestExchangeErrorDescriptionIsRedacted(t *testing.T) {
+	cfg := baseCfg()
+	subject := jwtWithClaims(t, map[string]any{"sub": "u1"})
+	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{
+		"error": "invalid_grant",
+		"error_description": "Error while parsing the JWT: " + subject +
+			" presented with client_secret " + cfg.ClientSecret,
+	})
+
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	ex := NewExchanger(srv.Client(), cfg, srv.URL)
+	if _, err := ex.Exchange(context.Background(), subject); !errors.Is(err, ErrExchangeRejected) {
+		t.Fatalf("error = %v, want ErrExchangeRejected", err)
+	}
+
+	out := logged.String()
+	if strings.Contains(out, subject) {
+		t.Error("the subject token reached the log via idp_error_description")
+	}
+	if strings.Contains(out, cfg.ClientSecret) {
+		t.Error("the client secret reached the log via idp_error_description")
+	}
+	// The diagnostic text must survive the redaction.
+	if !strings.Contains(out, "Error while parsing the JWT") {
+		t.Error("redaction removed the diagnostic text, not just the credentials")
+	}
+}
+
+// TestExchangeRedactsOpaqueSubjectToken: an opaque token has no matchable shape, so
+// redaction must key on the value actually sent.
+func TestExchangeRedactsOpaqueSubjectToken(t *testing.T) {
+	const opaque = "a1b2c3d4-1f1a-4626-865d-cf49437da24d"
+	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{
+		"error":             "invalid_grant",
+		"error_description": "Token " + opaque + " could not be resolved",
+	})
+
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
+	if _, err := ex.Exchange(context.Background(), opaque); !errors.Is(err, ErrExchangeRejected) {
+		t.Fatalf("error = %v, want ErrExchangeRejected", err)
+	}
+	if out := logged.String(); strings.Contains(out, opaque) {
+		t.Error("an opaque subject token reached the log via idp_error_description")
+	}
+}
+
+// TestExchangeDoesNotFollowRedirects: Go replays a POST body on 307/308, so a
+// redirect would hand the client secret and subject token to another host.
+func TestExchangeDoesNotFollowRedirects(t *testing.T) {
+	var redirectTargetCalls int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectTargetCalls++
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "leaked", "token_type": "Bearer"})
+	}))
+	t.Cleanup(target.Close)
+
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(idp.Close)
+
+	ex := NewExchanger(idp.Client(), baseCfg(), idp.URL)
+	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	if err == nil {
+		t.Fatal("a redirected exchange must fail, not silently succeed against another host")
+	}
+	if redirectTargetCalls != 0 {
+		t.Errorf("redirect target received %d requests, want 0 — credentials were replayed", redirectTargetCalls)
 	}
 }
