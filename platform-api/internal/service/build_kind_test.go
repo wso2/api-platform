@@ -89,7 +89,7 @@ func TestBuildService_RendersWithTheDefinitionForTheArtifactsKind(t *testing.T) 
 	depRepo := &buildTestDeploymentRepo{}
 	service := newKindTestBuildService(t, "Mcp", depRepo, mcp, rest)
 
-	if _, err := service.Create(kindTestUUID, kindTestOrgUUID, "tester", "", nil); err != nil {
+	if _, err := service.Create(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "", nil); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if mcp.called != 1 {
@@ -109,7 +109,7 @@ func TestBuildService_UnregisteredKindIsInternal(t *testing.T) {
 	service := newKindTestBuildService(t, "Mcp", &buildTestDeploymentRepo{},
 		&fakeDefinition{kind: "RestApi"})
 
-	_, err := service.Create(kindTestUUID, kindTestOrgUUID, "tester", "", nil)
+	_, err := service.Create(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "", nil)
 	if err == nil {
 		t.Fatal("expected an error for a kind with no definition")
 	}
@@ -128,7 +128,7 @@ func TestBuildService_MissingArtifactIsNotFound(t *testing.T) {
 		slog.Default(),
 	)
 
-	if _, err := service.Create(kindTestUUID, kindTestOrgUUID, "tester", "", nil); !apperror.ArtifactNotFound.Is(err) {
+	if _, err := service.Create(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "", nil); !apperror.ArtifactNotFound.Is(err) {
 		t.Fatalf("error = %v, want ArtifactNotFound", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestBuildService_RefusesADataPlaneArtifactForAnyKind(t *testing.T) {
 	service := newKindTestBuildService(t, "Mcp", depRepo,
 		&fakeDefinition{kind: "Mcp", yaml: "kind: McpProxy", origin: constants.OriginDP})
 
-	if _, err := service.Create(kindTestUUID, kindTestOrgUUID, "tester", "", nil); err == nil {
+	if _, err := service.Create(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "", nil); err == nil {
 		t.Fatal("expected a data-plane artifact to be refused")
 	}
 	if depRepo.createdBuild != nil {
@@ -156,7 +156,7 @@ func TestSourceForDeploy_CurrentRendersAnUnstoredBuild(t *testing.T) {
 	definition := &fakeDefinition{kind: "Mcp", yaml: "kind: McpProxy"}
 	service := newKindTestBuildService(t, "Mcp", &buildTestDeploymentRepo{}, definition)
 
-	source, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "tester", "current", "")
+	source, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "current", "")
 	if err != nil {
 		t.Fatalf("SourceForDeploy: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestSourceForDeploy_BuildShipsTheStoredSnapshot(t *testing.T) {
 	}}
 	service := newKindTestBuildService(t, "Mcp", depRepo, definition)
 
-	source, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "tester", "build", buildTestBuildID)
+	source, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "build", buildTestBuildID)
 	if err != nil {
 		t.Fatalf("SourceForDeploy: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestSourceForDeploy_UnknownBuildIsNotFound(t *testing.T) {
 	service := newKindTestBuildService(t, "Mcp", &buildTestDeploymentRepo{},
 		&fakeDefinition{kind: "Mcp"})
 
-	_, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "tester", "build", "2026-01-31-9")
+	_, err := service.SourceForDeploy(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "build", "2026-01-31-9")
 	if !apperror.BuildNotFound.Is(err) {
 		t.Fatalf("error = %v, want BuildNotFound", err)
 	}
@@ -243,5 +243,25 @@ func TestValidateDeployBase(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+// Handles are unique only WITHIN a kind, and the artifact lookup resolves one across
+// every kind's table. So an endpoint has to say which kind it serves: reaching an
+// artifact of another kind through it is a not-found, not a build of the wrong
+// thing.
+func TestBuildService_RefusesAnArtifactOfAnotherKind(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{}
+	// The artifact is a REST API; the caller is the MCP proxy endpoint.
+	service := newKindTestBuildService(t, "RestApi", depRepo,
+		&fakeDefinition{kind: "RestApi", yaml: "kind: RestApi"},
+		&fakeDefinition{kind: "Mcp", yaml: "kind: McpProxy"})
+
+	_, err := service.Create(kindTestUUID, kindTestOrgUUID, "Mcp", "tester", "", nil)
+	if !apperror.ArtifactNotFound.Is(err) {
+		t.Fatalf("error = %v, want ArtifactNotFound for a REST API reached through the MCP path", err)
+	}
+	if depRepo.createdBuild != nil {
+		t.Error("a build was stored for an artifact of another kind")
 	}
 }

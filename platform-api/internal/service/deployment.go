@@ -109,7 +109,7 @@ func NewDeploymentService(
 // translation happens at deploy time.
 func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy, description string,
 	metadata map[string]interface{}) (*api.BuildResponse, error) {
-	return s.builds.Create(apiUUID, orgUUID, createdBy, description, metadata)
+	return s.builds.Create(apiUUID, orgUUID, constants.RestApi, createdBy, description, metadata)
 }
 
 // renderBuild renders the API's current definition into a build that has not been
@@ -121,7 +121,7 @@ func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy, description
 // rather than a second copy of the rendering.
 func (s *DeploymentService) renderBuild(apiUUID, orgUUID, createdBy string,
 	metadata map[string]interface{}) (*model.Build, *dto.APIDeploymentYAML, error) {
-	build, definition, err := s.builds.Render(apiUUID, orgUUID, createdBy, metadata)
+	build, definition, err := s.builds.Render(apiUUID, orgUUID, constants.RestApi, createdBy, metadata)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -136,17 +136,17 @@ func (s *DeploymentService) renderBuild(apiUUID, orgUUID, createdBy string,
 
 // GetBuild returns one build of an API.
 func (s *DeploymentService) GetBuild(apiUUID, buildID, orgUUID string) (*api.BuildResponse, error) {
-	return s.builds.Get(apiUUID, buildID, orgUUID)
+	return s.builds.Get(apiUUID, buildID, orgUUID, constants.RestApi)
 }
 
 // GetBuilds lists an API's builds, newest first.
 func (s *DeploymentService) GetBuilds(apiUUID, orgUUID string, limit int) (*api.BuildListResponse, error) {
-	return s.builds.List(apiUUID, orgUUID, limit)
+	return s.builds.List(apiUUID, orgUUID, constants.RestApi, limit)
 }
 
 // DeleteBuild removes one of an API's builds.
 func (s *DeploymentService) DeleteBuild(apiUUID, buildID, orgUUID string) error {
-	return s.builds.Delete(apiUUID, buildID, orgUUID)
+	return s.builds.Delete(apiUUID, buildID, orgUUID, constants.RestApi)
 }
 
 // buildLimitError turns the repository's limit signal into the conflict a caller
@@ -1047,8 +1047,11 @@ func (s *DeploymentService) getUUIDByHandle(handle, orgUUID string) (string, err
 	if err != nil {
 		return "", err
 	}
-	if artifact == nil {
-		return "", apperror.ArtifactNotFound.New()
+	// Handles are unique only WITHIN a kind, and this lookup spans every kind's
+	// table, so an artifact of another kind that happens to share the handle must
+	// not be reachable through this endpoint.
+	if artifact == nil || artifact.Type != constants.RestApi {
+		return "", apperror.RESTAPINotFound.New()
 	}
 
 	return artifact.UUID, nil

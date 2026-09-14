@@ -73,12 +73,20 @@ func NewBuildService(
 // The artifact row carries the kind (as the registry's alias, which is the key
 // ArtifactDefinitions is indexed by), so one lookup answers both "does this exist"
 // and "how is it rendered".
-func (s *BuildService) resolve(artifactUUID, orgUUID string) (*model.Artifact, ArtifactDefinition, error) {
+func (s *BuildService) resolve(artifactUUID, orgUUID, expectedKind string) (*model.Artifact, ArtifactDefinition, error) {
 	artifact, err := s.artifactRepo.GetByUUID(artifactUUID, orgUUID)
 	if err != nil {
 		return nil, nil, err
 	}
 	if artifact == nil {
+		return nil, nil, apperror.ArtifactNotFound.New()
+	}
+	// The caller says which kind its endpoint serves, and an artifact of another
+	// kind simply is not there as far as that endpoint is concerned. Handles are
+	// unique only WITHIN a kind, and the artifact lookup resolves a handle across
+	// every kind's table, so without this an /mcp-proxies/{handle} route could
+	// address a REST API that happens to share the handle.
+	if artifact.Type != expectedKind {
 		return nil, nil, apperror.ArtifactNotFound.New()
 	}
 	definition, err := s.definitions.For(artifact.Type)
@@ -100,10 +108,10 @@ func (s *BuildService) resolve(artifactUUID, orgUUID string) (*model.Artifact, A
 // Storing is the caller's to do: preparing a build stores it alone, while a deploy
 // from `current` stores it on the transaction that records the deployment, so the
 // two commit together.
-func (s *BuildService) Render(artifactUUID, orgUUID, createdBy string,
+func (s *BuildService) Render(artifactUUID, orgUUID, kind, createdBy string,
 	metadata map[string]interface{}) (*model.Build, any, error) {
 
-	artifact, definition, err := s.resolve(artifactUUID, orgUUID)
+	artifact, definition, err := s.resolve(artifactUUID, orgUUID, kind)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -132,10 +140,10 @@ func (s *BuildService) Render(artifactUUID, orgUUID, createdBy string,
 
 // Create renders the artifact's current definition into an immutable snapshot and
 // stores it, without deploying it anywhere.
-func (s *BuildService) Create(artifactUUID, orgUUID, createdBy, description string,
+func (s *BuildService) Create(artifactUUID, orgUUID, kind, createdBy, description string,
 	metadata map[string]interface{}) (*api.BuildResponse, error) {
 
-	build, _, err := s.Render(artifactUUID, orgUUID, createdBy, metadata)
+	build, _, err := s.Render(artifactUUID, orgUUID, kind, createdBy, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +156,10 @@ func (s *BuildService) Create(artifactUUID, orgUUID, createdBy, description stri
 }
 
 // Get returns one of an artifact's builds.
-func (s *BuildService) Get(artifactUUID, buildID, orgUUID string) (*api.BuildResponse, error) {
+func (s *BuildService) Get(artifactUUID, buildID, orgUUID, kind string) (*api.BuildResponse, error) {
+	if _, _, err := s.resolve(artifactUUID, orgUUID, kind); err != nil {
+		return nil, err
+	}
 	build, err := s.deploymentRepo.GetBuild(buildID, artifactUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -160,8 +171,8 @@ func (s *BuildService) Get(artifactUUID, buildID, orgUUID string) (*api.BuildRes
 }
 
 // List returns an artifact's builds, newest first.
-func (s *BuildService) List(artifactUUID, orgUUID string, limit int) (*api.BuildListResponse, error) {
-	if _, _, err := s.resolve(artifactUUID, orgUUID); err != nil {
+func (s *BuildService) List(artifactUUID, orgUUID, kind string, limit int) (*api.BuildListResponse, error) {
+	if _, _, err := s.resolve(artifactUUID, orgUUID, kind); err != nil {
 		return nil, err
 	}
 	builds, err := s.deploymentRepo.GetBuilds(artifactUUID, orgUUID, limit)
@@ -181,8 +192,8 @@ func (s *BuildService) List(artifactUUID, orgUUID string, limit int) (*api.Build
 // it would leave the deployment with nothing to trace back to or promote onward,
 // and the definition as it stood cannot be rendered again. Which deployment to give
 // up is the caller's decision, so the conflict is reported rather than resolved.
-func (s *BuildService) Delete(artifactUUID, buildID, orgUUID string) error {
-	if _, _, err := s.resolve(artifactUUID, orgUUID); err != nil {
+func (s *BuildService) Delete(artifactUUID, buildID, orgUUID, kind string) error {
+	if _, _, err := s.resolve(artifactUUID, orgUUID, kind); err != nil {
 		return err
 	}
 	if err := s.deploymentRepo.DeleteBuild(buildID, artifactUUID, orgUUID); err != nil {
@@ -257,7 +268,7 @@ func ValidateDeployBase(base string, buildID *string, invalid apperror.Def) (str
 // definition; `current` renders the artifact now and hands back an unstored build
 // for the caller to commit alongside the deployment. Either way the caller gets one
 // shape back, so the deploy paths stop differing on this.
-func (s *BuildService) SourceForDeploy(artifactUUID, orgUUID, createdBy, base, requestedBuild string) (*DeploySource, error) {
+func (s *BuildService) SourceForDeploy(artifactUUID, orgUUID, kind, createdBy, base, requestedBuild string) (*DeploySource, error) {
 	if base == deployBaseBuild {
 		stored, err := s.deploymentRepo.GetBuild(requestedBuild, artifactUUID, orgUUID)
 		if err != nil {
@@ -266,7 +277,7 @@ func (s *BuildService) SourceForDeploy(artifactUUID, orgUUID, createdBy, base, r
 		if stored == nil {
 			return nil, apperror.BuildNotFound.New()
 		}
-		_, definition, err := s.resolve(artifactUUID, orgUUID)
+		_, definition, err := s.resolve(artifactUUID, orgUUID, kind)
 		if err != nil {
 			return nil, err
 		}
@@ -284,7 +295,7 @@ func (s *BuildService) SourceForDeploy(artifactUUID, orgUUID, createdBy, base, r
 		}, nil
 	}
 
-	newBuild, definition, err := s.Render(artifactUUID, orgUUID, createdBy, nil)
+	newBuild, definition, err := s.Render(artifactUUID, orgUUID, kind, createdBy, nil)
 	if err != nil {
 		return nil, err
 	}

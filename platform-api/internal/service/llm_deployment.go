@@ -157,7 +157,7 @@ func (s *LLMProviderDeploymentService) CreateBuildByHandle(providerID, orgUUID, 
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.Create(providerUUID, orgUUID, createdBy, description, metadata)
+	return s.builds.Create(providerUUID, orgUUID, constants.LLMProvider, createdBy, description, metadata)
 }
 
 // GetBuildByHandle returns one of an LLM provider's builds.
@@ -166,7 +166,7 @@ func (s *LLMProviderDeploymentService) GetBuildByHandle(providerID, buildID, org
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.Get(providerUUID, buildID, orgUUID)
+	return s.builds.Get(providerUUID, buildID, orgUUID, constants.LLMProvider)
 }
 
 // GetBuildsByHandle lists an LLM provider's builds, newest first.
@@ -175,7 +175,7 @@ func (s *LLMProviderDeploymentService) GetBuildsByHandle(providerID, orgUUID str
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.List(providerUUID, orgUUID, limit)
+	return s.builds.List(providerUUID, orgUUID, constants.LLMProvider, limit)
 }
 
 // DeleteBuildByHandle removes one of an LLM provider's builds.
@@ -184,7 +184,7 @@ func (s *LLMProviderDeploymentService) DeleteBuildByHandle(providerID, buildID, 
 	if err != nil {
 		return err
 	}
-	return s.builds.Delete(providerUUID, buildID, orgUUID)
+	return s.builds.Delete(providerUUID, buildID, orgUUID, constants.LLMProvider)
 }
 
 // proxyUUID resolves an LLM proxy's identifier to its artifact UUID.
@@ -206,7 +206,7 @@ func (s *LLMProxyDeploymentService) CreateBuildByHandle(proxyID, orgUUID, create
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.Create(proxyUUID, orgUUID, createdBy, description, metadata)
+	return s.builds.Create(proxyUUID, orgUUID, constants.LLMProxy, createdBy, description, metadata)
 }
 
 // GetBuildByHandle returns one of an LLM proxy's builds.
@@ -215,7 +215,7 @@ func (s *LLMProxyDeploymentService) GetBuildByHandle(proxyID, buildID, orgUUID s
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.Get(proxyUUID, buildID, orgUUID)
+	return s.builds.Get(proxyUUID, buildID, orgUUID, constants.LLMProxy)
 }
 
 // GetBuildsByHandle lists an LLM proxy's builds, newest first.
@@ -224,7 +224,7 @@ func (s *LLMProxyDeploymentService) GetBuildsByHandle(proxyID, orgUUID string, l
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.List(proxyUUID, orgUUID, limit)
+	return s.builds.List(proxyUUID, orgUUID, constants.LLMProxy, limit)
 }
 
 // DeleteBuildByHandle removes one of an LLM proxy's builds.
@@ -233,7 +233,7 @@ func (s *LLMProxyDeploymentService) DeleteBuildByHandle(proxyID, buildID, orgUUI
 	if err != nil {
 		return err
 	}
-	return s.builds.Delete(proxyUUID, buildID, orgUUID)
+	return s.builds.Delete(proxyUUID, buildID, orgUUID, constants.LLMProxy)
 }
 
 // DeployLLMProvider creates a new immutable deployment artifact and deploys it to a gateway
@@ -309,7 +309,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	// What this deploy ships: a build prepared earlier, or a snapshot of the
 	// provider as it stands now. A snapshot comes back unstored so it commits with
 	// the deployment below.
-	source, err := s.builds.SourceForDeploy(provider.UUID, orgUUID, createdBy, base, requestedBuild)
+	source, err := s.builds.SourceForDeploy(provider.UUID, orgUUID, constants.LLMProvider, createdBy, base, requestedBuild)
 	if err != nil {
 		return nil, err
 	}
@@ -1456,7 +1456,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	// What this deploy ships: a build prepared earlier, or a snapshot of the proxy
 	// as it stands now. A snapshot comes back unstored so it commits with the
 	// deployment below.
-	source, err := s.builds.SourceForDeploy(proxy.UUID, orgUUID, createdBy, base, requestedBuild)
+	source, err := s.builds.SourceForDeploy(proxy.UUID, orgUUID, constants.LLMProxy, createdBy, base, requestedBuild)
 	if err != nil {
 		return nil, err
 	}

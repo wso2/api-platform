@@ -82,7 +82,7 @@ func (s *MCPDeploymentService) CreateBuildByHandle(proxyHandle, orgUUID, created
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.Create(proxyUUID, orgUUID, createdBy, description, metadata)
+	return s.builds.Create(proxyUUID, orgUUID, constants.MCPProxy, createdBy, description, metadata)
 }
 
 // GetBuildByHandle returns one of an MCP proxy's builds.
@@ -91,7 +91,7 @@ func (s *MCPDeploymentService) GetBuildByHandle(proxyHandle, buildID, orgUUID st
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.Get(proxyUUID, buildID, orgUUID)
+	return s.builds.Get(proxyUUID, buildID, orgUUID, constants.MCPProxy)
 }
 
 // GetBuildsByHandle lists an MCP proxy's builds, newest first.
@@ -100,7 +100,7 @@ func (s *MCPDeploymentService) GetBuildsByHandle(proxyHandle, orgUUID string, li
 	if err != nil {
 		return nil, err
 	}
-	return s.builds.List(proxyUUID, orgUUID, limit)
+	return s.builds.List(proxyUUID, orgUUID, constants.MCPProxy, limit)
 }
 
 // DeleteBuildByHandle removes one of an MCP proxy's builds.
@@ -109,7 +109,7 @@ func (s *MCPDeploymentService) DeleteBuildByHandle(proxyHandle, buildID, orgUUID
 	if err != nil {
 		return err
 	}
-	return s.builds.Delete(proxyUUID, buildID, orgUUID)
+	return s.builds.Delete(proxyUUID, buildID, orgUUID, constants.MCPProxy)
 }
 
 // DeployMCPProxyByHandle creates a new immutable deployment artifact using MCP proxy handle
@@ -305,7 +305,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	// What this deploy ships: a build prepared earlier, or a snapshot of the proxy
 	// as it stands now. Either way it comes back as one shape, and a snapshot comes
 	// back unstored so it commits with the deployment below.
-	source, err := s.builds.SourceForDeploy(proxyUUID, orgId, createdBy, base, requestedBuild)
+	source, err := s.builds.SourceForDeploy(proxyUUID, orgId, constants.MCPProxy, createdBy, base, requestedBuild)
 	if err != nil {
 		return nil, err
 	}
@@ -754,8 +754,11 @@ func (s *MCPDeploymentService) getMCPProxyUUIDByHandle(handle, orgUUID string) (
 	if err != nil {
 		return "", err
 	}
-	if artifact == nil {
-		return "", apperror.ArtifactNotFound.New()
+	// Handles are unique only WITHIN a kind, and this lookup spans every kind's
+	// table, so an artifact of another kind that happens to share the handle must
+	// not be reachable through this endpoint.
+	if artifact == nil || artifact.Type != constants.MCPProxy {
+		return "", apperror.MCPProxyNotFound.New()
 	}
 
 	return artifact.UUID, nil
