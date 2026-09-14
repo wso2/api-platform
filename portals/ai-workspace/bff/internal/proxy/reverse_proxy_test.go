@@ -119,3 +119,29 @@ func TestReverseProxy_StripsBasePathAndPrefix(t *testing.T) {
 		t.Errorf("upstream path = %q, want /api/v0.9/projects (base path + prefix not stripped)", gotPath)
 	}
 }
+
+// Cloud analytics hop: browser calls /ai-workspace/proxy/cloud/analytics/id-token;
+// CloudURL is http://host/cloud, so after stripping <base>/proxy/cloud the upstream
+// path must be /cloud/analytics/id-token.
+func TestReverseProxy_CloudPrefixJoinsTargetPath(t *testing.T) {
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	target, _ := url.Parse(backend.URL + "/cloud")
+	rp := ReverseProxy(target, "/ai-workspace/proxy/cloud", backend.Client().Transport)
+
+	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/cloud/analytics/id-token", nil)
+	rec := httptest.NewRecorder()
+	rp.ServeHTTP(rec, WithToken(req, "tok"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if gotPath != "/cloud/analytics/id-token" {
+		t.Errorf("upstream path = %q, want /cloud/analytics/id-token", gotPath)
+	}
+}
