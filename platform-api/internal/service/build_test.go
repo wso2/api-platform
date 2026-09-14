@@ -54,6 +54,24 @@ func (m *buildTestAPIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID 
 	return nil, nil
 }
 
+// buildTestArtifactRepo answers the artifact lookup the shared build service does
+// to find out which kind it is rendering.
+//
+// The real repository UNIONs the kind-specific tables, so an artifact row exists
+// only while the API behind it does. This mirrors that by reporting nothing once
+// the API is gone, rather than a row pointing at an API that is not there.
+type buildTestArtifactRepo struct {
+	repository.ArtifactRepository
+	apiRepo *buildTestAPIRepo
+}
+
+func (m *buildTestArtifactRepo) GetByUUID(uuid, orgUUID string) (*model.Artifact, error) {
+	if m.apiRepo == nil || m.apiRepo.apiModel == nil {
+		return nil, nil
+	}
+	return &model.Artifact{UUID: uuid, Type: constants.RestApi, OrganizationUUID: orgUUID}, nil
+}
+
 func (m *buildTestAPIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
 	return nil
 }
@@ -161,15 +179,25 @@ func (m *buildTestGatewayRepo) GetByUUID(gatewayID string) (*model.Gateway, erro
 }
 
 func newBuildTestService(apiRepo *buildTestAPIRepo, depRepo *buildTestDeploymentRepo) *DeploymentService {
+	apiUtil := &utils.APIUtil{}
+	artifactRepo := &buildTestArtifactRepo{apiRepo: apiRepo}
 	return &DeploymentService{
 		apiRepo:        apiRepo,
+		artifactRepo:   artifactRepo,
 		deploymentRepo: depRepo,
 		gatewayRepo: &buildTestGatewayRepo{gateway: &model.Gateway{
 			ID:      buildTestGatewayUUID,
 			Handle:  "test-gateway",
 			Version: "1.0.0",
 		}},
-		apiUtil: &utils.APIUtil{},
+		apiUtil: apiUtil,
+		builds: NewBuildService(
+			artifactRepo,
+			depRepo,
+			NewArtifactDefinitions(NewRestAPIDefinition(apiRepo, apiUtil)),
+			&testConfig,
+			slog.Default(),
+		),
 		cfg:     &testConfig,
 		slogger: slog.Default(),
 	}

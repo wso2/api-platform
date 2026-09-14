@@ -18,7 +18,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -61,8 +60,11 @@ type DeploymentService struct {
 	gatewayEventsService *GatewayEventsService
 	auditRepo            repository.AuditRepository
 	apiUtil              *utils.APIUtil
-	cfg                  *config.Server
-	slogger              *slog.Logger
+	// builds is the shared build store, used by every artifact kind. REST API
+	// builds go through it rather than having their own copy.
+	builds  *BuildService
+	cfg     *config.Server
+	slogger *slog.Logger
 }
 
 // NewDeploymentService creates a new deployment service
@@ -76,6 +78,7 @@ func NewDeploymentService(
 	gatewayEventsService *GatewayEventsService,
 	auditRepo repository.AuditRepository,
 	apiUtil *utils.APIUtil,
+	definitions ArtifactDefinitions,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *DeploymentService {
@@ -89,6 +92,7 @@ func NewDeploymentService(
 		gatewayEventsService: gatewayEventsService,
 		auditRepo:            auditRepo,
 		apiUtil:              apiUtil,
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
@@ -105,127 +109,50 @@ func NewDeploymentService(
 // translation happens at deploy time.
 func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy, description string,
 	metadata map[string]interface{}) (*api.BuildResponse, error) {
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if apiModel == nil {
-		return nil, apperror.RESTAPINotFound.New()
-	}
-	// DP-originated artifacts are read-only in the control plane, so there is
-	// nothing here to snapshot and deploy.
-	if err := ensureOriginMutable(apiModel.Origin); err != nil {
-		return nil, err
-	}
-
-	build, _, err := s.renderBuild(apiModel, apiUUID, orgUUID, createdBy, metadata)
-	if err != nil {
-		return nil, err
-	}
-	build.Description = description
-	if err := s.deploymentRepo.CreateBuildWithLimitEnforcement(build, s.cfg.Deployments.MaxBuildsPerAPI); err != nil {
-		return nil, s.buildLimitError(err)
-	}
-	s.slogger.Debug("Build created", "buildID", build.BuildID, "apiUUID", apiUUID)
-	return toAPIBuildResponse(build), nil
+	return s.builds.Create(apiUUID, orgUUID, createdBy, description, metadata)
 }
 
-// renderBuild renders an API's current definition into a build that has not been
-// stored yet, and hands back the struct it was rendered from alongside it.
-// Preparing a build stores it on its own; deploying from `current` stores it on the
-// transaction that records the deployment. The struct is returned so that path can
-// apply its overrides and translate for the target gateway without re-parsing what
-// it has just written — and those overrides never reach the build, whose content is
-// marshalled here: a build is the definition as it stood, not one deployment's
-// customization of it.
-func (s *DeploymentService) renderBuild(apiModel *model.API, apiUUID, orgUUID, createdBy string,
+// renderBuild renders the API's current definition into a build that has not been
+// stored yet, narrowing the shared service's result to the REST deployment struct
+// the deploy path then applies its overrides to.
+//
+// The artifact model is no longer read here: the shared service resolves the
+// artifact and picks the renderer for its kind, so this stays a type assertion
+// rather than a second copy of the rendering.
+func (s *DeploymentService) renderBuild(apiUUID, orgUUID, createdBy string,
 	metadata map[string]interface{}) (*model.Build, *dto.APIDeploymentYAML, error) {
-	apiDeployment, err := s.apiUtil.BuildAPIDeploymentYAML(apiModel)
+	build, definition, err := s.builds.Render(apiUUID, orgUUID, createdBy, metadata)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
+		return nil, nil, err
 	}
-	contentBytes, err := yaml.Marshal(apiDeployment)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
+	apiDeployment, ok := definition.(*dto.APIDeploymentYAML)
+	if !ok {
+		// Only reachable if a REST API's artifact row claims another kind, which
+		// would be a corrupted row rather than anything a caller did.
+		return nil, nil, fmt.Errorf("artifact %s did not render as a REST API definition", apiUUID)
 	}
-	return &model.Build{
-		ArtifactID:     apiUUID,
-		OrganizationID: orgUUID,
-		Content:        contentBytes,
-		DataVersion:    apiModel.DataVersion,
-		Metadata:       metadata,
-		CreatedBy:      createdBy,
-	}, apiDeployment, nil
+	return build, apiDeployment, nil
 }
 
 // GetBuild returns one build of an API.
 func (s *DeploymentService) GetBuild(apiUUID, buildID, orgUUID string) (*api.BuildResponse, error) {
-	build, err := s.deploymentRepo.GetBuild(buildID, apiUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if build == nil {
-		return nil, apperror.BuildNotFound.New()
-	}
-	return toAPIBuildResponse(build), nil
+	return s.builds.Get(apiUUID, buildID, orgUUID)
 }
 
 // GetBuilds lists an API's builds, newest first.
 func (s *DeploymentService) GetBuilds(apiUUID, orgUUID string, limit int) (*api.BuildListResponse, error) {
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if apiModel == nil {
-		return nil, apperror.RESTAPINotFound.New()
-	}
-	builds, err := s.deploymentRepo.GetBuilds(apiUUID, orgUUID, limit)
-	if err != nil {
-		return nil, err
-	}
-	list := make([]api.BuildResponse, 0, len(builds))
-	for _, build := range builds {
-		list = append(list, *toAPIBuildResponse(build))
-	}
-	return &api.BuildListResponse{Count: len(list), List: list}, nil
+	return s.builds.List(apiUUID, orgUUID, limit)
 }
 
 // DeleteBuild removes one of an API's builds.
-//
-// A build a deployment holds is not deleted: the deployment — running, or suspended
-// and still restorable — would be left with no snapshot to trace back to or promote
-// onward, and the definition as it stood cannot be rendered again. So the conflict
-// is reported and the caller chooses which deployment to give up, which is the same
-// judgement that preparing a build at the limit asks of them.
 func (s *DeploymentService) DeleteBuild(apiUUID, buildID, orgUUID string) error {
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil {
-		return err
-	}
-	if apiModel == nil {
-		return apperror.RESTAPINotFound.New()
-	}
-	if err := s.deploymentRepo.DeleteBuild(buildID, apiUUID, orgUUID); err != nil {
-		switch {
-		case errors.Is(err, repository.ErrBuildNotFound):
-			return apperror.BuildNotFound.New()
-		case errors.Is(err, repository.ErrBuildInUse):
-			return apperror.BuildInUse.New()
-		}
-		return err
-	}
-	s.slogger.Debug("Build deleted", "buildID", buildID, "apiUUID", apiUUID)
-	return nil
+	return s.builds.Delete(apiUUID, buildID, orgUUID)
 }
 
-// buildLimitError turns the repository's "nothing free to remove" signal into the
-// conflict a caller can act on, naming the limit they are up against. Any other
-// error is passed through untouched.
+// buildLimitError turns the repository's limit signal into the conflict a caller
+// can act on. The deploy path stores a build of its own, so it maps the same way.
 func (s *DeploymentService) buildLimitError(err error) error {
-	if errors.Is(err, repository.ErrBuildLimitReached) {
-		return apperror.BuildLimitReached.New(s.cfg.Deployments.MaxBuildsPerAPI)
-	}
-	return err
+	return s.builds.LimitError(err)
 }
 
 // toAPIBuildResponse projects a stored build onto the API response.
@@ -342,7 +269,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		buildReadableID = &baseBuild.BuildID
 	case deployBaseCurrent:
 		var err error
-		newBuild, apiDeployment, err = s.renderBuild(apiModel, apiUUID, orgUUID, createdBy, nil)
+		newBuild, apiDeployment, err = s.renderBuild(apiUUID, orgUUID, createdBy, nil)
 		if err != nil {
 			return nil, err
 		}
