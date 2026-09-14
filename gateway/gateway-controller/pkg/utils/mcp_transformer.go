@@ -20,6 +20,7 @@ package utils
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -107,14 +108,16 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 			},
 		)
 	}
-	var mcpSpecVersion string
-	if mcpConfig.Spec.SpecVersion != nil && *mcpConfig.Spec.SpecVersion != "" {
-		mcpSpecVersion = *mcpConfig.Spec.SpecVersion
-	} else {
-		mcpSpecVersion = LATEST_SUPPORTED_MCP_SPEC_VERSION
+	mcpSpecVersions := mcpConfig.Spec.EffectiveSpecVersions()
+	if len(mcpSpecVersions) == 0 {
+		mcpSpecVersions = []string{DEFAULT_MCP_SPEC_VERSION}
 	}
 
-	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, mcpSpecVersion) {
+	// The protected resource metadata route is added when any declared version is at or
+	// above the base version.
+	if slices.ContainsFunc(mcpSpecVersions, func(version string) bool {
+		return protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, version)
+	}) {
 		operations = append(operations,
 			api.Operation{
 				Method:   api.Ptr(api.OperationMethodGET),

@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -44,9 +45,10 @@ type MCPValidator struct {
 // NewMCPValidator creates a new API configuration validator
 func NewMCPValidator() *MCPValidator {
 	return &MCPValidator{
-		versionRegex:          regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
-		urlFriendlyNameRegex:  regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
-		supportedSpecVersions: []string{constants.SPEC_VERSION_2025_JUNE, constants.SPEC_VERSION_2025_NOVEMBER}}
+		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
+		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
+		supportedSpecVersions: []string{constants.SPEC_VERSION_2025_JUNE, constants.SPEC_VERSION_2025_NOVEMBER,
+			constants.SPEC_VERSION_2026_JULY}}
 }
 
 // WithPolicyValidator sets the policy validator on the MCPValidator and returns it for chaining
@@ -134,9 +136,7 @@ func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationEr
 		})
 	}
 
-	if spec.SpecVersion != nil {
-		errors = append(errors, v.validateSupportedSpecVersion(spec.SpecVersion)...)
-	}
+	errors = append(errors, v.validateSpecVersions(spec)...)
 
 	// Validate context
 	errors = append(errors, v.validateContextAndVhost(spec.Context, spec.Vhost)...)
@@ -312,16 +312,59 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 	return errors
 }
 
-// validateSupportedSpecVersion checks if the provided version is supported
-func (v *MCPValidator) validateSupportedSpecVersion(version *string) []ValidationError {
+// validateSpecVersions checks the MCP specification versions the proxy declares, in whichever
+// form it authored them. Declaring none is allowed; the transformer applies its own default.
+func (v *MCPValidator) validateSpecVersions(spec *api.MCPProxyConfigData) []ValidationError {
 	var errors []ValidationError
-	isSupported := slices.Contains(v.supportedSpecVersions, *version)
-	if !isSupported {
-		errors = append(errors, ValidationError{
-			Field: "spec.specVersion",
-			Message: fmt.Sprintf("Unsupported MCP spec version (supported versions: %s)",
-				strings.Join(v.supportedSpecVersions, ", ")),
+
+	if spec.SpecVersion != nil && spec.SpecVersions != nil {
+		return append(errors, ValidationError{
+			Field: "spec.specVersions",
+			Message: "The deprecated 'specVersion' field cannot be used together with 'specVersions'. " +
+				"Use either the deprecated 'specVersion' or the 'specVersions' list, not both.",
 		})
 	}
+
+	// empty values: an empty value is a declared version and is checked as one.
+	if spec.SpecVersions != nil {
+		if len(*spec.SpecVersions) == 0 {
+			return append(errors, ValidationError{
+				Field:   "spec.specVersions",
+				Message: "specVersions must list at least one MCP spec version",
+			})
+		}
+		return append(errors, v.validateSupportedSpecVersions("spec.specVersions", *spec.SpecVersions)...)
+	}
+
+	if spec.SpecVersion != nil {
+		errors = append(errors,
+			v.validateSupportedSpecVersions("spec.specVersion", []string{*spec.SpecVersion})...)
+	}
+
 	return errors
+}
+
+// validateSupportedSpecVersions checks the given versions against the ones this gateway
+// supports. Every unsupported version is named in a single error, so a rejected list says
+// which of its entries failed.
+func (v *MCPValidator) validateSupportedSpecVersions(field string, versions []string) []ValidationError {
+	var unsupported []string
+	for _, version := range versions {
+		if !slices.Contains(v.supportedSpecVersions, version) {
+			unsupported = append(unsupported, strconv.Quote(version))
+		}
+	}
+	if len(unsupported) == 0 {
+		return nil
+	}
+
+	label := "version"
+	if len(unsupported) > 1 {
+		label = "versions"
+	}
+	return []ValidationError{{
+		Field: field,
+		Message: fmt.Sprintf("Unsupported MCP spec %s %s (supported versions: %s)",
+			label, strings.Join(unsupported, ", "), strings.Join(v.supportedSpecVersions, ", ")),
+	}}
 }

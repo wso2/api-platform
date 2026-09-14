@@ -4248,7 +4248,8 @@ components:
           displayName: Everything
           version: v1.0
           context: /everything
-          specVersion: "2025-06-18"
+          specVersions:
+            - "2025-06-18"
           upstream:
             url: http://everything:3001
           tools: []
@@ -4274,7 +4275,8 @@ components:
           displayName: Everything
           version: v1.0
           context: /everything
-          specVersion: "2025-06-18"
+          specVersions:
+            - "2025-06-18"
           upstream:
             url: http://everything:3001
           tools: []
@@ -4310,9 +4312,19 @@ components:
           description: MCP Proxy context path
           example: /everything
         specVersion:
+          deprecated: true
           type: string
-          description: MCP specification version
+          description: DEPRECATED - use specVersions. Still honoured when specVersions is absent.
           example: 2025-06-18
+        specVersions:
+          type: array
+          description: MCP specification versions supported by this proxy
+          minItems: 1
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         vhost:
           type: string
           description: >

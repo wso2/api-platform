@@ -581,8 +581,8 @@ spec:
 // which would require a non-nil snapshot manager.
 // The core deployment logic is tested indirectly through other tests.
 
-func TestLatestSupportedMCPSpecVersion(t *testing.T) {
-	assert.Equal(t, "2025-06-18", LATEST_SUPPORTED_MCP_SPEC_VERSION)
+func TestDefaultMCPSpecVersion(t *testing.T) {
+	assert.Equal(t, "2025-06-18", DEFAULT_MCP_SPEC_VERSION)
 }
 
 // Note: TestMCPDeploymentService_DeployMCPConfiguration_Update is skipped
@@ -710,7 +710,7 @@ func TestHydrateStoredMCPConfig_ResolvesUnpinnedVersionWithRealResolver(t *testi
 				DisplayName: "test-mcp",
 				Version:     "1.0.0",
 				Context:     stringPtr("/mcp"),
-				SpecVersion: func() *string { v := LATEST_SUPPORTED_MCP_SPEC_VERSION; return &v }(),
+				SpecVersion: func() *string { v := DEFAULT_MCP_SPEC_VERSION; return &v }(),
 				Upstream: api.MCPProxyConfigData_Upstream{
 					Url: &url,
 					Auth: &struct {
