@@ -177,6 +177,9 @@ var (
 	ClientNameJsonPath        = "$.params.clientInfo.name"
 	ClientVersionJsonPath     = "$.params.clientInfo.version"
 
+	// Reserved _meta key holding the server's name and version.
+	metaServerInfoKey = "io.modelcontextprotocol/serverInfo"
+
 	ServerProtocolVersionJsonPath = "$.result.protocolVersion"
 	ServerInfoNameJsonPath        = "$.result.serverInfo.name"
 	ServerInfoVersionJsonPath     = "$.result.serverInfo.version"
@@ -203,8 +206,13 @@ type McpRequestAnalyticsProperties struct {
 	// are named; resources are not
 	CapabilityName string `json:"capabilityName,omitempty"`
 	// ResourceUri is the target of a resources/* method, from params.uri
-	ResourceUri string         `json:"resourceUri,omitempty"`
-	ClientInfo  *McpClientInfo `json:"clientInfo,omitempty"`
+	ResourceUri string `json:"resourceUri,omitempty"`
+
+	// SHA-256 of the requestState this request echoed back, matching issuedRequestStateHash
+	// on the input_required response it retries.
+	RequestStateHash string `json:"requestStateHash,omitempty"`
+
+	ClientInfo *McpClientInfo `json:"clientInfo,omitempty"`
 }
 
 type McpClientInfo struct {
@@ -214,14 +222,26 @@ type McpClientInfo struct {
 }
 
 type McpServerInfo struct {
+	// The version agreed by a legacy initialize handshake. Empty on MCP 2026-07-28, which
+	// negotiates none; that era's version is McpClientInfo.RequestedProtocolVersion.
 	ProtocolVersion string `json:"protocolVersion,omitempty"`
-	Name            string `json:"name,omitempty"`
-	Version         string `json:"version,omitempty"`
+
+	// The versions a server lists in a server/discover result. Empty on every other response.
+	SupportedVersions []string `json:"supportedVersions,omitempty"`
+
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 type McpResponseAnalyticsProperties struct {
-	IsError    *bool          `json:"isError,omitempty"`
-	ErrorCode  *int           `json:"errorCode,omitempty"`
+	IsError    *bool  `json:"isError,omitempty"`
+	ErrorCode  *int   `json:"errorCode,omitempty"`
+	ResultType string `json:"resultType,omitempty"`
+
+	// SHA-256 of the requestState issued with an input_required result. Distinct from the
+	// request side's requestStateHash: one response can carry both.
+	IssuedRequestStateHash string `json:"issuedRequestStateHash,omitempty"`
+
 	ServerInfo *McpServerInfo `json:"serverInfo,omitempty"`
 }
 
@@ -372,6 +392,16 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 	if reqCtx.SharedContext.APIKind == policy.APIKindMCP && reqCtx.Headers != nil {
 		if sessionIDs := reqCtx.Headers.Get("mcp-session-id"); len(sessionIDs) > 0 {
 			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+		}
+
+		// The resolver already identified the operation, so no body parse is needed.
+		if isBodyResolved(params) {
+			props := mcpRequestPropsFromResolver(reqCtx.Headers, reqCtx.SharedContext)
+			if data, err := json.Marshal(props); err != nil {
+				slog.Error("Failed to marshal MCP request analytics properties", "error", err)
+			} else {
+				analyticsMetadata["mcp_request_properties"] = string(data)
+			}
 		}
 	}
 
@@ -598,6 +628,11 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 	case policy.APIKindLlmProxy:
 		// Collect analytics data for LLM Proxy specific scenario
 	case policy.APIKindMCP:
+		// Collected at the header phase on these routes.
+		if isBodyResolved(params) {
+			break
+		}
+
 		// Collect analytics data specific for MCP scenario from request
 		if ctx.Headers != nil && len(ctx.Headers.GetAll()) > 0 {
 			sessionIDs := ctx.Headers.Get("mcp-session-id")
@@ -1916,6 +1951,60 @@ func extractMCPPayloadFromAccumulated(accumulated []byte, responseHeaders *polic
 	return obj
 }
 
+// resultRequestState returns result.requestState, the opaque value a client echoes when it
+// retries. Absent on responses that issue none.
+func resultRequestState(payload map[string]interface{}) string {
+	result, ok := payload["result"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	state, _ := result["requestState"].(string)
+	return state
+}
+
+// resultSupportedVersions returns result.supportedVersions, skipping any member that is not a
+// non-empty string.
+func resultSupportedVersions(payload map[string]interface{}) []string {
+	result, ok := payload["result"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	raw, ok := result["supportedVersions"].([]interface{})
+	if !ok {
+		return nil
+	}
+	versions := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok && s != "" {
+			versions = append(versions, s)
+		}
+	}
+	if len(versions) == 0 {
+		return nil
+	}
+	return versions
+}
+
+// metaServerInfo returns the name and version at result._meta["io.modelcontextprotocol/serverInfo"].
+// The map is walked directly because the key's dots would split a JSONPath.
+func metaServerInfo(payload map[string]interface{}) (name, version string) {
+	result, ok := payload["result"].(map[string]interface{})
+	if !ok {
+		return "", ""
+	}
+	meta, ok := result["_meta"].(map[string]interface{})
+	if !ok {
+		return "", ""
+	}
+	info, ok := meta[metaServerInfoKey].(map[string]interface{})
+	if !ok {
+		return "", ""
+	}
+	name, _ = info["name"].(string)
+	version, _ = info["version"].(string)
+	return name, version
+}
+
 // extractMCPResponseAnalyticsProps builds MCP analytics properties from a parsed JSON-RPC payload.
 // Returns nil when there is no relevant data to report.
 func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpResponseAnalyticsProperties {
@@ -1926,9 +2015,27 @@ func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpRespon
 		Name:            extractStringFromJsonpath(payload, ServerInfoNameJsonPath),
 		Version:         extractStringFromJsonpath(payload, ServerInfoVersionJsonPath),
 	}
+	// _meta is the MCP 2026-07-28 location and takes precedence over the legacy one.
+	if name, version := metaServerInfo(payload); name != "" || version != "" {
+		serverInfo.Name, serverInfo.Version = name, version
+	}
+	serverInfo.SupportedVersions = resultSupportedVersions(payload)
 
-	if serverInfo.Name != "" || serverInfo.Version != "" {
+	if serverInfo.Name != "" || serverInfo.Version != "" || len(serverInfo.SupportedVersions) > 0 {
 		props.ServerInfo = &serverInfo
+	}
+
+	if state := resultRequestState(payload); state != "" {
+		props.IssuedRequestStateHash = hashRequestState(state)
+	}
+
+	// An absent resultType means complete. Only a result carries one; an error response
+	// reports none.
+	if result, ok := payload["result"].(map[string]interface{}); ok {
+		props.ResultType = "complete"
+		if declared, ok := result["resultType"].(string); ok && declared != "" {
+			props.ResultType = declared
+		}
 	}
 
 	// isError denotes whether the JSON-RPC response represents an error. It is true when a

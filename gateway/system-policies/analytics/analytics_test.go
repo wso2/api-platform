@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -617,4 +618,434 @@ func mcpRequestProps(t *testing.T, body string) McpRequestAnalyticsProperties {
 		t.Fatalf("unmarshal mcp_request_properties: %v", err)
 	}
 	return props
+}
+
+// mcpPropsFromHeaderPhase runs the header hook and returns what it published, or "" if it
+// published no MCP request properties at all.
+func mcpPropsFromHeaderPhase(t *testing.T, ctx *policy.RequestHeaderContext, params map[string]any) string {
+	t.Helper()
+	action := (&AnalyticsPolicy{}).OnRequestHeaders(context.Background(), ctx, params)
+	mods, ok := action.(policy.UpstreamRequestHeaderModifications)
+	if !ok {
+		return ""
+	}
+	props, _ := mods.AnalyticsMetadata["mcp_request_properties"].(string)
+	return props
+}
+
+// mcpResponseProps parses a JSON-RPC response literal and returns what analytics records for it.
+func mcpResponseProps(t *testing.T, payload string) *McpResponseAnalyticsProperties {
+	t.Helper()
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	props := extractMCPResponseAnalyticsProps(parsed)
+	if props == nil {
+		t.Fatal("expected non-nil props")
+	}
+	return props
+}
+
+// resolvedHeaderCtx is an MCP request on a route carrying the operation resolver: the facts the
+// resolver published, plus whatever the client mirrored into headers.
+func resolvedHeaderCtx(headers map[string][]string, attrs map[string]string) *policy.RequestHeaderContext {
+	return &policy.RequestHeaderContext{
+		SharedContext: &policy.SharedContext{
+			APIKind:              policy.APIKindMCP,
+			ResolutionAttributes: policy.NewResolutionAttributes(attrs),
+		},
+		Headers: policy.NewHeaders(headers),
+	}
+}
+
+// input_required is incomplete, not failed: IsError stays false and resultType tells them apart.
+func TestExtractMCPResponseAnalyticsProps_InputRequiredIsNotAnError(t *testing.T) {
+	props := mcpResponseProps(t,
+		`{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required","requestState":"blob"}}`)
+
+	if props.IsError == nil || *props.IsError {
+		t.Fatalf("IsError = %v, want false: the call paused, it did not fail", props.IsError)
+	}
+	if props.ErrorCode != nil {
+		t.Fatalf("ErrorCode = %v, want none", *props.ErrorCode)
+	}
+}
+
+// A malformed or absent _meta is one missing fact, not a bad response: the rest still reads.
+func TestExtractMCPResponseAnalyticsProps_MalformedMetaIsHarmless(t *testing.T) {
+	for _, payload := range []string{
+		`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","_meta":{}}}`,
+		`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","_meta":42}}`,
+		`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","_meta":{"io.modelcontextprotocol/serverInfo":"not-an-object"}}}`,
+	} {
+		props := mcpResponseProps(t, payload)
+		if props.ServerInfo != nil {
+			t.Fatalf("payload %s: expected no ServerInfo, got %+v", payload, *props.ServerInfo)
+		}
+		if props.ResultType != "complete" {
+			t.Fatalf("payload %s: the rest of the response must still read", payload)
+		}
+	}
+}
+
+// MCP 2026-07-28 states resultType on every result, and an absent one means complete. An error
+// response has no result, so it reports no resultType.
+func TestExtractMCPResponseAnalyticsProps_ResultType(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			name:    "modern tools/call declares complete",
+			payload: `{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","content":[{"type":"text","text":"Colombo: 31C"}],"isError":false}}`,
+			want:    "complete",
+		},
+		{
+			// The spec's own MRTR example: the server paused to ask for input, so this is not
+			// a completed call and the client will retry the whole request with a new id.
+			name: "MRTR declares input_required",
+			payload: `{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required",` +
+				`"inputRequests":{"github_login":{"method":"elicitation/create","params":{"mode":"form","message":"Please provide your GitHub username"}}},` +
+				`"requestState":"AEAD-protected blob"}}`,
+			want: "input_required",
+		},
+		{
+			name:    "a legacy result has none, which means complete",
+			payload: `{"jsonrpc":"2.0","id":1,"result":{"content":[],"isError":false}}`,
+			want:    "complete",
+		},
+		{
+			name:    "an error response gets none at all",
+			payload: `{"jsonrpc":"2.0","id":1,"error":{"code":-32022,"message":"Unsupported protocol version"}}`,
+			want:    "",
+		},
+		{
+			name:    "a result of the wrong shape gets none",
+			payload: `{"jsonrpc":"2.0","id":1,"result":"not-an-object"}`,
+			want:    "",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			props := mcpResponseProps(t, c.payload)
+			if props.ResultType != c.want {
+				t.Fatalf("ResultType = %q, want %q", props.ResultType, c.want)
+			}
+		})
+	}
+}
+
+// The identity moved from the initialize result into every result's _meta. Both are read, so one
+// function serves both eras.
+func TestExtractMCPResponseAnalyticsProps_ServerInfoFromEitherEra(t *testing.T) {
+	cases := []struct {
+		name                  string
+		payload               string
+		wantName, wantVersion string
+	}{
+		{
+			// The spec's server/discover result, carrying fields we deliberately ignore.
+			name: "modern server/discover states it in result._meta",
+			payload: `{"jsonrpc":"2.0","id":"discover-1","result":{"resultType":"complete",` +
+				`"supportedVersions":["2026-07-28"],"capabilities":{"tools":{},"resources":{}},` +
+				`"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"ExampleServer","version":"1.0.0"}},` +
+				`"ttlMs":3600000,"cacheScope":"public"}}`,
+			wantName: "ExampleServer", wantVersion: "1.0.0",
+		},
+		{
+			name:     "legacy initialize states it in the result",
+			payload:  `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","serverInfo":{"name":"WeatherServer","version":"0.9"}}}`,
+			wantName: "WeatherServer", wantVersion: "0.9",
+		},
+		{
+			name: "_meta wins where a dual-era server sends both",
+			payload: `{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Legacy","version":"0.9"},` +
+				`"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"Modern","version":"2.0"}}}}`,
+			wantName: "Modern", wantVersion: "2.0",
+		},
+		{
+			// Replaced as a whole: serverInfo is one object, so its fields are not mixed across
+			// the two locations.
+			name: "a partial _meta replaces the legacy block rather than merging with it",
+			payload: `{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Legacy","version":"0.9"},` +
+				`"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"Modern"}}}}`,
+			wantName: "Modern", wantVersion: "",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			props := mcpResponseProps(t, c.payload)
+			if props.ServerInfo == nil {
+				t.Fatal("expected ServerInfo")
+			}
+			if props.ServerInfo.Name != c.wantName || props.ServerInfo.Version != c.wantVersion {
+				t.Fatalf("ServerInfo = %+v, want %s/%s", *props.ServerInfo, c.wantName, c.wantVersion)
+			}
+		})
+	}
+}
+
+// A server/discover result lists the versions the server speaks; protocolVersion carries the
+// version a legacy handshake agreed. Neither response populates both.
+func TestExtractMCPResponseAnalyticsProps_SupportedVersions(t *testing.T) {
+	t.Run("server/discover reports them, and protocolVersion stays absent", func(t *testing.T) {
+		props := mcpResponseProps(t, `{"jsonrpc":"2.0","id":"discover-1","result":{"resultType":"complete",`+
+			`"supportedVersions":["2026-07-28","2025-11-25"],"capabilities":{"tools":{}},`+
+			`"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"ExampleServer","version":"1.0.0"}}}}`)
+
+		if props.ServerInfo == nil {
+			t.Fatal("expected ServerInfo")
+		}
+		want := []string{"2026-07-28", "2025-11-25"}
+		if len(props.ServerInfo.SupportedVersions) != len(want) {
+			t.Fatalf("SupportedVersions = %v, want %v", props.ServerInfo.SupportedVersions, want)
+		}
+		for i, v := range want {
+			if props.ServerInfo.SupportedVersions[i] != v {
+				t.Fatalf("SupportedVersions = %v, want %v", props.ServerInfo.SupportedVersions, want)
+			}
+		}
+		if props.ServerInfo.ProtocolVersion != "" {
+			t.Fatalf("ProtocolVersion = %q, want empty: modern negotiates nothing",
+				props.ServerInfo.ProtocolVersion)
+		}
+	})
+
+	// The legacy field keeps its own meaning and its own type, unchanged in every gateway version.
+	t.Run("a legacy initialize reports protocolVersion and no list", func(t *testing.T) {
+		props := mcpResponseProps(t, `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18",`+
+			`"serverInfo":{"name":"WeatherServer","version":"0.9"}}}`)
+
+		if props.ServerInfo.ProtocolVersion != "2025-06-18" {
+			t.Fatalf("ProtocolVersion = %q, want the negotiated version", props.ServerInfo.ProtocolVersion)
+		}
+		if props.ServerInfo.SupportedVersions != nil {
+			t.Fatalf("SupportedVersions = %v, want none", props.ServerInfo.SupportedVersions)
+		}
+	})
+
+	// An ordinary call carries neither, and must not gain an empty ServerInfo because of it.
+	t.Run("an ordinary tools/call reports no server info at all", func(t *testing.T) {
+		props := mcpResponseProps(t, `{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","isError":false}}`)
+		if props.ServerInfo != nil {
+			t.Fatalf("ServerInfo = %+v, want none", *props.ServerInfo)
+		}
+	})
+
+	// One bad member is not a bad list, and a list of the wrong shape is simply not a list.
+	t.Run("malformed members are skipped", func(t *testing.T) {
+		props := mcpResponseProps(t, `{"jsonrpc":"2.0","id":1,"result":{"supportedVersions":["2026-07-28",42,"",null]}}`)
+		if len(props.ServerInfo.SupportedVersions) != 1 || props.ServerInfo.SupportedVersions[0] != "2026-07-28" {
+			t.Fatalf("SupportedVersions = %v, want just the one readable member", props.ServerInfo.SupportedVersions)
+		}
+	})
+
+	t.Run("a non-list supportedVersions yields none", func(t *testing.T) {
+		props := mcpResponseProps(t, `{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","supportedVersions":"2026-07-28"}}`)
+		if props.ServerInfo != nil {
+			t.Fatalf("ServerInfo = %+v, want none", *props.ServerInfo)
+		}
+	})
+}
+
+// The request side is fingerprinted by the resolver and the response side here, so both must
+// produce the same value. Asserted against a hash computed outside this code.
+func TestHashRequestState_IsPlainSHA256Hex(t *testing.T) {
+	const sha256OfMcp = "10182ab855ff772753c05b2fea333666b5f312835d32936b6b03e08ef2cbd6d3"
+
+	got := hashRequestState("mcp")
+	if got != sha256OfMcp {
+		t.Fatalf("hashRequestState(\"mcp\") = %q, want %q: the resolver hashes the other half "+
+			"with plain SHA-256 hex and the two must match", got, sha256OfMcp)
+	}
+	if len(got) != 64 {
+		t.Fatalf("hash is %d characters, which must stay under the 256-char attribute limit", len(got))
+	}
+	if hashRequestState("") != hashRequestState("") {
+		t.Fatal("hashing must be stable")
+	}
+}
+
+// An MRTR exchange is two HTTP transactions with different JSON-RPC ids, so two analytics
+// events. The echoed requestState is what ties them together.
+func TestMCPAnalytics_MRTRExchangeCorrelates(t *testing.T) {
+	const state = "eyJsb2NhdGlvbiI6Ik5ldyBZb3JrIn0-AEAD-protected-blob"
+
+	// Event one: the server answers input_required and mints the state.
+	answer := mcpResponseProps(t, `{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required",`+
+		`"inputRequests":{"github_login":{"method":"elicitation/create"}},`+
+		`"requestState":"`+state+`"}}`)
+
+	// Event two: the client retries, echoing it. The resolver fingerprinted it for the request.
+	retry := mcpRequestPropsFromResolver(
+		policy.NewHeaders(map[string][]string{
+			"mcp-protocol-version": {"2026-07-28"},
+			"mcp-method":           {"tools/call"},
+			"mcp-name":             {"get_forecast"},
+		}),
+		&policy.SharedContext{ResolutionAttributes: policy.NewResolutionAttributes(map[string]string{
+			"mcp.body.method":             "tools/call",
+			"mcp.body.capability.name":    "get_forecast",
+			"mcp.body.request.state.hash": hashRequestState(state),
+		})},
+	)
+
+	if answer.IssuedRequestStateHash == "" {
+		t.Fatal("the input_required answer must fingerprint the state it minted")
+	}
+	if retry.RequestStateHash != answer.IssuedRequestStateHash {
+		t.Fatalf("the two halves must match:\n  issued  %q\n  echoed  %q",
+			answer.IssuedRequestStateHash, retry.RequestStateHash)
+	}
+	if strings.Contains(answer.IssuedRequestStateHash, "AEAD") {
+		t.Fatal("the blob itself must not travel into analytics")
+	}
+
+	// A different exchange must not correlate with this one.
+	other := mcpResponseProps(t,
+		`{"jsonrpc":"2.0","id":9,"result":{"resultType":"input_required","requestState":"a-different-blob"}}`)
+	if other.IssuedRequestStateHash == answer.IssuedRequestStateHash {
+		t.Fatal("two exchanges must not share a fingerprint")
+	}
+}
+
+// Ordinary traffic carries no state, and must not gain an empty field because of it.
+func TestMCPAnalytics_NoRequestStateOnOrdinaryTraffic(t *testing.T) {
+	props := mcpResponseProps(t, `{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","isError":false}}`)
+	if props.IssuedRequestStateHash != "" {
+		t.Fatalf("IssuedRequestStateHash = %q, want none", props.IssuedRequestStateHash)
+	}
+}
+
+// The two phases must not both publish: on a resolver route the body hook stands aside.
+func TestOnRequestBody_StandsAsideOnAResolverRoute(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_forecast"}}`)
+
+	build := func() *policy.RequestContext {
+		return &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindMCP, Metadata: map[string]any{}},
+			Headers:       policy.NewHeaders(nil),
+			Body:          &policy.Body{Content: body, Present: true},
+		}
+	}
+	props := func(action policy.RequestAction) string {
+		mods, ok := action.(policy.UpstreamRequestModifications)
+		if !ok {
+			return ""
+		}
+		s, _ := mods.AnalyticsMetadata["mcp_request_properties"].(string)
+		return s
+	}
+
+	withResolver := props((&AnalyticsPolicy{}).OnRequestBody(context.Background(), build(), map[string]any{"bodyResolved": true}))
+	if withResolver != "" {
+		t.Fatalf("expected the body phase to stand aside on a resolver route, got %s", withResolver)
+	}
+
+	without := props((&AnalyticsPolicy{}).OnRequestBody(context.Background(), build(), nil))
+	if without == "" {
+		t.Fatal("expected the body phase to still parse on a route with no resolver")
+	}
+}
+
+func TestOnRequestHeaders_MCPFactsFromResolver(t *testing.T) {
+	resolved := map[string]any{"bodyResolved": true}
+
+	cases := []struct {
+		name    string
+		headers map[string][]string
+		attrs   map[string]string
+		want    string
+	}{
+		{
+			name: "modern reads the mirrored headers",
+			headers: map[string][]string{
+				"mcp-protocol-version": {"2026-07-28"},
+				"mcp-method":           {"tools/call"},
+				"mcp-name":             {"get_forecast"},
+			},
+			attrs: map[string]string{"mcp.body.method": "tools/call", "mcp.body.capability.name": "get_forecast"},
+			want:  `{"jsonRpcMethod":"tools/call","capability":"TOOL","capabilityName":"get_forecast","clientInfo":{"requestedProtocolVersion":"2026-07-28","name":"","version":""}}`,
+		},
+		{
+			name: "a sentinel-encoded name is decoded",
+			headers: map[string][]string{
+				"mcp-protocol-version": {"2026-07-28"},
+				"mcp-method":           {"tools/call"},
+				"mcp-name":             {"=?base64?dG9vbF/DvG1sYXV0?="},
+			},
+			attrs: map[string]string{"mcp.body.method": "tools/call"},
+			want:  `{"jsonRpcMethod":"tools/call","capability":"TOOL","capabilityName":"tool_ümlaut","clientInfo":{"requestedProtocolVersion":"2026-07-28","name":"","version":""}}`,
+		},
+		{
+			// Modern reads the name from Mcp-Name alone, so a withheld one leaves it empty.
+			name: "a withheld Mcp-Name is not recovered from the body",
+			headers: map[string][]string{
+				"mcp-protocol-version": {"2026-07-28"},
+				"mcp-method":           {"tools/call"},
+			},
+			attrs: map[string]string{"mcp.body.method": "tools/call", "mcp.body.capability.name": "from_body"},
+			want:  `{"jsonRpcMethod":"tools/call","capability":"TOOL","clientInfo":{"requestedProtocolVersion":"2026-07-28","name":"","version":""}}`,
+		},
+		{
+			name:    "legacy ignores mirrored headers it never defined",
+			headers: map[string][]string{"mcp-protocol-version": {"2025-06-18"}, "mcp-method": {"tools/list"}},
+			attrs:   map[string]string{"mcp.body.method": "tools/call", "mcp.body.capability.name": "real_tool"},
+			want:    `{"jsonRpcMethod":"tools/call","capability":"TOOL","capabilityName":"real_tool"}`,
+		},
+		{
+			// The request branch only ever read $.params.name, so a resource read reported an
+			// unnamed RESOURCE. The resolver's capability name is family-keyed and carries the uri.
+			name:    "resources/read reports its uri as the capability name",
+			headers: map[string][]string{"mcp-protocol-version": {"2025-06-18"}},
+			attrs:   map[string]string{"mcp.body.method": "resources/read", "mcp.body.capability.name": "file:///a.txt"},
+			want:    `{"jsonRpcMethod":"resources/read","capability":"RESOURCE","capabilityName":"file:///a.txt"}`,
+		},
+		{
+			name:    "clientInfo comes from the resolver in both eras",
+			headers: map[string][]string{"mcp-protocol-version": {"2026-07-28"}, "mcp-method": {"tools/list"}},
+			attrs: map[string]string{
+				"mcp.body.method":           "tools/list",
+				"mcp.body.client.name":      "ExampleClient",
+				"mcp.body.client.version":   "1.0.0",
+				"mcp.body.protocol.version": "2026-07-28",
+			},
+			want: `{"jsonRpcMethod":"tools/list","capability":"TOOL","clientInfo":{"requestedProtocolVersion":"2026-07-28","name":"ExampleClient","version":"1.0.0"}}`,
+		},
+		{
+			name:    "a legacy initialize reports the version it proposed",
+			headers: map[string][]string{},
+			attrs: map[string]string{
+				"mcp.body.method":           "initialize",
+				"mcp.body.protocol.version": "2025-06-18",
+				"mcp.body.client.name":      "LegacyClient",
+				"mcp.body.client.version":   "0.9",
+			},
+			want: `{"jsonRpcMethod":"initialize","clientInfo":{"requestedProtocolVersion":"2025-06-18","name":"LegacyClient","version":"0.9"}}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mcpPropsFromHeaderPhase(t, resolvedHeaderCtx(tc.headers, tc.attrs), resolved)
+			if got != tc.want {
+				t.Fatalf("mcp_request_properties\n got: %s\nwant: %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// Without the controller's marker there is no resolver, so the header phase publishes nothing.
+func TestOnRequestHeaders_NoResolverPublishesNoMCPProperties(t *testing.T) {
+	ctx := resolvedHeaderCtx(
+		map[string][]string{"mcp-protocol-version": {"2026-07-28"}, "mcp-method": {"tools/call"}},
+		map[string]string{"mcp.body.method": "tools/call"},
+	)
+	if got := mcpPropsFromHeaderPhase(t, ctx, nil); got != "" {
+		t.Fatalf("expected no mcp_request_properties without bodyResolved, got %s", got)
+	}
 }
