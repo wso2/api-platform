@@ -8,7 +8,7 @@
     <span style="font-size:13px;color:#8a93a0;">No endpoints available</span>
   </div>
   {{else}}
-  {{#unless (eq resources.serverDetails.productionURL "")}}
+  {{#if resources.serverDetails.productionURL}}
   <div class="aov-endpoint-url-row" style="margin-top:0;">
     <i class="bi bi-link-45deg" style="color:#8a93a0;flex:none;"></i>
     <pre id="token_mcp_prod_url" class="aov-endpoint-url token-text">{{resources.serverDetails.productionURL}}</pre>
@@ -17,7 +17,7 @@
       <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
     </button>
   </div>
-  {{/unless}}
+  {{/if}}
   {{/if}}
 </div>
 
