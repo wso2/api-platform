@@ -314,6 +314,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
+	// One place that knows which service serves which artifact kind, so plugins and
+	// the per-kind paths reach the same code.
+	deploymentsByKind := service.NewDeploymentsByKind(
+		deploymentService,
+		mcpDeploymentService,
+		llmProxyDeploymentService,
+		llmProviderDeploymentService,
+	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,
 		llmProviderRepo,
@@ -450,9 +458,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways:    gatewayService,
-		Projects:    projectService,
-		Deployments: deploymentService,
+		Gateways: gatewayService,
+		Projects: projectService,
+		// Kind-routed, so a plugin names the artifact kind alongside the handle and
+		// reaches the same services the platform's own per-kind paths do.
+		Deployments: deploymentsByKind,
 		Config:      cfg,
 		Logger:      slogger,
 	}

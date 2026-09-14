@@ -265,3 +265,25 @@ func TestBuildService_RefusesAnArtifactOfAnotherKind(t *testing.T) {
 		t.Error("a build was stored for an artifact of another kind")
 	}
 }
+
+// The kind registry is what plugins reach the platform through, so it has to route
+// to the right kind and refuse one it does not serve.
+func TestDeploymentsByKind_RoutesAndRefuses(t *testing.T) {
+	registry := DeploymentsByKind{}
+	if _, err := registry.For("Mcp"); err == nil {
+		t.Error("an unregistered kind should be refused")
+	}
+
+	// An unknown kind is the caller naming something the platform does not deploy,
+	// so it is a bad request rather than a missing artifact or an internal fault.
+	_, err := registry.GetBuildsByHandle("orders", "NotAKind", kindTestOrgUUID, 0)
+	if err == nil {
+		t.Fatal("expected an unknown kind to be refused")
+	}
+	if apperror.ArtifactNotFound.Is(err) {
+		t.Error("an unknown kind was reported as a missing artifact")
+	}
+	if !strings.Contains(err.Error(), "NotAKind") {
+		t.Errorf("error %q does not name the kind that was asked for", err.Error())
+	}
+}
