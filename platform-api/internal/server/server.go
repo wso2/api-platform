@@ -142,6 +142,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db)
 	apiPortalRepo := repository.NewAPIPortalRepo(db)
+	documentRepo := repository.NewDocumentRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
 
@@ -354,7 +355,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
-	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
+	apiHandler := handler.NewAPIHandler(apiService, identityService, documentRepo, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)

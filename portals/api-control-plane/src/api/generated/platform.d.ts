@@ -141,6 +141,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rest-apis/import-openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a REST API from an OpenAPI specification
+         * @description Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
+         *     as a multipart file upload or a URL. The backend extracts operations from the spec,
+         *     creates the API, and persists the raw spec as the API definition document.
+         */
+        post: operations["ImportOpenAPI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rest-apis/{restApiId}": {
         parameters: {
             query?: never;
@@ -2710,7 +2732,7 @@ export interface components {
              *     the key (no `apiKey` in the request); returned only in this
              *     creation response and never retrievable afterwards. The example value is
              *     a non-functional placeholder.
-             * @example REDACTED_API_KEY
+             * @example sk_example_1234567890abcdef
              */
             apiKey?: string;
         };
@@ -5054,6 +5076,56 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ImportOpenAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description OpenAPI spec file (mutually exclusive with url)
+                     */
+                    file?: string;
+                    /** @description URL to fetch the OpenAPI spec from (mutually exclusive with file) */
+                    url?: string;
+                    /** @description Display name for the API */
+                    name: string;
+                    /** @description Version of the API */
+                    version: string;
+                    /** @description URL context path for the API */
+                    context: string;
+                    /** @description Project UUID the API belongs to */
+                    projectId: string;
+                    /** @description Optional description */
+                    description?: string;
+                    /** @description Optional upstream endpoint URL */
+                    endpointUrl?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description API created successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPI"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };

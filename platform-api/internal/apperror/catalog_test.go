@@ -49,6 +49,7 @@ var messageArity = map[string]int{
 	CodeOf(ArtifactRuntimeImmutable):              1,
 	CodeOf(ArtifactDeployed):                      1,
 	CodeOf(TooManyRequests):                       1,
+	CodeOf(PayloadTooLarge):                       1,
 }
 
 // CodeOf makes the arity table read as a set of catalog references rather
