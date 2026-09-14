@@ -26,6 +26,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/catalog/aiworkspace"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/browser"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/infrastructure"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
@@ -102,6 +103,7 @@ func All() []*components.Definition {
 		apiportal.APIPortal(),
 		aiworkspace.AIWorkspace(),
 		browser.Browser(),
+		cloudconsole.CloudConsole(),
 		testbench.Testbench(),
 		infrastructure.Redis(),
 	}

@@ -276,7 +276,7 @@ func TestBasicAuthForUsesTopologyCredentials(t *testing.T) {
 
 // registerDeleters configures cleanup handlers for gateway resources.
 func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
-	client := httpx.NewClient(httpx.Options{MaxRetries: 1})
+	client := httpx.NewClient(httpx.Options{MaxRetries: 1, InsecureSkipVerify: true})
 
 	reg.RegisterDeleter(cleanup.KindAPI, func(ctx context.Context, res cleanup.Resource) error {
 		base, err := topo.URL("platform-gateway", "rest")

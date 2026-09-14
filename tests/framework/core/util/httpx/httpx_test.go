@@ -20,8 +20,10 @@ package httpx
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -231,6 +233,39 @@ func TestNegativeRetryCountsStillIssueOneRequest(t *testing.T) {
 func TestNewFunnelClampsNegativeRetries(t *testing.T) {
 	funnel := NewFunnel(NewClient(Options{}), -1, time.Second)
 	require.Equal(t, 0, funnel.maxRetries)
+}
+
+func TestTLSVerificationIsSecureByDefaultAndCanBeOptedOutLocally(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := NewClient(Options{Timeout: 5 * time.Second}).Do(
+		context.Background(), Request{URL: server.URL}, 0, 0)
+	require.Error(t, err)
+
+	response, err := NewClient(Options{
+		Timeout:            5 * time.Second,
+		InsecureSkipVerify: true,
+	}).Do(context.Background(), Request{URL: server.URL}, 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, response.StatusCode)
+}
+
+func TestNewClientUsesExplicitTLSCurvePreferences(t *testing.T) {
+	client := NewClient(Options{})
+	transport, ok := client.http.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.Equal(t,
+		[]tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384},
+		transport.TLSClientConfig.CurvePreferences)
+	require.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+
+	insecureClient := NewClient(Options{InsecureSkipVerify: true})
+	insecureTransport, ok := insecureClient.http.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.True(t, insecureTransport.TLSClientConfig.InsecureSkipVerify)
 }
 
 func TestRedirectsAreNotFollowed(t *testing.T) {

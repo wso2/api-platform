@@ -94,6 +94,39 @@ func TestComponentVersion(t *testing.T) {
 	}
 }
 
+func TestBootExternalOnlyBlockWithoutDocker(t *testing.T) {
+	definition := &components.Definition{
+		Name:  "external",
+		Alias: "external",
+		External: &components.ExternalSpec{
+			Endpoints: []components.ExternalEndpoint{{Name: "api"}},
+			Resolve: func(repoRoot string, parameters map[string]string) (map[string]string, error) {
+				require.Equal(t, "test", repoRoot)
+				require.Equal(t, "development", parameters["environment"])
+				return map[string]string{"api": "https://api.example.com/v1"}, nil
+			},
+		},
+	}
+	block := &topology.ResolvedBlock{
+		Name: "external-only",
+		Components: []topology.ResolvedComponent{{
+			Def: definition, Replicas: 1,
+			ExternalParameters: map[string]string{"environment": "development"},
+		}},
+	}
+
+	topo, err := BootBlock(context.Background(), block, "test")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, topo.Teardown(context.Background())) })
+	got, err := topo.URL("external", "api")
+	require.NoError(t, err)
+	require.Equal(t, "https://api.example.com/v1", got)
+	require.NotNil(t, topo.Shared)
+	_, err = topo.Component("external")
+	require.NoError(t, err)
+	require.Nil(t, topo.network, "an external-only block must not create a Docker network")
+}
+
 func (w *slowWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	n, err := w.b.Write(p)

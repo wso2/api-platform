@@ -576,6 +576,34 @@ func TestInstanceURLs(t *testing.T) {
 	})
 }
 
+func TestExternalInstanceURLs(t *testing.T) {
+	definition := &Definition{
+		Name:  "external",
+		Alias: "external",
+		External: &ExternalSpec{Endpoints: []ExternalEndpoint{
+			{Name: "api"}, {Name: "auth"},
+		}},
+	}
+	inst, err := NewExternalInstance(definition, 0, 1, map[string]string{
+		"api":  "https://api.example.com/v1",
+		"auth": "https://auth.example.com/token",
+	})
+	require.NoError(t, err)
+	got, err := inst.URL("api")
+	require.NoError(t, err)
+	require.Equal(t, "https://api.example.com/v1", got)
+	require.Equal(t, []string{"api", "auth"}, inst.EndpointNames())
+	_, err = inst.MappedPort("api")
+	require.ErrorContains(t, err, "no mapped container port")
+	_, err = inst.InternalURL("api")
+	require.ErrorContains(t, err, "no internal network URL")
+	_, err = inst.URL("missing")
+	require.ErrorContains(t, err, "available: api, auth")
+
+	_, err = NewExternalInstance(definition, 0, 1, map[string]string{"api": "https://api.example.com/v1"})
+	require.ErrorContains(t, err, "returned 1 endpoint URLs, want 2")
+}
+
 func TestInstanceIdentity(t *testing.T) {
 	t.Run("a nil definition is rejected", func(t *testing.T) {
 		_, err := NewInstance(nil, 0, 1, "127.0.0.1", nil)
@@ -1102,6 +1130,46 @@ func TestDefinitionAndDatabaseAccessors(t *testing.T) {
 	})
 }
 
+func TestExternalDefinitionValidation(t *testing.T) {
+	valid := func() *Definition {
+		return &Definition{
+			Name: "external", Alias: "external",
+			External: &ExternalSpec{
+				Endpoints: []ExternalEndpoint{{Name: "api"}},
+				Resolve: func(string, map[string]string) (map[string]string, error) {
+					return map[string]string{"api": "https://example.com"}, nil
+				},
+			},
+		}
+	}
+
+	t.Run("valid external definition passes", func(t *testing.T) {
+		require.NoError(t, valid().Validate())
+	})
+	t.Run("resolver is required", func(t *testing.T) {
+		d := valid()
+		d.External.Resolve = nil
+		require.ErrorContains(t, d.Validate(), "external spec has no resolver")
+	})
+	t.Run("duplicate endpoint names are rejected", func(t *testing.T) {
+		d := valid()
+		d.External.Endpoints = append(d.External.Endpoints, ExternalEndpoint{Name: "api"})
+		require.ErrorContains(t, d.Validate(), "duplicate external endpoint name")
+	})
+	t.Run("container configuration is rejected", func(t *testing.T) {
+		d := valid()
+		d.Image = ImageRef{Ref: "should-not-exist"}
+		require.ErrorContains(t, d.Validate(), "must not declare an image")
+	})
+	t.Run("required parameters are non-empty and unique", func(t *testing.T) {
+		d := valid()
+		d.External.RequiredParameters = []string{"environment", "environment", " "}
+		err := d.Validate()
+		require.ErrorContains(t, err, "duplicate external required parameter")
+		require.ErrorContains(t, err, "required parameter has no name")
+	})
+}
+
 func TestComposeHelpers(t *testing.T) {
 	t.Run("compose detection and staging name", func(t *testing.T) {
 		empty := Definition{}
@@ -1168,6 +1236,16 @@ func TestDefinitionWithImageVersion(t *testing.T) {
 	t.Run("does not alter references for an empty version", func(t *testing.T) {
 		definition := &Definition{Image: ImageRef{Ref: "app:current"}}
 		require.Same(t, definition, definition.WithImageVersion(" "))
+	})
+
+	t.Run("does not turn an external component into an image component", func(t *testing.T) {
+		definition := &Definition{
+			Name: "external", Alias: "external",
+			External: &ExternalSpec{Endpoints: []ExternalEndpoint{{Name: "api"}}, Resolve: func(string, map[string]string) (map[string]string, error) {
+				return map[string]string{"api": "https://example.com"}, nil
+			}},
+		}
+		require.Same(t, definition, definition.WithImageVersion("ignored"))
 	})
 }
 

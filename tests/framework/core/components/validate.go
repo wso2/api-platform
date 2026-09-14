@@ -54,20 +54,96 @@ func (d *Definition) Validate() error {
 	if strings.TrimSpace(d.Name) == "" {
 		return fmt.Errorf("component: name is required")
 	}
-	if !d.IsCompose() && d.Image.Ref == "" && d.Image.Build == nil {
+	modes := 0
+	if d.Image.Ref != "" || d.Image.Build != nil {
+		modes++
+	}
+	if d.IsCompose() {
+		modes++
+	}
+	if d.IsExternal() {
+		modes++
+	}
+	if modes != 1 {
+		errs.addf("%s: exactly one of image, compose, or external must be configured", d)
+	}
+	if !d.IsCompose() && !d.IsExternal() && d.Image.Ref == "" && d.Image.Build == nil {
 		errs.addf("%s: image must have either a ref or a build", d)
 	}
 	if strings.TrimSpace(d.Alias) == "" {
 		errs.addf("%s: alias is required", d)
 	}
 
-	errs.add(d.validateEndpoints())
+	if d.IsExternal() {
+		errs.add(d.validateExternal())
+	} else {
+		errs.add(d.validateEndpoints())
+	}
 	errs.add(d.validateHealth())
 	errs.add(d.validateConfig())
 	errs.add(d.validateDB())
 	errs.add(d.validateFiles())
 	errs.add(d.validateCompose())
 
+	return errs.err()
+}
+
+func (d *Definition) validateExternal() error {
+	if d.External == nil {
+		return nil
+	}
+	var errs errorList
+	if d.Image.Ref != "" || d.Image.Build != nil {
+		errs.addf("%s: an external component must not declare an image", d)
+	}
+	if d.Compose != nil {
+		errs.addf("%s: an external component must not declare compose", d)
+	}
+	if len(d.Endpoints) > 0 {
+		errs.addf("%s: an external component must use external endpoints, not container endpoints", d)
+	}
+	if len(d.External.Endpoints) == 0 {
+		errs.addf("%s: external spec declares no endpoints", d)
+	}
+	if d.External.Resolve == nil {
+		errs.addf("%s: external spec has no resolver", d)
+	}
+	seen := map[string]bool{}
+	for i, endpoint := range d.External.Endpoints {
+		name := endpoint.Name
+		if strings.TrimSpace(name) == "" {
+			errs.addf("%s: external endpoint #%d has no name", d, i)
+			continue
+		}
+		if seen[name] {
+			errs.addf("%s: duplicate external endpoint name %q", d, name)
+		}
+		seen[name] = true
+	}
+	seenParameter := map[string]bool{}
+	for _, parameter := range d.External.RequiredParameters {
+		if strings.TrimSpace(parameter) == "" {
+			errs.addf("%s: external required parameter has no name", d)
+		} else if seenParameter[parameter] {
+			errs.addf("%s: duplicate external required parameter %q", d, parameter)
+		}
+		seenParameter[parameter] = true
+	}
+	if d.Config != nil {
+		errs.addf("%s: an external component must not declare config", d)
+	}
+	if d.DB != nil {
+		errs.addf("%s: an external component must not declare a database", d)
+	}
+	if len(d.Files) > 0 {
+		errs.addf("%s: an external component must not declare file mounts", d)
+	}
+	if len(d.Cmd) > 0 {
+		errs.addf("%s: an external component must not declare a command", d)
+	}
+	if d.Health != nil {
+		errs.addf("%s: external components must not declare container health; probe them in product steps", d)
+	}
 	return errs.err()
 }
 
