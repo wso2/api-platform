@@ -56,17 +56,24 @@ vi.mock('@wso2/oxygen-ui', () => ({
   ),
 }));
 
+type TestWindow = Window & {
+  config?: Record<string, unknown>;
+  __RUNTIME_CONFIG__?: Record<string, unknown>;
+};
+
+const testWindow = window as TestWindow;
+
 describe('InsightsEmbed without Moesif runtime config', () => {
   afterEach(() => {
-    delete window.config;
-    delete window.__RUNTIME_CONFIG__;
+    delete testWindow.config;
+    delete testWindow.__RUNTIME_CONFIG__;
     vi.resetModules();
     vi.unstubAllEnvs();
   });
 
   beforeEach(() => {
-    delete window.config;
-    delete window.__RUNTIME_CONFIG__;
+    delete testWindow.config;
+    delete testWindow.__RUNTIME_CONFIG__;
     vi.unstubAllEnvs();
   });
 
