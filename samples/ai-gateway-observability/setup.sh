@@ -29,7 +29,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROVIDER_YAMLS=("${SCRIPT_DIR}/llm-provider.yaml" "${SCRIPT_DIR}/llm-provider-budgeted.yaml")
 PROXY_YAMLS=("${SCRIPT_DIR}/llm-proxy-assistant.yaml" "${SCRIPT_DIR}/llm-proxy-support.yaml")
 DASHBOARD_JSON="${SCRIPT_DIR}/observability/ai-gateway-overview.json"
-PROMETHEUS_YML="${SCRIPT_DIR}/observability/prometheus.yml"
 COMPOSE_OVERRIDE="${SCRIPT_DIR}/observability/docker-compose.override.yaml"
 ADDITIONAL_CONFIG="${SCRIPT_DIR}/additional-config.toml"
 
@@ -148,7 +147,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4 - Provision the Grafana dashboard and the scrape targets
+# Step 4 - Provision the Grafana dashboard
 #
 # Grafana provisions whatever it finds in its dashboards folder, so copying the
 # file in is enough.
@@ -157,13 +156,6 @@ fi
 info "Copying dashboard into ${DIST_NAME}/observability/grafana/dashboards/ ..."
 cp "${DASHBOARD_JSON}" "${DIST_NAME}/observability/grafana/dashboards/"
 success "Dashboard provisioned."
-
-# The policy engine and the Envoy router both run inside `gateway-runtime`, which is
-# the hostname this prometheus.yml scrapes them at.
-[[ -f "${PROMETHEUS_YML}" ]] || error "prometheus.yml not found at ${PROMETHEUS_YML}"
-info "Replacing the distribution's prometheus.yml with corrected scrape targets ..."
-cp "${PROMETHEUS_YML}" "${DIST_NAME}/observability/prometheus/prometheus.yml"
-success "Scrape targets set."
 
 COMPOSE_FILE="${DIST_NAME}/docker-compose.yaml"
 [[ -f "${COMPOSE_FILE}" ]] || COMPOSE_FILE="${DIST_NAME}/docker-compose.yml"
