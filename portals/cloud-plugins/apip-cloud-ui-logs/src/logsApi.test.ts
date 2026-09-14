@@ -27,6 +27,7 @@ const baseQuery: LogQuery = {
   levels: [],
   searchPhrase: '',
   limit: 200,
+  environment: '',
 };
 
 // 2026-09-12T12:00:00Z
@@ -45,6 +46,7 @@ describe('buildLogsQuery', () => {
     expect(params.has('kind')).toBe(false);
     expect(params.has('logLevels')).toBe(false);
     expect(params.has('searchPhrase')).toBe(false);
+    expect(params.has('environment')).toBe(false);
   });
 
   it('repeats logLevels rather than joining them', () => {
@@ -70,6 +72,13 @@ describe('buildLogsQuery', () => {
   it('sends kind only when it narrows', () => {
     const params = new URLSearchParams(buildLogsQuery({ ...baseQuery, kind: 'access' }, NOW));
     expect(params.get('kind')).toBe('access');
+  });
+
+  it('sends the environment when one is picked', () => {
+    const params = new URLSearchParams(
+      buildLogsQuery({ ...baseQuery, environment: ' development ' }, NOW)
+    );
+    expect(params.get('environment')).toBe('development');
   });
 });
 
@@ -120,5 +129,20 @@ describe('createLogsClient', () => {
     const apiFetch = vi.fn().mockResolvedValue({ list: [{ log: 'x', kind: 'something-new' }] });
     const page = await createLogsClient(apiFetch).fetchLogs(baseQuery, NOW);
     expect(page.list[0].kind).toBe('operational');
+  });
+
+  it('lists environments, dropping any without a name', async () => {
+    const apiFetch = vi.fn().mockResolvedValue({
+      list: [{ id: 'development', name: 'development' }, { id: 'stage' }, {}],
+    });
+    const environments = await createLogsClient(apiFetch).fetchEnvironments();
+    expect(apiFetch).toHaveBeenCalledWith('GET', '/environments');
+    expect(environments.map((environment) => environment.name)).toEqual(['development', 'stage']);
+  });
+
+  it('returns no environments rather than throwing on an empty response', async () => {
+    const environments = await createLogsClient(vi.fn().mockResolvedValue(undefined))
+      .fetchEnvironments();
+    expect(environments).toEqual([]);
   });
 });

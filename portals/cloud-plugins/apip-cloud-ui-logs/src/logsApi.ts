@@ -17,7 +17,7 @@
  */
 
 import type { ApiFetch } from './hostPort';
-import type { LogEntry, LogKind, LogPage, LogQuery } from './types';
+import type { EnvironmentSummary, LogEntry, LogKind, LogPage, LogQuery } from './types';
 
 /** The `/logs` response as platform-api sends it. */
 type LogPageDTO = {
@@ -75,8 +75,12 @@ export function buildLogsQuery(query: LogQuery, nowMs: number): string {
   for (const level of query.levels) params.append('logLevels', level);
   const phrase = query.searchPhrase.trim();
   if (phrase) params.set('searchPhrase', phrase);
+  const environment = query.environment.trim();
+  if (environment) params.set('environment', environment);
   return params.toString();
 }
+
+type EnvironmentListDTO = { list?: { id?: string; name?: string }[] };
 
 /** The logs data client, built from the host-injected `apiFetch`. */
 export function createLogsClient(apiFetch: ApiFetch) {
@@ -97,6 +101,18 @@ export function createLogsClient(apiFetch: ApiFetch) {
         total: response?.total ?? list.length,
         truncated: response?.truncated ?? false,
       };
+    },
+
+    /**
+     * The organization's environments, for the Environment select. A catalogue
+     * rather than the loaded lines: filtering to one environment would otherwise
+     * shrink the list to that one and strand the user there.
+     */
+    async fetchEnvironments(): Promise<EnvironmentSummary[]> {
+      const response = await apiFetch<EnvironmentListDTO>('GET', '/environments');
+      return (response?.list ?? [])
+        .map((dto) => ({ id: dto.id ?? dto.name ?? '', name: dto.name ?? dto.id ?? '' }))
+        .filter((environment) => environment.name);
     },
   };
 }

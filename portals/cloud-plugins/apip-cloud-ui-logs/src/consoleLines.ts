@@ -94,9 +94,9 @@ const isAfter = (line: ConsoleLine, since: number): boolean => {
 };
 
 /**
- * Appends a freshly polled page, oldest row first. Pages arrive newest-first, so
- * each batch is sorted ascending (server order breaking ties) before appending;
- * rows already held are dropped and the buffer is trimmed from the front.
+ * Merges a freshly polled page in, oldest row first. Pages arrive newest-first,
+ * so each batch is sorted ascending (server order breaking ties); rows already
+ * held are dropped and the buffer is trimmed from the front.
  *
  * `since` (epoch ms) is the caller's watermark — a clear sets it to that moment
  * so the next poll of an unchanged window does not refill what was wiped.
@@ -116,7 +116,24 @@ export function mergeBufferedLines(
 
   if (fresh.length === 0) return existing;
 
-  const merged = [...existing, ...fresh];
+  /*
+   * Ordered as a whole rather than batch-appended: ingestion lag differs per
+   * pod, so a poll can carry a record older than lines already on screen, and
+   * appending it would show it below them — and then trimming to `limit` could
+   * drop a newer row instead of it. A row with no usable timestamp inherits the
+   * key of the row above it, which keeps it where it arrived rather than
+   * sinking it to the top of the buffer.
+   */
+  let key = 0;
+  const merged = [...existing, ...fresh]
+    .map((buffered, index) => {
+      const parsed = parseTime(buffered.line);
+      if (!Number.isNaN(parsed)) key = parsed;
+      return { buffered, index, key };
+    })
+    .sort((a, b) => a.key - b.key || a.index - b.index)
+    .map((item) => item.buffered);
+
   return merged.length > limit ? merged.slice(merged.length - limit) : merged;
 }
 
@@ -124,34 +141,34 @@ const sortedUnique = (values: Iterable<string>): string[] =>
   [...new Set(values)].filter(Boolean).sort((a, b) => a.localeCompare(b));
 
 /**
- * What the three view filters can offer, read off the buffer rather than a
- * catalogue: a project with nothing in this window is not offered, because
- * picking it could only produce an empty console.
+ * What the view filters can offer, read off the buffer rather than a catalogue:
+ * a project with nothing in this window is not offered, because picking it
+ * could only produce an empty console.
  */
 export function deriveFacets(buffer: BufferedLine[]): LogFacets {
   const projects: string[] = [];
-  const components: string[] = [];
+  const pods: string[] = [];
   const environments: string[] = [];
   const byProject = new Map<string, Set<string>>();
 
   for (const { entry } of buffer) {
     if (entry.projectName) projects.push(entry.projectName);
-    if (entry.componentName) components.push(entry.componentName);
+    if (entry.podName) pods.push(entry.podName);
     if (entry.environment) environments.push(entry.environment);
-    if (entry.projectName && entry.componentName) {
+    if (entry.projectName && entry.podName) {
       const seen = byProject.get(entry.projectName) ?? new Set<string>();
-      seen.add(entry.componentName);
+      seen.add(entry.podName);
       byProject.set(entry.projectName, seen);
     }
   }
 
-  const componentsByProject: Record<string, string[]> = {};
-  for (const [project, names] of byProject) componentsByProject[project] = sortedUnique(names);
+  const podsByProject: Record<string, string[]> = {};
+  for (const [project, names] of byProject) podsByProject[project] = sortedUnique(names);
 
   return {
     projects: sortedUnique(projects),
-    components: sortedUnique(components),
-    componentsByProject,
+    pods: sortedUnique(pods),
+    podsByProject,
     environments: sortedUnique(environments),
   };
 }
@@ -159,7 +176,6 @@ export function deriveFacets(buffer: BufferedLine[]): LogFacets {
 /** Whether an entry survives the view filters. An empty filter matches everything. */
 export function matchesView(entry: LogEntry, view: LogViewFilters): boolean {
   if (view.project && entry.projectName !== view.project) return false;
-  if (view.component && entry.componentName !== view.component) return false;
-  if (view.environment && entry.environment !== view.environment) return false;
+  if (view.pod && entry.podName !== view.pod) return false;
   return true;
 }

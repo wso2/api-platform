@@ -25,6 +25,7 @@ export type { LogsToolbarProps } from './LogsToolbar';
 export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity } from './hostPort';
 export type { BufferedLine } from './consoleLines';
 export type {
+  EnvironmentSummary,
   LogEntry,
   LogFacets,
   LogKind,

@@ -58,9 +58,10 @@ const INITIAL_QUERY: LogQuery = {
   levels: [],
   searchPhrase: '',
   limit: PAGE_LIMIT,
+  environment: '',
 };
 
-const INITIAL_VIEW: LogViewFilters = { project: '', component: '', environment: '' };
+const INITIAL_VIEW: LogViewFilters = { project: '', pod: '' };
 
 /** Until the first response says what retention really is. */
 const ASSUMED_RETENTION_DAYS = 3;
@@ -69,10 +70,9 @@ const ASSUMED_RETENTION_DAYS = 3;
  * The extension's `render(port)` result: the organization's logs from
  * platform-api's `/logs`, shown as a terminal-style console.
  *
- * Scope is the whole organization, and the page says so — a namespace-scoped
- * query returns every labelled workload, of which the gateway's two pods are a
- * small part. Narrowing to one gateway is the filters' job; doing it in the
- * query needs a podName filter the observability API does not offer yet.
+ * Scope is the whole organization unless an environment is picked — that one is
+ * a query parameter. Narrowing further, to a project or a single pod, happens in
+ * the browser: the observability API offers no filter for either.
  */
 const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   const { apiFetch, notify } = port;
@@ -86,6 +86,8 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(true);
+  const [stale, setStale] = useState(false);
+  const [environments, setEnvironments] = useState<string[]>([]);
 
   // Fetches overlap (an Apply during a live tick), so only the newest may write
   // state — a slower earlier response would append lines the filters no longer
@@ -114,10 +116,14 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
           mergeBufferedLines(previous, result.list, MAX_CONSOLE_LINES, clearedAtRef.current)
         );
         setError(null);
+        setStale(false);
       } catch (loadError) {
         if (seq !== loadSeqRef.current) return;
-        // A failed background tick stays silent — the lines on screen remain and
-        // the next tick may succeed. Only a foreground load surfaces it.
+        // A failed background tick raises no alert — the lines on screen remain
+        // and the next tick may succeed. Only a foreground load surfaces it. But
+        // the console must stop calling itself live, or stale rows read as the
+        // current answer for as long as the failure lasts.
+        setStale(true);
         if (!silent) {
           setError(loadError instanceof Error ? loadError.message : 'Unable to load logs.');
         }
@@ -134,6 +140,21 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Fails soft: without the catalogue the select falls back to the environments
+  // seen in the loaded lines.
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .fetchEnvironments()
+      .then((list) => {
+        if (!cancelled) setEnvironments(list.map((environment) => environment.name));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
 
   useEffect(() => {
     if (!live) return undefined;
@@ -170,9 +191,7 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
     // The view filters run in the browser, so a short console is not a quiet
     // organization. Say how much was hidden, or it reads as the whole answer.
     ...(visible.length < buffer.length
-      ? [
-          `${visible.length} of ${buffer.length} loaded lines match the project, component and environment filters.`,
-        ]
+      ? [`${visible.length} of ${buffer.length} loaded lines match the project and pod filters.`]
       : []),
   ];
 
@@ -187,6 +206,7 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
       </PageTitle>
 
       <LogsToolbar
+        environments={environments}
         facets={facets}
         query={query}
         retentionDays={retentionDays}
@@ -250,6 +270,7 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
         label="Organization log output"
         lines={visible}
         live={live}
+        stale={stale}
         onClear={clearConsole}
         onCopyError={(message) => notify(message, 'error')}
       />

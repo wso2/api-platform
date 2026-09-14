@@ -31,8 +31,8 @@ export type LogEntry = {
   log: string;
   level?: string;
   kind: LogKind;
-  /** The only way to tell one gateway from another today. Shown, never filtered
-   * on — the observability API has no podName filter yet. */
+  /** The only way to tell one gateway from another. Filtered in the browser:
+   * the observability API has no podName filter. */
   podName?: string;
   containerName?: string;
   componentName?: string;
@@ -74,28 +74,34 @@ export type LogQuery = {
   levels: LogLevel[];
   searchPhrase: string;
   limit: number;
-};
-
-/**
- * Narrowing applied to the lines already fetched. Not query parameters: the
- * endpoint has nothing that selects a project, component or environment, so
- * sending them would claim a precision the query lacks. The toolbar says so.
- */
-export type LogViewFilters = {
-  project: string;
-  component: string;
+  /** Environment name, sent to the query. Empty means every environment. */
   environment: string;
 };
 
 /**
- * What the three view filters offer: the values present in the loaded lines.
- * Derived from the buffer, not a catalogue — a project with nothing in this
- * window cannot be picked, and picking it could only yield an empty console.
+ * Narrowing applied to the lines already fetched. Not query parameters: the
+ * endpoint selects neither a project nor a pod, so sending them would claim a
+ * precision the query lacks. The toolbar says so.
+ */
+export type LogViewFilters = {
+  project: string;
+  pod: string;
+};
+
+/**
+ * What the view filters offer: the values present in the loaded lines. Derived
+ * from the buffer, not a catalogue — a project with nothing in this window
+ * cannot be picked, and picking it could only yield an empty console.
+ *
+ * `environments` is the fallback for the Environment select, which prefers the
+ * organization's real list.
  */
 export type LogFacets = {
   projects: string[];
-  components: string[];
-  /** Components seen under each project, so picking a project narrows the next list. */
-  componentsByProject: Record<string, string[]>;
+  pods: string[];
+  /** Pods seen under each project, so picking a project narrows the next list. */
+  podsByProject: Record<string, string[]>;
   environments: string[];
 };
+
+export type EnvironmentSummary = { id: string; name: string };

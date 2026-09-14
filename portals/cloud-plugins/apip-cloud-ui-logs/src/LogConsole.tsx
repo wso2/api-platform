@@ -165,6 +165,8 @@ export type LogConsoleProps = {
   label: string;
   /** Streams new rows in: enables auto-follow and the live announcement. */
   live?: boolean;
+  /** Live, but the last poll failed — the rows on screen are no longer current. */
+  stale?: boolean;
   /** Toolbar slot for owner-specific controls, e.g. a live-tail switch. */
   actions?: ReactNode;
   /** Enables the Clear control when provided. */
@@ -186,6 +188,7 @@ const LogConsole: FC<LogConsoleProps> = ({
   emptyMessage,
   label,
   live = false,
+  stale = false,
   actions,
   onClear,
   onCopyError,
@@ -273,7 +276,16 @@ const LogConsole: FC<LogConsoleProps> = ({
         <Typography variant="caption" sx={{ color: consoleColors.dim }}>
           {lines.length === 1 ? '1 line' : `${lines.length} lines`}
         </Typography>
-        {live ? <Chip label="Live" color="success" size="small" variant="outlined" /> : null}
+        {/* A failed poll leaves the rows on screen; saying "Live" over them
+            would claim they are current. */}
+        {live ? (
+          <Chip
+            label={stale ? 'Not updating' : 'Live'}
+            color={stale ? 'warning' : 'success'}
+            size="small"
+            variant="outlined"
+          />
+        ) : null}
         <Box sx={{ flex: 1 }} />
         {actions}
         {hasRaw ? (
