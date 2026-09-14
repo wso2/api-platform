@@ -7,17 +7,15 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-type RuntimeConfigWindow = Window & {
-  __RUNTIME_CONFIG__?: Record<string, boolean | string | undefined>;
-  config?: Record<string, boolean | string | undefined>;
-};
-
 export const readRuntimeBoolean = (key: string): boolean => {
-  const runtimeWindow =
-    typeof window === 'undefined' ? undefined : (window as RuntimeConfigWindow);
-  const value =
-    runtimeWindow?.__RUNTIME_CONFIG__?.[key] ??
-    runtimeWindow?.config?.[key];
+  if (typeof window === 'undefined') return false;
+  const runtimeWindow = window as Window & {
+    __RUNTIME_CONFIG__?: object;
+    config?: object;
+  };
+  const bag = (runtimeWindow.__RUNTIME_CONFIG__ ??
+    runtimeWindow.config) as Record<string, unknown> | undefined;
+  const value = bag?.[key];
   return value === true || value === 'true';
 };
 

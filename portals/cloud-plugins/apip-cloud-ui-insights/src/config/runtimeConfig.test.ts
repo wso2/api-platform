@@ -18,14 +18,21 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+type TestWindow = Window & {
+  config?: Record<string, unknown>;
+  __RUNTIME_CONFIG__?: Record<string, unknown>;
+};
+
+const testWindow = window as TestWindow;
+
 const loadRuntimeConfig = async () => {
   vi.resetModules();
   return (await import('./runtimeConfig')).insightsRuntimeConfig;
 };
 
 afterEach(() => {
-  delete window.config;
-  delete window.__RUNTIME_CONFIG__;
+  delete testWindow.config;
+  delete testWindow.__RUNTIME_CONFIG__;
   vi.resetModules();
   vi.unstubAllEnvs();
 });
@@ -38,7 +45,7 @@ describe('insightsRuntimeConfig', () => {
   });
 
   it('accepts an allowlisted moesifAppUrl from window runtime config', async () => {
-    window.__RUNTIME_CONFIG__ = {
+    testWindow.__RUNTIME_CONFIG__ = {
       moesifAppUrl: 'https://www.moesif.com/wrap',
     };
 
@@ -48,7 +55,7 @@ describe('insightsRuntimeConfig', () => {
   });
 
   it('rejects a non-allowlisted moesifAppUrl without falling back to web-dev', async () => {
-    window.__RUNTIME_CONFIG__ = {
+    testWindow.__RUNTIME_CONFIG__ = {
       moesifAppUrl: 'https://evil.example.com',
     };
 
@@ -58,7 +65,7 @@ describe('insightsRuntimeConfig', () => {
   });
 
   it('reports configured when an allowlisted Moesif origin is present', async () => {
-    window.__RUNTIME_CONFIG__ = {
+    testWindow.__RUNTIME_CONFIG__ = {
       APIP_AIW_MOESIF_WEB_URL: 'https://web-dev.moesif.com',
     };
     vi.resetModules();
