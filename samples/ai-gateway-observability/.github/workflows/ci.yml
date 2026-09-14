@@ -7,7 +7,6 @@ on:
       - main
     paths:
       - 'samples/ai-gateway-observability/**'
-      - '.github/workflows/sample-ai-gateway-observability-pr-check.yml'
 
 permissions:
   contents: read
