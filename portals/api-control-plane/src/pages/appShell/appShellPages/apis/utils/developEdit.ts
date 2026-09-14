@@ -219,6 +219,13 @@ export const operationsValid = (ops: EditableOperation[]): boolean =>
 export const policiesValid = (policies: Policy[]): boolean =>
   policies.every((p) => p.name.trim() !== '' && p.version.trim() !== '');
 
+/** Converts Policy Hub semantic versions to the major-version format expected by the API payload. */
+const withMajorPolicyVersion = (policy: Policy): Policy => {
+  const version = policy.version.trim();
+  const major = version.match(/^v?(\d+)(?:\..*)?$/)?.[1];
+  return { ...policy, version: major ? `v${major}` : version };
+};
+
 // --- update bodies ---
 
 /**
@@ -280,6 +287,11 @@ export const withPolicyEdits = (
   edits: { policies: Policy[]; operations: EditableOperation[] },
 ): UpdateRestApiBody => ({
   ...api,
-  policies: edits.policies,
-  operations: toSpecOperations(edits.operations),
+  policies: edits.policies.map(withMajorPolicyVersion),
+  operations: toSpecOperations(
+    edits.operations.map((operation) => ({
+      ...operation,
+      policies: operation.policies?.map(withMajorPolicyVersion),
+    })),
+  ),
 });

@@ -55,12 +55,12 @@ vi.mock('./SpecCodeEditor', () => ({
  * has a definition on screen without a fetch standing between the test and the
  * editor, and the edit path under test is the same one a fetched contract takes.
  */
-const openScratchSource = async (onDataFetched = vi.fn()) => {
-  const { user } = renderWithProviders(<DefineApiPanel onDataFetched={onDataFetched} />);
+const openScratchSource = async (onDraftChange = vi.fn()) => {
+  const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
 
   await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
   await user.click(screen.getByRole('checkbox', { name: 'Source' }));
-  return { onDataFetched, user };
+  return { onDraftChange, user };
 };
 
 /** The editor arrives in its own chunk, so the first look at it is awaited. */
@@ -71,7 +71,7 @@ const editor = async (): Promise<HTMLTextAreaElement> =>
 
 describe('DefineApiPanel — editing the definition', () => {
   it('carries the edited definition forward instead of the one it started from', async () => {
-    const { onDataFetched, user } = await openScratchSource();
+    const { onDraftChange, user } = await openScratchSource();
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     fireEvent.change(await editor(), {
@@ -85,14 +85,14 @@ describe('DefineApiPanel — editing the definition', () => {
       },
     });
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(onDataFetched).toHaveBeenCalledTimes(1);
-    expect(onDataFetched.mock.calls[0][0]).toMatchObject({
-      displayName: 'Edited by hand',
-      upstream: { main: { url: 'https://orders.example.com' } },
-      version: '3.2.1',
-    });
+    expect(onDraftChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        displayName: 'Edited by hand',
+        upstream: { main: { url: 'https://orders.example.com' } },
+        version: '3.2.1',
+      }),
+    );
   });
 
   it('reports what the edited definition is missing, once it is the one on screen', async () => {

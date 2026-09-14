@@ -7,15 +7,22 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Boxes, Network, Rocket, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Network, Workflow } from '@wso2/oxygen-ui-icons-react';
 
-import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
-import { PipelinesFeature, ProjectPipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
+import {
+  InsightsFeature,
+  isInsightsMoesifConfigured,
+} from '@wso2-enterprise/apip-cloud-ui-insights';
+import {
+  PipelinesFeature,
+  ProjectPipelinesFeature,
+} from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
+  AI_WORKSPACE_INSIGHTS_SLOT,
   type AIWorkspaceCloudEntry,
   type AIWorkspaceExtension,
 } from '../../../../ai-workspace/src/extensions';
@@ -35,6 +42,20 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
  * registers `ai` as the only type and the create form shows no type picker.
  * It also carries nav placement so the entry sits between Environments and
  * Pipelines, suppressing the built-in item via `hides`.
+ *
+ * `insights` registers against `AI_WORKSPACE_INSIGHTS_SLOT` the same way —
+ * see `InsightsRoute` in `ai-workspace/src/App.tsx` — so the built-in Insights
+ * nav stays and only the page body is replaced when Moesif is configured.
+ * Registration is gated by `isInsightsMoesifConfigured` (single reader in the
+ * insights package) so App.tsx needs no Moesif config knowledge: no override
+ * means InsightsRoute keeps the built-in page.
+ *
+ * The deploy feature is deliberately NOT registered here. Deploying is scoped to
+ * one API — the page reads and writes that API's deployments — and this host has
+ * no API-scoped placement, so its Port carries no `apiHandle`. Registered here
+ * the page could only tell the user to open an API. The feature package is shared
+ * and unchanged; adding it back is a matter of giving this host an API scope, not
+ * of changing the feature.
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = [
   defineCloudPlugin({
@@ -75,21 +96,6 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
     ],
   }),
   defineCloudPlugin({
-    id: 'deploy',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'deploy',
-        slot: 'sidebar.main',
-        order: 70,
-        path: 'deploy',
-        label: 'Deploy',
-        icon: <Rocket size={20} />,
-        render: (port) => <DeployFeature port={port} />,
-      },
-    ],
-  }),
-  defineCloudPlugin({
     id: 'gateways',
     version: '0.1.0',
     extensions: [
@@ -110,7 +116,27 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
       },
     ],
   }),
+  defineCloudPlugin({
+    id: 'insights',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'insights',
+        slot: AI_WORKSPACE_INSIGHTS_SLOT,
+        order: 0,
+        // Same Moesif ai-overview URL at org and project — no project_id filter.
+        render: (port) => (
+          <InsightsFeature port={port} embedProfile="ai-workspace" />
+        ),
+      },
+    ],
+  }),
 ];
 
-export const cloudExtensions = getCloudExtensions(cloudPluginFeatures);
+/** Omit Insights when Moesif is not configured so InsightsRoute keeps the built-in page. */
+export const cloudExtensions = getCloudExtensions(
+  cloudPluginFeatures.filter(
+    (feature) => feature.id !== 'insights' || isInsightsMoesifConfigured()
+  )
+);
 export type { AIWorkspaceExtension };

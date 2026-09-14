@@ -69,6 +69,7 @@ import {
   withRoutingEdits,
 } from '@/pages/appShell/appShellPages/apis/utils/developEdit';
 import { SaveBar } from '../SaveBar';
+import { useDirtyTracking } from '../useDirtyTracking';
 
 const messages = defineMessages({
   connectHint: {
@@ -603,6 +604,23 @@ export function RoutingPanel({ api }: { api: RestApi }) {
   const restApiId = api.id;
   const canSave =
     Boolean(restApiId) && operationsValid(operations) && urlsValid && !update.isPending;
+  // Only the fields `save` actually submits count towards "unsaved" — not
+  // ephemeral UI state like the discovered-backend catalog or the current
+  // selection/connect-drag.
+  const { dirty, markSaved } = useDirtyTracking({ operations, prodUrl, sandboxUrl });
+
+  const cancelChanges = () => {
+    const initialOperations = toEditableOperations(api);
+    discoverAbort.current?.abort();
+    setOperations(initialOperations);
+    setBackendResources(seedBackendResources(initialOperations));
+    setProdUrl(api.upstream?.main?.url ?? '');
+    setSandboxUrl(api.upstream?.sandbox?.url ?? '');
+    setSelection(null);
+    setConnectingFrom(null);
+    setDisconnected(new Set());
+    setDiscovery({ status: 'idle' });
+  };
 
   const addRow = () => {
     setOperations(addOperation(operations));
@@ -721,7 +739,12 @@ export function RoutingPanel({ api }: { api: RestApi }) {
       { restApiId, body: withRoutingEdits(api, { operations, prodUrl, sandboxUrl }) },
       // No `onError`: the query client's `onMutationError` already notifies, and
       // a local handler would replace the optimistic rollback in `useUpdateRestApi`.
-      { onSuccess: () => notify(intl.formatMessage(messages.saved), 'success') },
+      {
+        onSuccess: () => {
+          markSaved();
+          notify(intl.formatMessage(messages.saved), 'success');
+        },
+      },
     );
   };
 
@@ -1175,7 +1198,13 @@ export function RoutingPanel({ api }: { api: RestApi }) {
         </Card>
       </Stack>
 
-      <SaveBar disabled={!canSave} onSave={save} saving={update.isPending} />
+      <SaveBar
+        dirty={dirty}
+        disabled={!canSave}
+        onCancel={cancelChanges}
+        onSave={save}
+        saving={update.isPending}
+      />
 
       <ConfirmDialog
         confirmLabel={confirm?.confirmLabel ?? intl.formatMessage(messages.confirmDefault)}

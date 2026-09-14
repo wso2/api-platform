@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { Box, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Divider, Stack, Typography } from '@wso2/oxygen-ui';
+import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
 import { useCallback, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
@@ -34,12 +35,26 @@ import {
   ApiCreationProgress,
   type ApiCreationProgressStatus,
 } from './components/ApiCreationProgress';
+import { API_TYPES } from './uiConfig';
+
+const CONFIGURE_FORM_ID = 'api-creation-configure-form';
 
 const messages = defineMessages({
+  back: {
+    id: 'api.create.ApiCreationWizard.action.back',
+    defaultMessage: 'Back',
+  },
+  continue: {
+    id: 'api.create.ApiCreationWizard.action.continue',
+    defaultMessage: 'Continue',
+  },
+  createAnApi: {
+    id: 'api.create.ApiCreationWizard.title',
+    defaultMessage: 'Create an API',
+  },
   apiTypeSubtitle: {
     id: 'api.create.ApiCreationWizard.apiType.subtitle',
-    defaultMessage:
-      'This decides how the gateway exposes your backend. Only REST is available today.',
+    defaultMessage: 'Choose how the gateway should expose your backend.',
   },
   apiTypeTitle: {
     id: 'api.create.ApiCreationWizard.apiType.title',
@@ -47,7 +62,7 @@ const messages = defineMessages({
   },
   configureSubtitle: {
     id: 'api.create.ApiCreationWizard.configure.subtitle',
-    defaultMessage: 'Name it, set where it routes, and create it.',
+    defaultMessage: 'Review the API details, configure its backend endpoint, and create it.',
   },
   configureTitle: {
     id: 'api.create.ApiCreationWizard.configure.title',
@@ -70,12 +85,19 @@ const messages = defineMessages({
     description:
       '{apiType} is the type picked in the first step, e.g. "REST API". Reads as one sentence.',
   },
+  stepCount: {
+    id: 'api.create.ApiCreationWizard.stepCount',
+    defaultMessage: 'Step {current} of 3',
+  },
 });
 
 export const ApiCreationWizard = () => {
   const intl = useIntl();
   const [step, setStep] = useState<ApiCreationStepKey>('apiType');
-  const [apiType, setApiType] = useState<ApiType | null>(null);
+  const [apiType, setApiType] = useState<ApiType | null>(
+    () => API_TYPES.find((candidate) => candidate.enabled) ?? null,
+  );
+  const [sourceDraft, setSourceDraft] = useState<ApiCreationWizardDraftState | null>(null);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
 
@@ -122,10 +144,10 @@ export const ApiCreationWizard = () => {
    * A fresh import also supersedes any earlier submission, so the form starts
    * from the new document rather than restoring values typed against the old.
    */
-  const handleDataExtracted = (data: ApiCreationWizardDraftState) => {
-    setPrefilledData(data);
+  const continueFromSource = () => {
+    if (sourceDraft === null) return;
+    setPrefilledData(sourceDraft);
     setSubmittedValues(null);
-
     setStep('configure');
   };
 
@@ -230,57 +252,131 @@ export const ApiCreationWizard = () => {
     );
   }
 
+  const stepNumber = step === 'apiType' ? 1 : step === 'source' ? 2 : 3;
+
   return (
-    <Box sx={{ width: '100%' }}>
-      <Stack direction="column" spacing={2} sx={{ alignItems: 'center' }}>
-        <ApiCreationSteps activeStep={step} onStepClick={(step) => setStep(step)} />
+    <Box
+      sx={{
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 620,
+        overflow: 'hidden',
+        width: '100%',
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ alignItems: 'center', borderBottom: 1, borderColor: 'divider', minHeight: 48, px: 3 }}
+      >
+        <Typography sx={{ fontWeight: 700, whiteSpace: 'nowrap' }} variant="body2">
+          {intl.formatMessage(messages.createAnApi)}
+        </Typography>
+        <Divider flexItem orientation="vertical" sx={{ my: 1.5 }} />
+        <ApiCreationSteps activeStep={step} onStepClick={(nextStep) => setStep(nextStep)} />
+      </Stack>
 
-        <Box sx={{ alignSelf: 'flex-start' }}>
-          <Typography variant="h1" sx={{ textAlign: 'left', mb: 1, fontWeight: 700 }}>
-            {getTitleForStep(step)}
-          </Typography>
-          <Typography variant="body1" sx={{ textAlign: 'left' }}>
-            {getSubtitleForStep(step)}
-          </Typography>
-        </Box>
+      <Box sx={{ flex: 1, p: { md: 3.5, xs: 2 } }}>
+        <Stack
+          direction="column"
+          spacing={step === 'configure' ? 2 : 3}
+          sx={{ alignItems: 'flex-start' }}
+        >
+          <Box>
+            <Typography variant="h1" sx={{ textAlign: 'left', mb: 1, fontWeight: 700 }}>
+              {getTitleForStep(step)}
+            </Typography>
+            <Typography variant="body1" sx={{ textAlign: 'left' }}>
+              {getSubtitleForStep(step)}
+            </Typography>
+          </Box>
 
-        <Box sx={{ alignSelf: 'flex-start', width: '100%' }}>
-          {step === 'apiType' && (
-            <ApiTypeSelector
-              onChange={(apiType) => {
-                setApiType(apiType);
-                setStep('source');
-              }}
-            />
-          )}
-
-          {step === 'source' && (
-            // `onAuthorizeGitHub` and `onRefreshSwaggerHubOrganizations` are
-            // deliberately not passed: neither flow is wired yet, and the
-            // panel hides the control belonging to a handler it wasn't given
-            // rather than rendering a button that does nothing.
-            <DefineApiPanel
-              initialApiTypeKey={apiType?.key}
-              onDataFetched={handleDataExtracted}
-              onBack={() => setStep('apiType')}
-            />
-          )}
-
-          {step === 'configure' && (
-            <Box sx={{ maxWidth: '80%', mt: 1 }}>
-              <GeneralCreateApiForm
-                // What the user actually submitted, when there is such an
-                // attempt to come back from: the form remounts after the
-                // progress screen, so anything hand-typed would otherwise
-                // revert to the spec-derived draft.
-                initialValues={submittedValues ?? prefilledData}
-                onSubmit={onGeneralFormSumit}
-                onBack={() => setStep('source')}
-                serverErrors={formErrors ?? undefined}
+          <Box sx={{ width: '100%' }}>
+            {step === 'apiType' && (
+              <ApiTypeSelector
+                onChange={(apiType) => {
+                  setApiType(apiType);
+                }}
+                value={apiType?.key}
               />
-            </Box>
+            )}
+
+            {step !== 'apiType' && (
+              <Box sx={{ display: step === 'source' ? 'block' : 'none' }}>
+                {/* Kept mounted during configuration so Back preserves the selected source and edits. */}
+                <DefineApiPanel initialApiTypeKey={apiType?.key} onDraftChange={setSourceDraft} />
+              </Box>
+            )}
+
+            {step === 'configure' && (
+              <Box sx={{ maxWidth: '80%' }}>
+                <GeneralCreateApiForm
+                  formId={CONFIGURE_FORM_ID}
+                  hideActions
+                  // What the user actually submitted, when there is such an
+                  // attempt to come back from: the form remounts after the
+                  // progress screen, so anything hand-typed would otherwise
+                  // revert to the spec-derived draft.
+                  initialValues={submittedValues ?? prefilledData}
+                  onSubmit={onGeneralFormSumit}
+                  onBack={() => setStep('source')}
+                  serverErrors={formErrors ?? undefined}
+                />
+              </Box>
+            )}
+          </Box>
+        </Stack>
+      </Box>
+
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: 'center',
+          borderTop: 1,
+          borderColor: 'divider',
+          justifyContent: 'space-between',
+          minHeight: 56,
+          px: 3,
+        }}
+      >
+        <Typography color="text.secondary" sx={{ fontWeight: 600 }} variant="caption">
+          {intl.formatMessage(messages.stepCount, { current: stepNumber })}
+        </Typography>
+        <Stack direction="row" spacing={1}>
+          <Button
+            disabled={step === 'apiType'}
+            onClick={() => setStep(step === 'configure' ? 'source' : 'apiType')}
+            type="button"
+            variant="text"
+          >
+            {intl.formatMessage(messages.back)}
+          </Button>
+          {step === 'configure' ? (
+            <Button form={CONFIGURE_FORM_ID} key="create-api" type="submit" variant="contained">
+              {intl.formatMessage({
+                id: 'api.create.generalForm.action.create',
+                defaultMessage: 'Create',
+              })}
+            </Button>
+          ) : (
+            <Button
+              disabled={step === 'apiType' ? !apiType : sourceDraft === null}
+              endIcon={<ArrowRight size={16} />}
+              key="continue-wizard"
+              onClick={() => {
+                if (step === 'apiType') setStep('source');
+                else continueFromSource();
+              }}
+              type="button"
+              variant="contained"
+            >
+              {intl.formatMessage(messages.continue)}
+            </Button>
           )}
-        </Box>
+        </Stack>
       </Stack>
     </Box>
   );

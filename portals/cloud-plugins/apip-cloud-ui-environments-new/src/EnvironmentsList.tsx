@@ -23,6 +23,7 @@ import {
   Box,
   Button,
   Card,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -73,6 +74,7 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bumped on every refetch so a slower, superseded request's completion
   // (e.g. the initial load racing a Retry click) can recognize it's stale
@@ -109,15 +111,20 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
   }, [environments, searchQuery]);
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    // The dialog stays open, with its button busy, until the delete settles. An
+    // environment delete waits on OpenChoreo confirming the removal, so closing
+    // first left the row on screen with nothing to say a delete was running.
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
     try {
       await port.remove(deleteTarget.id);
       refetch();
       notify?.(`Environment "${deleteTarget.name}" deleted.`, 'success');
+      setDeleteTarget(null);
     } catch (err) {
       notify?.(errorMessage(err, `Failed to delete environment "${deleteTarget.name}".`), 'error');
     } finally {
-      setDeleteTarget(null);
+      setDeleting(false);
     }
   };
 
@@ -202,12 +209,19 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
         </TableContainer>
       </Card>
 
-      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
+      <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)}>
         <DialogTitle>Delete Environment</DialogTitle>
         <DialogContent><DialogContentText>Are you sure you want to delete {deleteTarget?.name}?</DialogContentText></DialogContent>
         <DialogActions>
-          <Button variant="outlined" color="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button color="error" onClick={handleDelete}>Delete</Button>
+          <Button variant="outlined" color="secondary" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button
+            color="error"
+            onClick={handleDelete}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
         </DialogActions>
       </Dialog>
     </PageContent>

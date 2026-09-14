@@ -58,6 +58,13 @@ export type AIWorkspaceExtension = SlotEntry & {
 export const AI_WORKSPACE_GATEWAYS_SLOT = 'page.gateways';
 
 /**
+ * Slot for overriding the built-in Insights page (org + project `/insights`)
+ * with the shared cloud Moesif embed. Same Slot/Hideable split as gateways —
+ * the built-in sidebar item and routes stay; only the page body changes.
+ */
+export const AI_WORKSPACE_INSIGHTS_SLOT = 'page.insights';
+
+/**
  * A host-injected replacement for a specific built-in page. Unlike
  * `AIWorkspaceExtension`, this isn't a new sidebar item — the built-in
  * page's own route and sidebar entry stay in place; only what renders at

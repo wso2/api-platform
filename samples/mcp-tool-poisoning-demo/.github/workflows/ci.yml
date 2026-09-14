@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  demo-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x setup.sh demo.sh teardown.sh
+
+      - name: Setup (start evil-server)
+        run: ./setup.sh
+
+      - name: Pass 1 -- expect the poisoned tool to be visible
+        run: |
+          set -o pipefail
+          ./demo.sh pass1 | tee pass1.log
+          grep -q "get_weather_report" pass1.log
+          grep -q "POISONED" pass1.log
+
+      - name: Pass 2 -- expect a graceful prerequisite message (no gateway configured in CI)
+        run: |
+          set -o pipefail
+          if ./demo.sh pass2 | tee pass2.log; then
+            code=0
+          else
+            code=$?
+          fi
+          if [[ $code -ne 2 ]]; then
+            echo "Expected exit code 2 (gateway not configured), got $code"
+            exit 1
+          fi
+          grep -q "GATEWAY_MCP_URL" pass2.log
+
+      - name: Teardown
+        if: always()
+        run: ./teardown.sh

@@ -271,10 +271,12 @@ token_ttl = "1h"
 # internal_token mode — settings specific to the "internal_token" auth mode.
 # Ignored when auth.mode is "file" or "idp".
 [platform_api.auth.internal_token]
-# Skip all JWT validation — signature, expiry, and issuer checks are bypassed,
-# and auth.jwt.public_key_file is not required. Intended for local development
-# where the signing keypair is not available. MUST be false in production — a
-# startup warning is emitted when true.
+# Disable all JWT validation on this path. The token is decoded without
+# verifying its signature, expiry, or issuer. A well-formed JWT with the
+# configured organization claim is still required, and its claims are used
+# for authorization.
+#
+# This is a supported trust-boundary configuration for internal tokens.
 skip_validation = false
 
 # ---------------------------------------------------------------------------

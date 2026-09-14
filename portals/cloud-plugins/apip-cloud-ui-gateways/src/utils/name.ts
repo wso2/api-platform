@@ -29,9 +29,7 @@ const MAX_GATEWAY_NAME_LENGTH = MAX_GATEWAY_HANDLE_LENGTH - 2;
 /** Reserved for the gateway provisioned automatically with the environment. */
 const RESERVED_GATEWAY_NAME = 'default';
 
-const DNS1123_NAME = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
-
-/** How many characters a gateway name may use in the given environment. */
+/** How many characters a gateway handle may use in the given environment. */
 export function gatewayNameBudget(environment: string): number {
   return environment
     ? MAX_GATEWAY_HANDLE_LENGTH - environment.length - 1
@@ -39,31 +37,50 @@ export function gatewayNameBudget(environment: string): number {
 }
 
 /**
- * Validates a new gateway's name against the same rules the backend applies to
- * it, returning the message to show or `undefined` when the name is fine.
+ * Derives the handle a gateway will be addressed by from its display name, the
+ * same conversion the backend applies (and the same one behind a project's or an
+ * API's id): lowercased, with spaces and underscores folded to hyphens and
+ * anything else dropped.
  *
- * On create the name is what the gateway's handle is derived from, so it has to
- * be a DNS-1123 name that fits the handle column alongside the environment —
- * otherwise the create call fails after the form has already been submitted.
- * Case is not part of it: the backend lowercases before validating, so `Prod-1`
- * is accepted and becomes `prod-1`. An empty name is left to the field's own
- * `required` handling rather than reported here.
+ * Returns `''` when nothing usable survives, which the caller reports rather
+ * than substituting a name of its own.
+ */
+export function gatewayHandleFromName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Validates a new gateway's name against the same rules the backend applies,
+ * returning the message to show or `undefined` when the name is fine.
+ *
+ * The name is a display name: it may be written however the user likes, and the
+ * handle is derived from it, so casing and spaces are not errors. What it cannot
+ * be is a name no handle can be built from, the reserved bootstrap name, or one
+ * whose handle does not fit the handle column alongside the environment. An
+ * empty name is left to the field's own `required` handling rather than reported
+ * here.
  */
 export function validateGatewayName(name: string, environment: string): string | undefined {
-  const handle = name.trim().toLowerCase();
-  if (!handle) return undefined;
+  if (!name.trim()) return undefined;
 
+  const handle = gatewayHandleFromName(name);
+  if (!handle) {
+    return 'Include at least one letter or number.';
+  }
   if (handle === RESERVED_GATEWAY_NAME) {
     return `"${RESERVED_GATEWAY_NAME}" is reserved for the gateway created with the environment.`;
-  }
-  if (!DNS1123_NAME.test(handle)) {
-    return 'Use only letters, digits and hyphens, starting and ending with a letter or digit.';
   }
 
   const budget = gatewayNameBudget(environment);
   if (handle.length > budget) {
     return environment
-      ? `Too long for the "${environment}" environment: use at most ${budget} characters (the handle "${environment}-<name>" must fit ${MAX_GATEWAY_HANDLE_LENGTH} characters).`
+      ? `Too long for the "${environment}" environment: the handle "${handle}" must be at most ${budget} characters (the full handle "${environment}-<handle>" has to fit ${MAX_GATEWAY_HANDLE_LENGTH}).`
       : `Use at most ${budget} characters.`;
   }
   return undefined;

@@ -272,12 +272,20 @@ describe('withPolicyEdits', () => {
     });
 
     const body = withPolicyEdits(api, {
-      policies: [{ name: 'new', version: '2' }],
-      operations: [{ method: 'GET', path: '/a', policies: [{ name: 'op', version: '1' }] }],
+      policies: [{ name: 'new', version: '2.4.1' }],
+      operations: [
+        {
+          method: 'GET',
+          path: '/a',
+          policies: [{ name: 'op', version: '1.0', params: { enabled: true } }],
+        },
+      ],
     });
 
-    expect(body.policies).toEqual([{ name: 'new', version: '2' }]);
-    expect(body.operations?.[0].request.policies).toEqual([{ name: 'op', version: '1' }]);
+    expect(body.policies).toEqual([{ name: 'new', version: 'v2' }]);
+    expect(body.operations?.[0].request.policies).toEqual([
+      { name: 'op', version: 'v1', params: { enabled: true } },
+    ]);
     expect(body.upstream).toEqual(api.upstream);
   });
 });
