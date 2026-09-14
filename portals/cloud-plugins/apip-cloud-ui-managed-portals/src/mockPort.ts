@@ -24,7 +24,9 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 // Real port relies on the server to reject bad handles; the mock has to check
 // itself so a value like "team/portal" doesn't produce an invalid hostname.
-const HANDLE_PATTERN = /^[a-z0-9-]+$/;
+// Also rejects leading/trailing hyphens: those would break the RFC 1123
+// hostname label the pending URL is built from (e.g. "pending-portal-.…").
+const HANDLE_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 /** Builds an in-memory PortalPort, optionally seeded. Seed is copied so callers can reuse it across instances. */
 export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {

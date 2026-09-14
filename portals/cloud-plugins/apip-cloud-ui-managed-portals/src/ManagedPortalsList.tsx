@@ -256,7 +256,13 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                                 </Typography>
                               )}
                             </TableCell>
-                            <TableCell align="right">
+                            <TableCell
+                              align="right"
+                              // The row's onKeyDown reacts to Enter/Space and would fire on the
+                              // Visit/Delete buttons too, opening the detail view on top of the
+                              // button's own action. Neutralize keydown for the whole action cell.
+                              onKeyDown={(event) => event.stopPropagation()}
+                            >
                               {portal.url && (
                                 <IconButton
                                   size="small"
