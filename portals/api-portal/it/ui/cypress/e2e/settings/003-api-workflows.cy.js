@@ -28,7 +28,7 @@ describe('Settings — API Workflows', () => {
     const WORKFLOW_NAME = `IT Workflow ${uid}`;
     const WORKFLOW_HANDLE = `it-workflow-${uid}`; // slugify(WORKFLOW_NAME)
 
-    const settingsUrl = () => `/${Cypress.env('ORG_HANDLE')}/settings`;
+    const settingsUrl = () => `${Cypress.env('BASE_PATH')}/${Cypress.env('ORG_HANDLE')}/settings`;
     const workflowUrl = () =>
         `/api/v0.9/views/${Cypress.env('VIEW_NAME')}/api-workflows/${WORKFLOW_HANDLE}`;
 

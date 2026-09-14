@@ -22,11 +22,12 @@ import type { StatusTone } from '../utils/status';
 
 export type StatusPillProps = {
   tone: StatusTone;
+  variant?: 'filled' | 'outlined';
 };
 
 /** A status Chip using Oxygen's own `color` palette — the theme decides the actual hue, this only picks which semantic bucket applies. */
-const StatusPill: FC<StatusPillProps> = ({ tone }) => (
-  <Chip label={tone.label} size="small" color={tone.tone} sx={{ fontWeight: 600 }} />
+const StatusPill: FC<StatusPillProps> = ({ tone, variant }) => (
+  <Chip label={tone.label} size="small" color={tone.tone} variant={variant} sx={{ fontWeight: 600 }} />
 );
 
 export default StatusPill;

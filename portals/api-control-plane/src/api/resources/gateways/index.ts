@@ -35,3 +35,18 @@ export type {
   TokenRotationResponse,
   UpdateGatewayBody,
 } from './gateways.endpoints';
+
+export type { GatewayListFilters } from './gateways.hooks';
+
+// ─── Hooks ──────────────────────────────────────────────────────────────────
+
+export {
+  useCreateGateway,
+  useDeleteGateway,
+  useGateway,
+  useGatewayManifest,
+  useGatewayOptions,
+  useGateways,
+  useRotateGatewayToken,
+  useUpdateGateway,
+} from './gateways.hooks';

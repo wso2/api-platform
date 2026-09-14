@@ -24,15 +24,26 @@ export type GatewayTypeCardProps = {
   label: string;
   badge?: string;
   selected: boolean;
+  /** Shown but not selectable — a type that is announced before it can be created. */
+  disabled?: boolean;
   onClick: () => void;
 };
 
-const GatewayTypeCard: FC<GatewayTypeCardProps> = ({ icon, label, badge, selected, onClick }) => (
+const GatewayTypeCard: FC<GatewayTypeCardProps> = ({
+  icon,
+  label,
+  badge,
+  selected,
+  disabled,
+  onClick,
+}) => (
   <Box
+    aria-disabled={disabled || undefined}
     role="button"
-    tabIndex={0}
-    onClick={onClick}
+    tabIndex={disabled ? -1 : 0}
+    onClick={disabled ? undefined : onClick}
     onKeyDown={(event) => {
+      if (disabled) return;
       if (event.key === 'Enter' || event.key === ' ') onClick();
     }}
     sx={{
@@ -46,19 +57,27 @@ const GatewayTypeCard: FC<GatewayTypeCardProps> = ({ icon, label, badge, selecte
       borderColor: selected ? 'primary.main' : 'divider',
       bgcolor: selected ? 'action.selected' : 'background.paper',
       borderRadius: '10px',
-      cursor: 'pointer',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1,
       transition: 'border-color 0.15s ease, background-color 0.15s ease',
-      '&:hover': selected ? undefined : { borderColor: 'text.disabled' },
+      '&:hover': selected || disabled ? undefined : { borderColor: 'text.disabled' },
     }}
   >
-    <Box sx={{ display: 'flex', color: selected ? 'primary.main' : 'text.secondary' }}>{icon}</Box>
+    <Box sx={{ display: 'flex', color: selected && !disabled ? 'primary.main' : 'text.secondary' }}>{icon}</Box>
     <Typography
       variant="body2"
-      sx={{ fontWeight: 600, flexGrow: 1, color: selected ? 'text.primary' : 'text.secondary' }}
+      sx={{ fontWeight: 600, flexGrow: 1, color: selected && !disabled ? 'text.primary' : 'text.secondary' }}
     >
       {label}
     </Typography>
-    {badge ? <Chip label={badge} size="small" color="info" sx={{ height: 20, fontSize: 11 }} /> : null}
+    {badge ? (
+      <Chip
+        color={disabled ? 'default' : 'info'}
+        label={badge}
+        size="small"
+        sx={{ height: 20, fontSize: 11 }}
+      />
+    ) : null}
   </Box>
 );
 

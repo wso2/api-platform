@@ -38,18 +38,6 @@ export default [
         {
           patterns: [
             {
-              // Legacy clients are one dir deep (api/<resource>/<x>Client), which
-              // `*/` matches. It leaves api/client.ts alone, and excludes
-              // api/resources/<resource>/*. The `!` carve-out is needed because
-              // api/core is also one deep, and otherwise queryClient would be
-              // blocked from the composition root. Order matters in gitignore-style
-              // patterns; do not use an extglob here because it is unsupported.
-              group: ['**/api/*/*Client', '!**/api/core/*Client', '**/api/mvpApi'],
-              allowTypeImports: true,
-              message:
-                'Do not import API clients directly. Use a hook from src/api/hooks (it resolves the client via useApiClient). See src/api/README.md.',
-            },
-            {
               group: ['**/api/core/http'],
               message:
                 'The HTTP transport is internal to the API layer. Components use a hook from src/api/resources/<resource>; a new backend call needs an endpoint + query + hook, not a direct request.',

@@ -19,8 +19,9 @@
 import {
   Box,
   Button,
+  Card,
+  Divider,
   InputAdornment,
-  MenuItem,
   PageTitle,
   Stack,
   TablePagination,
@@ -29,48 +30,33 @@ import {
 } from '@wso2/oxygen-ui';
 import { Plus, Search } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
-import {
-  defineMessages,
-  FormattedMessage,
-  useIntl,
-  type MessageDescriptor,
-} from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import type { Project } from '../../../../api/resources/projects';
-import {
-  useDeleteProject,
-  useProjects,
-  type ProjectListFilters,
-} from '../../../../api/resources/projects';
+import type { Project } from '@/api/resources/projects';
+import { useDeleteProject, useProjects } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
-import { ConfirmDialog } from '../../../../components/ConfirmDialog';
-import { useNotifications } from '../../../../components/Notifications';
-import { EmptyState, ErrorState, LoadingState } from '../../../../components/StateViews';
-import { routes } from '../../../../routes/paths';
-import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
-import { NewProjectDialog } from './NewProjectDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useNotifications } from '@/components/Notifications';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { routes } from '@/routes/paths';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { NewProjectDialog } from './components/NewProjectDialog';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { ProjectFolderIllustration } from '@/components/illustrations/ProjectFolderIllustration';
 
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 const SEARCH_DEBOUNCE_MS = 300;
 
-/**
- * Server-side sort is limited to `name | createdAt` and `asc | desc`.
- */
-type SortBy = NonNullable<ProjectListFilters['sortBy']>;
-type SortOrder = NonNullable<ProjectListFilters['sortOrder']>;
-
-
 const messages = defineMessages({
   createProject: {
     id: 'project.list.createProjectButton',
-    defaultMessage: 'Create Project',
+    defaultMessage: 'New project',
   },
   deleteConfirmInputLabel: {
     id: 'project.list.delete.confirmInputLabel',
     defaultMessage: 'Type "{name}" to confirm',
-    description:
-      'Label for the type-to-confirm field guarding an irreversible delete.',
+    description: 'Label for the type-to-confirm field guarding an irreversible delete.',
   },
   deleteConfirm: {
     id: 'project.list.delete.confirmLabel',
@@ -104,7 +90,7 @@ const messages = defineMessages({
   },
   emptyTitle: {
     id: 'project.list.empty.title',
-    defaultMessage: 'No projects found',
+    defaultMessage: 'Create your first Project',
   },
   errorMessage: {
     id: 'project.list.error.message',
@@ -122,10 +108,6 @@ const messages = defineMessages({
     id: 'project.list.noMatches.title',
     defaultMessage: 'No matching projects',
   },
-  projectCount: {
-    id: 'project.list.count',
-    defaultMessage: '{count, plural, one {# project} other {# projects}}',
-  },
   rowsPerPage: {
     id: 'project.list.rowsPerPage',
     defaultMessage: 'Projects per page',
@@ -134,84 +116,7 @@ const messages = defineMessages({
     id: 'project.list.searchPlaceholder',
     defaultMessage: 'Search projects',
   },
-  sortLabel: {
-    id: 'project.list.sortLabel',
-    defaultMessage: 'Sort by',
-    description: 'Label for the control choosing the project list order.',
-  },
-  sortNameAscending: {
-    id: 'project.list.sort.nameAscending',
-    defaultMessage: 'Name (A–Z)',
-    description: 'Sort option: alphabetical by project name, ascending.',
-  },
-  sortNameDescending: {
-    id: 'project.list.sort.nameDescending',
-    defaultMessage: 'Name (Z–A)',
-    description: 'Sort option: alphabetical by project name, descending.',
-  },
-  sortNewest: {
-    id: 'project.list.sort.newest',
-    defaultMessage: 'Newest first',
-    description: 'Sort option: by creation date, most recent project first.',
-  },
-  sortOldest: {
-    id: 'project.list.sort.oldest',
-    defaultMessage: 'Oldest first',
-    description: 'Sort option: by creation date, earliest project first.',
-  },
 });
-
-/**
- * Sort options with both field and direction.
- */
-const SORT_OPTIONS = [
-  {
-    label: messages.sortNewest,
-    sortBy: 'createdAt',
-    sortOrder: 'desc',
-    value: 'createdAt:desc',
-  },
-  {
-    label: messages.sortOldest,
-    sortBy: 'createdAt',
-    sortOrder: 'asc',
-    value: 'createdAt:asc',
-  },
-  {
-    label: messages.sortNameAscending,
-    sortBy: 'name',
-    sortOrder: 'asc',
-    value: 'name:asc',
-  },
-  {
-    label: messages.sortNameDescending,
-    sortBy: 'name',
-    sortOrder: 'desc',
-    value: 'name:desc',
-  },
-] as const satisfies readonly {
-  label: MessageDescriptor;
-  sortBy: SortBy;
-  sortOrder: SortOrder;
-  value: string;
-}[];
-
-type SortOption = (typeof SORT_OPTIONS)[number];
-
-/**
- * Delays a fast-changing value so it can drive a request. Typing updates the
- * field on every keystroke; the query only follows once the user pauses.
- */
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debounced;
-}
 
 export function ProjectListPage() {
   const { orgHandle = '' } = useParams();
@@ -223,33 +128,31 @@ export function ProjectListPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
-  const [sort, setSort] = useState<SortOption>(SORT_OPTIONS[0]);
   const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Project | null>(null);
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
 
-  // Page 1 is the only page that still means anything once the filter or the
-  // order changes — the row that was at offset 24 is somewhere else now.
-  useEffect(() => setPage(0), [debouncedSearch, sort.value]);
+  // A new filter starts from the first page.
+  useEffect(() => setPage(0), [debouncedSearch]);
 
   const projectsQuery = useProjects({
     limit: rowsPerPage,
     offset: page * rowsPerPage,
     query: debouncedSearch || undefined,
-    sortBy: sort.sortBy,
-    sortOrder: sort.sortOrder,
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
   });
   const deleteProjectMutation = useDeleteProject();
 
   const projects = projectsQuery.data?.list ?? [];
   const total = projectsQuery.data?.pagination?.total ?? projects.length;
   const lastPage = Math.max(0, Math.ceil(total / rowsPerPage) - 1);
-  // Deleting the last row of the last page leaves `page` past the end. Render
-  // the clamped value (an out-of-range `page` makes TablePagination complain),
-  // and correct the state so the next request asks for a window that exists.
+  // Clamp `page` after deleting the last row of the last page.
   const currentPage = Math.min(page, lastPage);
   const isSearching = debouncedSearch.length > 0;
+  // Show the create prompt only for an empty project, not an empty search.
+  const isFirstRun = total === 0 && !isSearching;
 
   useEffect(() => {
     if (page > lastPage) setPage(lastPage);
@@ -262,23 +165,16 @@ export function ProjectListPage() {
       { projectId: toDelete.id },
       {
         onSuccess: () => {
-          notify(
-            intl.formatMessage(messages.deleteSucceeded, { name: displayName }),
-            'success'
-          );
+          notify(intl.formatMessage(messages.deleteSucceeded, { name: displayName }), 'success');
           setToDelete(null);
         },
         onError: (error) =>
-          notify(
-            error.message || intl.formatMessage(messages.deleteFailed),
-            'error'
-          ),
-      }
+          notify(error.message || intl.formatMessage(messages.deleteFailed), 'error'),
+      },
     );
   };
 
-  const openProject = (project: Project) =>
-    navigate(routes.projectHome(orgHandle, project.id));
+  const openProject = (project: Project) => navigate(routes.projectHome(orgHandle, project.id));
 
   if (projectsQuery.isLoading) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
@@ -297,111 +193,93 @@ export function ProjectListPage() {
     <>
       <PageTitle>
         <PageTitle.Header>
-          <FormattedMessage
-            id="project.list.title"
-            defaultMessage="Projects"
-            />
+          <FormattedMessage id="project.list.title" defaultMessage="Projects" />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          {organization?.displayName
-            ? (
-              <FormattedMessage
-                defaultMessage="Project workspaces in {organizationName}."
-                id="project.list.subHeader.withOrganization"
-                values={{ organizationName: organization.displayName }}
-              />
-            )
-            : (
-              <FormattedMessage
-                defaultMessage="Select a project to manage APIs."
-                id="project.list.subHeader.default"
-              />
-            )}
+          {organization?.displayName ? (
+            <FormattedMessage
+              defaultMessage="Project workspaces in {organizationName}."
+              id="project.list.subHeader.withOrganization"
+              values={{ organizationName: organization.displayName }}
+            />
+          ) : (
+            <FormattedMessage
+              defaultMessage="Select a project to manage APIs."
+              id="project.list.subHeader.default"
+            />
+          )}
         </PageTitle.SubHeader>
-        <PageTitle.Actions>
-          <Button
-            onClick={() => setCreateOpen(true)}
-            startIcon={<Plus />}
-            sx={{ borderRadius: 5 }}
-            variant="contained"
-          >
-            <FormattedMessage {...messages.createProject} />
-          </Button>
-        </PageTitle.Actions>
       </PageTitle>
 
-      {total === 0 && !isSearching ? (
+      {isFirstRun ? (
         <EmptyState
           actionLabel={intl.formatMessage(messages.emptyAction)}
           onAction={() => setCreateOpen(true)}
           title={intl.formatMessage(messages.emptyTitle)}
           description={intl.formatMessage(messages.emptyDescription)}
+          actionIcon={<Plus />}
+          illustration={<ProjectFolderIllustration />}
         />
       ) : (
-        <Stack spacing={2} sx={{ flexGrow: 1 }}>
-          {/* Full-bleed search: the field owns its own row across the page. */}
-          <TextField
-            fullWidth
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={intl.formatMessage(messages.searchPlaceholder)}
-            size="small"
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search size={18} />
-                  </InputAdornment>
-                ),
-              },
-            }}
-            value={search}
-          />
-          <Box
-            sx={{
-              alignItems: 'center',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 2,
-              justifyContent: 'space-between',
-            }}
+        <Card sx={{ overflow: 'hidden' }}>
+          <Stack
+            alignItems="center"
+            direction={{ sm: 'row', xs: 'column' }}
+            justifyContent="space-between"
+            spacing={2}
+            sx={{ p: 2.5, width: '100%' }}
           >
-            <Typography variant="h6">
-              <FormattedMessage
-                {...messages.projectCount}
-                values={{ count: total }}
-              />
-            </Typography>
-            <TextField
-              label={intl.formatMessage(messages.sortLabel)}
-              onChange={(event) => {
-                const next = SORT_OPTIONS.find(
-                  (option) => option.value === event.target.value
-                );
-                if (next) setSort(next);
-              }}
-              select
-              size="small"
-              sx={{ minWidth: 200 }}
-              value={sort.value}
+            <Stack alignItems="center" direction="row" spacing={2}>
+              <Typography sx={{ fontWeight: 700 }} variant="h6">
+                <FormattedMessage id="project.list.title" defaultMessage="Projects" />
+              </Typography>
+              <Divider flexItem orientation="vertical" />
+              <Typography color="text.secondary" variant="body1">
+                {total}
+              </Typography>
+            </Stack>
+            <Stack
+              alignItems="center"
+              direction={{ sm: 'row', xs: 'column' }}
+              spacing={2}
+              sx={{ width: { sm: 'auto', xs: '100%' } }}
             >
-              {SORT_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {intl.formatMessage(option.label)}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Box>
+              <TextField
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={intl.formatMessage(messages.searchPlaceholder)}
+                size="small"
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search size={18} />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+                sx={{ width: { sm: 320, xs: '100%' } }}
+                value={search}
+              />
+              <Button
+                onClick={() => setCreateOpen(true)}
+                startIcon={<Plus />}
+                sx={{ borderRadius: 5, whiteSpace: 'nowrap' }}
+                variant="outlined"
+              >
+                <FormattedMessage {...messages.createProject} />
+              </Button>
+            </Stack>
+          </Stack>
+          <Divider />
           {projects.length === 0 ? (
-            <EmptyState
-              title={intl.formatMessage(messages.noMatchesTitle)}
-              description={intl.formatMessage(messages.noMatchesDescription)}
-            />
+            <Box sx={{ py: 6 }}>
+              <EmptyState
+                title={intl.formatMessage(messages.noMatchesTitle)}
+                description={intl.formatMessage(messages.noMatchesDescription)}
+              />
+            </Box>
           ) : (
             <>
-              {/* Takes the column's leftover height, which is what keeps the
-                  pagination bar at the bottom on a half-empty page. Dimmed
-                  rather than unmounted while the next page is in flight, so the
-                  grid keeps its height and the page does not jump. */}
               <Box
                 sx={{
                   flexGrow: 1,
@@ -409,15 +287,10 @@ export function ProjectListPage() {
                   transition: 'opacity .15s ease',
                 }}
               >
-                <ProjectsGrid
-                  onDelete={setToDelete}
-                  onOpen={openProject}
-                  orgHandle={orgHandle}
-                  projects={projects}
-                />
+                <ProjectsGrid onDelete={setToDelete} onOpen={openProject} projects={projects} />
               </Box>
               {total > PAGE_SIZE_OPTIONS[0] && (
-                <Box>
+                <Box sx={{ borderTop: 1, borderColor: 'divider' }}>
                   <TablePagination
                     component="div"
                     count={total}
@@ -435,7 +308,7 @@ export function ProjectListPage() {
               )}
             </>
           )}
-        </Stack>
+        </Card>
       )}
 
       <NewProjectDialog

@@ -122,12 +122,20 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	// Build arguments
 	args := []string{"build"}
 
-	// Add coverage instrumentation if enabled
-	if options.EnableCoverage {
+	// Add coverage instrumentation when requested. Atomic mode supports concurrent
+	// execution and produces counters that can be merged after the process exits.
+	if options.Coverage.Enabled {
 		slog.Info("Building with coverage instrumentation enabled",
 			"step", "build",
 			"phase", "compilation")
-		args = append(args, "-cover")
+		args = append(args, "-cover", "-covermode=atomic")
+		if options.Coverage.Packages != "" {
+			slog.Info("Restricting coverage instrumentation",
+				"step", "build",
+				"phase", "compilation",
+				"coverpkg", options.Coverage.Packages)
+			args = append(args, "-coverpkg="+options.Coverage.Packages)
+		}
 	}
 
 	// Add debug flags if enabled (no optimizations/inlining for dlv)

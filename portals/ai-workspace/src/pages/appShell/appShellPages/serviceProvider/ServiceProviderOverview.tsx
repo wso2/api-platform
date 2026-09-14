@@ -95,7 +95,11 @@ import {
 } from '../../../../utils/providerTemplateDisplay';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
-import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import {
+  DISABLED_ACTION_SX,
+  NO_PERMISSION_TOOLTIP,
+  SCOPES,
+} from '../../../../auth/permissions';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import {
   AIEntityProvider,
@@ -576,6 +580,8 @@ function ServiceProviderOverviewContent() {
   }, [isReadOnlyProvider, activeDeploymentCount, linkedProxyCount]);
 
   const canCreateProxy = hasPermission(SCOPES.LLM_PROXY_CREATE);
+  const canDeployProvider = hasPermission(SCOPES.LLM_PROVIDER_DEPLOYMENT_CREATE);
+  const canViewDeployments = hasPermission(SCOPES.LLM_PROVIDER_DEPLOYMENT_READ);
   const isCreateProxyDisabled =
     !provider?.id || isProxyQuotaReached || !canCreateProxy;
   const createProxyTooltip = !canCreateProxy
@@ -1630,28 +1636,41 @@ function ServiceProviderOverviewContent() {
               }}
             >
               <Stack spacing={1} sx={{ alignItems: 'stretch' }}>
-                {/* For gateway-created (read-only) providers the deployments remain
-                    viewable (deploy/redeploy/restore/undeploy are disabled on the page
-                    itself), so the button navigates but is relabelled "View Deployments". */}
-                <Button
-                  variant="contained"
-                  component={RouterLink}
-                  to="deploy"
-                  onClick={isReadOnlyProvider ? undefined : handleBlockedNavigation}
+                {/* For gateway-created (read-only) providers, and for users holding
+                    only the deployment-read scope, the deployments remain viewable
+                    (deploy/redeploy/restore/undeploy are disabled on the page itself),
+                    so the button navigates but is relabelled "View Deployments".
+                    Without even deployment-read there is nothing to see, so it is
+                    disabled. */}
+                <DisabledActionTooltip
+                  disabled={!canViewDeployments}
+                  title={NO_PERMISSION_TOOLTIP}
                   fullWidth
                 >
-                  {isReadOnlyProvider ? (
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.view.deployments"
-                      defaultMessage={'View Deployments'}
-                    />
-                  ) : (
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
-                      defaultMessage={'Deploy to Gateway'}
-                    />
-                  )}
-                </Button>
+                  <Button
+                    variant="contained"
+                    component={RouterLink}
+                    to="deploy"
+                    onClick={
+                      isReadOnlyProvider ? undefined : handleBlockedNavigation
+                    }
+                    disabled={!canViewDeployments}
+                    sx={DISABLED_ACTION_SX}
+                    fullWidth
+                  >
+                    {isReadOnlyProvider || !canDeployProvider ? (
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.view.deployments"
+                        defaultMessage={'View Deployments'}
+                      />
+                    ) : (
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.deploy.to.gateway"
+                        defaultMessage={'Deploy to Gateway'}
+                      />
+                    )}
+                  </Button>
+                </DisabledActionTooltip>
                 <DisabledActionTooltip
                   disabled={isProxyQuotaReached || !canCreateProxy}
                   title={createProxyTooltip}

@@ -1,0 +1,8 @@
+.env
+api-platform.env
+resources/certificates/
+resources/keys/
+resources/gateway-certificates/
+resources/gateway-listener-certs/
+resources/gateway-aesgcm-keys/
+*.log

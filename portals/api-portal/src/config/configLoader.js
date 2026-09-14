@@ -591,6 +591,37 @@ function resolveOrganizationConfig(cfg, tomlOrg) {
 resolveOrganizationConfig(config, interpolatedTomlConfig.organization);
 
 /**
+ * Validates the portal identifier this instance will be pinned to, and fails
+ * closed when it is empty or malformed.
+ * Design mode renders from disk and uses no database, so portal_id is unused
+ * and validation is skipped.
+ */
+function resolvePortalIdConfig(cfg) {
+    if (cfg.designMode?.enabled) return;
+
+    const portalId = cfg.organization?.portalId;
+    const trimmed = typeof portalId === 'string' ? portalId.trim() : '';
+
+    if (!trimmed) {
+        process.stderr.write(
+            '[FATAL] organization.portal_id is not configured or resolves to an empty string. ' +
+            'Set APIP_AP_ORGANIZATION_PORTAL_ID in your environment, or organization.portal_id ' +
+            "in configs/config.toml, e.g. portal_id = '{{ env \"APIP_AP_ORGANIZATION_PORTAL_ID\" \"portal_id\" }}'.\n"
+        );
+        process.exit(1);
+    }
+    if (/\s/.test(portalId)) {
+        process.stderr.write(
+            '[FATAL] organization.portal_id contains whitespace. API Portal identifiers ' +
+            'must not contain spaces or tabs.\n'
+        );
+        process.exit(1);
+    }
+}
+
+resolvePortalIdConfig(config);
+
+/**
  * Refuses to start when auth.mode = "idp" is selected without the endpoints OIDC login
  * actually needs.
  *

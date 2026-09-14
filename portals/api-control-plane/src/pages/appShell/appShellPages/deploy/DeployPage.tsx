@@ -17,28 +17,63 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Box,
-  PageTitle,
-  TextField,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
+import { useNavigate } from 'react-router-dom';
 
-import {
-  useApi,
-  useGatewayDeployments,
-  useGateways,
-} from '../../../../api/hooks/useMvpQueries';
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-} from '../../../../components/StateViews';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { useGateways } from '@/api/resources/gateways';
+import { useRestApi } from '@/api/resources/restApis';
+import { useDeployments } from '@/api/resources/restApis/deployments';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { GatewayDeployCard } from './components/GatewayDeployCard';
-import { FormattedMessage } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+
+const messages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.title',
+    defaultMessage: 'Deploy {apiName}',
+    description:
+      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
+  },
+  subtitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.subtitle',
+    defaultMessage:
+      'Deploy the current working copy to a gateway, and manage existing deployments.',
+  },
+  loading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading',
+    defaultMessage: 'Loading deploy state',
+    description: 'Shown while the API, its gateways and its deployments are being fetched.',
+  },
+  apiNotFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.apiNotFound',
+    defaultMessage: 'API not found',
+  },
+  searchPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.searchPlaceholder',
+    defaultMessage: 'Search gateways',
+  },
+  noGatewaysMatchSearch: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.noGatewaysMatchSearch',
+    defaultMessage: 'No gateways match your search',
+  },
+  emptyTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle',
+    defaultMessage: 'No gateway added yet',
+    description: 'Empty state when the organization has no gateways to deploy to.',
+  },
+  emptyDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyDescription',
+    defaultMessage: 'Add a gateway to get started with deployment.',
+  },
+  addGateway: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.addGateway',
+    defaultMessage: 'Add Gateway',
+    description: 'Empty-state action opening the gateway creation page. Verb phrase.',
+  },
+});
 
 /**
  * The deploy path, ai-workspace style: one expandable card per gateway with
@@ -46,29 +81,30 @@ import { FormattedMessage } from 'react-intl';
  */
 export function DeployPage() {
   return (
-    <ScopeGate
-      prompt="Deployments are made for a single API."
-      requires="api"
-      to={routes.apiDeploy}
-    >
+    <ScopeGate prompt="Deployments are made for a single API." requires="api" to={routes.apiDeploy}>
       <Deploy />
     </ScopeGate>
   );
 }
 
 function Deploy() {
-  const { orgHandle = '' } = useParams();
+  const intl = useIntl();
+  const { params } = useConsoleScope();
+  const orgHandle = params.orgHandle ?? '';
   const navigate = useNavigate();
-  const apiQuery = useApi();
+  const apiQuery = useRestApi(params.apiHandler);
   const gatewaysQuery = useGateways();
-  const deploymentsQuery = useGatewayDeployments(apiQuery.data);
+  // The deployments query is gated on the handle rather than on the loaded API:
+  // both are keyed by the same value, so waiting for the API detail would delay
+  // this request for no benefit.
+  const deploymentsQuery = useDeployments(params.apiHandler);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Active (connected) gateways first, like ai-workspace.
   const sortedGateways = useMemo(() => {
-    const gateways = gatewaysQuery.data || [];
+    const gateways = gatewaysQuery.data?.list ?? [];
     return [...gateways].sort((a, b) => {
       const aActive = a.isActive === true;
       const bActive = b.isActive === true;
@@ -82,24 +118,27 @@ function Deploy() {
   useEffect(() => {
     if (appliedInitialExpand.current || sortedGateways.length === 0) return;
     appliedInitialExpand.current = true;
-    setExpandedIds(new Set([sortedGateways[0].id]));
+    setExpandedIds(new Set([sortedGateways[0].id ?? '']));
   }, [sortedGateways]);
 
-  if (apiQuery.isLoading || gatewaysQuery.isLoading) {
-    return <LoadingState label="Loading deploy state" />;
+  // `isPending`, not `isLoading`: both queries are gated on scope, and a
+  // disabled query reports `isLoading: false` with no data — which would fall
+  // through to the error branch while the scope is still resolving.
+  if (apiQuery.isPending || gatewaysQuery.isPending) {
+    return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
-  if (!apiQuery.data) return <ErrorState title="API not found" />;
+  if (!apiQuery.data) return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
 
   const api = apiQuery.data;
-  const deployments = deploymentsQuery.data || [];
+  const restApiId = api.id ?? params.apiHandler ?? '';
+  const deployments = deploymentsQuery.data?.list ?? [];
 
   const filteredGateways = searchQuery.trim()
     ? sortedGateways.filter((gateway) => {
         const query = searchQuery.toLowerCase().trim();
-        return (
-          gateway.name.toLowerCase().includes(query) ||
-          gateway.displayName.toLowerCase().includes(query)
-        );
+        // One field, not two: the domain type this replaced set its `name` from
+        // `displayName`, so matching both only ever matched the same string.
+        return gateway.displayName.toLowerCase().includes(query);
       })
     : sortedGateways;
 
@@ -116,26 +155,19 @@ function Deploy() {
     <>
       <PageTitle>
         <PageTitle.Header>
-          <FormattedMessage
-            id="appShell.deployPage.header"
-            defaultMessage='Deploy {apiName}'
-            values={{ apiName: api.displayName }}
-          />
+          <FormattedMessage {...messages.title} values={{ apiName: api.displayName }} />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          <FormattedMessage
-            id="appShell.deployPage.subHeader"
-            defaultMessage='Deploy the current working copy to a gateway, and manage existing deployments.'
-          />
+          <FormattedMessage {...messages.subtitle} />
         </PageTitle.SubHeader>
       </PageTitle>
 
       {sortedGateways.length === 0 ? (
         <EmptyState
-          actionLabel="Add Gateway"
-          description="Add a gateway to get started with deployment."
+          actionLabel={intl.formatMessage(messages.addGateway)}
+          description={intl.formatMessage(messages.emptyDescription)}
           onAction={() => navigate(routes.newGateway(orgHandle))}
-          title="No gateway added yet"
+          title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (
         <>
@@ -143,7 +175,7 @@ function Deploy() {
             <TextField
               fullWidth
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search gateways"
+              placeholder={intl.formatMessage(messages.searchPlaceholder)}
               size="small"
               value={searchQuery}
             />
@@ -153,25 +185,20 @@ function Deploy() {
             {filteredGateways.length === 0 ? (
               <Box sx={{ color: 'text.secondary', p: 6, textAlign: 'center' }}>
                 <Typography>
-                  <FormattedMessage
-                    id="appShell.deployPage.noGatewaysMatchSearch"
-                    defaultMessage="No gateways match your search"
-                  />
+                  <FormattedMessage {...messages.noGatewaysMatchSearch} />
                 </Typography>
               </Box>
             ) : (
               filteredGateways.map((gateway) => (
                 <GatewayDeployCard
-                  api={api}
                   deployments={deployments}
                   gateway={gateway}
-                  isExpanded={expandedIds.has(gateway.id)}
+                  isExpanded={expandedIds.has(gateway.id ?? '')}
                   key={gateway.id}
                   onRefresh={() => deploymentsQuery.refetch()}
-                  onToggleExpand={(expanded) =>
-                    toggleExpand(gateway.id, expanded)
-                  }
+                  onToggleExpand={(expanded) => toggleExpand(gateway.id ?? '', expanded)}
                   refreshing={deploymentsQuery.isFetching}
+                  restApiId={restApiId}
                 />
               ))
             )}

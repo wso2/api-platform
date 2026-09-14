@@ -17,17 +17,31 @@
  */
 
 /**
- * Hand-mirrors `AIWorkspaceHostPort` from api-platform's
- * `portals/ai-workspace/src/hostPort.tsx` — api-platform and apim-saas are
+ * Hand-mirrors `CloudHostPort` from api-platform's
+ * `portals/api-control-plane/src/hostPort.tsx` — api-platform and apim-saas are
  * separate git repos, so this type is duplicated by hand (small, stable,
  * rarely-changing) rather than imported. This package only ever receives a
  * value of this shape as a plain prop; never a shared React Context.
  */
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
 
-export type AIWorkspaceHostPort = {
+/**
+ * A same-origin, host-authenticated call to the platform API. `path` is relative
+ * to the API base, so this package never knows the host's transport, base URL or
+ * auth.
+ */
+export type ApiFetch = <T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown
+) => Promise<T>;
+
+export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
+  /** The API being deployed. Deploying needs one, so the page says so when it is absent. */
+  apiHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
+  apiFetch: ApiFetch;
 };

@@ -754,6 +754,8 @@ const deleteAPIMetadata = async (req, res) => {
             if (activeKeys.length > 0) {
                 throw new CustomError(409, constants.ERROR_MESSAGE.ERR_KEY_EXIST, "API has active keys.");
             }
+            // Delete revoked/expired keys within the transaction before removing the API row
+            await apiKeyDao.deleteByApi(orgId, apiId, t);
             const apiDeleteResponse = await apiDao.delete(orgId, apiId, t);
             if (apiDeleteResponse === 0) {
                 throw new NotFoundError("Resource not found to delete");

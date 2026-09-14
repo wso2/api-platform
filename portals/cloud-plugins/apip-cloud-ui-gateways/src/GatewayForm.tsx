@@ -16,65 +16,128 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
   FormControl,
+  FormControlLabel,
   FormLabel,
   Grid,
   PageContent,
   PageTitle,
   Stack,
+  Switch,
   TextField,
   Tooltip,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import EnvironmentSelect from './components/EnvironmentSelect';
 import GatewayTypeSelector from './components/GatewayTypeSelector';
-import { createGateway, getGateway, listEnvironments, updateGateway } from './mocks/gatewaysStore';
-import type { NotifySeverity } from './hostPort';
-import type { GatewayType } from './types';
+import { gatewayHandleFromName, validateGatewayName } from './utils/name';
+import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
 
 export type GatewayFormProps = {
   /** Editing an existing gateway pre-fills the form and changes the page's labels. Omit (or 'create') for a blank gateway. */
   mode?: 'create' | 'edit';
   /** Required when `mode` is 'edit' — the gateway to load and update. */
-  gatewayId?: string;
+  gateway?: Gateway;
+  /** The gateway types this host offers. A host with only one type gets no picker. */
+  types: GatewayType[];
+  environments: Environment[];
+  /**
+   * The gateways already in this host's view. Used only to tell whether the one
+   * being created would be the first of its type in the chosen environment, and
+   * so the environment's default.
+   */
+  gateways: Gateway[];
   onBack: () => void;
-  notify?: (message: string, severity?: NotifySeverity) => void;
+  /** Returning a promise lets the form keep its submit button busy until the save settles. */
+  onSubmit: (input: GatewayInput) => void | Promise<void>;
 };
 
-const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gatewayId, onBack, notify }) => {
-  const isEdit = mode === 'edit' && !!gatewayId;
-  const editingGateway = isEdit ? getGateway(gatewayId as string) : undefined;
+/** Shown before a name is typed, so the naming rule is known up front. */
+const NAME_HELPER_TEXT = 'The gateway handle is derived from this name and cannot be changed later.';
 
-  const [environments] = useState(() => listEnvironments());
-  const [type, setType] = useState<GatewayType>(editingGateway?.type ?? 'ai');
-  const [name, setName] = useState(editingGateway?.name ?? '');
-  const [description, setDescription] = useState(editingGateway?.description ?? '');
-  const [url, setUrl] = useState(editingGateway?.url ?? '');
-  const [environmentId, setEnvironmentId] = useState(editingGateway?.environmentId ?? '');
+const GatewayForm: FC<GatewayFormProps> = ({
+  mode = 'create',
+  gateway,
+  types,
+  environments,
+  gateways,
+  onBack,
+  onSubmit,
+}) => {
+  const isEdit = mode === 'edit' && !!gateway;
 
-  const canSubmit = name.trim().length > 0 && url.trim().length > 0 && environmentId.length > 0;
+  // A host that offers a single type has nothing to pick, so the field is left
+  // out entirely and that one type is used.
+  const showTypeField = types.length > 1;
 
-  const handleSubmit = () => {
-    const input = {
-      name: name.trim(),
-      description: description.trim() || undefined,
-      type,
-      environmentId,
-      url: url.trim(),
-    };
+  const [type, setType] = useState<GatewayType>(gateway?.type ?? types[0]);
+  // Marking is one-way: a default is handed over by marking another gateway, so
+  // an existing default's switch stays on and disabled rather than offering an
+  // "unset" that would leave the environment without one.
+  const [isDefault, setIsDefault] = useState(gateway?.isDefault ?? false);
+  const [name, setName] = useState(gateway?.name ?? '');
+  const [description, setDescription] = useState(gateway?.description ?? '');
+  const [environmentId, setEnvironmentId] = useState(gateway?.environmentId ?? '');
 
-    if (isEdit && editingGateway) {
-      updateGateway(editingGateway.id, input);
-      notify?.(`Gateway "${input.name}" updated.`, 'success');
-    } else {
-      createGateway(input);
-      notify?.(`Gateway "${input.name}" created.`, 'success');
+  // The name is only constrained on create, where the backend derives the
+  // gateway's handle from it. It is a plain display name from then on — the
+  // handle is immutable — so an edit must not be blocked by rules that no longer
+  // apply to what it changes.
+  const nameError = isEdit ? undefined : validateGatewayName(name, environmentId);
+
+  // The handle is what the gateway is addressed by and cannot be changed later,
+  // so show what the name will become instead of leaving the user to guess.
+  const derivedHandle = isEdit ? '' : gatewayHandleFromName(name);
+  const nameHelperText =
+    nameError ??
+    (derivedHandle ? `Handle: ${derivedHandle}` : isEdit ? undefined : NAME_HELPER_TEXT);
+
+  // The backend makes the first gateway of a type in an environment its default
+  // whether or not it was asked to, so the switch shows that outcome rather than
+  // letting the form claim otherwise. It needs an environment to be true of:
+  // before one is chosen there is nothing to be the first of.
+  const isFirstOfType =
+    !isEdit &&
+    environmentId.length > 0 &&
+    !gateways.some(
+      (candidate) => candidate.environmentId === environmentId && candidate.type === type
+    );
+
+  // Re-derived whenever the chosen environment or type changes, so the switch
+  // always describes the current selection. A manual toggle afterwards sticks:
+  // `isFirstOfType` does not change when the switch does, so this does not fire
+  // and undo it.
+  useEffect(() => {
+    if (isEdit) return;
+    setIsDefault(isFirstOfType);
+  }, [isEdit, isFirstOfType]);
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const missingRequired = name.trim().length === 0 || environmentId.length === 0;
+  const canSubmit = !missingRequired && !nameError && !submitting;
+
+  const handleSubmit = async () => {
+    // Provisioning a gateway takes seconds, so the button has to show the work is
+    // under way — and a second click must not issue a second create.
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        type,
+        environmentId,
+        isDefault,
+      });
+    } finally {
+      setSubmitting(false);
     }
-    onBack();
   };
 
   return (
@@ -91,12 +154,14 @@ const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gatewayId, onBack,
 
       <Box sx={{ mt: 2, maxWidth: 820 }}>
         <Grid container spacing={2}>
-          <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth>
-              <FormLabel required>Gateway Type</FormLabel>
-              <GatewayTypeSelector value={type} onChange={setType} readOnly={isEdit} />
-            </FormControl>
-          </Grid>
+          {showTypeField ? (
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <FormLabel required>Gateway Type</FormLabel>
+                <GatewayTypeSelector types={types} value={type} onChange={setType} readOnly={isEdit} />
+              </FormControl>
+            </Grid>
+          ) : null}
 
           <Grid size={{ xs: 12 }}>
             <FormControl fullWidth>
@@ -107,6 +172,8 @@ const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gatewayId, onBack,
                 placeholder="Enter gateway name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
+                error={Boolean(nameError)}
+                helperText={nameHelperText}
                 autoFocus
               />
             </FormControl>
@@ -128,33 +195,53 @@ const GatewayForm: FC<GatewayFormProps> = ({ mode = 'create', gatewayId, onBack,
 
           <Grid size={{ xs: 12 }}>
             <FormControl fullWidth>
-              <FormLabel required>URL</FormLabel>
-              <TextField
-                fullWidth
-                required
-                placeholder="https://localhost:8443"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
+              <FormLabel required>Environment</FormLabel>
+              {/* The environment is fixed at creation — a managed gateway lives in exactly one. */}
+              <EnvironmentSelect
+                environments={environments}
+                value={environmentId}
+                onChange={setEnvironmentId}
+                disabled={isEdit}
               />
             </FormControl>
           </Grid>
 
           <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth>
-              <FormLabel required>Environment</FormLabel>
-              <EnvironmentSelect environments={environments} value={environmentId} onChange={setEnvironmentId} />
-            </FormControl>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isDefault}
+                  // Locked in three cases: nothing to be the default of until an
+                  // environment is chosen; an existing default cannot be unset
+                  // here (it is handed over by marking another gateway); and the
+                  // first gateway of its type BECOMES the default whatever this
+                  // says, so offering to untick it would be a lie.
+                  disabled={
+                    (gateway?.isDefault ?? false) || environmentId.length === 0 || isFirstOfType
+                  }
+                  onChange={(event) => setIsDefault(event.target.checked)}
+                />
+              }
+              label="Default gateway for this environment"
+            />
           </Grid>
         </Grid>
 
         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
-          <Button variant="outlined" color="secondary" onClick={onBack}>
+          <Button variant="outlined" color="secondary" disabled={submitting} onClick={onBack}>
             Cancel
           </Button>
-          <Tooltip title={!canSubmit ? 'Fill in the required fields to continue.' : ''}>
+          {/* An invalid name explains itself in the field's helper text, so the
+              tooltip only covers the still-empty case. */}
+          <Tooltip title={missingRequired ? 'Fill in the required fields to continue.' : ''}>
             <span>
-              <Button variant="contained" disabled={!canSubmit} onClick={handleSubmit}>
-                {isEdit ? 'Save Changes' : 'Add Gateway'}
+              <Button
+                variant="contained"
+                disabled={!canSubmit}
+                onClick={handleSubmit}
+                startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : undefined}
+              >
+                {submitting ? (isEdit ? 'Saving…' : 'Adding…') : isEdit ? 'Save Changes' : 'Add Gateway'}
               </Button>
             </span>
           </Tooltip>

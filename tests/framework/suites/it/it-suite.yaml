@@ -1,0 +1,178 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+suite: it-suite
+
+defaults:
+  parallel: 3
+  components:
+    platform-gateway:
+      db: sqlite
+  timeouts:
+    boot: 5m
+    propagation: 60s
+
+blocks:
+  - name: gateway-core
+    parallel: 10
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: api-error-responses
+        features:
+          - features/api_error_responses.feature
+      - name: health
+        features:
+          - features/health.feature
+      - name: api-management
+        features:
+          - features/api_management.feature
+      - name: api-deploy
+        features:
+          - features/api_deploy.feature
+      - name: api-keys
+        features:
+          - features/api_keys.feature
+      - name: api-with-policies
+        features:
+          - features/api_with_policies.feature
+      - name: search-deployments
+        features:
+          - features/search_deployments.feature
+      - name: lazy-resources-xds
+        features:
+          - features/lazy_resources_xds.feature
+      - name: dynamic-endpoint
+        features:
+          - features/dynamic_endpoint.feature
+      - name: route-path-matching
+        features:
+          - features/route_path_matching.feature
+      - name: path-normalization
+        features:
+          - features/path_normalization.feature
+      - name: header-routing
+        features:
+          - features/header_routing.feature
+      - name: host-rewrite
+        features:
+          - features/host_rewrite.feature
+      - name: redirect
+        features:
+          - features/redirect.feature
+      - name: request-rewrite
+        features:
+          - features/request_rewrite.feature
+      - name: cors
+        features:
+          - features/cors.feature
+      - name: respond
+        features:
+          - features/respond.feature
+      - name: sandbox-routing
+        features:
+          - features/sandbox_routing.feature
+
+  - name: gateway-restart
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: startup-db-bootstrap
+        features:
+          - features/startup_db_bootstrap.feature
+
+  - name: gateway-metrics
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/metrics.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: metrics
+        features:
+          - features/metrics.feature
+
+  - name: gateway-logging
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/logging.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: log-message
+        features:
+          - features/log_message.feature
+
+  - name: vhost-routing-single
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/vhost-routing-single.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: vhost-routing-single
+        features:
+          - features/vhost_routing_single.feature
+
+  - name: vhost-routing-multi
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/vhost-routing-multi.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: vhost-routing-multi
+        features:
+          - features/vhost_routing_multi.feature
+
+  - name: backend-timeout
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/backend-timeout.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: upstream-connect-timeout
+        features:
+          - features/upstream_connect_timeout.feature
+      - name: backend-route-timeout
+        features:
+          - features/backend_timeout.feature
+      - name: llm-backend-timeout
+        features:
+          - features/llm_backend_timeout.feature
+      - name: interceptor-service
+        features:
+          - features/interceptor_service.feature

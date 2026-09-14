@@ -366,8 +366,11 @@ func main() {
 		policyDefinitions[key] = def
 	}
 
+	// Built early so the startup rehydration below can use it too.
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+
 	if err := hydrateStoredConfigsFromDatabaseOnStartup(
-		configStore, db, &cfg.Router, policyDefinitions, log,
+		configStore, db, &cfg.Router, policyDefinitions, policyVersionResolver, log,
 		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
 	); err != nil {
 		log.Error("Failed to hydrate stored configurations required for startup", slog.Any("error", err))
@@ -389,6 +392,22 @@ func main() {
 			snapshotManager.SetSDSSecretManager(sdsSecretManager)
 		}
 	}
+
+	// Build the transformer registry and wire it into the Envoy translator before
+	// the initial xDS snapshot below, so the first snapshot already uses the
+	// transformer-path cluster/route names ("upstream_<name>_<host>_<port>") that the
+	// policy engine's resources reference. WebSubApi is intentionally excluded so it keeps using the
+	// async-specific legacy translation path.
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+
+	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
+		"RestApi":     transformerRegistry,
+		"Mcp":         transformerRegistry,
+		"LlmProvider": transformerRegistry,
+		"LlmProxy":    transformerRegistry,
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
@@ -428,18 +447,9 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
-	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	// Share the transformer registry (built before the initial xDS snapshot above)
+	// with the policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
-
-	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
-	})
 
 	loadedAPIs := configStore.GetAll()
 	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup); err != nil {
@@ -502,7 +512,7 @@ func main() {
 	}
 
 	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService, httpClient)
-	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService)
+	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService, policyVersionResolver)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions, apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
 
 	cpClient := controlplane.NewClient(
@@ -552,7 +562,7 @@ func main() {
 	evtListener := coreeventlistener.NewEventListener(
 		eventHubInstance, configStore, db, snapshotManager, subscriptionSnapshotManager,
 		apiKeyXDSManager, lazyResourceXDSManager, policyManager, &cfg.Router, log, cfg,
-		policyDefinitions, secretsService,
+		policyDefinitions, secretsService, policyVersionResolver,
 	)
 	if webhookSecretService != nil {
 		evtListener.SetWebhookSecretHandler(eventlistener.NewWebhookSecretHandler(db, encryptionProviderManager, webhookSecretStore, webhookSecretSnapshotManager, log))

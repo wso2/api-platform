@@ -279,6 +279,17 @@ async function resolvePortalOrg(req) {
  */
 async function authResolver(req, res, next) {
     try {
+        // Portal isolation: any session-authenticated request must have been issued by this
+        // portal's login flow.
+        if (req.isAuthenticated && req.isAuthenticated()) {
+            if (!req.session?.portalId || req.session.portalId !== orgContext.getPortalId()) {
+                logger.warn('Rejected cross-portal session', { operation: 'authResolver' });
+                const err = new Error('Forbidden');
+                err.status = 403;
+                return next(err);
+            }
+        }
+
         // 1. Local auth users (platform JWT in session, no IdP configured).
         // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
         // sessions, so resolveScopedOrg works via the HANDLE lookup in orgDao.getId.

@@ -71,7 +71,7 @@ import {
   buildProxyPath,
 } from '../../../../utils/projectRouting';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
-import { SCOPES } from '../../../../auth/permissions';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
@@ -144,6 +144,12 @@ export default function ServiceProviderOverviewTab({
   const { hasPermission } = useAppAuth();
   const canViewGateways = hasPermission(SCOPES.GATEWAY_READ);
   const canViewProxies = hasPermission(SCOPES.LLM_PROXY_READ);
+  const canCreateProviderApiKey = hasPermission(
+    SCOPES.LLM_PROVIDER_API_KEY_CREATE
+  );
+  const canDeleteProviderApiKey = hasPermission(
+    SCOPES.LLM_PROVIDER_API_KEY_DELETE
+  );
   const fetchedApiKeysProviderIdRef = useRef<string | null>(null);
   const fetchingApiKeysProviderIdRef = useRef<string | null>(null);
   const [gateways, setGateways] = useState<Gateway[]>([]);
@@ -889,12 +895,18 @@ export default function ServiceProviderOverviewTab({
                           />
                         </Typography>
                       </Box>
-                      <DisabledActionTooltip disabled={false}>
+                      <DisabledActionTooltip
+                        disabled={!canCreateProviderApiKey}
+                        title={NO_PERMISSION_TOOLTIP}
+                      >
                         <Button
                           variant="contained"
                           size="medium"
                           onClick={handleOpenApiKeyModal}
-                          disabled={deployedGateways.length === 0}
+                          disabled={
+                            !canCreateProviderApiKey ||
+                            deployedGateways.length === 0
+                          }
                         >
                           Generate API Key
                         </Button>
@@ -975,9 +987,11 @@ export default function ServiceProviderOverviewTab({
                                 <ListingTable.Cell align="right">
                                   <Tooltip
                                     title={
-                                      key.id
-                                        ? 'Delete API key'
-                                        : 'Unable to delete key without a name'
+                                      !canDeleteProviderApiKey
+                                        ? NO_PERMISSION_TOOLTIP
+                                        : key.id
+                                          ? 'Delete API key'
+                                          : 'Unable to delete key without a name'
                                     }
                                   >
                                     <span>
@@ -989,7 +1003,11 @@ export default function ServiceProviderOverviewTab({
                                             key.id?.trim() || null
                                           )
                                         }
-                                        disabled={!key.id || isDeletingKey}
+                                        disabled={
+                                          !canDeleteProviderApiKey ||
+                                          !key.id ||
+                                          isDeletingKey
+                                        }
                                       >
                                         <Trash2 size={16} />
                                       </IconButton>

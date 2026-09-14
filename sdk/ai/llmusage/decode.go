@@ -102,9 +102,12 @@ func mergeSSEEvents(body []byte) ([]byte, bool) {
 // field across events: a "usage" carrying only completion tokens must not erase
 // the prompt tokens an earlier event reported. Arrays and scalars are replaced,
 // so the latest event wins, and an empty string never displaces a value already
-// seen.
+// seen. A null never displaces one either.
 func mergeEventFields(dst, src map[string]interface{}) {
 	for key, value := range src {
+		if value == nil {
+			continue
+		}
 		if str, ok := value.(string); ok && str == "" {
 			continue
 		}

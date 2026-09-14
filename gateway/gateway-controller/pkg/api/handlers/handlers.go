@@ -123,7 +123,7 @@ func NewAPIServer(
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	parser := config.NewParser()
 	routerConfig := &systemConfig.Router
-	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretService)
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretService, policyVersionResolver)
 
 	server := &APIServer{
 		store:                store,

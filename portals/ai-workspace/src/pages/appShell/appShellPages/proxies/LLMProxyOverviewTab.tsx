@@ -59,6 +59,8 @@ import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
@@ -131,6 +133,13 @@ export default function LLMProxyOverviewTab() {
   // proxy — NOT part of the gateway runtime artifact. So key generation/deletion stays
   // available even for gateway-created (read-only) proxies.
   const isReadOnlyProxy = false;
+  const { hasPermission } = useAppAuth();
+  const canReadProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_READ);
+  const canCreateProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_CREATE);
+  const canDeleteProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_DELETE);
+  const canViewProxyDeployments = hasPermission(
+    SCOPES.LLM_PROXY_DEPLOYMENT_READ
+  );
 
   const {
     headerName: apiKeyName,
@@ -224,7 +233,9 @@ export default function LLMProxyOverviewTab() {
     const organizationId = currentOrganization?.uuid;
     const proxyId = proxy?.id;
 
-    if (!organizationId || !proxyId) {
+    // Without the deployment-read scope there is nothing to show here, so skip
+    // the gateway/deployment reads rather than issuing calls that only 403.
+    if (!organizationId || !proxyId || !canViewProxyDeployments) {
       setGateways([]);
       setSelectedGatewayId('');
       setIsGatewaysLoading(false);
@@ -318,7 +329,7 @@ export default function LLMProxyOverviewTab() {
     return () => {
       isMounted = false;
     };
-  }, [currentOrganization?.uuid, proxy?.id]);
+  }, [currentOrganization?.uuid, proxy?.id, canViewProxyDeployments]);
 
   useEffect(() => {
     setLatestGeneratedKey(null);
@@ -327,7 +338,9 @@ export default function LLMProxyOverviewTab() {
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
     const proxyId = proxy?.id;
-    if (!organizationId || !proxyId) {
+    // Without the api-key read scope the list request can only 403, which would
+    // surface as a failure snackbar rather than as a permission boundary.
+    if (!organizationId || !proxyId || !canReadProxyApiKey) {
       fetchedApiKeysProxyIdRef.current = null;
       fetchingApiKeysProxyIdRef.current = null;
       setApiKeys([]);
@@ -377,7 +390,13 @@ export default function LLMProxyOverviewTab() {
         setKeysLoading(false);
       }
     };
-  }, [currentOrganization?.uuid, getProxyAPIKeys, proxy?.id, showSnackbar]);
+  }, [
+    currentOrganization?.uuid,
+    getProxyAPIKeys,
+    proxy?.id,
+    showSnackbar,
+    canReadProxyApiKey,
+  ]);
 
   const handleCopyGatewayUrl = async () => {
     if (!generatedGatewayUrl) return;
@@ -391,7 +410,8 @@ export default function LLMProxyOverviewTab() {
   };
 
   const handleGenerateAPIKey = async () => {
-    if (isReadOnlyProxy) return;
+    // Re-checked at submit time: the dialog can be open across a permission change.
+    if (isReadOnlyProxy || !canCreateProxyApiKey) return;
     if (!currentOrganization?.uuid || !proxy?.id) {
       return;
     }
@@ -418,15 +438,19 @@ export default function LLMProxyOverviewTab() {
       setGeneratedKey(response.apiKey);
       setLatestGeneratedKey(response.apiKey);
       setIsApiKeyModalOpen(true);
-      try {
-        const refreshedApiKeys = await getProxyAPIKeys();
-        setApiKeys(refreshedApiKeys.list || []);
-      } catch (fetchError) {
-        logger.error(
-          `Failed to refresh API keys for proxy ${proxy.id}:`,
-          fetchError
-        );
-        showSnackbar('Failed to refresh API keys.', 'error');
+      // A create-only user has no readable key list — skip the refresh instead
+      // of issuing a request that can only 403 and surface a false failure.
+      if (canReadProxyApiKey) {
+        try {
+          const refreshedApiKeys = await getProxyAPIKeys();
+          setApiKeys(refreshedApiKeys.list || []);
+        } catch (fetchError) {
+          logger.error(
+            `Failed to refresh API keys for proxy ${proxy.id}:`,
+            fetchError
+          );
+          showSnackbar('Failed to refresh API keys.', 'error');
+        }
       }
     } catch (apiKeyError) {
       logger.error('Failed to generate API key:', apiKeyError);
@@ -481,7 +505,8 @@ export default function LLMProxyOverviewTab() {
   };
 
   const handleDeleteApiKey = async () => {
-    if (isReadOnlyProxy || !deleteTargetKeyName || !proxy?.id) {
+    // Re-checked at submit time: the dialog can be open across a permission change.
+    if (isReadOnlyProxy || !canDeleteProxyApiKey || !deleteTargetKeyName || !proxy?.id) {
       return;
     }
 
@@ -686,12 +711,18 @@ export default function LLMProxyOverviewTab() {
                         </Typography>
                       </Box>
                       <DisabledActionTooltip
-                        disabled={isReadOnlyProxy}
-                        title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                        disabled={isReadOnlyProxy || !canCreateProxyApiKey}
+                        title={
+                          isReadOnlyProxy
+                            ? GATEWAY_MANAGED_ARTIFACT_TOOLTIP
+                            : NO_PERMISSION_TOOLTIP
+                        }
                       >
                         <Tooltip
                           title={
-                            !isReadOnlyProxy && deployedGateways.length === 0
+                            !isReadOnlyProxy &&
+                            canCreateProxyApiKey &&
+                            deployedGateways.length === 0
                               ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
                               : ''
                           }
@@ -703,7 +734,9 @@ export default function LLMProxyOverviewTab() {
                               size="medium"
                               onClick={handleOpenApiKeyModal}
                               disabled={
-                                isReadOnlyProxy || deployedGateways.length === 0
+                                isReadOnlyProxy ||
+                                !canCreateProxyApiKey ||
+                                deployedGateways.length === 0
                               }
                             >
                               Generate API Key
@@ -729,7 +762,7 @@ export default function LLMProxyOverviewTab() {
                       >
                         <CircularProgress />
                       </Box>
-                    ) : apiKeys.length > 0 ? (
+                    ) : canReadProxyApiKey && apiKeys.length > 0 ? (
                       <ListingTable.Container>
                         <ListingTable>
                           <ListingTable.Head>
@@ -786,12 +819,18 @@ export default function LLMProxyOverviewTab() {
                                 </ListingTable.Cell>
                                 <ListingTable.Cell align="right">
                                   <DisabledActionTooltip
-                                    disabled={isReadOnlyProxy}
-                                    title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                                    disabled={
+                                      isReadOnlyProxy || !canDeleteProxyApiKey
+                                    }
+                                    title={
+                                      isReadOnlyProxy
+                                        ? GATEWAY_MANAGED_ARTIFACT_TOOLTIP
+                                        : NO_PERMISSION_TOOLTIP
+                                    }
                                   >
                                     <Tooltip
                                       title={
-                                        isReadOnlyProxy
+                                        isReadOnlyProxy || !canDeleteProxyApiKey
                                           ? ''
                                           : key.id
                                             ? 'Delete API key'
@@ -809,6 +848,7 @@ export default function LLMProxyOverviewTab() {
                                           }
                                           disabled={
                                             isReadOnlyProxy ||
+                                            !canDeleteProxyApiKey ||
                                             !key.id ||
                                             isDeletingKey
                                           }
@@ -981,6 +1021,7 @@ export default function LLMProxyOverviewTab() {
                 }}
                 disabled={
                   isReadOnlyProxy ||
+                  !canCreateProxyApiKey ||
                   generatingKey ||
                   !apiKeyDisplayName.trim()
                 }
@@ -1031,7 +1072,7 @@ export default function LLMProxyOverviewTab() {
             onClick={() => {
               void handleDeleteApiKey();
             }}
-            disabled={isDeletingKey}
+            disabled={isDeletingKey || !canDeleteProxyApiKey}
           >
             {isDeletingKey ? (
               <>

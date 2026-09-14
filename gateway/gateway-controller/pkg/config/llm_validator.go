@@ -535,6 +535,101 @@ func (v *LLMValidator) validatePolicyListExclusivity(globalPolicies *[]api.Polic
 	return nil
 }
 
+// upstreamAuthFields normalizes the upstream-auth shapes shared by
+// LlmProvider, LlmProxy, and MCPProxy for one shared set of validation rules.
+type upstreamAuthFields struct {
+	authType string
+	header   *string
+	value    *string
+
+	// Generic override/bucket fields; see validateUpstreamAuthFields for per-type rules.
+	policyName    *string
+	policyVersion *string
+	policyParams  *map[string]interface{}
+}
+
+// validateUpstreamAuthFields is shared validation for LlmProvider/LlmProxy/MCPProxy
+// upstream auth. fieldPrefix must already include the trailing ".auth" segment.
+func validateUpstreamAuthFields(fieldPrefix string, f upstreamAuthFields) []ValidationError {
+	var errors []ValidationError
+
+	if f.authType == "" {
+		return append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Auth type is required",
+		})
+	}
+	if f.authType != "api-key" && f.authType != "oauth2" && f.authType != "other" && f.authType != "none" {
+		return append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Auth type must be 'api-key', 'oauth2', 'other', or 'none'",
+		})
+	}
+
+	// "none": authentication is handled by a user-attached policy elsewhere,
+	// or not at all - no field is required.
+	if f.authType == "none" {
+		return errors
+	}
+
+	if f.policyVersion != nil && *f.policyVersion != "" && !majorVersionPattern.MatchString(*f.policyVersion) {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".policyVersion",
+			Message: "Auth policyVersion must be major-only (e.g. 'v1')",
+		})
+	}
+
+	// An explicitly empty policyParams ({}) counts as omitted - otherwise it
+	// satisfies every "is it present" check below with no real configuration.
+	hasPolicyParams := f.policyParams != nil && len(*f.policyParams) > 0
+
+	// "oauth2"/"other" have no typed fields - policyParams is mandatory for
+	// both, and "other" additionally requires an explicit policyName.
+	if f.authType == "oauth2" || f.authType == "other" {
+		if f.authType == "other" && (f.policyName == nil || strings.TrimSpace(*f.policyName) == "") {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".policyName",
+				Message: "Auth policyName is required when auth type is 'other'",
+			})
+		}
+		if !hasPolicyParams {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".policyParams",
+				Message: fmt.Sprintf("Auth policyParams is required when auth type is '%s'", f.authType),
+			})
+		}
+		return errors
+	}
+
+	// type is api-key: header/value (deprecated) and policyParams are mutually
+	// exclusive - configuring both is ambiguous, so it's rejected outright.
+	hasLegacyApiKeyFields := (f.header != nil && *f.header != "") || (f.value != nil && *f.value != "")
+	if hasPolicyParams && hasLegacyApiKeyFields {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".policyParams",
+			Message: "Auth policyParams cannot be combined with the deprecated 'header'/'value' fields - configure one or the other",
+		})
+	}
+	if hasPolicyParams {
+		return errors
+	}
+
+	if f.header == nil || *f.header == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".header",
+			Message: "Auth header is required when api-key auth type is set and policyParams is omitted",
+		})
+	}
+	if f.value == nil || *f.value == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".value",
+			Message: "Auth value is required when api-key auth type is set and policyParams is omitted",
+		})
+	}
+
+	return errors
+}
+
 // validateUpstreamWithAuth validates an UpstreamWithAuth configuration. The upstream may specify
 // either a direct `url` or a `ref` to one of the provided upstream definitions (exactly one).
 func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
@@ -594,37 +689,15 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 	// Validate auth if present
 	if upstream.Auth != nil {
 		auth := upstream.Auth
-		// Validate 'type'
-		if auth.Type == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
-				Message: "Auth type is required",
-			})
-		} else if auth.Type != api.LLMProviderConfigDataUpstreamAuthTypeApiKey &&
-			auth.Type != api.LLMProviderConfigDataUpstreamAuthTypeOther &&
-			auth.Type != api.LLMProviderConfigDataUpstreamAuthTypeNone {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
-				Message: "Auth type must be one of 'api-key', 'other', 'none'",
-			})
+		fields := upstreamAuthFields{
+			authType:      string(auth.Type),
+			header:        auth.Header,
+			value:         auth.Value,
+			policyName:    auth.PolicyName,
+			policyVersion: auth.PolicyVersion,
+			policyParams:  auth.PolicyParams,
 		}
-
-		// Header and value are only meaningful for api-key; for 'other'/'none'
-		// authentication is handled by user-attached policies (or not at all).
-		if auth.Type == api.LLMProviderConfigDataUpstreamAuthTypeApiKey {
-			if auth.Header == nil || *auth.Header == "" {
-				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("%s.auth.header", fieldPrefix),
-					Message: "Auth header is required when api-key auth type is set",
-				})
-			}
-			if auth.Value == nil || *auth.Value == "" {
-				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
-					Message: "Auth value is required when api-key auth type is set",
-				})
-			}
-		}
+		errors = append(errors, validateUpstreamAuthFields(fieldPrefix+".auth", fields)...)
 	}
 
 	return errors
@@ -811,38 +884,17 @@ func (v *LLMValidator) validateLLMProxyTransformer(fieldPrefix string, transform
 	return errors
 }
 
+// validateLLMUpstreamAuth validates an LlmProxy provider/additionalProviders auth block (must be non-nil).
 func (v *LLMValidator) validateLLMUpstreamAuth(fieldPrefix string, auth *api.LLMUpstreamAuth) []ValidationError {
-	var errors []ValidationError
-	if auth.Type == "" {
-		errors = append(errors, ValidationError{
-			Field:   fieldPrefix + ".type",
-			Message: "Auth type is required",
-		})
-	} else if auth.Type != api.LLMUpstreamAuthTypeApiKey &&
-		auth.Type != api.LLMUpstreamAuthTypeOther &&
-		auth.Type != api.LLMUpstreamAuthTypeNone {
-		errors = append(errors, ValidationError{
-			Field:   fieldPrefix + ".type",
-			Message: "Auth type must be one of 'api-key', 'other', 'none'",
-		})
+	fields := upstreamAuthFields{
+		authType:      string(auth.Type),
+		header:        auth.Header,
+		value:         auth.Value,
+		policyName:    auth.PolicyName,
+		policyVersion: auth.PolicyVersion,
+		policyParams:  auth.PolicyParams,
 	}
-	// Header and value are only meaningful for api-key; for 'other'/'none'
-	// authentication is handled by user-attached policies (or not at all).
-	if auth.Type == api.LLMUpstreamAuthTypeApiKey {
-		if auth.Header == nil || *auth.Header == "" {
-			errors = append(errors, ValidationError{
-				Field:   fieldPrefix + ".header",
-				Message: "Auth header is required when api-key auth type is set",
-			})
-		}
-		if auth.Value == nil || *auth.Value == "" {
-			errors = append(errors, ValidationError{
-				Field:   fieldPrefix + ".value",
-				Message: "Auth value is required when api-key auth type is set",
-			})
-		}
-	}
-	return errors
+	return validateUpstreamAuthFields(fieldPrefix, fields)
 }
 
 // validateAccessControl validates access control configuration

@@ -160,6 +160,7 @@ const (
 		"  headers:\n" +
 		"    - name: '%s'\n" +
 		"      value: '%s'\n"
+	UPSTREAM_AUTH_OAUTH2_POLICY_NAME = "oauth2-generator"
 	PROXY_HOST__HEADER_POLICY_NAME   = "host-rewrite"
 	PROXY_HOST__HEADER_POLICY_PARAMS = "host: '%s'\n"
 
