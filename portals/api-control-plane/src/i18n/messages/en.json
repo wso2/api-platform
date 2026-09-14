@@ -615,6 +615,34 @@
   "apiControlPlane.components.ErrorFallback.stale.title": {
     "defaultMessage": "A newer version of the console is available"
   },
+  "apiControlPlane.components.SwaggerOperationsView.PolicyIndicator.overflow": {
+    "defaultMessage": "{count, plural, one {# more policy} other {# more policies}}: {names}",
+    "description": "Tooltip on the \"+N\" circle standing for policies too numerous to draw. {names} is a comma-separated list of policy names, which are not translated."
+  },
+  "apiControlPlane.components.SwaggerOperationsView.PolicyIndicator.overflowCount": {
+    "defaultMessage": "+{count}",
+    "description": "Label inside the circle standing for policies too numerous to draw, e.g. \"+3\". Kept short enough to fit a 28px circle."
+  },
+  "apiControlPlane.components.SwaggerOperationsView.PolicyIndicator.policy": {
+    "defaultMessage": "{name} · {version}",
+    "description": "Tooltip on one policy circle. {name} is a policy name and {version} its version; neither is translated."
+  },
+  "apiControlPlane.components.SwaggerOperationsView.SwaggerResourceRow.collapse": {
+    "defaultMessage": "Hide details for {method} {path}",
+    "description": "Accessible label for the control that closes one resource row. {method} is an HTTP verb such as GET; {path} is a URL path. Neither is translated."
+  },
+  "apiControlPlane.components.SwaggerOperationsView.SwaggerResourceRow.expand": {
+    "defaultMessage": "Show details for {method} {path}",
+    "description": "Accessible label for the control that opens one resource row. {method} is an HTTP verb such as GET; {path} is a URL path. Neither is translated."
+  },
+  "apiControlPlane.components.SwaggerOperationsView.delete": {
+    "defaultMessage": "Delete resource",
+    "description": "Tooltip on the button that removes one API resource from the list. Verb phrase."
+  },
+  "apiControlPlane.components.SwaggerOperationsView.deleteLabel": {
+    "defaultMessage": "Delete {method} {path}",
+    "description": "Accessible label for the delete button on one resource. {method} is an HTTP verb such as GET; {path} is a URL path such as /books/{id}. Neither is translated."
+  },
   "apiControlPlane.components.SwaggerOperationsView.empty": {
     "defaultMessage": "No operations available."
   },

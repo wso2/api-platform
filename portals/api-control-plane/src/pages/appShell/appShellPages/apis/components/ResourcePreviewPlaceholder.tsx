@@ -16,12 +16,12 @@
  * under the License.
  */
 
-import { alpha, Box, Chip, Stack, Typography, type Theme } from '@wso2/oxygen-ui';
+import { alpha, Box, Stack, Typography, type Theme } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
+import { MethodBadge, methodPalette } from '@/components/SwaggerOperationsView';
 import { hairline } from '@/theme/receipes';
-import { methodColor, type ChipColor } from '../utils/developEdit';
 
 const messages = defineMessages({
   description: {
@@ -52,18 +52,6 @@ const PLACEHOLDER_ROWS: PlaceholderRow[] = [
   { method: 'PUT' },
   { ghost: true, method: 'DELETE' },
 ];
-
-/**
- * The palette family a row's tint and chevron are drawn from — the same one
- * its method chip uses, so the row reads as one colour rather than two.
- *
- * `methodColor` can return `'default'`, which is a Chip variant rather than a
- * palette entry, so that case falls back to the neutral text colour.
- */
-const toneFor = (theme: Theme, method: string): string => {
-  const tone: ChipColor = methodColor(method);
-  return tone === 'default' ? theme.palette.text.primary : theme.palette[tone].main;
-};
 
 /** Bounded so the copy underneath stays on two lines at the pane's width. */
 const CONTENT_MAX_WIDTH = 320;
@@ -151,14 +139,14 @@ export const ResourcePreviewPlaceholder = ({
               key={row.method}
               spacing={1.2}
               sx={(theme) => {
-                const tone = toneFor(theme, row.method);
+                const tone = methodPalette(row.method);
 
                 return {
                   alignItems: 'center',
-                  bgcolor: alpha(tone, 0.1),
+                  bgcolor: tone.bg,
                   border: hairline(theme),
-                  borderColor: alpha(tone, 0.22),
-                  borderRadius: 1.25,
+                  borderColor: tone.border,
+                  borderRadius: 0.75,
                   boxShadow: 'none',
                   minHeight: { sm: 40, xs: 38 },
                   px: 1.35,
@@ -168,12 +156,7 @@ export const ResourcePreviewPlaceholder = ({
                 };
               }}
             >
-              <Chip
-                color={methodColor(row.method)}
-                label={row.method}
-                size="small"
-                sx={{ flexShrink: 0, fontWeight: 700, minWidth: 62 }}
-              />
+              <MethodBadge method={row.method} />
               <Stack
                 direction="row"
                 spacing={1}
@@ -185,8 +168,9 @@ export const ResourcePreviewPlaceholder = ({
               <Box
                 sx={(theme) => ({
                   // ChevronDown paints in `currentColor`, so tinting the
-                  // wrapper is what colours the glyph.
-                  color: alpha(toneFor(theme, row.method), 0.7),
+                  // wrapper is what colours the glyph. Text-coloured, not
+                  // method-coloured: the real rows draw theirs the same way.
+                  color: alpha(theme.palette.text.primary, 0.5),
                   display: 'flex',
                   flexShrink: 0,
                 })}
