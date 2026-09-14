@@ -125,6 +125,12 @@ const DEFAULTS = {
         encryptionKey: '',
         sessionSecret: '',
     },
+    // Shared-key S2S auth for platform-api publishing calls. Portal compares sha256(raw) against `hash`.
+    // A match grants only the platform-api-system role's five dp:*:manage scopes.
+    // Empty disables shared-key auth entirely; OAuth / session paths keep working.
+    internalAuth: {
+        hash: '',
+    },
     // Authentication — HOW a token is verified: a mode gate plus the two backends it
     // selects between, local (default) and idp. What a verified token may DO is
     // authorization, which lives in its own mode-independent section below.
