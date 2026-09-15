@@ -30,7 +30,6 @@ import { useApiScope } from '../../core/scope';
 import {
   createRestApi,
   deleteRestApi,
-  deleteRestApiOpenApi,
   importOpenApi,
   putRestApiOpenApi,
   updateRestApi,
@@ -437,25 +436,4 @@ export const useValidateOpenApiSpec = () => {
 
 /** Re-export so consumers can type validation errors without reaching into endpoints. */
 export type { OpenAPIValidationError, ValidateOpenAPIResponse };
-
-/** Removes the API definition spec for this API. */
-export const useDeleteRestApiOpenApi = (overrides: { orgId?: string } = {}) => {
-  const { orgId } = useApiScope(overrides);
-  const queryClient = useQueryClient();
-  const { org } = useApiScope(overrides);
-
-  return useMutation<void, ApiError, { restApiId: string }>({
-    mutationFn: ({ restApiId }) => deleteRestApiOpenApi(restApiId, { orgId }),
-    onSuccess: (_result, { restApiId }) => {
-      if (org) {
-        // Remove rather than invalidate so the cache is wiped immediately —
-        // invalidate keeps stale previous data which prevents the component
-        // from transitioning to the empty state until the refetch resolves.
-        queryClient.removeQueries({
-          queryKey: restApiKeys.children(org, restApiId, 'openapi'),
-        });
-      }
-    },
-  });
-};
 

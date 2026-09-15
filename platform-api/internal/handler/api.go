@@ -314,15 +314,16 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return apperror.ValidationFailed.New("invalid multipart form")
 	}
 
-	name := strings.TrimSpace(r.FormValue("name"))
+	displayName := strings.TrimSpace(r.FormValue("displayName"))
+	apiId := strings.TrimSpace(r.FormValue("id"))
 	version := strings.TrimSpace(r.FormValue("version"))
 	context := strings.TrimSpace(r.FormValue("context"))
 	projectId := strings.TrimSpace(r.FormValue("projectId"))
 	description := strings.TrimSpace(r.FormValue("description"))
 	upstreamURL := strings.TrimSpace(r.FormValue("upstream"))
 
-	if name == "" {
-		return apperror.ValidationFailed.New("name is required")
+	if displayName == "" {
+		return apperror.ValidationFailed.New("displayName is required")
 	}
 	if version == "" {
 		return apperror.ValidationFailed.New("version is required")
@@ -354,12 +355,22 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	specFileName := normalizeSpecFileName(header.Filename)
 
 	// Parse the spec once; extract operations from the parsed root.
-	specRoot, err := parseSpecRoot(string(data))
+	specRoot, isJSON, err := parseSpecRoot(string(data))
 	if err != nil {
 		h.slogger.Error("Failed to parse OpenAPI spec", "error", err)
 		return apperror.ValidationFailed.New("invalid OpenAPI specification")
 	}
+	if result := validateOpenAPIContent(string(data), specRoot); !result.IsValid {
+		msg := "invalid OpenAPI specification"
+		if len(result.Errors) > 0 {
+			msg = result.Errors[0].Message
+		}
+		return apperror.ValidationFailed.New(msg)
+	}
 	operations := extractOperationsFromRoot(specRoot)
+
+	// parseSpecRoot already determined the format; no re-parse needed.
+	importedContentType := specContentType(isJSON)
 
 	// Always persist as YAML regardless of the uploaded format.
 	yamlBytes, err := yaml.Marshal(specRoot)
@@ -379,13 +390,16 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		descPtr = &description
 	}
 	req := &api.CreateRESTAPIRequest{
-		DisplayName: name,
+		DisplayName: displayName,
 		Version:     version,
 		Context:     context,
 		ProjectId:   projectId,
 		Description: descPtr,
 		Upstream:    upstreamConfig,
 		Operations:  &operations,
+	}
+	if apiId != "" {
+		req.Id = &apiId
 	}
 
 	createdBy, err := resolveActorErr(r, h.identity, "import OpenAPI")
@@ -418,6 +432,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 			Handle:           handle,
 			DisplayName:      "OpenAPI Definition",
 			FileName:         specFileName,
+			ContentType:      importedContentType,
 			Content:          []byte(specContent),
 			CreatedBy:        createdBy,
 		}
@@ -444,22 +459,34 @@ func normalizeSpecFileName(name string) string {
 	return base
 }
 
+// specContentType maps the isJSON result from parseSpecRoot to a MIME type string.
+func specContentType(isJSON bool) string {
+	if isJSON {
+		return "application/json"
+	}
+	return "application/x-yaml"
+}
+
 // parseSpecRoot deserialises a JSON or YAML OpenAPI spec string into a raw map
 // and verifies that the document declares a top-level 'openapi' (3.x) or
 // 'swagger' (2.x) key so non-OpenAPI payloads are rejected early.
-func parseSpecRoot(specContent string) (map[string]interface{}, error) {
-	var root map[string]interface{}
-	if err := json.Unmarshal([]byte(specContent), &root); err != nil {
-		if err2 := yaml.Unmarshal([]byte(specContent), &root); err2 != nil {
-			return nil, fmt.Errorf("spec is neither valid JSON nor YAML")
+// isJSON is true when the input was valid JSON; false means it was YAML.
+// This lets callers record the original format without re-parsing.
+func parseSpecRoot(specContent string) (root map[string]interface{}, isJSON bool, err error) {
+	if jsonErr := json.Unmarshal([]byte(specContent), &root); jsonErr != nil {
+		if yamlErr := yaml.Unmarshal([]byte(specContent), &root); yamlErr != nil {
+			return nil, false, fmt.Errorf("spec is neither valid JSON nor YAML")
 		}
+		isJSON = false
+	} else {
+		isJSON = true
 	}
 	_, hasOpenAPI := root["openapi"]
 	_, hasSwagger := root["swagger"]
 	if !hasOpenAPI && !hasSwagger {
-		return nil, fmt.Errorf("spec must declare 'openapi' (3.x) or 'swagger' (2.x) at the root")
+		return nil, false, fmt.Errorf("spec must declare 'openapi' (3.x) or 'swagger' (2.x) at the root")
 	}
-	return root, nil
+	return root, isJSON, nil
 }
 
 // extractOperationsFromRoot returns the list of HTTP operations declared in a
@@ -560,6 +587,10 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 
 	r.Body = http.MaxBytesReader(w, r.Body, importOpenAPIMaxBytes)
 	if err := r.ParseMultipartForm(importOpenAPIMaxBytes); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
+		}
 		return apperror.ValidationFailed.New("failed to parse multipart form: request too large or malformed")
 	}
 
@@ -574,13 +605,24 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New("failed to read spec file")
 	}
 	if int64(len(specContent)) > importOpenAPIMaxBytes {
-		return apperror.ValidationFailed.New("spec file exceeds maximum allowed size (5 MiB)")
+		return apperror.PayloadTooLarge.New("spec file exceeds maximum allowed size (5 MiB)")
 	}
 
-	specRoot, err := parseSpecRoot(string(specContent))
+	specRoot, isJSON, err := parseSpecRoot(string(specContent))
 	if err != nil || specRoot == nil {
 		return apperror.ValidationFailed.New("uploaded file is not a valid OpenAPI/Swagger spec (must be JSON or YAML)")
 	}
+
+	if result := validateOpenAPIContent(string(specContent), specRoot); !result.IsValid {
+		msg := "uploaded file is not a valid OpenAPI specification"
+		if len(result.Errors) > 0 {
+			msg = result.Errors[0].Message
+		}
+		return apperror.ValidationFailed.New(msg)
+	}
+
+	// parseSpecRoot already determined the format; no re-parse needed.
+	importedContentType := specContentType(isJSON)
 
 	// Always persist as YAML regardless of the uploaded format.
 	yamlBytes, err := yaml.Marshal(specRoot)
@@ -621,6 +663,13 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		}
 	}
 
+	// Pre-compute the synced operation list before any writes so that a read
+	// failure (API not found, read-only) stops us before the document is persisted.
+	syncedAPI, syncedOps, err := h.computeSyncedOperations(restApiId, orgId, specRoot)
+	if err != nil {
+		return err
+	}
+
 	doc := &model.Document{
 		ArtifactUUID:     artifactUUID,
 		OrganizationUUID: orgId,
@@ -628,6 +677,7 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		Handle:           docHandle,
 		DisplayName:      "OpenAPI Definition",
 		FileName:         specFileName,
+		ContentType:      importedContentType,
 		Content:          specContent,
 		CreatedBy:        updatedBy,
 		UpdatedBy:        updatedBy,
@@ -636,10 +686,14 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return serviceError(err, fmt.Sprintf("failed to upsert openapi spec for API %s", restApiId))
 	}
 
-	// Sync operations derived from the updated spec into the API object,
-	// preserving policies for any operation whose method+path still exists.
-	if err := h.syncOperationsFromSpec(restApiId, orgId, updatedBy, specRoot); err != nil {
-		return err
+	// Write operations only for control-plane-managed APIs; gateway-originated
+	// (read-only) APIs have their operations managed by the data plane.
+	if syncedAPI != nil {
+		updatedAPI := *syncedAPI
+		updatedAPI.Operations = &syncedOps
+		if _, err := h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy); err != nil {
+			return serviceError(err, fmt.Sprintf("failed to update operations for API %s after spec change", restApiId))
+		}
 	}
 
 	content := string(specContent)
@@ -647,25 +701,22 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 	return nil
 }
 
-// syncOperationsFromSpec derives the operation list from a parsed spec root and writes it
-// back to the API, preserving any policies already attached to operations that still exist.
-// For gateway-originated APIs (origin = gateway_api) the operation list is owned by the
-// data plane, so the sync is skipped entirely.
-func (h *APIHandler) syncOperationsFromSpec(restApiId, orgId, updatedBy string, specRoot map[string]interface{}) error {
-	specOps := extractOperationsFromRoot(specRoot)
-
+// computeSyncedOperations fetches the API and pre-computes the merged operation
+// list from the spec's paths and the existing policy attachments.
+// Returns (nil, nil, nil) when the API is gateway-originated (read-only) —
+// the caller must skip the operations write in that case.
+func (h *APIHandler) computeSyncedOperations(restApiId, orgId string, specRoot map[string]interface{}) (*api.RESTAPI, []api.Operation, error) {
 	existingAPI, err := h.apiService.GetAPIByHandle(restApiId, orgId)
 	if err != nil {
-		return serviceError(err, fmt.Sprintf("failed to fetch API %s to sync operations from spec", restApiId))
+		return nil, nil, serviceError(err, fmt.Sprintf("failed to fetch API %s to sync operations from spec", restApiId))
 	}
-
 	// Gateway-originated APIs are read-only in the control plane; their operations
 	// are managed by the data plane and must not be overwritten from the spec.
 	if existingAPI.ReadOnly != nil && *existingAPI.ReadOnly {
-		return nil
+		return nil, nil, nil
 	}
 
-	// Build a lookup keyed on "METHOD:path" for the existing operations.
+	specOps := extractOperationsFromRoot(specRoot)
 	existingByKey := make(map[string]api.Operation)
 	if existingAPI.Operations != nil {
 		for _, op := range *existingAPI.Operations {
@@ -673,9 +724,6 @@ func (h *APIHandler) syncOperationsFromSpec(restApiId, orgId, updatedBy string, 
 			existingByKey[key] = op
 		}
 	}
-
-	// Build the synced list from spec operations, carrying forward any policies
-	// already attached to operations whose method+path still appears in the spec.
 	synced := make([]api.Operation, 0, len(specOps))
 	for _, op := range specOps {
 		key := strings.ToUpper(string(op.Request.Method)) + ":" + op.Request.Path
@@ -684,48 +732,9 @@ func (h *APIHandler) syncOperationsFromSpec(restApiId, orgId, updatedBy string, 
 		}
 		synced = append(synced, op)
 	}
-
-	updatedAPI := *existingAPI
-	updatedAPI.Operations = &synced
-	if _, updateErr := h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy); updateErr != nil {
-		return serviceError(updateErr, fmt.Sprintf("failed to update operations for API %s after spec change", restApiId))
-	}
-	return nil
+	return existingAPI, synced, nil
 }
 
-// DeleteOpenAPISpec handles DELETE /rest-apis/{restApiId}/openapi.
-// Removes the API definition spec stored for this API.
-func (h *APIHandler) DeleteOpenAPISpec(w http.ResponseWriter, r *http.Request) error {
-	orgId, exists := middleware.GetOrganizationFromRequest(r)
-	if !exists {
-		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
-	}
-
-	restApiId := r.PathValue("restApiId")
-	if restApiId == "" {
-		return apperror.ValidationFailed.New("API ID is required")
-	}
-
-	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
-	if err != nil {
-		return serviceError(err, fmt.Sprintf("failed to resolve API %s in org %s", restApiId, orgId))
-	}
-
-	doc, err := h.documentRepo.GetDocumentByArtifactAndType(artifactUUID, model.DocumentTypeDefinition, orgId)
-	if err != nil {
-		return serviceError(err, fmt.Sprintf("failed to check openapi spec for API %s", restApiId))
-	}
-	if doc == nil {
-		return apperror.NotFound.New("API definition not found")
-	}
-
-	if err := h.documentRepo.DeleteDocument(artifactUUID, doc.Handle, orgId); err != nil {
-		return serviceError(err, fmt.Sprintf("failed to delete openapi spec for API %s", restApiId))
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-	return nil
-}
 
 type validateOpenAPIError struct {
 	Message string `json:"message"`
@@ -743,10 +752,19 @@ type validateOpenAPIResult struct {
 	Info    *validateOpenAPIInfo   `json:"info,omitempty"`
 }
 
-// validateOpenAPIContent parses and validates an OpenAPI/Swagger spec string
-// using kin-openapi. External $refs are not resolved (loader.IsExternalRefsAllowed = false),
+// validateOpenAPIContent validates an OpenAPI spec string using kin-openapi.
+// specRoot is the already-parsed root map from parseSpecRoot — the caller owns
+// that parse and passes it in so this function never re-parses the bytes.
+// External $refs are not resolved (loader.IsExternalRefsAllowed = false),
 // which prevents SSRF via spec $ref URLs.
-func validateOpenAPIContent(specContent string) validateOpenAPIResult {
+// Swagger 2.x specs are passed through without kin-openapi structural
+// validation because kin-openapi only understands OpenAPI 3.x; parseSpecRoot
+// already confirmed the spec is parseable JSON/YAML with a valid root key.
+func validateOpenAPIContent(specContent string, specRoot map[string]interface{}) validateOpenAPIResult {
+	if _, isSwagger := specRoot["swagger"]; isSwagger {
+		return validateOpenAPIResult{IsValid: true, Errors: []validateOpenAPIError{}}
+	}
+
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = false
 
@@ -795,20 +813,44 @@ func extractOpenAPIValidationErrors(err error) []validateOpenAPIError {
 
 // ValidateOpenAPI handles POST /api/v0.9/rest-apis/validate-openapi.
 // Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
-// any resource. Accepts multipart/form-data with an `inlineDefinition` string
-// field containing the raw spec (YAML or JSON).
+// any resource. Accepts multipart/form-data with a `file` field containing the
+// raw spec (.json, .yaml, .yml).
 func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) error {
 	r.Body = http.MaxBytesReader(w, r.Body, importOpenAPIMaxBytes)
 	if err := r.ParseMultipartForm(importOpenAPIMaxBytes); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
+		}
 		return apperror.ValidationFailed.New("invalid multipart form")
 	}
 
-	specContent := strings.TrimSpace(r.FormValue("inlineDefinition"))
-	if specContent == "" {
-		return apperror.ValidationFailed.New("inlineDefinition is required")
+	file, _, fileErr := r.FormFile("file")
+	if fileErr != nil {
+		return apperror.ValidationFailed.New("a spec file is required")
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, importOpenAPIMaxBytes+1))
+	if err != nil {
+		return apperror.ValidationFailed.New("failed to read spec file")
+	}
+	if int64(len(data)) > importOpenAPIMaxBytes {
+		return apperror.PayloadTooLarge.New("spec file exceeds maximum allowed size (5 MiB)")
 	}
 
-	result := validateOpenAPIContent(specContent)
+	specContent := strings.TrimSpace(string(data))
+
+	specRoot, _, err := parseSpecRoot(specContent)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusOK, validateOpenAPIResult{
+			IsValid: false,
+			Errors:  []validateOpenAPIError{{Message: err.Error()}},
+		})
+		return nil
+	}
+
+	result := validateOpenAPIContent(specContent, specRoot)
 	httputil.WriteJSON(w, http.StatusOK, result)
 	return nil
 }
@@ -828,7 +870,6 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/{restApiId}/gateways", middleware.MapErrors(h.slogger, h.AddGatewaysToAPI))
 	mux.HandleFunc("GET "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.GetOpenAPISpec))
 	mux.HandleFunc("PUT "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.PutOpenAPISpec))
-	mux.HandleFunc("DELETE "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.DeleteOpenAPISpec))
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {

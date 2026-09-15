@@ -28,6 +28,7 @@ type Document struct {
 	Handle           string
 	DisplayName      string
 	FileName         string
+	ContentType      string
 	Content          []byte
 	CreatedBy        string
 	UpdatedBy        string

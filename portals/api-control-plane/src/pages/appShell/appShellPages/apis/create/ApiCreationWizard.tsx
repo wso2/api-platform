@@ -191,7 +191,7 @@ export const ApiCreationWizard = () => {
     // (or whatever the user edited). Both submit via import-openapi.
     const formData = new FormData();
     formData.append('file', values.contractImport.specFile, 'openapi.json');
-    formData.append('name', values.displayName.trim());
+    formData.append('displayName', values.displayName.trim());
     formData.append('version', values.version.trim());
     // Normalize context to always have a leading slash.
     const context = `/${values.context.trim().replace(/^\/+/, '')}`;
@@ -388,7 +388,7 @@ export const ApiCreationWizard = () => {
           </Typography>
           <Stack direction="row" spacing={1}>
             <Button
-              disabled={step === 'apiType'}
+              disabled={step === 'apiType' || specValidating}
               onClick={() => setStep(step === 'configure' ? 'source' : 'apiType')}
               type="button"
               variant="text"

@@ -1403,26 +1403,24 @@ type GatewayTokenListResponse struct {
 
 // ImportOpenAPIRequest defines model for ImportOpenAPIRequest.
 type ImportOpenAPIRequest struct {
-	// Context URL context path for the API (e.g. /petstore)
-	Context string `binding:"required" json:"context" yaml:"context"`
-
-	// Description Optional description for the API
+	Context     string  `binding:"required" json:"context" yaml:"context"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
 	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
 	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
 
-	// Name Display name for the API
-	Name string `binding:"required" json:"name" yaml:"name"`
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// ProjectId Handle of the project this API belongs to
+	// ProjectId Handle (URL-friendly slug) of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
-	// Upstream Upstream backend URL (maps to upstream.main.url in the created API)
-	Upstream string `binding:"required" json:"upstream" yaml:"upstream"`
-
-	// Version Version of the API (e.g. 1.0)
-	Version string `binding:"required" json:"version" yaml:"version"`
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMAccessControl defines model for LLMAccessControl.
@@ -2070,6 +2068,30 @@ type MappedAPIKeyListResponse struct {
 type OpenAPIContent struct {
 	// Content Raw spec content (always YAML)
 	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
+}
+
+// OpenAPISpecFileRequest defines model for OpenAPISpecFileRequest.
+type OpenAPISpecFileRequest struct {
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+}
+
+// OpenAPISpecInfo defines model for OpenAPISpecInfo.
+type OpenAPISpecInfo struct {
+	// Title Value of info.title from the spec
+	Title *string `json:"title,omitempty" yaml:"title,omitempty"`
+
+	// Version Value of info.version from the spec
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// OpenAPIValidationError defines model for OpenAPIValidationError.
+type OpenAPIValidationError struct {
+	// Message Human-readable description of the validation error
+	Message string `binding:"required" json:"message" yaml:"message"`
+
+	// Path JSON Pointer path within the spec where the error was found
+	Path *string `json:"path,omitempty" yaml:"path,omitempty"`
 }
 
 // Operation Defines a single operation (resource) within the API
@@ -2846,6 +2868,16 @@ type UserAPIKeyListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
+type ValidateOpenAPIResponse struct {
+	// Errors Validation errors; empty when isValid is true
+	Errors []OpenAPIValidationError `binding:"required" json:"errors" yaml:"errors"`
+	Info   *OpenAPISpecInfo         `json:"info,omitempty" yaml:"info,omitempty"`
+
+	// IsValid Whether the spec passed validation
+	IsValid bool `binding:"required" json:"isValid" yaml:"isValid"`
+}
+
 // ApiId defines model for apiId.
 type ApiId = string
 
@@ -2920,6 +2952,9 @@ type InternalServerError = Error
 
 // NotFound The single error shape returned by every failed request across the API.
 type NotFound = Error
+
+// PayloadTooLarge The single error shape returned by every failed request across the API.
+type PayloadTooLarge = Error
 
 // ServiceUnavailable The single error shape returned by every failed request across the API.
 type ServiceUnavailable = Error
@@ -3387,12 +3422,6 @@ type GetRESTAPIGatewaysParams struct {
 // AddGatewaysToAPIJSONBody defines parameters for AddGatewaysToAPI.
 type AddGatewaysToAPIJSONBody = []AddGatewayToRESTAPIRequest
 
-// UpdateRESTAPISpecMultipartBody defines parameters for UpdateRESTAPISpec.
-type UpdateRESTAPISpecMultipartBody struct {
-	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
-	File openapi_types.File `json:"file" yaml:"file"`
-}
-
 // ListSecretsParams defines parameters for ListSecrets.
 type ListSecretsParams struct {
 	// Limit Maximum number of items to return per page.
@@ -3546,6 +3575,9 @@ type CreateRESTAPIJSONRequestBody = CreateRESTAPIRequest
 // ImportOpenAPIMultipartRequestBody defines body for ImportOpenAPI for multipart/form-data ContentType.
 type ImportOpenAPIMultipartRequestBody = ImportOpenAPIRequest
 
+// ValidateOpenAPISpecMultipartRequestBody defines body for ValidateOpenAPISpec for multipart/form-data ContentType.
+type ValidateOpenAPISpecMultipartRequestBody = OpenAPISpecFileRequest
+
 // UpdateRESTAPIJSONRequestBody defines body for UpdateRESTAPI for application/json ContentType.
 type UpdateRESTAPIJSONRequestBody = RESTAPI
 
@@ -3565,7 +3597,7 @@ type DeployAPIJSONRequestBody = DeployRequest
 type AddGatewaysToAPIJSONRequestBody = AddGatewaysToAPIJSONBody
 
 // UpdateRESTAPISpecMultipartRequestBody defines body for UpdateRESTAPISpec for multipart/form-data ContentType.
-type UpdateRESTAPISpecMultipartRequestBody UpdateRESTAPISpecMultipartBody
+type UpdateRESTAPISpecMultipartRequestBody = OpenAPISpecFileRequest
 
 // CreateSecretMultipartRequestBody defines body for CreateSecret for multipart/form-data ContentType.
 type CreateSecretMultipartRequestBody = SecretCreateRequest

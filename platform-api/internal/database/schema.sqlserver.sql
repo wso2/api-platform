@@ -774,6 +774,7 @@ CREATE TABLE dbo.artifact_documents (
     handle            VARCHAR(40)    NOT NULL,
     display_name      VARCHAR(255)   NOT NULL,
     file_name         VARCHAR(255),
+    content_type      VARCHAR(100),
     content           VARBINARY(MAX) NOT NULL,
     created_by        VARCHAR(255),
     created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),

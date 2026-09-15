@@ -109,11 +109,7 @@ const PoliciesPage = lazy(() =>
     default: m.PoliciesPage,
   })),
 );
-const RoutingPage = lazy(() =>
-  import('../pages/appShell/appShellPages/develop/routings/RoutingPage').then((m) => ({
-    default: m.RoutingPage,
-  })),
-);
+
 const DocumentsPage = lazy(() =>
   import('../pages/appShell/appShellPages/develop/documents/DocumentsPage').then((m) => ({
     default: m.DocumentsPage,
@@ -349,7 +345,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             produced and are not registered.
           */}
           {scopedRoutes(apiScopedPaths(routes.apiDevelopPolicies), <PoliciesPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiDevelopRouting), <RoutingPage />)}
+
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDefinition), <DefinitionPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}

@@ -47,7 +47,6 @@ export {
   useAllRestApis,
   useCreateRestApi,
   useDeleteRestApi,
-  useDeleteRestApiOpenApi,
   useImportOpenApi,
   usePutRestApiOpenApi,
   useRestApi,

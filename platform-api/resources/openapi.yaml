@@ -437,7 +437,7 @@ paths:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ValidateOpenAPIRequest'
+              $ref: '#/components/schemas/OpenAPISpecFileRequest'
       responses:
         '200':
           description: Validation result (valid or invalid — both return 200)
@@ -620,6 +620,8 @@ paths:
                 $ref: '#/components/schemas/OpenAPIContent'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -644,14 +646,7 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              required:
-                - file
-              properties:
-                file:
-                  type: string
-                  format: binary
-                  description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+              $ref: '#/components/schemas/OpenAPISpecFileRequest'
       responses:
         '200':
           description: API definition updated successfully
@@ -663,31 +658,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    delete:
-      summary: Delete API definition
-      description: |
-        Removes the OpenAPI/Swagger spec stored for this API. Returns 404 if no definition exists.
-      operationId: DeleteRESTAPISpec
-      security:
-        - OAuth2Security:
-            - ap:rest_api:delete
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      responses:
-        '204':
-          description: API definition deleted successfully
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7359,7 +7335,7 @@ components:
       type: object
       required:
         - file
-        - name
+        - displayName
         - version
         - context
         - projectId
@@ -7369,33 +7345,53 @@ components:
           type: string
           format: binary
           description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
-        name:
+        id:
           type: string
-          description: Display name for the API
-        version:
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+          minLength: 3
+          maxLength: 40
+          example: my-rest-api-handle
+        displayName:
+          description: Human-readable name for the API
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
           type: string
-          description: Version of the API (e.g. 1.0)
+          minLength: 1
+          maxLength: 128
+          example: PizzaShackAPI
+        description:
+          maxLength: 32766
+          type: string
+          example: This is a simple API for Pizza Shack online pizza delivery store
         context:
+          maxLength: 232
+          minLength: 1
           type: string
-          description: URL context path for the API (e.g. /petstore)
+          example: /pizza
+        version:
+          maxLength: 30
+          minLength: 1
+          type: string
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          example: 1.0.0
         projectId:
           type: string
-          description: Handle of the project this API belongs to
-        description:
-          type: string
-          description: Optional description for the API
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this API belongs to
+          example: default-project
         upstream:
-          type: string
-          description: Upstream backend URL (maps to upstream.main.url in the created API)
+          $ref: "#/components/schemas/Upstream"
 
-    ValidateOpenAPIRequest:
+    OpenAPISpecFileRequest:
       type: object
       required:
-        - inlineDefinition
+        - file
       properties:
-        inlineDefinition:
+        file:
           type: string
-          description: Raw OpenAPI 3.x or Swagger 2.x spec content (YAML or JSON)
+          format: binary
+          description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
 
     ValidateOpenAPIResponse:
       type: object
@@ -7436,7 +7432,6 @@ components:
           type: string
           description: Value of info.version from the spec
 
-    SwaggerContent:
     OpenAPIContent:
       type: object
       properties:
@@ -10289,6 +10284,16 @@ components:
             status: error
             code: DEPLOYMENT_ACTIVE
             message: Cannot delete an active deployment - undeploy it first.
+    PayloadTooLarge:
+      description: Payload Too Large. The uploaded file exceeds the maximum allowed size.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PAYLOAD_TOO_LARGE
+            message: The uploaded file exceeds the maximum allowed size.
     InternalServerError:
       description: Internal Server Error.
       content:

@@ -38,7 +38,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Download, Maximize2, Minimize2, Pencil, Sparkles, Upload } from '@wso2/oxygen-ui-icons-react';
+import { Download, Maximize2, Minimize2, Pencil, Upload } from '@wso2/oxygen-ui-icons-react';
 import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -69,20 +69,15 @@ const messages = defineMessages({
   },
   emptyDescription: {
     id: 'develop.definition.DefinitionPanel.emptyDescription',
-    defaultMessage:
-      'Upload an OpenAPI or Swagger spec to document your API contract, or generate one from the operations you have already configured.',
+    defaultMessage: 'Upload an OpenAPI or Swagger spec to document your API contract.',
   },
   addDefinition: {
     id: 'develop.definition.DefinitionPanel.addDefinition',
-    defaultMessage: 'Add definition',
+    defaultMessage: 'Import definition',
   },
   downloadLabel: {
     id: 'develop.definition.DefinitionPanel.downloadLabel',
     defaultMessage: 'Download Definition',
-  },
-  generateLabel: {
-    id: 'develop.definition.DefinitionPanel.generateLabel',
-    defaultMessage: 'Generate from operations',
   },
   updateOpenApi: {
     id: 'develop.definition.DefinitionPanel.updateOpenApi',
@@ -175,10 +170,21 @@ const messages = defineMessages({
     defaultMessage: 'Spec validation is currently unavailable. Please try again.',
     description: 'Error shown when the validation service itself fails (network/auth error).',
   },
+  discard: {
+    id: 'develop.definition.DefinitionPanel.discard',
+    defaultMessage: 'Discard',
+  },
+  fileTooLarge: {
+    id: 'develop.definition.DefinitionPanel.fileTooLarge',
+    defaultMessage: 'The specification exceeds the maximum allowed size (5 MB).',
+  },
 });
 
 /** Width of the expanded editor Drawer. */
 const EXPANDED_WIDTH = { md: 'min(1000px, 92vw)', xs: '100%' };
+
+/** 5 MiB — matches backend importOpenAPIMaxBytes. */
+const IMPORT_SPEC_MAX_BYTES = 5 * 1024 * 1024;
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -283,9 +289,16 @@ export function DefinitionPanel() {
 
   const isSaving = isValidating || putOpenApi.isPending;
 
+  // Ref so async callbacks (URL-fetch stream reader) can read the live isSaving
+  // value without capturing a stale closure copy.
+  const isSavingRef = useRef(false);
+  useEffect(() => {
+    isSavingRef.current = isSaving;
+  }, [isSaving]);
+
   const handleFormatToggle = useCallback(
     (newFormat: 'yaml' | 'json') => {
-      if (newFormat === format) return;
+      if (newFormat === format || isSaving) return;
       try {
         if (newFormat === 'json') {
           const parsed = yaml.load(editorText) as Record<string, unknown>;
@@ -299,7 +312,7 @@ export function DefinitionPanel() {
       }
       setFormat(newFormat);
     },
-    [format, editorText],
+    [format, editorText, isSaving],
   );
 
   const closeDialog = () => {
@@ -310,26 +323,27 @@ export function DefinitionPanel() {
 
   // Load content into the editor from a file — does NOT immediately PUT to backend.
   // Always loads as YAML; converts JSON uploads automatically.
+  // When a saved spec exists, auto-enter edit mode so the save bar is visible.
   const applyFileContent = (file: File) => {
     void file.text().then((text) => {
-      let yamlText = text;
-      try {
-        const parsed = JSON.parse(text) as Record<string, unknown>;
-        yamlText = yaml.dump(parsed);
-      } catch {
-        // Already YAML, use as-is.
-      }
-      setEditorText(yamlText);
+      const parsedSpec = parseSpec(text);
+      setEditorText(parsedSpec ? yaml.dump(parsedSpec) : text);
       setPendingFileName(file.name.replace(/\.json$/i, '.yaml'));
       setFormat('yaml');
+      setIsEditing(true);
     });
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    applyFileContent(file);
     event.target.value = '';
+    if (isSaving) return;
+    if (file.size > IMPORT_SPEC_MAX_BYTES) {
+      setFetchError(intl.formatMessage(messages.fileTooLarge));
+      return;
+    }
+    applyFileContent(file);
     closeDialog();
   };
 
@@ -342,21 +356,43 @@ export function DefinitionPanel() {
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error('fetch failed');
-      const text = await response.text();
-      if (!parseSpec(text)) {
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('fetch failed');
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.length;
+        if (totalBytes > IMPORT_SPEC_MAX_BYTES) {
+          await reader.cancel();
+          setFetchError(intl.formatMessage(messages.fileTooLarge));
+          return;
+        }
+        chunks.push(value);
+      }
+      const combined = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const text = new TextDecoder().decode(combined);
+      // A save may have started while the network read was in progress; discard
+      // the result rather than overwriting what the user is saving.
+      if (isSavingRef.current) {
+        setFetchError(intl.formatMessage(messages.dialogFetchError));
+        return;
+      }
+      const parsedSpec = parseSpec(text);
+      if (!parsedSpec) {
         setFetchError(intl.formatMessage(messages.dialogParseError));
         return;
       }
-      let yamlText = text;
-      try {
-        const parsed = JSON.parse(text) as Record<string, unknown>;
-        yamlText = yaml.dump(parsed);
-      } catch {
-        // Already YAML.
-      }
-      setEditorText(yamlText);
+      setEditorText(yaml.dump(parsedSpec));
       setPendingFileName(filenameFromUrl(url).replace(/\.json$/i, '.yaml'));
       setFormat('yaml');
+      setIsEditing(true);
       closeDialog();
     } catch {
       setFetchError(intl.formatMessage(messages.dialogFetchError));
@@ -512,6 +548,7 @@ export function DefinitionPanel() {
           {/* Action bar */}
           <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
             <Button
+              disabled={isSaving}
               onClick={() => setDialogOpen(true)}
               startIcon={<Upload size={16} />}
               variant="outlined"
@@ -595,7 +632,7 @@ export function DefinitionPanel() {
                     <FormattedMessage {...messages.editorHeading} />
                   </Typography>
                   <Stack alignItems="center" direction="row" spacing={1}>
-                    {!isEditing && (
+                    {hasSpec && !isEditing && (
                       <Button
                         onClick={() => setIsEditing(true)}
                         size="small"
@@ -608,6 +645,7 @@ export function DefinitionPanel() {
                     <ToggleButtonGroup
                       aria-label={intl.formatMessage(messages.formatLabel)}
                       color="primary"
+                      disabled={isSaving}
                       exclusive
                       onChange={(_event, next: 'yaml' | 'json' | null) => {
                         if (next !== null) handleFormatToggle(next);
@@ -648,7 +686,7 @@ export function DefinitionPanel() {
                       fontSize: 12,
                       lineHeight: 20,
                       minimap: { enabled: false },
-                      readOnly: !isEditing,
+                      readOnly: isSaving || (hasSpec && !isEditing),
                       scrollBeyondLastLine: false,
                       wordWrap: 'on',
                     }}
@@ -657,8 +695,8 @@ export function DefinitionPanel() {
                   />
                 </Box>
 
-                {/* Save / Reset bar — shown whenever the editor is in edit mode */}
-                {isEditing && (
+                {/* Save / Reset bar — shown in edit mode or when a pending import awaits saving */}
+                {(isEditing || !hasSpec) && (
                   <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
                     {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
                       <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
@@ -686,15 +724,21 @@ export function DefinitionPanel() {
                         color="secondary"
                         disabled={isSaving}
                         onClick={() => {
-                          setEditorText(savedInCurrentFormat);
+                          if (hasSpec) {
+                            setEditorText(savedInCurrentFormat);
+                            setIsEditing(false);
+                          } else {
+                            setEditorText('');
+                          }
                           setPendingFileName(null);
-                          setIsEditing(false);
                           setSaveValidationErrors(null);
                         }}
                         size="small"
                         variant="outlined"
                       >
-                        {intl.formatMessage(messages.reset)}
+                        {hasSpec
+                          ? intl.formatMessage(messages.reset)
+                          : intl.formatMessage(messages.discard)}
                       </Button>
                       <Button
                         disabled={!isDirty || !editorText.trim()}
@@ -826,7 +870,7 @@ export function DefinitionPanel() {
                     {intl.formatMessage(messages.expandedTitle)}
                   </Typography>
                   <Stack alignItems="center" direction="row" spacing={1}>
-                    {!isEditing && (
+                    {hasSpec && !isEditing && (
                       <Button
                         onClick={() => setIsEditing(true)}
                         size="small"
@@ -839,6 +883,7 @@ export function DefinitionPanel() {
                     <ToggleButtonGroup
                       aria-label={intl.formatMessage(messages.formatLabel)}
                       color="primary"
+                      disabled={isSaving}
                       exclusive
                       onChange={(_event, next: 'yaml' | 'json' | null) => {
                         if (next !== null) handleFormatToggle(next);
@@ -879,7 +924,7 @@ export function DefinitionPanel() {
                       fontSize: 12,
                       lineHeight: 20,
                       minimap: { enabled: true },
-                      readOnly: !isEditing,
+                      readOnly: isSaving || (hasSpec && !isEditing),
                       scrollBeyondLastLine: false,
                       wordWrap: 'on',
                     }}
@@ -888,8 +933,8 @@ export function DefinitionPanel() {
                   />
                 </Box>
 
-                {/* Save / Reset bar inside the Drawer — shown when in edit mode */}
-                {isEditing && (
+                {/* Save / Reset bar inside the Drawer — shown in edit mode or pending import */}
+                {(isEditing || !hasSpec) && (
                   <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
                     {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
                       <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
@@ -917,15 +962,21 @@ export function DefinitionPanel() {
                         color="secondary"
                         disabled={isSaving}
                         onClick={() => {
-                          setEditorText(savedInCurrentFormat);
+                          if (hasSpec) {
+                            setEditorText(savedInCurrentFormat);
+                            setIsEditing(false);
+                          } else {
+                            setEditorText('');
+                          }
                           setPendingFileName(null);
-                          setIsEditing(false);
                           setSaveValidationErrors(null);
                         }}
                         size="small"
                         variant="outlined"
                       >
-                        {intl.formatMessage(messages.reset)}
+                        {hasSpec
+                          ? intl.formatMessage(messages.reset)
+                          : intl.formatMessage(messages.discard)}
                       </Button>
                       <Button
                         disabled={!isDirty || !editorText.trim()}
@@ -964,22 +1015,15 @@ export function DefinitionPanel() {
             <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
               {intl.formatMessage(messages.emptyDescription)}
             </Typography>
-            <Stack direction="row" spacing={1} sx={{ pt: 1 }}>
-              <Button
-                onClick={() => setDialogOpen(true)}
-                startIcon={<Upload size={16} />}
-                variant="contained"
-              >
-                {intl.formatMessage(messages.addDefinition)}
-              </Button>
-              <Button
-                disabled
-                startIcon={<Sparkles size={16} />}
-                variant="outlined"
-              >
-                {intl.formatMessage(messages.generateLabel)}
-              </Button>
-            </Stack>
+            <Button
+              disabled={isSaving}
+              onClick={() => setDialogOpen(true)}
+              startIcon={<Upload size={16} />}
+              sx={{ mt: 1 }}
+              variant="contained"
+            >
+              {intl.formatMessage(messages.addDefinition)}
+            </Button>
           </Stack>
         </Box>
       )}

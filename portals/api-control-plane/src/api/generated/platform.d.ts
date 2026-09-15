@@ -141,6 +141,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rest-apis/validate-openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate an OpenAPI specification
+         * @description Validates an OpenAPI 3.x or Swagger 2.x specification without creating
+         *     or modifying any resource. Returns a structured result indicating whether
+         *     the spec is valid and, if not, the list of validation errors.
+         */
+        post: operations["ValidateOpenAPISpec"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rest-apis/import-openapi": {
         parameters: {
             query?: never;
@@ -153,7 +175,7 @@ export interface paths {
         /**
          * Create a REST API from an OpenAPI specification
          * @description Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
-         *     as a multipart file upload or a URL. The backend extracts operations from the spec,
+         *     as a multipart file upload The backend extracts operations from the spec,
          *     creates the API, and persists the raw spec as the API definition document.
          */
         post: operations["ImportOpenAPI"];
@@ -189,6 +211,32 @@ export interface paths {
          *     in the JWT token.
          */
         delete: operations["DeleteRESTAPI"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rest-apis/{restApiId}/openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get API definition
+         * @description Returns the raw OpenAPI spec stored for this API as YAML. Returns 404 if no definition
+         *     has been uploaded yet. The `content` field carries the spec text.
+         */
+        get: operations["GetRESTAPISpec"];
+        /**
+         * Update API definition
+         * @description Replaces (or creates) the OpenAPI/Swagger spec stored for this API. Accepts a
+         *     multipart/form-data upload with a single `file` field containing the spec.
+         */
+        put: operations["UpdateRESTAPISpec"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -273,6 +321,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rest-apis/{restApiId}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get builds for a REST API
+         * @description Lists the API's builds, newest first. The rendered artifact itself is not
+         *     included; a listing is for choosing which build to deploy.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetBuilds"];
+        put?: never;
+        /**
+         * Prepare a build of a REST API
+         * @description Renders the API's current definition into an immutable snapshot and stores it,
+         *     without deploying it anywhere.
+         *
+         *     Preparing and deploying are separate steps so that what reaches a gateway is a
+         *     snapshot taken at a known moment: a deploy that names a build cannot silently
+         *     pick up edits made to the API since, and the same build can be deployed to any
+         *     number of gateways, and promoted onward, without being re-rendered.
+         *
+         *     The artifact is stored at the platform's own data version; it is translated to
+         *     the target gateway's version when it is deployed.
+         *
+         *     An API keeps at most `deployments.max_builds_per_api` builds. Preparing another
+         *     first removes the oldest builds no current deployment is using; if every one is
+         *     in use, the request is refused with a `409` and a build has to be deleted to
+         *     make room.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["CreateBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rest-apis/{restApiId}/builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get build by ID
+         * @description Retrieves metadata for a single build.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetBuild"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a build
+         * @description Deletes one of the API's builds, freeing a slot when the API is at its build
+         *     limit.
+         *
+         *     Refused with a conflict while a gateway is serving the build — that is, while
+         *     any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+         *     first.
+         *
+         *     Undeployed, failed and superseded deployments release the build. They keep the
+         *     artifact they were created with, so they can still be redeployed, but they stop
+         *     reporting a `buildId` and can no longer be promoted to a later environment.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        delete: operations["DeleteBuild"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rest-apis/{restApiId}/deployments": {
         parameters: {
             query?: never;
@@ -294,6 +420,10 @@ export interface paths {
          *     Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
          *     not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
          *     Access is validated against the organization in the JWT token.
+         *
+         *     Every deployment runs a build: `base: build` deploys one prepared earlier, and
+         *     `base: current` renders the API's definition into a build and deploys that, both in
+         *     one atomic operation. The deployment reports the build it runs as `buildId`.
          */
         post: operations["DeployAPI"];
         delete?: never;
@@ -2660,6 +2790,65 @@ export interface components {
             revokedAt?: string | null;
         };
         CreateRESTAPIRequest: components["schemas"]["RESTAPI"] & Record<string, never>;
+        ImportOpenAPIRequest: {
+            /**
+             * Format: binary
+             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             */
+            file: string;
+            /**
+             * @description Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+             * @example my-rest-api-handle
+             */
+            id?: string;
+            /**
+             * @description Human-readable name for the API
+             * @example PizzaShackAPI
+             */
+            displayName: string;
+            /** @example This is a simple API for Pizza Shack online pizza delivery store */
+            description?: string;
+            /** @example /pizza */
+            context: string;
+            /** @example 1.0.0 */
+            version: string;
+            /**
+             * @description Handle (URL-friendly slug) of the project this API belongs to
+             * @example default-project
+             */
+            projectId: string;
+            upstream: components["schemas"]["Upstream"];
+        };
+        OpenAPISpecFileRequest: {
+            /**
+             * Format: binary
+             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             */
+            file: string;
+        };
+        ValidateOpenAPIResponse: {
+            /** @description Whether the spec passed validation */
+            isValid: boolean;
+            /** @description Validation errors; empty when isValid is true */
+            errors: components["schemas"]["OpenAPIValidationError"][];
+            info?: components["schemas"]["OpenAPISpecInfo"];
+        };
+        OpenAPIValidationError: {
+            /** @description Human-readable description of the validation error */
+            message: string;
+            /** @description JSON Pointer path within the spec where the error was found */
+            path?: string;
+        };
+        OpenAPISpecInfo: {
+            /** @description Value of info.title from the spec */
+            title?: string;
+            /** @description Value of info.version from the spec */
+            version?: string;
+        };
+        OpenAPIContent: {
+            /** @description Raw spec content (always YAML) */
+            content?: string;
+        };
         /**
          * @description Time unit for API key expiration duration
          * @example days
@@ -3032,10 +3221,26 @@ export interface components {
              */
             name: string;
             /**
-             * @description The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+             * @description Where the artifact comes from:
+             *
+             *     - `current` — render the artifact from the definition as it stands now.
+             *     - `build` — deploy a build prepared earlier, named by `buildId`.
+             *
+             *     REST API deployments accept only these two and always run a build: `current`
+             *     stores what it renders as one, so a running deployment is always traceable to
+             *     a stored snapshot. MCP proxy, LLM and event API deployments accept a
+             *     `deploymentId` here as well, to promote that deployment by reusing its
+             *     rendered artifact.
              * @example current
              */
             base: string;
+            /**
+             * @description The build to deploy, such as `2026-01-31-2`. Required when `base` is `build`,
+             *     and rejected otherwise. Deploying a build ships that exact snapshot, so it
+             *     cannot pick up edits made since it was prepared.
+             * @example 2026-01-31-2
+             */
+            buildId?: string;
             /**
              * @description Handle (URL-friendly slug) of the target gateway for this deployment
              * @example prod-gateway-01
@@ -3045,6 +3250,62 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+        };
+        /** @description Optional details to record with a build. */
+        BuildRequest: {
+            /**
+             * @description Optional note recorded with the build, to tell one snapshot from another when
+             *     choosing what to deploy or which build to delete.
+             * @example Adds the /reports endpoint
+             */
+            description?: string;
+            /**
+             * @description Free-form metadata to store with the build, such as the commit an API kept in a
+             *     repository was prepared from. It is returned with the build and is not
+             *     interpreted by the platform.
+             * @example {
+             *       "commitId": "9f1c2ab"
+             *     }
+             */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description An immutable, rendered snapshot of an API's definition, not bound to any gateway. */
+        BuildResponse: {
+            /**
+             * @description Identifier for the build, supplied as `buildId` when a deployment's `base` is
+             *     `build`. It is the date the build was prepared followed by that day's index for
+             *     the API, and is unique per API.
+             * @example 2026-01-31-2
+             */
+            buildId: string;
+            /**
+             * Format: uuid
+             * @description Globally unique identifier for the build, and what a deployment references
+             */
+            uuid: string;
+            /** @description Note recorded with the build when it was prepared */
+            description?: string;
+            /** @description Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed */
+            dataVersion?: string;
+            /** @description Metadata recorded with the build, such as the commit it was prepared from */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** @description Who prepared the build */
+            createdBy?: string;
+            /**
+             * Format: date-time
+             * @description Timestamp when the build was prepared
+             */
+            createdAt: string;
+        };
+        BuildListResponse: {
+            /** @description Number of builds in current response */
+            count: number;
+            /** @description Builds, newest first */
+            list: components["schemas"]["BuildResponse"][];
         };
         DeploymentResponse: {
             /**
@@ -3078,6 +3339,19 @@ export interface components {
              * @description UUID of the base deployment this was created from
              */
             baseDeploymentId?: string | null;
+            /**
+             * @description Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
+             *     has one: `base: build` runs the build it names, and `base: current` stores what
+             *     it renders as a build and runs that.
+             *
+             *     Null for artifact kinds that have no builds — MCP proxy, LLM and event API
+             *     deployments — including one promoted from another deployment, which reuses that
+             *     deployment's rendered artifact. Also null once the build it ran has been pruned.
+             *     Null means only that no build can be named; the deployment keeps its own
+             *     rendered artifact either way.
+             * @example 2026-01-31-2
+             */
+            buildId?: string | null;
             /** @description Metadata associated with the deployment */
             metadata?: {
                 [key: string]: unknown;
@@ -4653,6 +4927,22 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Payload Too Large. The uploaded file exceeds the maximum allowed size. */
+        PayloadTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "PAYLOAD_TOO_LARGE",
+                 *       "message": "The uploaded file exceeds the maximum allowed size."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Internal Server Error. */
         InternalServerError: {
             headers: {
@@ -5080,6 +5370,34 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    ValidateOpenAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["OpenAPISpecFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Validation result (valid or invalid — both return 200) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateOpenAPIResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     ImportOpenAPI: {
         parameters: {
             query?: never;
@@ -5089,27 +5407,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": {
-                    /**
-                     * Format: binary
-                     * @description OpenAPI spec file (mutually exclusive with url)
-                     */
-                    file?: string;
-                    /** @description URL to fetch the OpenAPI spec from (mutually exclusive with file) */
-                    url?: string;
-                    /** @description Display name for the API */
-                    name: string;
-                    /** @description Version of the API */
-                    version: string;
-                    /** @description URL context path for the API */
-                    context: string;
-                    /** @description Project UUID the API belongs to */
-                    projectId: string;
-                    /** @description Optional description */
-                    description?: string;
-                    /** @description Optional upstream endpoint URL */
-                    endpointUrl?: string;
-                };
+                "multipart/form-data": components["schemas"]["ImportOpenAPIRequest"];
             };
         };
         responses: {
@@ -5214,6 +5512,66 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetRESTAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API definition retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAPIContent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateRESTAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["OpenAPISpecFileRequest"];
+            };
+        };
+        responses: {
+            /** @description API definition updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAPIContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -5388,6 +5746,125 @@ export interface operations {
             503: components["responses"]["GatewayConnectionUnavailable"];
         };
     };
+    GetBuilds: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Builds retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Build prepared successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     GetDeployments: {
         parameters: {
             query?: {
@@ -5455,6 +5932,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };

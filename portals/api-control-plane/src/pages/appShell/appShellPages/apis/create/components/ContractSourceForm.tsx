@@ -1459,7 +1459,11 @@ export const ContractSourceForm = ({
       // temporary outage doesn't block the create flow entirely.
       try {
         const specYaml = yaml.dump(result.contract.spec);
-        const validation = await validateSpec.mutateAsync(specYaml);
+        // Extend to other api types by selecting a validator for the
+        // detected dialect if required
+        const validation = request.apiTypeKey === 'rest'
+          ? await validateSpec.mutateAsync(specYaml)
+          : { isValid: true, errors: [] };
         if (!current) return;
 
         if (!validation.isValid) {

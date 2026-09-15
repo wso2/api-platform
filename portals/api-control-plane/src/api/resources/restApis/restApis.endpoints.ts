@@ -123,8 +123,8 @@ export const deleteRestApi = async (restApiId: string, options?: RequestOptions)
  *
  * The body must be a `FormData` instance containing:
  *   - `file` (File): the spec file
- *   - `name`, `version`, `context`, `projectId` (string): required API metadata
- *   - `description`, `endpointUrl` (string): optional
+ *   - `displayName`, `version`, `context`, `projectId`, `upstream` (string): required API metadata
+ *   - `id`, `description` (string): optional
  *
  * The browser sets the Content-Type header (including multipart boundary) automatically
  * when a FormData body is supplied — do not set it manually.
@@ -156,15 +156,16 @@ export type ValidateOpenAPIResponse = {
 
 /**
  * Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
- * any resource. The caller serialises the spec to a string and passes it as
- * `inlineDefinition` in multipart form data.
+ * any resource. The spec string is wrapped as a binary file and sent as
+ * `file` in multipart form data.
  */
 export const validateOpenApiSpec = async (
-  inlineDefinition: string,
+  specContent: string,
   options?: RequestOptions,
 ): Promise<ValidateOpenAPIResponse> => {
   const formData = new FormData();
-  formData.append('inlineDefinition', inlineDefinition);
+  const blob = new Blob([specContent], { type: 'application/x-yaml' });
+  formData.append('file', blob, 'openapi.yaml');
   return http.post<ValidateOpenAPIResponse>(`${BASE}/validate-openapi`, formData, {
     ...options,
     operationName: 'ValidateOpenAPISpec',
@@ -201,17 +202,6 @@ export const putRestApiOpenApi = async (
   return http.put<OpenAPIContent>(`${resourcePath(restApiId)}/openapi`, body, {
     ...options,
     operationName: 'UpdateRESTAPISpec',
-  });
-};
-
-/** Removes the API definition spec. */
-export const deleteRestApiOpenApi = async (
-  restApiId: string,
-  options?: RequestOptions,
-): Promise<void> => {
-  return http.delete<void>(`${resourcePath(restApiId)}/openapi`, {
-    ...options,
-    operationName: 'DeleteRESTAPISpec',
   });
 };
 
