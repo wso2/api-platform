@@ -327,7 +327,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
@@ -659,15 +659,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 // resolved IDP-role-to-scope table alongside it.
 func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]string) middleware.ClaimMappings {
 	return middleware.ClaimMappings{
-		OrganizationClaim: cm.Organization,
-		OrgNameClaim:      cm.OrgName,
-		OrgHandleClaim:    cm.OrgHandle,
-		UserIDClaim:       cm.UserID,
-		UsernameClaim:     cm.Username,
-		EmailClaim:        cm.Email,
-		ScopeClaim:        cm.Scope,
-		RolesClaimPath:    cm.Roles,
-		RoleScopeMap:      roleScopeMap,
+		OrganizationClaim:  cm.Organization,
+		OrgNameClaim:       cm.OrgName,
+		OrgHandleClaim:     cm.OrgHandle,
+		OrganizationsClaim: cm.Organizations,
+		UserIDClaim:        cm.UserID,
+		UsernameClaim:      cm.Username,
+		EmailClaim:         cm.Email,
+		ScopeClaim:         cm.Scope,
+		RolesClaimPath:     cm.Roles,
+		RoleScopeMap:       roleScopeMap,
 	}
 }
 

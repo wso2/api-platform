@@ -150,42 +150,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     owner: { id: 0, idpId: '' },
   });
 
-  // Resolves the user's organization ids (from the token's "organizations" claim)
-  // into full Organization objects by looking each one up individually — the
-  // claim carries ids only, never display names, and only ever the calling
-  // user's own memberships, so each id is resolved one at a time rather than
-  // ever falling back to the unscoped /organizations list endpoint, which (for
-  // a caller holding ap:organization:manage) returns every organization on the
-  // platform, not just the caller's own — see initialize() for the no-claim case.
-  const loadOrganizationsByIds = useCallback(async (orgIds: string[]): Promise<Organization[]> => {
-    if (orgIds.length === 0) return [];
-    setIsOrganizationsLoading(true);
-    try {
-      const resolved = await Promise.all(
-        orgIds.map(async (id) => {
-          try {
-            const platformOrg = await getOrganizationById(id);
-            return platformOrg ? toOrganization(platformOrg) : null;
-          } catch (err) {
-            logger.error(`[AppShellContext] Failed to resolve organization ${id}:`, err);
-            return null;
-          }
-        })
-      );
-      return resolved.filter((org): org is Organization => org !== null);
-    } finally {
-      setIsOrganizationsLoading(false);
-    }
-  }, []);
-
   const initialize = useCallback(async () => {
     try {
       const tokenOrg = userRef.current?.org;
-      const orgIds = userRef.current?.organizations ?? [];
 
-      // Kicked off in parallel with resolving the "current" org below — only
-      // used when the token actually carries an "organizations" claim.
-      const claimOrgsPromise = loadOrganizationsByIds(orgIds);
+      const orgsPromise = getOrganizations();
 
       if (tokenOrg?.handle) {
         // Primary path: fetch org by handle from the token (works for both OIDC and file-based auth).
@@ -222,32 +191,28 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
         const resolvedOrg = toOrganization(platformOrg);
         setCurrentOrganizationState(resolvedOrg);
 
-        if (orgIds.length > 0) {
-          // Token carries an "organizations" claim — the switcher offers exactly
-          // those memberships. A just-provisioned org may not yet appear in that
-          // resolved set (e.g. a race with the claim being minted), so make sure
-          // the switcher still offers it.
-          const claimOrgs = await claimOrgsPromise;
+        setIsOrganizationsLoading(true);
+        try {
+          const orgs = await orgsPromise;
           setOrganizations(
-            claimOrgs.some((o) => o.handle === resolvedOrg.handle)
-              ? claimOrgs
-              : [...claimOrgs, resolvedOrg]
+            orgs.some((o) => o.handle === resolvedOrg.handle) ? orgs : [...orgs, resolvedOrg]
           );
-        } else {
-          // No "organizations" claim on the token — show only the single
-          // current organization, never the unscoped /organizations list.
-          setOrganizations([resolvedOrg]);
+        } finally {
+          setIsOrganizationsLoading(false);
         }
+
         setIsTokenExchanged(true);
         await fetchProjectsForOrg();
         return;
       }
 
-      // Fallback: no "org" claim in the token at all — nothing to resolve a
-      // "current" org from, so bootstrap off whatever org list is available:
-      // the claim-resolved set if the token had one, otherwise the unscoped
-      // list endpoint (there's no narrower option when neither claim exists).
-      const orgs = orgIds.length > 0 ? await claimOrgsPromise : await getOrganizations();
+      setIsOrganizationsLoading(true);
+      let orgs: Organization[];
+      try {
+        orgs = await orgsPromise;
+      } finally {
+        setIsOrganizationsLoading(false);
+      }
       if (orgs.length === 0) {
         logger.warn('[AppShellContext] No organization found');
         setError('Organization not found. Please contact your administrator.');
@@ -264,7 +229,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [loadOrganizationsByIds, getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
+  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
 
   const switchOrganization = useCallback(
     async (organization: Organization) => {
