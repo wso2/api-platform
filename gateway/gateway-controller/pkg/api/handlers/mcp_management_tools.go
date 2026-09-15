@@ -63,23 +63,9 @@ type McpHandler struct {
 	certificateService  *certificate.CertificateService
 	subscriptionService *subscription.SubscriptionService
 
-	// resourceRoles is the management API's route -> roles map, exactly as built
-	// by generateAuthConfig in cmd/controller/main.go. MCP calls are authorized
-	// against it by relative key ("POST /llm-providers"), so the REST API and
-	// the MCP endpoint can never drift apart. See mcp_authz.go.
-	resourceRoles map[string][]string
-
-	// roleMapping is auth.idp.role_mapping (local role -> IdP claim values),
-	// used ONLY to translate outbound: resourceRoles and every authorization
-	// decision stay in local-role vocabulary, while anything a client sees —
-	// a WWW-Authenticate `scope` value, a tool-layer scope error — is projected
-	// through scopesFor into the IdP's vocabulary. Nil or empty means the two
-	// vocabularies are identical, which is the no-role_mapping default.
-	roleMapping map[string][]string
-
-	// resourceMetadataURL is the RFC 9728 document URL advertised in
-	// WWW-Authenticate challenges. Empty disables the pointer.
-	resourceMetadataURL string
+	// authz is the shared authorization core: the HTTP-layer gate, the
+	// tool-layer check, and the RFC 6750 step-up challenge
+	authz *mcpAuthz
 
 	// immutable mirrors ImmutableGateway.Enabled. The MCP route is deliberately
 	// NOT wrapped in the immutable middleware (that middleware rejects every
@@ -127,22 +113,28 @@ func newMcpHandler(p McpHandlerParams) *McpHandler {
 		apiKeyService:        p.APIKeyService,
 		certificateService:   p.CertificateService,
 		subscriptionService:  p.SubscriptionService,
-		resourceRoles:        p.ResourceRoles,
-		roleMapping:          p.RoleMapping,
-		resourceMetadataURL:  p.ResourceMetadataURL,
 		immutable:            p.Immutable,
-		maxRequestBytes:      p.MaxRequestBytes,
 		logger:               p.Logger,
-	}
-	if h.maxRequestBytes <= 0 {
-		h.maxRequestBytes = mcp.DefaultMaxRequestBodyBytes
+		authz: newMcpAuthz(mcpAuthzParams{
+			ResourceRoles:       p.ResourceRoles,
+			RoleMapping:         p.RoleMapping,
+			ResourceMetadataURL: p.ResourceMetadataURL,
+			MaxRequestBytes:     p.MaxRequestBytes,
+			Logger:              p.Logger,
+		}),
 	}
 
 	// Built after h exists because each kindOps closes over h's services.
 	h.kinds = h.buildKindRegistry()
 
+	// Assigned after the registry exists, because routeKeysForCall resolves a
+	// manifest's kind through h.kinds. Until this line the gate's default
+	// resolver maps nothing, so a construction path that skipped it would fail
+	// closed rather than authorize by accident.
+	h.authz.routeKeysForCall = h.routeKeysForCall
+
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "wso2-api-platform-gateway-controller",
+		Name:    "wso2-api-platform-gateway-controller-management",
 		Version: version.Version,
 	}, nil)
 	h.registerTools(server)
@@ -156,7 +148,7 @@ func newMcpHandler(p McpHandlerParams) *McpHandler {
 			Stateless: true,
 			// The gate reads the body first; keep the SDK's ceiling identical
 			// so the two layers reject oversized bodies at the same threshold.
-			MaxRequestBodyBytes: h.maxRequestBytes,
+			MaxRequestBodyBytes: h.authz.maxRequestBytes,
 			// A closed HTTP request means the response can no longer be
 			// delivered, so cancelling the in-flight handler is safe and stops
 			// work on an abandoned deploy.
@@ -165,7 +157,7 @@ func newMcpHandler(p McpHandlerParams) *McpHandler {
 		},
 	)
 
-	h.protected = h.ScopeGate(streamHandler)
+	h.protected = h.authz.ScopeGate(streamHandler)
 	return h
 }
 
@@ -244,7 +236,7 @@ type revokeKeyInput struct {
 // tool per verb, because their resources are not artifact kinds: they have no
 // manifest envelope to read a kind from, and certificates carry a "reload" verb
 // with no CRUD counterpart. The action is resolved to the governing REST route
-// key by resolveCertAction / resolveSubscriptionAction in mcp_authz.go, which
+// key by resolveCertAction / resolveSubscriptionAction in mcp_management_routes.go, which
 // the authorization gate and the handler both call.
 
 type manageCertificatesInput struct {
@@ -298,7 +290,7 @@ type subscriptionSpec struct {
 //
 // One tool per intent, not per kind. The kind comes from the manifest for the
 // create/update tools and from an explicit argument for the rest, so
-// supporting a new resource kind means one entry in mcp_kinds.go and no tool
+// supporting a new resource kind means one entry in mcp_management_kinds.go and no tool
 // changes at all.
 // -------------------------------------------------------------------------
 
@@ -654,7 +646,7 @@ func (h *McpHandler) write(ctx context.Context, class kindClass, tool string, in
 	if in.ID != "" {
 		method = http.MethodPut
 	}
-	if err := h.authorize(ctx, routeKey(method, ops, in.ID != "")); err != nil {
+	if err := h.authz.authorize(ctx, routeKey(method, ops, in.ID != "")); err != nil {
 		return nil, nil, err
 	}
 
@@ -720,7 +712,7 @@ func (h *McpHandler) remove(ctx context.Context, class kindClass, tool string, i
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := h.authorize(ctx, routeKey(http.MethodDelete, ops, true)); err != nil {
+	if err := h.authz.authorize(ctx, routeKey(http.MethodDelete, ops, true)); err != nil {
 		return nil, nil, err
 	}
 
@@ -749,7 +741,7 @@ func (h *McpHandler) getResource(ctx context.Context, _ *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := h.authorize(ctx, routeKey(http.MethodGet, ops, true)); err != nil {
+	if err := h.authz.authorize(ctx, routeKey(http.MethodGet, ops, true)); err != nil {
 		return nil, nil, err
 	}
 
@@ -773,7 +765,7 @@ func (h *McpHandler) listResources(ctx context.Context, _ *mcp.CallToolRequest, 
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := h.authorize(ctx, routeKey(http.MethodGet, ops, false)); err != nil {
+		if err := h.authz.authorize(ctx, routeKey(http.MethodGet, ops, false)); err != nil {
 			return nil, nil, err
 		}
 		rows, err := ops.List()
@@ -796,7 +788,7 @@ func (h *McpHandler) listResources(ctx context.Context, _ *mcp.CallToolRequest, 
 		if !ok {
 			continue
 		}
-		if err := h.authorize(ctx, routeKey(http.MethodGet, ops, false)); err != nil {
+		if err := h.authz.authorize(ctx, routeKey(http.MethodGet, ops, false)); err != nil {
 			continue // not readable by this caller — omit rather than fail
 		}
 		readable++
@@ -830,7 +822,7 @@ func (h *McpHandler) listResources(ctx context.Context, _ *mcp.CallToolRequest, 
 //
 // These call utils.APIKeyService directly, exactly as the REST handlers do. The
 // service is HTTP-free and takes Kind as a plain string, so all three
-// key-bearing kinds share one adapter (keyOps in mcp_kinds.go).
+// key-bearing kinds share one adapter (keyOps in mcp_management_kinds.go).
 
 // beginKeyOp is the shared preamble for the four api-key tools: resolve the
 // kind, authorize, then resolve the caller's identity.
@@ -846,10 +838,10 @@ func (h *McpHandler) beginKeyOp(ctx context.Context, rawKind, tool, method, rout
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
-	if err := h.authorize(ctx, keyRouteKey(method, ops, routeSuffix)); err != nil {
+	if err := h.authz.authorize(ctx, keyRouteKey(method, ops, routeSuffix)); err != nil {
 		return nil, nil, nil, "", err
 	}
-	caller, err := h.callerIdentity(ctx)
+	caller, err := h.authz.callerIdentity(ctx)
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
@@ -1095,7 +1087,7 @@ func (h *McpHandler) manageCertificates(ctx context.Context, _ *mcp.CallToolRequ
 		return nil, nil, fmt.Errorf(
 			"refusing to %s: confirm with the user, then retry with confirm=true", op.Action)
 	}
-	if err := h.authorize(ctx, op.RouteKey); err != nil {
+	if err := h.authz.authorize(ctx, op.RouteKey); err != nil {
 		return nil, nil, err
 	}
 
@@ -1261,7 +1253,7 @@ func (h *McpHandler) manageSubscriptions(ctx context.Context, _ *mcp.CallToolReq
 			op.Type, in.ID)
 	}
 	// Checks if the caller has the proper scope
-	if err := h.authorize(ctx, op.RouteKey); err != nil {
+	if err := h.authz.authorize(ctx, op.RouteKey); err != nil {
 		return nil, nil, err
 	}
 

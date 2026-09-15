@@ -736,7 +736,7 @@ func main() {
 		"POST " + managementAPIBasePath + "/mcp": true,
 	}
 
-	if cfg.Controller.MCPServer.Enabled {
+	if cfg.Controller.Server.MCPServer.Enabled {
 		base := strings.TrimRight(cfg.Controller.Server.ExternalBaseURL, "/")
 		const mcpRelPath = "/mcp"
 		mcpResource := base + managementAPIBasePath + mcpRelPath
@@ -747,35 +747,12 @@ func main() {
 		roleMapping := cfg.Controller.Auth.IDP.RoleMapping
 		mcpHandler := apiServer.EnableMCP(authConfig.ResourceRoles, roleMapping, mcpResourceMetadata)
 
-		// controller.mcp_server.advertised_scopes holds LOCAL ROLE names, not raw
-		// IdP scopes — the same names every other authorization surface here uses.
-		// They are translated into the IdP's scope names once, immediately below.
-		// Empty means "every role the endpoint admits".
-		baselineRoles := mcpHandler.MCPBaselineRoles()
-		entryRoles := cfg.Controller.MCPServer.AdvertisedScopes
-		if len(entryRoles) == 0 {
-			entryRoles = baselineRoles
-		}
-		// Fail closed on the effective outcome (GO-AUTH-011): advertising a role
-		// no MCP operation accepts hands every client a scope that can never
-		// authorize anything, and the failure is otherwise silent — the client
-		// completes the OAuth flow and is still refused.
-		for _, r := range entryRoles {
-			if !slices.Contains(baselineRoles, r) {
-				log.Error("invalid controller.mcp_server.advertised_scopes entry — refusing to start; "+
-					"entries must be local role names, which are translated through auth.idp.role_mapping",
-					slog.String("entry", r),
-					slog.Any("roles_accepted_by_mcp_operations", baselineRoles))
-				os.Exit(1)
-			}
-		}
-
-		// Translated once, here. Everything downstream — the metadata document
-		// and both challenge middlewares — receives IdP scope names only.
-		advertisedScopes := authenticators.MapRolesToScopes(roleMapping, entryRoles)
-		log.Info("MCP endpoint advertising scopes",
-			slog.Any("entry_roles", entryRoles),
-			slog.Any("advertised_scopes", advertisedScopes))
+		// Translated once here. Everything downstream - the metadata document
+		// and both challenge middlewares receives IdP scope names only.
+		advertisedScopes := resolveAdvertisedScopes(
+			"management", "controller.server.mcp_server.advertised_scopes",
+			cfg.Controller.Server.MCPServer.AdvertisedScopes,
+			mcpHandler.MCPBaselineRoles(), roleMapping, log)
 
 		mcpChallenge = onlyForPatterns(
 			handlers.MCPChallengeMiddleware(mcpResourceMetadata, advertisedScopes),
@@ -859,12 +836,56 @@ func main() {
 		// caller from controller.auth.basic who also holds the "admin" role.
 		// Authentication runs first (outermost) to populate the auth context, then
 		// authorization consumes it — the same ordering the management API uses.
+		adminRoles := adminResourceRoles()
 		adminAuthz := authenticators.AuthorizationMiddleware(
-			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
+			commonmodels.AuthConfig{ResourceRoles: adminRoles}, log)
 		adminProtect := func(next http.Handler) http.Handler {
 			return authMiddleWare(adminAuthz(next))
 		}
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
+
+		// Administrative MCP endpoint. Built before adminserver.NewServer
+		// because the server takes the handler, the challenge middleware and
+		// the discovery document as ready-made values.
+		var adminMcp *adminserver.MCPConfig
+		if cfg.Controller.AdminServer.MCPServer.Enabled {
+			base := strings.TrimRight(cfg.Controller.AdminServer.ExternalBaseURL, "/")
+			const adminMcpRelPath = "/mcp"
+			// Both forms the generated router registers, so the legacy alias
+			// gets the challenge too.
+			adminMcpRoutePatterns := map[string]bool{
+				"POST " + adminAPIBasePath + adminMcpRelPath: true,
+				"POST " + adminMcpRelPath:                    true,
+			}
+			adminMcpResource := base + adminAPIBasePath + adminMcpRelPath
+			// RFC 9728 path-insertion form, for a resource whose URI has a path.
+			adminMcpResourceMetadata := base + "/.well-known/oauth-protected-resource" +
+				adminAPIBasePath + adminMcpRelPath
+
+			roleMapping := cfg.Controller.Auth.IDP.RoleMapping
+			adminMcpHandler := apiServer.EnableAdminMCP(
+				adminRoles, roleMapping, adminMcpResourceMetadata)
+
+			advertisedScopes := resolveAdvertisedScopes(
+				"admin", "controller.admin_server.mcp_server.advertised_scopes",
+				cfg.Controller.AdminServer.MCPServer.AdvertisedScopes,
+				adminMcpHandler.MCPBaselineRoles(), roleMapping, log)
+
+			adminMcp = &adminserver.MCPConfig{
+				Handler: adminMcpHandler,
+				Challenge: onlyForPatterns(
+					handlers.MCPChallengeMiddleware(adminMcpResourceMetadata, advertisedScopes),
+					adminMcpRoutePatterns),
+				Metadata: handlers.NewProtectedResourceMetadataHandler(handlers.ProtectedResourceMetadata{
+					Resource:               adminMcpResource,
+					AuthorizationServers:   []string{cfg.Controller.Auth.IDP.Issuer},
+					ScopesSupported:        advertisedScopes,
+					BearerMethodsSupported: []string{"header"},
+				}),
+			}
+		}
+
+		controllerAdminServer = adminserver.NewServer(
+			&cfg.Controller.AdminServer, apiServer, adminProtect, log, adminMcp)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))
@@ -1202,6 +1223,7 @@ func adminResourceRoles() map[string][]string {
 	relativeRoles := map[string][]string{
 		"GET /config_dump":     {adminRole},
 		"GET /xds_sync_status": {adminRole},
+		"POST /mcp":            {adminRole},
 	}
 
 	// pprof endpoints are registered directly on the mux (not via a BaseURL), so
@@ -1249,6 +1271,38 @@ func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// resolveAdvertisedScopes turns an operator-configured entry set (LOCAL ROLE
+// names, the same names every other authorization surface here uses) into the
+// IdP scope names published as the endpoint's scopes_supported. An empty entry
+// set means "every role the endpoint admits".
+func resolveAdvertisedScopes(
+	endpoint string,
+	configKey string,
+	entryRoles []string,
+	baselineRoles []string,
+	roleMapping map[string][]string,
+	log *slog.Logger,
+) []string {
+	if len(entryRoles) == 0 {
+		entryRoles = baselineRoles
+	}
+	for _, r := range entryRoles {
+		if !slices.Contains(baselineRoles, r) {
+			log.Error("invalid "+configKey+" entry — refusing to start; "+
+				"entries must be local role names, which are translated through auth.idp.role_mapping",
+				slog.String("entry", r),
+				slog.Any("roles_accepted_by_mcp_operations", baselineRoles))
+			os.Exit(1)
+		}
+	}
+	scopes := authenticators.MapRolesToScopes(roleMapping, entryRoles)
+	log.Info("MCP endpoint advertising scopes",
+		slog.String("endpoint", endpoint),
+		slog.Any("entry_roles", entryRoles),
+		slog.Any("advertised_scopes", scopes))
+	return scopes
 }
 
 // onlyForPatterns applies mw on the listed routes and is a pass-through on every

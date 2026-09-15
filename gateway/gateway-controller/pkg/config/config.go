@@ -209,7 +209,6 @@ type Controller struct {
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
 	EventHub     EventHubConfig     `koanf:"event_hub"`
-	MCPServer    MCPServerConfig    `koanf:"mcp_server"`
 }
 
 type MCPServerConfig struct {
@@ -313,12 +312,13 @@ type TracingConfig struct {
 
 // ServerConfig holds server-related configuration
 type ServerConfig struct {
-	APIPort                         int           `koanf:"api_port"`
-	XDSPort                         int           `koanf:"xds_port"`
-	ShutdownTimeout                 time.Duration `koanf:"shutdown_timeout"`
-	GatewayID                       string        `koanf:"gateway_id"`
-	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
-	ExternalBaseURL                 string        `koanf:"external_base_url"`
+	APIPort                         int             `koanf:"api_port"`
+	XDSPort                         int             `koanf:"xds_port"`
+	ShutdownTimeout                 time.Duration   `koanf:"shutdown_timeout"`
+	GatewayID                       string          `koanf:"gateway_id"`
+	SkipInvalidDeploymentsOnStartup bool            `koanf:"skip_invalid_deployments_on_startup"`
+	ExternalBaseURL                 string          `koanf:"external_base_url"`
+	MCPServer                       MCPServerConfig `koanf:"mcp_server"`
 
 	// TLS starts a second, TLS-only listener on TLS.Port serving the same
 	// REST management API as the plaintext listener on APIPort. Off by
@@ -410,6 +410,23 @@ type AdminServerConfig struct {
 	AllowedIPs []string         `koanf:"allowed_ips"`
 	Pprof      PprofConfig      `koanf:"pprof"`
 	ConfigDump ConfigDumpConfig `koanf:"config_dump"`
+
+	// ExternalBaseURL is the public origin clients reach the ADMIN port on.
+	//
+	// Deliberately separate from controller.server.external_base_url: that
+	// value names the management port (9090), while this server listens on
+	// 9092 and is commonly published on a different host port again
+	// (gateway/docker-compose.yaml maps 9094 -> 9092). Deriving one from the
+	// other would produce a canonical resource URI that clients cannot reach
+	// and cannot bind a token to, so it is required rather than defaulted.
+	ExternalBaseURL string `koanf:"external_base_url"`
+
+	// MCPServer is the administrative MCP endpoint, served at
+	// <external_base_url>/api/admin/v1/mcp. It reuses MCPServerConfig, but its
+	// advertised_scopes are validated against the ADMIN baseline roles, which
+	// are not the management ones — do not copy the value from
+	// [controller.server.mcp_server] here
+	MCPServer MCPServerConfig `koanf:"mcp_server"`
 }
 
 // ConfigDumpConfig gates the /config_dump endpoint served on the admin HTTP
@@ -1828,6 +1845,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := c.validateAdminMCPServerConfig(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -2260,17 +2281,14 @@ func (c *Config) validateCollectorConfig() error {
 
 }
 
-// validateMCPServerConfig fails startup on a configuration that would expose the
-// MCP endpoint without the discovery data the OAuth flow depends on, or without
-// the audience binding the MCP specification requires. It validates the
-// effective outcome, not each flag in isolation (GO-AUTH-011).
+// validateMCPServerConfig validates the management MCP endpoint configuration
 func (c *Config) validateMCPServerConfig() error {
-	if !c.Controller.MCPServer.Enabled {
+	if !c.Controller.Server.MCPServer.Enabled {
 		return nil
 	}
 	base := strings.TrimSpace(c.Controller.Server.ExternalBaseURL)
 	if base == "" {
-		return fmt.Errorf("controller.mcp_server.enabled=true requires controller.server.external_base_url " +
+		return fmt.Errorf("controller.server.mcp_server.enabled=true requires controller.server.external_base_url " +
 			"(the public origin clients reach this controller on) — it is the canonical resource URI " +
 			"MCP clients bind their tokens to and the base of the RFC 9728 metadata document")
 	}
@@ -2279,16 +2297,53 @@ func (c *Config) validateMCPServerConfig() error {
 		return fmt.Errorf("controller.server.external_base_url must be an absolute URL with no fragment")
 	}
 	if c.Controller.Auth.IDP.Enabled && len(c.Controller.Auth.IDP.Audience) == 0 {
-		return fmt.Errorf("controller.mcp_server.enabled=true with auth.idp.enabled=true requires " +
+		return fmt.Errorf("controller.server.mcp_server.enabled=true with auth.idp.enabled=true requires " +
 			"auth.idp.audience — the MCP specification requires a resource server to verify a token " +
 			"was issued for it; without it any token from this issuer is accepted")
 	}
-	if c.Controller.MCPServer.MaxRequestBytes < 0 {
-		return fmt.Errorf("controller.mcp_server.max_request_bytes must not be negative")
+	if c.Controller.Server.MCPServer.MaxRequestBytes < 0 {
+		return fmt.Errorf("controller.server.mcp_server.max_request_bytes must not be negative")
 	}
-	for _, s := range c.Controller.MCPServer.AdvertisedScopes {
+	for _, s := range c.Controller.Server.MCPServer.AdvertisedScopes {
 		if strings.TrimSpace(s) == "" {
-			return fmt.Errorf("controller.mcp_server.advertised_scopes must not contain an empty entry")
+			return fmt.Errorf("controller.server.mcp_server.advertised_scopes must not contain an empty entry")
+		}
+	}
+	return nil
+}
+
+// validateAdminMCPServerConfig validates the admin MCP endpoint configuration
+func (c *Config) validateAdminMCPServerConfig() error {
+	admin := &c.Controller.AdminServer
+	if !admin.MCPServer.Enabled {
+		return nil
+	}
+	if !admin.Enabled {
+		return fmt.Errorf("controller.admin_server.mcp_server.enabled=true requires " +
+			"controller.admin_server.enabled=true — the admin MCP endpoint is served only on the admin port")
+	}
+	base := strings.TrimSpace(admin.ExternalBaseURL)
+	if base == "" {
+		return fmt.Errorf("controller.admin_server.mcp_server.enabled=true requires " +
+			"controller.admin_server.external_base_url (the public origin clients reach the ADMIN port on) — " +
+			"it is the canonical resource URI MCP clients bind their tokens to and the base of the RFC 9728 " +
+			"metadata document. It is NOT controller.server.external_base_url, which names the management port")
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.Fragment != "" {
+		return fmt.Errorf("controller.admin_server.external_base_url must be an absolute URL with no fragment")
+	}
+	if c.Controller.Auth.IDP.Enabled && len(c.Controller.Auth.IDP.Audience) == 0 {
+		return fmt.Errorf("controller.admin_server.mcp_server.enabled=true with auth.idp.enabled=true requires " +
+			"auth.idp.audience — the MCP specification requires a resource server to verify a token " +
+			"was issued for it; without it any token from this issuer is accepted")
+	}
+	if admin.MCPServer.MaxRequestBytes < 0 {
+		return fmt.Errorf("controller.admin_server.mcp_server.max_request_bytes must not be negative")
+	}
+	for _, s := range admin.MCPServer.AdvertisedScopes {
+		if strings.TrimSpace(s) == "" {
+			return fmt.Errorf("controller.admin_server.mcp_server.advertised_scopes must not contain an empty entry")
 		}
 	}
 	return nil
