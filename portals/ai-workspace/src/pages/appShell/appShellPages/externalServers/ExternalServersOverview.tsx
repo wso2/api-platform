@@ -909,6 +909,9 @@ export default function ExternalServersOverview(): JSX.Element {
 
   useEffect(() => {
     if (!isAPIPortalAvailable || isLoading || !server || !organizationId) return;
+    setIsPublishStatusUnknown(true);
+    setIsPublished(false);
+    setApiPortalUrl(undefined);
     let cancelled = false;
     void (async () => {
       setIsPublishStatusLoading(true);
