@@ -26,6 +26,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/tests/framework/core/builder"
+	platformgatewaycatalog "github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 )
@@ -182,4 +184,96 @@ func TestSourceProductsResolveVersionsForEveryBlock(t *testing.T) {
 	require.NotEmpty(t, resolved.Blocks[0].Components[0].Version)
 	require.Equal(t, resolved.Blocks[0].Components[0].Version,
 		resolved.Blocks[1].Components[0].Version)
+}
+
+func TestPolicyProductsResolveSourceAndVersionedBuilds(t *testing.T) {
+	source := "../gateway-controllers/policies"
+	t.Run("source build", func(t *testing.T) {
+		resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{{Components: []topology.ResolvedComponent{
+			{Def: platformgatewaycatalog.PlatformGateway(), AddPoliciesFrom: source},
+		}}}}
+
+		products, err := policyProducts(resolved)
+		require.NoError(t, err)
+		require.Len(t, products, 1)
+		require.True(t, products[0].buildFromSource)
+		require.Equal(t, source, products[0].source)
+		require.NotEmpty(t, products[0].version)
+		require.Equal(t, products[0].version, resolved.Blocks[0].Components[0].Version)
+	})
+
+	t.Run("versioned extension", func(t *testing.T) {
+		version := "legacy"
+		resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{{Components: []topology.ResolvedComponent{
+			{Def: platformgatewaycatalog.PlatformGateway().WithImageVersion(version), Version: version, AddPoliciesFrom: source},
+		}}}}
+
+		products, err := policyProducts(resolved)
+		require.NoError(t, err)
+		require.Len(t, products, 1)
+		require.False(t, products[0].buildFromSource)
+		controller, runtime, err := platformGatewayBaseImages(resolved, products[0])
+		require.NoError(t, err)
+		require.Equal(t, "ghcr.io/wso2/api-platform/gateway-controller:legacy", controller)
+		require.Equal(t, "ghcr.io/wso2/api-platform/gateway-runtime:legacy", runtime)
+
+		setPlatformGatewayImages(resolved, products[0], platformgatewaycatalog.DerivedImages{
+			Controller: "local/controller:custom", Runtime: "local/runtime:custom",
+		})
+		require.Equal(t, "local/controller:custom", resolved.Blocks[0].Components[0].Def.Compose.Env[platformgatewaycatalog.EnvImagePGController])
+		require.Equal(t, "local/runtime:custom", resolved.Blocks[0].Components[0].Def.Compose.Env[platformgatewaycatalog.EnvImagePGRuntime])
+	})
+}
+
+func TestPolicyBuildsMatchComponentsByBuildMode(t *testing.T) {
+	source := "../gateway-controllers/policies"
+	version, ok := shared.SourceVersion("platform-gateway")
+	require.True(t, ok)
+	resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{{Components: []topology.ResolvedComponent{
+		{Def: platformgatewaycatalog.PlatformGateway(), BuildFromSource: true, AddPoliciesFrom: source},
+		{Def: platformgatewaycatalog.PlatformGateway().WithImageVersion(version), Version: version, AddPoliciesFrom: source},
+	}}}}
+
+	products, err := policyProducts(resolved)
+	require.NoError(t, err)
+	require.Len(t, products, 2)
+	require.True(t, products[0].buildFromSource)
+	require.False(t, products[1].buildFromSource)
+	require.Equal(t, source, products[0].source)
+	require.Equal(t, source, products[1].source)
+	require.Equal(t, version, products[0].version)
+	require.Equal(t, version, products[1].version)
+
+	baseController, baseRuntime, err := platformGatewayBaseImages(resolved, products[1])
+	require.NoError(t, err)
+	require.Equal(t, "ghcr.io/wso2/api-platform/gateway-controller:"+version, baseController)
+	require.Equal(t, "ghcr.io/wso2/api-platform/gateway-runtime:"+version, baseRuntime)
+
+	sourceImages := platformgatewaycatalog.DerivedImages{
+		Controller: "local/controller:source",
+		Runtime:    "local/runtime:source",
+	}
+	setPlatformGatewayImages(resolved, products[0], sourceImages)
+	require.Equal(t, sourceImages.Controller,
+		resolved.Blocks[0].Components[0].Def.Compose.Env[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, sourceImages.Runtime,
+		resolved.Blocks[0].Components[0].Def.Compose.Env[platformgatewaycatalog.EnvImagePGRuntime])
+	require.Equal(t, baseController,
+		resolved.Blocks[0].Components[1].Def.Compose.Env[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, baseRuntime,
+		resolved.Blocks[0].Components[1].Def.Compose.Env[platformgatewaycatalog.EnvImagePGRuntime])
+
+	versionedImages := platformgatewaycatalog.DerivedImages{
+		Controller: "local/controller:versioned",
+		Runtime:    "local/runtime:versioned",
+	}
+	setPlatformGatewayImages(resolved, products[1], versionedImages)
+	require.Equal(t, sourceImages.Controller,
+		resolved.Blocks[0].Components[0].Def.Compose.Env[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, sourceImages.Runtime,
+		resolved.Blocks[0].Components[0].Def.Compose.Env[platformgatewaycatalog.EnvImagePGRuntime])
+	require.Equal(t, versionedImages.Controller,
+		resolved.Blocks[0].Components[1].Def.Compose.Env[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, versionedImages.Runtime,
+		resolved.Blocks[0].Components[1].Def.Compose.Env[platformgatewaycatalog.EnvImagePGRuntime])
 }

@@ -29,6 +29,9 @@ go test ./suites/it -count=1 -timeout=30m -blocks=gateway-core/sqlite
 
 # The full matrix (all database engines), bounded concurrency:
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
+
+# Gateway-controller policy smoke (requires ../gateway-controllers/policies)
+go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
 

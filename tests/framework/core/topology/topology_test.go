@@ -260,6 +260,63 @@ blocks:
 	require.Equal(t, "gc:legacy", r.Blocks[0].Components[0].Def.Image.Ref)
 }
 
+func TestAddPoliciesFromResolvesForPlatformGateway(t *testing.T) {
+	r := testRegistry(t)
+	require.NoError(t, r.Register(&components.Definition{
+		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+	}))
+	require.NoError(t, r.Validate())
+
+	resolved, err := Load([]byte(`
+suite: s
+blocks:
+  - name: gateway
+    components:
+      - name: platform-gateway
+        addPoliciesFrom: ../gateway-controllers/policies
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+	require.NoError(t, err)
+	require.Equal(t, "../gateway-controllers/policies", resolved.Blocks[0].Components[0].AddPoliciesFrom)
+	require.True(t, resolved.Blocks[0].Components[0].BuildFromSource)
+}
+
+func TestAddPoliciesFromRejectsUnsupportedAndAbsoluteValues(t *testing.T) {
+	r := testRegistry(t)
+	t.Run("unsupported component", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: s
+blocks:
+  - name: b
+    components:
+      - name: gateway-controller
+        addPoliciesFrom: policies
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+		require.ErrorContains(t, err, "component \"gateway-controller\" does not support addPoliciesFrom")
+	})
+
+	t.Run("absolute path", func(t *testing.T) {
+		pg := &components.Definition{
+			Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+			Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+		}
+		require.NoError(t, r.Register(pg))
+		require.NoError(t, r.Validate())
+		_, err := Load([]byte(`
+suite: s
+blocks:
+  - name: b
+    components:
+      - name: platform-gateway
+        addPoliciesFrom: /tmp/policies
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+		require.ErrorContains(t, err, "addPoliciesFrom must be a relative path")
+	})
+}
+
 func TestDBResolutionOrder(t *testing.T) {
 	src := `
 suite: s
