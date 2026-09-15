@@ -488,6 +488,7 @@ CREATE TABLE dbo.api_portals (
     status               VARCHAR(20)    NOT NULL DEFAULT 'pending',
     internal_auth_key VARBINARY(MAX) NOT NULL,
     metadata             VARBINARY(MAX),
+    data_version         VARCHAR(20)    NOT NULL DEFAULT '1.0',
     created_by           VARCHAR(200),
     created_at           DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
     updated_by           VARCHAR(200),

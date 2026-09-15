@@ -429,6 +429,7 @@ CREATE TABLE IF NOT EXISTS api_portals (
     status               VARCHAR(20)  NOT NULL DEFAULT 'pending',
     internal_auth_key BLOB         NOT NULL,
     metadata             BLOB,
+    data_version         VARCHAR(20)  NOT NULL DEFAULT '1.0',
     created_by           VARCHAR(200),
     created_at           DATETIME     DEFAULT CURRENT_TIMESTAMP,
     updated_by           VARCHAR(200),
