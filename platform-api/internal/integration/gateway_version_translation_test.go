@@ -145,8 +145,9 @@ func TestIT_MCPProxy_DataVersionStamped_AndTranslate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("[%s] GetByUUID failed: %v", it.driver, err)
 	}
-	if stored.DataVersion != "1.0" {
-		t.Fatalf("[%s] want data_version 1.0 for a fresh MCP proxy, got %q", it.driver, stored.DataVersion)
+	// 1.1 since MCPProxyConfiguration gained specVersions; the gateway CRD apiVersion stays v1.
+	if stored.DataVersion != "1.1" {
+		t.Fatalf("[%s] want data_version 1.1 for a fresh MCP proxy, got %q", it.driver, stored.DataVersion)
 	}
 
 	gwOld := seedGateway(t, it, orgID, "1.1.0")
