@@ -143,22 +143,6 @@ func derefStr(p *string) string {
 
 // CreateAPIPortal validates the request, enforces handle uniqueness, encrypts the shared key, and inserts a row scoped to orgID.
 func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
-	return s.createAPIPortal(uuid.New().String(), req, orgID, createdBy)
-}
-
-// CreateAPIPortalWithID is the caller-supplied-UUID variant of CreateAPIPortal.
-// In-process plugins that need the portal UUID before the row exists (to thread it
-// through runtime configuration in the same provisioning transaction) call this.
-// A malformed UUID surfaces as apperror.ValidationFailed; a PK collision surfaces
-// as apperror.APIPortalExists, so the caller can regenerate and retry.
-func (s *APIPortalService) CreateAPIPortalWithID(portalUUID string, req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
-	if _, err := uuid.Parse(strings.TrimSpace(portalUUID)); err != nil {
-		return nil, apperror.ValidationFailed.New("portalUUID must be a valid UUID.")
-	}
-	return s.createAPIPortal(strings.TrimSpace(portalUUID), req, orgID, createdBy)
-}
-
-func (s *APIPortalService) createAPIPortal(portalUUID string, req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
 	}
@@ -199,7 +183,7 @@ func (s *APIPortalService) createAPIPortal(portalUUID string, req *api.CreateApi
 
 	actor := strings.TrimSpace(createdBy)
 	portal := &model.APIPortal{
-		ID:              portalUUID,
+		ID:              uuid.New().String(),
 		OrganizationID:  orgID,
 		Handle:          strings.TrimSpace(req.Handle),
 		Name:            name,
@@ -214,9 +198,7 @@ func (s *APIPortalService) createAPIPortal(portalUUID string, req *api.CreateApi
 
 	if err := s.portalRepo.Create(portal); err != nil {
 		if repository.IsUniqueViolation(err) {
-			// Concurrent create won the race between Exists and INSERT, OR a caller-supplied
-			// portalUUID collides with an existing portal's uuid; the response is the same
-			// either way — the caller retries and one of them succeeds.
+			// Concurrent create won the race between Exists and INSERT.
 			return nil, apperror.APIPortalExists.New()
 		}
 		return nil, err

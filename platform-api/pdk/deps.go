@@ -87,12 +87,6 @@ type Projects interface {
 // orgID is always the request-context org (GO-AUTH-005), never caller input.
 type APIPortals interface {
 	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
-	// CreateAPIPortalWithID creates a portal using a caller-supplied UUID as the
-	// internal PK (api_portals.uuid). In-process plugins that need the UUID before
-	// the row exists (to thread it through runtime configuration in the same
-	// provisioning transaction) use this instead of CreateAPIPortal. Validates
-	// the UUID is well-formed; a PK collision surfaces as apperror.APIPortalExists.
-	CreateAPIPortalWithID(portalUUID string, req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
 	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
 	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
