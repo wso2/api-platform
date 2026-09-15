@@ -30,10 +30,22 @@ services:
       - IT_RATE_LIMIT=5
       - IT_ALLOW_CREDENTIALS=true
       - GOCOVERDIR=${GOCOVERDIR:-}
+      # config.toml enables server.xds_tls/policy_server.tls by default (see
+      # gateway/configs/config.toml) -- explicit here for clarity. Certs come from
+      # the same staged listener-certs directory, mounted a second time below at
+      # the default cert_file/key_file/client_ca_file path.
+      - XDS_TLS_ENABLED=true
     volumes:
       - ./config.toml:/etc/gateway-controller/config.toml:ro
       - ./aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
-      - ./listener-certs:/app/listener-certs:ro
+      # File-level mounts (not the whole listener-certs directory): this
+      # service only needs its own listener cert/key and its own xDS server
+      # cert/key plus the CA cert -- never the CA's private key.
+      - ./listener-certs/default-listener.crt:/app/listener-certs/default-listener.crt:ro
+      - ./listener-certs/default-listener.key:/app/listener-certs/default-listener.key:ro
+      - ./listener-certs/ca.crt:/app/xds-certs/ca.crt:ro
+      - ./listener-certs/server.crt:/app/xds-certs/server.crt:ro
+      - ./listener-certs/server.key:/app/xds-certs/server.key:ro
       - ./certificates:/app/certificates
     ports:
       - "9090"
@@ -58,8 +70,26 @@ services:
       - ROUTER_DRAIN_TIME_SECONDS=2
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://testbench:3006
       - GOCOVERDIR=${GOCOVERDIR:-}
+      # Client cert/key paths for mutual TLS to gateway-controller's xDS servers --
+      # Envoy and the policy-engine present distinct client identities, so each leg
+      # gets its own cert/key, checked against the shared dev CA mounted below.
+      - XDS_TLS_ENABLED=true
+      - XDS_CLIENT_CERT_PATH=/etc/xds-certs/envoy-client.crt
+      - XDS_CLIENT_KEY_PATH=/etc/xds-certs/envoy-client.key
+      - XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
+      - POLICY_ENGINE_XDS_CLIENT_CERT_PATH=/etc/xds-certs/policy-engine-client.crt
+      - POLICY_ENGINE_XDS_CLIENT_KEY_PATH=/etc/xds-certs/policy-engine-client.key
+      - POLICY_ENGINE_XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro
+      # File-level mounts: only the CA cert plus this service's own
+      # Envoy/policy-engine client cert/key pairs -- never the CA's private
+      # key or the controller's own server cert/key.
+      - ./listener-certs/ca.crt:/etc/xds-certs/ca.crt:ro
+      - ./listener-certs/envoy-client.crt:/etc/xds-certs/envoy-client.crt:ro
+      - ./listener-certs/envoy-client.key:/etc/xds-certs/envoy-client.key:ro
+      - ./listener-certs/policy-engine-client.crt:/etc/xds-certs/policy-engine-client.crt:ro
+      - ./listener-certs/policy-engine-client.key:/etc/xds-certs/policy-engine-client.key:ro
     ports:
       - "8080"
       - "8443"

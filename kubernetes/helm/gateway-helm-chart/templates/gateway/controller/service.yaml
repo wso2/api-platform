@@ -2,6 +2,19 @@
 {{- $service := $controller.service -}}
 {{- $nodePorts := default (dict) $service.nodePorts -}}
 {{- $isNodePortCapable := or (eq $service.type "NodePort") (eq $service.type "LoadBalancer") -}}
+{{- /*
+  server.xds_tls / policy_server.tls, when enabled, make the controller listen
+  on their own dedicated TLS port instead of the plaintext server.xds_port /
+  policy_server.port (see cmd/controller/main.go and gateway-config.yaml) --
+  this is an either/or relationship: enabling TLS replaces the plaintext
+  listener rather than adding a second one, so the plaintext "xds"/"policy"
+  Service ports below are omitted while the corresponding TLS mode is
+  enabled (nothing would be listening behind them), and the "xds-tls"/
+  "policy-tls" port is added in its place, pointing at the controller's
+  actual TLS listener port.
+*/ -}}
+{{- $xdsTLS := .Values.gateway.config.controller.server.xds_tls -}}
+{{- $policyTLS := .Values.gateway.config.controller.policy_server.tls -}}
 {{- if $controller.deployment.enabled }}
 apiVersion: v1
 kind: Service
@@ -47,6 +60,7 @@ spec:
       {{- if and $isNodePortCapable $nodePorts.rest }}
       nodePort: {{ $nodePorts.rest }}
       {{- end }}
+    {{- if not $xdsTLS.enabled }}
     - name: xds
       port: {{ $service.ports.xds }}
       targetPort: xds
@@ -54,6 +68,17 @@ spec:
       {{- if and $isNodePortCapable $nodePorts.xds }}
       nodePort: {{ $nodePorts.xds }}
       {{- end }}
+    {{- end }}
+    {{- if $xdsTLS.enabled }}
+    - name: xds-tls
+      port: {{ $xdsTLS.port }}
+      targetPort: xds-tls
+      protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.xds_tls }}
+      nodePort: {{ $nodePorts.xds_tls }}
+      {{- end }}
+    {{- end }}
+    {{- if not $policyTLS.enabled }}
     - name: policy
       port: {{ $service.ports.policy }}
       targetPort: policy
@@ -61,6 +86,16 @@ spec:
       {{- if and $isNodePortCapable $nodePorts.policy }}
       nodePort: {{ $nodePorts.policy }}
       {{- end }}
+    {{- end }}
+    {{- if $policyTLS.enabled }}
+    - name: policy-tls
+      port: {{ $policyTLS.port }}
+      targetPort: policy-tls
+      protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.policy_tls }}
+      nodePort: {{ $nodePorts.policy_tls }}
+      {{- end }}
+    {{- end }}
     {{- if $service.expose.admin }}
     - name: admin
       port: {{ $service.ports.admin }}

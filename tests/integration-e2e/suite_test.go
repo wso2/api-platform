@@ -167,6 +167,15 @@ func bringUpStack() error {
 	}
 	fmt.Printf("E2E database backend: %s (%s)\n", suite.db, suite.composeFile)
 
+	// The compose files bind-mount gateway/gateway-controller/listener-certs for the
+	// router's HTTPS listener cert and the xDS mTLS CA/server/client certs, none of
+	// which are checked into the repo (every clone must not share the same private
+	// keys) -- generate them here so this suite is self-sufficient whether it's run
+	// from CI or a developer's own machine, without needing a separate setup step.
+	if err := ensureGatewayCerts(); err != nil {
+		return fmt.Errorf("generate gateway TLS certificates: %w", err)
+	}
+
 	// The webhook secret has to exist before the stack comes up, because compose
 	// interpolates it into platform-api's environment (and refuses to start without it).
 	if err := prepareWebhookSecret(); err != nil {
@@ -364,6 +373,20 @@ func devportalSelected() bool {
 		return true
 	}
 	return strings.Contains(tags, "@devportal") && !strings.Contains(tags, "~@devportal")
+}
+
+// ensureGatewayCerts generates the gateway's listener + xDS mTLS dev certs via
+// gateway/scripts/setup.sh --certs-only, if they're not already present. Idempotent
+// (the script only (re)generates what's missing), so this is safe to call on every
+// run -- CI or local -- without a separate provisioning step.
+func ensureGatewayCerts() error {
+	cmd := exec.Command("../../gateway/scripts/setup.sh", "--certs-only")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("scripts/setup.sh --certs-only: %w", err)
+	}
+	return nil
 }
 
 // webhookSecret is the secret shared between the API Portal subscriber and

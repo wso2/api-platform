@@ -108,6 +108,7 @@ func TestValidateXDSServerTLS(t *testing.T) {
 	validCfg := func() XDSServerTLSConfig {
 		return XDSServerTLSConfig{
 			Enabled:                 true,
+			Port:                    18443,
 			CertFile:                "./certs/server.crt",
 			KeyFile:                 "./certs/server.key",
 			ClientCAFile:            "./certs/ca.crt",
@@ -129,6 +130,18 @@ func TestValidateXDSServerTLS(t *testing.T) {
 			name:    "disabled skips all checks",
 			mutate:  func(c *XDSServerTLSConfig) { *c = XDSServerTLSConfig{Enabled: false} },
 			wantErr: false,
+		},
+		{
+			name:        "missing port",
+			mutate:      func(c *XDSServerTLSConfig) { c.Port = 0 },
+			wantErr:     true,
+			errContains: "port must be between 1 and 65535",
+		},
+		{
+			name:        "out of range port",
+			mutate:      func(c *XDSServerTLSConfig) { c.Port = 70000 },
+			wantErr:     true,
+			errContains: "port must be between 1 and 65535",
 		},
 		{
 			name:        "missing cert file",

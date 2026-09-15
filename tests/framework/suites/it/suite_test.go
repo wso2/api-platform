@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -49,6 +50,17 @@ func TestMain(m *testing.M) {
 	selection.Flags(flag.CommandLine)
 	flag.Parse()
 
+	// The platform-gateway component stages gateway/gateway-controller/listener-certs
+	// verbatim for the router's HTTPS listener cert and the xDS mTLS CA/server/client
+	// certs, none of which are checked into the repo (every clone must not share the
+	// same private keys) -- generate them here so this suite is self-sufficient
+	// whether it's run from CI or a developer's own machine, without needing a
+	// separate provisioning step.
+	if err := ensureGatewayCerts(); err != nil {
+		fmt.Fprintln(os.Stderr, "generating gateway TLS certificates:", err)
+		os.Exit(1)
+	}
+
 	// Set coverage mode before catalog definitions are loaded.
 	coverageMode := "false"
 	if selection.Coverage {
@@ -67,6 +79,20 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+// ensureGatewayCerts generates the gateway's listener + xDS mTLS dev certs via
+// gateway/scripts/setup.sh --certs-only, if they're not already present. Idempotent
+// (the script only (re)generates what's missing), so this is safe to call on every
+// run -- CI or local -- without a separate provisioning step.
+func ensureGatewayCerts() error {
+	cmd := exec.Command("../../../../gateway/scripts/setup.sh", "--certs-only")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("scripts/setup.sh --certs-only: %w", err)
+	}
+	return nil
 }
 
 // suiteShape returns the resolved block count and largest runner concurrency.

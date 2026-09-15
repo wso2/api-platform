@@ -33,20 +33,31 @@ services:
     ports:
       - "9090:9090"   # REST API
       - "9092:9092"   # Admin API
-      - "18000:18000" # xDS gRPC
-      - "18001:18001"
+      - "18443:18443" # xDS gRPC mTLS (Router)
+      - "18444:18444" # xDS gRPC mTLS (Policy Engine)
       - "9091:9091"   # Metrics
     environment:
       - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
       - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
       - GOCOVERDIR=/coverage
+      # Enabled by default: mTLS on server.xds_tls (serves Envoy) and policy_server.tls
+      # (serves the Policy Engine) -- see test-config.vhosts-single.toml, which reads
+      # this same var.
+      - XDS_TLS_ENABLED=true
     volumes:
       - controller-data-tests:/app/data
       - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
       - ./test-config.vhosts-single.toml:/etc/gateway-controller/config.toml:ro
       - ../gateway-controller/certificates:/app/certificates
-      - ../gateway-controller/listener-certs:/app/listener-certs:ro
+      # File-level mounts (not the whole listener-certs directory): this
+      # service only needs its own listener cert/key and its own xDS server
+      # cert/key plus the CA cert -- never the CA's private key.
+      - ../gateway-controller/listener-certs/default-listener.crt:/app/listener-certs/default-listener.crt:ro
+      - ../gateway-controller/listener-certs/default-listener.key:/app/listener-certs/default-listener.key:ro
+      - ../gateway-controller/listener-certs/ca.crt:/app/xds-certs/ca.crt:ro
+      - ../gateway-controller/listener-certs/server.crt:/app/xds-certs/server.crt:ro
+      - ../gateway-controller/listener-certs/server.key:/app/xds-certs/server.key:ro
       - ./coverage/gateway-controller:/coverage
     # healthcheck:
     #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9092/api/admin/v1/health"]
@@ -82,9 +93,28 @@ services:
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
       - GOCOVERDIR=/coverage
+      # Enabled by default, matching gateway-controller above. Client cert/key paths
+      # for mutual TLS to gateway-controller's xDS servers -- Envoy and the
+      # policy-engine present distinct client identities, so each leg gets its own
+      # cert/key, checked against the shared dev CA mounted below.
+      - XDS_TLS_ENABLED=true
+      - XDS_CLIENT_CERT_PATH=/etc/xds-certs/envoy-client.crt
+      - XDS_CLIENT_KEY_PATH=/etc/xds-certs/envoy-client.key
+      - XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
+      - POLICY_ENGINE_XDS_CLIENT_CERT_PATH=/etc/xds-certs/policy-engine-client.crt
+      - POLICY_ENGINE_XDS_CLIENT_KEY_PATH=/etc/xds-certs/policy-engine-client.key
+      - POLICY_ENGINE_XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
     volumes:
       - ./coverage/gateway-runtime:/coverage
       - ./test-config.vhosts-single.toml:/etc/policy-engine/config.toml:ro
+      # File-level mounts: only the CA cert plus this service's own
+      # Envoy/policy-engine client cert/key pairs -- never the CA's private
+      # key or the controller's own server cert/key.
+      - ../gateway-controller/listener-certs/ca.crt:/etc/xds-certs/ca.crt:ro
+      - ../gateway-controller/listener-certs/envoy-client.crt:/etc/xds-certs/envoy-client.crt:ro
+      - ../gateway-controller/listener-certs/envoy-client.key:/etc/xds-certs/envoy-client.key:ro
+      - ../gateway-controller/listener-certs/policy-engine-client.crt:/etc/xds-certs/policy-engine-client.crt:ro
+      - ../gateway-controller/listener-certs/policy-engine-client.key:/etc/xds-certs/policy-engine-client.key:ro
     depends_on:
       # gateway-controller:
       #   condition: service_healthy
@@ -173,7 +203,9 @@ services:
       - "9443:8443"
     volumes:
       - ./mock-api/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ../gateway-controller/listener-certs:/etc/nginx/certs:ro
+      # File-level mounts: nginx only needs the HTTPS listener cert/key.
+      - ../gateway-controller/listener-certs/default-listener.crt:/etc/nginx/certs/default-listener.crt:ro
+      - ../gateway-controller/listener-certs/default-listener.key:/etc/nginx/certs/default-listener.key:ro
     depends_on:
       mock-openapi:
         condition: service_healthy

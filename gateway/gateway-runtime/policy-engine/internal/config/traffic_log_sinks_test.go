@@ -332,6 +332,15 @@ func TestEffectiveShutdownTimeout(t *testing.T) {
 // own config, so a value that drifts from the code does not just go stale — it
 // documents a number the gateway will not use.
 func TestShippedTemplateMatchesTrafficLogDefaults(t *testing.T) {
+	// xds.tls.enabled defaults to true in the template but ships no cert/key/ca
+	// path of its own (those are inherently deployment-specific) -- supply
+	// placeholders so Load's validation (which only checks these are non-empty,
+	// never that the files exist) passes. This test is about traffic-log
+	// defaults, not xDS TLS, so the values themselves are unused.
+	t.Setenv("POLICY_ENGINE_XDS_CLIENT_CERT_PATH", "/dev/null")
+	t.Setenv("POLICY_ENGINE_XDS_CLIENT_KEY_PATH", "/dev/null")
+	t.Setenv("POLICY_ENGINE_XDS_CLIENT_CA_PATH", "/dev/null")
+
 	cfg, err := Load(filepath.Join("..", "..", "..", "..", "configs", "config-template.toml"))
 	require.NoError(t, err, "the shipped config-template.toml must load and validate")
 

@@ -8,7 +8,7 @@ For end-user documentation, see [docs/gateway/](../docs/gateway/).
 
 | Component | Technology | Ports |
 |-----------|------------|-------|
-| **Gateway-Controller** | Go, Gin, oapi-codegen, bbolt, go-control-plane | 9090 (REST), 18000 (xDS) |
+| **Gateway-Controller** | Go, Gin, oapi-codegen, bbolt, go-control-plane | 9090 (REST), 18443 (xDS mTLS, default), 18444 (Policy xDS mTLS, default) |
 | **Router** | Envoy Proxy 1.35.3 | 8080 (HTTP), 8443 (HTTPS), 9901 (Admin) |
 | **Policy Engine** | Go, gRPC, ext_proc, xDS, CEL | 9002 (Admin) |
 | **Policy Builder** | Go, Docker | Build-time only |
@@ -35,8 +35,9 @@ make build-gateway-builder
 
 ### Run
 
-Run the one-time setup (generates `api-platform.env`, the router listener TLS certificate, the AES-256
-encryption key, and the gateway-controller admin credentials), then start the stack:
+Run the one-time setup (generates `api-platform.env`, the router listener TLS certificate, the xDS
+mutual TLS certificates, the AES-256 encryption key, and the gateway-controller admin credentials),
+then start the stack:
 
 ```bash
 ./scripts/setup.sh
@@ -126,7 +127,8 @@ for the full set of tokens and configuration options.
 
 | Variable | Description |
 |----------|-------------|
-| `GATEWAY_CONTROLLER_HOST` | Gateway-Controller hostname (default: `gateway-controller`). The well-known xDS ports (18000 for Router, 18001 for Policy Engine) are derived automatically. |
+| `GATEWAY_CONTROLLER_HOST` | Gateway-Controller hostname (default: `gateway-controller`). The well-known xDS ports are derived automatically: 18443/18444 (Router/Policy Engine, mutual TLS) when `XDS_TLS_ENABLED=true`, else the plaintext 18000/18001. |
+| `XDS_TLS_ENABLED` | Mutual TLS between gateway-runtime (Envoy + Policy Engine) and gateway-controller's xDS servers. Enabled by default in `docker-compose.yaml` (both services; `./scripts/setup.sh` provisions the certificates it uses); edit it there to fall back to plaintext xDS. |
 
 ## Component Documentation
 

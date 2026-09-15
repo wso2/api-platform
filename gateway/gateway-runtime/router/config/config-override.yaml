@@ -41,11 +41,12 @@ static_resources:
             http2_protocol_options: {}
       # docker-entrypoint.sh sets this to a flow-style (JSON-like)
       # UpstreamTlsContext mapping when XDS_TLS_ENABLED=true, or to `null`
-      # (== field not present, once parsed) otherwise -- xds_cluster stays
-      # plaintext by default, matching gateway-controller's server.xds_tls
-      # being off by default too. A flow-style single-line value keeps this
-      # file valid YAML both before and after envsubst, unlike a multi-line
-      # block substitution would.
+      # (== field not present, once parsed) otherwise -- xds_cluster is TLS
+      # by default (XDS_TLS_ENABLED defaults to true), matching gateway-
+      # controller's server.xds_tls also being on by default. Set
+      # XDS_TLS_ENABLED=false to fall back to plaintext on both sides. A
+      # flow-style single-line value keeps this file valid YAML both before
+      # and after envsubst, unlike a multi-line block substitution would.
       transport_socket: ${XDS_CLUSTER_TRANSPORT_SOCKET}
       load_assignment:
         cluster_name: xds_cluster

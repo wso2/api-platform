@@ -32,6 +32,13 @@ data:
             xds_port: 18000
             shutdown_timeout: 15s
             gateway_id: "platform-gateway-id"
+            xds_tls:
+              enabled: false
+              port: 18443
+              cert_file: ""
+              key_file: ""
+              client_ca_file: ""
+              allowed_client_identities: []
           controlplane:
             insecure_skip_verify: false
             reconnect_initial: 1s
@@ -48,8 +55,11 @@ data:
             port: 18001
             tls:
               enabled: false
+              port: 18444
               cert_file: ./certs/server.crt
               key_file: ./certs/server.key
+              client_ca_file: ./certs/xds-client-ca.crt
+              allowed_client_identities: []
           storage:
             type: sqlite
             sqlite:

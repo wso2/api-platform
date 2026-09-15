@@ -45,6 +45,20 @@ vector_db_provider_ttl = 3600  # 1 hour in seconds
 # GATEWAY CONTROLLER CONFIGURATION
 # =============================================================================
 
+[controller.server.xds_tls]
+# mTLS on the main xDS server (serves Envoy), using the shared dev CA/certs in
+# ../gateway-controller/listener-certs (provisioned by scripts/setup.sh, mounted at
+# /app/xds-certs below). Enabled by default via XDS_TLS_ENABLED (set in the compose
+# file); see gateway/configs/config.toml for the full explanation of this pattern.
+enabled = '{{ env "XDS_TLS_ENABLED" "true" }}'
+allowed_client_identities = ["spiffe://api-platform/gateway-runtime/envoy"]
+
+[controller.policy_server.tls]
+# Same setup as server.xds_tls above, for the policy xDS server (serves the
+# policy-engine). Distinct client identity -- the policy-engine presents its own cert.
+enabled = '{{ env "XDS_TLS_ENABLED" "true" }}'
+allowed_client_identities = ["spiffe://api-platform/gateway-runtime/policy-engine"]
+
 [controller.storage]
 type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
 
@@ -94,6 +108,17 @@ default = "*-sandbox.wso2.com"
 
 [policy_engine.logging]
 level = "debug"
+
+[policy_engine.xds.tls]
+# Client-side counterpart to controller.policy_server.tls above -- this policy-engine
+# subprocess presents its own client identity, distinct from Envoy's, since
+# controller.policy_server.tls.allowed_client_identities only allows the
+# policy-engine identity. Cert paths come from POLICY_ENGINE_XDS_CLIENT_*_PATH env
+# vars (set in the compose file), same fallback pattern as gateway/configs/config.toml.
+enabled = '{{ env "POLICY_ENGINE_XDS_TLS_ENABLED" (env "XDS_TLS_ENABLED" "true") }}'
+cert_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CERT_PATH" (env "XDS_CLIENT_CERT_PATH" "") }}'
+key_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_KEY_PATH" (env "XDS_CLIENT_KEY_PATH" "") }}'
+ca_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CA_PATH" (env "XDS_CLIENT_CA_PATH" "") }}'
 
 [policy_engine.admin.config_dump]
 # config_dump is off by default in production; enabled here for the IT suite.

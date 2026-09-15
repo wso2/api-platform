@@ -54,6 +54,14 @@ jobs:
           set -euo pipefail
           cd gateway/it
 
+          # The listener + xDS mTLS certs docker-compose.test.sqlserver.yaml bind-mounts
+          # from ../gateway-controller/listener-certs are no longer checked into the repo
+          # (every clone must not share the same private keys) -- `make gen-certs` (the
+          # same target `make test`/`test-sqlserver` depend on) generates them if missing,
+          # so this works identically here and for a developer running these commands
+          # locally, with no separate CI-only provisioning step.
+          make gen-certs
+
           PROJECT="gateway-it-sqlserver-verify"
           cleanup() {
             docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml down -v --remove-orphans || true

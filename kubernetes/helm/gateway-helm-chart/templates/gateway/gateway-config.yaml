@@ -45,6 +45,14 @@ data:
     gateway_id = {{ $gc.server.gateway_id | quote }}
     skip_invalid_deployments_on_startup = {{ $gc.server.skip_invalid_deployments_on_startup }}
 
+    [controller.server.xds_tls]
+    enabled = {{ $gc.server.xds_tls.enabled }}
+    port = {{ $gc.server.xds_tls.port }}
+    cert_file = {{ $gc.server.xds_tls.cert_file | quote }}
+    key_file = {{ $gc.server.xds_tls.key_file | quote }}
+    client_ca_file = {{ $gc.server.xds_tls.client_ca_file | quote }}
+    allowed_client_identities = [{{- range $i, $id := $gc.server.xds_tls.allowed_client_identities }}{{- if gt $i 0 }}, {{ end }}{{ $id | quote }}{{- end }}]
+
     [controller.admin_server]
     enabled = {{ $gc.admin_server.enabled }}
     port = {{ $gc.admin_server.port }}
@@ -63,8 +71,11 @@ data:
 
     [controller.policy_server.tls]
     enabled = {{ $gc.policy_server.tls.enabled }}
+    port = {{ $gc.policy_server.tls.port }}
     cert_file = {{ $gc.policy_server.tls.cert_file | quote }}
     key_file = {{ $gc.policy_server.tls.key_file | quote }}
+    client_ca_file = {{ $gc.policy_server.tls.client_ca_file | quote }}
+    allowed_client_identities = [{{- range $i, $id := $gc.policy_server.tls.allowed_client_identities }}{{- if gt $i 0 }}, {{ end }}{{ $id | quote }}{{- end }}]
 
     [controller.storage]
     type = {{ $gc.storage.type | quote }}

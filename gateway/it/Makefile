@@ -16,13 +16,24 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
+.PHONY: all test test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags gen-certs
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 COVERAGE_IMAGES := gateway-controller-coverage gateway-runtime-coverage
 
 COMPOSE_FILE ?= docker-compose.test.yaml
+
+# Every docker-compose.test*.yaml here bind-mounts ../gateway-controller/listener-certs
+# for the router's HTTPS listener cert and the xDS mTLS CA/server/client certs. Those
+# xDS certs are no longer checked into the repo (every clone must not share the same
+# private keys), so generate them here if missing before any compose stack starts.
+# Delegates to the same scripts/setup.sh every other entry point uses, in --certs-only
+# mode (skips the encryption key / api-platform.env / .env it also provisions, which
+# don't govern these IT compose stacks). Idempotent: setup.sh only (re)generates
+# certs that are missing, so a rerun with certs already present is a no-op.
+gen-certs:
+	../scripts/setup.sh --certs-only
 
 # Refresh :test tags from :VERSION images when available.
 # If :VERSION is unavailable but :test already exists, keep using :test.
@@ -46,7 +57,7 @@ ensure-test-tags:
 
 # Run integration tests (always with coverage)
 # Requires: make build-coverage-image (run once before tests)
-test: ensure-test-tags
+test: ensure-test-tags gen-certs
 	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -timeout 50m ./...
 
 # Build all coverage-instrumented gateway components
@@ -85,7 +96,7 @@ test-dp-to-cp-nosync:
 	IT_FEATURE_PATHS=features/health.feature,features/dp-to-cp-sync-disabled.feature $(MAKE) test
 
 # Run tests with verbose output
-test-verbose: ensure-test-tags
+test-verbose: ensure-test-tags gen-certs
 	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -count=1 -timeout 50m ./...
 
 # Clean up test artifacts

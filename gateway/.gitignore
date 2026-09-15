@@ -4,3 +4,25 @@ api-platform.env
 # AES-256 at-rest encryption key
 gateway-controller/aesgcm-keys/
 resources/aesgcm-keys/
+
+# xDS mutual TLS dev credentials (CA + server/client certs) — generated
+# per-installation by scripts/setup.sh, which only creates them when absent
+# and otherwise keeps what's already there. Must never be shipped in the
+# repo: every clone sharing the same CA/private keys would defeat the point
+# of mTLS between gateway-controller and gateway-runtime.
+gateway-controller/listener-certs/ca.crt
+gateway-controller/listener-certs/ca.key
+gateway-controller/listener-certs/server.crt
+gateway-controller/listener-certs/server.key
+gateway-controller/listener-certs/envoy-client.crt
+gateway-controller/listener-certs/envoy-client.key
+gateway-controller/listener-certs/policy-engine-client.crt
+gateway-controller/listener-certs/policy-engine-client.key
+resources/listener-certs/ca.crt
+resources/listener-certs/ca.key
+resources/listener-certs/server.crt
+resources/listener-certs/server.key
+resources/listener-certs/envoy-client.crt
+resources/listener-certs/envoy-client.key
+resources/listener-certs/policy-engine-client.crt
+resources/listener-certs/policy-engine-client.key

@@ -15,8 +15,11 @@
 # mode: this script provisions everything the gateway needs, and the server fails
 # closed with a descriptive error if a required key or certificate is missing.
 #
-# Provisions:
-#   - listener-certs/default-listener.{crt,key}   : router HTTPS listener certificate
+# Provisions (all under one listener-certs/ directory -- see $CertsDir below):
+#   - listener-certs/default-listener.{crt,key}                       : router HTTPS listener certificate
+#   - listener-certs/{ca,server,envoy-client,policy-engine-client}.{crt,key} : xDS mutual TLS
+#       between gateway-controller and gateway-runtime (Envoy + Policy Engine), enabled by
+#       default (XDS_TLS_ENABLED in docker-compose.yaml).
 #   - aesgcm-keys/default-aesgcm256-v1.bin         : AES-256 at-rest encryption key. The gateway's
 #       docker compose bind-mounts this host file into the controller.
 #   - api-platform.env                            : required runtime defaults for the gateway-runtime
@@ -46,10 +49,17 @@ $DotEnvFile = '.env'
 $ProjectNamePrefix = 'wso2apip-gateway'
 $ProjectName = ''
 
-# Router downstream (HTTPS ingress) listener cert/key. Referenced by
-# [router.downstream_tls] in config.toml as ./listener-certs/default-listener.{crt,key}
-# and mounted into the gateway-controller. The repo checkout keeps these under
-# gateway-controller/listener-certs; the distribution zip stages them under resources/.
+# Single directory for every TLS cert/key this script provisions: the router downstream
+# (HTTPS ingress) listener cert/key (referenced by [router.downstream_tls] in config.toml
+# as ./listener-certs/default-listener.{crt,key}, mounted into the gateway-controller at
+# that path) and the xDS mutual TLS material (gateway-controller's server.xds_tls/
+# policy_server.tls "server" cert plus the CA and Envoy/Policy-Engine client certs,
+# referenced by config.toml's default cert_file/key_file/client_ca_file paths as
+# ./xds-certs/... and mounted into both gateway-controller and gateway-runtime). One host
+# directory is bind-mounted at both container paths (see docker-compose.yaml) so there's a
+# single place to look, even though the two Go-side defaults still expect two directory
+# names inside the container. The repo checkout keeps this under
+# gateway-controller/listener-certs; the distribution zip stages it under resources/.
 if (Test-Path -LiteralPath 'gateway-controller/listener-certs' -PathType Container) {
     $CertsDir = 'gateway-controller/listener-certs'
 } else {
@@ -69,15 +79,23 @@ $ConfigFile = 'configs/config.toml'
 
 $Force = $false
 $CertsOnly = $false
+$AllowInsecureKeyPerms = ($env:ALLOW_INSECURE_KEY_PERMS -eq 'true')
 
 function Show-Usage {
     @'
 Usage: .\scripts\setup.ps1 [--force] [--certs-only]
 
-  --force        regenerate the certificate and encryption key (rotates them), rewrite api-platform.env,
+  --force        regenerate the certificates and encryption key (rotates them), rewrite api-platform.env,
                  and re-provision the admin credentials (rotates the password)
-  --certs-only   generate only the listener TLS certificate (skip the encryption key, api-platform.env,
-                 and .env)
+  --certs-only   generate only the TLS certificates (listener + xDS mTLS), skip the encryption key,
+                 api-platform.env, and .env
+
+Private key permissions:
+  Every generated private key (TLS keys, the AES-256 encryption key) has its ACL restricted to
+  the current user only (icacls /inheritance:r). If that restriction cannot be applied or
+  verified, setup refuses to continue with the file's inherited (potentially wider) permissions
+  and exits with an error. Set $env:ALLOW_INSECURE_KEY_PERMS = 'true' to accept that reduced
+  protection instead.
 
 Admin credentials (gateway-controller REST/management API basic auth):
   Set ADMIN_USERNAME and/or ADMIN_PASSWORD in the environment to run non-interactively (CI).
@@ -201,25 +219,42 @@ Test-Prerequisites
 # Uses icacls rather than Set-Acl of a freshly-built FileSecurity: the latter makes
 # Set-Acl attempt to write the file's SACL, which requires the SeSecurityPrivilege a
 # normal user does not hold. icacls only touches the DACL, so it needs no elevation.
-# Best-effort: if permissions cannot be tightened, warn and continue rather than
-# aborting setup over a hardening step (the file already lives under the user's
-# profile, which is not world-readable by default).
+# Fails closed by default: if the restriction cannot be applied AND independently
+# verified, setup refuses to continue with the file's existing (potentially wider,
+# inherited) permissions rather than silently leaving a private key over-exposed.
+# Set $env:ALLOW_INSECURE_KEY_PERMS = 'true' to accept that reduced protection instead.
 function Set-OwnerOnlyAcl($path) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
+    $verified = $false
     try {
         $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
         # /inheritance:r drops inherited entries; /grant:r replaces the user's grant
         # with Full - together, only the current user is left on the file.
         & icacls $path /inheritance:r /grant:r "${me}:(F)" 2>&1 | Out-Null
-        $code = $LASTEXITCODE
+        if ($LASTEXITCODE -eq 0) {
+            # Verify via .NET's ACL object rather than parsing icacls' own
+            # (locale-dependent) text output: confirm inheritance was actually
+            # dropped and no ACE besides the current user's Full-control grant
+            # remains.
+            $acl = Get-Acl -Path $path
+            $inherited = $acl.Access | Where-Object { $_.IsInherited }
+            $others = $acl.Access | Where-Object { $_.IdentityReference.Value -ne $me }
+            $verified = ($inherited.Count -eq 0) -and ($others.Count -eq 0)
+        }
     } catch {
-        $code = -1
+        $verified = $false
     } finally {
         $ErrorActionPreference = $prev
     }
-    if ($code -ne 0) {
-        Write-Host "    [warn]    could not restrict permissions on $path - restrict it to your user manually if this host is shared."
+    if (-not $verified) {
+        if (-not $AllowInsecureKeyPerms) {
+            Write-Host "error: could not apply or verify an owner-only ACL on $path." -ForegroundColor Red
+            Write-Host "       Refusing to continue with this file's existing (potentially wider) permissions." -ForegroundColor Red
+            Write-Host "       Set `$env:ALLOW_INSECURE_KEY_PERMS = 'true' to accept the reduced protection." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "    [warn]    could not restrict/verify permissions on $path - ALLOW_INSECURE_KEY_PERMS=true set, continuing with its existing (possibly wider) permissions."
     }
 }
 
@@ -300,6 +335,93 @@ function New-ListenerCert {
     # certificate beside it is public and keeps its inherited permissions.
     Set-OwnerOnlyAcl "$CertsDir/default-listener.key"
     Write-Log "  - self-signed listener certificate generated at $CertsDir/default-listener.crt"
+}
+
+# Issues one client certificate under $CertsDir/ca.{crt,key}: $Name is the file basename
+# (envoy-client / policy-engine-client), $Spiffe is the SPIFFE URI SAN identifying it to
+# gateway-controller's allowed_client_identities check, $Tmp is a scratch directory for the CSR
+# and extfile (PowerShell has no process-substitution equivalent to setup.sh's <(...), so the
+# extension text goes to a real temp file instead).
+function New-XdsClientCert([string]$Name, [string]$Spiffe, [string]$Tmp) {
+    Invoke-OpenSslQuiet {
+        & openssl ecparam -name prime256v1 -genkey -noout -out "$CertsDir/${Name}.key"
+    } "openssl failed to generate the $Name key" | Out-Null
+    Invoke-OpenSslQuiet {
+        & openssl req -new -key "$CertsDir/${Name}.key" -subj "/O=WSO2 API Platform/CN=$Name" -out "$Tmp/${Name}.csr"
+    } "openssl failed to generate the $Name CSR" | Out-Null
+
+    $extFile = "$Tmp/${Name}.ext"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($extFile, "basicConstraints=CA:FALSE`nkeyUsage=digitalSignature`nextendedKeyUsage=clientAuth`nsubjectAltName=URI:$Spiffe`n", $utf8NoBom)
+
+    Invoke-OpenSslQuiet {
+        & openssl x509 -req -in "$Tmp/${Name}.csr" -CA "$CertsDir/ca.crt" -CAkey "$CertsDir/ca.key" `
+            -CAcreateserial -CAserial "$Tmp/ca.srl" -days 825 -sha256 `
+            -extfile $extFile -out "$CertsDir/${Name}.crt"
+    } "openssl failed to sign the $Name certificate" | Out-Null
+}
+
+function New-XdsCerts {
+    $haveAll = (Test-Path -LiteralPath "$CertsDir/ca.crt") -and (Test-Path -LiteralPath "$CertsDir/ca.key") `
+        -and (Test-Path -LiteralPath "$CertsDir/server.crt") -and (Test-Path -LiteralPath "$CertsDir/server.key") `
+        -and (Test-Path -LiteralPath "$CertsDir/envoy-client.crt") -and (Test-Path -LiteralPath "$CertsDir/envoy-client.key") `
+        -and (Test-Path -LiteralPath "$CertsDir/policy-engine-client.crt") -and (Test-Path -LiteralPath "$CertsDir/policy-engine-client.key")
+    if (-not $Force -and $haveAll) {
+        Set-OwnerOnlyAcl "$CertsDir/ca.key"
+        Set-OwnerOnlyAcl "$CertsDir/server.key"
+        Set-OwnerOnlyAcl "$CertsDir/envoy-client.key"
+        Set-OwnerOnlyAcl "$CertsDir/policy-engine-client.key"
+        Write-Log "  - $CertsDir/*.crt already exist - keeping them"
+        return
+    }
+    New-Item -ItemType Directory -Force -Path $CertsDir | Out-Null
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    try {
+        Invoke-OpenSslQuiet {
+            & openssl ecparam -name prime256v1 -genkey -noout -out "$CertsDir/ca.key"
+        } "openssl failed to generate the xDS CA key" | Out-Null
+        Invoke-OpenSslQuiet {
+            & openssl req -x509 -new -key "$CertsDir/ca.key" -sha256 -days 3650 `
+                -subj "/O=WSO2 API Platform/CN=API Platform xDS Dev CA" -out "$CertsDir/ca.crt"
+        } "openssl failed to generate the xDS CA certificate" | Out-Null
+
+        # Server cert presented by gateway-controller on server.xds_tls.port / policy_server.tls.port.
+        # SANs cover every docker-compose service/container name gateway-runtime dials this
+        # controller as across every compose file that shares this cert directory --
+        # docker-compose.yaml/docker-compose.debug.yaml (gateway-controller), the IT suite's
+        # single-controller composes (it-gateway-controller), and its Postgres/EventHub replica
+        # sync compose (it-gateway-controller-xds, the controller gateway-runtime actually
+        # dials there) -- plus localhost/loopback for a controller reached directly from the
+        # host while debugging.
+        Invoke-OpenSslQuiet {
+            & openssl ecparam -name prime256v1 -genkey -noout -out "$CertsDir/server.key"
+        } "openssl failed to generate the xDS server key" | Out-Null
+        Invoke-OpenSslQuiet {
+            & openssl req -new -key "$CertsDir/server.key" -subj "/O=WSO2 API Platform/CN=gateway-controller" -out "$tmp/server.csr"
+        } "openssl failed to generate the xDS server CSR" | Out-Null
+
+        $serverExtFile = "$tmp/server.ext"
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($serverExtFile, "basicConstraints=CA:FALSE`nkeyUsage=digitalSignature,keyEncipherment`nextendedKeyUsage=serverAuth`nsubjectAltName=DNS:gateway-controller,DNS:it-gateway-controller,DNS:it-gateway-controller-xds,DNS:localhost,IP:127.0.0.1`n", $utf8NoBom)
+
+        Invoke-OpenSslQuiet {
+            & openssl x509 -req -in "$tmp/server.csr" -CA "$CertsDir/ca.crt" -CAkey "$CertsDir/ca.key" `
+                -CAcreateserial -CAserial "$tmp/ca.srl" -days 825 -sha256 `
+                -extfile $serverExtFile -out "$CertsDir/server.crt"
+        } "openssl failed to sign the xDS server certificate" | Out-Null
+
+        New-XdsClientCert 'envoy-client' 'spiffe://api-platform/gateway-runtime/envoy' $tmp
+        New-XdsClientCert 'policy-engine-client' 'spiffe://api-platform/gateway-runtime/policy-engine' $tmp
+    } finally {
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    Set-OwnerOnlyAcl "$CertsDir/ca.key"
+    Set-OwnerOnlyAcl "$CertsDir/server.key"
+    Set-OwnerOnlyAcl "$CertsDir/envoy-client.key"
+    Set-OwnerOnlyAcl "$CertsDir/policy-engine-client.key"
+    Write-Log "  - xDS mTLS dev CA + server/client certificates generated at $CertsDir"
 }
 
 function New-EncryptionKey {
@@ -492,6 +614,9 @@ function Set-ProjectName {
 Write-Log 'Provisioning listener TLS certificate ...'
 New-ListenerCert
 
+Write-Log 'Provisioning xDS mutual TLS certificates ...'
+New-XdsCerts
+
 if ($CertsOnly) {
     exit 0
 }
@@ -581,6 +706,10 @@ $lines = @(
     '# Required runtime settings - read directly by the gateway-runtime entrypoint / policy-engine:'
     'GATEWAY_CONTROLLER_HOST=gateway-controller'
     'LOG_LEVEL=info'
+    ''
+    '# xDS mutual TLS between gateway-controller and gateway-runtime (Envoy + Policy Engine) is'
+    '# enabled by default via XDS_TLS_ENABLED in docker-compose.yaml (not here) - edit it there'
+    '# (both services) to fall back to plaintext xDS.'
     ''
     "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME=$adminUsername"
     "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH=$adminPasswordHash"

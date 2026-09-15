@@ -46,6 +46,9 @@ func validConfig() *Config {
 				IdleTimeout:       120 * time.Second,
 				MaxHeaderBytes:    1 << 20,
 			},
+			PolicyServer: PolicyServerConfig{
+				Port: 18001,
+			},
 			Storage: StorageConfig{
 				Type: "sqlite",
 				SQLite: SQLiteConfig{
@@ -670,6 +673,72 @@ func TestConfig_Validate_Ports(t *testing.T) {
 	}
 }
 
+// TestConfig_Validate_PolicyServerPortCollisions verifies policy_server.port
+// is checked against every other enabled listener port, not just
+// server.api_port/server.xds_port -- the same cross-checks server.tls.port,
+// admin_server.port, and metrics.port already perform in the other direction.
+func TestConfig_Validate_PolicyServerPortCollisions(t *testing.T) {
+	t.Run("conflicts with server.tls.port when TLS is enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.PolicyServer.Port = 9093
+		cfg.Controller.Server.TLS = ServerTLSConfig{
+			Enabled:                true,
+			Port:                   9093,
+			CertPath:               "./certs/rest-api.crt",
+			KeyPath:                "./certs/rest-api.key",
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_3",
+			EcdhCurves:             "X25519,P-256",
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "policy_server.port cannot be same as server.tls.port")
+	})
+
+	t.Run("server.tls.port disabled ignores the collision", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.PolicyServer.Port = 9093
+		cfg.Controller.Server.TLS = ServerTLSConfig{Enabled: false, Port: 9093}
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("conflicts with admin_server.port when admin server is enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.PolicyServer.Port = 9092
+		cfg.Controller.AdminServer.Enabled = true
+		cfg.Controller.AdminServer.Port = 9092
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "policy_server.port cannot be same as admin_server.port")
+	})
+
+	t.Run("admin_server disabled ignores the collision", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.PolicyServer.Port = 9092
+		cfg.Controller.AdminServer.Enabled = false
+		cfg.Controller.AdminServer.Port = 9092
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("conflicts with metrics.port when metrics is enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.PolicyServer.Port = 9091
+		cfg.Controller.Metrics.Enabled = true
+		cfg.Controller.Metrics.Port = 9091
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "policy_server.port cannot be same as metrics.port")
+	})
+
+	t.Run("metrics disabled ignores the collision", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.PolicyServer.Port = 9091
+		cfg.Controller.Metrics.Enabled = false
+		cfg.Controller.Metrics.Port = 9091
+		assert.NoError(t, cfg.Validate())
+	})
+}
+
 func TestConfig_Validate_ServerTLS(t *testing.T) {
 	validTLS := func() ServerTLSConfig {
 		return ServerTLSConfig{
@@ -821,6 +890,7 @@ func TestConfig_Validate_XDSServerTLS(t *testing.T) {
 	validXDSTLS := func() XDSServerTLSConfig {
 		return XDSServerTLSConfig{
 			Enabled:                 true,
+			Port:                    18443,
 			CertFile:                "./xds-certs/server.crt",
 			KeyFile:                 "./xds-certs/server.key",
 			ClientCAFile:            "./xds-certs/ca.crt",
@@ -850,6 +920,7 @@ func TestConfig_Validate_XDSServerTLS(t *testing.T) {
 	t.Run("valid policy_server.tls passes", func(t *testing.T) {
 		cfg := validConfig()
 		tlsCfg := validXDSTLS()
+		tlsCfg.Port = 18444
 		tlsCfg.AllowedClientIdentities = []string{"spiffe://api-platform/gateway-runtime/policy-engine"}
 		cfg.Controller.PolicyServer.TLS = tlsCfg
 		assert.NoError(t, cfg.Validate())
@@ -858,6 +929,7 @@ func TestConfig_Validate_XDSServerTLS(t *testing.T) {
 	t.Run("invalid policy_server.tls is rejected with a prefixed error", func(t *testing.T) {
 		cfg := validConfig()
 		tlsCfg := validXDSTLS()
+		tlsCfg.Port = 18444
 		tlsCfg.ClientCAFile = ""
 		cfg.Controller.PolicyServer.TLS = tlsCfg
 		err := cfg.Validate()
@@ -868,6 +940,42 @@ func TestConfig_Validate_XDSServerTLS(t *testing.T) {
 	t.Run("disabled by default -- no validation", func(t *testing.T) {
 		cfg := validConfig()
 		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("server.xds_tls.port colliding with server.xds_port is rejected", func(t *testing.T) {
+		cfg := validConfig()
+		tlsCfg := validXDSTLS()
+		tlsCfg.Port = cfg.Controller.Server.XDSPort
+		cfg.Controller.Server.XDSTLS = tlsCfg
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "server.xds_tls.port cannot be same as server.xds_port")
+	})
+
+	t.Run("server.xds_tls.port colliding with policy_server.tls.port is rejected", func(t *testing.T) {
+		cfg := validConfig()
+		xdsTLSCfg := validXDSTLS()
+		policyTLSCfg := validXDSTLS()
+		xdsTLSCfg.Port = 20000
+		policyTLSCfg.Port = 20000
+		policyTLSCfg.AllowedClientIdentities = []string{"spiffe://api-platform/gateway-runtime/policy-engine"}
+		cfg.Controller.Server.XDSTLS = xdsTLSCfg
+		cfg.Controller.PolicyServer.TLS = policyTLSCfg
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "server.xds_tls.port cannot be same as policy_server.tls.port")
+	})
+
+	t.Run("policy_server.tls.port colliding with policy_server.port is rejected", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.PolicyServer.Port = 18001
+		tlsCfg := validXDSTLS()
+		tlsCfg.Port = 18001
+		tlsCfg.AllowedClientIdentities = []string{"spiffe://api-platform/gateway-runtime/policy-engine"}
+		cfg.Controller.PolicyServer.TLS = tlsCfg
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "policy_server.tls.port cannot be same as policy_server.port")
 	})
 }
 

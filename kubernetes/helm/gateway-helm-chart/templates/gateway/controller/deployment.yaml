@@ -1,5 +1,8 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $deployment := $controller.deployment -}}
+{{- /* See service.yaml for why an extra xds-tls/policy-tls containerPort is added alongside xds/policy when server.xds_tls/policy_server.tls is enabled. */ -}}
+{{- $xdsTLS := .Values.gateway.config.controller.server.xds_tls -}}
+{{- $policyTLS := .Values.gateway.config.controller.policy_server.tls -}}
 {{- if $deployment.enabled }}
 {{- if not $controller.encryptionKeys.enabled }}
 {{- fail "gateway.controller.encryptionKeys must be enabled: at-rest encryption is mandatory. Provision the AES-256 key secret and set gateway.controller.encryptionKeys.enabled=true with a secretName." }}
@@ -133,9 +136,19 @@ spec:
             - name: xds
               containerPort: {{ $controller.service.ports.xds }}
               protocol: TCP
+            {{- if $xdsTLS.enabled }}
+            - name: xds-tls
+              containerPort: {{ $xdsTLS.port }}
+              protocol: TCP
+            {{- end }}
             - name: policy
               containerPort: {{ $controller.service.ports.policy }}
               protocol: TCP
+            {{- if $policyTLS.enabled }}
+            - name: policy-tls
+              containerPort: {{ $policyTLS.port }}
+              protocol: TCP
+            {{- end }}
             - name: admin
               containerPort: {{ $controller.service.ports.admin }}
               protocol: TCP

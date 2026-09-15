@@ -78,6 +78,34 @@ gateway:
         # deployment fails startup loudly so the issue can't go unnoticed.
         skip_invalid_deployments_on_startup: false
 
+        # TLS configuration for secure xDS communication with Envoy (gateway-runtime's router)
+        xds_tls:
+          # Enable or disable TLS
+          enabled: false
+
+          # Dedicated mTLS listener port -- separate from server.xds_port
+          # above, which this replaces (not shares) once TLS is enabled.
+          port: 18443
+
+          # Path to TLS certificate file (required if TLS is enabled)
+          cert_file: ""
+
+          # Path to TLS private key file (required if TLS is enabled)
+          key_file: ""
+
+          # PEM bundle of CA certificates trusted to sign Envoy's client
+          # certificate (required if TLS is enabled) -- this server offers
+          # no server-only TLS mode, since it distributes SDS secrets and
+          # full route/cluster config.
+          client_ca_file: ""
+
+          # Accepted peer certificate identities: a certificate's first SAN
+          # URI (e.g. a SPIFFE ID) if present, otherwise its Subject
+          # CommonName. A client certificate that chains to a trusted CA is
+          # not by itself authorization to reach this snapshot -- at least
+          # one identity is required if TLS is enabled.
+          allowed_client_identities: []
+
       # Dedicated admin/debug HTTP server (config dump, xDS sync status). Already
       # effectively active today even though this block was previously absent from
       # config.toml — see defaultConfig() in pkg/config/config.go. Adding it here
@@ -115,11 +143,29 @@ gateway:
           # Enable or disable TLS
           enabled: false
 
+          # Dedicated mTLS listener port -- separate from policy_server.port
+          # above, which this replaces (not shares) once TLS is enabled.
+          port: 18444
+
           # Path to TLS certificate file (required if TLS is enabled)
           cert_file: "./certs/server.crt"
 
           # Path to TLS private key file (required if TLS is enabled)
           key_file: "./certs/server.key"
+
+          # PEM bundle of CA certificates trusted to sign the policy-engine's
+          # client certificate (required if TLS is enabled) -- this server
+          # offers no server-only TLS mode, since it distributes API-key
+          # hashes, subscription state, and full policy chains for every
+          # tenant.
+          client_ca_file: "./certs/xds-client-ca.crt"
+
+          # Accepted peer certificate identities: a certificate's first SAN
+          # URI (e.g. a SPIFFE ID) if present, otherwise its Subject
+          # CommonName. A client certificate that chains to a trusted CA is
+          # not by itself authorization to reach this snapshot -- at least
+          # one identity is required if TLS is enabled.
+          allowed_client_identities: []
 
       # Storage configuration
       storage:
@@ -649,11 +695,15 @@ gateway:
       # IP families, e.g. ["IPv4"], ["IPv6"] or ["IPv4", "IPv6"]. Empty = cluster default.
       ipFamilies: []
       # Static nodePort per named service port. Only rendered when type is NodePort or
-      # LoadBalancer; empty = auto-allocate.
+      # LoadBalancer; empty = auto-allocate. xds_tls/policy_tls only apply when the
+      # matching gateway.config.controller.server.xds_tls/policy_server.tls.enabled is
+      # true -- that's what adds the "xds-tls"/"policy-tls" ports in the first place.
       nodePorts:
         rest: ""
         xds: ""
+        xds_tls: ""
         policy: ""
+        policy_tls: ""
         admin: ""
         metrics: ""
     controlPlane:

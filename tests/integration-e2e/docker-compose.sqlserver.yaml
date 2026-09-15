@@ -137,15 +137,28 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=platform-api:9243
       - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+      # test-config.toml enables server.xds_tls/policy_server.tls by default;
+      # explicit here for clarity. Certs come from listener-certs, mounted a second
+      # time below at the default cert_file/key_file/client_ca_file path.
+      - XDS_TLS_ENABLED=true
     ports:
       - "9090:9090"
       - "9092:9092"
-      - "18000:18000"
+      - "18000:18443" # xDS gRPC mTLS (Router) -- host port kept at the old default;
+                       # container port moved to the dedicated mTLS listener
+      - "18001:18444" # xDS gRPC mTLS (Policy Engine) -- was unmapped, added for symmetry
     volumes:
       - ../../gateway/it/test-config.toml:/etc/gateway-controller/config.toml:ro
       - ../../gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
       - ../../gateway/gateway-controller/certificates:/app/certificates
-      - ../../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+      # File-level mounts (not the whole listener-certs directory): this
+      # service only needs its own listener cert/key and its own xDS server
+      # cert/key plus the CA cert -- never the CA's private key.
+      - ../../gateway/gateway-controller/listener-certs/default-listener.crt:/app/listener-certs/default-listener.crt:ro
+      - ../../gateway/gateway-controller/listener-certs/default-listener.key:/app/listener-certs/default-listener.key:ro
+      - ../../gateway/gateway-controller/listener-certs/ca.crt:/app/xds-certs/ca.crt:ro
+      - ../../gateway/gateway-controller/listener-certs/server.crt:/app/xds-certs/server.crt:ro
+      - ../../gateway/gateway-controller/listener-certs/server.key:/app/xds-certs/server.key:ro
     depends_on:
       mssql-init:
         condition: service_completed_successfully
@@ -159,12 +172,30 @@ services:
     environment:
       - GATEWAY_CONTROLLER_HOST=gateway-controller
       - LOG_LEVEL=info
+      # Client cert/key paths for mutual TLS to gateway-controller's xDS servers --
+      # Envoy and the policy-engine present distinct client identities, so each leg
+      # gets its own cert/key, checked against the shared dev CA mounted below.
+      - XDS_TLS_ENABLED=true
+      - XDS_CLIENT_CERT_PATH=/etc/xds-certs/envoy-client.crt
+      - XDS_CLIENT_KEY_PATH=/etc/xds-certs/envoy-client.key
+      - XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
+      - POLICY_ENGINE_XDS_CLIENT_CERT_PATH=/etc/xds-certs/policy-engine-client.crt
+      - POLICY_ENGINE_XDS_CLIENT_KEY_PATH=/etc/xds-certs/policy-engine-client.key
+      - POLICY_ENGINE_XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
     ports:
       - "${GW_HTTP_PORT:-18080}:8080"
       - "${GW_HTTPS_PORT:-18443}:8443"
       - "9002:9002"
     volumes:
       - ../../gateway/it/test-config.toml:/etc/policy-engine/config.toml:ro
+      # File-level mounts: only the CA cert plus this service's own
+      # Envoy/policy-engine client cert/key pairs -- never the CA's private
+      # key or the controller's own server cert/key.
+      - ../../gateway/gateway-controller/listener-certs/ca.crt:/etc/xds-certs/ca.crt:ro
+      - ../../gateway/gateway-controller/listener-certs/envoy-client.crt:/etc/xds-certs/envoy-client.crt:ro
+      - ../../gateway/gateway-controller/listener-certs/envoy-client.key:/etc/xds-certs/envoy-client.key:ro
+      - ../../gateway/gateway-controller/listener-certs/policy-engine-client.crt:/etc/xds-certs/policy-engine-client.crt:ro
+      - ../../gateway/gateway-controller/listener-certs/policy-engine-client.key:/etc/xds-certs/policy-engine-client.key:ro
     depends_on:
       gateway-controller:
         condition: service_started
