@@ -87,21 +87,21 @@ function generateServerId(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-const MCP_VERSION_PATTERN = /^v?\d+(\.\d+)?(\.\d+)?$/;
-const MCP_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
+export const MCP_VERSION_PATTERN = /^v?\d+(\.\d+)?(\.\d+)?$/;
+export const MCP_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
 
 /**
  * Add the preferred `v` prefix and a missing minor component to numeric
  * versions. Non-version server metadata is returned unchanged so the form can
  * display it and report a validation error instead of disguising it as semver.
  */
-function normalizeVersion(version: string): string {
+export function normalizeVersion(version: string): string {
   const trimmed = version.trim();
-  const match = trimmed.match(/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/);
+  const match = trimmed.match(/^v?(\d+)(?:\.(\d+))?(?:\.\d+)?$/);
   if (!match) return trimmed;
 
-  const [, major, minor = '0', patch] = match;
-  return `v${major}.${minor}${patch === undefined ? '' : `.${patch}`}`;
+  const [, major, minor = '0'] = match;
+  return `v${major}.${minor}`;
 }
 
 function getErrorDescription(error: unknown, fallback: string): string {

@@ -57,6 +57,7 @@ type SelectableOrg = {
   id: string;
   name: string;
   description?: string;
+  handle?: string;
 };
 
 type SelectableProject = {
@@ -77,6 +78,9 @@ export default function AppLayout(): JSX.Element {
     userEmail,
 
     currentOrganization,
+    organizations,
+    isOrganizationsLoading,
+    switchOrganization,
 
     projectsForCurrentOrganization,
     currentProject,
@@ -126,6 +130,29 @@ export default function AppLayout(): JSX.Element {
   });
 
   const [tabIndex, setTabIndex] = useState(0);
+
+  const organizationOptions: SelectableOrg[] = useMemo(() => {
+    return Array.isArray(organizations)
+      ? organizations.map((org) => ({
+          id: String(org.id),
+          name: org.name,
+          handle: org.handle,
+        }))
+      : [];
+  }, [organizations]);
+
+  const handleOrganizationSelection = useCallback(
+    (org: SelectableOrg) => {
+      const matchedOrg = organizations.find(
+        (candidate) => String(candidate.id) === org.id
+      );
+      if (!matchedOrg) return;
+      void switchOrganization(matchedOrg).then(() => {
+        navigate(buildOrgPath(matchedOrg, '/home'));
+      });
+    },
+    [organizations, switchOrganization, navigate]
+  );
 
   const projectOptions: SelectableProject[] = useMemo(() => {
     return Array.isArray(projectsForCurrentOrganization)
@@ -404,6 +431,9 @@ export default function AppLayout(): JSX.Element {
                 }
               : null
           }
+          organizationOptions={organizationOptions}
+          isOrganizationsLoading={isOrganizationsLoading}
+          onSelectOrganization={handleOrganizationSelection}
           projectOptions={projectOptions}
           currentProject={currentProjectOption}
           setCurrentProject={(p) => {

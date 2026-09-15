@@ -42,6 +42,11 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { MCPServer } from '../../../../utils/types';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useMemo } from 'react';
+import {
+  MCP_VERSION_ERROR,
+  MCP_VERSION_PATTERN,
+  normalizeVersion,
+} from './ExternalServersNew';
 
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
@@ -52,10 +57,11 @@ function getErrorDescription(error: unknown, fallback: string): string {
 }
 
 // Backend field names (from MCPServer's update payload) mapped onto this form's state keys.
-const FIELD_NAME_MAP: Record<string, 'name' | 'description' | 'context'> = {
+const FIELD_NAME_MAP: Record<string, 'name' | 'description' | 'context' | 'version'> = {
   displayName: 'name',
   description: 'description',
   context: 'context',
+  version: 'version',
 };
 
 export default function EditExternalServer() {
@@ -91,6 +97,7 @@ export default function EditExternalServer() {
   const [isLoading, setIsLoading] = useState(true);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [version, setVersion] = useState('');
   const [context, setContext] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -110,6 +117,7 @@ export default function EditExternalServer() {
           setServer(response);
           setName(response.displayName || '');
           setDescription(response.description || '');
+          setVersion(response.version || '');
           setContext(response.context || '');
         }
       } catch {
@@ -126,14 +134,25 @@ export default function EditExternalServer() {
     };
   }, [serverId, organizationId, apimBaseUrl]);
 
-  const isContextChanged =
-    server !== null && context !== (server.context || '');
+  const isContextOrVersionChanged =
+    server !== null &&
+    (context !== (server.context || '') ||
+      normalizeVersion(version.trim()) !== normalizeVersion(server.version || ''));
+
+  const versionValidationError =
+    !isReadOnlyServer && version.trim() && !MCP_VERSION_PATTERN.test(version.trim())
+      ? MCP_VERSION_ERROR
+      : undefined;
 
   const isFormValid = (): boolean => {
     if (!name || name.trim().length === 0) return false;
     if (name.length > MAX_NAME_LENGTH) return false;
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
     if (context.length > MAX_CONTEXT_LENGTH) return false;
+    if (!isReadOnlyServer) {
+      if (!version.trim()) return false;
+      if (Boolean(versionValidationError)) return false;
+    }
     return true;
   };
 
@@ -150,6 +169,7 @@ export default function EditExternalServer() {
         ...server,
         displayName: name,
         description: description || undefined,
+        version: isReadOnlyServer ? server.version : normalizeVersion(version.trim()),
         context: context || undefined,
       };
       // Remove read-only fields before sending
@@ -257,16 +277,16 @@ export default function EditExternalServer() {
           <Stack spacing={3}>
             {isReadOnlyServer ? (
               <Alert severity="info">
-                This MCP proxy was created from a gateway. The name and
-                context are part of the gateway runtime configuration and are
-                read-only here; only the description can be edited.
+                This MCP proxy was created from a gateway. The name, version,
+                and context are part of the gateway runtime configuration and
+                are read-only here; only the description can be edited.
               </Alert>
             ) : null}
-            {isContextChanged && (
+            {isContextOrVersionChanged && (
               <Alert severity="warning">
-                You have modified the context of this MCP Proxy. After
-                updating, you will need to redeploy on the gateway for the
-                changes to take effect.
+                You have modified the context or version of this MCP Proxy.
+                After updating, you will need to redeploy on the gateway for
+                the changes to take effect.
               </Alert>
             )}
             <Box sx={{ display: 'flex', gap: 2 }}>
@@ -289,6 +309,23 @@ export default function EditExternalServer() {
                       ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
                       : '')
                   }
+                />
+              </FormControl>
+
+              <FormControl sx={{ flex: 0.4 }}>
+                <FormLabel required={!isReadOnlyServer}>Version</FormLabel>
+                <TextField
+                  fullWidth
+                  required={!isReadOnlyServer}
+                  value={version}
+                  disabled={isReadOnlyServer}
+                  onChange={(e) => {
+                    setVersion(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, version: '' }));
+                  }}
+                  placeholder="e.g., v1.0"
+                  error={Boolean(versionValidationError) || Boolean(fieldErrors.version)}
+                  helperText={fieldErrors.version || versionValidationError || ''}
                 />
               </FormControl>
             </Box>

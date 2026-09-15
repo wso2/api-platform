@@ -65,6 +65,17 @@
 # to the SPA as window.__RUNTIME_CONFIG__.
 default_org_region = "us"
 
+# Whether the SPA shows MCP proxy publish/unpublish to the API Portal (MCP Hub).
+# Browser-safe. Off by default — this feature's Platform API endpoints
+# (/api-portals/{apiPortalId}/apis/mcp-proxy/{id}/publish|unpublish, per
+# https://github.com/wso2/api-platform/discussions/3242) are not yet implemented.
+api_portal_enabled = false
+
+# Single API Portal MCP proxies publish to. Temporary: there is no portal
+# registration/listing yet, so this stands in for a real picker until one exists.
+# Browser-safe.
+api_portal_default_id = ""
+
 # Externally-reachable host:port for this deployment, shown only in the startup log
 # banner ("Visit https://..."). Not browser-safe — the SPA never needs it, since the
 # browser already knows its own address via window.location. Leave unset to fall back
@@ -337,13 +348,14 @@ role_to_scope_mapping = ""
 # ---------------------------------------------------------------------------
 [ai_workspace.auth.claim_mappings]
 
-organization = "organization" # claim carrying the org ID
-org_name     = "org_name"          # org display name
-org_handle   = "org_handle"      # org URL slug
-username     = "username"
-email        = "email"
-scope        = "scope"                # space-separated scope string
-roles        = "roles"
+organization  = "organization" # claim carrying the org ID
+org_name      = "org_name"          # org display name
+org_handle    = "org_handle"      # org URL slug
+organizations = "organizations"  # claim listing every org id/handle the user belongs to
+username      = "username"
+email         = "email"
+scope         = "scope"                # space-separated scope string
+roles         = "roles"
 
 
 # ---------------------------------------------------------------------------

@@ -40,6 +40,8 @@ export interface AppShellContextType {
   userName: string | null;
   userEmail: string | null;
   currentOrganization: Organization | null;
+  organizations: Organization[];
+  isOrganizationsLoading: boolean;
   currentProject: ProjectBase | null;
   projectsForCurrentOrganization: ProjectBase[];
   isProjectsLoading: boolean;
@@ -50,12 +52,15 @@ export interface AppShellContextType {
   error: string | null;
   setCurrentProject: (project: ProjectBase | null) => void;
   refetchProjects: () => Promise<void>;
+  switchOrganization: (organization: Organization) => Promise<void>;
 }
 
 const defaultContextValue: AppShellContextType = {
   userName: null,
   userEmail: null,
   currentOrganization: null,
+  organizations: [],
+  isOrganizationsLoading: false,
   currentProject: null,
   projectsForCurrentOrganization: [],
   isProjectsLoading: false,
@@ -66,6 +71,7 @@ const defaultContextValue: AppShellContextType = {
   error: null,
   setCurrentProject: () => {},
   refetchProjects: async () => {},
+  switchOrganization: async () => {},
 };
 
 const AppShellContext = createContext<AppShellContextType>(defaultContextValue);
@@ -93,6 +99,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const userEmail: string | null = initialUserEmail || null;
 
   const [currentOrganization, setCurrentOrganizationState] = useState<Organization | null>(null);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isOrganizationsLoading, setIsOrganizationsLoading] = useState(false);
   const [projectsForCurrentOrganization, setProjectsForCurrentOrganization] = useState<ProjectBase[]>([]);
   const [currentProject, setCurrentProjectState] = useState<ProjectBase | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
@@ -142,9 +150,42 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     owner: { id: 0, idpId: '' },
   });
 
+  // Resolves the user's organization ids (from the token's "organizations" claim)
+  // into full Organization objects by looking each one up individually — the
+  // claim carries ids only, never display names, and only ever the calling
+  // user's own memberships, so each id is resolved one at a time rather than
+  // ever falling back to the unscoped /organizations list endpoint, which (for
+  // a caller holding ap:organization:manage) returns every organization on the
+  // platform, not just the caller's own — see initialize() for the no-claim case.
+  const loadOrganizationsByIds = useCallback(async (orgIds: string[]): Promise<Organization[]> => {
+    if (orgIds.length === 0) return [];
+    setIsOrganizationsLoading(true);
+    try {
+      const resolved = await Promise.all(
+        orgIds.map(async (id) => {
+          try {
+            const platformOrg = await getOrganizationById(id);
+            return platformOrg ? toOrganization(platformOrg) : null;
+          } catch (err) {
+            logger.error(`[AppShellContext] Failed to resolve organization ${id}:`, err);
+            return null;
+          }
+        })
+      );
+      return resolved.filter((org): org is Organization => org !== null);
+    } finally {
+      setIsOrganizationsLoading(false);
+    }
+  }, []);
+
   const initialize = useCallback(async () => {
     try {
       const tokenOrg = userRef.current?.org;
+      const orgIds = userRef.current?.organizations ?? [];
+
+      // Kicked off in parallel with resolving the "current" org below — only
+      // used when the token actually carries an "organizations" claim.
+      const claimOrgsPromise = loadOrganizationsByIds(orgIds);
 
       if (tokenOrg?.handle) {
         // Primary path: fetch org by handle from the token (works for both OIDC and file-based auth).
@@ -178,19 +219,41 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           return;
         }
 
-        setCurrentOrganizationState(toOrganization(platformOrg));
+        const resolvedOrg = toOrganization(platformOrg);
+        setCurrentOrganizationState(resolvedOrg);
+
+        if (orgIds.length > 0) {
+          // Token carries an "organizations" claim — the switcher offers exactly
+          // those memberships. A just-provisioned org may not yet appear in that
+          // resolved set (e.g. a race with the claim being minted), so make sure
+          // the switcher still offers it.
+          const claimOrgs = await claimOrgsPromise;
+          setOrganizations(
+            claimOrgs.some((o) => o.handle === resolvedOrg.handle)
+              ? claimOrgs
+              : [...claimOrgs, resolvedOrg]
+          );
+        } else {
+          // No "organizations" claim on the token — show only the single
+          // current organization, never the unscoped /organizations list.
+          setOrganizations([resolvedOrg]);
+        }
         setIsTokenExchanged(true);
         await fetchProjectsForOrg();
         return;
       }
 
-      // Fallback: no org id in token — use list endpoint.
-      const orgs = await getOrganizations();
+      // Fallback: no "org" claim in the token at all — nothing to resolve a
+      // "current" org from, so bootstrap off whatever org list is available:
+      // the claim-resolved set if the token had one, otherwise the unscoped
+      // list endpoint (there's no narrower option when neither claim exists).
+      const orgs = orgIds.length > 0 ? await claimOrgsPromise : await getOrganizations();
       if (orgs.length === 0) {
         logger.warn('[AppShellContext] No organization found');
         setError('Organization not found. Please contact your administrator.');
         return;
       }
+      setOrganizations(orgs);
       setCurrentOrganizationState(orgs[0]);
       setIsTokenExchanged(true);
       await fetchProjectsForOrg();
@@ -201,7 +264,18 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
+  }, [loadOrganizationsByIds, getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
+
+  const switchOrganization = useCallback(
+    async (organization: Organization) => {
+      if (organization.handle === currentOrganization?.handle) {
+        return;
+      }
+      setCurrentOrganizationState(organization);
+      await fetchProjectsForOrg();
+    },
+    [currentOrganization?.handle, fetchProjectsForOrg]
+  );
 
   useEffect(() => {
     if (isInitializedRef.current) return;
@@ -215,6 +289,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     userName,
     userEmail,
     currentOrganization,
+    organizations,
+    isOrganizationsLoading,
     currentProject,
     projectsForCurrentOrganization,
     isProjectsLoading,
@@ -225,6 +301,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     error,
     setCurrentProject,
     refetchProjects,
+    switchOrganization,
   };
 
   return (

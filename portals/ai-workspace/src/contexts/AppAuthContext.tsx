@@ -31,6 +31,7 @@ export interface AppUser {
   role: PlatformRole | null;
   scopes: string[];
   org: AppOrg | null;
+  organizations: string[];
 }
 
 export interface AppAuthContextType {

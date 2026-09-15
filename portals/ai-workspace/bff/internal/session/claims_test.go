@@ -76,6 +76,33 @@ func TestUserFromClaims_FileBased(t *testing.T) {
 	}
 }
 
+func TestUserFromClaims_Organizations(t *testing.T) {
+	claims := map[string]any{
+		"username":      "admin",
+		"organizations": []any{"org-1", "org-2", "org-3"},
+	}
+	u := UserFromClaims(claims, nil, DefaultClaimMapping())
+
+	want := []string{"org-1", "org-2", "org-3"}
+	if len(u.Organizations) != len(want) {
+		t.Fatalf("Organizations = %v, want %v", u.Organizations, want)
+	}
+	for i, id := range want {
+		if u.Organizations[i] != id {
+			t.Errorf("Organizations[%d] = %q, want %q", i, u.Organizations[i], id)
+		}
+	}
+}
+
+func TestUserFromClaims_OrganizationsAbsent(t *testing.T) {
+	claims := map[string]any{"username": "admin"}
+	u := UserFromClaims(claims, nil, DefaultClaimMapping())
+
+	if len(u.Organizations) != 0 {
+		t.Errorf("Organizations = %v, want empty", u.Organizations)
+	}
+}
+
 func TestUserFromClaims_ScopesArray(t *testing.T) {
 	// IDPs like Asgardeo may carry scopes as an array under "scp".
 	claims := map[string]any{
