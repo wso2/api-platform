@@ -552,18 +552,7 @@ func stringPtr(s string) *string {
 	return &s
 }
 
-// Tests for generateAuthConfig function
-
-// TestMCPToolRouteKeysAreAuthorized is the cross-check that keeps the MCP
-// certificate and subscription tools reachable.
-//
-// Both tools authorize a call by resolving it to the management REST route key
-// that governs the equivalent operation, then looking that key up in the map
-// generateAuthConfig builds. A key absent from the map is a hard deny — correct,
-// but silent: the tool simply stops working, with nothing failing at build or
-// startup. The two subscription collections spell their placeholder differently
-// ({subscriptionId} vs {planId}), which makes a typo easy and its consequence
-// invisible, so the two sides are compared here.
+// TestMCPToolRouteKeysAreAuthorized fails if a management MCP tool resolves to a route key that generateAuthConfig's role map doesn't contain
 func TestMCPToolRouteKeysAreAuthorized(t *testing.T) {
 	authConfig, err := generateAuthConfig(&config.Config{})
 	require.NoError(t, err)
@@ -579,9 +568,6 @@ func TestMCPToolRouteKeysAreAuthorized(t *testing.T) {
 		assert.NotEmptyf(t, roles, "route key %q maps to an empty role list, which denies every caller", key)
 	}
 
-	// The literal spellings, written independently of the dispatch tables the
-	// keys above are read from. Without these the test would only prove the two
-	// sides agree, not that either matches the routes actually registered.
 	for _, key := range []string{
 		"GET /certificates",
 		"POST /certificates",
@@ -600,6 +586,30 @@ func TestMCPToolRouteKeysAreAuthorized(t *testing.T) {
 	} {
 		assert.Containsf(t, keys, key, "no MCP tool action resolves to %q", key)
 	}
+}
+
+// TestAdminMCPToolRouteKeysAreAuthorized fails if an admin MCP tool resolves to a route key that adminResourceRoles doesn't contain
+func TestAdminMCPToolRouteKeysAreAuthorized(t *testing.T) {
+	roles := adminResourceRoles()
+
+	keys := handlers.AdminMCPRouteKeys()
+	require.Len(t, keys, 2, "expected exactly two admin MCP route keys")
+
+	for _, key := range keys {
+		got, ok := roles[key]
+		assert.Truef(t, ok,
+			"admin MCP tools resolve to route key %q, which has no entry in adminResourceRoles — "+
+				"every call mapping to it is denied", key)
+		assert.NotEmptyf(t, got, "route key %q maps to an empty role list, which denies every caller", key)
+	}
+
+	assert.ElementsMatch(t, []string{"GET /config_dump", "GET /xds_sync_status"}, keys)
+
+	assert.Equal(t, []string{"admin"}, roles["POST "+adminAPIBasePath+"/mcp"])
+	assert.Equal(t, []string{"admin"}, roles["POST /mcp"])
+
+	_, ok := roles["GET /health"]
+	assert.False(t, ok, "the public health probe must not appear in the admin role map")
 }
 
 func TestGenerateAuthConfig(t *testing.T) {

@@ -71,7 +71,7 @@ type kindOps struct {
 	// ("/rest-apis"). It is the authorization anchor: an MCP call is authorized
 	// as the equivalent REST operation on this path, so the role map in
 	// cmd/controller/main.go stays the single source of truth for both
-	// surfaces. See mcp_authz.go.
+	// surfaces. See mcp_management_routes.go.
 	Collection string
 
 	Create func(manifest []byte, correlationID string, log *slog.Logger) (any, error)
@@ -102,7 +102,7 @@ type keyOps struct {
 	Rotate func(parentID, keyName string, req api.APIKeyRegenerationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
 	// Update installs a caller-supplied key value under an existing name —
 	// the external-key-injection operation behind PUT .../{apiKeyName}. It is
-	// the second half of the rotate tool; see rotateIsInjection in mcp_tools.go
+	// the second half of the rotate tool; see rotateIsInjection in mcp_management_tools.go
 	// for how a call is routed to it rather than to Rotate.
 	Update func(parentID, keyName string, req api.APIKeyCreationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
 	Revoke func(parentID, keyName string, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)

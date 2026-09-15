@@ -21,7 +21,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -115,7 +114,7 @@ func TestManageCertificatesGuards(t *testing.T) {
 	authorized := withMcpCaller(context.Background(), mcpCaller{Skipped: true})
 
 	t.Run("immutable mode refuses every mutating action", func(t *testing.T) {
-		h := &McpHandler{immutable: true, logger: slog.Default()}
+		h := newAuthzTestHandler(true)
 		for _, action := range []string{"apply", "delete", "reload"} {
 			_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 				Action: action, Confirm: true, ID: "cert-1", Name: "n", Certificate: "pem",
@@ -126,7 +125,7 @@ func TestManageCertificatesGuards(t *testing.T) {
 	})
 
 	t.Run("delete and reload require confirm", func(t *testing.T) {
-		h := &McpHandler{logger: slog.Default()}
+		h := newAuthzTestHandler(false)
 		for _, action := range []string{"delete", "reload"} {
 			_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 				Action: action, ID: "cert-1",
@@ -137,7 +136,7 @@ func TestManageCertificatesGuards(t *testing.T) {
 	})
 
 	t.Run("apply rejects an id rather than creating a duplicate", func(t *testing.T) {
-		h := &McpHandler{logger: slog.Default()}
+		h := newAuthzTestHandler(false)
 		_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 			Action: "apply", ID: "cert-1", Name: "n", Certificate: "pem",
 		})
@@ -146,7 +145,7 @@ func TestManageCertificatesGuards(t *testing.T) {
 	})
 
 	t.Run("apply requires name and certificate", func(t *testing.T) {
-		h := &McpHandler{logger: slog.Default()}
+		h := newAuthzTestHandler(false)
 		_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 			Action: "apply", Name: "n",
 		})
@@ -155,7 +154,7 @@ func TestManageCertificatesGuards(t *testing.T) {
 	})
 
 	t.Run("delete requires an id", func(t *testing.T) {
-		h := &McpHandler{logger: slog.Default()}
+		h := newAuthzTestHandler(false)
 		_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 			Action: "delete", Confirm: true,
 		})
@@ -167,7 +166,7 @@ func TestManageCertificatesGuards(t *testing.T) {
 // A tool handler reached without an authorization decision on the context must
 // deny: its absence is what proves the gate ran.
 func TestManageCertificatesDeniesWithoutGate(t *testing.T) {
-	h := &McpHandler{logger: slog.Default()}
+	h := newAuthzTestHandler(false)
 	_, _, err := h.manageCertificates(context.Background(), nil, manageCertificatesInput{Action: "list"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not available")

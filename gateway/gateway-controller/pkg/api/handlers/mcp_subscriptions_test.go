@@ -21,7 +21,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -145,7 +144,7 @@ func TestManageSubscriptionsGuards(t *testing.T) {
 	authorized := withMcpCaller(context.Background(), mcpCaller{Skipped: true})
 
 	t.Run("immutable mode refuses writes but allows reads", func(t *testing.T) {
-		h := &McpHandler{immutable: true, logger: slog.Default()}
+		h := newAuthzTestHandler(true)
 
 		for _, action := range []string{"apply", "delete"} {
 			_, _, err := h.manageSubscriptions(authorized, nil, manageSubscriptionsInput{
@@ -165,7 +164,7 @@ func TestManageSubscriptionsGuards(t *testing.T) {
 	})
 
 	t.Run("delete requires confirm", func(t *testing.T) {
-		h := &McpHandler{logger: slog.Default()}
+		h := newAuthzTestHandler(false)
 		_, _, err := h.manageSubscriptions(authorized, nil, manageSubscriptionsInput{
 			Type: "SubscriptionPlan", Action: "delete", ID: "p-1",
 		})
@@ -174,7 +173,7 @@ func TestManageSubscriptionsGuards(t *testing.T) {
 	})
 
 	t.Run("get and delete require an id", func(t *testing.T) {
-		h := &McpHandler{logger: slog.Default()}
+		h := newAuthzTestHandler(false)
 		for _, action := range []string{"get", "delete"} {
 			_, _, err := h.manageSubscriptions(authorized, nil, manageSubscriptionsInput{
 				Type: "Subscription", Action: action, Confirm: true,
@@ -185,7 +184,7 @@ func TestManageSubscriptionsGuards(t *testing.T) {
 	})
 
 	t.Run("apply requires a spec", func(t *testing.T) {
-		h := &McpHandler{logger: slog.Default()}
+		h := newAuthzTestHandler(false)
 		_, _, err := h.manageSubscriptions(authorized, nil, manageSubscriptionsInput{
 			Type: "SubscriptionPlan", Action: "apply",
 		})
@@ -195,7 +194,7 @@ func TestManageSubscriptionsGuards(t *testing.T) {
 }
 
 func TestManageSubscriptionsDeniesWithoutGate(t *testing.T) {
-	h := &McpHandler{logger: slog.Default()}
+	h := newAuthzTestHandler(false)
 	_, _, err := h.manageSubscriptions(context.Background(), nil, manageSubscriptionsInput{
 		Type: "Subscription", Action: "list",
 	})
