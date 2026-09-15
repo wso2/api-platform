@@ -264,7 +264,7 @@ func TestRepoRootFindsWorkspaceRoot(t *testing.T) {
 // platform-gateway's management API under those same names. Registries are per-suite and
 // never collide at runtime, but the two suites mean different underlying resources by them.
 func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
-	client := httpx.NewClient(httpx.Options{MaxRetries: 1})
+	client := httpx.NewClient(httpx.Options{MaxRetries: 1, InsecureSkipVerify: true})
 	auth := &platformAPIAuth{topo: topo, client: client}
 
 	reg.RegisterDeleter(cleanup.KindLLMProvider, platformAPIDeleter(auth, "/api/v0.9/llm-providers"))

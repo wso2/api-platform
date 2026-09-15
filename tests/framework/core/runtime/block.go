@@ -51,6 +51,9 @@ type Topology struct {
 	// Block is the resolved declaration this came from.
 	Block *topology.ResolvedBlock
 
+	// PropagationTimeout bounds asynchronous propagation waits for steps using this topology.
+	PropagationTimeout time.Duration
+
 	// Instances are the running components, addressable by name.
 	Instances *components.Set
 
@@ -168,11 +171,13 @@ func BootBlock(
 	}
 	t := &Topology{Block: block, Instances: components.NewSet()}
 
-	nw, err := NewNetwork(ctx, block.Name)
-	if err != nil {
-		return nil, err
+	if blockNeedsNetwork(block) {
+		nw, err := NewNetwork(ctx, block.Name)
+		if err != nil {
+			return nil, err
+		}
+		t.network = nw
 	}
-	t.network = nw
 
 	fail := func(err error) (*Topology, error) {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -185,7 +190,7 @@ func BootBlock(
 
 	// Provision storage before starting components.
 	storage, err := Provision(ctx, DatabaseOptions{
-		Network:  nw,
+		Network:  t.network,
 		RepoRoot: repoRoot,
 		Requests: storageRequests(block),
 	})
@@ -225,11 +230,26 @@ func storageRequests(block *topology.ResolvedBlock) []Request {
 	return requests
 }
 
+func blockNeedsNetwork(block *topology.ResolvedBlock) bool {
+	if block == nil {
+		return false
+	}
+	for _, component := range block.Components {
+		if component.Def == nil || !component.Def.IsExternal() {
+			return true
+		}
+	}
+	return false
+}
+
 // startComponent starts one component and waits for application readiness.
 func (t *Topology) startComponent(
 	ctx context.Context, rc topology.ResolvedComponent, repoRoot string,
 ) error {
 	def := rc.Def
+	if def.IsExternal() {
+		return t.startExternal(ctx, rc, repoRoot)
+	}
 
 	env := map[string]string{}
 	for k, v := range t.Storage.Env[KeyFor(def.Name, 0)] {
@@ -343,6 +363,27 @@ func (t *Topology) startComponent(
 	return nil
 }
 
+func (t *Topology) startExternal(
+	ctx context.Context, rc topology.ResolvedComponent, repoRoot string,
+) error {
+	def := rc.Def
+	if def == nil || def.External == nil {
+		return fmt.Errorf("runtime: external component definition is required")
+	}
+	urls, err := def.External.Resolve(repoRoot, rc.ExternalParameters)
+	if err != nil {
+		return fmt.Errorf("resolving external component %q: %w", def.Name, err)
+	}
+	inst, err := components.NewExternalInstance(def, 0, 1, urls)
+	if err != nil {
+		return fmt.Errorf("creating external component %q: %w", def.Name, err)
+	}
+	if err := t.Instances.Add(inst); err != nil {
+		return err
+	}
+	return t.runProvisioner(ctx, def, inst)
+}
+
 // runProvisioner records values produced for dependent components.
 func (t *Topology) runProvisioner(
 	ctx context.Context, def *components.Definition, inst *components.Instance,
@@ -417,12 +458,12 @@ func (t *Topology) publishAccessors() {
 	// Publish ready-to-use endpoint URLs for every component.
 	for _, name := range t.Instances.Names() {
 		for _, inst := range t.Instances.All(name) {
-			for _, e := range inst.Definition().Endpoints {
-				url, err := inst.URL(e.Name)
+			for _, endpoint := range inst.EndpointNames() {
+				url, err := inst.URL(endpoint)
 				if err != nil {
 					continue // unpublished endpoint; Instance.URL reports it better on demand
 				}
-				t.Shared.Set(accessorKey(inst.Name(), e.Name), url)
+				t.Shared.Set(accessorKey(inst.Name(), endpoint), url)
 			}
 		}
 	}

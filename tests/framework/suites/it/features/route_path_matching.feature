@@ -70,7 +70,7 @@ Feature: Route path matching
     When I send a "GET" request to "${CTX:apiContext2}/v1.0/data"
     Then the response should be successful
 
-    When I send a "POST" request to "${CTX:apiContext2}/v1.0/data"
+    When I send a "POST" request to "${CTX:apiContext2}/v1.0/data" until status 404
     Then the response status code should be 404
 
     When I delete the API "${CTX:apiName2}"

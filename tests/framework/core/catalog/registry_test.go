@@ -51,8 +51,12 @@ func TestRegistry(t *testing.T) {
 
 	seen := map[string]string{}
 	for _, definition := range All() {
-		require.NotEmpty(t, definition.Endpoints, definition.Name)
 		require.NotEmpty(t, definition.Alias, definition.Name)
+		if definition.IsExternal() {
+			require.NotEmpty(t, definition.External.Endpoints, definition.Name)
+		} else {
+			require.NotEmpty(t, definition.Endpoints, definition.Name)
+		}
 		require.Empty(t, seen[definition.Alias])
 		seen[definition.Alias] = definition.Name
 
