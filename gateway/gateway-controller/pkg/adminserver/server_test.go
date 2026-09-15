@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,6 +57,8 @@ func newAdminProtectMiddleware(t *testing.T, roles []string) func(http.Handler) 
 		ResourceRoles: map[string][]string{
 			"GET " + AdminAPIBasePath + "/config_dump":     {"admin"},
 			"GET " + AdminAPIBasePath + "/xds_sync_status": {"admin"},
+			"POST " + AdminAPIBasePath + "/mcp":            {"admin"},
+			"POST /mcp":                                    {"admin"},
 		},
 	}, slog.Default())
 	return func(next http.Handler) http.Handler {
@@ -89,7 +92,7 @@ func TestAdminServer_ConfigDumpHandler(t *testing.T) {
 		Port:       9092,
 		AllowedIPs: []string{"*"},
 		ConfigDump: config.ConfigDumpConfig{Enabled: true},
-	}, stub, nil, slog.Default())
+	}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -110,7 +113,7 @@ func TestAdminServer_ConfigDumpHandler_DisabledByDefault(t *testing.T) {
 		configDump: adminapi.ConfigDumpResponse{Status: &status},
 	}
 	// ConfigDump.Enabled left at its zero value (false) — matches the production default.
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -131,7 +134,7 @@ func TestAdminServer_XDSSyncStatusHandler(t *testing.T) {
 			Timestamp:          &now,
 		},
 	}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/xds_sync_status", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -148,7 +151,7 @@ func TestAdminServer_XDSSyncStatusHandler(t *testing.T) {
 
 func TestAdminServer_IPAllowlist(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/xds_sync_status", nil)
 	req.RemoteAddr = "192.168.1.10:12345"
@@ -160,7 +163,7 @@ func TestAdminServer_IPAllowlist(t *testing.T) {
 
 func TestAdminServer_MethodNotAllowed(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodPost, AdminAPIBasePath+"/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -172,7 +175,7 @@ func TestAdminServer_MethodNotAllowed(t *testing.T) {
 
 func TestAdminServer_HealthHandler(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -189,7 +192,7 @@ func TestAdminServer_HealthHandler(t *testing.T) {
 
 func TestAdminServer_HealthHandler_MethodNotAllowed(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodPost, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -202,7 +205,7 @@ func TestAdminServer_HealthHandler_MethodNotAllowed(t *testing.T) {
 func TestAdminServer_HealthHandler_NoIPWhitelist(t *testing.T) {
 	stub := &stubAPIServer{}
 	// Restrict IPs to only 127.0.0.1 — health should still be accessible from other IPs
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "192.168.1.10:12345"
@@ -224,7 +227,7 @@ func TestIsIPAllowed(t *testing.T) {
 
 func TestAdminServer_LegacyHealthHandler_NoIPWhitelist(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	req.RemoteAddr = "192.168.1.10:12345"
@@ -245,7 +248,7 @@ func TestAdminServer_LegacyConfigDump(t *testing.T) {
 		Port:       9092,
 		AllowedIPs: []string{"*"},
 		ConfigDump: config.ConfigDumpConfig{Enabled: true},
-	}, stub, nil, slog.Default())
+	}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -273,7 +276,7 @@ func TestAdminServer_LegacyXDSSyncStatus(t *testing.T) {
 			Timestamp:          &now,
 		},
 	}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/xds_sync_status", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -286,7 +289,7 @@ func TestAdminServer_LegacyXDSSyncStatus(t *testing.T) {
 
 func TestAdminServer_VersionedPathsHaveNoDeprecationHeader(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -304,7 +307,7 @@ func TestAdminServer_VersionedPathsHaveNoDeprecationHeader(t *testing.T) {
 func TestAdminServer_ConfigDump_RequiresAuth(t *testing.T) {
 	status := "ok"
 	stub := &stubAPIServer{configDump: adminapi.ConfigDumpResponse{Status: &status}}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -317,7 +320,7 @@ func TestAdminServer_ConfigDump_RequiresAuth(t *testing.T) {
 func TestAdminServer_ConfigDump_WrongCredentials(t *testing.T) {
 	status := "ok"
 	stub := &stubAPIServer{configDump: adminapi.ConfigDumpResponse{Status: &status}}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.SetBasicAuth(testAdminUser, "wrong-password")
@@ -335,7 +338,7 @@ func TestAdminServer_ConfigDump_WithValidAuth(t *testing.T) {
 		Port:       9092,
 		AllowedIPs: []string{"*"},
 		ConfigDump: config.ConfigDumpConfig{Enabled: true},
-	}, stub, newBasicAuthMiddleware(t), slog.Default())
+	}, stub, newBasicAuthMiddleware(t), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.SetBasicAuth(testAdminUser, testAdminPass)
@@ -353,7 +356,7 @@ func TestAdminServer_ConfigDump_WithValidAuth(t *testing.T) {
 
 func TestAdminServer_XDSSyncStatus_RequiresAuth(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/xds_sync_status", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -365,7 +368,7 @@ func TestAdminServer_XDSSyncStatus_RequiresAuth(t *testing.T) {
 
 func TestAdminServer_Health_PublicWithAuthEnabled(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default(), nil)
 
 	// No credentials supplied — the health probe must still succeed so container
 	// and kubelet liveness checks keep working.
@@ -383,7 +386,7 @@ func TestAdminServer_Health_PublicWithAuthEnabled(t *testing.T) {
 
 func TestAdminServer_LegacyHealth_PublicWithAuthEnabled(t *testing.T) {
 	stub := &stubAPIServer{}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -396,7 +399,7 @@ func TestAdminServer_LegacyHealth_PublicWithAuthEnabled(t *testing.T) {
 func TestAdminServer_LegacyConfigDump_RequiresAuth(t *testing.T) {
 	status := "ok"
 	stub := &stubAPIServer{configDump: adminapi.ConfigDumpResponse{Status: &status}}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default())
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -417,7 +420,7 @@ func TestAdminServer_ConfigDump_AdminRoleAllowed(t *testing.T) {
 		AllowedIPs: []string{"*"},
 		ConfigDump: config.ConfigDumpConfig{Enabled: true},
 	}, stub,
-		newAdminProtectMiddleware(t, []string{"admin"}), slog.Default())
+		newAdminProtectMiddleware(t, []string{"admin"}), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.SetBasicAuth(testAdminUser, testAdminPass)
@@ -432,7 +435,7 @@ func TestAdminServer_ConfigDump_NonAdminForbidden(t *testing.T) {
 	status := "ok"
 	stub := &stubAPIServer{configDump: adminapi.ConfigDumpResponse{Status: &status}}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub,
-		newAdminProtectMiddleware(t, []string{"developer"}), slog.Default())
+		newAdminProtectMiddleware(t, []string{"developer"}), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.SetBasicAuth(testAdminUser, testAdminPass) // valid credentials, wrong role
@@ -447,7 +450,7 @@ func TestAdminServer_Health_PublicRegardlessOfRole(t *testing.T) {
 	stub := &stubAPIServer{}
 	// Even a non-admin (in fact, no credentials) must reach the health probe.
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub,
-		newAdminProtectMiddleware(t, []string{"developer"}), slog.Default())
+		newAdminProtectMiddleware(t, []string{"developer"}), slog.Default(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -455,4 +458,181 @@ func TestAdminServer_Health_PublicRegardlessOfRole(t *testing.T) {
 
 	s.httpSrv.Handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code, "health must bypass both authn and authz")
+}
+
+// Administrative MCP endpoint
+
+// stubMCPHandler stands in for the real MCP handler: these tests exercise the
+// transport chain the admin server wraps it in (IP allowlist, OAuth challenge,
+// authentication, authorization), not the MCP protocol itself.
+func stubMCPHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+	})
+}
+
+// challengeMiddleware mirrors handlers.MCPChallengeMiddleware closely enough to
+// pin the ordering: it decorates any 401/403 with a Bearer challenge, and only
+// when the header is not already set.
+func challengeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(&challengeRecorder{ResponseWriter: w}, r)
+	})
+}
+
+type challengeRecorder struct {
+	http.ResponseWriter
+	written bool
+}
+
+func (c *challengeRecorder) WriteHeader(status int) {
+	if !c.written {
+		c.written = true
+		if (status == http.StatusUnauthorized || status == http.StatusForbidden) &&
+			c.Header().Get("WWW-Authenticate") == "" {
+			c.Header().Set("WWW-Authenticate",
+				`Bearer resource_metadata="https://gw.example.com/.well-known/oauth-protected-resource"`)
+		}
+	}
+	c.ResponseWriter.WriteHeader(status)
+}
+
+func (c *challengeRecorder) Write(b []byte) (int, error) {
+	if !c.written {
+		c.WriteHeader(http.StatusOK)
+	}
+	return c.ResponseWriter.Write(b)
+}
+
+func newMCPTestServer(t *testing.T, allowedIPs []string, roles []string) *Server {
+	t.Helper()
+	return NewServer(&config.AdminServerConfig{
+		Port:       9092,
+		AllowedIPs: allowedIPs,
+	}, &stubAPIServer{}, newAdminProtectMiddleware(t, roles), slog.Default(),
+		&MCPConfig{
+			Handler:   stubMCPHandler(),
+			Challenge: challengeMiddleware,
+			Metadata: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"resource":"https://gw.example.com/api/admin/v1/mcp",` +
+					`"authorization_servers":["https://idp.example.com"]}`))
+			},
+		})
+}
+
+func mcpRequest(t *testing.T, s *Server, remoteAddr string, withCreds bool) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, AdminAPIBasePath+"/mcp",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	req.Header.Set("Content-Type", "application/json")
+	if remoteAddr != "" {
+		req.RemoteAddr = remoteAddr
+	}
+	if withCreds {
+		req.SetBasicAuth(testAdminUser, testAdminPass)
+	}
+	rec := httptest.NewRecorder()
+	s.httpSrv.Handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAdminServer_MCP_DisabledReturns404(t *testing.T) {
+	s := NewServer(&config.AdminServerConfig{
+		Port:       9092,
+		AllowedIPs: []string{"*"},
+	}, &stubAPIServer{}, newAdminProtectMiddleware(t, []string{"admin"}), slog.Default(), nil)
+
+	rec := mcpRequest(t, s, "", true)
+
+	// With a nil MCPConfig the generated route exists but HandleAdminMcp has no
+	// handler, so it answers 404 — a gateway with the endpoint switched off is
+	// indistinguishable from one that never implemented it.
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestAdminServer_MCP_RequiresAuth(t *testing.T) {
+	s := newMCPTestServer(t, []string{"*"}, []string{"admin"})
+
+	rec := mcpRequest(t, s, "", false)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	challenge := rec.Header().Get("WWW-Authenticate")
+	assert.True(t, strings.HasPrefix(challenge, "Bearer "), "got %q", challenge)
+	assert.Contains(t, challenge, "resource_metadata=")
+}
+
+func TestAdminServer_MCP_NonAdminForbidden(t *testing.T) {
+	s := newMCPTestServer(t, []string{"*"}, []string{"developer"})
+
+	rec := mcpRequest(t, s, "", true)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "Bearer ")
+}
+
+func TestAdminServer_MCP_AdminAllowed(t *testing.T) {
+	s := newMCPTestServer(t, []string{"*"}, []string{"admin"})
+
+	rec := mcpRequest(t, s, "", true)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "jsonrpc")
+}
+
+func TestAdminServer_MCP_MetadataIsUnauthenticated(t *testing.T) {
+	s := newMCPTestServer(t, []string{"*"}, []string{"admin"})
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/.well-known/oauth-protected-resource"+AdminAPIBasePath+"/mcp", nil)
+	rec := httptest.NewRecorder()
+	s.httpSrv.Handler.ServeHTTP(rec, req)
+
+	// A client with no token has to read this to begin the OAuth flow.
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "authorization_servers")
+}
+
+func TestAdminServer_MCP_MetadataStillIPGated(t *testing.T) {
+	s := newMCPTestServer(t, []string{"10.0.0.1"}, []string{"admin"})
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/.well-known/oauth-protected-resource"+AdminAPIBasePath+"/mcp", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	s.httpSrv.Handler.ServeHTTP(rec, req)
+
+	// Unauthenticated is not unrestricted: a client that cannot reach the
+	// endpoint gains nothing from reading how to authenticate to it.
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+// TestAdminServer_MCP_LegacyAliasDeprecated pins that the generated router's
+// unprefixed alias works and carries the RFC 8594 deprecation header, exactly
+// as the other legacy admin routes do.
+func TestAdminServer_MCP_LegacyAliasDeprecated(t *testing.T) {
+	s := newMCPTestServer(t, []string{"*"}, []string{"admin"})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(testAdminUser, testAdminPass)
+	rec := httptest.NewRecorder()
+	s.httpSrv.Handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "true", rec.Header().Get("Deprecation"))
+}
+
+func TestAdminServer_MCP_MethodNotAllowed(t *testing.T) {
+	s := newMCPTestServer(t, []string{"*"}, []string{"admin"})
+
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/mcp", nil)
+	req.SetBasicAuth(testAdminUser, testAdminPass)
+	rec := httptest.NewRecorder()
+	s.httpSrv.Handler.ServeHTTP(rec, req)
+
+	// Only POST is registered on the mux.
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
