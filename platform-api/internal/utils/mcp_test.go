@@ -21,6 +21,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -93,8 +94,18 @@ func TestBuildMCPDeploymentYAML(t *testing.T) {
 	if deploymentStruct.Spec.Context != "/mcp-test" {
 		t.Errorf("Context = %q", deploymentStruct.Spec.Context)
 	}
-	if deploymentStruct.Spec.SpecVersion != "2025-06-18" {
-		t.Errorf("SpecVersion = %q", deploymentStruct.Spec.SpecVersion)
+	if got := deploymentStruct.Spec.SpecVersions; len(got) != 1 || got[0] != "2025-06-18" {
+		t.Errorf("SpecVersions = %v", got)
+	}
+	if deploymentStruct.Spec.SpecVersion != "" {
+		t.Errorf("SpecVersion = %q, want empty: the deprecated field is never emitted", deploymentStruct.Spec.SpecVersion)
+	}
+	// The struct assertions above cannot catch a key rename, so pin the emitted text.
+	if !strings.Contains(yamlString, "specVersions:") {
+		t.Errorf("emitted YAML has no specVersions key:\n%s", yamlString)
+	}
+	if strings.Contains(yamlString, "specVersion:") {
+		t.Errorf("emitted YAML still carries a specVersion key, which the gateway reads as present:\n%s", yamlString)
 	}
 }
 
