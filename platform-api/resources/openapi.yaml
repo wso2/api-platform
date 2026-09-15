@@ -9396,11 +9396,38 @@ components:
         upstream:
           $ref: "#/components/schemas/Upstream"
         mcpSpecVersion:
+          deprecated: true
           type: string
-          description: MCP specification version supported by this proxy
+          description: DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
           enum:
             - "2025-06-18"
             - "2025-11-25"
+            - "2026-07-28"
+        mcpSpecVersions:
+          type: array
+          description: MCP specification versions supported by this proxy
+          items:
+            type: string
+            enum:
+              - "2025-06-18"
+              - "2025-11-25"
+              - "2026-07-28"
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
+        upstreamMcpSpecVersions:
+          type: array
+          description: |
+             MCP specification versions reported as supported by the upstream MCP server.
+             This field is informational and may include versions that are not supported
+             by this platform. It does not determine the MCP specification versions
+             supported by the proxy and may not represent every version accepted by the
+             upstream server.
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         policies:
           type: array
           description: List of policies to be applied
@@ -9485,8 +9512,17 @@ components:
             - failed
           example: deployed
         mcpSpecVersion:
+          deprecated: true
           type: string
+          description: DEPRECATED - use mcpSpecVersions.
           example: 2025-11-25
+        mcpSpecVersions:
+          type: array
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         createdAt:
           type: string
           format: date-time
