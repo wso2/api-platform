@@ -255,16 +255,19 @@ Feature: MCP proxy CRUD and connectivity
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 
-  Scenario: Deploy an MCP proxy with an invalid spec version returns 400
-    Given I generate a unique resource name from "mcp-invalid-spec-version" and store it as "mcpName"
-    And I generate a unique API context from "/mcp-invalid-spec-version" and store it as "mcpContext"
+  # A revision the gateway does not serve is a gateway limitation and deploys; a value that is
+  # not a revision date is a typo and does not. 2025-3-18 is unpadded, so it is neither a date
+  # nor a revision any build serves - the one assertion that holds across gateway versions.
+  Scenario: Deploy an MCP proxy with a malformed spec version returns 400
+    Given I generate a unique resource name from "mcp-malformed-spec-version" and store it as "mcpName"
+    And I generate a unique API context from "/mcp-malformed-spec-version" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
       | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:mcpName}                    |
-      | displayName | Invalid Spec Version MCP            |
+      | displayName | Malformed Spec Version MCP          |
       | version     | v1.0                                |
       | context     | ${CTX:mcpContext}                  |
-      | specVersion | 2025-03-18                          |
+      | specVersion | 2025-3-18                           |
       | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response status code should be 400
     And the response should be valid JSON
