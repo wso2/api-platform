@@ -4805,9 +4805,9 @@ paths:
     delete:
       summary: Delete API Portal
       description: |
-        Deletes an API Portal. Any provisioned instance and associated identity-provider
-        credentials are cleaned up as part of deletion. Access is validated against the
-        org in the JWT token.
+        Deletes the API Portal registration and purges the encrypted shared key. The remote
+        portal instance is not touched; operators are responsible for its lifecycle. Access
+        is validated against the org in the JWT token.
       operationId: DeleteApiPortal
       security:
         - OAuth2Security:
@@ -9278,7 +9278,9 @@ components:
         url:
           type: string
           format: uri
-          description: Public URL of the API Portal to register. Operator-supplied.
+          pattern: '^https://'
+          maxLength: 500
+          description: Public HTTPS URL of the API Portal to register. Operator-supplied.
         sharedKey:
           type: string
           writeOnly: true
@@ -9310,6 +9312,8 @@ components:
         url:
           type: string
           format: uri
+          pattern: '^https://'
+          maxLength: 500
         sharedKey:
           type: string
           writeOnly: true

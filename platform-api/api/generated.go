@@ -840,7 +840,7 @@ type CreateApiPortalRequest struct {
 	// SharedKey The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on outbound publishing calls. The portal side stores only the sha256 hash of this value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here; never returned on any read.
 	SharedKey *string `binding:"required" json:"sharedKey,omitempty" yaml:"sharedKey,omitempty"`
 
-	// Url Public URL of the API Portal to register. Operator-supplied.
+	// Url Public HTTPS URL of the API Portal to register. Operator-supplied.
 	Url string `binding:"required" json:"url" yaml:"url"`
 }
 
@@ -2909,7 +2909,7 @@ type ListApiPortalsParams struct {
 	// SortOrder Sort direction applied to `sortBy`.
 	SortOrder *ListApiPortalsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
 
-	// Query Case-insensitive substring filter matched against the resource id (handle).
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 

@@ -113,36 +113,40 @@ func (r *APIPortalAuthRegistry) Get(portalHandle, orgID string) (AuthProvider, e
 	}
 	key := registryKey(orgID, portalHandle)
 
-	r.mu.Lock()
-	if p, ok := r.providers[key]; ok {
+	for {
+		r.mu.Lock()
+		if p, ok := r.providers[key]; ok {
+			r.mu.Unlock()
+			return p, nil
+		}
+		genSnapshot := r.generations[key]
 		r.mu.Unlock()
-		return p, nil
-	}
-	genSnapshot := r.generations[key]
-	r.mu.Unlock()
 
-	portal, err := r.portalRepo.GetByHandleAndOrgID(portalHandle, orgID)
-	if err != nil {
-		return nil, err
-	}
-	if portal == nil {
-		return nil, apperror.APIPortalNotFound.New()
-	}
+		portal, err := r.portalRepo.GetByHandleAndOrgID(portalHandle, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if portal == nil {
+			return nil, apperror.APIPortalNotFound.New()
+		}
 
-	provider, err := NewSharedKeyAuthProvider(r.vault, portal.InternalAuthKey)
-	if err != nil {
-		return nil, err
-	}
+		provider, err := NewSharedKeyAuthProvider(r.vault, portal.InternalAuthKey)
+		if err != nil {
+			return nil, err
+		}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.generations[key] != genSnapshot {
-		// Invalidate ran during decrypt; skip cache write so a stale provider never sticks.
+		r.mu.Lock()
+		if r.generations[key] != genSnapshot {
+			// Invalidate ran during decrypt; the ciphertext we just read may be stale — retry.
+			r.mu.Unlock()
+			continue
+		}
+		if existing, ok := r.providers[key]; ok {
+			r.mu.Unlock()
+			return existing, nil
+		}
+		r.providers[key] = provider
+		r.mu.Unlock()
 		return provider, nil
 	}
-	if existing, ok := r.providers[key]; ok {
-		return existing, nil
-	}
-	r.providers[key] = provider
-	return provider, nil
 }

@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -715,25 +716,30 @@ func TestAPIPortalService_DeleteAPIPortal_NotFound(t *testing.T) {
 
 // --- Registry cache-fill race ---
 
-// blockingPortalRepo lets a test park a GetByHandleAndOrgID call at a known
-// point so the test can interleave an Invalidate against the in-flight Get.
+// blockingPortalRepo lets a test park the first GetByHandleAndOrgID call at a
+// known point so the test can interleave an Invalidate against the in-flight
+// Get. Subsequent calls (the retry after invalidation) return immediately.
 type blockingPortalRepo struct {
 	mockAPIPortalRepository
-	enter   chan struct{} // closed by the repo when Get is entered
-	release chan struct{} // read by the repo to hold until the test says go
+	enter   chan struct{} // closed by the repo when the first Get is entered
+	release chan struct{} // read by the repo to hold the first call until the test says go
 	portal  *model.APIPortal
+	calls   int32
 }
 
 func (r *blockingPortalRepo) GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error) {
-	close(r.enter)
-	<-r.release
+	if atomic.AddInt32(&r.calls, 1) == 1 {
+		close(r.enter)
+		<-r.release
+	}
 	return r.portal, nil
 }
 
-// A Get in flight when Invalidate runs must not repopulate the cache with the
-// stale provider. Locks the fix for the TOCTOU between the row read and the
+// A Get in flight when Invalidate runs must retry against the current
+// generation instead of caching a provider built from possibly-stale
+// ciphertext. Locks the fix for the TOCTOU between the row read and the
 // cache fill.
-func TestAPIPortalAuthRegistry_GetDoesNotCacheAfterConcurrentInvalidate(t *testing.T) {
+func TestAPIPortalAuthRegistry_GetRetriesAfterConcurrentInvalidate(t *testing.T) {
 	v := newTestVault(t)
 	// Row's InternalAuthKey must be a valid ciphertext so NewSharedKeyAuthProvider
 	// succeeds. Encrypt a placeholder raw here.
@@ -748,7 +754,7 @@ func TestAPIPortalAuthRegistry_GetDoesNotCacheAfterConcurrentInvalidate(t *testi
 	}
 	reg := NewAPIPortalAuthRegistry(repo, v)
 
-	// Start the Get; it will park inside the repo call.
+	// Start the Get; it will park inside the first repo call.
 	got := make(chan AuthProvider, 1)
 	go func() {
 		p, err := reg.Get("acme", "org-1")
@@ -762,8 +768,8 @@ func TestAPIPortalAuthRegistry_GetDoesNotCacheAfterConcurrentInvalidate(t *testi
 	// Invalidate while Get is parked. This is the race the fix guards.
 	reg.Invalidate("acme", "org-1")
 
-	// Let Get complete. It builds a provider from the row we captured and
-	// must NOT cache it (generation changed).
+	// Let the first repo call return. Get must detect the generation change,
+	// discard the possibly-stale provider, and retry.
 	close(repo.release)
 	select {
 	case <-got:
@@ -771,10 +777,13 @@ func TestAPIPortalAuthRegistry_GetDoesNotCacheAfterConcurrentInvalidate(t *testi
 		t.Fatal("Get did not return after release")
 	}
 
+	if got := atomic.LoadInt32(&repo.calls); got < 2 {
+		t.Errorf("expected Get to retry against the current generation, repo.calls = %d", got)
+	}
 	reg.mu.Lock()
 	_, cached := reg.providers[registryKey("org-1", "acme")]
 	reg.mu.Unlock()
-	if cached {
-		t.Error("Get repopulated cache after concurrent Invalidate; stale provider would persist")
+	if !cached {
+		t.Error("Get did not cache the retried provider; every subsequent Get would refetch")
 	}
 }
