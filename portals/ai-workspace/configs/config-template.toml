@@ -71,11 +71,6 @@ default_org_region = "us"
 # https://github.com/wso2/api-platform/discussions/3242) are not yet implemented.
 api_portal_enabled = false
 
-# Single API Portal MCP proxies publish to. Temporary: there is no portal
-# registration/listing yet, so this stands in for a real picker until one exists.
-# Browser-safe.
-api_portal_default_id = ""
-
 # Externally-reachable host:port for this deployment, shown only in the startup log
 # banner ("Visit https://..."). Not browser-safe — the SPA never needs it, since the
 # browser already knows its own address via window.location. Leave unset to fall back

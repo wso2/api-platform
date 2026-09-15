@@ -61,6 +61,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Info,
   Plus,
   Trash2,
 } from '@wso2/oxygen-ui-icons-react';
@@ -89,6 +90,7 @@ import type { Gateway } from '../../../../apis/gatewayTypes';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getHttpStatus } from '../../../../utils/apiError';
+import { parseMCPServerCapabilities } from '../../../../utils/mcpCapabilities';
 import type {
   DeploymentResponse,
   MCPServer,
@@ -273,7 +275,8 @@ export default function ExternalServersOverview(): JSX.Element {
   // state (feature flag + at least one active gateway deployment), never on
   // a network round trip — a status-check failure must not hide the action.
   const [isAPIPortalAvailable, setIsAPIPortalAvailable] = useState(false);
-  const [isPublished, setIsPublished] = useState(false);
+  const [isPublished, setIsPublished] = useState(false)
+  const [isPublishStatusUnknown, setIsPublishStatusUnknown] = useState(true);
   const [apiPortalUrl, setApiPortalUrl] = useState<string | undefined>();
   const [isPublishStatusLoading, setIsPublishStatusLoading] = useState(false);
   const [isPublishActionLoading, setIsPublishActionLoading] = useState(false);
@@ -887,21 +890,11 @@ export default function ExternalServersOverview(): JSX.Element {
   const handleApplyCapabilities = (value: string) => {
     try {
       const parsed = JSON.parse(value) as Record<string, unknown>;
-      setRefetchedCapabilities({
-        tools: (Array.isArray(parsed.tools)
-          ? parsed.tools
-          : []) as MCPServerCapabilities['tools'],
-        resources: (Array.isArray(parsed.resources)
-          ? parsed.resources
-          : []) as MCPServerCapabilities['resources'],
-        prompts: (Array.isArray(parsed.prompts)
-          ? parsed.prompts
-          : []) as MCPServerCapabilities['prompts'],
-      });
+      setRefetchedCapabilities(parseMCPServerCapabilities(parsed));
       setIsCapabilitiesDrawerOpen(false);
-    } catch {
+    } catch (err) {
       showSnackbar(
-        'Invalid JSON in capabilities editor. Fix errors before applying.',
+        getErrorMessage(err, 'Invalid JSON in capabilities editor. Fix errors before applying.'),
         'error'
       );
     }
@@ -928,17 +921,25 @@ export default function ExternalServersOverview(): JSX.Element {
         if (cancelled) return;
         setIsPublished(true);
         setApiPortalUrl(publication.productionUrl);
+        setIsPublishStatusUnknown(false);
       } catch (err) {
         if (cancelled) return;
         if (getHttpStatus(err) === 404) {
           // No publication record — not published, not an error.
           setIsPublished(false);
           setApiPortalUrl(undefined);
+          setIsPublishStatusUnknown(false);
         } else {
-          // The publish backend for this contract isn't wired up yet in most
-          // deployments — log it, but don't hide the action; failures surface
-          // via the snackbar on Publish/Unpublish instead.
+          // Status is genuinely unknown (e.g. the publish backend for this
+          // contract isn't wired up yet) — keep the action disabled rather
+          // than defaulting to "not published", which could let a Publish
+          // click race an actual, already-published state.
+          setIsPublishStatusUnknown(true);
           logger.error('Failed to check API Portal publish status', err);
+          showSnackbar(
+            getErrorMessage(err, 'Failed to check API Portal publish status'),
+            'error'
+          );
         }
       } finally {
         if (!cancelled) setIsPublishStatusLoading(false);
@@ -1290,12 +1291,15 @@ export default function ExternalServersOverview(): JSX.Element {
                   <DisabledActionTooltip
                     disabled={
                       deployedGateways.length === 0 ||
+                      isPublishStatusUnknown ||
                       (isPublished ? !canUnpublishFromAPIPortal : !canPublishToAPIPortal)
                     }
                     title={
                       deployedGateways.length === 0
                         ? 'Deploy to a gateway before publishing'
-                        : NO_PERMISSION_TOOLTIP
+                        : isPublishStatusUnknown
+                          ? 'Unable to verify publish status'
+                          : NO_PERMISSION_TOOLTIP
                     }
                   >
                     <Button
@@ -1305,6 +1309,7 @@ export default function ExternalServersOverview(): JSX.Element {
                         deployedGateways.length === 0 ||
                         isPublishStatusLoading ||
                         isPublishActionLoading ||
+                        isPublishStatusUnknown ||
                         (isPublished ? !canUnpublishFromAPIPortal : !canPublishToAPIPortal)
                       }
                       onClick={
@@ -1480,21 +1485,36 @@ export default function ExternalServersOverview(): JSX.Element {
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   Capabilities
                 </Typography>
-                <DisabledActionTooltip
-                  disabled={isReadOnlyServer}
-                  title="Capabilities are managed by the gateway that created this MCP proxy and are read-only here."
-                >
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<Plus size={16} />}
-                    onClick={handleOpenCapabilitiesDrawer}
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  {!isReadOnlyServer ? (
+                    <Tooltip
+                      title="Use this if the MCP server's URL can't be reached to automatically fetch its tools, resources, and prompts."
+                      placement="top"
+                      arrow
+                    >
+                      <Info
+                        size={14}
+                        color="#8D91A3"
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </Tooltip>
+                  ) : null}
+                  <DisabledActionTooltip
                     disabled={isReadOnlyServer}
-                    sx={DISABLED_ACTION_SX}
+                    title="Capabilities are managed by the gateway that created this MCP proxy and are read-only here."
                   >
-                    Add Capabilities
-                  </Button>
-                </DisabledActionTooltip>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Plus size={16} />}
+                      onClick={handleOpenCapabilitiesDrawer}
+                      disabled={isReadOnlyServer}
+                      sx={DISABLED_ACTION_SX}
+                    >
+                      Add Capabilities
+                    </Button>
+                  </DisabledActionTooltip>
+                </Stack>
               </Stack>
               {validationResult ? (
                 <ExternalServersValidationDetails

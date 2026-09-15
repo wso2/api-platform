@@ -33,6 +33,7 @@ import {
 import { Info, Upload, X } from '@wso2/oxygen-ui-icons-react';
 import Editor from '@monaco-editor/react';
 import { parse as parseYaml } from 'yaml';
+import { parseMCPServerCapabilities } from '../../../../utils/mcpCapabilities';
 
 type Props = {
   open: boolean;
@@ -76,19 +77,17 @@ export default function CapabilitiesDrawer({
           ? (rawParsed.capabilities as Record<string, unknown>)
           : rawParsed;
 
-      const normalized = {
-        tools: Array.isArray(caps.tools) ? caps.tools : [],
-        resources: Array.isArray(caps.resources) ? caps.resources : [],
-        prompts: Array.isArray(caps.prompts) ? caps.prompts : [],
-      };
+      const normalized = parseMCPServerCapabilities(caps);
 
       setDrawerEditorValue(JSON.stringify(normalized, null, 2));
       setUploadFileName(fileName);
       setUploadError('');
       setIsUploadModalOpen(false);
-    } catch {
+    } catch (err) {
       setUploadError(
-        `Could not parse "${fileName}". Ensure it is valid JSON or YAML.`
+        err instanceof Error && err.message
+          ? `Could not parse "${fileName}": ${err.message}`
+          : `Could not parse "${fileName}". Ensure it is valid JSON or YAML.`
       );
       setUploadFileName('');
     }

@@ -111,7 +111,13 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
   // ── Project fetching ────────────────────────────────────────────────────────
 
+  // Guards against an earlier, slower fetchProjectsForOrg call (e.g. from a
+  // superseded organization switch) overwriting state with stale results
+  // after a later call has already resolved.
+  const fetchGenerationRef = useRef(0);
+
   const fetchProjectsForOrg = useCallback(async (): Promise<ProjectBase[]> => {
+    const generation = ++fetchGenerationRef.current;
     setIsProjectsLoading(true);
     try {
       let projectList = await getProjects();
@@ -119,15 +125,21 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
         await createDefaultProject();
         projectList = await getProjects();
       }
-      setProjectsForCurrentOrganization(projectList);
-      setCurrentProjectState(null);
+      if (generation === fetchGenerationRef.current) {
+        setProjectsForCurrentOrganization(projectList);
+        setCurrentProjectState(null);
+      }
       return projectList;
     } catch (err) {
       logger.error('Failed to fetch projects:', err);
-      setProjectsForCurrentOrganization([]);
+      if (generation === fetchGenerationRef.current) {
+        setProjectsForCurrentOrganization([]);
+      }
       return [];
     } finally {
-      setIsProjectsLoading(false);
+      if (generation === fetchGenerationRef.current) {
+        setIsProjectsLoading(false);
+      }
     }
   }, []);
 

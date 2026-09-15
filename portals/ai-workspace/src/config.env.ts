@@ -120,12 +120,9 @@ export const API_PORTAL_ENABLED = getEnvOrDefault(
   false
 );
 
-// The single API Portal MCP proxies publish to. Temporary stand-in for a real
-// portal picker — see configs/config-template.toml.
-export const DEFAULT_API_PORTAL_ID = getEnvOrDefault(
-  'APIP_AIW_API_PORTAL_DEFAULT_ID',
-  ''
-);
+// The single API Portal MCP proxies publish to. Hardcoded stand-in until
+// proper Dev Portal selection support is added — not yet operator-configurable.
+export const DEFAULT_API_PORTAL_ID = 'default';
 
 export const API_BASE_URLS = {
   policyHubApi: getEnvOrDefault(
