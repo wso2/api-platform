@@ -73,8 +73,19 @@ const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
  */
 export function createGatewaysClient(apiFetch: ApiFetch) {
   return {
-    async listGateways(): Promise<Gateway[]> {
-      const response = await apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', '/managed-gateways');
+    /**
+     * Lists the gateways of the given kinds, or every kind when none are given.
+     * The kinds go to the server as `?functionalityType=`, so a host that manages
+     * only one kind is not sent the others just to drop them on arrival. The
+     * caller still filters what it renders: an older server does not know the
+     * parameter and answers with everything.
+     */
+    async listGateways(types: GatewayType[] = []): Promise<Gateway[]> {
+      const query = types.length > 0 ? `?functionalityType=${types.map(encodeURIComponent).join(',')}` : '';
+      const response = await apiFetch<{ list?: ManagedGatewayDTO[] }>(
+        'GET',
+        `/managed-gateways${query}`
+      );
       return (response?.list ?? []).map(mapGateway);
     },
     async listEnvironments(): Promise<Environment[]> {
