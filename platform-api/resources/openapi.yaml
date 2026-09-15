@@ -772,6 +772,182 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/{restApiId}/builds:
+    post:
+      summary: Prepare a build of a REST API
+      description: |
+        Renders the API's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        An API keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateBuild
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:create
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a REST API
+      description: |
+        Lists the API's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetBuilds
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:read
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/{restApiId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetBuild
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:read
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the API's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteBuild
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:delete
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{restApiId}/deployments:
     post:
       summary: Create and deploy a new deployment
@@ -780,6 +956,10 @@ paths:
         Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
+
+        Every deployment runs a build: `base: build` deploys one prepared earlier, and
+        `base: current` renders the API's definition into a build and deploys that, both in
+        one atomic operation. The deployment reports the build it runs as `buildId`.
       operationId: DeployAPI
       security:
         - OAuth2Security:
@@ -819,6 +999,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4846,6 +5028,10 @@ components:
             ap:rest_api:api_key:delete: Delete an API key of a REST API
             ap:rest_api:api_key:manage: Full access to a REST API's API keys
             ap:rest_api:api_key:update: Update an API key of a REST API
+            ap:rest_api:build:create: Prepare a build of a REST API
+            ap:rest_api:build:delete: Delete a build of a REST API
+            ap:rest_api:build:manage: Full access to a REST API's builds
+            ap:rest_api:build:read: Read builds of a REST API
             ap:rest_api:create: Create a REST API
             ap:rest_api:delete: Delete a REST API
             ap:rest_api:deployment:create: Deploy a REST API
@@ -6701,8 +6887,25 @@ components:
           example: "v1.0-production"
         base:
           type: string
-          description: The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+          description: |
+            Where the artifact comes from:
+
+            - `current` — render the artifact from the definition as it stands now.
+            - `build` — deploy a build prepared earlier, named by `buildId`.
+
+            REST API deployments accept only these two and always run a build: `current`
+            stores what it renders as one, so a running deployment is always traceable to
+            a stored snapshot. MCP proxy, LLM and event API deployments accept a
+            `deploymentId` here as well, to promote that deployment by reusing its
+            rendered artifact.
           example: "current"
+        buildId:
+          type: string
+          description: |
+            The build to deploy, such as `2026-01-31-2`. Required when `base` is `build`,
+            and rejected otherwise. Deploying a build ships that exact snapshot, so it
+            cannot pick up edits made since it was prepared.
+          example: "2026-01-31-2"
         gatewayId:
           type: string
           pattern: '^[a-z0-9-]+$'
@@ -6714,6 +6917,79 @@ components:
           type: object
           additionalProperties: true
           description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
+
+    BuildRequest:
+      type: object
+      description: Optional details to record with a build.
+      properties:
+        description:
+          type: string
+          maxLength: 1023
+          description: |
+            Optional note recorded with the build, to tell one snapshot from another when
+            choosing what to deploy or which build to delete.
+          example: "Adds the /reports endpoint"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Free-form metadata to store with the build, such as the commit an API kept in a
+            repository was prepared from. It is returned with the build and is not
+            interpreted by the platform.
+          example:
+            commitId: "9f1c2ab"
+
+    BuildResponse:
+      type: object
+      description: An immutable, rendered snapshot of an API's definition, not bound to any gateway.
+      required:
+        - buildId
+        - uuid
+        - createdAt
+      properties:
+        buildId:
+          type: string
+          description: |
+            Identifier for the build, supplied as `buildId` when a deployment's `base` is
+            `build`. It is the date the build was prepared followed by that day's index for
+            the API, and is unique per API.
+          example: "2026-01-31-2"
+        uuid:
+          type: string
+          format: uuid
+          description: Globally unique identifier for the build, and what a deployment references
+        description:
+          type: string
+          description: Note recorded with the build when it was prepared
+        dataVersion:
+          type: string
+          description: Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Metadata recorded with the build, such as the commit it was prepared from
+        createdBy:
+          type: string
+          description: Who prepared the build
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the build was prepared
+
+    BuildListResponse:
+      type: object
+      required:
+        - count
+        - list
+      properties:
+        count:
+          type: integer
+          description: Number of builds in current response
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuildResponse'
+          description: Builds, newest first
 
     DeploymentResponse:
       type: object
@@ -6761,6 +7037,20 @@ components:
           format: uuid
           nullable: true
           description: UUID of the base deployment this was created from
+        buildId:
+          type: string
+          nullable: true
+          description: |
+            Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
+            has one: `base: build` runs the build it names, and `base: current` stores what
+            it renders as a build and runs that.
+
+            Null for artifact kinds that have no builds — MCP proxy, LLM and event API
+            deployments — including one promoted from another deployment, which reuses that
+            deployment's rendered artifact. Also null once the build it ran has been pruned.
+            Null means only that no build can be named; the deployment keeps its own
+            rendered artifact either way.
+          example: "2026-01-31-2"
         metadata:
           type: object
           additionalProperties: true

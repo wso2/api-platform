@@ -144,3 +144,14 @@ roles:
 
   - name: ap_subscriber
     scopes: *subscriber_grant
+
+  # Service identity for Platform API publish calls. Narrower than dp_admin: only the
+  # artifacts Platform API produces, no org / applications / subscriptions / webhooks / key managers.
+  # Not aliased - a strict subset of dp_admin that maps to no page-access tier.
+  - name: platform-api-system
+    scopes:
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:subscription_plan:manage

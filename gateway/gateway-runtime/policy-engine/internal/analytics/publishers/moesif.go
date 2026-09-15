@@ -324,6 +324,23 @@ func (m *Moesif) Publish(event *dto.Event) {
 		metadataMap["responseMediationLatency"] = event.Latencies.ResponseMediationLatency
 	}
 
+	// Fault classification, derived in analytics.classifyFault from the Envoy
+	// response flags. Three keys only, matching what API Manager's Moesif
+	// integration already reads: errorType carries the fault category (AUTH /
+	// TARGET_CONNECTIVITY / THROTTLED / OTHER), errorMessage the sub-category.
+	// All three are omitted when the request was not a gateway fault.
+	if event.ErrorType != "" {
+		metadataMap["errorType"] = event.ErrorType
+	}
+	if event.Error != nil {
+		if event.Error.ErrorCode != 0 {
+			metadataMap["errorCode"] = event.Error.ErrorCode
+		}
+		if event.Error.ErrorMessage != "" {
+			metadataMap["errorMessage"] = string(event.Error.ErrorMessage)
+		}
+	}
+
 	// commonName
 	if commonName, ok := event.Properties["commonName"]; ok && commonName != nil {
 		metadataMap["commonName"] = commonName

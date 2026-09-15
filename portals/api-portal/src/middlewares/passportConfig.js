@@ -18,13 +18,51 @@
 
 const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth2');
-const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
+const { jwtVerify, createRemoteJWKSet } = require('jose');
+const { getNestedClaim } = require('../utils/jwtDecode');
 const { config } = require('../config/configLoader');
 const { portalRoles } = require('./authorization');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const orgContext = require('../utils/orgContext');
 const { CustomError } = require('../utils/errors/customErrors');
+
+// One JWKS resolver per URL, kept at module scope. `createRemoteJWKSet`
+// keeps an in-memory key cache + rate-limits refreshes; recreating it per
+// call throws that state away and pushes the JWKS endpoint on every login.
+// Keyed by URL so a config change (or a test overriding the URL) creates a
+// new resolver rather than serving stale keys from another endpoint.
+const jwksResolvers = new Map();
+function getJwksResolver(jwksURL) {
+    let resolver = jwksResolvers.get(jwksURL);
+    if (!resolver) {
+        resolver = createRemoteJWKSet(new URL(jwksURL));
+        jwksResolvers.set(jwksURL, resolver);
+    }
+    return resolver;
+}
+
+/**
+ * Verifies an IDP-issued JWT against the configured JWKS. Throws on any failure.
+ * `audience` is optional so the caller can pick the right one per token type
+ * (id_token: clientId per OIDC Core §3.1.3.7; access_token: IDP-configured).
+ * Fails closed on missing token so a callback never creates an empty-claims session.
+ */
+async function verifyIdpJwt(token, audience) {
+    if (!token) {
+        throw new Error('token is required');
+    }
+    const jwksURL = config.auth.idp?.jwksUrl;
+    if (!jwksURL) {
+        throw new Error('IDP jwksUrl is not configured; cannot verify token');
+    }
+    const jwks = getJwksResolver(jwksURL);
+    const options = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
+    if (config.auth.idp?.issuer) options.issuer = config.auth.idp.issuer;
+    if (audience) options.audience = audience;
+    const { payload } = await jwtVerify(token, jwks, options);
+    return payload;
+}
 
 /**
  * Checks an IDP-asserted organization claim against the organization this instance
@@ -97,8 +135,22 @@ function configurePassport(SERVER_ID) {
                 return done(new Error('Access token missing'));
             }
             let isAdmin = false;
-            const decodedJWT = safeDecodeJwt(params.id_token) || {};
-            const decodedAccessToken = safeDecodeJwt(accessToken);
+            // Verify both tokens against JWKS before trusting any claim.
+            // id_token audience: client_id (OIDC §3.1.3.7). access_token audience:
+            // IDP-configured value; when unset, aud check is skipped but signature/issuer/expiry still run.
+            let decodedJWT = {};
+            let decodedAccessToken = {};
+            try {
+                decodedJWT = await verifyIdpJwt(params.id_token, config.auth.idp?.clientId);
+                decodedAccessToken = await verifyIdpJwt(accessToken, config.auth.idp?.audience);
+            } catch (err) {
+                // Detail stays in the log; the message to Passport is fixed so operational detail cannot reach the browser.
+                logger.error('IDP token verification failed during login', {
+                    error: err.message,
+                    code: err.code,
+                });
+                return done(new Error('Login failed: token verification error'));
+            }
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
             const organizationId = getNestedClaim(decodedJWT, config.auth.claimMappings.organization) ?? '';
