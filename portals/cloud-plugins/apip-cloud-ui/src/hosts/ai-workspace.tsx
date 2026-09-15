@@ -11,6 +11,7 @@ import { Boxes, Network, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import {
   InsightsFeature,
   isInsightsMoesifConfigured,
@@ -27,6 +28,13 @@ import {
   type AIWorkspaceExtension,
 } from '../../../../ai-workspace/src/extensions';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
+
+/**
+ * The kinds of gateway this host manages. Module scope, not a literal at the
+ * use site: the gateways feature asks the server for exactly these kinds, and a
+ * fresh array on every render would make that request repeat.
+ */
+const AI_GATEWAY_TYPES: GatewayType[] = ['ai'];
 
 /**
  * Cloud features registered for the AI Workspace host. The host owns routing,
@@ -112,7 +120,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         label: 'AI Gateways',
         icon: <Network size={20} />,
         hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
-        render: (port) => <GatewaysFeature gatewayTypes={['ai']} port={port} />,
+        render: (port) => <GatewaysFeature gatewayTypes={AI_GATEWAY_TYPES} port={port} />,
       },
     ],
   }),
