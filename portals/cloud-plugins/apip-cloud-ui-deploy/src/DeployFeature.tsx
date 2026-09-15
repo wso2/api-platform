@@ -216,7 +216,10 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     );
   };
 
-  if (!projectHandle || !apiHandle) {
+  // `handle`, not the Port's apiHandle: the AI Workspace passes the artifact in
+  // rather than carrying it on the Port, and this guard is what decides whether the
+  // page can load at all.
+  if (!projectHandle || !handle) {
     return (
       <PageContent fullWidth sx={{ minWidth: 0 }}>
         <PageTitle sx={{ mb: 2 }}>
