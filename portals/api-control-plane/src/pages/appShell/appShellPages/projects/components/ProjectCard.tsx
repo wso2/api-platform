@@ -35,7 +35,8 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Project } from '@/api/resources/projects';
 import { relativeTime } from '@/utils/relativeTime';
-import { interactiveCardSx } from '@/theme';
+import { openableProps } from '@/components/openable';
+import { focusRingSx, interactiveCardSx } from '@/theme';
 
 type ProjectCardProps = {
   project: Project;
@@ -105,9 +106,10 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
   return (
     <Card
       // elevation={0}
-      onClick={() => onOpen(project)}
-      sx={() => ({
+      {...openableProps(intl, project.displayName, () => onOpen(project))}
+      sx={(theme) => ({
         ...interactiveCardSx,
+        ...focusRingSx(theme),
         display: 'flex',
         flexDirection: 'column',
         height: '100%',

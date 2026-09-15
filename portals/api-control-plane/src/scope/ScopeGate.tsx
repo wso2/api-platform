@@ -273,7 +273,7 @@ function ScopeSelection({
                     </FormLabel>
                     <Select
                       labelId="scope-gate-api-label"
-                      value={apisQuery.isPending ? '__loading__' : chosenApi}
+                      value={chosenProject && apisQuery.isPending ? '__loading__' : chosenApi}
                       onChange={(event) => setChosenApi(String(event.target.value))}
                       displayEmpty
                       disabled={!chosenProject || apisQuery.isPending}

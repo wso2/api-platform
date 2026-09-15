@@ -149,13 +149,12 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
                 >
                   <Stack
                     direction="row"
+                    spacing={1}
                     sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
                   >
                     {apiType.icon}
                     {disabled ? (
-                      <Form.CardContent sx={{ pt: 0 }}>
-                        <Chip label={<FormattedMessage {...messages.comingSoon} />} size="small" />
-                      </Form.CardContent>
+                      <Chip label={<FormattedMessage {...messages.comingSoon} />} size="small" />
                     ) : null}
                   </Stack>
                   <Stack spacing={0.25} sx={{ textAlign: 'left' }}>

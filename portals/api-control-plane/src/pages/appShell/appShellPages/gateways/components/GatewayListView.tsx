@@ -17,9 +17,11 @@
  */
 
 import { Box, Card, Stack, Typography } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
+import { openableProps } from '@/components/openable';
+import { focusRingSx } from '@/theme';
 import {
   GatewayAvatar,
   GatewayFunctionalityChip,
@@ -91,11 +93,12 @@ type GatewayRowProps = {
  * Renders a single gateway row with the same visual indicators as `GatewayCard`.
  */
 function GatewayRow({ gateway, onOpen }: GatewayRowProps) {
+  const intl = useIntl();
   const updated = gateway.updatedAt || gateway.createdAt;
 
   return (
     <Box
-      onClick={() => onOpen(gateway)}
+      {...openableProps(intl, gateway.displayName, () => onOpen(gateway))}
       sx={(theme) => ({
         borderBottom: `${theme.border.width} ${theme.border.style}`,
         borderColor: 'divider',
@@ -104,6 +107,7 @@ function GatewayRow({ gateway, onOpen }: GatewayRowProps) {
         py: 1.75,
         transition: theme.transitions.create('background-color'),
         ...rowGridSx,
+        ...focusRingSx(theme),
         '&:hover': { bgcolor: 'action.hover' },
         '&:last-of-type': { borderBottom: 0 },
       })}

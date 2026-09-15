@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetHttpClient } from '@/api/core/http';
 import { server } from '@/test/server';
@@ -33,6 +33,7 @@ type FormProps = Parameters<typeof GeneralCreateApiForm>[0];
 const renderForm = (
   initialValues?: FormProps['initialValues'],
   serverErrors?: FormProps['serverErrors'],
+  overrides?: Partial<FormProps>,
 ) =>
   renderWithProviders(
     <GeneralCreateApiForm
@@ -40,6 +41,7 @@ const renderForm = (
       onBack={() => {}}
       onSubmit={() => {}}
       serverErrors={serverErrors}
+      {...overrides}
     />,
     { route, scope },
   );
@@ -97,6 +99,34 @@ describe('GeneralCreateApiForm — initial values', () => {
     expect(
       screen.queryByText(/using https:\/\/example\.com as a placeholder backend/i),
     ).not.toBeInTheDocument();
+  });
+
+  it('stays quiet across the remount a rejected create causes', async () => {
+    // The form is unmounted while the progress screen stands in for it, so a
+    // flag kept here would forget the user had already chosen this URL. The
+    // wizard holds that provenance and hands it back.
+    renderForm(
+      { displayName: 'Untitled API', upstream: { main: { url: 'https://example.com' } } },
+      undefined,
+      { initialUpstreamEdited: true },
+    );
+
+    expect(
+      screen.queryByText(/using https:\/\/example\.com as a placeholder backend/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reports the first backend edit so the wizard can hand it back', async () => {
+    const onUpstreamEdited = vi.fn();
+    const { user } = renderForm(
+      { displayName: 'Untitled API', upstream: { main: { url: 'https://example.com' } } },
+      undefined,
+      { onUpstreamEdited },
+    );
+
+    await user.type(screen.getByLabelText(/Target URL/), '/v1');
+
+    expect(onUpstreamEdited).toHaveBeenCalled();
   });
 
   it('says nothing about a placeholder when the draft named a real backend', () => {

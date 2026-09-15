@@ -51,6 +51,10 @@ export type GeneralCreateApiFormProps = {
   formId?: string;
   hideActions?: boolean;
   initialValues?: ApiCreationWizardDraftState;
+  /** Whether the user has edited the backend URL, preserved across remounts. */
+  initialUpstreamEdited?: boolean;
+  /** Reports the first edit of the backend URL, so it survives the remount. */
+  onUpstreamEdited?: () => void;
   onSubmit: (values: GeneralApiCreationFormState) => void;
   onBack: () => void;
   /**
@@ -381,8 +385,9 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
   // The notice applies only to the untouched placeholder from the scratch
   // skeleton. Focusing the field retires it, even if the user types the same
-  // URL.
-  const [upstreamEdited, setUpstreamEdited] = useState(false);
+  // URL — which is why this is seeded from the wizard rather than from the
+  // restored value, which cannot tell the two apart.
+  const [upstreamEdited, setUpstreamEdited] = useState(props.initialUpstreamEdited ?? false);
 
   // Errors are recomputed from state on every render; `touched` decides which
   // of them the user is ready to see, so nothing shouts before it is typed in.
@@ -474,6 +479,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
   const setMainUpstreamUrl = (url: string) => {
     setUpstreamEdited(true);
+    props.onUpstreamEdited?.();
     setFormState((current) => ({
       ...current,
       upstream: {

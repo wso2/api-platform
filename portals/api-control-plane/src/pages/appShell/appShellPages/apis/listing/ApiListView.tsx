@@ -17,9 +17,11 @@
  */
 
 import { Box, Card, Stack, Typography } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
+import { openableProps } from '@/components/openable';
+import { focusRingSx } from '@/theme';
 import {
   apiDescriptionSx,
   ApiDeleteButton,
@@ -57,11 +59,12 @@ type ApiRowProps = {
  * One API as a row.
  */
 function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
+  const intl = useIntl();
   const updated = api.updatedAt || api.createdAt;
 
   return (
     <Box
-      onClick={() => onOpen(api)}
+      {...openableProps(intl, api.displayName, () => onOpen(api))}
       sx={(theme) => ({
         borderBottom: `${theme.border.width} ${theme.border.style}`,
         borderColor: 'divider',
@@ -70,6 +73,7 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
         py: 1.75,
         transition: theme.transitions.create('background-color'),
         ...rowGridSx,
+        ...focusRingSx(theme),
         '&:focus-within .api-delete-action, &:hover .api-delete-action': {
           opacity: 1,
         },

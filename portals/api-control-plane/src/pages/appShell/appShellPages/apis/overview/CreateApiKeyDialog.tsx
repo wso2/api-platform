@@ -372,13 +372,17 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
       },
       {
         onSuccess: (response) => {
-          notify(intl.formatMessage(messages.created, { name: trimmedName }), 'success');
           if (!response.apiKey) {
-            // `apiKey` is only returned for a server-generated key. Nothing to
-            // reveal, so don't hold the user on a step with nothing to copy.
+            // Only reachable if the contract breaks: `apiKey` is optional in the
+            // response purely because the same shape serves a caller injecting
+            // its own key, and this request never does. A key that exists but
+            // can never be revealed isn't a success, so don't toast one, the
+            // list the dialog closes onto is where the user recovers from it.
+            notify(intl.formatMessage(messages.createFailed), 'error');
             onClose();
             return;
           }
+          notify(intl.formatMessage(messages.created, { name: trimmedName }), 'success');
           setIssued({ apiKey: response.apiKey, displayName: trimmedName, expiresAt });
         },
         onError: (error) =>
@@ -389,8 +393,13 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
 
   const copyKey = () => {
     if (!issued) return;
-    navigator.clipboard
-      ?.writeText(issued.apiKey)
+    // Clipboard access may be unavailable outside secure contexts.
+    const written = navigator.clipboard?.writeText(issued.apiKey);
+    if (!written) {
+      notify(intl.formatMessage(messages.copyFailed), 'error');
+      return;
+    }
+    written
       .then(() => {
         setCopied(true);
         notify(intl.formatMessage(messages.copySucceeded), 'success');

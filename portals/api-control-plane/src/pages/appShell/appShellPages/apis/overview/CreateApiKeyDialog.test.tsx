@@ -173,9 +173,10 @@ describe('CreateApiKeyDialog', () => {
     expect(await navigator.clipboard.readText()).toBe(ISSUED);
   });
 
-  it('closes without a second step when the server returns no key', async () => {
-    // `apiKey` comes back only for a server-generated key. With nothing to
-    // reveal, holding the user on a step with nothing to copy would be a dead end.
+  it('does not claim success when the server returns no key', async () => {
+    // Unreachable in practice — the server generates the key whenever the
+    // request omits one, as this dialog always does. Guarded anyway: a key that
+    // exists but can never be revealed must not be reported as created.
     server.use(accepts('post', KEYS, { status: 'success', message: 'created' }));
     const { user, onClose } = setup();
 
@@ -184,5 +185,6 @@ describe('CreateApiKeyDialog', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(screen.queryByText('API key created')).not.toBeInTheDocument();
+    expect(screen.queryByText(/created\./)).not.toBeInTheDocument();
   });
 });

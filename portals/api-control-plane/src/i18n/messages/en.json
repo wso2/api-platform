@@ -664,6 +664,10 @@
   "apiControlPlane.components.SwaggerSpecViewer.searchPlaceholder": {
     "defaultMessage": "Search resources by path or description"
   },
+  "apiControlPlane.components.openable.openLabel": {
+    "defaultMessage": "Open {name}",
+    "description": "Accessible name of a card or row that opens what it describes."
+  },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."

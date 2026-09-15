@@ -101,6 +101,9 @@ export const ApiCreationWizard = () => {
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
 
+  /** Tracks whether the user has taken over the backend URL across form remounts. */
+  const [upstreamEdited, setUpstreamEdited] = useState(false);
+
   /**
    * The chosen type's own name, translated. `apiType` is already the entry from
    * the catalog, so its descriptor is read directly rather than looked up again.
@@ -148,6 +151,7 @@ export const ApiCreationWizard = () => {
     if (sourceDraft === null) return;
     setPrefilledData(sourceDraft);
     setSubmittedValues(null);
+    setUpstreamEdited(false); // A re-confirmed source brings back its own placeholder.
     setStep('configure');
   };
 
@@ -320,7 +324,9 @@ export const ApiCreationWizard = () => {
                   // attempt to come back from: the form remounts after the
                   // progress screen, so anything hand-typed would otherwise
                   // revert to the spec-derived draft.
+                  initialUpstreamEdited={upstreamEdited}
                   initialValues={submittedValues ?? prefilledData}
+                  onUpstreamEdited={() => setUpstreamEdited(true)}
                   onSubmit={onGeneralFormSumit}
                   onBack={() => setStep('source')}
                   serverErrors={formErrors ?? undefined}

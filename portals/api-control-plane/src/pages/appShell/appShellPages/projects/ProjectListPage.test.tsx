@@ -33,6 +33,7 @@ import {
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { makeConsoleScope } from '@/test/mockScope';
+import { routes } from '@/routes/paths';
 import { ProjectListPage } from './ProjectListPage';
 
 const ORG = 'api-platform-demo';
@@ -62,6 +63,8 @@ function renderPage() {
     <ApiScopeProvider orgId={ORG}>
       <Routes>
         <Route path="/organizations/:orgHandle/projects" element={<ProjectListPage />} />
+        {/* Stands in for the project home, so opening a project is observable. */}
+        <Route path={routes.projectHome()} element={<div>project home</div>} />
       </Routes>
     </ApiScopeProvider>,
     {
@@ -181,6 +184,53 @@ describe('ProjectListPage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toMatch(/\/projects\/retail$/);
+  });
+
+  it('opens a project from the keyboard in both views', async () => {
+    // Pointer users get the whole card/row as the target; without an explicit
+    // focusable role, keyboard users had no way in at all — the delete button
+    // was the only thing in a row they could reach.
+    server.use(collection('/projects', projectFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    const card = screen.getByRole('button', { name: 'Open Retail APIs' });
+    card.focus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByText('project home')).toBeInTheDocument();
+  });
+
+  it('opens a project from a table row with Space', async () => {
+    server.use(collection('/projects', projectFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    await user.click(screen.getByRole('button', { name: 'List view' }));
+
+    const rows = await screen.findByTestId('project-list-view');
+    const row = within(rows).getByRole('button', { name: 'Open Retail APIs' });
+    row.focus();
+    await user.keyboard(' ');
+
+    expect(await screen.findByText('project home')).toBeInTheDocument();
+  });
+
+  it('leaves the row alone when the delete button takes the keypress', async () => {
+    // The delete button's key events bubble through the row, so Enter on it
+    // must open the confirm dialog and not also navigate into the project.
+    server.use(collection('/projects', projectFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    await user.click(screen.getByRole('button', { name: 'List view' }));
+
+    const rows = await screen.findByTestId('project-list-view');
+    within(rows).getByRole('button', { name: 'Delete Retail APIs' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText('project home')).not.toBeInTheDocument();
   });
 
   it('deletes a project after type-to-confirm', async () => {

@@ -21,6 +21,8 @@ import { Clock, Layers, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Project } from '@/api/resources/projects';
+import { openableProps } from '@/components/openable';
+import { focusRingSx } from '@/theme';
 import { useFormatters } from '@/i18n/useFormatters';
 
 const AVATAR_SIZE = 40;
@@ -90,7 +92,7 @@ function ProjectRow({ project, onOpen, onDelete }: ProjectRowProps) {
 
   return (
     <Box
-      onClick={() => onOpen(project)}
+      {...openableProps(intl, project.displayName, () => onOpen(project))}
       sx={(theme) => ({
         borderBottom: `${theme.border.width} ${theme.border.style}`,
         borderColor: 'divider',
@@ -99,6 +101,7 @@ function ProjectRow({ project, onOpen, onDelete }: ProjectRowProps) {
         py: 1.75,
         transition: theme.transitions.create('background-color'),
         ...rowGridSx,
+        ...focusRingSx(theme),
         // Keyboard users get the action the same way pointer users do.
         '&:focus-within .project-delete-action, &:hover .project-delete-action': { opacity: 1 },
         '&:hover': { bgcolor: 'action.hover' },
