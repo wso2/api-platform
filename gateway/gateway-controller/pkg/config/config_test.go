@@ -2370,3 +2370,101 @@ func TestValidate_CustomTextAccessLogWithoutTagIsNotFatal(t *testing.T) {
 	assert.False(t, textAccessLogStartsWithComponentTag(cfg.Router.AccessLogs.TextFormat))
 	assert.NoError(t, cfg.Validate())
 }
+
+// adminMCPConfig builds a Config with the admin MCP endpoint enabled and every
+// prerequisite satisfied, so each test below can invalidate exactly one thing.
+func adminMCPConfig() *Config {
+	c := &Config{}
+	c.Controller.AdminServer.Enabled = true
+	c.Controller.AdminServer.ExternalBaseURL = "http://localhost:9092"
+	c.Controller.AdminServer.MCPServer.Enabled = true
+	c.Controller.AdminServer.MCPServer.AdvertisedScopes = []string{"admin"}
+	return c
+}
+
+func TestValidateAdminMCPServerConfig(t *testing.T) {
+	t.Run("disabled needs nothing", func(t *testing.T) {
+		assert.NoError(t, (&Config{}).validateAdminMCPServerConfig())
+	})
+
+	t.Run("valid", func(t *testing.T) {
+		assert.NoError(t, adminMCPConfig().validateAdminMCPServerConfig())
+	})
+
+	t.Run("requires the admin server itself", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.AdminServer.Enabled = false
+
+		err := c.validateAdminMCPServerConfig()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "controller.admin_server.enabled=true")
+	})
+
+	t.Run("requires the admin external base URL", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.AdminServer.ExternalBaseURL = ""
+
+		err := c.validateAdminMCPServerConfig()
+
+		require.Error(t, err)
+		// The message must steer the operator away from the management key,
+		// which names a different port.
+		assert.Contains(t, err.Error(), "controller.admin_server.external_base_url")
+		assert.Contains(t, err.Error(), "NOT controller.server.external_base_url")
+	})
+
+	t.Run("rejects a relative base URL", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.AdminServer.ExternalBaseURL = "/api/admin/v1"
+
+		err := c.validateAdminMCPServerConfig()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "absolute URL")
+	})
+
+	t.Run("rejects a base URL with a fragment", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.AdminServer.ExternalBaseURL = "http://localhost:9092/#frag"
+
+		assert.Error(t, c.validateAdminMCPServerConfig())
+	})
+
+	t.Run("requires an audience when the IDP is enabled", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.Auth.IDP.Enabled = true
+
+		err := c.validateAdminMCPServerConfig()
+
+		require.Error(t, err)
+		// Without it any token from the issuer is accepted — the MCP
+		// specification requires a resource server to verify audience.
+		assert.Contains(t, err.Error(), "auth.idp.audience")
+	})
+
+	t.Run("accepts an audience when the IDP is enabled", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.Auth.IDP.Enabled = true
+		c.Controller.Auth.IDP.Audience = []string{"gw-admin"}
+
+		assert.NoError(t, c.validateAdminMCPServerConfig())
+	})
+
+	t.Run("rejects a negative max_request_bytes", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.AdminServer.MCPServer.MaxRequestBytes = -1
+
+		assert.Error(t, c.validateAdminMCPServerConfig())
+	})
+
+	t.Run("rejects an empty advertised scope entry", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.AdminServer.MCPServer.AdvertisedScopes = []string{"admin", "  "}
+
+		err := c.validateAdminMCPServerConfig()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "advertised_scopes")
+	})
+}

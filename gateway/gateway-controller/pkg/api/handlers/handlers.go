@@ -704,7 +704,7 @@ func (s *APIServer) HandleMcp(w http.ResponseWriter, r *http.Request) {
 }
 
 // EnableMCP builds the MCP endpoint handler. Called from main only when
-// controller.mcp_server.enabled is true, so the whole MCP surface — including
+// controller.server.mcp_server.enabled is true, so the whole MCP surface — including
 // the SDK — stays inert in a default deployment.
 func (s *APIServer) EnableMCP(
 	resourceRoles map[string][]string,
@@ -723,7 +723,7 @@ func (s *APIServer) EnableMCP(
 		RoleMapping:          roleMapping,
 		ResourceMetadataURL:  resourceMetadataURL,
 		Immutable:            s.systemConfig.ImmutableGateway.Enabled,
-		MaxRequestBytes:      s.systemConfig.Controller.MCPServer.MaxRequestBytes,
+		MaxRequestBytes:      s.systemConfig.Controller.Server.MCPServer.MaxRequestBytes,
 		Logger:               s.logger,
 	})
 	// Same DP->CP undeploy push the REST handlers use, so an artifact deleted
@@ -731,4 +731,23 @@ func (s *APIServer) EnableMCP(
 	h.pushArtifactUndeploy = s.pushArtifactUndeploy
 	s.mcpHandler = h
 	return h
+}
+
+// EnableAdminMCP builds the administrative MCP endpoint handler. Called from
+// main only when controller.admin_server.mcp_server.enabled is true, so this
+// surface too stays inert in a default deployment.
+func (s *APIServer) EnableAdminMCP(
+	resourceRoles map[string][]string,
+	roleMapping map[string][]string,
+	resourceMetadataURL string,
+) *AdminMcpHandler {
+	return NewAdminMcpHandler(AdminMcpHandlerParams{
+		Status:              s,
+		ResourceRoles:       resourceRoles,
+		RoleMapping:         roleMapping,
+		ResourceMetadataURL: resourceMetadataURL,
+		MaxRequestBytes:     s.systemConfig.Controller.AdminServer.MCPServer.MaxRequestBytes,
+		ConfigDumpEnabled:   s.systemConfig.Controller.AdminServer.ConfigDump.Enabled,
+		Logger:              s.logger,
+	})
 }
