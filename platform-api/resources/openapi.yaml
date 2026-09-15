@@ -10221,11 +10221,20 @@ components:
         upstream:
           $ref: "#/components/schemas/Upstream"
         mcpSpecVersion:
+          deprecated: true
           type: string
-          description: MCP specification version supported by this proxy
-          enum:
+          description: DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        mcpSpecVersions:
+          type: array
+          description: >
+            MCP specification versions this proxy declares. Any MCP revision date is accepted.
+          items:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          example:
             - "2025-06-18"
-            - "2025-11-25"
+            - "2026-07-28"
         policies:
           type: array
           description: List of policies to be applied
@@ -10310,8 +10319,17 @@ components:
             - failed
           example: deployed
         mcpSpecVersion:
+          deprecated: true
           type: string
+          description: DEPRECATED - use mcpSpecVersions.
           example: 2025-11-25
+        mcpSpecVersions:
+          type: array
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         createdAt:
           type: string
           format: date-time
@@ -10381,6 +10399,17 @@ components:
       properties:
         serverInfo:
           type: object
+        supportedVersions:
+          type: array
+          description: |
+             MCP protocol versions the server reported. A modern server answers server/discover
+             with the full set; a legacy one yields the single version its initialize handshake
+             negotiated. Absent when neither could be determined.
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         tools:
           type: array
           items:
