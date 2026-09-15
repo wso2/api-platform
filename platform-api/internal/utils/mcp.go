@@ -124,12 +124,12 @@ func (u *MCPUtils) BuildMCPDeploymentYAML(proxy *model.MCPProxy) (*model.MCPProx
 			Name: proxy.Handle,
 		},
 		Spec: model.MCPProxyDeploymentSpec{
-			DisplayName: proxy.Name,
-			Version:     proxy.Version,
-			Context:     contextValue,
-			Vhost:       vhostValue,
-			SpecVersion: proxy.Configuration.SpecVersion,
-			Policies:    proxy.Configuration.Policies,
+			DisplayName:  proxy.Name,
+			Version:      proxy.Version,
+			Context:      contextValue,
+			Vhost:        vhostValue,
+			SpecVersions: proxy.Configuration.EffectiveSpecVersions(),
+			Policies:     proxy.Configuration.Policies,
 		},
 	}
 
