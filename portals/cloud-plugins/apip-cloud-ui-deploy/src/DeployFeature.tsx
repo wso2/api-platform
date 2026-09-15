@@ -19,13 +19,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import DeployPage from './DeployPage';
-import { createDeployClient } from './deployApi';
+import { createDeployClient, type ArtifactKind } from './deployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
 import type { Build, Environment } from './types';
 
 export type DeployFeatureProps = {
   port: CloudHostPort;
+  /**
+   * The artifact kind being deployed. Defaults to REST APIs, which is what the
+   * console's API Deploy page shows.
+   */
+  kind?: ArtifactKind;
+  /**
+   * The artifact's handle, for hosts whose Port does not carry one — the AI
+   * Workspace reads it off the route and passes it in. Falls back to the Port's
+   * `apiHandle`.
+   */
+  artifactHandle?: string;
 };
 
 /** How often to re-read while a deployment is still settling. */
@@ -44,8 +55,9 @@ const errorMessage = (error: unknown, fallback: string) =>
  * assembles a pipeline itself and cannot offer a deployment the server would
  * reject.
  */
-const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
+const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
   const { apiFetch, projectHandle, apiHandle, notify } = port;
+  const handle = artifactHandle ?? apiHandle;
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
@@ -56,10 +68,10 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port }) => {
 
   const client = useMemo(
     () =>
-      projectHandle && apiHandle
-        ? createDeployClient(apiFetch, projectHandle, apiHandle)
+      projectHandle && handle
+        ? createDeployClient(apiFetch, projectHandle, handle, kind)
         : null,
-    [apiFetch, projectHandle, apiHandle]
+    [apiFetch, projectHandle, handle, kind]
   );
 
   // Kept in a ref so the poll can read the latest state without restarting on

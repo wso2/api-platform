@@ -30,11 +30,14 @@ export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
  * to the API base, so this package never knows the host's transport, base URL or
  * auth.
  */
+// Resolves to undefined when the response carries no body — a 204, say. The other
+// cloud plugins declare it the same way, which is what lets one feature be hosted by
+// both the console and the AI Workspace.
 export type ApiFetch = <T = unknown>(
   method: string,
   path: string,
   body?: unknown
-) => Promise<T>;
+) => Promise<T | undefined>;
 
 export type CloudHostPort = {
   orgHandle: string;

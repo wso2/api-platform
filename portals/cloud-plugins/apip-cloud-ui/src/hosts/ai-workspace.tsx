@@ -20,10 +20,14 @@ import {
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
+import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_INSIGHTS_SLOT,
+  AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
+  AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
+  AI_WORKSPACE_MCP_DEPLOY_SLOT,
   type AIWorkspaceCloudEntry,
   type AIWorkspaceExtension,
 } from '../../../../ai-workspace/src/extensions';
@@ -135,6 +139,50 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         // Same Moesif ai-overview URL at org and project — no project_id filter.
         render: (port) => (
           <InsightsFeature port={port} embedProfile="ai-workspace" />
+        ),
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'deploy',
+    version: '0.1.0',
+    // One feature, registered once per kind of artifact that has a Deploy page.
+    // Each replaces that kind's built-in page at its own route, so the pipeline
+    // view — environments in promotion order, promoting between them — is what the
+    // AI Workspace shows for MCP servers, LLM proxies and LLM providers alike.
+    //
+    // The artifact's handle comes from the route rather than the Port: these pages
+    // are scoped to one artifact and the portal reads it off the URL (see
+    // ArtifactDeployRoute in the host's App.tsx), which is why render takes it.
+    extensions: [
+      {
+        id: 'mcp-deploy',
+        // Inert: a page override replaces one route's body, so there is nothing to
+        // order it against.
+        order: 0,
+        slot: AI_WORKSPACE_MCP_DEPLOY_SLOT,
+        render: (port, artifactHandle) => (
+          <DeployFeature port={port} kind="Mcp" artifactHandle={artifactHandle} />
+        ),
+      },
+      {
+        id: 'llm-proxy-deploy',
+        // Inert: a page override replaces one route's body, so there is nothing to
+        // order it against.
+        order: 0,
+        slot: AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
+        render: (port, artifactHandle) => (
+          <DeployFeature port={port} kind="LlmProxy" artifactHandle={artifactHandle} />
+        ),
+      },
+      {
+        id: 'llm-provider-deploy',
+        // Inert: a page override replaces one route's body, so there is nothing to
+        // order it against.
+        order: 0,
+        slot: AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
+        render: (port, artifactHandle) => (
+          <DeployFeature port={port} kind="LlmProvider" artifactHandle={artifactHandle} />
         ),
       },
     ],
