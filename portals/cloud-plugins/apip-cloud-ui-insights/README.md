@@ -27,8 +27,10 @@ src/
 
 | Profile | Org iframe | Project iframe |
 |---------|------------|----------------|
-| `api-control-plane` (default) | `/wrap/basic#auth=post` | `/wrap/basic?project_id=…` (falls back to org if resolve fails) |
+| `api-control-plane` (default) | `/wrap/basic#auth=post` | Org URL while `ENABLE_ACP_PROJECT_FILTER` is `false`; `/wrap/basic?project_id=…` when `true` (resolve failure still falls back to org) |
 | `ai-workspace` | `/wrap/basic/ai-overview?embedded_ui=true&isolated_section=true#auth=post` | **same URL** (no project_id filter) |
+
+Flip `ENABLE_ACP_PROJECT_FILTER` in `src/config/acpProjectFilter.ts` to re-enable ACP project filtering.
 
 Do **not** put `/wrap/basic` or `/ai-overview` in env — only the Moesif origin.
 

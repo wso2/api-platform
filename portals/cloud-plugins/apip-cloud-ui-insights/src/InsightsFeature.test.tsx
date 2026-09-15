@@ -22,13 +22,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InsightsEmbedScope } from './types';
 
-const { mockResolveProjectScope, embedScopes } = vi.hoisted(() => ({
-  mockResolveProjectScope: vi.fn(),
-  embedScopes: [] as InsightsEmbedScope[],
-}));
+const { mockResolveProjectScope, embedScopes, projectFilter } = vi.hoisted(
+  () => ({
+    mockResolveProjectScope: vi.fn(),
+    embedScopes: [] as InsightsEmbedScope[],
+    projectFilter: { enabled: false },
+  })
+);
 
 vi.mock('./api/analyticsApi', () => ({
   resolveProjectScope: (...args: unknown[]) => mockResolveProjectScope(...args),
+}));
+
+vi.mock('./config/acpProjectFilter', () => ({
+  get ENABLE_ACP_PROJECT_FILTER() {
+    return projectFilter.enabled;
+  },
 }));
 
 vi.mock('./components/StateViews', () => ({
@@ -73,60 +82,183 @@ describe('InsightsFeature', () => {
   beforeEach(() => {
     embedScopes.length = 0;
     mockResolveProjectScope.mockReset();
+    projectFilter.enabled = false;
   });
 
-  it('embeds project Insights when project scope resolves', async () => {
-    mockResolveProjectScope.mockResolvedValue({
-      projectId: 'id-a',
-      projectName: 'Project A',
-    });
-
-    render(
-      <InsightsFeature
-        port={{ ...basePort, projectHandle: 'project-a' }}
-        forcedScopeLevel="project"
-        embedProfile="api-control-plane"
-      />
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
-        'project:id-a'
+  describe('when ENABLE_ACP_PROJECT_FILTER is false', () => {
+    it('uses organization embed for ACP project scope', async () => {
+      render(
+        <InsightsFeature
+          port={{ ...basePort, projectHandle: 'project-a' }}
+          forcedScopeLevel="project"
+          embedProfile="api-control-plane"
+        />
       );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+          'organization:none'
+        );
+      });
+      expect(mockResolveProjectScope).not.toHaveBeenCalled();
+      expect(embedScopes.at(-1)).toEqual({
+        level: 'organization',
+        projectId: null,
+        projectName: null,
+      });
     });
-    expect(mockResolveProjectScope).toHaveBeenCalledWith(
-      basePort.apiFetch,
-      'project-a'
-    );
+
+    it('uses organization embed for ACP organization scope', async () => {
+      render(
+        <InsightsFeature
+          port={basePort}
+          forcedScopeLevel="organization"
+          embedProfile="api-control-plane"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+          'organization:none'
+        );
+      });
+      expect(mockResolveProjectScope).not.toHaveBeenCalled();
+    });
   });
 
-  it('falls back to organization Insights when project scope resolve fails', async () => {
-    mockResolveProjectScope.mockRejectedValue(
-      new Error('Project "missing" was not found')
-    );
-
-    render(
-      <InsightsFeature
-        port={{ ...basePort, projectHandle: 'missing' }}
-        forcedScopeLevel="project"
-        embedProfile="api-control-plane"
-      />
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
-        'organization:none'
-      );
+  describe('when ENABLE_ACP_PROJECT_FILTER is true', () => {
+    beforeEach(() => {
+      projectFilter.enabled = true;
     });
-    expect(screen.queryByTestId('error-state')).not.toBeInTheDocument();
-    expect(embedScopes.at(-1)).toEqual({
-      level: 'organization',
-      projectId: null,
-      projectName: null,
+
+    it('embeds project Insights when project scope resolves', async () => {
+      mockResolveProjectScope.mockResolvedValue({
+        projectId: 'id-a',
+        projectName: 'Project A',
+      });
+
+      render(
+        <InsightsFeature
+          port={{ ...basePort, projectHandle: 'project-a' }}
+          forcedScopeLevel="project"
+          embedProfile="api-control-plane"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+          'project:id-a'
+        );
+      });
+      expect(mockResolveProjectScope).toHaveBeenCalledWith(
+        basePort.apiFetch,
+        'project-a'
+      );
+      expect(embedScopes.at(-1)).toEqual({
+        level: 'project',
+        projectId: 'id-a',
+        projectName: 'Project A',
+      });
+    });
+
+    it('falls back to organization Insights when project scope resolve fails', async () => {
+      mockResolveProjectScope.mockRejectedValue(
+        new Error('Project "missing" was not found')
+      );
+
+      render(
+        <InsightsFeature
+          port={{ ...basePort, projectHandle: 'missing' }}
+          forcedScopeLevel="project"
+          embedProfile="api-control-plane"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+          'organization:none'
+        );
+      });
+      expect(screen.queryByTestId('error-state')).not.toBeInTheDocument();
+      expect(embedScopes.at(-1)).toEqual({
+        level: 'organization',
+        projectId: null,
+        projectName: null,
+      });
+    });
+
+    it('shows loading instead of stale project metadata when switching projects', async () => {
+      let resolveProjectB: (value: {
+        projectId: string;
+        projectName: string;
+      }) => void = () => {};
+      const projectBPromise = new Promise<{
+        projectId: string;
+        projectName: string;
+      }>((resolve) => {
+        resolveProjectB = resolve;
+      });
+
+      mockResolveProjectScope.mockImplementation((_apiFetch, handle) => {
+        if (handle === 'project-a') {
+          return Promise.resolve({
+            projectId: 'id-a',
+            projectName: 'Project A',
+          });
+        }
+        if (handle === 'project-b') {
+          return projectBPromise;
+        }
+        return Promise.reject(new Error(`unexpected handle: ${handle}`));
+      });
+
+      const { rerender } = render(
+        <InsightsFeature
+          port={{ ...basePort, projectHandle: 'project-a' }}
+          forcedScopeLevel="project"
+          embedProfile="api-control-plane"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+          'project:id-a'
+        );
+      });
+      const embedRenderCountAfterA = embedScopes.length;
+
+      rerender(
+        <InsightsFeature
+          port={{ ...basePort, projectHandle: 'project-b' }}
+          forcedScopeLevel="project"
+          embedProfile="api-control-plane"
+        />
+      );
+
+      expect(screen.queryByTestId('insights-embed')).not.toBeInTheDocument();
+      expect(screen.getByTestId('loading-state')).toHaveTextContent(
+        'Preparing Insights'
+      );
+      expect(embedScopes.length).toBe(embedRenderCountAfterA);
+
+      resolveProjectB({ projectId: 'id-b', projectName: 'Project B' });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('insights-embed')).toHaveTextContent(
+          'project:id-b'
+        );
+      });
+      expect(embedScopes.at(-1)).toEqual({
+        level: 'project',
+        projectId: 'id-b',
+        projectName: 'Project B',
+      });
     });
   });
 
   it('uses ai-overview embed for AI Workspace without resolving project_id', async () => {
+    projectFilter.enabled = true;
+
     render(
       <InsightsFeature
         port={{ ...basePort, projectHandle: 'orders' }}
@@ -141,74 +273,6 @@ describe('InsightsFeature', () => {
       );
     });
     expect(mockResolveProjectScope).not.toHaveBeenCalled();
-  });
-
-  it('shows loading instead of stale project metadata when switching projects', async () => {
-    let resolveProjectB: (value: {
-      projectId: string;
-      projectName: string;
-    }) => void = () => {};
-    const projectBPromise = new Promise<{
-      projectId: string;
-      projectName: string;
-    }>((resolve) => {
-      resolveProjectB = resolve;
-    });
-
-    mockResolveProjectScope.mockImplementation((_apiFetch, handle) => {
-      if (handle === 'project-a') {
-        return Promise.resolve({
-          projectId: 'id-a',
-          projectName: 'Project A',
-        });
-      }
-      if (handle === 'project-b') {
-        return projectBPromise;
-      }
-      return Promise.reject(new Error(`unexpected handle: ${handle}`));
-    });
-
-    const { rerender } = render(
-      <InsightsFeature
-        port={{ ...basePort, projectHandle: 'project-a' }}
-        forcedScopeLevel="project"
-        embedProfile="api-control-plane"
-      />
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
-        'project:id-a'
-      );
-    });
-    const embedRenderCountAfterA = embedScopes.length;
-
-    rerender(
-      <InsightsFeature
-        port={{ ...basePort, projectHandle: 'project-b' }}
-        forcedScopeLevel="project"
-        embedProfile="api-control-plane"
-      />
-    );
-
-    expect(screen.queryByTestId('insights-embed')).not.toBeInTheDocument();
-    expect(screen.getByTestId('loading-state')).toHaveTextContent(
-      'Preparing Insights'
-    );
-    expect(embedScopes.length).toBe(embedRenderCountAfterA);
-
-    resolveProjectB({ projectId: 'id-b', projectName: 'Project B' });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('insights-embed')).toHaveTextContent(
-        'project:id-b'
-      );
-    });
-    expect(embedScopes.at(-1)).toEqual({
-      level: 'project',
-      projectId: 'id-b',
-      projectName: 'Project B',
-    });
   });
 
   it('wraps AI Workspace Insights in PageContent for shell padding', async () => {
