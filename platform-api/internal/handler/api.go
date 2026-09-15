@@ -18,7 +18,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +27,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/pb33f/libopenapi"
+	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
+	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
+	openapivalidator "github.com/pb33f/libopenapi-validator"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -354,26 +356,26 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	}
 	specFileName := normalizeSpecFileName(header.Filename)
 
-	// Parse the spec once; extract operations from the parsed root.
-	specRoot, isJSON, err := parseSpecRoot(string(data))
-	if err != nil {
-		h.slogger.Error("Failed to parse OpenAPI spec", "error", err)
+	// Parse the spec once; extract operations from the parsed document.
+	sd, loadErr := loadSpecDocument(data)
+	if loadErr != nil {
+		h.slogger.Error("Failed to parse OpenAPI spec", "error", loadErr)
 		return apperror.ValidationFailed.New("invalid OpenAPI specification")
 	}
-	if result := validateOpenAPIContent(string(data), specRoot); !result.IsValid {
+	if result := validateSpec(sd); !result.IsValid {
 		msg := "invalid OpenAPI specification"
 		if len(result.Errors) > 0 {
 			msg = result.Errors[0].Message
 		}
 		return apperror.ValidationFailed.New(msg)
 	}
-	operations := extractOperationsFromRoot(specRoot)
+	operations := extractOperations(sd)
 
-	// parseSpecRoot already determined the format; no re-parse needed.
-	importedContentType := specContentType(isJSON)
+	// loadSpecDocument already determined the format; no re-parse needed.
+	importedContentType := specContentType(sd.isJSON)
 
 	// Always persist as YAML regardless of the uploaded format.
-	yamlBytes, err := yaml.Marshal(specRoot)
+	yamlBytes, err := sd.toYAML()
 	if err != nil {
 		return serviceError(err, "failed to re-encode spec as YAML")
 	}
@@ -467,37 +469,173 @@ func specContentType(isJSON bool) string {
 	return "application/x-yaml"
 }
 
-// parseSpecRoot deserialises a JSON or YAML OpenAPI spec string into a raw map
-// and verifies that the document declares a top-level 'openapi' (3.x) or
-// 'swagger' (2.x) key so non-OpenAPI payloads are rejected early.
-// isJSON is true when the input was valid JSON; false means it was YAML.
-// This lets callers record the original format without re-parsing.
-func parseSpecRoot(specContent string) (root map[string]interface{}, isJSON bool, err error) {
-	if jsonErr := json.Unmarshal([]byte(specContent), &root); jsonErr != nil {
-		if yamlErr := yaml.Unmarshal([]byte(specContent), &root); yamlErr != nil {
-			return nil, false, fmt.Errorf("spec is neither valid JSON nor YAML")
-		}
-		isJSON = false
-	} else {
-		isJSON = true
-	}
-	_, hasOpenAPI := root["openapi"]
-	_, hasSwagger := root["swagger"]
-	if !hasOpenAPI && !hasSwagger {
-		return nil, false, fmt.Errorf("spec must declare 'openapi' (3.x) or 'swagger' (2.x) at the root")
-	}
-	return root, isJSON, nil
+// specDoc holds a libopenapi-parsed document with format metadata and a pre-built
+// typed model so callers never build the model twice.
+type specDoc struct {
+	doc    libopenapi.Document
+	raw    []byte // original input bytes, used for YAML re-encoding
+	isJSON bool
+	isV3   bool
+	v3     *libopenapi.DocumentModel[v3high.Document]
+	v2     *libopenapi.DocumentModel[v2high.Swagger]
+	errs   []error // model-build / validation errors
 }
 
-// extractOperationsFromRoot returns the list of HTTP operations declared in a
-// parsed OpenAPI 3.x/Swagger 2.x spec root. Returns nil when no paths exist;
-// the service layer then generates a default wildcard operation.
-func extractOperationsFromRoot(root map[string]interface{}) []api.Operation {
-	paths, _ := root["paths"].(map[string]interface{})
-	if len(paths) == 0 {
-		return nil
+// isJSONBytes returns true if data's first non-whitespace byte is '{'.
+func isJSONBytes(data []byte) bool {
+	for _, b := range data {
+		if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
+			continue
+		}
+		return b == '{'
+	}
+	return false
+}
+
+// loadSpecDocument parses the spec with libopenapi, builds the typed model,
+// and returns an error only for unparseable input or missing openapi/swagger key.
+// Build/validation errors are stored in sd.errs.
+func loadSpecDocument(data []byte) (*specDoc, error) {
+	doc, err := libopenapi.NewDocument(data)
+	if err != nil {
+		return nil, fmt.Errorf("spec is neither valid JSON nor YAML, or is missing 'openapi'/'swagger' key: %w", err)
 	}
 
+	sd := &specDoc{
+		doc:    doc,
+		raw:    data,
+		isJSON: isJSONBytes(data),
+	}
+
+	info := doc.GetSpecInfo()
+	// SpecType is "openapi" for v3, "swagger" for v2.
+	sd.isV3 = info != nil && info.SpecType == "openapi"
+
+	if sd.isV3 {
+		m, buildErrs := doc.BuildV3Model()
+		if buildErrs != nil {
+			sd.errs = append(sd.errs, buildErrs)
+		}
+		sd.v3 = m
+	} else {
+		m, buildErrs := doc.BuildV2Model()
+		if buildErrs != nil {
+			sd.errs = append(sd.errs, buildErrs)
+		}
+		sd.v2 = m
+	}
+
+	return sd, nil
+}
+
+// toYAML re-encodes the spec as YAML. YAML input is returned as-is;
+// JSON input is round-tripped through json.Unmarshal + yaml.Marshal.
+func (sd *specDoc) toYAML() ([]byte, error) {
+	if !sd.isJSON {
+		return sd.raw, nil
+	}
+	var root interface{}
+	if err := json.Unmarshal(sd.raw, &root); err != nil {
+		return nil, fmt.Errorf("failed to parse spec JSON for YAML conversion: %w", err)
+	}
+	out, err := yaml.Marshal(root)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal spec as YAML: %w", err)
+	}
+	return out, nil
+}
+
+// validateSpec validates the spec and returns a validateOpenAPIResult with
+// Info (title/version) populated when valid.
+//
+// For OpenAPI 3.x, the document is validated against the full OpenAPI JSON
+// Meta-Schema via libopenapi-validator, which catches structural violations
+// (unknown path item keys, paths without a leading "/", missing required
+// fields, invalid $ref targets, etc.) that BuildV3Model errors alone miss.
+//
+// For Swagger 2.x, libopenapi-validator does not support v2, so build errors
+// from BuildV2Model are used instead.
+func validateSpec(sd *specDoc) validateOpenAPIResult {
+	if sd.isV3 {
+		return validateSpecV3(sd)
+	}
+	return validateSpecV2(sd)
+}
+
+func validateSpecV3(sd *specDoc) validateOpenAPIResult {
+	// Surface any model-build errors first ($ref resolution failures, etc.).
+	// When present, skip the JSON Schema validator — NewValidator would also fail.
+	if len(sd.errs) > 0 {
+		errs := make([]validateOpenAPIError, 0, len(sd.errs))
+		for _, e := range sd.errs {
+			errs = append(errs, validateOpenAPIError{Message: e.Error()})
+		}
+		return validateOpenAPIResult{IsValid: false, Errors: errs}
+	}
+
+	// NewValidator internally calls BuildV3Model and — critically — sets the
+	// document field that ValidateDocument requires. NewValidatorFromV3Model does
+	// not set that field, causing the "Document is not set" error.
+	v, vErrs := openapivalidator.NewValidator(sd.doc)
+	if vErrs != nil {
+		errs := make([]validateOpenAPIError, 0, len(vErrs))
+		for _, e := range vErrs {
+			errs = append(errs, validateOpenAPIError{Message: e.Error()})
+		}
+		return validateOpenAPIResult{IsValid: false, Errors: errs}
+	}
+
+	valid, valErrs := v.ValidateDocument()
+	if !valid {
+		errs := make([]validateOpenAPIError, 0, len(valErrs))
+		for _, e := range valErrs {
+			if len(e.SchemaValidationErrors) > 0 {
+				for _, sve := range e.SchemaValidationErrors {
+					errs = append(errs, validateOpenAPIError{
+						Message: sve.Reason,
+						Path:    sve.FieldPath,
+					})
+				}
+			} else {
+				errs = append(errs, validateOpenAPIError{
+					Message: e.Message,
+					Path:    e.SpecPath,
+				})
+			}
+		}
+		return validateOpenAPIResult{IsValid: false, Errors: errs}
+	}
+	result := validateOpenAPIResult{IsValid: true, Errors: []validateOpenAPIError{}}
+	if sd.v3.Model.Info != nil {
+		result.Info = &validateOpenAPIInfo{
+			Title:   sd.v3.Model.Info.Title,
+			Version: sd.v3.Model.Info.Version,
+		}
+	}
+	return result
+}
+
+func validateSpecV2(sd *specDoc) validateOpenAPIResult {
+	if len(sd.errs) > 0 {
+		errs := make([]validateOpenAPIError, 0, len(sd.errs))
+		for _, e := range sd.errs {
+			errs = append(errs, validateOpenAPIError{Message: e.Error()})
+		}
+		return validateOpenAPIResult{IsValid: false, Errors: errs}
+	}
+	result := validateOpenAPIResult{IsValid: true, Errors: []validateOpenAPIError{}}
+	if sd.v2 != nil && sd.v2.Model.Info != nil {
+		result.Info = &validateOpenAPIInfo{
+			Title:   sd.v2.Model.Info.Title,
+			Version: sd.v2.Model.Info.Version,
+		}
+	}
+	return result
+}
+
+// extractOperations builds api.Operation entries from the spec's paths.
+// Returns nil when paths are absent; the service layer creates a wildcard.
+func extractOperations(sd *specDoc) []api.Operation {
 	httpMethods := map[string]api.OperationRequestMethod{
 		"get":     "GET",
 		"post":    "POST",
@@ -506,39 +644,105 @@ func extractOperationsFromRoot(root map[string]interface{}) []api.Operation {
 		"patch":   "PATCH",
 		"head":    "HEAD",
 		"options": "OPTIONS",
+		"trace":   "TRACE",
 	}
 
-	var ops []api.Operation
-	for path, pathItemRaw := range paths {
-		pathItem, ok := pathItemRaw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		for method, opRaw := range pathItem {
-			opMethod, supported := httpMethods[strings.ToLower(method)]
-			if !supported {
-				continue
+	if sd.isV3 && sd.v3 != nil && sd.v3.Model.Paths != nil && sd.v3.Model.Paths.PathItems != nil {
+		var ops []api.Operation
+		for path, pathItem := range sd.v3.Model.Paths.PathItems.FromOldest() {
+			type methodOp struct {
+				method string
+				op     *v3high.Operation
 			}
-			op := api.Operation{
-				Request: api.OperationRequest{
-					Method: opMethod,
-					Path:   path,
-				},
+			candidates := []methodOp{
+				{"get", pathItem.Get},
+				{"post", pathItem.Post},
+				{"put", pathItem.Put},
+				{"delete", pathItem.Delete},
+				{"patch", pathItem.Patch},
+				{"head", pathItem.Head},
+				{"options", pathItem.Options},
+				{"trace", pathItem.Trace},
 			}
-			if opMap, ok := opRaw.(map[string]interface{}); ok {
-				if opId, ok := opMap["operationId"].(string); ok && opId != "" {
-					op.Name = &opId
-				} else if summary, ok := opMap["summary"].(string); ok && summary != "" {
+			for _, c := range candidates {
+				if c.op == nil {
+					continue
+				}
+				opMethod, supported := httpMethods[c.method]
+				if !supported {
+					continue
+				}
+				op := api.Operation{
+					Request: api.OperationRequest{
+						Method: opMethod,
+						Path:   path,
+					},
+				}
+				if c.op.OperationId != "" {
+					name := c.op.OperationId
+					op.Name = &name
+				} else if c.op.Summary != "" {
+					summary := c.op.Summary
 					op.Name = &summary
 				}
-				if desc, ok := opMap["description"].(string); ok && desc != "" {
+				if c.op.Description != "" {
+					desc := c.op.Description
 					op.Description = &desc
 				}
+				ops = append(ops, op)
 			}
-			ops = append(ops, op)
 		}
+		return ops
 	}
-	return ops
+
+	if !sd.isV3 && sd.v2 != nil && sd.v2.Model.Paths != nil && sd.v2.Model.Paths.PathItems != nil {
+		var ops []api.Operation
+		for path, pathItem := range sd.v2.Model.Paths.PathItems.FromOldest() {
+			type methodOp struct {
+				method string
+				op     *v2high.Operation
+			}
+			candidates := []methodOp{
+				{"get", pathItem.Get},
+				{"post", pathItem.Post},
+				{"put", pathItem.Put},
+				{"delete", pathItem.Delete},
+				{"patch", pathItem.Patch},
+				{"head", pathItem.Head},
+				{"options", pathItem.Options},
+			}
+			for _, c := range candidates {
+				if c.op == nil {
+					continue
+				}
+				opMethod, supported := httpMethods[c.method]
+				if !supported {
+					continue
+				}
+				op := api.Operation{
+					Request: api.OperationRequest{
+						Method: opMethod,
+						Path:   path,
+					},
+				}
+				if c.op.OperationId != "" {
+					name := c.op.OperationId
+					op.Name = &name
+				} else if c.op.Summary != "" {
+					summary := c.op.Summary
+					op.Name = &summary
+				}
+				if c.op.Description != "" {
+					desc := c.op.Description
+					op.Description = &desc
+				}
+				ops = append(ops, op)
+			}
+		}
+		return ops
+	}
+
+	return nil
 }
 
 // GetOpenAPISpec handles GET /rest-apis/{restApiId}/openapi.
@@ -608,12 +812,12 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.PayloadTooLarge.New("spec file exceeds maximum allowed size (5 MiB)")
 	}
 
-	specRoot, isJSON, err := parseSpecRoot(string(specContent))
-	if err != nil || specRoot == nil {
+	sd, loadErr := loadSpecDocument(specContent)
+	if loadErr != nil {
 		return apperror.ValidationFailed.New("uploaded file is not a valid OpenAPI/Swagger spec (must be JSON or YAML)")
 	}
 
-	if result := validateOpenAPIContent(string(specContent), specRoot); !result.IsValid {
+	if result := validateSpec(sd); !result.IsValid {
 		msg := "uploaded file is not a valid OpenAPI specification"
 		if len(result.Errors) > 0 {
 			msg = result.Errors[0].Message
@@ -621,11 +825,11 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New(msg)
 	}
 
-	// parseSpecRoot already determined the format; no re-parse needed.
-	importedContentType := specContentType(isJSON)
+	// loadSpecDocument already determined the format; no re-parse needed.
+	importedContentType := specContentType(sd.isJSON)
 
 	// Always persist as YAML regardless of the uploaded format.
-	yamlBytes, err := yaml.Marshal(specRoot)
+	yamlBytes, err := sd.toYAML()
 	if err != nil {
 		return serviceError(err, "failed to re-encode spec as YAML")
 	}
@@ -665,9 +869,22 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 
 	// Pre-compute the synced operation list before any writes so that a read
 	// failure (API not found, read-only) stops us before the document is persisted.
-	syncedAPI, syncedOps, err := h.computeSyncedOperations(restApiId, orgId, specRoot)
+	specOps := extractOperations(sd)
+	syncedAPI, syncedOps, err := h.computeSyncedOperations(restApiId, orgId, specOps)
 	if err != nil {
 		return err
+	}
+
+	// Operations are written before the spec document so that a failure here
+	// leaves nothing persisted.
+	// If the spec write subsequently fails the operations are updated but the
+	// stored spec is stale; a re-PUT recovers that without data loss.
+	if syncedAPI != nil {
+		updatedAPI := *syncedAPI
+		updatedAPI.Operations = &syncedOps
+		if _, err := h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy); err != nil {
+			return serviceError(err, fmt.Sprintf("failed to update operations for API %s after spec change", restApiId))
+		}
 	}
 
 	doc := &model.Document{
@@ -686,16 +903,6 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return serviceError(err, fmt.Sprintf("failed to upsert openapi spec for API %s", restApiId))
 	}
 
-	// Write operations only for control-plane-managed APIs; gateway-originated
-	// (read-only) APIs have their operations managed by the data plane.
-	if syncedAPI != nil {
-		updatedAPI := *syncedAPI
-		updatedAPI.Operations = &syncedOps
-		if _, err := h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy); err != nil {
-			return serviceError(err, fmt.Sprintf("failed to update operations for API %s after spec change", restApiId))
-		}
-	}
-
 	content := string(specContent)
 	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
 	return nil
@@ -705,7 +912,7 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 // list from the spec's paths and the existing policy attachments.
 // Returns (nil, nil, nil) when the API is gateway-originated (read-only) —
 // the caller must skip the operations write in that case.
-func (h *APIHandler) computeSyncedOperations(restApiId, orgId string, specRoot map[string]interface{}) (*api.RESTAPI, []api.Operation, error) {
+func (h *APIHandler) computeSyncedOperations(restApiId, orgId string, specOps []api.Operation) (*api.RESTAPI, []api.Operation, error) {
 	existingAPI, err := h.apiService.GetAPIByHandle(restApiId, orgId)
 	if err != nil {
 		return nil, nil, serviceError(err, fmt.Sprintf("failed to fetch API %s to sync operations from spec", restApiId))
@@ -716,7 +923,6 @@ func (h *APIHandler) computeSyncedOperations(restApiId, orgId string, specRoot m
 		return nil, nil, nil
 	}
 
-	specOps := extractOperationsFromRoot(specRoot)
 	existingByKey := make(map[string]api.Operation)
 	if existingAPI.Operations != nil {
 		for _, op := range *existingAPI.Operations {
@@ -752,65 +958,6 @@ type validateOpenAPIResult struct {
 	Info    *validateOpenAPIInfo   `json:"info,omitempty"`
 }
 
-// validateOpenAPIContent validates an OpenAPI spec string using kin-openapi.
-// specRoot is the already-parsed root map from parseSpecRoot — the caller owns
-// that parse and passes it in so this function never re-parses the bytes.
-// External $refs are not resolved (loader.IsExternalRefsAllowed = false),
-// which prevents SSRF via spec $ref URLs.
-// Swagger 2.x specs are passed through without kin-openapi structural
-// validation because kin-openapi only understands OpenAPI 3.x; parseSpecRoot
-// already confirmed the spec is parseable JSON/YAML with a valid root key.
-func validateOpenAPIContent(specContent string, specRoot map[string]interface{}) validateOpenAPIResult {
-	if _, isSwagger := specRoot["swagger"]; isSwagger {
-		return validateOpenAPIResult{IsValid: true, Errors: []validateOpenAPIError{}}
-	}
-
-	loader := openapi3.NewLoader()
-	loader.IsExternalRefsAllowed = false
-
-	doc, err := loader.LoadFromData([]byte(specContent))
-	if err != nil {
-		return validateOpenAPIResult{
-			IsValid: false,
-			Errors:  []validateOpenAPIError{{Message: err.Error()}},
-		}
-	}
-
-	if err := doc.Validate(context.Background(), openapi3.DisableExamplesValidation()); err != nil {
-		return validateOpenAPIResult{
-			IsValid: false,
-			Errors:  extractOpenAPIValidationErrors(err),
-		}
-	}
-
-	result := validateOpenAPIResult{
-		IsValid: true,
-		Errors:  []validateOpenAPIError{},
-	}
-	if doc.Info != nil {
-		result.Info = &validateOpenAPIInfo{
-			Title:   doc.Info.Title,
-			Version: doc.Info.Version,
-		}
-	}
-	return result
-}
-
-// extractOpenAPIValidationErrors flattens kin-openapi MultiError into a flat
-// list of message strings. Each entry in a MultiError may itself be a
-// MultiError, so the extraction is recursive.
-func extractOpenAPIValidationErrors(err error) []validateOpenAPIError {
-	var multi openapi3.MultiError
-	if errors.As(err, &multi) {
-		out := make([]validateOpenAPIError, 0, len(multi))
-		for _, e := range multi {
-			out = append(out, extractOpenAPIValidationErrors(e)...)
-		}
-		return out
-	}
-	return []validateOpenAPIError{{Message: err.Error()}}
-}
-
 // ValidateOpenAPI handles POST /api/v0.9/rest-apis/validate-openapi.
 // Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
 // any resource. Accepts multipart/form-data with a `file` field containing the
@@ -839,18 +986,16 @@ func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) err
 		return apperror.PayloadTooLarge.New("spec file exceeds maximum allowed size (5 MiB)")
 	}
 
-	specContent := strings.TrimSpace(string(data))
-
-	specRoot, _, err := parseSpecRoot(specContent)
-	if err != nil {
+	sd, loadErr := loadSpecDocument([]byte(strings.TrimSpace(string(data))))
+	if loadErr != nil {
 		httputil.WriteJSON(w, http.StatusOK, validateOpenAPIResult{
 			IsValid: false,
-			Errors:  []validateOpenAPIError{{Message: err.Error()}},
+			Errors:  []validateOpenAPIError{{Message: loadErr.Error()}},
 		})
 		return nil
 	}
 
-	result := validateOpenAPIContent(specContent, specRoot)
+	result := validateSpec(sd)
 	httputil.WriteJSON(w, http.StatusOK, result)
 	return nil
 }
