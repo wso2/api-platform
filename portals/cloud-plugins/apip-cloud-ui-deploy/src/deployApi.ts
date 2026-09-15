@@ -93,13 +93,21 @@ export function createDeployClient(
   apiFetch: ApiFetch,
   projectHandle: string,
   apiHandle: string,
-  kind: ArtifactKind = 'RestApi'
+  kind: ArtifactKind = 'RestApi',
+  gatewayTypes: readonly string[] = []
 ) {
   const base = `/projects/${encodeURIComponent(projectHandle)}/apis/${encodeURIComponent(apiHandle)}`;
   // The pipeline routes serve every artifact kind, so each call says which kind it
   // addresses: a handle is unique only within a kind. REST APIs are the default on
   // the server, but it is sent either way so the request is explicit.
   const forKind = `kind=${encodeURIComponent(kind)}`;
+  // Ask the platform for the kinds of gateway this host deploys to, rather than
+  // pulling every gateway in the organization back and dropping most of them here.
+  const managedGatewaysPath = gatewayTypes.length
+    ? `/managed-gateways?${gatewayTypes
+        .map((t) => `functionalityType=${encodeURIComponent(t)}`)
+        .join('&')}`
+    : '/managed-gateways';
   const withKind = (path: string) => (path.includes('?') ? `${path}&${forKind}` : `${path}?${forKind}`);
 
   return {
@@ -112,7 +120,7 @@ export function createDeployClient(
     async listEnvironments(): Promise<Environment[]> {
       const [stages, gateways] = await Promise.all([
         apiFetch<{ list?: StageDTO[] }>('GET', withKind(`${base}/deployments`)),
-        apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', '/managed-gateways').catch(() => undefined),
+        apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', managedGatewaysPath).catch(() => undefined),
       ]);
 
       const known = new Map<string, ManagedGatewayDTO>();

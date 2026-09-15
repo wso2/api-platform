@@ -25,7 +25,6 @@ import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_INSIGHTS_SLOT,
-  AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_MCP_DEPLOY_SLOT,
   type AIWorkspaceCloudEntry,
@@ -61,13 +60,6 @@ const AI_GATEWAY_TYPES: GatewayType[] = ['ai'];
  * Registration is gated by `isInsightsMoesifConfigured` (single reader in the
  * insights package) so App.tsx needs no Moesif config knowledge: no override
  * means InsightsRoute keeps the built-in page.
- *
- * The deploy feature is deliberately NOT registered here. Deploying is scoped to
- * one API — the page reads and writes that API's deployments — and this host has
- * no API-scoped placement, so its Port carries no `apiHandle`. Registered here
- * the page could only tell the user to open an API. The feature package is shared
- * and unchanged; adding it back is a matter of giving this host an API scope, not
- * of changing the feature.
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = [
   defineCloudPlugin({
@@ -146,7 +138,10 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
   defineCloudPlugin({
     id: 'deploy',
     version: '0.1.0',
-    // One feature, registered once per kind of artifact that has a Deploy page.
+    // One feature, registered once per artifact kind that BELONGS TO A PROJECT.
+    // LLM providers are organization-scoped — `llm_providers` has no project — so a
+    // pipeline, which is resolved from a project, cannot apply to them; they keep
+    // their built-in Deploy page.
     // Each replaces that kind's built-in page at its own route, so the pipeline
     // view — environments in promotion order, promoting between them — is what the
     // AI Workspace shows for MCP servers, LLM proxies and LLM providers alike.
@@ -162,7 +157,12 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         order: 0,
         slot: AI_WORKSPACE_MCP_DEPLOY_SLOT,
         render: (port, artifactHandle) => (
-          <DeployFeature port={port} kind="Mcp" artifactHandle={artifactHandle} />
+          <DeployFeature
+            port={port}
+            kind="Mcp"
+            artifactHandle={artifactHandle}
+            gatewayTypes={AI_GATEWAY_TYPES}
+          />
         ),
       },
       {
@@ -172,17 +172,12 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         order: 0,
         slot: AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
         render: (port, artifactHandle) => (
-          <DeployFeature port={port} kind="LlmProxy" artifactHandle={artifactHandle} />
-        ),
-      },
-      {
-        id: 'llm-provider-deploy',
-        // Inert: a page override replaces one route's body, so there is nothing to
-        // order it against.
-        order: 0,
-        slot: AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
-        render: (port, artifactHandle) => (
-          <DeployFeature port={port} kind="LlmProvider" artifactHandle={artifactHandle} />
+          <DeployFeature
+            port={port}
+            kind="LlmProxy"
+            artifactHandle={artifactHandle}
+            gatewayTypes={AI_GATEWAY_TYPES}
+          />
         ),
       },
     ],
