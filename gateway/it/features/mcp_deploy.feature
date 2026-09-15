@@ -322,6 +322,56 @@ Feature: Test MCP CRUD and connectivity
         And the response should be valid JSON
         And the JSON response field "status" should be "error"
 
+    Scenario: Deploy MCP proxy declaring multiple spec versions
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: multi-spec-version-mcp-v1.0
+            spec:
+              displayName: Multi Spec Version MCP
+              version: v1.0
+              context: /multi-spec-version-mcp
+              specVersions:
+                - "2025-06-18"
+                - "2026-07-28"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+
+    Scenario: Deploy MCP proxy declaring both spec version forms returns 400
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: both-spec-version-forms-mcp-v1.0
+            spec:
+              displayName: Both Spec Version Forms MCP
+              version: v1.0
+              context: /both-spec-version-forms-mcp
+              specVersion: "2025-06-18"
+              specVersions:
+                - "2026-07-28"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response status should be 400
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+
     Scenario: Deploy MCP proxy with invalid spec version returns 400
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
