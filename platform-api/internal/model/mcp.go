@@ -41,14 +41,16 @@ type MCPProxy struct {
 }
 
 type MCPProxyConfiguration struct {
-	Name         string                `json:"name" db:"-"`
-	Version      string                `json:"version" db:"-"`
-	Context      *string               `json:"context" db:"-"`
-	Vhost        *string               `json:"vhost" db:"-"`
-	SpecVersion  string                `json:"specVersion" db:"-"`
-	Upstream     UpstreamConfig        `json:"upstream" db:"-"`
-	Policies     []Policy              `json:"policies,omitempty" db:"-"`
-	Capabilities *MCPProxyCapabilities `json:"capabilities,omitempty" db:"-"`
+	Name         string   `json:"name" db:"-"`
+	Version      string   `json:"version" db:"-"`
+	Context      *string  `json:"context" db:"-"`
+	Vhost        *string  `json:"vhost" db:"-"`
+	SpecVersion  string   `json:"specVersion,omitempty" db:"-"`
+	SpecVersions []string `json:"specVersions,omitempty" db:"-"`
+	UpstreamSpecVersions []string              `json:"upstreamSpecVersions,omitempty" db:"-"`
+	Upstream             UpstreamConfig        `json:"upstream" db:"-"`
+	Policies             []Policy              `json:"policies,omitempty" db:"-"`
+	Capabilities         *MCPProxyCapabilities `json:"capabilities,omitempty" db:"-"`
 }
 
 type MCPProxyCapabilities struct {
