@@ -36,12 +36,13 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways    Gateways
-	Projects    Projects
-	APIPortals  APIPortals
-	Deployments Deployments
+	Gateways      Gateways
+	Projects      Projects
+	APIPortals    APIPortals
+	Deployments   Deployments
+	Organizations Organizations
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
+	// (APIs, Subscriptions, Applications, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -86,10 +87,27 @@ type Projects interface {
 // orgID is always the request-context org (GO-AUTH-005), never caller input.
 type APIPortals interface {
 	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
+	// CreateAPIPortalWithID creates a portal using a caller-supplied UUID as the
+	// internal PK (api_portals.uuid). In-process plugins that need the UUID before
+	// the row exists (to thread it through runtime configuration in the same
+	// provisioning transaction) use this instead of CreateAPIPortal. Validates
+	// the UUID is well-formed; a PK collision surfaces as apperror.APIPortalExists.
+	CreateAPIPortalWithID(portalUUID string, req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
 	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
 	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
 	DeleteAPIPortal(handle, orgID, actor string) error
+}
+
+// Organizations exposes read-only lookups over the platform's organizations.
+// Every method mirrors an existing OrganizationService method verbatim; callers
+// MUST pass an org id resolved from the request context, never one from request
+// input (GO-AUTH-005).
+type Organizations interface {
+	// GetOrganizationByUUID returns the organization identified by its internal
+	// UUID. Used by plugins that hold a JWT-derived org UUID and need the handle
+	// (or other registered attributes) without an extra HTTP hop.
+	GetOrganizationByUUID(uuid string) (*api.Organization, error)
 }
 
 // Deployments exposes build/deploy/read/undeploy access to an API's gateway
