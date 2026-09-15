@@ -38,7 +38,7 @@ import { BASE_PATH } from "./paths";
 import { BFFAuthProvider } from "./contexts/BFFAuthProvider";
 import { useAppAuth } from "./contexts/AppAuthContext";
 import BasicAuthLoginPage from "./pages/login/BasicAuthLoginPage";
-import type { AIWorkspaceExtension } from "./extensions";
+import type { AIWorkspaceCloudEntry } from "./extensions";
 
 function LoadingScreen({ message }: { message?: string }) {
   return (
@@ -76,7 +76,7 @@ function OIDCRedirect() {
 function AppGate({
   extensions,
 }: {
-  extensions: readonly AIWorkspaceExtension[];
+  extensions: readonly AIWorkspaceCloudEntry[];
 }) {
   const { isAuthenticated, isLoading } = useAppAuth();
   if (isLoading) return <LoadingScreen />;
@@ -108,7 +108,7 @@ function AppGate({
 }
 
 export type AIWorkspaceProps = {
-  extensions?: readonly AIWorkspaceExtension[];
+  extensions?: readonly AIWorkspaceCloudEntry[];
 };
 
 export default function AIWorkspace({ extensions = [] }: AIWorkspaceProps) {

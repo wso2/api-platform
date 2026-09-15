@@ -108,7 +108,10 @@ func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displa
 	return nil
 }
 
-// NewAPIDeploymentService creates a new API deployment service
+// NewAPIDeploymentService creates a new API deployment service. httpClient is the single
+// shared outbound *http.Client for this process (built once in cmd/controller/main.go and
+// injected by every caller), used for RegisterTopicWithHub/UnregisterTopicWithHub-style calls
+// that need one, rather than this service building its own.
 func NewAPIDeploymentService(
 	store *storage.ConfigStore,
 	db storage.Storage,
@@ -118,6 +121,7 @@ func NewAPIDeploymentService(
 	eventHub eventhub.EventHub,
 	gatewayID string,
 	secretResolver funcs.SecretResolver,
+	httpClient *http.Client,
 ) *APIDeploymentService {
 	if db == nil {
 		panic("APIDeploymentService requires non-nil storage")
@@ -130,7 +134,7 @@ func NewAPIDeploymentService(
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
 		validator:       validator,
-		httpClient:      &http.Client{Timeout: 10 * time.Second},
+		httpClient:      httpClient,
 		routerConfig:    routerConfig,
 		eventHub:        eventHub,
 		gatewayID:       trimmedGatewayID,

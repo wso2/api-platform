@@ -1,0 +1,108 @@
+
+# analytics.enabled must be true for the controller to attach Envoy → PE ALS (gRPC
+# access log). Without ALS, [traffic_logging] never receives events.
+# Leave enabled_publishers empty so Moesif does not need an application_id.
+[analytics]
+enabled = false
+enabled_publishers = [] 
+
+[router]
+gateway_host = "*"
+
+[router.access_logs]
+enabled = false
+
+[controller.server]
+gateway_id = "platform-gateway-id"
+
+[policy_engine.logging]
+level = "error"
+
+[policy_engine.metrics]
+enabled = false
+
+[controller.logging]
+level = "error"
+
+[controller.controlplane]
+insecure_skip_verify = true
+gateway_name = "default"
+
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username = "admin"
+password = "admin"
+roles = ["admin"]
+
+[immutable_gateway]
+enabled = false
+artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
+
+[policy_configurations.jwtauth_v1]
+# Must exceed test duration (warmup + run). 5m default caused a 401 burst at T+5min until runtime restart.
+jwkscachettl = "24h"
+jwksfetchtimeout = "5s"
+jwksfetchretrycount = 5
+jwksfetchretryinterval = "2s"
+
+# jwt-auth v1.2.1 token verdict cache (policy-definition.yaml systemParameters).
+# Caches signature-verified verdicts; bounds JWKS re-fetch vs repeat verification cost.
+tokencaching = true
+tokencachettl = "5m"
+negativecachettl = "60s"
+cachemaxsize = 100000
+
+# Superseded jwt-auth token cache settings:
+# tokencaching = true
+# tokencachettl = "5m"
+# negativecachettl = "60s"
+# cachemaxsize = 1000
+
+allowedalgorithms = ["RS256", "ES256"]
+leeway = "30s"
+authheaderscheme = "Bearer"
+headername = "Authorization"
+onfailurestatuscode = 401
+errormessageformat = "json"
+errormessage = "Authentication failed"
+validateissuer = true
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "test"
+# Replace YOUR_TENANT before JWT scenarios, or override via a local overlay.
+issuer = "https://api.asgardeo.io/t/YOUR_TENANT/oauth2/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "https://api.asgardeo.io/t/YOUR_TENANT/oauth2/jwks"
+skipTlsVerify = false
+
+[api_key]
+api_keys_per_user_per_api = 10
+
+# basic-ratelimit / advanced-ratelimit shared system config (in-memory, single gateway instance).
+# See: https://github.com/wso2/gateway-controllers/blob/main/docs/basic-ratelimit/v1.0/docs/basic-ratelimit.md
+[policy_configurations.ratelimit_v1]
+algorithm = "fixed-window"
+backend = "memory"
+
+[policy_configurations.ratelimit_v1.memory]
+max_entries = 100000
+cleanup_interval = "5m"
+
+[collector]
+request_body = false
+response_body = false
+request_headers = false
+response_headers = false
+
+[traffic_logging]
+enabled = false
+masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
+max_payload_size = 2048
+request_headers = false
+response_headers = false
+request_body = false
+response_body = false
+exclude_fields = []

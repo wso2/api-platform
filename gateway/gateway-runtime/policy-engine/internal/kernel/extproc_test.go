@@ -245,6 +245,91 @@ func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 	assert.Contains(t, string(immResp.Body), "Internal Server Error")
 }
 
+func TestTraceContextCarrier(t *testing.T) {
+	const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	const tracestate = "vendor1=value1"
+
+	t.Run("extracts traceparent and tracestate from request headers", func(t *testing.T) {
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{
+					Headers: &corev3.HeaderMap{
+						Headers: []*corev3.HeaderValue{
+							{Key: ":path", RawValue: []byte("/api/v1/pets")},
+							{Key: "traceparent", RawValue: []byte(traceparent)},
+							{Key: "tracestate", RawValue: []byte(tracestate)},
+						},
+					},
+				},
+			},
+		}
+
+		carrier := traceContextCarrier(req)
+		assert.Equal(t, traceparent, carrier.Get("traceparent"))
+		assert.Equal(t, tracestate, carrier.Get("tracestate"))
+		assert.Empty(t, carrier.Get(":path"))
+	})
+
+	t.Run("combines repeated tracestate headers in field order", func(t *testing.T) {
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{
+					Headers: &corev3.HeaderMap{
+						Headers: []*corev3.HeaderValue{
+							{Key: "traceparent", RawValue: []byte(traceparent)},
+							{Key: "tracestate", RawValue: []byte("vendor1=value1")},
+							{Key: "tracestate", RawValue: []byte("vendor2=value2")},
+						},
+					},
+				},
+			},
+		}
+
+		carrier := traceContextCarrier(req)
+		// W3C requires repeated tracestate fields be combined in field order,
+		// not overwritten.
+		assert.Equal(t, "vendor1=value1,vendor2=value2", carrier.Get("tracestate"))
+		assert.Equal(t, traceparent, carrier.Get("traceparent"))
+	})
+
+	t.Run("falls back to deprecated Value field", func(t *testing.T) {
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{
+					Headers: &corev3.HeaderMap{
+						Headers: []*corev3.HeaderValue{
+							{Key: "TraceParent", Value: traceparent},
+						},
+					},
+				},
+			},
+		}
+
+		// Mixed-case key is lowercased; empty RawValue falls back to Value.
+		assert.Equal(t, traceparent, traceContextCarrier(req).Get("traceparent"))
+	})
+
+	t.Run("returns empty carrier for non-header messages", func(t *testing.T) {
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestBody{
+				RequestBody: &extprocv3.HttpBody{Body: []byte("payload")},
+			},
+		}
+
+		assert.Empty(t, traceContextCarrier(req).Keys())
+	})
+
+	t.Run("returns empty carrier when no headers present", func(t *testing.T) {
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{},
+			},
+		}
+
+		assert.Empty(t, traceContextCarrier(req).Keys())
+	})
+}
+
 func TestProcess_UnknownRequestType(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)

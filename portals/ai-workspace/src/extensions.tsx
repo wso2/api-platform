@@ -47,11 +47,67 @@ export type AIWorkspaceExtension = SlotEntry & {
   render: (port: AIWorkspaceHostPort) => ReactNode;
 };
 
+/**
+ * Slot for overriding the built-in AI Gateways page (list + create/edit)
+ * without changing anything under `pages/appShell/appShellPages/gateways`.
+ * Pairs with the `Hideable name={AI_WORKSPACE_GATEWAYS_SLOT}` wrapping that
+ * page's built-in element in `App.tsx` — Slot supplies the replacement,
+ * Hideable suppresses the built-in, same two-primitive split the header
+ * comment in `slots/index.tsx` describes.
+ */
+export const AI_WORKSPACE_GATEWAYS_SLOT = 'page.gateways';
+
+/**
+ * Slot for overriding the built-in Insights page (org + project `/insights`)
+ * with the shared cloud Moesif embed. Same Slot/Hideable split as gateways —
+ * the built-in sidebar item and routes stay; only the page body changes.
+ */
+export const AI_WORKSPACE_INSIGHTS_SLOT = 'page.insights';
+
+/**
+ * A host-injected replacement for a specific built-in page. Unlike
+ * `AIWorkspaceExtension`, this isn't a new sidebar item — the built-in
+ * page's own route and sidebar entry stay in place; only what renders at
+ * that route changes.
+ */
+export type AIWorkspacePageOverride = SlotEntry & {
+  render: (port: AIWorkspaceHostPort) => ReactNode;
+  /**
+   * Optional nav placement for the built-in item this override replaces. When
+   * `label` is given the sidebar renders the override alongside the sidebar
+   * extensions, ordered by `order` — so a cloud build can move the entry into
+   * the extension cluster instead of leaving it where the built-in sits. Pair
+   * it with `hides` naming the built-in item's own region, or both appear.
+   */
+  label?: string;
+  icon?: ReactNode;
+  path?: string;
+  /** Built-in `Hideable` regions this entry suppresses (see `slots/index.tsx`). */
+  hides?: readonly string[];
+};
+
+/**
+ * `Hideable` region wrapping the built-in AI Gateways *sidebar item* (the page
+ * itself is `AI_WORKSPACE_GATEWAYS_SLOT`). Separate name because a cloud build
+ * may want to reposition the nav entry while still rendering at the built-in
+ * route.
+ */
+export const AI_WORKSPACE_GATEWAYS_NAV_REGION = 'nav.gateways';
+
+/** Every `Hideable` region the registered entries suppress. */
+export const hiddenRegionsOf = (
+  entries: readonly AIWorkspaceCloudEntry[]
+): readonly string[] =>
+  entries.flatMap((entry) => ('hides' in entry ? (entry.hides ?? []) : []));
+
+/** Every registered cloud entry — sidebar items and page overrides share one slot registry (see `slots/index.tsx`), filtered by `slot` at each consumption site. */
+export type AIWorkspaceCloudEntry = AIWorkspaceExtension | AIWorkspacePageOverride;
+
 export function ExtensionsProvider({
   extensions,
   children,
 }: {
-  extensions: readonly AIWorkspaceExtension[];
+  extensions: readonly AIWorkspaceCloudEntry[];
   children: ReactNode;
 }) {
   return (

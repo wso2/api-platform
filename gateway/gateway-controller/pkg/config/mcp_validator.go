@@ -254,40 +254,59 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 		}
 	}
 
-	// Validate auth if present
+	// Validate auth if present. Shared with LlmProvider/LlmProxy - see
+	// validateUpstreamAuthFields in llm_validator.go.
 	if upstream.Auth != nil {
 		auth := upstream.Auth
-		// Validate 'type'
-		if auth.Type == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
-				Message: "Auth type is required",
-			})
-		}
 
-		if auth.Header == nil || *auth.Header == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s.auth.header", fieldPrefix),
-				Message: "Auth header is required",
-			})
-		}
-		if auth.Value == nil || *auth.Value == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
-				Message: "Auth value is required",
-			})
-		}
-
+		// "bearer" predates the shared api-key/oauth2/other/none contract - MCP-only,
+		// kept for backward compatibility (functionally api-key plus a value-prefix
+		// check), so it's validated separately rather than via the shared validator.
 		if auth.Type == api.MCPProxyConfigDataUpstreamAuthType("bearer") {
-			// For Bearer token, value should start with "Bearer or "bearer "
-			if auth.Value != nil &&
-				!strings.HasPrefix(*auth.Value, "Bearer ") && !strings.HasPrefix(*auth.Value, "bearer ") {
+			// policyParams has no meaning for bearer; reject rather than silently
+			// ignore, so a stray value can't fool credential-inheritance into
+			// skipping inheritance of the real Value-held credential.
+			if auth.PolicyParams != nil {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.auth.policyParams", fieldPrefix),
+					Message: "Auth policyParams is not supported when auth type is 'bearer'",
+				})
+			}
+			if auth.PolicyVersion != nil && *auth.PolicyVersion != "" && !majorVersionPattern.MatchString(*auth.PolicyVersion) {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.auth.policyVersion", fieldPrefix),
+					Message: "Auth policyVersion must be major-only (e.g. 'v1')",
+				})
+			}
+			if auth.Header == nil || *auth.Header == "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.auth.header", fieldPrefix),
+					Message: "Auth header is required",
+				})
+			}
+			if auth.Value == nil || *auth.Value == "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
+					Message: "Auth value is required",
+				})
+			} else if !strings.HasPrefix(*auth.Value, "Bearer ") && !strings.HasPrefix(*auth.Value, "bearer ") {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
 					Message: "Bearer token value must start with 'Bearer ' or 'bearer '",
 				})
 			}
+			return errors
 		}
+
+		fields := upstreamAuthFields{
+			authType:      string(auth.Type),
+			header:        auth.Header,
+			value:         auth.Value,
+			policyName:    auth.PolicyName,
+			policyVersion: auth.PolicyVersion,
+			policyParams:  auth.PolicyParams,
+		}
+		errors = append(errors, validateUpstreamAuthFields(fieldPrefix+".auth", fields)...)
 	}
 
 	return errors

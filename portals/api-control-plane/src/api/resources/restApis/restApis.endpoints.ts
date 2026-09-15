@@ -17,13 +17,7 @@
  */
 
 import { http, type RequestOptions } from '../../core/http';
-import type {
-  BodyOf,
-  PathOf,
-  QueryOf,
-  ResponseOf,
-  Schema,
-} from '../../core/spec';
+import type { BodyOf, PathOf, QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
  * Transport layer for `/rest-apis`. One thin function per spec operation:
@@ -36,6 +30,19 @@ import type {
  */
 
 export type RestApi = Schema<'RESTAPI'>;
+/**
+ * One entry of `RESTAPI.operations`. Re-exported because the Develop section
+ * edits operations in place and must not restate their shape: `Operation`
+ * nests the wire fields under `request`, and a hand-written mirror is exactly
+ * the drift the spec-derived types exist to prevent.
+ */
+export type Operation = Schema<'Operation'>;
+/** One entry of `RESTAPI.policies` or `Operation.request.policies`. */
+export type Policy = Schema<'Policy'>;
+/** `RESTAPI.upstream` — the main/sandbox backend pair. */
+export type Upstream = Schema<'Upstream'>;
+/** One side of `Upstream`; carries `url` or `ref`, plus optional `auth`. */
+export type UpstreamDefinition = Schema<'UpstreamDefinition'>;
 export type RestApiListResponse = ResponseOf<'ListRESTAPIs'>;
 export type ListRestApisQuery = QueryOf<'ListRESTAPIs'>;
 /**
@@ -69,28 +76,23 @@ const BASE = '/rest-apis';
 const resourcePath = (restApiId: PathOf<'GetRESTAPI'>['restApiId']): string =>
   `${BASE}/${encodeURIComponent(restApiId)}`;
 
-export const listRestApis = async (
-  options?: RequestOptions
-): Promise<RestApiListResponse> => {
+export const listRestApis = async (options?: RequestOptions): Promise<RestApiListResponse> => {
   return http.get<RestApiListResponse>(BASE, {
     ...options,
     operationName: 'ListRESTAPIs',
   });
 };
 
-export const getRestApi = async (
-  restApiId: string,
-  options?: RequestOptions
-): Promise<RestApi> => {
+export const getRestApi = async (restApiId: string, options?: RequestOptions): Promise<RestApi> => {
   return http.get<RestApi>(resourcePath(restApiId), {
     ...options,
     operationName: 'GetRESTAPI',
   });
-  };
+};
 
 export const createRestApi = async (
   body: CreateRestApiBody,
-  options?: RequestOptions
+  options?: RequestOptions,
 ): Promise<RestApi> => {
   return http.post<RestApi>(BASE, body, {
     ...options,
@@ -101,7 +103,7 @@ export const createRestApi = async (
 export const updateRestApi = async (
   restApiId: string,
   body: UpdateRestApiBody,
-  options?: RequestOptions
+  options?: RequestOptions,
 ): Promise<RestApi> => {
   return http.put<RestApi>(resourcePath(restApiId), body, {
     ...options,
@@ -109,10 +111,7 @@ export const updateRestApi = async (
   });
 };
 
-export const deleteRestApi = async (
-  restApiId: string,
-  options?: RequestOptions
-): Promise<void> => {
+export const deleteRestApi = async (restApiId: string, options?: RequestOptions): Promise<void> => {
   return http.delete<void>(resourcePath(restApiId), {
     ...options,
     operationName: 'DeleteRESTAPI',

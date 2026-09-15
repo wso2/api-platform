@@ -325,97 +325,136 @@ func TestLLMProviderTransformer_TransformProxy_RejectsInvalidAdditionalProviderS
 	assert.Equal(t, "additional provider 'invalid-provider' source configuration is not LLMProviderConfiguration", err.Error())
 }
 
-// Test that a proxy that loops back into a provider with a downstream api-key-auth policy
-func TestLLMProviderTransformer_TransformProxy_LoopbackAuthCarriesProviderValuePrefix(t *testing.T) {
+// TestLLMProviderTransformer_TransformProxy_AdditionalProviderOAuth2AuthIsIsolated
+// covers a proxy's primary provider and an additionalProviders entry, each with
+// independent oauth2 credentials, emitting two separate oauth2 Policy
+// attachments rather than one shared one.
+func TestLLMProviderTransformer_TransformProxy_AdditionalProviderOAuth2AuthIsIsolated(t *testing.T) {
 	store := storage.NewConfigStore()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db := newTestSQLiteStorage(t, logger)
 
 	template := &models.StoredLLMProviderTemplate{
-		UUID: "0000-db-template-id-0000-000000000003",
+		UUID: "0000-db-template-id-0000-000000000004",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
-			Metadata:   api.Metadata{Name: "mistralai"},
-			Spec:       api.LLMProviderTemplateData{DisplayName: "mistralai"},
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
 		},
 	}
 	require.NoError(t, db.SaveLLMProviderTemplate(template))
 
-	// Provider whose downstream api-key-auth requires a "Bearer" prefix, carried as a
-	// global policy exactly as platform-api deploys it.
-	providerSourceConfig := api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
-		Kind:       api.LLMProviderConfigurationKindLlmProvider,
-		Metadata:   api.Metadata{Name: "mistral-provider"},
-		Spec: api.LLMProviderConfigData{
-			DisplayName:   "mistral-provider",
-			Version:       "v1.0",
-			Context:       stringPtr("/mistral-provider"),
-			Template:      "mistralai",
-			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
-			GlobalPolicies: &[]api.Policy{{
-				Name: constants.API_KEY_AUTH_POLICY_NAME,
-				Params: &map[string]interface{}{
-					"in":          "header",
-					"key":         "X-API-Key",
-					"valuePrefix": "Bearer",
-				},
-			}},
-		},
+	saveProvider := func(name, context string) {
+		providerSourceConfig := api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: name},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   name,
+				Version:       "v1.0",
+				Context:       stringPtr(context),
+				Template:      "openai",
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		}
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:                name + "-uuid",
+			Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+			Handle:              name,
+			DisplayName:         name,
+			Version:             "v1.0",
+			SourceConfiguration: providerSourceConfig,
+			DesiredState:        models.StateDeployed,
+		}))
 	}
-	require.NoError(t, db.SaveConfig(&models.StoredConfig{
-		UUID:                "mistral-provider-uuid",
-		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
-		Handle:              "mistral-provider",
-		DisplayName:         "mistral-provider",
-		Version:             "v1.0",
-		SourceConfiguration: providerSourceConfig,
-		DesiredState:        models.StateDeployed,
-	}))
+	saveProvider("provider-a", "/provider-a")
+	saveProvider("provider-b", "/provider-b")
 
 	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
 
+	// provider-b differs from provider-a in clientId, tokenEndpoint AND
+	// clientSecret, not just name, to lock in isolation on every field the
+	// cache key discriminates by.
 	proxy := &api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProxyConfigurationKindLlmProxy,
-		Metadata:   api.Metadata{Name: "proxy-from-mistral"},
+		Metadata:   api.Metadata{Name: "oauth2-multi"},
 		Spec: api.LLMProxyConfigData{
-			DisplayName: "proxy-from-mistral",
+			DisplayName: "oauth2-multi",
 			Version:     "v1.0",
 			Provider: api.LLMProxyProvider{
-				Id: "mistral-provider",
+				Id: "provider-a",
 				Auth: &api.LLMUpstreamAuth{
-					Type:   api.LLMUpstreamAuthTypeApiKey,
-					Header: stringPtr("X-API-Key"),
-					Value:  stringPtr(`{{ secret "sec-1" }}`),
+					Type: api.LLMUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"tokenEndpoint": "https://idp-a.example.com/token",
+						"clientId":      "client-a",
+						"clientSecret":  "secret-a",
+					},
 				},
 			},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{
+				Id: "provider-b",
+				Auth: &api.LLMUpstreamAuth{
+					Type: api.LLMUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"tokenEndpoint": "https://idp-b.example.com/token",
+						"clientId":      "client-b",
+						"clientSecret":  "secret-b",
+					},
+				},
+			}},
 		},
 	}
 
 	result, err := transformer.Transform(proxy, &api.RestAPI{})
 	require.NoError(t, err)
 
-	var authPolicy *api.Policy
+	// No operationPolicies attached, so the transformer only generates
+	// wildcard catch-all routes - any POST operation carries both oauth2
+	// attachments.
+	var postOp *api.Operation
 	for i := range result.Spec.Operations {
-		if result.Spec.Operations[i].Policies == nil {
-			continue
-		}
-		for _, pol := range *result.Spec.Operations[i].Policies {
-			if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
-				p := pol
-				authPolicy = &p
-				break
-			}
-		}
-		if authPolicy != nil {
+		if result.Spec.Operations[i].Method != nil && *result.Spec.Operations[i].Method == api.OperationMethod("POST") {
+			postOp = &result.Spec.Operations[i]
 			break
 		}
 	}
-	require.NotNil(t, authPolicy, "expected an upstream auth (set-headers) policy on the proxy")
-	assert.Equal(t, `Bearer {{ secret "sec-1" }}`, firstRequestHeaderValue(t, authPolicy.Params))
+	require.NotNil(t, postOp)
+	require.NotNil(t, postOp.Policies)
+
+	var oauth2Policies []api.Policy
+	for _, pol := range *postOp.Policies {
+		if pol.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+			oauth2Policies = append(oauth2Policies, pol)
+		}
+	}
+	// Two separate oauth2 attachments on the same operation - the shape that
+	// collided under the old API-identity-keyed cache.
+	require.Len(t, oauth2Policies, 2)
+	require.NotNil(t, oauth2Policies[0].ExecutionCondition)
+	require.NotNil(t, oauth2Policies[1].ExecutionCondition)
+	assert.Contains(t, *oauth2Policies[0].ExecutionCondition, "provider-a")
+	assert.Contains(t, *oauth2Policies[1].ExecutionCondition, "provider-b")
+
+	require.NotNil(t, oauth2Policies[0].Params)
+	require.NotNil(t, oauth2Policies[1].Params)
+	paramsA := *oauth2Policies[0].Params
+	paramsB := *oauth2Policies[1].Params
+
+	// Every field oauth2ConfigDiscriminator keys on must actually differ, or
+	// the two would collide on the same Redis key regardless.
+	assert.NotEqual(t, paramsA["clientId"], paramsB["clientId"])
+	assert.NotEqual(t, paramsA["tokenEndpoint"], paramsB["tokenEndpoint"])
+	assert.NotEqual(t, paramsA["clientSecret"], paramsB["clientSecret"])
+	assert.Equal(t, "client-a", paramsA["clientId"])
+	assert.Equal(t, "client-b", paramsB["clientId"])
+	assert.Equal(t, "https://idp-a.example.com/token", paramsA["tokenEndpoint"])
+	assert.Equal(t, "https://idp-b.example.com/token", paramsB["tokenEndpoint"])
+	assert.Equal(t, "secret-a", paramsA["clientSecret"])
+	assert.Equal(t, "secret-b", paramsB["clientSecret"])
 }
 
 func firstRequestHeaderValue(t *testing.T, params *map[string]interface{}) string {

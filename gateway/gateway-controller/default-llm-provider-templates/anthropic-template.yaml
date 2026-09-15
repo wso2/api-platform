@@ -56,6 +56,9 @@ spec:
     identifier: $.usage.cache_creation.ephemeral_5m_input_tokens
     fallbackIdentifiers:
       - $.message.usage.cache_creation.ephemeral_5m_input_tokens
+      # The TTL breakdown is optional; the flat total keeps the tokens billed.
+      - $.usage.cache_creation_input_tokens
+      - $.message.usage.cache_creation_input_tokens
   cacheWrite1hTokens:
     location: payload
     identifier: $.usage.cache_creation.ephemeral_1h_input_tokens

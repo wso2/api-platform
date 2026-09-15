@@ -20,6 +20,7 @@ package runtime
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -36,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/hub"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/systempolicies"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
+	"github.com/wso2/api-platform/httpkit/tlsconfig"
 )
 
 var (
@@ -403,14 +405,14 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 	// Create shared HTTP servers.
 	if hasWS {
-		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, "", "")
+		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, "", "", serverTLSOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to create WebSocket server: %w", err)
 		}
 		r.servers = append(r.servers, wsServer)
 		// Create WSS server if TLS is enabled
 		if r.cfg.Server.WebSocketTLSEnabled {
-			wssServer, err := r.newManagedServer("WebSocket-HTTPS", r.cfg.Server.WebSocketHTTPSPort, wsMux, r.cfg.Server.WebSocketTLSCertFile, r.cfg.Server.WebSocketTLSKeyFile)
+			wssServer, err := r.newManagedServer("WebSocket-HTTPS", r.cfg.Server.WebSocketHTTPSPort, wsMux, r.cfg.Server.WebSocketTLSCertFile, r.cfg.Server.WebSocketTLSKeyFile, webSocketServerTLSOptions(r.cfg.Server))
 			if err != nil {
 				return fmt.Errorf("failed to create WebSocket HTTPS server: %w", err)
 			}
@@ -419,14 +421,14 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 	}
 	if hasWebSub && r.cfg.Server.WebSubEnabled {
 		// Create HTTP server
-		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, "", "")
+		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, "", "", serverTLSOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
 		}
 		r.servers = append(r.servers, websubHTTPServer)
 		// Create HTTPS server if TLS is enabled
 		if r.cfg.Server.WebSubTLSEnabled {
-			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, r.cfg.Server.WebSubTLSCertFile, r.cfg.Server.WebSubTLSKeyFile)
+			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, r.cfg.Server.WebSubTLSCertFile, r.cfg.Server.WebSubTLSKeyFile, webSubServerTLSOptions(r.cfg.Server))
 			if err != nil {
 				return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
 			}
@@ -454,7 +456,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if r.cfg.ControlPlane.Enabled {
 		// Create WebSocket server for dynamic WebBrokerApi bindings
 		slog.Info("Creating WebSocket server for dynamic WebBrokerApi bindings", "port", r.cfg.Server.WebSocketPort)
-		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, r.wsMux, "", "")
+		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, r.wsMux, "", "", serverTLSOptions{})
 		if err != nil {
 			r.mu.Unlock()
 			return fmt.Errorf("failed to create WebSocket server: %w", err)
@@ -467,7 +469,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		// Create WSS server if TLS is enabled
 		if r.cfg.Server.WebSocketTLSEnabled {
 			slog.Info("Creating WebSocket HTTPS server for dynamic WebBrokerApi bindings", "port", r.cfg.Server.WebSocketHTTPSPort)
-			wssServer, err := r.newManagedServer("WebSocket-HTTPS", r.cfg.Server.WebSocketHTTPSPort, r.wsMux, r.cfg.Server.WebSocketTLSCertFile, r.cfg.Server.WebSocketTLSKeyFile)
+			wssServer, err := r.newManagedServer("WebSocket-HTTPS", r.cfg.Server.WebSocketHTTPSPort, r.wsMux, r.cfg.Server.WebSocketTLSCertFile, r.cfg.Server.WebSocketTLSKeyFile, webSocketServerTLSOptions(r.cfg.Server))
 			if err != nil {
 				r.mu.Unlock()
 				return fmt.Errorf("failed to create WebSocket HTTPS server: %w", err)
@@ -481,7 +483,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		// Create WebSub servers for dynamic WebSubApi bindings
 		if r.cfg.Server.WebSubEnabled {
 			slog.Info("Creating WebSub HTTP server for dynamic WebSubApi bindings", "port", r.cfg.Server.WebSubHTTPPort)
-			websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, "", "")
+			websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, "", "", serverTLSOptions{})
 			if err != nil {
 				r.mu.Unlock()
 				return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
@@ -494,7 +496,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			// Create HTTPS server if TLS is enabled
 			if r.cfg.Server.WebSubTLSEnabled {
 				slog.Info("Creating WebSub HTTPS server for dynamic WebSubApi bindings", "port", r.cfg.Server.WebSubHTTPSPort)
-				websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, r.cfg.Server.WebSubTLSCertFile, r.cfg.Server.WebSubTLSKeyFile)
+				websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, r.cfg.Server.WebSubTLSCertFile, r.cfg.Server.WebSubTLSKeyFile, webSubServerTLSOptions(r.cfg.Server))
 				if err != nil {
 					r.mu.Unlock()
 					return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
@@ -584,12 +586,49 @@ func (r *Runtime) Run(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, certFile, keyFile string) (*managedServer, error) {
+// serverTLSOptions carries the optional cipher suite, ECDH/curve preference,
+// and min/max TLS version tuning for one inbound HTTPS listener (WebSub or
+// WebSocket). The zero value means "use Go's crypto/tls defaults for
+// everything" — every field is independently optional.
+type serverTLSOptions struct {
+	MinVersion       string
+	MaxVersion       string
+	CipherSuites     string
+	CurvePreferences string
+}
+
+// webSubServerTLSOptions extracts the WebSub-HTTPS listener's TLS tuning
+// from ServerConfig, validated up front by config.validate.
+func webSubServerTLSOptions(cfg config.ServerConfig) serverTLSOptions {
+	return serverTLSOptions{
+		MinVersion:       cfg.WebSubTLSMinVersion,
+		MaxVersion:       cfg.WebSubTLSMaxVersion,
+		CipherSuites:     cfg.WebSubTLSCipherSuites,
+		CurvePreferences: cfg.WebSubTLSCurvePreferences,
+	}
+}
+
+// webSocketServerTLSOptions extracts the WebSocket-HTTPS listener's TLS
+// tuning from ServerConfig, validated up front by config.validate.
+func webSocketServerTLSOptions(cfg config.ServerConfig) serverTLSOptions {
+	return serverTLSOptions{
+		MinVersion:       cfg.WebSocketTLSMinVersion,
+		MaxVersion:       cfg.WebSocketTLSMaxVersion,
+		CipherSuites:     cfg.WebSocketTLSCipherSuites,
+		CurvePreferences: cfg.WebSocketTLSCurvePreferences,
+	}
+}
+
+func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, certFile, keyFile string, tlsOpts serverTLSOptions) (*managedServer, error) {
 	server := &managedServer{
 		name: name,
 		server: &http.Server{
-			Addr:    fmt.Sprintf(":%d", port),
-			Handler: handler,
+			Addr:           fmt.Sprintf(":%d", port),
+			Handler:        handler,
+			ReadTimeout:    r.cfg.Server.ReadTimeout,
+			WriteTimeout:   r.cfg.Server.WriteTimeout,
+			IdleTimeout:    r.cfg.Server.IdleTimeout,
+			MaxHeaderBytes: r.cfg.Server.MaxHeaderBytes,
 		},
 	}
 
@@ -600,12 +639,66 @@ func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, 
 		if err := ensureReadableTLSAsset(keyFile, name+" TLS key file"); err != nil {
 			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
 		}
+
+		tlsConfig, err := buildListenerTLSConfig(tlsOpts)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
+		}
+
 		server.tls = true
 		server.certFile = certFile
 		server.keyFile = keyFile
+		server.server.TLSConfig = tlsConfig
 	}
 
 	return server, nil
+}
+
+// buildListenerTLSConfig builds the *tls.Config carrying the optional
+// cipher/curve/version tuning for an inbound HTTPS listener. The certificate
+// itself is intentionally left unset here: http.Server.ListenAndServeTLS
+// loads it from the cert/key file paths at Serve time (see runServer) and
+// merges it into whatever TLSConfig is already set, leaving
+// MinVersion/MaxVersion/CipherSuites/CurvePreferences untouched. Config
+// validation (config.validate, via validateListenerTLSTuning) already
+// parses these same fields at startup, so an error here would only surface
+// if that validation were ever skipped — still handled explicitly rather
+// than ignored.
+func buildListenerTLSConfig(opts serverTLSOptions) (*tls.Config, error) {
+	if err := tlsconfig.ValidateVersionRange(opts.MinVersion, opts.MaxVersion); err != nil {
+		return nil, err
+	}
+	cfg := &tls.Config{}
+	if opts.MinVersion != "" {
+		if v, ok := tlsconfig.ParseVersion(opts.MinVersion); ok {
+			cfg.MinVersion = v
+		}
+	}
+	if opts.MaxVersion != "" {
+		if v, ok := tlsconfig.ParseVersion(opts.MaxVersion); ok {
+			cfg.MaxVersion = v
+		}
+	}
+	ciphers, err := tlsconfig.ParseCipherSuites(opts.CipherSuites)
+	if err != nil {
+		return nil, err
+	}
+	cfg.CipherSuites = ciphers
+	curves, err := tlsconfig.ParseCurvePreferences(opts.CurvePreferences)
+	if err != nil {
+		return nil, err
+	}
+	if len(curves) == 0 {
+		// No explicit preference configured — default to the hybrid PQC group
+		// first, with classical fallbacks after, rather than falling through
+		// to Go's own implicit (classical-only) curve list. A peer that
+		// doesn't yet support X25519MLKEM768 still completes the handshake
+		// via one of the later entries (post-quantum-cryptography.md
+		// directive 3).
+		curves = []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256, tls.CurveP384}
+	}
+	cfg.CurvePreferences = curves
+	return cfg, nil
 }
 
 func ensureReadableTLSAsset(filePath, fieldName string) error {

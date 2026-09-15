@@ -125,6 +125,12 @@ const DEFAULTS = {
         encryptionKey: '',
         sessionSecret: '',
     },
+    // Shared-key S2S auth for platform-api publishing calls. Portal compares sha256(raw) against `hash`.
+    // A match grants only the platform-api-system role's five dp:*:manage scopes.
+    // Empty disables shared-key auth entirely; OAuth / session paths keep working.
+    internalAuth: {
+        hash: '',
+    },
     // Authentication — HOW a token is verified: a mode gate plus the two backends it
     // selects between, local (default) and idp. What a verified token may DO is
     // authorization, which lives in its own mode-independent section below.
@@ -193,7 +199,7 @@ const DEFAULTS = {
             // Which role name, as it appears in the token's roles claim, grants each
             // of the portal's two access tiers. Was auth.idp.roles, despite being read in
             // local mode too (authController.js's login). A third tier, superAdmin, used
-            // to gate the earlier devportal's /portal pages; those are not served here, so
+            // to gate the earlier api portal's /portal pages; those are not served here, so
             // it guarded nothing and was removed.
             portalRoles: {
                 admin: 'admin',
@@ -291,6 +297,12 @@ const DEFAULTS = {
         // default_name keeps working. Resolved (with a warning) in configLoader.js.
         defaultName: '',
         autoCreateSubscriptionPlans: true,
+        // API Portal identifier this portal instance is pinned to.
+        // Resolved by the config.toml template before reaching this default.
+        // Set APIP_AP_ORGANIZATION_PORTAL_ID for cloud/K8s deployments, or override
+        // organization.portal_id in a local config file for on-premise. When neither
+        // is set the template resolves to 'portal_id'.
+        portalId: '',
     },
     // Which artifact types this portal serves. An allowlist: a type not listed here
     // gets no nav entry, no landing-page section, and 404s on its routes. Any

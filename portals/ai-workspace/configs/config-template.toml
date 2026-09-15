@@ -118,6 +118,27 @@ port      = 9643
 cert_file = "/etc/ai-workspace/tls/cert.pem"
 key_file  = "/etc/ai-workspace/tls/key.pem"
 
+# minimum_protocol_version / maximum_protocol_version bound the negotiated TLS
+# version: one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3".
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+
+# ciphers is a comma-separated list of Go crypto/tls cipher suite names
+# (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256") restricting which suites
+# this listener will negotiate. Empty means Go's own secure default set/order
+# applies. Only affects TLS 1.2 and below — TLS 1.3 suite selection is not
+# configurable in Go's crypto/tls.
+ciphers = ""
+
+# ecdh_curves is a comma-separated list of TLS 1.3 key-exchange groups, most
+# preferred first. Classical curves only by default. Prepend the hybrid
+# post-quantum group "X25519MLKEM768" (FIPS 203 ML-KEM-768 + X25519) as an
+# explicit opt-in once clients reaching this listener are confirmed to
+# support it, e.g. "X25519MLKEM768,X25519,P-256" — a client that doesn't
+# offer the hybrid group simply falls back to a later classical entry in this
+# same list, so enabling it never breaks a legacy peer.
+ecdh_curves = "X25519,P-256"
+
 
 # ---------------------------------------------------------------------------
 # Logging. level/format are this process's own logs; browser_debug is
@@ -149,6 +170,88 @@ tls_skip_verify = "false"
 
 # PEM bundle to trust for the upstream's TLS certificate, appended to system roots.
 ca_file = "/etc/ai-workspace/tls/cert.pem"
+
+
+# ---------------------------------------------------------------------------
+# Outbound *http.Transport used for every call this BFF makes to the Platform API
+# above (see internal/proxy/transport.go's NewTransport, and its one call site in
+# internal/server/server.go). Mirrors github.com/wso2/go-httpkit/httpclient.Config
+# field-for-field, the same shape gateway-controller's and platform-api's own
+# [*.http_client] tables use. Every key below is optional — omitting a subsection
+# entirely keeps its Go-level default, and every default here reproduces exactly
+# what this transport hardcoded before these keys existed, so a deployment that
+# omits this whole table sees zero behavior change.
+#
+# Not configurable here (see [ai_workspace.control_plane] above instead):
+#   - TLS trust for the ORIGIN (Platform API) certificate — tls_skip_verify /
+#     ca_file above already govern that one trust decision; duplicating it here
+#     would create two settings that must always be kept in sync.
+#   - SSRF guarding — this transport only ever talks to the fixed url above, never
+#     a tenant/end-user-supplied destination, so there is nothing to guard against.
+# ---------------------------------------------------------------------------
+[ai_workspace.http_client.pooling]
+max_idle_conns          = 100
+max_idle_conns_per_host = 20
+max_conns_per_host      = 0    # 0 = no per-host cap
+idle_conn_timeout       = "90s"
+keep_alive              = "30s"
+disable_keep_alives     = false
+# HTTP/2 is on by default here (unlike gateway-controller/platform-api, which default
+# it off): this transport already sets a custom TLS config, so Go's own Transport
+# would otherwise conservatively disable HTTP/2 — see
+# httpclient.PoolingConfig.EnableHTTP2's doc comment on the connection-coalescing
+# caveat before disabling.
+enable_http2 = true
+
+[ai_workspace.http_client.timeouts]
+# Overall has no observable effect at this call site today — NewTransport extracts
+# only the *http.Transport, and server.go applies its own separate 60s
+# http.Client.Timeout on top of it. Kept for shape parity / future use.
+overall          = "30s"
+dial             = "10s"
+tls_handshake    = "10s"
+response_header  = "10s"
+expect_continue  = "1s"
+# 0 = httpclient's own package default (10MiB); a negative value disables the
+# response-size bound entirely. Negative by default: this transport backs a reverse
+# proxy that streams SSE / long-running LLM output between the BFF and its own
+# fixed, trusted Platform API — not an arbitrary or tenant-supplied target — so
+# truncating a legitimate long stream would be worse than not bounding it.
+max_response_bytes = -1
+
+[ai_workspace.http_client.tls]
+# Both empty (the default) leaves Go's own crypto/tls default in effect (currently a
+# TLS 1.2 floor with no configured ceiling) — set explicitly to bound the negotiated
+# version instead.
+min_version = ""
+max_version = ""
+# Comma-separated Go crypto/tls cipher suite names; only affects TLS 1.2 and below.
+# Empty uses Go's own default secure set.
+cipher_suites = ""
+# Comma-separated, order-significant TLS 1.3 key-exchange groups, e.g.
+# "X25519MLKEM768,X25519,P-256" to opt into the FIPS 203 ML-KEM-768 hybrid group
+# while retaining classical fallbacks for a Platform API build that doesn't support
+# it yet. Empty (the default) uses Go's own defaults (no PQC).
+curve_preferences = ""
+
+[ai_workspace.http_client.proxy]
+# "none" | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY — matches this
+# transport's previous hardcoded http.ProxyFromEnvironment behavior, and remains
+# the default here) | "url" (url/username/password/no_proxy below)
+mode     = "environment"
+url      = ""
+username = ""
+password = ""
+no_proxy = []
+
+[ai_workspace.http_client.proxy.tls]
+# Configures a SEPARATE TLS handshake to an https:// proxy itself, decoupled from
+# ai_workspace.http_client.tls above (which always governs the origin handshake).
+# Only used when [ai_workspace.http_client.proxy] mode = "url".
+root_ca_file         = ""
+client_cert_file     = ""
+client_key_file      = ""
+insecure_skip_verify = false
 
 
 # ---------------------------------------------------------------------------

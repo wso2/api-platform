@@ -467,13 +467,21 @@ Most bugs surface in logs or config dumps without needing to step through code.
 | Envoy router (in Docker) — `[rtr]` lines | `cd <REPO_ROOT>/gateway && docker compose logs --no-log-prefix gateway-runtime 2>&1 \| grep '^\[rtr\]'` |
 | Python executor (Option 2B) | `/tmp/python_executor.log` |
 
-> Why the `grep`: the `gateway-runtime` container stamps every log line with
-> one of three prefixes — `[rtr]` (Envoy router), `[pol]` (in-container PE,
-> still receives xDS pushes even in debug mode), unprefixed (the entrypoint).
+> Why the `grep`: the `gateway-runtime` container stamps every human-readable log
+> line with one of these prefixes — `[rtr]` (Envoy router), `[pol]` (in-container PE,
+> still receives xDS pushes even in debug mode), `[pye]` (Python executor, started
+> only when compiled Python policies are present), and `[ent]` (the entrypoint's
+> own startup and shutdown messages).
 > When debugging traffic you only want `[rtr]` — Envoy's access log is where
 > each request's status, upstream, and policy verdict actually surface.
 > `--no-log-prefix` drops Docker's `gateway-runtime-1  |` per-line prefix so
-> the `[rtr]` anchor is at column 0.
+> the `[rtr]` anchor is at column 0. `[pye]` lines share this same container
+> stdout; under Option 2B the executor runs on the host instead and logs to
+> `/tmp/python_executor.log` (see the table above).
+>
+> JSON output on stdout is not prefixed — the policy engine's traffic log, and
+> Envoy's access log when `router.access_logs.format = "json"` — so `grep '^\['`
+> will not match it. Those records carry a `"component"` field instead.
 
 **Controller log lines** carry `correlation_id=<uuid>` — grep on it to follow
 one request end-to-end across handler → service → xDS push:

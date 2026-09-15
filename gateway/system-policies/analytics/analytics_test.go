@@ -416,3 +416,87 @@ func TestExtractMCPResponseAnalyticsProps_IsError(t *testing.T) {
 		})
 	}
 }
+
+// A resources/* method addresses its target by URI at params.uri, while tools/*
+// and prompts/* name theirs at params.name. Extracting only params.name left
+// mcp.resource.uri permanently empty for every resource read.
+func TestOnRequestBody_MCPCapabilityTarget(t *testing.T) {
+	cases := []struct {
+		name     string
+		body     string
+		wantName string
+		wantURI  string
+	}{
+		{
+			name:     "tools/call carries a name",
+			body:     `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_docs"}}`,
+			wantName: "search_docs",
+		},
+		{
+			name:     "prompts/get carries a name",
+			body:     `{"jsonrpc":"2.0","id":2,"method":"prompts/get","params":{"name":"summarize"}}`,
+			wantName: "summarize",
+		},
+		{
+			name:    "resources/read carries a uri",
+			body:    `{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"file:///docs/readme.md"}}`,
+			wantURI: "file:///docs/readme.md",
+		},
+		{
+			// resources/list takes no target at all; neither field may be invented.
+			name: "resources/list carries neither",
+			body: `{"jsonrpc":"2.0","id":4,"method":"resources/list","params":{}}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			props := mcpRequestProps(t, tc.body)
+			if props.CapabilityName != tc.wantName {
+				t.Errorf("capabilityName = %q, want %q", props.CapabilityName, tc.wantName)
+			}
+			if props.ResourceUri != tc.wantURI {
+				t.Errorf("resourceUri = %q, want %q", props.ResourceUri, tc.wantURI)
+			}
+		})
+	}
+}
+
+// A resources/read request that also happens to carry params.name must not have
+// it mistaken for the resource's identity.
+func TestOnRequestBody_MCPResourceIgnoresName(t *testing.T) {
+	props := mcpRequestProps(t,
+		`{"jsonrpc":"2.0","id":5,"method":"resources/read",`+
+			`"params":{"uri":"file:///a.md","name":"not-the-target"}}`)
+
+	if props.ResourceUri != "file:///a.md" {
+		t.Errorf("resourceUri = %q, want file:///a.md", props.ResourceUri)
+	}
+	if props.CapabilityName != "" {
+		t.Errorf("capabilityName = %q, want empty for a resource", props.CapabilityName)
+	}
+}
+
+// mcpRequestProps runs OnRequestBody over an MCP request body and returns the
+// properties it emitted onto analytics metadata.
+func mcpRequestProps(t *testing.T, body string) McpRequestAnalyticsProperties {
+	t.Helper()
+	action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), &policy.RequestContext{
+		SharedContext: &policy.SharedContext{APIKind: policy.APIKindMCP},
+		Body:          &policy.Body{Content: []byte(body)},
+	}, nil)
+
+	mods, ok := action.(policy.UpstreamRequestModifications)
+	if !ok {
+		t.Fatalf("expected UpstreamRequestModifications, got %T", action)
+	}
+	raw, ok := mods.AnalyticsMetadata["mcp_request_properties"].(string)
+	if !ok {
+		t.Fatalf("mcp_request_properties absent or not a string: %#v", mods.AnalyticsMetadata)
+	}
+	var props McpRequestAnalyticsProperties
+	if err := json.Unmarshal([]byte(raw), &props); err != nil {
+		t.Fatalf("unmarshal mcp_request_properties: %v", err)
+	}
+	return props
+}

@@ -27,10 +27,50 @@ import (
 )
 
 type MCPTransformer struct {
+	// policyVersionResolver validates a caller-supplied upstream.auth.policyVersion
+	// override against what's loaded in this gateway image. nil (e.g. the
+	// HydrateStoredMCPConfig rehydration path) skips that validation.
+	policyVersionResolver PolicyVersionResolver
 }
 
-func NewMCPTransformer() *MCPTransformer {
-	return &MCPTransformer{}
+func NewMCPTransformer(policyVersionResolver PolicyVersionResolver) *MCPTransformer {
+	return &MCPTransformer{policyVersionResolver: policyVersionResolver}
+}
+
+// resolvePolicyVersionOverride mirrors LLMProviderTransformer's method of the
+// same name, except a nil policyVersionResolver here is not an error - the
+// override is accepted as-is rather than validated.
+func (t *MCPTransformer) resolvePolicyVersionOverride(name string, override *string) (string, error) {
+	if t.policyVersionResolver == nil {
+		if override != nil {
+			return strings.TrimSpace(*override), nil
+		}
+		return "", nil
+	}
+	resolved, err := t.policyVersionResolver.Resolve(name)
+	if err != nil {
+		return "", err
+	}
+	if override == nil {
+		return resolved, nil
+	}
+	trimmed := strings.TrimSpace(*override)
+	if trimmed == "" || trimmed == resolved {
+		return resolved, nil
+	}
+	return "", fmt.Errorf("policy '%s' version '%s' was requested, but this gateway build only has '%s' loaded", name, trimmed, resolved)
+}
+
+// buildSetHeadersParams validates header/value and builds the set-headers
+// policy params from them - shared by the api-key and bearer cases below.
+func buildSetHeadersParams(header, value *string) (map[string]interface{}, error) {
+	if header == nil || *header == "" {
+		return nil, fmt.Errorf("upstream.auth.header is required")
+	}
+	if value == nil || *value == "" {
+		return nil, fmt.Errorf("upstream.auth.value is required")
+	}
+	return GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *header, *value)
 }
 
 // protocolVersionComparator compares two MCP protocol version strings in YYYY-MM-DD format
@@ -194,15 +234,69 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
 	if upstream.Auth != nil {
-		params, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+		auth := upstream.Auth
+		switch auth.Type {
+		case api.MCPProxyConfigDataUpstreamAuthTypeApiKey:
+			pol, err := buildUpstreamAuthPolicy(string(auth.Type), "upstream.auth",
+				auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+				constants.SET_HEADERS_POLICY_NAME,
+				func() (map[string]interface{}, error) {
+					params, err := buildSetHeadersParams(auth.Header, auth.Value)
+					if err != nil {
+						return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+					}
+					return params, nil
+				},
+				t.resolvePolicyVersionOverride,
+			)
+			if err != nil {
+				return nil, err
+			}
+			policies = append(policies, *pol)
+		case api.MCPProxyConfigDataUpstreamAuthTypeOauth2:
+			// No typed-field fallback for oauth2 - policyParams is always required.
+			pol, err := buildUpstreamAuthPolicy(string(auth.Type), "upstream.auth",
+				auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+				constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME, nil, t.resolvePolicyVersionOverride)
+			if err != nil {
+				return nil, err
+			}
+			policies = append(policies, *pol)
+		case api.MCPProxyConfigDataUpstreamAuthTypeOther:
+			// No default policy name (policyName is required) and no typed-field
+			// fallback (policyParams is always required).
+			pol, err := buildUpstreamAuthPolicy(string(auth.Type), "upstream.auth",
+				auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+				"", nil, t.resolvePolicyVersionOverride)
+			if err != nil {
+				return nil, err
+			}
+			policies = append(policies, *pol)
+		case api.MCPProxyConfigDataUpstreamAuthTypeNone:
+			// No upstream authentication - no auth policy is attached; auth
+			// (if any) is handled entirely by user-attached policies elsewhere.
+		case api.MCPProxyConfigDataUpstreamAuthType("bearer"):
+			// Preserved for backward compatibility (see mcp_validator.go); policyParams
+			// is always nil here, bearer has no policyParams form of its own.
+			pol, err := buildUpstreamAuthPolicy(string(auth.Type), "upstream.auth",
+				auth.PolicyName, auth.PolicyVersion, nil,
+				constants.SET_HEADERS_POLICY_NAME,
+				func() (map[string]interface{}, error) {
+					params, err := buildSetHeadersParams(auth.Header, auth.Value)
+					if err != nil {
+						return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+					}
+					return params, nil
+				},
+				t.resolvePolicyVersionOverride,
+			)
+			if err != nil {
+				return nil, err
+			}
+			policies = append(policies, *pol)
+		default:
+			return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 		}
-		pol := api.Policy{
-			Name:   constants.SET_HEADERS_POLICY_NAME,
-			Params: &params,
-		}
-		policies = append(policies, pol)
 	}
 
 	apiData.Policies = &policies

@@ -100,8 +100,8 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if req.ApiKey == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "API key value is required"))
+	if req.DisplayName == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "Display name is required"))
 		return
 	}
 
@@ -118,7 +118,8 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 		req.Id = &name
 	}
 
-	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, userId, &req); err != nil {
+	resp, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, userId, &req)
+	if err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
 			return
@@ -127,16 +128,16 @@ func (h *WebBrokerAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Req
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
+		// Preserve catalog error status and message.
+		if respondCatalogError(w, h.slogger, err) {
+			return
+		}
 		h.slogger.Error("Failed to create API key for WebBroker API", "apiHandle", apiHandle, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "Failed to create API key"))
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
-		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Id,
-		Message: "API key created and broadcasted to gateways successfully",
-	})
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // UpdateAPIKey handles PUT /api/v0.9/webbroker-apis/:apiId/api-keys/:keyName

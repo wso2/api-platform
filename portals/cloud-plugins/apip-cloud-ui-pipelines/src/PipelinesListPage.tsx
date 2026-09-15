@@ -11,7 +11,7 @@ import { useState, type FC } from 'react';
 import {
   Box,
   Button,
-  Chip,
+  CircularProgress,
   Collapse,
   Dialog,
   DialogActions,
@@ -35,20 +35,19 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import PipelineStageCard from './components/PipelineStageCard';
 import type { Environment, Pipeline } from './types';
+import { isLinearPipeline, orderEnvironments } from './utils';
 
 export type PipelinesListPageProps = {
   pipelines: Pipeline[];
   environments: Environment[];
   onCreateClick: () => void;
   onEditClick: (id: string) => void;
-  onDelete: (id: string) => void;
+  /** Returning a promise lets the confirm dialog stay open, and busy, until the delete settles. */
+  onDelete: (id: string) => void | Promise<void>;
 };
 
-const findEnvironment = (environments: Environment[], environmentId: string) =>
-  environments.find((environment) => environment.id === environmentId);
-
-const findGateway = (environment: Environment | undefined, gatewayId: string) =>
-  environment?.gateways.find((gateway) => gateway.id === gatewayId);
+const findEnvironment = (environments: Environment[], name: string) =>
+  environments.find((environment) => environment.name === name);
 
 const PipelinesListPage: FC<PipelinesListPageProps> = ({
   pipelines,
@@ -59,6 +58,7 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
 }) => {
   const [expandedIds, setExpandedIds] = useState<string[]>(() => pipelines.map((p) => p.id));
   const [pendingDelete, setPendingDelete] = useState<Pipeline | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const toggleExpanded = (id: string) => {
@@ -67,10 +67,18 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
     );
   };
 
-  const handleConfirmDelete = () => {
-    if (!pendingDelete) return;
-    onDelete(pendingDelete.id);
-    setPendingDelete(null);
+  const handleConfirmDelete = async () => {
+    // The dialog stays open, with its button busy, until the delete settles:
+    // closing first left the pipeline on screen with nothing to say a delete was
+    // running, and a second click could issue a second delete.
+    if (!pendingDelete || pendingDelete.isDefault || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(pendingDelete.id);
+      setPendingDelete(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -132,6 +140,11 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
         <Stack spacing={2}>
           {filteredPipelines.map((pipeline) => {
             const expanded = expandedIds.includes(pipeline.id);
+            const orderedNames = orderEnvironments(pipeline.promotionPaths);
+            // The builder can only edit a linear chain; a branching or cyclic
+            // pipeline would lose edges if saved through it, so editing is
+            // disabled for those until a graph-preserving editor exists.
+            const editable = isLinearPipeline(pipeline.promotionPaths);
             return (
               <Box
                 key={pipeline.id}
@@ -148,31 +161,44 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="subtitle1" >
+                    <Typography variant="subtitle1">
                       {pipeline.name}
                     </Typography>
-                    {pipeline.isDefault ? (
-                      <Chip label="Default" size="small" color="primary" variant="outlined" />
-                    ) : null}
                   </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Tooltip title="Edit pipeline">
-                      <IconButton
-                        size="small"
-                        aria-label={`Edit ${pipeline.name}`}
-                        onClick={() => onEditClick(pipeline.id)}
-                      >
-                        <Pencil size={16} />
-                      </IconButton>
-                    </Tooltip>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      aria-label={`Delete ${pipeline.name}`}
-                      onClick={() => setPendingDelete(pipeline)}
+                    <Tooltip
+                      title={
+                        editable
+                          ? 'Edit pipeline'
+                          : 'This pipeline has a branching promotion graph and cannot be edited here yet.'
+                      }
                     >
-                      <Trash2 size={16} />
-                    </IconButton>
+                      <span>
+                        <IconButton
+                          size="small"
+                          aria-label={`Edit ${pipeline.name}`}
+                          onClick={() => onEditClick(pipeline.id)}
+                          disabled={!editable}
+                        >
+                          <Pencil size={16} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip
+                      title={pipeline.isDefault ? "The default pipeline can't be deleted." : ''}
+                    >
+                      <span>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          aria-label={`Delete ${pipeline.name}`}
+                          onClick={() => setPendingDelete(pipeline)}
+                          disabled={pipeline.isDefault}
+                        >
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                     <IconButton
                       size="small"
                       aria-label={expanded ? 'Collapse' : 'Expand'}
@@ -184,19 +210,17 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
                 </Box>
                 <Collapse in={expanded}>
                   <Box sx={{ px: 2, py: 2, display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-                    {pipeline.stages.map((stage, index) => {
-                      const environment = findEnvironment(environments, stage.environmentId);
-                      const gateway = findGateway(environment, stage.defaultGatewayId);
+                    {orderedNames.map((environmentName, index) => {
+                      const environment = findEnvironment(environments, environmentName);
                       return (
-                        <Box key={stage.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Box key={environmentName} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                           {index > 0 ? (
                             <Box sx={{ display: 'flex', color: 'text.secondary' }}>
                               <ArrowRight size={18} />
                             </Box>
                           ) : null}
                           <PipelineStageCard
-                            environmentName={environment?.name ?? stage.environmentId}
-                            gatewayName={gateway?.name ?? stage.defaultGatewayId}
+                            environmentName={environment?.name ?? environmentName}
                             critical={environment?.critical}
                           />
                         </Box>
@@ -210,7 +234,7 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
         </Stack>
       )}
 
-      <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)}>
+      <Dialog open={!!pendingDelete} onClose={deleting ? undefined : () => setPendingDelete(null)}>
         <DialogTitle>Delete pipeline?</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
@@ -219,9 +243,17 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={handleConfirmDelete}>
-            Delete
+          <Button onClick={() => setPendingDelete(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmDelete}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -148,6 +148,24 @@ data: {"model":"","usage":{"prompt_tokens":5,"completion_tokens":1}}
 	}
 }
 
+func TestExtractUsage_SSENullDoesNotOverwrite(t *testing.T) {
+	// Providers repeat a field as null in the chunks carrying no value for it,
+	// including after the chunk that did; that must not erase what was reported.
+	body := []byte(`data: {"model":"gpt-4o-mini","usage":{"prompt_tokens":5,"completion_tokens":1}}
+
+data: {"model":"","usage":null}
+`)
+
+	got, err := extractUsage(openAITemplate(), body, nil, "/chat/completions")
+	if err != nil {
+		t.Fatalf("extractUsage returned error: %v", err)
+	}
+
+	if got.TotalInputTokens != 5 || got.OutputTokens != 1 {
+		t.Errorf("usage = %d in / %d out, want 5 / 1 preserved", got.TotalInputTokens, got.OutputTokens)
+	}
+}
+
 func TestExtractUsage_NoUsageObject(t *testing.T) {
 	body := []byte(`{"model":"gpt-4o-mini","choices":[]}`)
 

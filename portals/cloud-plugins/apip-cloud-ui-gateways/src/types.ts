@@ -1,0 +1,160 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/**
+ * The gateway's functionality type, mirroring platform-api's
+ * `functionalityType`: `regular` is an API gateway, `event` an event gateway,
+ * `ai` an AI gateway. Which of them a host offers on create is the host's own
+ * choice (see `GatewaysFeature`'s `gatewayTypes`), but any of the three can come
+ * back from the API, so the type covers them all.
+ */
+export type GatewayType = 'regular' | 'ai' | 'event';
+
+/**
+ * Whether the gateway's controller is currently connected to the control plane.
+ * A newly created gateway is `inactive` until its data-plane gateway finishes
+ * provisioning and dials in.
+ */
+export type GatewayStatus = 'active' | 'inactive';
+
+export type Environment = {
+  id: string;
+  name: string;
+};
+
+export type Gateway = {
+  id: string;
+  name: string;
+  description?: string;
+  type: GatewayType;
+  environmentId: string;
+  /** The external host the gateway is exposed on — server-assigned, not a create input. */
+  url: string;
+  status: GatewayStatus;
+  isCritical: boolean;
+  /**
+   * Whether this gateway is the one its environment resolves to for its type.
+   * One gateway per environment and type carries it, so an AI gateway being the
+   * default says nothing about the regular ones in the same environment.
+   */
+  isDefault: boolean;
+  version?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Fields the create/edit form collects. `id`/`url` (host) are server-assigned;
+ * on edit only `name`/`description`/`isDefault` are mutable (`type` and
+ * `environmentId` are fixed at creation).
+ */
+export type GatewayInput = {
+  name: string;
+  description?: string;
+  type: GatewayType;
+  environmentId: string;
+  /**
+   * Ask for this gateway to be its environment's default for its type. Only a
+   * true value acts: the default is handed over by marking another gateway,
+   * never by clearing this one, so an environment always keeps a default for a
+   * type it has gateways of.
+   */
+  isDefault?: boolean;
+};
+
+/* ── gateway configuration ─────────────────────────────────────────────────── */
+
+/**
+ * `applying` is the expected state immediately after ANY write and can persist
+ * for minutes. It is not a failure and not an unfinished save.
+ *
+ * `unknown` is the platform reporting no phase at all: whether the last change
+ * has landed cannot be said, and it will not settle on its own — so it is a
+ * fourth case to render, not a variant of `applying` to keep waiting on.
+ */
+export type ConfigPhase = 'applying' | 'healthy' | 'failed' | 'unknown';
+
+export type ConfigStatus = {
+  phase: ConfigPhase;
+  /** Platform detail, present when the phase is not healthy. Prose, not a code. */
+  message?: string;
+  /**
+   * RFC 3339 — when the gateway ENTERED this phase, already validated as a
+   * timestamp by platform-api (a bad one is dropped rather than forwarded).
+   *
+   * Read it with `phase`, never instead of it: `applying` reads the same five
+   * minutes after a write and stalled an hour later, and this is the only thing
+   * that separates them. Absent on the response to a write — the phase there is
+   * `applying` before the data plane has seen the change — and on a gateway
+   * whose resources have not reported yet.
+   */
+  lastTransitionTime?: string;
+};
+
+export type ConfigFieldType =
+  | 'enum'
+  | 'boolean'
+  | 'integer'
+  | 'duration'
+  | 'quantity'
+  | 'string';
+
+/**
+ * One setting the organization may change. The platform reads its allowlist at
+ * request time, so this array is the form definition — never a client-side copy
+ * of it — and `label`/`description` are the platform's own user-facing copy.
+ */
+export type EditableField = {
+  path: string;
+  type: ConfigFieldType;
+  label?: string;
+  description?: string;
+  /** Permitted values, present when `type` is `enum`. */
+  values?: string[];
+  /**
+   * Inclusive bounds. STRINGS for every type — `Number('50m')` is `NaN`. For
+   * `string`, `max` is a length in characters and `min` is absent.
+   */
+  min?: string;
+  max?: string;
+};
+
+/**
+ * A rule between two settings. Evaluated by the platform against the document a
+ * write would PRODUCE, so a client checks it across the whole form.
+ */
+export type ConfigConstraint = {
+  type: 'notGreaterThan';
+  path: string;
+  than: string;
+  /** The platform's own sentence for the violation. Surface it verbatim. */
+  message?: string;
+};
+
+export type ConfigValues = Record<string, unknown>;
+
+export type GatewayConfiguration = {
+  id: string;
+  name?: string;
+  environment?: string;
+  /** Current value of every editable setting, keyed exactly as a request body is. */
+  values: ConfigValues;
+  editable: EditableField[];
+  constraints?: ConfigConstraint[];
+  status: ConfigStatus;
+};

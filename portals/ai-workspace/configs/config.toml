@@ -18,6 +18,11 @@ url = '{{ env "APIP_AIW_CONTROL_PLANE_URL" "https://platform-api:9243" }}'
 tls_skip_verify = '{{ env "APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 ca_file = "/etc/ai-workspace/tls/cert.pem"
 
+# The outbound *http.Transport used for every call to the Platform API above is left
+# entirely at its built-in default here — see configs/config-template.toml's
+# [ai_workspace.http_client.*] tables for the fully documented reference (each key's
+# meaning, and how to opt into a PQC-hybrid curve_preferences).
+
 
 [ai_workspace.gateway]
 controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'

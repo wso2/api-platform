@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mcp",
+    "bodyPatterns": [
+      { "contains": "\"method\":\"notifications/initialized\"" }
+    ]
+  },
+  "response": {
+    "status": 202
+  }
+}

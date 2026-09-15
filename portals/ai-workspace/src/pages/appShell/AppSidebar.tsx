@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Box, Sidebar } from '@wso2/oxygen-ui';
 import {
@@ -39,10 +39,13 @@ import QuickStartIntroPopup, {
   QS_INTRO_STORAGE_KEY,
 } from './QuickStartIntroPopup';
 import {
+  AI_WORKSPACE_GATEWAYS_NAV_REGION,
+  AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_SIDEBAR_SLOT,
   type AIWorkspaceExtension,
+  type AIWorkspacePageOverride,
 } from '../../extensions';
-import { useSlot } from '../../slots';
+import { Hideable, useSlot } from '../../slots';
 
 const navLinkStyle: React.CSSProperties = {
   textDecoration: 'none',
@@ -69,7 +72,31 @@ export default function AppSidebar({
   const [showIntro, setShowIntro] = useState(
     () => !localStorage.getItem(QS_INTRO_STORAGE_KEY)
   );
-  const extensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
+  const sidebarExtensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
+  // A page override may carry its own nav placement (see `AIWorkspacePageOverride`).
+  // Those render here rather than where the built-in item sits, so a cloud build
+  // can move the entry into this cluster — it suppresses the built-in via `hides`.
+  const gatewayOverrides = useSlot<AIWorkspacePageOverride>(AI_WORKSPACE_GATEWAYS_SLOT);
+  // The override stands in for the built-in Gateways item, which is gated below
+  // on GATEWAY_READ — so it carries the same gate rather than showing the entry
+  // to someone the built-in one would have hidden it from.
+  const canReadGateways = hasPermission(SCOPES.GATEWAY_READ);
+  const extensions = useMemo(
+    () =>
+      [
+        ...sidebarExtensions,
+        ...(canReadGateways
+          ? gatewayOverrides
+              .filter((override) => Boolean(override.label))
+              .map((override) => ({
+                ...override,
+                label: override.label as string,
+                path: override.path ?? 'gateways',
+              }))
+          : []),
+      ].sort((a, b) => a.order - b.order),
+    [sidebarExtensions, gatewayOverrides, canReadGateways]
+  );
 
   const handleDismissIntro = () => {
     localStorage.setItem(QS_INTRO_STORAGE_KEY, '1');
@@ -289,14 +316,16 @@ export default function AppSidebar({
               </NavLink>
             )}
             {hasPermission(SCOPES.GATEWAY_READ) && (
-              <NavLink to={gatewaysPath} style={navLinkStyle}>
-                <Sidebar.Item id="gateways">
-                  <Sidebar.ItemIcon>
-                    <Network size={20} />
-                  </Sidebar.ItemIcon>
-                  <Sidebar.ItemLabel>AI Gateways</Sidebar.ItemLabel>
-                </Sidebar.Item>
-              </NavLink>
+              <Hideable name={AI_WORKSPACE_GATEWAYS_NAV_REGION}>
+                <NavLink to={gatewaysPath} style={navLinkStyle}>
+                  <Sidebar.Item id="gateways">
+                    <Sidebar.ItemIcon>
+                      <Network size={20} />
+                    </Sidebar.ItemIcon>
+                    <Sidebar.ItemLabel>AI Gateways</Sidebar.ItemLabel>
+                  </Sidebar.Item>
+                </NavLink>
+              </Hideable>
             )}
             {isAuthenticated && (
               <NavLink to={insightsPath} style={navLinkStyle}>

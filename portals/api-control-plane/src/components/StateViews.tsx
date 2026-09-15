@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Typography } from '@wso2/oxygen-ui';
+import type { ReactNode } from 'react';
+import { Alert, Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 
 import { AppLoader } from './AppLoader';
 
@@ -30,30 +31,85 @@ export function LoadingState({
   return <AppLoader fullScreen={fullScreen} label={label} />;
 }
 
+type EmptyStateProps = {
+  title: string;
+  description?: string;
+  /** Rendered only alongside `onAction`; one empty state offers one way out. */
+  actionLabel?: string;
+  /** Leading mark on the action button, e.g. `<Plus />` for a create prompt. */
+  actionIcon?: ReactNode;
+  /** Artwork for first-run case; triggers centred full-height layout. */
+  illustration?: ReactNode;
+  onAction?: () => void;
+};
+
+/**
+ * Empty state with optional action.
+ * Uses an illustration for first-run content and a compact panel for lists.
+ */
 export function EmptyState({
   title,
   description,
   actionLabel,
+  actionIcon,
+  illustration,
   onAction,
-}: {
-  title: string;
-  description?: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
+}: EmptyStateProps) {
+  const action =
+    actionLabel && onAction ? (
+      <Button onClick={onAction} startIcon={actionIcon} variant="contained">
+        {actionLabel}
+      </Button>
+    ) : null;
+
+  if (illustration) {
+    return (
+      <Box
+        sx={{
+          alignItems: 'center',
+          display: 'flex',
+          justifyContent: 'center',
+          // Claims the rest of the content area so the block sits optically
+          // centred instead of hugging whatever heading is above it.
+          flexGrow: 1,
+          minHeight: '50vh',
+          px: 3,
+          py: 6,
+        }}
+      >
+        <Stack alignItems="center" spacing={1} sx={{ maxWidth: 440 }}>
+          {illustration}
+          <Typography sx={{ fontWeight: 700, pt: 2 }} variant="h5">
+            {title}
+          </Typography>
+          {description && (
+            <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
+              {description}
+            </Typography>
+          )}
+          {action && <Box sx={{ pt: 2 }}>{action}</Box>}
+        </Stack>
+      </Box>
+    );
+  }
+
   return (
-    <Box sx={{ border: '1px dashed', borderColor: 'divider', borderRadius: 3, p: 4, textAlign: 'center' }}>
+    <Box
+      sx={{
+        border: '1px dashed',
+        borderColor: 'divider',
+        borderRadius: 3,
+        p: 4,
+        textAlign: 'center',
+      }}
+    >
       <Typography variant="h6">{title}</Typography>
       {description && (
         <Typography color="text.secondary" sx={{ mt: 1 }}>
           {description}
         </Typography>
       )}
-      {actionLabel && onAction && (
-        <Button variant="contained" sx={{ mt: 3 }} onClick={onAction}>
-          {actionLabel}
-        </Button>
-      )}
+      {action && <Box sx={{ mt: 3 }}>{action}</Box>}
     </Box>
   );
 }

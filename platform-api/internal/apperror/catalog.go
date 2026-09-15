@@ -121,6 +121,9 @@ var (
 // MCP proxy deployment operations. DeploymentNotActive's verb is the artifact
 // kind, e.g. "API", "LLM provider".
 var (
+	BuildNotFound             = def(CodeBuildNotFound, http.StatusNotFound, "The specified build could not be found.")
+	BuildLimitReached         = def(CodeBuildLimitReached, http.StatusConflict, "This API already has its maximum of %d builds, and every one is in use by a deployment. Undeploy one, or delete a build you no longer need, to make room for another.")
+	BuildInUse                = def(CodeBuildInUse, http.StatusConflict, "The build is on a gateway and cannot be deleted. Undeploy it first, then delete the build.")
 	DeploymentBaseNotFound    = def(CodeDeploymentBaseNotFound, http.StatusNotFound, "The specified base deployment could not be found.")
 	DeploymentRestoreConflict = def(CodeDeploymentRestoreConflict, http.StatusConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid.")
 	DeploymentNotFound        = def(CodeDeploymentNotFound, http.StatusNotFound, "The specified deployment could not be found.")
@@ -130,11 +133,17 @@ var (
 	DeploymentInvalidStatus   = def(CodeDeploymentInvalidStatus, http.StatusBadRequest, "The specified deployment status filter is invalid.")
 )
 
-// MCP proxy entries.
+// MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP
+// server rejecting the credentials we introspect it with. It must NOT reuse
+// Unauthorized: that entry means "the caller's own credentials are invalid",
+// and clients act on it by tearing down their session — which an upstream's
+// 401 must never trigger. A remote peer's status is data, not our status.
 var (
 	MCPProxyNotFound                   = def(CodeMCPProxyNotFound, http.StatusNotFound, "The specified MCP proxy could not be found.")
 	MCPProxyExists                     = def(CodeMCPProxyExists, http.StatusConflict, "An MCP proxy with this ID already exists.")
 	MCPProxyDeploymentValidationFailed = def(CodeMCPProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
+	MCPProxyUpstreamUnauthorized       = def(CodeMCPProxyUpstreamUnauthorized, http.StatusBadRequest,
+		"The MCP server rejected the supplied credentials.")
 )
 
 // Organization / project / application entries.

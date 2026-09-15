@@ -643,6 +643,53 @@ type AssociatedGateway struct {
 	Id string `binding:"required" json:"id" yaml:"id"`
 }
 
+// BuildListResponse defines model for BuildListResponse.
+type BuildListResponse struct {
+	// Count Number of builds in current response
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List Builds, newest first
+	List []BuildResponse `binding:"required" json:"list" yaml:"list"`
+}
+
+// BuildRequest Optional details to record with a build.
+type BuildRequest struct {
+	// Description Optional note recorded with the build, to tell one snapshot from another when
+	// choosing what to deploy or which build to delete.
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Metadata Free-form metadata to store with the build, such as the commit an API kept in a
+	// repository was prepared from. It is returned with the build and is not
+	// interpreted by the platform.
+	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+}
+
+// BuildResponse An immutable, rendered snapshot of an API's definition, not bound to any gateway.
+type BuildResponse struct {
+	// BuildId Identifier for the build, supplied as `buildId` when a deployment's `base` is
+	// `build`. It is the date the build was prepared followed by that day's index for
+	// the API, and is unique per API.
+	BuildId string `binding:"required" json:"buildId" yaml:"buildId"`
+
+	// CreatedAt Timestamp when the build was prepared
+	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy Who prepared the build
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// DataVersion Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
+	DataVersion *string `json:"dataVersion,omitempty" yaml:"dataVersion,omitempty"`
+
+	// Description Note recorded with the build when it was prepared
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Metadata Metadata recorded with the build, such as the commit it was prepared from
+	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+
+	// Uuid Globally unique identifier for the build, and what a deployment references
+	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
+}
+
 // Channel Defines a single channel within the Async API
 type Channel struct {
 	// Description Description of the channel
@@ -682,8 +729,8 @@ type CostRateLimitDimension struct {
 
 // CreateAPIKeyRequest defines model for CreateAPIKeyRequest.
 type CreateAPIKeyRequest struct {
-	// ApiKey The plain text API key value that will be hashed before storage
-	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
+	// ApiKey Optional. A pre-minted plain text API key to inject (used by external platforms pushing a key to hybrid gateways). Omit it to have the server generate one, the generated value is returned once in the response and is never retrievable afterwards.
+	ApiKey *string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
 
 	// DisplayName Human-readable name for the API key
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
@@ -705,6 +752,12 @@ type CreateAPIKeyRequest struct {
 
 // CreateAPIKeyResponse defines model for CreateAPIKeyResponse.
 type CreateAPIKeyResponse struct {
+	// ApiKey The generated API key value. Present only when the server generated
+	// the key (no `apiKey` in the request); returned only in this
+	// creation response and never retrievable afterwards. The example value is
+	// a non-functional placeholder.
+	ApiKey *string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
+
 	// KeyId The internal ID generated for tracking
 	KeyId *string `json:"keyId,omitempty" yaml:"keyId,omitempty"`
 
@@ -1020,8 +1073,22 @@ type CustomPolicyResponse struct {
 
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
-	// Base The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+	// Base Where the artifact comes from:
+	//
+	// - `current` — render the artifact from the definition as it stands now.
+	// - `build` — deploy a build prepared earlier, named by `buildId`.
+	//
+	// REST API deployments accept only these two and always run a build: `current`
+	// stores what it renders as one, so a running deployment is always traceable to
+	// a stored snapshot. MCP proxy, LLM and event API deployments accept a
+	// `deploymentId` here as well, to promote that deployment by reusing its
+	// rendered artifact.
 	Base string `binding:"required" json:"base" yaml:"base"`
+
+	// BuildId The build to deploy, such as `2026-01-31-2`. Required when `base` is `build`,
+	// and rejected otherwise. Deploying a build ships that exact snapshot, so it
+	// cannot pick up edits made since it was prepared.
+	BuildId *string `json:"buildId,omitempty" yaml:"buildId,omitempty"`
 
 	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
@@ -1047,6 +1114,17 @@ type DeploymentListResponse struct {
 type DeploymentResponse struct {
 	// BaseDeploymentId UUID of the base deployment this was created from
 	BaseDeploymentId *openapi_types.UUID `json:"baseDeploymentId" yaml:"baseDeploymentId"`
+
+	// BuildId Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
+	// has one: `base: build` runs the build it names, and `base: current` stores what
+	// it renders as a build and runs that.
+	//
+	// Null for artifact kinds that have no builds — MCP proxy, LLM and event API
+	// deployments — including one promoted from another deployment, which reuses that
+	// deployment's rendered artifact. Also null once the build it ran has been pruned.
+	// Null means only that no build can be named; the deployment keeps its own
+	// rendered artifact either way.
+	BuildId *string `json:"buildId" yaml:"buildId"`
 
 	// CreatedAt Timestamp when the deployment artifact was created
 	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
@@ -1312,7 +1390,7 @@ type LLMProvider struct {
 	// AssociatedGateways Optional list of gateways this LLM provider can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
-	// Context Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+	// Context Base path for all routes exposed by this provider. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// CreatedAt Timestamp when the resource was created
@@ -1818,21 +1896,30 @@ type MCPProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
-// MCPServerInfoFetchRequest defines model for MCPServerInfoFetchRequest.
+// MCPServerInfoFetchRequest Target MCP server to introspect, and the credentials to introspect it with. At least
+// one of `url`/`proxyId` must be provided
 type MCPServerInfoFetchRequest struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// ProxyId MCP proxy handle (identifier) for refresh operations. When provided,
-	// the server fetches URL and auth from the stored proxy configuration.
-	// Auth override is not allowed in refetch mode.
+	// ProxyId MCP proxy handle (identifier) for refresh operations. The stored credentials of
+	// this proxy are used for the fetch, and its stored upstream URL too unless `url`
+	// overrides it. Required unless `url` is given.
 	ProxyId *string `json:"proxyId,omitempty" yaml:"proxyId,omitempty"`
 
-	// Url Endpoint URL of the MCP server to fetch information from.
-	// Required when proxyId is not provided. When proxyId is provided,
-	// the URL from the stored proxy configuration is used.
-	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
+	// Url Endpoint URL of the MCP server to fetch information from. Required unless
+	// `proxyId` is given. When sent together with `proxyId` it overrides that proxy's
+	// stored upstream URL, while the proxy's stored credentials are still used — this
+	// validates an unsaved endpoint edit without re-sending a write-only secret.
+	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
+	union json.RawMessage
 }
+
+// MCPServerInfoFetchRequest0 defines model for .
+type MCPServerInfoFetchRequest0 = interface{}
+
+// MCPServerInfoFetchRequest1 defines model for .
+type MCPServerInfoFetchRequest1 = interface{}
 
 // MCPServerInfoFetchResponse defines model for MCPServerInfoFetchResponse.
 type MCPServerInfoFetchResponse struct {
@@ -2256,7 +2343,7 @@ type SecretCreateRequest struct {
 	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
 
 	// Value Plaintext secret value — encrypted at rest, never returned in any response
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecretCreateRequestType defines model for SecretCreateRequest.Type.
@@ -2324,7 +2411,7 @@ type SecretUpdateRequest struct {
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Value New plaintext secret value — re-encrypted at rest
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecurityConfig Defines security mechanisms (API key, OAuth2) applicable to the API
@@ -2736,7 +2823,7 @@ type ListApplicationsParams struct {
 	// SortOrder Sort direction applied to `sortBy`.
 	SortOrder *ListApplicationsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
 
-	// Query Case-insensitive substring filter matched against the resource id (handle).
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 
@@ -2814,7 +2901,7 @@ type ListGatewaysParams struct {
 	// SortOrder Sort direction applied to `sortBy`.
 	SortOrder *ListGatewaysParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
 
-	// Query Case-insensitive substring filter matched against the resource id (handle).
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 
@@ -2883,7 +2970,7 @@ type ListLLMProviderAPIKeysParams struct {
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2943,7 +3030,7 @@ type ListLLMProxyAPIKeysParams struct {
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2985,7 +3072,7 @@ type ListMCPProxiesParams struct {
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3052,7 +3139,7 @@ type ListProjectsParams struct {
 	// SortOrder Sort direction applied to `sortBy`.
 	SortOrder *ListProjectsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
 
-	// Query Case-insensitive substring filter matched against the resource id (handle).
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 
@@ -3079,7 +3166,7 @@ type ListRESTAPIsParams struct {
 	// SortOrder Sort direction applied to `sortBy`.
 	SortOrder *ListRESTAPIsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
 
-	// Query Case-insensitive substring filter matched against the resource id (handle).
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 
@@ -3089,9 +3176,15 @@ type ListRESTAPIsParamsSortBy string
 // ListRESTAPIsParamsSortOrder defines parameters for ListRESTAPIs.
 type ListRESTAPIsParamsSortOrder string
 
+// GetBuildsParams defines parameters for GetBuilds.
+type GetBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3275,6 +3368,9 @@ type CreateAPIKeyJSONRequestBody = CreateAPIKeyRequest
 // UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
 type UpdateAPIKeyJSONRequestBody = UpdateAPIKeyRequest
 
+// CreateBuildJSONRequestBody defines body for CreateBuild for application/json ContentType.
+type CreateBuildJSONRequestBody = BuildRequest
+
 // DeployAPIJSONRequestBody defines body for DeployAPI for application/json ContentType.
 type DeployAPIJSONRequestBody = DeployRequest
 
@@ -3298,6 +3394,130 @@ type CreateSubscriptionJSONRequestBody = CreateSubscriptionRequest
 
 // UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
 type UpdateSubscriptionJSONRequestBody = Subscription
+
+// AsMCPServerInfoFetchRequest0 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest0
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest0() (MCPServerInfoFetchRequest0, error) {
+	var body MCPServerInfoFetchRequest0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest0 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest0 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMCPServerInfoFetchRequest1 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest1
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest1() (MCPServerInfoFetchRequest1, error) {
+	var body MCPServerInfoFetchRequest1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest1 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest1 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MCPServerInfoFetchRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Auth != nil {
+		object["auth"], err = json.Marshal(t.Auth)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'auth': %w", err)
+		}
+	}
+
+	if t.ProxyId != nil {
+		object["proxyId"], err = json.Marshal(t.ProxyId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'proxyId': %w", err)
+		}
+	}
+
+	if t.Url != nil {
+		object["url"], err = json.Marshal(t.Url)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'url': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *MCPServerInfoFetchRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["auth"]; found {
+		err = json.Unmarshal(raw, &t.Auth)
+		if err != nil {
+			return fmt.Errorf("error reading 'auth': %w", err)
+		}
+	}
+
+	if raw, found := object["proxyId"]; found {
+		err = json.Unmarshal(raw, &t.ProxyId)
+		if err != nil {
+			return fmt.Errorf("error reading 'proxyId': %w", err)
+		}
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &t.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsRateLimitingScopeConfig0 returns the union data inside the RateLimitingScopeConfig as a RateLimitingScopeConfig0
 func (t RateLimitingScopeConfig) AsRateLimitingScopeConfig0() (RateLimitingScopeConfig0, error) {

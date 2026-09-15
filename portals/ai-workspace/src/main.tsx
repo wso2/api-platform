@@ -19,14 +19,14 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import AIWorkspace from "./AIWorkspace";
-import type { AIWorkspaceExtension } from "./extensions";
+import type { AIWorkspaceCloudEntry } from "./extensions";
 
 // Loads cloud-only extensions from the `./cloud` injection seam (see
 // `cloud/index.ts`) before the first render, mirroring
 // `portals/api-control-plane/src/main.tsx`. Wrapped in an async function
 // rather than a top-level `await` for broader build-target compatibility.
 async function bootstrap() {
-  const cloudExtensions: AIWorkspaceExtension[] = await import("./cloud")
+  const cloudExtensions: AIWorkspaceCloudEntry[] = await import("./cloud")
     .then((module) => module.cloudExtensions)
     .catch((error) => {
       console.warn("Cloud extensions could not be loaded.", error);

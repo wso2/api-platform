@@ -86,10 +86,16 @@ import { useAppAuth } from './contexts/AppAuthContext';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
 import {
+  AI_WORKSPACE_GATEWAYS_SLOT,
+  AI_WORKSPACE_INSIGHTS_SLOT,
   AI_WORKSPACE_SIDEBAR_SLOT,
   ExtensionsProvider,
+  hiddenRegionsOf,
+  type AIWorkspaceCloudEntry,
   type AIWorkspaceExtension,
+  type AIWorkspacePageOverride,
 } from './extensions';
+import { Hideable, HiddenRegionsProvider, useSlot } from './slots';
 import { usePort } from './hostPort';
 
 /**
@@ -289,13 +295,45 @@ function ExtensionRoute({ extension }: { extension: AIWorkspaceExtension }) {
   return <>{extension.render(port)}</>;
 }
 
+// Renders a cloud-registered replacement for the built-in AI Gateways page
+// when one is registered against AI_WORKSPACE_GATEWAYS_SLOT, otherwise the
+// built-in `GatewaysLayout` (suppressible on its own via `Hideable`, per
+// `slots/index.tsx`'s Slot-adds/Hideable-suppresses split) — this is the
+// only override slot today, but the same shape extends to more built-in
+// pages later without touching those pages themselves.
+function GatewaysRoute() {
+  const port = usePort();
+  const [override] = useSlot<AIWorkspacePageOverride>(AI_WORKSPACE_GATEWAYS_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={AI_WORKSPACE_GATEWAYS_SLOT}>
+      <GatewaysLayout />
+    </Hideable>
+  );
+}
+
+// Same Slot/Hideable pattern as GatewaysRoute for the built-in Insights page
+// (org + project `/insights`). Cloud only registers the override when Moesif is
+// configured (`isInsightsMoesifConfigured` in the host file) — otherwise this
+// keeps the built-in Insights page.
+function InsightsRoute() {
+  const port = usePort();
+  const [override] = useSlot<AIWorkspacePageOverride>(AI_WORKSPACE_INSIGHTS_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={AI_WORKSPACE_INSIGHTS_SLOT}>
+      <Insights />
+    </Hideable>
+  );
+}
+
 export type AppProps = {
-  extensions?: readonly AIWorkspaceExtension[];
+  extensions?: readonly AIWorkspaceCloudEntry[];
 };
 
 function WorkspaceRoutes({ extensions = [] }: AppProps) {
   const sidebarExtensions = extensions.filter(
-    (extension) => extension.slot === AI_WORKSPACE_SIDEBAR_SLOT
+    (extension): extension is AIWorkspaceExtension => extension.slot === AI_WORKSPACE_SIDEBAR_SLOT
   );
   const extensionRoutes = sidebarExtensions.map((extension) => (
     <Route key={extension.id} path={extension.path} element={
@@ -544,7 +582,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
               path="gateways/*"
               element={
                 <WithPageBoundary>
-                  <GatewaysLayout />
+                  <GatewaysRoute />
                 </WithPageBoundary>
               }
             />
@@ -562,7 +600,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
               path="insights"
               element={
                 <WithPageBoundary>
-                  <Insights />
+                  <InsightsRoute />
                 </WithPageBoundary>
               }
             />
@@ -755,7 +793,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 path="gateways/*"
                 element={
                   <WithPageBoundary>
-                    <GatewaysLayout />
+                    <GatewaysRoute />
                   </WithPageBoundary>
                 }
               />
@@ -815,7 +853,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 path="insights"
                 element={
                   <WithPageBoundary>
-                    <Insights />
+                    <InsightsRoute />
                   </WithPageBoundary>
                 }
               />
@@ -843,9 +881,14 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
 }
 
 export default function App({ extensions = [] }: AppProps) {
+  // Slot adds, Hideable suppresses: entries declare which built-in regions they
+  // replace via `hides`, so a built-in item is only ever hidden when something
+  // actually took its place. With no extensions registered nothing is hidden.
   return (
     <ExtensionsProvider extensions={extensions}>
-      <WorkspaceRoutes extensions={extensions} />
+      <HiddenRegionsProvider hidden={hiddenRegionsOf(extensions)}>
+        <WorkspaceRoutes extensions={extensions} />
+      </HiddenRegionsProvider>
     </ExtensionsProvider>
   );
 }

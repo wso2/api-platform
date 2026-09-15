@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
@@ -58,11 +59,17 @@ func NewHubHandler(
 	channels map[string]string,
 	consumerMgr *ConsumerManager,
 	syncProducer *subscription.SyncProducer,
-) *HubHandler {
+	httpClientConfig config.HTTPClientConfig,
+) (*HubHandler, error) {
+	verifier, err := NewVerifier(store, verificationTimeout, httpClientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verifier: %w", err)
+	}
+
 	return &HubHandler{
 		topics:       topics,
 		store:        store,
-		verifier:     NewVerifier(store, verificationTimeout),
+		verifier:     verifier,
 		processor:    processor,
 		brokerDriver: brokerDriver,
 		bindingName:  bindingName,
@@ -70,7 +77,7 @@ func NewHubHandler(
 		consumerMgr:  consumerMgr,
 		syncProducer: syncProducer,
 		defaultLease: defaultLease,
-	}
+	}, nil
 }
 
 // ServeHTTP dispatches on hub.mode for form-encoded subscribe/unsubscribe requests.

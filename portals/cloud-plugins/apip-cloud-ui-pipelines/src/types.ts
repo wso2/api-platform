@@ -7,44 +7,61 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-export type Gateway = {
-  id: string;
-  name: string;
-};
+/**
+ * The plugin speaks the platform-api pipeline shape directly — `promotionPaths`
+ * is the wire field, read and written verbatim (no intermediate model, no
+ * translation layer). Environments are referenced by their name, exactly as the
+ * API does. `Environment` is the only derived type: reference data from
+ * `/environments` to render names and the "Critical" badge.
+ *
+ * A pipeline says nothing about gateways. Which gateway an environment deploys
+ * to is the default marked on the gateway itself when it is onboarded, so it is
+ * the managed-gateways feature that owns it, not this one.
+ */
 
-/** A deployment environment. `gateways` is the set a pipeline stage on this environment may target. */
+/**
+ * A deployment environment. `critical` mirrors the API's `isProduction` and
+ * drives the "Critical" badge.
+ */
 export type Environment = {
   id: string;
   name: string;
-  gateways: Gateway[];
-  /** Marks an environment as production-grade for the "Critical" badge on its pipeline stages. */
   critical?: boolean;
 };
 
 /**
- * One step of a pipeline: an environment, deploying through every gateway it
- * has — not a single chosen one. `defaultGatewayId` is marked (via toggle) at
- * the moment the environment is added to the pipeline and is shown as the
- * "Default" chip among that environment's gateways on the stage card.
+ * One edge of the promotion graph: a source environment to one or more targets
+ * (the API supports fan-out; the linear builder only ever writes a single
+ * target). Environments are referenced by name.
+ */
+export type PromotionPath = {
+  sourceEnvironment: string;
+  targetEnvironments: string[];
+};
+
+/**
+ * One environment of a pipeline in promotion order. A view projection of
+ * `promotionPaths`, assembled for the stage-card chain (see `buildStages`).
  */
 export type PipelineStage = {
-  /** Stable per-stage id, distinct from `environmentId` — a pipeline can only use a given environment once today, but stages are still id-keyed rather than environmentId-keyed so that isn't baked into every consumer. */
   id: string;
   environmentId: string;
-  defaultGatewayId: string;
 };
 
 export type Pipeline = {
+  /** OpenChoreo's immutable resource name, used as the stable id. */
   id: string;
   name: string;
+  promotionPaths: PromotionPath[];
+  /** True for the organization's default pipeline (the one named `default`). */
   isDefault: boolean;
+  /** Promotion-ordered stages, derived from `promotionPaths`. */
   stages: PipelineStage[];
 };
 
 export type CreatePipelineInput = {
   name: string;
-  isDefault: boolean;
-  stages: PipelineStage[];
+  promotionPaths: PromotionPath[];
 };
 
 export type UpdatePipelineInput = CreatePipelineInput & {

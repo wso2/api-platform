@@ -482,9 +482,12 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 
 	// Define auth struct type locally to match the anonymous struct in api package
 	type authConfig struct {
-		Type   api.MCPProxyConfigDataUpstreamAuthType
-		Header *string
-		Value  *string
+		Type          api.MCPProxyConfigDataUpstreamAuthType
+		Header        *string
+		Value         *string
+		PolicyName    *string
+		PolicyVersion *string
+		PolicyParams  *map[string]interface{}
 	}
 
 	tests := []struct {
@@ -503,6 +506,8 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 			wantError: false,
 		},
 		{
+			// "bearer" predates the shared api-key/oauth2/other/none contract -
+			// kept for MCP backward compatibility, see mcp_validator.go.
 			name: "Valid bearer auth",
 			auth: &authConfig{
 				Type:   api.MCPProxyConfigDataUpstreamAuthType("bearer"),
@@ -520,6 +525,41 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 			},
 			wantError: true,
 			errField:  "spec.upstream.auth.value",
+		},
+		{
+			// Regression: bearer has no policyParams form of its own - see mcp_validator.go.
+			name: "Bearer auth with policyParams is rejected",
+			auth: &authConfig{
+				Type:         api.MCPProxyConfigDataUpstreamAuthType("bearer"),
+				Header:       stringPtr("Authorization"),
+				Value:        stringPtr("Bearer token123"),
+				PolicyParams: &map[string]interface{}{"foo": "bar"},
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.policyParams",
+		},
+		{
+			// Regression: bearer previously bypassed the policyVersion format
+			// check every other auth type gets from validateUpstreamAuthFields.
+			name: "Bearer auth with malformed policyVersion is rejected",
+			auth: &authConfig{
+				Type:          api.MCPProxyConfigDataUpstreamAuthType("bearer"),
+				Header:        stringPtr("Authorization"),
+				Value:         stringPtr("Bearer token123"),
+				PolicyVersion: stringPtr("latest"),
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.policyVersion",
+		},
+		{
+			name: "Unsupported auth type is rejected",
+			auth: &authConfig{
+				Type:   api.MCPProxyConfigDataUpstreamAuthType("unsupported-type"),
+				Header: stringPtr("Authorization"),
+				Value:  stringPtr("secret"),
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.type",
 		},
 		{
 			name: "Missing auth type",
@@ -551,6 +591,53 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 			wantError: true,
 			errField:  "spec.upstream.auth.value",
 		},
+		{
+			name: "Valid oauth2 auth via policyParams",
+			auth: &authConfig{
+				Type: api.MCPProxyConfigDataUpstreamAuthTypeOauth2,
+				PolicyParams: &map[string]interface{}{
+					"tokenEndpoint": "https://idp.example.com/oauth2/token",
+					"clientId":      "client-id",
+					"clientSecret":  "client-secret",
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "oauth2 without policyParams",
+			auth: &authConfig{
+				Type: api.MCPProxyConfigDataUpstreamAuthTypeOauth2,
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.policyParams",
+		},
+		{
+			name: "other without policyName",
+			auth: &authConfig{
+				Type:         api.MCPProxyConfigDataUpstreamAuthTypeOther,
+				PolicyParams: &map[string]interface{}{"foo": "bar"},
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.policyName",
+		},
+		{
+			name: "other without policyParams",
+			auth: &authConfig{
+				Type:       api.MCPProxyConfigDataUpstreamAuthTypeOther,
+				PolicyName: stringPtr("my-custom-auth-policy"),
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.policyParams",
+		},
+		{
+			name: "Valid other auth",
+			auth: &authConfig{
+				Type:         api.MCPProxyConfigDataUpstreamAuthTypeOther,
+				PolicyName:   stringPtr("my-custom-auth-policy"),
+				PolicyParams: &map[string]interface{}{"foo": "bar"},
+			},
+			wantError: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -561,13 +648,19 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 			}
 			if tt.auth != nil {
 				upstream.Auth = &struct {
-					Header *string                                `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+					Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
 				}{
-					Type:   tt.auth.Type,
-					Header: tt.auth.Header,
-					Value:  tt.auth.Value,
+					Type:          tt.auth.Type,
+					Header:        tt.auth.Header,
+					Value:         tt.auth.Value,
+					PolicyName:    tt.auth.PolicyName,
+					PolicyVersion: tt.auth.PolicyVersion,
+					PolicyParams:  tt.auth.PolicyParams,
 				}
 			}
 			config := &api.MCPProxyConfiguration{

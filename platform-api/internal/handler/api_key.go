@@ -87,8 +87,9 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 			WithLogMessage(fmt.Sprintf("invalid API key creation request for user %s", userId))
 	}
 
-	if req.ApiKey == "" {
-		return apperror.ValidationFailed.New("API key value is required")
+	if req.DisplayName == "" {
+		return apperror.ValidationFailed.New("Display name is required").
+			WithLogMessage(fmt.Sprintf("missing display name in API key creation request for user %s", userId))
 	}
 
 	// If user has provided an id, use it. Otherwise, generate one from the display name.
@@ -105,13 +106,14 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 	}
 
 	// Create the API key and broadcast to gateways
-	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, userId, &req); err != nil {
+	resp, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, userId, &req)
+	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
 		}
 		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to create API key %q for API %s in org %s by user %s", name, apiHandle, orgId, userId))
+			WithLogMessage(fmt.Sprintf("failed to create API key for API %s in org %s by user %s", apiHandle, orgId, userId))
 	}
 
 	keyName := ""
@@ -121,12 +123,8 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) err
 	h.slogger.Info("Successfully created API key", "userId", userId, "apiHandle", apiHandle, "orgId", orgId, "keyName", keyName)
 
 	// Return success response
-	setLocation(w, "rest-apis", apiHandle, "api-keys", name)
-	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
-		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Id,
-		Message: "API key created and broadcasted to gateways successfully",
-	})
+	setLocation(w, "rest-apis", apiHandle, "api-keys", keyName)
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }
 

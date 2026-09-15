@@ -119,6 +119,9 @@ type ControlPlaneConfig struct {
 	// Upstreams are additional named backends, each proxied same-origin at
 	// {name-derived prefix}/*. Optional; empty for every standalone deployment.
 	Upstreams []UpstreamConfig `koanf:"upstreams"`
+	// MoesifAppURL is the HTTPS origin of the Moesif wrap/basic host (e.g.
+	// https://www.moesif.com). Bridged to the SPA as moesifAppUrl when set.
+	MoesifAppURL string `koanf:"moesif_app_url"`
 }
 
 // UpstreamConfig is one [[api_control_plane.control_plane.upstreams]] entry: a
@@ -252,6 +255,7 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
 	" ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import" +
 	" ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage" +
+	" ap:rest_api:build:read ap:rest_api:build:create ap:rest_api:build:delete ap:rest_api:build:manage" +
 	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
 	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
 	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +

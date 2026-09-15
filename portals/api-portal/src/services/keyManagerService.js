@@ -191,7 +191,7 @@ const updateKeyManager = async (req, res) => {
         }
 
         const userId = util.resolveActor(req);
-        const [, updatedRows] = await kmDao.update(kmId, payload, userId);
+        const [, updatedRows] = await kmDao.update(orgId, kmId, payload, userId);
         logUserAction('KEY_MANAGER_UPDATED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         let audit;
         try {
@@ -246,7 +246,7 @@ const getKeyManager = async (req, res) => {
         if (!kmId) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
-        const record = await kmDao.get(kmId);
+        const record = await kmDao.get(orgId, kmId);
         const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
         const dto = new KeyManagerDTO(record, audit);
         return res.status(200).json(dto);
@@ -267,7 +267,7 @@ const deleteKeyManager = async (req, res) => {
         if (!kmId) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
-        await kmDao.delete(kmId);
+        await kmDao.delete(orgId, kmId);
         logUserAction('KEY_MANAGER_DELETED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {

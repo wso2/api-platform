@@ -63,9 +63,7 @@ type Props<T extends SearchableComplexSelectOption> = {
   dropdownClickAriaLabel?: string;
 };
 
-export default function SearchableComplexSelect<
-  T extends SearchableComplexSelectOption,
->({
+export default function SearchableComplexSelect<T extends SearchableComplexSelectOption>({
   value,
   selectedOption,
   options,

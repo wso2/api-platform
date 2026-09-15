@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -248,7 +249,7 @@ func TestMCPDeploymentService_GetMCPProxyByHandle(t *testing.T) {
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	require.NoError(t, HydrateStoredMCPConfig(cfg))
+	require.NoError(t, HydrateStoredMCPConfig(cfg, nil))
 	require.NoError(t, db.SaveConfig(cfg))
 
 	found, err := service.GetMCPProxyByHandle("test-mcp")
@@ -666,7 +667,7 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	require.NoError(t, HydrateStoredMCPConfig(cfg))
+	require.NoError(t, HydrateStoredMCPConfig(cfg, nil))
 	require.NoError(t, db.SaveConfig(cfg))
 	require.NoError(t, store.Add(cfg))
 
@@ -694,4 +695,58 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 	assert.Equal(t, eventhub.EventTypeMCPProxy, mockHub.publishedEvents[0].event.EventType)
 	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-mcp-undeploy", mockHub.publishedEvents[0].event.EventID)
+}
+
+
+// A real resolver must resolve an unpinned oauth2 auth policy to this
+// gateway's actually-loaded version, not "".
+func TestHydrateStoredMCPConfig_ResolvesUnpinnedVersionWithRealResolver(t *testing.T) {
+	url := "https://idp.example.com"
+
+	cfg := &models.StoredConfig{
+		UUID: "mcp-1",
+		SourceConfiguration: api.MCPProxyConfiguration{
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "test-mcp",
+				Version:     "1.0.0",
+				Context:     stringPtr("/mcp"),
+				SpecVersion: func() *string { v := LATEST_SUPPORTED_MCP_SPEC_VERSION; return &v }(),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &url,
+					Auth: &struct {
+						Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+						PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+						PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+						PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+						Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+						Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+					}{
+						Type: api.MCPProxyConfigDataUpstreamAuthTypeOauth2,
+						PolicyParams: &map[string]interface{}{
+							"tokenEndpoint": "https://idp.example.com/oauth2/token",
+							"clientId":      "client-id",
+							"clientSecret":  "client-secret",
+						},
+						// No PolicyVersion override - the common case.
+					},
+				},
+			},
+		},
+	}
+
+	err := HydrateStoredMCPConfig(cfg, newTestPolicyVersionResolver())
+	require.NoError(t, err)
+
+	restAPI, ok := cfg.Configuration.(api.RestAPI)
+	require.True(t, ok)
+	require.NotNil(t, restAPI.Spec.Policies)
+
+	var found bool
+	for _, p := range *restAPI.Spec.Policies {
+		if p.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+			assert.NotEmpty(t, p.Version)
+			found = true
+		}
+	}
+	assert.True(t, found, "expected an oauth2-generator policy in the hydrated config")
 }

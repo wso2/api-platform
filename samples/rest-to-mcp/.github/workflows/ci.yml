@@ -1,0 +1,60 @@
+name: Sample rest-to-mcp PR Check
+
+# Runs the sample end to end: generates the MCP server from the Arazzo spec,
+# starts the AI Gateway in front of it, and checks that sample-service is
+# reachable as MCP tools.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'samples/rest-to-mcp/**'
+      - 'samples/sample-service/**'
+
+jobs:
+  pr-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run setup
+        run: sh setup.sh
+        working-directory: samples/rest-to-mcp
+
+      - name: Run tests
+        run: sh test.sh
+        working-directory: samples/rest-to-mcp
+
+      - name: Run the client
+        run: |
+          python3 -m pip install --quiet -r requirements.txt
+          python3 client.py
+        working-directory: samples/rest-to-mcp
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "::group::generated MCP server"
+          docker logs rest-to-mcp-server 2>&1 | tail -100 || true
+          echo "::endgroup::"
+          echo "::group::sample-service"
+          docker logs sample-service 2>&1 | tail -50 || true
+          echo "::endgroup::"
+          echo "::group::gateway"
+          (cd wso2apip-ai-gateway-1.2.0 && docker compose logs --tail 100) || true
+          echo "::endgroup::"
+        working-directory: samples/rest-to-mcp
+
+      - name: Teardown
+        if: always()
+        run: sh teardown.sh
+        working-directory: samples/rest-to-mcp

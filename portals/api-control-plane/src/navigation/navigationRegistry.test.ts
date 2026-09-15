@@ -18,10 +18,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { organizations, projects } from '../api/mocks/data';
 import { routes } from '../routes/paths';
 import { makeConsoleScope } from '../test/mockScope';
 import { navigationRegistry } from './navigationRegistry';
+import { anOrganization, aProject } from '@/test/msw/fixtures';
 
 const definitionFor = (id: string) => {
   const item = navigationRegistry.find((entry) => entry.id === id);
@@ -35,8 +35,8 @@ const matcherFor = (id: string) => {
   return match;
 };
 
-const ORG = `/organizations/${organizations[0].id}`;
-const PROJECT = `${ORG}/projects/${projects[0].id}`;
+const ORG = `/organizations/${anOrganization().id}`;
+const PROJECT = `${ORG}/projects/${aProject().id}`;
 const API = `${PROJECT}/apis/api-1`;
 const SELECT = `${ORG}/select-scope`;
 
@@ -45,7 +45,8 @@ const atOrg = () =>
   makeConsoleScope({
     isApiScope: false,
     isProjectScope: false,
-    params: { orgHandle: organizations[0].id },
+    organizations: [anOrganization()],
+    params: { orgHandle: anOrganization().id },
     project: undefined,
   });
 const atProject = () => makeConsoleScope();
@@ -54,8 +55,8 @@ const atApi = () =>
     isApiScope: true,
     params: {
       apiHandler: 'api-1',
-      orgHandle: organizations[0].id,
-      projectHandler: projects[0].id,
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
     },
   });
 
@@ -117,32 +118,26 @@ describe('scope visibility', () => {
   // Capability gating applies only once an API is loaded: with none, every
   // capability reads false, which would hide these items in exactly the state
   // where they are the way in.
-  it.each(['develop', 'test', 'deploy', 'manage'])(
+  it.each(['develop', 'test', 'deploy'])(
     'keeps %s visible out of API scope and lets the capability decide within it',
     (id) => {
       const { isVisible } = definitionFor(id);
       expect(isVisible?.(atOrg())).toBe(true);
       expect(isVisible?.(atProject())).toBe(true);
       expect(isVisible?.(atApi())).toBe(false); // no component loaded -> unsupported
-    }
+    },
   );
 
   // `hasUsageInsights`/`hasRuntimeLogs` are false for API_PROXY, the dominant
   // kind here, so gating on them would hide these on the APIs they are for.
-  it.each(['insights', 'observability', 'admin'])(
-    '%s is not capability-gated',
-    (id) => {
-      expect(definitionFor(id).isVisible).toBeUndefined();
-    }
-  );
+  it.each(['insights', 'observability', 'portals'])('%s is not capability-gated', (id) => {
+    expect(definitionFor(id).isVisible).toBeUndefined();
+  });
 });
 
 describe('API-level items', () => {
   // Items that are pages in their own right, as opposed to submenu parents.
-  const LEAF_ITEMS: [string, string][] = [
-    ['deploy', 'deploy'],
-    ['admin', 'admin'],
-  ];
+  const LEAF_ITEMS: [string, string][] = [['deploy', 'deploy']];
 
   it.each(LEAF_ITEMS)('%s anchors to its own scoped path', (id, suffix) => {
     const match = matcherFor(id);
@@ -171,7 +166,7 @@ describe('API-level items', () => {
 });
 
 /*
- * Test, Observability and Manage have no page of their own: in API scope they
+ * Test and Observability have no page of their own: in API scope they
  * open a submenu, and outside it they lead to the first child's `ScopeGate`. The
  * split of responsibilities that makes that work is what these tests pin —
  * the parent owns the scope-less aliases, each child owns its scoped path, and
@@ -201,7 +196,6 @@ describe('submenu parents', () => {
       'observability',
       'observability',
       [
-        ['observability-alerts', 'alerts'],
         ['observability-metrics', 'metrics'],
         ['observability-logs', 'logs'],
       ],
@@ -214,19 +208,11 @@ describe('submenu parents', () => {
         ['insights-compliance', 'compliance'],
       ],
     ],
-    [
-      'manage',
-      'manage',
-      [
-        ['manage-monetize', 'monetize'],
-        ['manage-lifecycle', 'lifecycle'],
-      ],
-    ],
   ];
 
   it.each(SUBMENUS)('%s lists its children in order', (id, _base, children) => {
     expect(definitionFor(id).children?.map((child) => child.id)).toEqual(
-      children.map(([childId]) => childId)
+      children.map(([childId]) => childId),
     );
   });
 
@@ -236,32 +222,24 @@ describe('submenu parents', () => {
 
   // The parent is a link only until scope resolves; in API scope the sidebar
   // drops the link and a click expands instead, so this target stops being used.
-  it.each(SUBMENUS)(
-    '%s links to its first child while out of scope',
-    (id, base, children) => {
-      const [, firstSuffix] = children[0];
-      const { to } = definitionFor(id);
-      expect(to(atOrg())).toBe(`${SELECT}/${base}/${firstSuffix}`);
-      expect(to(atProject())).toBe(
-        `${PROJECT}/select-scope/${base}/${firstSuffix}`
-      );
-    }
-  );
+  it.each(SUBMENUS)('%s links to its first child while out of scope', (id, base, children) => {
+    const [, firstSuffix] = children[0];
+    const { to } = definitionFor(id);
+    expect(to(atOrg())).toBe(`${SELECT}/${base}/${firstSuffix}`);
+    expect(to(atProject())).toBe(`${PROJECT}/select-scope/${base}/${firstSuffix}`);
+  });
 
   // Highlighted while the ScopeGate is asking, and only then: once scope
   // resolves the child takes over, which is also what Oxygen expects — it leaves
   // an expanded parent unhighlighted and marks the active child instead.
-  it.each(SUBMENUS)(
-    '%s matches every child alias and no scoped page',
-    (id, base, children) => {
-      const match = matcherFor(id);
-      for (const [, suffix] of children) {
-        expect(match(`${SELECT}/${base}/${suffix}`)).toBe(true);
-        expect(match(`${PROJECT}/select-scope/${base}/${suffix}`)).toBe(true);
-        expect(match(`${API}/${base}/${suffix}`)).toBe(false);
-      }
+  it.each(SUBMENUS)('%s matches every child alias and no scoped page', (id, base, children) => {
+    const match = matcherFor(id);
+    for (const [, suffix] of children) {
+      expect(match(`${SELECT}/${base}/${suffix}`)).toBe(true);
+      expect(match(`${PROJECT}/select-scope/${base}/${suffix}`)).toBe(true);
+      expect(match(`${API}/${base}/${suffix}`)).toBe(false);
     }
-  );
+  });
 
   it.each(SUBMENUS)('%s children own their scoped path alone', (id, base, children) => {
     const parent = definitionFor(id);
@@ -341,7 +319,7 @@ describe('sidebar structure', () => {
     // Clusters separate; they are never rendered as text (see
     // NavigationDefinition.group), so they are keys, not labels.
     expect(new Set(navigationRegistry.map((item) => item.group))).toEqual(
-      new Set(['place', 'api', 'global'])
+      new Set(['place', 'api', 'global']),
     );
   });
 
@@ -355,9 +333,7 @@ describe('sidebar structure', () => {
   });
 
   it('leaves `level` to extensions, which need it for path building', () => {
-    expect(navigationRegistry.every((item) => item.level === undefined)).toBe(
-      true
-    );
+    expect(navigationRegistry.every((item) => item.level === undefined)).toBe(true);
   });
 
   it('gives every item a route builder and a matcher', () => {
@@ -384,10 +360,8 @@ describe('every page routes.* builds is anchored, not a bare suffix', () => {
   // pinning: it is a consequence of the URL shape, not a decision, and the same
   // overlap makes every API-level item treat `new` as a handle.
   it('leaves the new-api page under Overview', () => {
-    const newApi = routes.newApi(organizations[0].id, projects[0].id);
-    const owners = navigationRegistry
-      .filter((item) => item.match?.(newApi))
-      .map((item) => item.id);
+    const newApi = routes.newApi(anOrganization().id, aProject().id);
+    const owners = navigationRegistry.filter((item) => item.match?.(newApi)).map((item) => item.id);
 
     expect(owners).toEqual(['overview']);
   });

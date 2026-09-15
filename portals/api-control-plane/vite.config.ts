@@ -18,7 +18,12 @@
 
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
+
+/** This file's own directory; `__dirname` doesn't exist in an ES module. */
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 // In dev, run the BFF locally (default http://localhost:8082, `make bff-run`)
 // and route all same-origin BFF traffic to it, mirroring the production
@@ -50,6 +55,14 @@ export default ({ mode }: { mode: string }) => {
       }),
       basicSsl(),
     ],
+    resolve: {
+      alias: {
+        // Mirrors the `@/*` path mapping in tsconfig.json. Resolved to an
+        // absolute path rather than the root-relative '/src', which would
+        // depend on Vite's own root handling.
+        '@': path.resolve(projectRoot, 'src'),
+      },
+    },
     build: {
       outDir: 'build',
       sourcemap: false,

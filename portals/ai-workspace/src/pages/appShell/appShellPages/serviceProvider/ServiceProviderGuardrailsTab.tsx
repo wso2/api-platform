@@ -74,6 +74,7 @@ import type { AccessControl, PolicyHubPolicy } from '../../../../utils/types';
 import { parsePolicyYaml } from '../../PolicyParameterEditor/yamlParser';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import PartialLoadWarning from '../../../../Components/common/PartialLoadWarning';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import {
@@ -230,8 +231,6 @@ export default function ServiceProviderGuardrailsTab() {
   const lockedActionTooltip = canEditProvider ? undefined : NO_PERMISSION_TOOLTIP;
   const {
     guardrails: availableGuardrails = [],
-    isLoading: isLoadingGuardrails,
-    error: guardrailsError,
     refreshGuardrails,
     getGuardrailDefinition,
   } = useGuardrails();
@@ -263,8 +262,10 @@ export default function ServiceProviderGuardrailsTab() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['AI']);
   const [drawerGuardrails, setDrawerGuardrails] = useState<typeof availableGuardrails>([]);
   const [drawerGuardrailsLoading, setDrawerGuardrailsLoading] = useState(false);
+  const [drawerGuardrailsError, setDrawerGuardrailsError] = useState<Error | null>(null);
   const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
   const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
+  const [customPoliciesError, setCustomPoliciesError] = useState<Error | null>(null);
   const [draggedGlobalPolicyIndex, setDraggedGlobalPolicyIndex] = useState<
     number | null
   >(null);
@@ -282,8 +283,12 @@ export default function ServiceProviderGuardrailsTab() {
   const reorderInFlightRef = useRef(false);
   const showSnackbar = useAIWorkspaceSnackbar();
 
+  // The drawer list is assembled from two independent sources. Each records its
+  // own failure so one being down still shows the other's policies, with a
+  // retry for just the failed source.
   const fetchDrawerGuardrails = useCallback(async (categories: string[]) => {
     setDrawerGuardrailsLoading(true);
+    setDrawerGuardrailsError(null);
     try {
       const showAll =
         categories.length === 0 ||
@@ -292,8 +297,12 @@ export default function ServiceProviderGuardrailsTab() {
         ? await getPolicies()
         : await getGuardrails(categories.join(','));
       setDrawerGuardrails(response.data);
-    } catch {
+    } catch (e) {
+      logger.error('Failed to load Policy Hub guardrails:', e);
       setDrawerGuardrails([]);
+      setDrawerGuardrailsError(
+        e instanceof Error ? e : new Error('Failed to load guardrails')
+      );
     } finally {
       setDrawerGuardrailsLoading(false);
     }
@@ -301,12 +310,16 @@ export default function ServiceProviderGuardrailsTab() {
 
   const fetchCustomPolicies = useCallback(async () => {
     setCustomPoliciesLoading(true);
+    setCustomPoliciesError(null);
     try {
       const response = await getGatewayCustomPolicies();
       setCustomPolicies(response.list || []);
     } catch (e) {
       logger.error('Failed to load custom policies:', e);
       setCustomPolicies([]);
+      setCustomPoliciesError(
+        e instanceof Error ? e : new Error('Failed to load custom policies')
+      );
     } finally {
       setCustomPoliciesLoading(false);
     }
@@ -1480,28 +1493,10 @@ export default function ServiceProviderGuardrailsTab() {
 
           <Stack spacing={3}>
             <Box>
-              {isLoadingGuardrails ? (
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}
-                >
-                  <CircularProgress size={20} />
-                  <Typography variant="body2" color="text.secondary">
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.loading.guardrails"
-                      defaultMessage={'Loading guardrails...'}
-                    />
-                  </Typography>
-                </Box>
-              ) : guardrailsError ? (
-                <Box sx={{ mt: 1 }}>
-                  <ErrorAlert
-                    error={guardrailsError}
-                    onRetry={() => {
-                      void refreshGuardrails();
-                    }}
-                  />
-                </Box>
-              ) : (
+              {/* The shared guardrails context only supplies display names, so
+                  neither its loading nor its error state gates the drawer — the
+                  drawer's own two sources report themselves below. */}
+              {(
                 <>
                   {!isDetailView ? (
                     <>
@@ -1530,6 +1525,23 @@ export default function ServiceProviderGuardrailsTab() {
                         }}
                       />
                     <Stack spacing={1.25} sx={{ mt: 1 }}>
+                      {!drawerItemsLoading && drawerGuardrailsError && (
+                        <PartialLoadWarning
+                          message="Policy Hub policies could not be loaded. Only custom policies are listed."
+                          onRetry={() => {
+                            void fetchDrawerGuardrails(selectedCategories);
+                            void refreshGuardrails();
+                          }}
+                        />
+                      )}
+                      {!drawerItemsLoading && customPoliciesError && (
+                        <PartialLoadWarning
+                          message="Custom policies could not be loaded. Only Policy Hub policies are listed."
+                          onRetry={() => {
+                            void fetchCustomPolicies();
+                          }}
+                        />
+                      )}
                       {drawerItemsLoading ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}>
                           <CircularProgress size={16} />
