@@ -92,6 +92,16 @@ type Projects interface {
 // named by buildId. That lets a caller fix WHAT will be deployed at a known moment
 // — so a deploy cannot silently pick up edits made since — and deploy that same
 // snapshot to any number of gateways, or onward to the next environment.
+// The artifact kinds Deployments accepts. They are the same values the platform's
+// own per-kind paths are split by and the same the artifact row carries, so a
+// plugin names a kind rather than guessing a string.
+const (
+	KindRestAPI     = "RestApi"
+	KindMCPProxy    = "Mcp"
+	KindLLMProxy    = "LlmProxy"
+	KindLLMProvider = "LlmProvider"
+)
+
 type Deployments interface {
 	// Every operation names the artifact KIND alongside the handle — the same kinds
 	// the platform's own paths are split by ("RestApi", "Mcp", "LlmProxy",
