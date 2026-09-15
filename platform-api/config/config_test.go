@@ -335,6 +335,14 @@ func TestValidateAuthConfig(t *testing.T) {
 			wantErr: "Auth.JWT.PublicKeyFile is required",
 		},
 		{
+			name: "internal_token mode with an unsupported algorithm is rejected",
+			auth: Auth{Mode: AuthModeInternalToken, JWT: JWT{
+				Algorithm:     "ML-DSA-65",
+				PublicKeyFile: validJWTPublicKeyFile,
+			}},
+			wantErr: "Auth.JWT.Algorithm must be",
+		},
+		{
 			name:    "file mode without private key",
 			auth:    Auth{Mode: AuthModeFile, JWT: JWT{PublicKeyFile: validJWTPublicKeyFile, TokenTTL: time.Hour}},
 			wantErr: "Auth.JWT.PrivateKeyFile is required",
@@ -787,4 +795,14 @@ roles         = ['{{ env "APIP_CP_USER_ROLE" "ap_admin" }}', "ap_viewer"]
 	require.NoError(t, err)
 	require.Len(t, cfg.Auth.File.Users, 1)
 	assert.Equal(t, []string{"ap_operator", "ap_viewer"}, cfg.Auth.File.Users[0].Roles)
+}
+
+// JWT.EffectiveAlgorithm defaults an unset Algorithm to RS256 so existing
+// deployments' config (predating the Algorithm field) keeps working
+// unchanged, while an explicitly-set value always passes through as-is —
+// including an unsupported one, which validateJWTConfig is what rejects it.
+func TestJWT_EffectiveAlgorithm(t *testing.T) {
+	assert.Equal(t, JWTAlgorithmRS256, (&JWT{}).EffectiveAlgorithm())
+	assert.Equal(t, JWTAlgorithmRS256, (&JWT{Algorithm: JWTAlgorithmRS256}).EffectiveAlgorithm())
+	assert.Equal(t, "ML-DSA-65", (&JWT{Algorithm: "ML-DSA-65"}).EffectiveAlgorithm())
 }
