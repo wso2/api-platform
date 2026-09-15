@@ -157,12 +157,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         order: 0,
         slot: AI_WORKSPACE_MCP_DEPLOY_SLOT,
         render: (port, artifactHandle) => (
-          <DeployFeature
-            port={port}
-            kind="Mcp"
-            artifactHandle={artifactHandle}
-            gatewayTypes={AI_GATEWAY_TYPES}
-          />
+          <DeployFeature port={port} kind="Mcp" artifactHandle={artifactHandle} />
         ),
       },
       {
@@ -172,12 +167,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] = 
         order: 0,
         slot: AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
         render: (port, artifactHandle) => (
-          <DeployFeature
-            port={port}
-            kind="LlmProxy"
-            artifactHandle={artifactHandle}
-            gatewayTypes={AI_GATEWAY_TYPES}
-          />
+          <DeployFeature port={port} kind="LlmProxy" artifactHandle={artifactHandle} />
         ),
       },
     ],

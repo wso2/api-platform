@@ -37,11 +37,6 @@ export type DeployFeatureProps = {
    * `apiHandle`.
    */
   artifactHandle?: string;
-  /**
-   * The kinds of gateway this host deploys to — `ai` in the AI Workspace, the
-   * regular and event ones in the console. Left empty, every gateway is listed.
-   */
-  gatewayTypes?: readonly string[];
 };
 
 /** How often to re-read while a deployment is still settling. */
@@ -60,7 +55,7 @@ const errorMessage = (error: unknown, fallback: string) =>
  * assembles a pipeline itself and cannot offer a deployment the server would
  * reject.
  */
-const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle, gatewayTypes }) => {
+const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
   const { apiFetch, projectHandle, apiHandle, notify } = port;
   const handle = artifactHandle ?? apiHandle;
 
@@ -74,9 +69,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const client = useMemo(
     () =>
       projectHandle && handle
-        ? createDeployClient(apiFetch, projectHandle, handle, kind, gatewayTypes)
+        ? createDeployClient(apiFetch, projectHandle, handle, kind)
         : null,
-    [apiFetch, projectHandle, handle, kind, gatewayTypes]
+    [apiFetch, projectHandle, handle, kind]
   );
 
   // Kept in a ref so the poll can read the latest state without restarting on

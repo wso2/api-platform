@@ -37,6 +37,19 @@ const NATIVE_PATH: Record<ArtifactKind, string> = {
   LlmProvider: 'llm-providers',
 };
 
+/**
+ * The kinds of gateway each artifact kind runs on. A gateway's kind decides what
+ * its runtime can serve, so this is the same mapping the server enforces the deploy
+ * against — kept here only to narrow the gateways the page asks for, never as the
+ * rule itself. A kind absent from this map asks for every gateway.
+ */
+const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
+  RestApi: ['regular'],
+  Mcp: ['ai'],
+  LlmProxy: ['ai'],
+  LlmProvider: ['ai'],
+};
+
 /** Wire shapes. These mirror the deployment endpoints field for field. */
 type GatewayDeploymentDTO = {
   gatewayId: string;
@@ -93,16 +106,19 @@ export function createDeployClient(
   apiFetch: ApiFetch,
   projectHandle: string,
   apiHandle: string,
-  kind: ArtifactKind = 'RestApi',
-  gatewayTypes: readonly string[] = []
+  kind: ArtifactKind = 'RestApi'
 ) {
   const base = `/projects/${encodeURIComponent(projectHandle)}/apis/${encodeURIComponent(apiHandle)}`;
   // The pipeline routes serve every artifact kind, so each call says which kind it
   // addresses: a handle is unique only within a kind. REST APIs are the default on
   // the server, but it is sent either way so the request is explicit.
   const forKind = `kind=${encodeURIComponent(kind)}`;
-  // Ask the platform for the kinds of gateway this host deploys to, rather than
+  // Ask the platform for only the gateways this artifact can run, rather than
   // pulling every gateway in the organization back and dropping most of them here.
+  // Derived from the kind, not passed in by the host: the server refuses a deploy
+  // across the same mapping, and a page that asked for a different set than the
+  // server accepts would offer a target the deploy then rejects.
+  const gatewayTypes = GATEWAY_TYPES_FOR_KIND[kind] ?? [];
   const managedGatewaysPath = gatewayTypes.length
     ? `/managed-gateways?${gatewayTypes
         .map((t) => `functionalityType=${encodeURIComponent(t)}`)
