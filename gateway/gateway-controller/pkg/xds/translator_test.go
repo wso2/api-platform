@@ -646,10 +646,20 @@ func TestTranslator_WildcardRegexBoundary(t *testing.T) {
 // substitution is applied. Envoy uses "\1" substitution syntax; Go's regexp uses "$1".
 func applyEnvoyRewrite(t *testing.T, r *route.Route, requestPath string) string {
 	t.Helper()
-	spec, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
-	require.True(t, ok, "expected SafeRegex path specifier")
-	require.True(t, regexp.MustCompile(spec.SafeRegex.Regex).MatchString(requestPath),
-		"match regex %q should match request %q", spec.SafeRegex.Regex, requestPath)
+	// Either matcher kind is accepted: an Exact path match is emitted as Envoy's
+	// native matcher rather than a regex (see TestTranslator_ExactPathUsesNativeMatcher),
+	// and a rewrite assertion against a route that would never have been selected
+	// proves nothing either way.
+	switch spec := r.Match.PathSpecifier.(type) {
+	case *route.RouteMatch_SafeRegex:
+		require.True(t, regexp.MustCompile(spec.SafeRegex.Regex).MatchString(requestPath),
+			"match regex %q should match request %q", spec.SafeRegex.Regex, requestPath)
+	case *route.RouteMatch_Path:
+		require.Equal(t, spec.Path, requestPath,
+			"exact matcher %q should match request %q", spec.Path, requestPath)
+	default:
+		t.Fatalf("route %q has no path matcher", r.GetName())
+	}
 
 	rw := r.GetRoute().GetRegexRewrite()
 	require.NotNil(t, rw, "route should have a RegexRewrite")
@@ -946,6 +956,73 @@ func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
 				Upstream:        models.RouteUpstream{ClusterKey: "main"},
 			}
 			r := translator.createRouteFromRDC("POST|"+tt.context+mcpPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
+// A route carrying UpstreamPathOverride forwards to exactly that path under its
+// upstream's base path, whatever it matched downstream. It is the shape a route
+// whose gateway-facing path is configurable but whose upstream path is fixed by a
+// protocol needs — a proxied A2A Agent Card being the case it exists for.
+//
+// Getting this wrong is silent whenever the two paths happen to be equal, so each
+// case below configures a gateway path that differs from the upstream one.
+func TestTranslator_UpstreamPathOverride(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	const override = "/.well-known/agent-card.json"
+
+	tests := []struct {
+		name          string
+		context       string
+		operationPath string
+		upstreamPath  string
+		request       string
+		wantUpstream  string
+	}{
+		{
+			name:          "root upstream",
+			context:       "/weather",
+			operationPath: "/card",
+			request:       "/weather/card",
+			wantUpstream:  override,
+		},
+		{
+			name:          "base-path upstream",
+			context:       "/weather",
+			operationPath: "/card",
+			upstreamPath:  "/a2a/v1",
+			request:       "/weather/card",
+			wantUpstream:  "/a2a/v1" + override,
+		},
+		{
+			name:          "the gateway path already being the upstream one changes nothing",
+			context:       "/weather",
+			operationPath: override,
+			request:       "/weather" + override,
+			wantUpstream:  override,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.upstreamPath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:               "GET",
+				Path:                 tt.context + tt.operationPath,
+				OperationPath:        tt.operationPath,
+				PathMatchType:        "Exact",
+				UpstreamPathOverride: override,
+				Upstream:             models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("GET|"+tt.context+tt.operationPath+"|", rdcRoute, rdc)
 			require.NotNil(t, r)
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
 		})

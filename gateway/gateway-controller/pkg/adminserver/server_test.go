@@ -69,11 +69,11 @@ type stubAPIServer struct {
 	xdsResponse adminapi.XDSSyncStatusResponse
 }
 
-func (s *stubAPIServer) BuildConfigDumpResponse(_ *slog.Logger) (*adminapi.ConfigDumpResponse, error) {
+func (s *stubAPIServer) ConfigDumpJSON(_ *slog.Logger) ([]byte, error) {
 	if s.configErr != nil {
 		return nil, s.configErr
 	}
-	return &s.configDump, nil
+	return json.Marshal(s.configDump)
 }
 
 func (s *stubAPIServer) GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse {
