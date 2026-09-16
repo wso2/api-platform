@@ -59,6 +59,16 @@ const atApi = () =>
     params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
   });
 
+const GRAPHQL_API = 'graphql-api-1';
+
+const atGraphqlApi = () =>
+  makeConsoleScope({
+    component: undefined,
+    isApiScope: false,
+    isGraphQLApiScope: true,
+    params: { graphqlApiHandler: GRAPHQL_API, orgHandle: ORG, projectHandler: PROJECT },
+  });
+
 const itemsAt = (scope: ConsoleScope, route: string) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
@@ -130,6 +140,59 @@ describe('submenu children follow API scope', () => {
     for (const id of leaves) {
       expect(items.find((item) => item.id === id)?.children).toBeUndefined();
     }
+  });
+});
+
+/*
+ * GraphQL pages have no sidebar entry of their own (see `graphqlApiPath`), so
+ * Develop/Test only reach them by revealing their existing children while a
+ * GraphQL API is in scope — this is the fix for "I cannot see API Chat under
+ * Test" / "Policies and Documents cannot be seen under Develop" while
+ * browsing a GraphQL API.
+ */
+describe('submenu children also follow GraphQL API scope, for the submenus that have one', () => {
+  it.each(['develop', 'test'])(
+    '%s offers its GraphQL-capable children, linking into the GraphQL API',
+    (id) => {
+      const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
+
+      expect(item.children?.length).toBeGreaterThan(0);
+      for (const child of item.children ?? []) {
+        expect(child.to).toContain(`/graphql-apis/${GRAPHQL_API}/`);
+      }
+    },
+  );
+
+  it('does not offer develop-routing (Resources), which has no GraphQL equivalent', () => {
+    const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), 'develop');
+
+    expect(item.children?.find((child) => child.id === 'develop-routing')).toBeUndefined();
+    expect(item.children?.map((child) => child.id)).toEqual(['develop-policies', 'develop-documents']);
+  });
+
+  it('does not offer test-curl or test-chat, which have no GraphQL equivalent', () => {
+    const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), 'test');
+
+    expect(item.children?.find((child) => child.id === 'test-curl')).toBeUndefined();
+    expect(item.children?.find((child) => child.id === 'test-chat')).toBeUndefined();
+    expect(item.children?.map((child) => child.id)).toEqual(['test-console']);
+  });
+
+  it.each(['insights', 'observability'])(
+    '%s stays withheld in GraphQL scope — it has no GraphQL-side page at all',
+    (id) => {
+      const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
+
+      expect(item.children).toBeUndefined();
+    },
+  );
+
+  it('marks develop-policies active on the GraphQL Develop Policies page', () => {
+    const route = routes.graphqlApiDevelopPolicies(ORG, PROJECT, GRAPHQL_API);
+    const parent = itemFor(atGraphqlApi(), route, 'develop');
+
+    expect(parent.isActive).toBe(false);
+    expect(parent.children?.find((child) => child.id === 'develop-policies')?.isActive).toBe(true);
   });
 });
 
