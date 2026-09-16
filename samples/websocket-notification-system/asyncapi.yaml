@@ -1,0 +1,40 @@
+asyncapi: '2.0.0'
+info:
+  title: 'Stock Notification API'
+  version: 1.0.0
+  description: 'Streams simulated stock price notifications to every connected client.'
+servers:
+  production:
+    url: wss://your-deployed-backend.example.com
+    protocol: wss
+channels:
+  /:
+    subscribe:
+      operationId: ReceiveStockNotification
+      message:
+        $ref: '#/components/messages/stockNotification'
+components:
+  messages:
+    stockNotification:
+      name: stockNotification
+      title: Stock notification
+      summary: 'A simulated stock price tick broadcast to every connected client'
+      payload:
+        type: object
+        properties:
+          symbol:
+            type: string
+            description: 'Sample stock ticker symbol'
+            example: ACME
+          price:
+            type: number
+            description: 'Simulated price for the symbol'
+            example: 145.05
+          change_percent:
+            type: number
+            description: 'Percentage change from the previous simulated price'
+            example: 0.67
+          timestamp:
+            type: string
+            format: date-time
+            description: 'Time the notification was generated'
