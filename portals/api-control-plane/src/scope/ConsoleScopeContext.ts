@@ -20,6 +20,7 @@ import { createContext, useContext } from 'react';
 
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
 import { RestApi } from '../api/resources/restApis';
+import type { GraphQLApiDetail } from '../api/resources/graphqlApis';
 import { Organization } from '../api/resources/organizations';
 import { Project } from '../api/resources/projects';
 
@@ -27,6 +28,15 @@ export type ConsoleRouteParams = {
   apiHandler?: string;
   deploymentId?: string;
   environmentId?: string;
+  /**
+   * The GraphQL API handle, read off the literal `graphql-apis` segment —
+   * separate from `apiHandler`'s `apis` segment so `ConsoleScopeProvider`'s
+   * REST-only `useRestApi(params.apiHandler)` fetch never fires for a GraphQL
+   * route (see `graphqlApiPath`). Populated purely for sidebar/nav purposes
+   * (`isGraphQLApiScope`); GraphQL pages still fetch their own API data via
+   * `useGraphQLApi` rather than reading it from this context.
+   */
+  graphqlApiHandler?: string;
   orgHandle?: string;
   projectHandler?: string;
 };
@@ -47,7 +57,22 @@ export type ConsoleScope = {
   activeScope: ActiveScope;
   capabilities: ApiCapabilities;
   component?: RestApi;
+  /**
+   * The GraphQL API in scope, when `isGraphQLApiScope` is true — the GraphQL
+   * sibling of `component`, fetched purely so the shell (breadcrumb) can show
+   * its display name; GraphQL pages themselves still fetch their own copy via
+   * `useGraphQLApi` rather than reading it from here.
+   */
+  graphqlComponent?: GraphQLApiDetail;
   isApiScope: boolean;
+  /**
+   * Whether a GraphQL API is in scope (`params.graphqlApiHandler` is set) —
+   * the GraphQL sibling of `isApiScope`, used only for sidebar visibility
+   * (e.g. letting Develop/Test reveal their children while browsing a
+   * GraphQL API). Never true at the same time as `isApiScope`: the two read
+   * mutually exclusive URL segments.
+   */
+  isGraphQLApiScope: boolean;
   isLoading: boolean;
   isOrganizationScope: boolean;
   isProjectScope: boolean;
