@@ -205,3 +205,25 @@ type failingEventHub struct{ capturingEventHub }
 func (h *failingEventHub) PublishEvent(string, eventhub.Event) error {
 	return errors.New("gateway not connected")
 }
+
+// A delete that fails AFTER the undeployment events were published must surface the
+// error, because that is what lets the caller retry. The records still read DEPLOYED, so
+// a retry republishes (a repeat is a no-op on the gateway, matched by deployment id and
+// timestamp) and removes them. Swallowing the error here would strand the gateway
+// undeployed with its records intact and nothing to prompt another attempt.
+func TestDeleteGateway_SurfacesADeleteFailureSoItCanBeRetried(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{deleteErr: errors.New("database unavailable")}
+	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
+	}}
+	hub := &capturingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester")
+	if err == nil {
+		t.Fatal("a failed delete reported success; the caller would never retry")
+	}
+	if len(hub.published) != 1 {
+		t.Errorf("published %d events, want the undeployment to have been attempted", len(hub.published))
+	}
+}

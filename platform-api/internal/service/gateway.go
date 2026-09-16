@@ -866,12 +866,23 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 // undeployAllOnGateway publishes an undeployment event for everything the gateway is
 // currently running, so a gateway being deleted stops serving its artifacts.
 //
-// It never fails the delete. The events go to the event hub rather than straight down the
-// gateway's socket, so publishing does not need the gateway to be connected — and a
-// gateway that is offline (or already gone) must still have its control-plane records
-// removed, which is the state the caller asked for. A publish that fails is logged and
-// the delete continues: refusing to delete would leave records for a gateway the user has
-// asked to remove, which is the worse of the two outcomes.
+// It never fails the delete. A publish that fails is logged and the delete continues:
+// refusing to delete would leave records behind for a gateway the caller has asked to
+// remove, which is the worse of the two outcomes.
+//
+// For a gateway that is NOT connected the event is best-effort and in practice will not
+// be delivered: the hub only hands events to a live subscriber, and deleting the gateway
+// cascades its gateway_tokens, so it can never authenticate to reconnect and drain them.
+// That is accepted rather than worked around — removing the control-plane records of an
+// unreachable gateway is what the caller asked for, and a gateway that is unreachable
+// cannot be told anything by any means. It is still strictly better than before, when a
+// CONNECTED gateway was left serving artifacts the control plane had forgotten.
+//
+// Publishing happens before the records are deleted, so a delete that fails afterwards
+// leaves the gateway undeployed while its records remain. That is recoverable — the
+// records still read DEPLOYED, so retrying the delete republishes (the gateway matches on
+// deployment id and timestamp, so a repeat is a no-op) and removes them. The reverse order
+// is not recoverable: records deleted first leave nothing to undeploy with.
 //
 // Data-plane-originated artifacts are excluded by the query: the gateway owns those and
 // pushed them up, so the control plane does not undeploy them.
