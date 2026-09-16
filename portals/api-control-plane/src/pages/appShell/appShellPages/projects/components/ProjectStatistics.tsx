@@ -21,6 +21,7 @@ import { Box, ButtonBase, Divider, Grid, Skeleton, Stack, Typography } from '@ws
 import { Network } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 
+import { useAllGraphQLApis } from '@/api/resources/graphqlApis';
 import { useAllRestApis } from '@/api/resources/restApis';
 import grpcIcon from '@/assets/icons/gRPC.svg';
 import graphqlIcon from '@/assets/icons/graphql.svg';
@@ -130,15 +131,26 @@ type ProjectStatisticsProps = {
 export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectStatisticsProps) {
   const intl = useIntl();
   const apisQuery = useAllRestApis();
-  const total = apisQuery.data?.pagination.total;
+  const graphqlApisQuery = useAllGraphQLApis();
+  const isPending = apisQuery.isPending || graphqlApisQuery.isPending;
+  const restTotal = apisQuery.data?.pagination.total;
+  const graphqlTotal = graphqlApisQuery.data?.pagination.total;
+  // Undefined while either source is still loading, rather than treating an
+  // in-flight GraphQL count as zero and understating the combined total.
+  const total =
+    restTotal === undefined || graphqlTotal === undefined ? undefined : restTotal + graphqlTotal;
   const apis = apisQuery.data?.list;
+  // GraphQL has no `kind` variants of its own to filter — its whole list
+  // already is the "graphql" bucket, unlike REST's `matchesApiType` scan.
   const countType = (type: ApiTypeFilter) =>
-    apis?.filter((api) => matchesApiType(api.kind, type)).length;
+    type === 'graphql'
+      ? graphqlApisQuery.data?.list.length
+      : apis?.filter((api) => matchesApiType(api.kind, type)).length;
   const selectType = (type: ApiTypeFilter) =>
     onTypeFilterChange(selectedType === type ? null : type);
   const filterLabel = (label: string) => intl.formatMessage(messages.selectType, { type: label });
 
-  if (!apisQuery.isPending && total === 0) return null;
+  if (!isPending && total === 0) return null;
 
   const metrics = [
     { type: 'rest' as const, message: messages.rest, icon: restIcon },
