@@ -139,9 +139,17 @@ func (t *Topology) openEmbeddedSQLite(ctx context.Context, service, database str
 	copyErr := copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db", database), dbPath)
 	if copyErr == nil {
 		// These sidecars are absent after a checkpoint, but must be copied while the
-		// owner is paused whenever they exist so the snapshot remains consistent.
-		_ = copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db-wal", database), dbPath+"-wal")
-		_ = copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db-shm", database), dbPath+"-shm")
+		// owner is paused whenever they exist so the snapshot remains consistent. Only
+		// their absence is optional: any other failure means the snapshot is missing
+		// commits that live in the WAL, which reads as stale data rather than an error.
+		for _, suffix := range []string{"-wal", "-shm"} {
+			err := copyContainerFile(ctx, stack, resolvedService,
+				fmt.Sprintf("/app/data/%s.db%s", database, suffix), dbPath+suffix)
+			if err != nil && !isNotFound(err) {
+				copyErr = err
+				break
+			}
+		}
 	}
 	resumeErr := resume()
 	if copyErr != nil {
@@ -191,6 +199,16 @@ func pauseContainer(ctx context.Context, stack *ComposeStack, service string) (f
 }
 
 // copyContainerFile copies one file from a service's container to a local path.
+// isNotFound reports whether err means the container path does not exist, as opposed to the
+// copy having failed. The Docker client marks such errors with a NotFound method rather than
+// a comparable sentinel; matching the method keeps this free of a dependency on the errdefs
+// package that defines it. An unrecognised error is treated as a real failure, so a change in
+// that convention surfaces a missing sidecar loudly instead of yielding a stale snapshot.
+func isNotFound(err error) bool {
+	var notFound interface{ NotFound() }
+	return errors.As(err, &notFound)
+}
+
 func copyContainerFile(ctx context.Context, stack *ComposeStack, service, containerPath, localPath string) error {
 	data, err := stack.CopyFileFromContainer(ctx, service, containerPath)
 	if err != nil {

@@ -194,7 +194,7 @@ func (u *UI) collectBrowserCoverage(ctx context.Context, scenario string) error 
 	if err != nil {
 		return fmt.Errorf("ui: collecting browser coverage for %q: %w", scenario, err)
 	}
-	istanbulReport, err := page.Evaluate(`globalThis.__coverage__ || null`)
+	istanbulReport, err := evaluateIstanbulCoverage(page)
 	if err != nil {
 		return fmt.Errorf("ui: collecting Istanbul browser coverage for block %q, scenario %q: %w",
 			u.topo.Block.Name, scenario, err)
@@ -216,6 +216,32 @@ func (u *UI) collectBrowserCoverage(ctx context.Context, scenario string) error 
 			u.topo.Block.Name, scenario, err)
 	}
 	return nil
+}
+
+// evaluateIstanbulCoverage reads the page's Istanbul counters.
+//
+// A scenario may end while the page is still navigating, which destroys the execution
+// context the counters are read from. Waiting for the document to settle and retrying
+// once returns the complete set rather than failing: the init script persists counters
+// to sessionStorage on pagehide and restores them into the next document, so counters
+// accumulated before the navigation survive it.
+func evaluateIstanbulCoverage(page playwright.Page) (any, error) {
+	const expression = `globalThis.__coverage__ || null`
+	const attempts = 2
+
+	var err error
+	for range attempts {
+		if err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+			State: playwright.LoadStateDomcontentloaded,
+		}); err != nil {
+			continue
+		}
+		var report any
+		if report, err = page.Evaluate(expression); err == nil {
+			return report, nil
+		}
+	}
+	return nil, err
 }
 
 // page is the scenario's page, for steps.

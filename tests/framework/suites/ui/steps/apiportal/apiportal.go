@@ -1357,7 +1357,14 @@ func (u *Steps) applicationCRUD(ctx context.Context) error {
 	if err := page.Locator("#app-delete-modal").WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
 		return fmt.Errorf("waiting for application deletion: %w", err)
 	}
-	if err := page.Locator("#app-delete-confirm").Click(); err != nil {
+	// Confirming the deletion reloads the listing. Await that navigation so the
+	// absence assertion below runs against the reloaded document rather than the
+	// empty one the browser holds mid-navigation.
+	if _, err := page.ExpectNavigation(func() error {
+		return page.Locator("#app-delete-confirm").Click()
+	}, playwright.PageExpectNavigationOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	}); err != nil {
 		return fmt.Errorf("deleting application: %w", err)
 	}
 	if err := u.expect.Locator(page.Locator(".app-card").Filter(playwright.LocatorFilterOptions{

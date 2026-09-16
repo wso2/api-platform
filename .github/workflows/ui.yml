@@ -114,6 +114,9 @@ jobs:
           IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/ui/logs-out
         run: go test -v ./suites/ui -count=1 -timeout=60m -coverage -logs
 
+      # COVERAGE_OUT is the parent directory, not the generated .run-* one: the report
+      # script resolves the run inside it and writes the reports here, which is where
+      # every upload step below reads them from.
       - name: Generate UI coverage report
         if: always()
         env:
