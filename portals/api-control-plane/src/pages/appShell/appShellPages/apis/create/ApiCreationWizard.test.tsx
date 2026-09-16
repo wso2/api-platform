@@ -56,12 +56,27 @@ vi.mock('./components/DefineApiPanel', () => ({
     useEffect(() => () => onDraftChange(null), [onDraftChange]);
 
     return (
-      <button
-        onClick={() => onDraftChange({ displayName: 'Orders API', version: '1.0' })}
-        type="button"
-      >
-        Use this contract
-      </button>
+      <>
+        <button
+          onClick={() => onDraftChange({ displayName: 'Orders API', version: '1.0' })}
+          type="button"
+        >
+          Use this contract
+        </button>
+        {/* What designing from scratch hands over: a placeholder backend. */}
+        <button
+          onClick={() =>
+            onDraftChange({
+              displayName: 'Untitled API',
+              upstream: { main: { url: 'https://example.com' } },
+              version: '1.0',
+            })
+          }
+          type="button"
+        >
+          Start from scratch
+        </button>
+      </>
     );
   },
 }));
@@ -153,6 +168,39 @@ describe('ApiCreationWizard — a rejected create', () => {
 
     expect(await screen.findByText('Must be reachable over https.')).toBeInTheDocument();
     expect(screen.getByLabelText(/Target URL/)).toHaveValue('https://orders.example.com');
+  });
+
+  it('does not call the backend a placeholder again once the user has chosen it', async () => {
+    // The form unmounts while the progress screen stands in for it, so the
+    // "user has been into this field" provenance has to outlive it — otherwise
+    // a rejected create returns a form that calls the user's own URL a
+    // placeholder, purely because it happens to match the skeleton's.
+    server.use(
+      failure('post', '/rest-apis', 400, 'VALIDATION_FAILED', {
+        errors: [{ field: 'context', message: 'Context is already in use.' }],
+      }),
+    );
+    const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
+
+    await user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Start from scratch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    const placeholderNotice = /using https:\/\/example\.com as a placeholder backend/i;
+    expect(screen.getByText(placeholderNotice)).toBeInTheDocument();
+
+    // Deliberately settling on the same URL retires the notice.
+    const targetUrl = screen.getByLabelText(/Target URL/);
+    await user.clear(targetUrl);
+    await user.type(targetUrl, 'https://example.com');
+    expect(screen.queryByText(placeholderNotice)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByText('Context is already in use.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Target URL/)).toHaveValue('https://example.com');
+    expect(screen.queryByText(placeholderNotice)).not.toBeInTheDocument();
   });
 
   it('stays on the progress screen for a failure no edit can fix', async () => {

@@ -17,9 +17,11 @@
  */
 
 import { Card, CardContent, CardHeader, Stack, Typography } from '@wso2/oxygen-ui';
+import { useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
-import { interactiveCardSx } from '@/theme';
+import { openableProps } from '@/components/openable';
+import { focusRingSx, interactiveCardSx } from '@/theme';
 import {
   GatewayAvatar,
   GatewayFunctionalityChip,
@@ -46,17 +48,19 @@ const AVATAR_SIZE = 56;
  * current is this* (timestamp).
  */
 export function GatewayCard({ gateway, onOpen }: GatewayCardProps) {
+  const intl = useIntl();
   const updated = gateway.updatedAt || gateway.createdAt;
 
   return (
     <Card
-      onClick={() => onOpen(gateway)}
-      sx={{
+      {...openableProps(intl, gateway.displayName, () => onOpen(gateway))}
+      sx={(theme) => ({
         ...interactiveCardSx,
+        ...focusRingSx(theme),
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-      }}
+      })}
     >
       <CardHeader
         avatar={<GatewayAvatar size={AVATAR_SIZE} />}

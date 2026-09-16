@@ -4,7 +4,7 @@
  */
 
 import { Box, Button, Card, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { Server } from '@wso2/oxygen-ui-icons-react';
+import { Network } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 
@@ -89,7 +89,7 @@ export function DeployedGatewaysPanel({ gateways, deployments }: Props) {
                   width: 32,
                 }}
               >
-                <Server size={17} />
+                <Network size={17} />
               </Box>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography noWrap variant="body2">

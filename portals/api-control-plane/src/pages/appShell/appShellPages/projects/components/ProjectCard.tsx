@@ -18,9 +18,9 @@
 
 import { useState, type MouseEvent } from 'react';
 import {
-  alpha,
   Box,
   Card,
+  Divider,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -30,33 +30,19 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {
-  Boxes,
-  Clock,
-  Layers,
-  MoreVertical,
-  Rocket,
-  Settings,
-  Trash2,
-} from '@wso2/oxygen-ui-icons-react';
+import { Clock, Layers, MoreVertical, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Link } from 'react-router-dom';
 
-import { useRestApis } from '@/api/resources/restApis';
 import type { Project } from '@/api/resources/projects';
-import { routes } from '@/routes/paths';
 import { relativeTime } from '@/utils/relativeTime';
-import { interactiveCardSx } from '@/theme';
+import { openableProps } from '@/components/openable';
+import { focusRingSx, interactiveCardSx } from '@/theme';
 
 type ProjectCardProps = {
   project: Project;
-  orgHandle: string;
   onOpen: (project: Project) => void;
   onDelete?: (project: Project) => void;
 };
-
-/** Tint strength of the metadata strip per color scheme. */
-const METADATA_TINT = { dark: 0.08, light: 0.06 } as const;
 
 const messages = defineMessages({
   actionsLabel: {
@@ -100,10 +86,6 @@ const messages = defineMessages({
     id: 'project.card.neverUpdated',
     defaultMessage: 'Not updated yet',
   },
-  settingsLabel: {
-    id: 'project.card.settingsLabel',
-    defaultMessage: 'Project settings',
-  },
   updatedAt: {
     id: 'project.card.updatedAt',
     defaultMessage: 'Updated {relative}',
@@ -111,7 +93,7 @@ const messages = defineMessages({
   },
 });
 
-export function ProjectCard({ project, orgHandle, onOpen, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
   const intl = useIntl();
   const stopCardClick = (event: MouseEvent) => event.stopPropagation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -121,20 +103,13 @@ export function ProjectCard({ project, orgHandle, onOpen, onDelete }: ProjectCar
     setMenuAnchor(null);
   };
 
-  // Scoped to this card's project rather than the route's, so the counts belong
-  // to the card the user is looking at and not the project they are currently in.
-  const apisQuery = useRestApis({}, { projectId: project.id });
-  const apiCount = apisQuery.data?.pagination?.total ?? apisQuery.data?.count;
-  const deployedCount = apisQuery.data?.list?.filter(
-    (api) => api.lifeCycleStatus === 'PUBLISHED',
-  ).length;
-
   return (
     <Card
       // elevation={0}
-      onClick={() => onOpen(project)}
-      sx={() => ({
+      {...openableProps(intl, project.displayName, () => onOpen(project))}
+      sx={(theme) => ({
         ...interactiveCardSx,
+        ...focusRingSx(theme),
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
@@ -174,55 +149,9 @@ export function ProjectCard({ project, orgHandle, onOpen, onDelete }: ProjectCar
             </Typography>
           </Box>
         </Stack>
-
-        {/* info strip — real project metadata */}
-        <Stack
-          direction="row"
-          spacing={2}
-          sx={[
-            (theme) => ({
-              alignItems: 'center',
-              bgcolor: alpha(theme.palette.common.black, METADATA_TINT.light),
-              borderRadius: 1,
-              color: 'text.secondary',
-              mt: 2.25,
-              px: 1.75,
-              py: 1.25,
-            }),
-            // Emitted under the dark color-scheme selector, so it follows the
-            // theme the user is actually on. Must come last in the array —
-            // `applyStyles` returns a nested selector, not a flat value.
-            (theme) =>
-              theme.applyStyles('dark', {
-                bgcolor: alpha(theme.palette.common.white, METADATA_TINT.dark),
-              }),
-          ]}
-        >
-          <Stack alignItems="center" direction="row" spacing={0.75} sx={{ minWidth: 0 }}>
-            <Boxes size={16} />
-            <Typography noWrap variant="body2">
-              {apisQuery.isLoading ? (
-                <FormattedMessage {...messages.apiCountLoading} />
-              ) : (
-                <FormattedMessage {...messages.apiCount} values={{ count: apiCount ?? 0 }} />
-              )}
-            </Typography>
-          </Stack>
-          <Stack alignItems="center" direction="row" spacing={0.75} sx={{ minWidth: 0 }}>
-            <Rocket size={16} />
-            <Typography noWrap variant="body2">
-              {apisQuery.isLoading ? (
-                <FormattedMessage {...messages.deployedCountLoading} />
-              ) : (
-                <FormattedMessage
-                  {...messages.deployedCount}
-                  values={{ count: deployedCount ?? 0 }}
-                />
-              )}
-            </Typography>
-          </Stack>
-        </Stack>
       </Box>
+
+      <Divider />
 
       {/* footer */}
       <Box
@@ -246,17 +175,6 @@ export function ProjectCard({ project, orgHandle, onOpen, onDelete }: ProjectCar
           )}
         </Typography>
         <Box sx={{ flex: 1 }} />
-        <Tooltip title={intl.formatMessage(messages.settingsLabel)}>
-          <IconButton
-            aria-label={intl.formatMessage(messages.settingsLabel)}
-            component={Link}
-            onClick={stopCardClick}
-            size="small"
-            to={routes.projectSettings(orgHandle, project.id)}
-          >
-            <Settings size={16} />
-          </IconButton>
-        </Tooltip>
         {onDelete && (
           <>
             <Tooltip title={intl.formatMessage(messages.actionsLabel)}>
