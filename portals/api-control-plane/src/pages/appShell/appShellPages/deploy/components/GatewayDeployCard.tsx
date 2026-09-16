@@ -151,24 +151,33 @@ export function GatewayDeployCard({
       }}
       variant="outlined"
     >
-      <AccordionSummary
-        sx={{
-          px: 3,
-          '& .MuiAccordionSummary-content': {
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            justifyContent: 'space-between',
-            m: 0,
-          },
-        }}
-      >
-        <Box
+      {/*
+        The Deploy button lives outside `AccordionSummary` on purpose:
+        `AccordionSummary` renders as an actual `<button>` in this MUI build
+        (no `component="div"` override), so a `<Button>` nested inside it —
+        even wrapped in a click-stopping `<span>` — is an invalid
+        button-inside-a-button and triggers a React hydration warning. This
+        wrapper box gives the floating action row something to position
+        against that spans exactly the summary's own height (not the whole
+        accordion, which would grow once expanded), while `pointerEvents:
+        'none'` on the row itself lets a click on empty space between the
+        button and the chevron still fall through to the summary's toggle.
+      */}
+      <Box sx={{ position: 'relative' }}>
+        <AccordionSummary
+          // Oxygen's theme sets a default `expandIcon` on every AccordionSummary
+          // (`MuiAccordionSummary.defaultProps.expandIcon` in the theme
+          // registry) — explicitly null it out since the floating row below
+          // renders this card's own rotating chevron; otherwise both render.
+          expandIcon={null}
           sx={{
-            alignItems: 'center',
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'space-between',
-            width: '100%',
+            pl: 3,
+            pr: 22,
+            '& .MuiAccordionSummary-content': {
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              m: 0,
+            },
           }}
         >
           <Box
@@ -197,35 +206,46 @@ export function GatewayDeployCard({
               </Box>
             )}
           </Box>
-          <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5 }}>
-            <Box component="span" onClick={(event) => event.stopPropagation()}>
-              <Button
-                color="primary"
-                disabled={!isActive || deployMutation.isPending}
-                onClick={handleDeploy}
-                size="small"
-                startIcon={
-                  deployMutation.isPending ? (
-                    <CircularProgress color="inherit" size={14} />
-                  ) : undefined
-                }
-                variant="contained"
-              >
-                <FormattedMessage
-                  {...(deployMutation.isPending ? messages.deploying : messages.deploy)}
-                />
-              </Button>
-            </Box>
-            <ChevronDown
-              size={20}
-              style={{
-                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s ease',
-              }}
-            />
+        </AccordionSummary>
+        <Box
+          sx={{
+            alignItems: 'center',
+            bottom: 0,
+            display: 'flex',
+            gap: 1.5,
+            pointerEvents: 'none',
+            position: 'absolute',
+            right: 24,
+            top: 0,
+          }}
+        >
+          <Box sx={{ pointerEvents: 'auto' }}>
+            <Button
+              color="primary"
+              disabled={!isActive || deployMutation.isPending}
+              onClick={handleDeploy}
+              size="small"
+              startIcon={
+                deployMutation.isPending ? (
+                  <CircularProgress color="inherit" size={14} />
+                ) : undefined
+              }
+              variant="contained"
+            >
+              <FormattedMessage
+                {...(deployMutation.isPending ? messages.deploying : messages.deploy)}
+              />
+            </Button>
           </Box>
+          <ChevronDown
+            size={20}
+            style={{
+              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+            }}
+          />
         </Box>
-      </AccordionSummary>
+      </Box>
       <AccordionDetails sx={{ px: 3, py: 2 }}>
         <Grid container spacing={3}>
           <Grid size={{ md: hasDeployments ? 6 : 12, xs: 12 }} sx={{ minWidth: 240 }}>
