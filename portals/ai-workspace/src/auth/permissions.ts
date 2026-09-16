@@ -171,6 +171,9 @@ export const SCOPES = {
   MCP_PROXY_DEPLOYMENT_CREATE: 'ap:mcp_proxy:deployment:create',
   MCP_PROXY_DEPLOYMENT_DELETE: 'ap:mcp_proxy:deployment:delete',
   MCP_PROXY_DEPLOYMENT_MANAGE: 'ap:mcp_proxy:deployment:manage',
+  MCP_PROXY_API_PORTAL_PUBLISH:   'ap:api_portal:mcp_proxy:publish',
+  MCP_PROXY_API_PORTAL_UNPUBLISH: 'ap:api_portal:mcp_proxy:unpublish',
+  MCP_PROXY_API_PORTAL_MANAGE:    'ap:api_portal:mcp_proxy:manage',
 
   // WebSub APIs
   WEBSUB_API_READ:              'ap:websub_api:read',
