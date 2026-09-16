@@ -710,6 +710,33 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			keyValuePairsFromMetadata, logEntry, operation.APIMethod, event.ProxyResponseCode)
 	}
 
+	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindGraphQL) {
+		graphqlAnalytics := make(map[string]interface{})
+		if graphqlRequestProps, ok := keyValuePairsFromMetadata["graphql_request_properties"]; ok && graphqlRequestProps != "" {
+			// Parse the JSON string into a map
+			var propsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(graphqlRequestProps), &propsMap); err == nil {
+				maps.Copy(graphqlAnalytics, propsMap)
+			} else {
+				slog.Debug("Failed to unmarshal GraphQL request properties", "error", err)
+				// Fallback to raw string if parsing fails
+				graphqlAnalytics["graphql_request_properties"] = graphqlRequestProps
+			}
+		}
+		if graphqlResponseProps, ok := keyValuePairsFromMetadata["graphql_response_properties"]; ok && graphqlResponseProps != "" {
+			// Parse the JSON string into a map
+			var responsePropsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(graphqlResponseProps), &responsePropsMap); err == nil {
+				maps.Copy(graphqlAnalytics, responsePropsMap)
+			} else {
+				slog.Debug("Failed to unmarshal GraphQL response properties", "error", err)
+				// Fallback to raw string if parsing fails
+				graphqlAnalytics["graphql_response_properties"] = graphqlResponseProps
+			}
+		}
+		event.Properties["graphqlAnalytics"] = graphqlAnalytics
+	}
+
 	// Fault classification, last so it sees the finished event.
 	fault := classifyFault(logEntry)
 	event.ErrorType = string(fault.ErrorType)
