@@ -9592,6 +9592,17 @@ components:
       properties:
         serverInfo:
           type: object
+        supportedVersions:
+          type: array
+          description: |
+            MCP protocol versions the server reported. A modern server answers server/discover
+            with the full set; a legacy one yields the single version its initialize handshake
+            negotiated. Absent when neither could be determined.
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         tools:
           type: array
           items:

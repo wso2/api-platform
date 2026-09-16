@@ -2027,7 +2027,12 @@ type MCPServerInfoFetchResponse struct {
 	Prompts    *[]map[string]interface{} `json:"prompts,omitempty" yaml:"prompts,omitempty"`
 	Resources  *[]map[string]interface{} `json:"resources,omitempty" yaml:"resources,omitempty"`
 	ServerInfo *map[string]interface{}   `json:"serverInfo,omitempty" yaml:"serverInfo,omitempty"`
-	Tools      *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
+
+	// SupportedVersions MCP protocol versions the server reported. A modern server answers server/discover
+	// with the full set; a legacy one yields the single version its initialize handshake
+	// negotiated. Absent when neither could be determined.
+	SupportedVersions *[]string                 `json:"supportedVersions,omitempty" yaml:"supportedVersions,omitempty"`
+	Tools             *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
 }
 
 // ManifestSyncResponse defines model for ManifestSyncResponse.
