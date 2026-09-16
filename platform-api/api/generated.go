@@ -2791,12 +2791,12 @@ type CreateGraphQLAPIRequest struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
@@ -3447,12 +3447,12 @@ type GraphQLAPI struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
@@ -3556,12 +3556,12 @@ type GraphQLAPIDetail struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
