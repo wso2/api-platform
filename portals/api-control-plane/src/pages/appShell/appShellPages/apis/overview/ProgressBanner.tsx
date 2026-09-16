@@ -25,24 +25,13 @@ import {
   Rocket,
   type LucideIcon,
 } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import type { RestApi } from '@/api/resources/restApis';
 import { routes } from '@/routes/paths';
 
 const messages = defineMessages({
-  progress: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.progress',
-    defaultMessage: '{completed} of {total} completed',
-    description:
-      'Counter beside the lifecycle steps, e.g. "2 of 4 completed". Counts the steps of getting an API live, not APIs.',
-  },
-  next: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.next',
-    defaultMessage: 'Next: {step}',
-    description: 'The next incomplete lifecycle step shown beside the progress counter.',
-  },
   stepCreate: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create',
     defaultMessage: 'Create',
@@ -136,7 +125,6 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
     },
   ];
 
-  const completedCount = steps.filter((step) => step.complete).length;
   // The first not-yet-complete step is the current, actionable one.
   const activeIndex = steps.findIndex((step) => !step.complete);
 
@@ -179,28 +167,7 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
           divider={<Divider flexItem orientation="vertical" />}
           spacing={1.5}
           sx={{ flexShrink: 0 }}
-        >
-          <Typography color="text.secondary" variant="body2">
-            <FormattedMessage
-              {...messages.progress}
-              values={{ completed: completedCount, total: steps.length }}
-            />
-          </Typography>
-          {activeIndex >= 0 && (
-            <Typography color="text.secondary" variant="body2">
-              <FormattedMessage
-                {...messages.next}
-                values={{
-                  step: (
-                    <Box component="span" sx={{ color: 'text.primary', fontWeight: 700 }}>
-                      {steps[activeIndex].label}
-                    </Box>
-                  ),
-                }}
-              />
-            </Typography>
-          )}
-        </Stack>
+        ></Stack>
       </Stack>
     </Box>
   );

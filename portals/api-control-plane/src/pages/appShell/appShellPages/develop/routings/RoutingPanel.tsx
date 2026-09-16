@@ -49,6 +49,7 @@ import {
 
 import { useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { methodPalette } from '@/components/SwaggerOperationsView';
 import { useNotifications } from '@/components/Notifications';
 import {
   type BackendResource,
@@ -60,7 +61,6 @@ import {
   getBackendPath,
   HTTP_METHODS,
   isValidUrl,
-  methodColor,
   operationsValid,
   removeOperation,
   setBackendPath,
@@ -326,17 +326,17 @@ function seedBackendResources(operations: EditableOperation[]): BackendResource[
 
 type Selection = { type: 'operation'; index: number } | { type: 'upstream' } | null;
 
-/** Resolves a method to a solid badge background + readable text from the theme. */
+/**
+ * Resolves a method to a solid badge background + readable text. The fill is
+ * the verb's Swagger colour, the same one the resource rows use, so a method
+ * reads identically on the canvas and in a listing.
+ */
 function useBadgeColor() {
   const theme = useTheme();
-  return (method: string) => {
-    const key = methodColor(method);
-    if (key === 'default') {
-      return { bg: theme.palette.grey[500], fg: theme.palette.common.white };
-    }
-    const swatch = theme.palette[key];
-    return { bg: swatch.main, fg: swatch.contrastText };
-  };
+  return (method: string) => ({
+    bg: methodPalette(method).badge,
+    fg: theme.palette.common.white,
+  });
 }
 
 /** A rounded "pill" node placed on the routing canvas. */

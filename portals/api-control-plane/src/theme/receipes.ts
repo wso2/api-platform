@@ -105,6 +105,19 @@ export const interactiveCardSx = {
 } as const;
 
 /**
+ * Focus indicator for a card or row that is itself the control (see
+ * `openableProps` in `components/openable.ts`). Inset by its own width so the
+ * ring stays inside a card that clips its overflow, and keyed to
+ * `:focus-visible` so a pointer click doesn't leave a ring behind.
+ */
+export const focusRingSx = (theme: Theme) => ({
+  '&:focus-visible': {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: '-2px',
+  },
+});
+
+/**
  * State layer for a card the user picks from a set of options: the API
  * creation wizard's API-type and Gateway Creation's Gateway-type Card.
  *
