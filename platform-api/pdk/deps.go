@@ -36,11 +36,13 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways    Gateways
-	Projects    Projects
-	Deployments Deployments
+	Gateways      Gateways
+	Projects      Projects
+	APIPortals    APIPortals
+	Deployments   Deployments
+	Organizations Organizations
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
+	// (APIs, Subscriptions, Applications, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -79,6 +81,27 @@ type Projects interface {
 
 	// DeleteProject removes a project within an organization (Delete).
 	DeleteProject(handle, orgID, actor string) error
+}
+
+// APIPortals exposes CRUD on API Portal records, scoped by organization.
+// orgID is always the request-context org (GO-AUTH-005), never caller input.
+type APIPortals interface {
+	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
+	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
+	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
+	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
+	DeleteAPIPortal(handle, orgID, actor string) error
+}
+
+// Organizations exposes read-only lookups over the platform's organizations.
+// Every method mirrors an existing OrganizationService method verbatim; callers
+// MUST pass an org id resolved from the request context, never one from request
+// input (GO-AUTH-005).
+type Organizations interface {
+	// GetOrganizationByUUID returns the organization identified by its internal
+	// UUID. Used by plugins that hold a JWT-derived org UUID and need the handle
+	// (or other registered attributes) without an extra HTTP hop.
+	GetOrganizationByUUID(uuid string) (*api.Organization, error)
 }
 
 // Deployments exposes build/deploy/read/undeploy access to an API's gateway
