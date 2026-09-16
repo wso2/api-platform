@@ -140,7 +140,7 @@ export default function ExternalServersValidationDetails({
           <Stack spacing={1}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography sx={{ fontWeight: 600 }}>
-                Supported MCP Versions
+                Upstream Server Supported MCP Versions
               </Typography>
               {supportedVersions.length === 0 ? (
                 <Chip label="Not detected" size="small" />

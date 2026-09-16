@@ -790,6 +790,8 @@ export interface MCPServer {
   context?: string;
   vhost?: string;
   upstream?: MCPServerUpstream;
+  mcpSpecVersions?: string[];
+  upstreamMcpSpecVersions?: string[];
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;
@@ -812,7 +814,8 @@ export interface CreateMCPServerRequest {
   context?: string;
   vhost?: string;
   upstream?: MCPServerUpstream;
-  mcpSpecVersion?: string;
+  mcpSpecVersions?: string[];
+  upstreamMcpSpecVersions?: string[];
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;

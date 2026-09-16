@@ -19,13 +19,22 @@
 import React from 'react';
 import {
   Button,
+  Chip,
   FormControl,
   FormLabel,
   Grid,
   Stack,
   TextField,
+  Tooltip,
+  Typography,
 } from '@wso2/oxygen-ui';
+import { HelpCircle } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
+import { SimpleTagInput } from '../../PolicyParameterEditor/FieldRenderers';
+import {
+  mcpSpecVersionWarning,
+  validateMCPSpecVersion,
+} from './mcpSpecVersions';
 
 type FieldErrors = {
   name?: string;
@@ -40,14 +49,18 @@ type Props = {
   serverContext: string;
   serverDescription: string;
   serverName: string;
+  serverSpecVersions: string[];
   serverTarget: string;
   serverVersion: string;
+  /** Versions the probe reported, offered as one-click additions. */
+  suggestedSpecVersions?: string[];
   fieldErrors?: FieldErrors;
   onCancel: () => void;
   onCreate: () => void;
   onContextChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onNameChange: (value: string) => void;
+  onSpecVersionsChange: (value: string[]) => void;
   onTargetChange: (value: string) => void;
   onVersionChange: (value: string) => void;
 };
@@ -57,17 +70,25 @@ export default function ExternalServersCreateForm({
   serverContext,
   serverDescription,
   serverName,
+  serverSpecVersions,
   serverTarget,
   serverVersion,
+  suggestedSpecVersions = [],
   fieldErrors = {},
   onCancel,
   onCreate,
   onContextChange,
   onDescriptionChange,
   onNameChange,
+  onSpecVersionsChange,
   onTargetChange,
   onVersionChange,
 }: Props): JSX.Element {
+  const unusedSuggestions = suggestedSpecVersions.filter(
+    (version) => !serverSpecVersions.includes(version)
+  );
+  const specVersionWarning = mcpSpecVersionWarning(serverSpecVersions);
+
   return (
     <Stack spacing={2} sx={{ mt: 1, maxWidth: 920 }}>
       <Grid container spacing={2}>
@@ -160,6 +181,60 @@ export default function ExternalServersCreateForm({
               error={Boolean(fieldErrors.target)}
               helperText={fieldErrors.target}
             />
+          </FormControl>
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <FormControl fullWidth>
+            <FormLabel>
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <span>
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.form.mcpSpecVersions"
+                    defaultMessage="MCP Versions"
+                  />
+                </span>
+                <Tooltip title="MCP specification versions this proxy declares support for.">
+                  <HelpCircle size={14} />
+                </Tooltip>
+              </Stack>
+            </FormLabel>
+            <SimpleTagInput
+              testId="mcp-spec-versions"
+              placeholder="2026-07-28"
+              value={serverSpecVersions}
+              onChange={onSpecVersionsChange}
+              validate={validateMCPSpecVersion}
+            />
+            {specVersionWarning && (
+              <Typography variant="body2" color="warning.main" sx={{ mt: 0.5 }}>
+                {specVersionWarning}
+              </Typography>
+            )}
+            {unusedSuggestions.length > 0 && (
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ mt: 1 }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Reported by the upstream server
+                </Typography>
+                {unusedSuggestions.map((version) => (
+                  <Chip
+                    key={version}
+                    label={version}
+                    size="small"
+                    variant="outlined"
+                    onClick={() =>
+                      onSpecVersionsChange([...serverSpecVersions, version])
+                    }
+                  />
+                ))}
+              </Stack>
+            )}
           </FormControl>
         </Grid>
       </Grid>
