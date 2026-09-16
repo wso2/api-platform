@@ -145,8 +145,21 @@ export type SpecSourceEditorProps = {
    * Network failures are swallowed — a transient outage never blocks the save.
    */
   onBeforeSave?: (specText: string) => Promise<string[] | null>;
-  /** Adopts an edited definition after it has passed backend validation. */
-  onSave: (spec: SpecDocument) => void;
+  /** Fired when the editor switches between read and edit mode. */
+  onEditingChange?: (isEditing: boolean) => void;
+  /**
+   * Adopts an edited definition after it has passed backend validation.
+   * `rawText` is the exact text the user approved, preserving their chosen
+   * format (YAML or JSON) so the submission file does not silently re-encode it.
+   */
+  onSave: (spec: SpecDocument, rawText: string) => void;
+  /**
+   * The original uploaded or downloaded spec text. When present the read view
+   * shows exactly what the user gave us (YAML format, comments, anchors) when
+   * the selected format matches the original, and the editor starts from that
+   * text rather than a re-serialized copy.
+   */
+  rawText?: string;
   /** The definition as it currently stands. */
   spec: SpecDocument;
 };
@@ -160,36 +173,59 @@ export type SpecSourceEditorProps = {
  * (backend validation) before committing; a transient network failure never
  * blocks the save.
  */
-export const SpecSourceEditor = ({ onBeforeSave, onSave, spec }: SpecSourceEditorProps) => {
+export const SpecSourceEditor = ({ onBeforeSave, onEditingChange, onSave, rawText, spec }: SpecSourceEditorProps) => {
   const intl = useIntl();
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [format, setFormat] = useState<SpecFormat>('json');
+  // Initialize format to match rawText's original format when present.
+  const rawTextFormat: SpecFormat = rawText?.trimStart().startsWith('{') ? 'json' : 'yaml';
+  const [format, setFormat] = useState<SpecFormat>(rawText !== undefined ? rawTextFormat : 'json');
   const [draft, setDraft] = useState('');
   const [problem, setProblem] = useState<EditorProblem | null>(null);
   const [validating, setValidating] = useState(false);
 
-  // Serialize once per document and format; both are expensive and unchanged
-  // between renders that touch neither.
-  const readText = useMemo(() => serializeSpec(spec, format), [format, spec]);
+  // In read mode: show rawText when the user-selected format matches the
+  // original (preserving comments, anchors, key order); re-serialize when the
+  // user has switched to the other format.
+  const readText = useMemo(() => {
+    if (rawText !== undefined && format === rawTextFormat) {
+      return rawText;
+    }
+    return serializeSpec(spec, format);
+  }, [format, rawText, rawTextFormat, spec]);
 
-  // A document replaced from outside; another contract fetched, the approach
-  // switched; leaves any half-finished edit describing something that is no
+  // A document replaced from outside (another contract fetched, approach
+  // switched) leaves any half-finished edit describing something that is no
   // longer on screen, so the editor closes rather than saving over it.
   useEffect(() => {
     setEditing(false);
     setProblem(null);
-  }, [spec]);
+    onEditingChange?.(false);
+  }, [spec]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync the format toggle to the new rawText's original format each time a
+  // new contract arrives, so YAML uploads open in YAML view by default.
+  useEffect(() => {
+    if (rawText !== undefined) {
+      setFormat(rawTextFormat);
+    }
+  }, [rawText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startEditing = () => {
-    setDraft(serializeSpec(spec, format));
+    // Start from rawText when format matches, so comments and anchors survive
+    // into the initial edit state; otherwise re-serialize.
+    const startText =
+      rawText !== undefined && format === rawTextFormat ? rawText : serializeSpec(spec, format);
+    setDraft(startText);
     setProblem(null);
     setEditing(true);
+    onEditingChange?.(true);
   };
 
   const cancelEditing = () => {
     setEditing(false);
     setProblem(null);
+    onEditingChange?.(false);
   };
 
   /**
@@ -247,7 +283,8 @@ export const SpecSourceEditor = ({ onBeforeSave, onSave, spec }: SpecSourceEdito
 
     setProblem(null);
     setEditing(false);
-    onSave(parsed.spec);
+    onEditingChange?.(false);
+    onSave(parsed.spec, draft);
   };
 
   /**

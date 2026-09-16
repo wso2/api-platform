@@ -90,7 +90,7 @@ import {
 } from '../utils/swaggerHub';
 import { useValidateOpenApiSpec, type OpenAPIValidationError } from '@/api/resources/restApis';
 import { isValidUrl } from '../../utils/developEdit';
-import { validateApiSpec, type SpecDialect, type SpecIssue } from '../utils/specValidation';
+import { collectSpecWarnings, readDialectFromSpec, type SpecDialect, type SpecIssue } from '../utils/specValidation';
 import { SpecIssueList } from './SpecIssueList';
 import { type ApiType } from '../types';
 import { API_TYPES } from '../uiConfig';
@@ -832,6 +832,13 @@ export type FetchedContract = {
    * has something to show in both cases.
    */
   spec: SpecDocument;
+  /**
+   * The original text exactly as uploaded or downloaded. Preserved so the
+   * source view shows what the user actually gave us (comments, anchors,
+   * original format) and so draft submission can send the same bytes to the
+   * backend without a lossy round-trip through the parsed object.
+   */
+  rawText: string;
   /** The source it came from, for whoever consumes this step. */
   values: ContractValues;
   /** Things worth saying about it that didn't stop the import. */
@@ -848,8 +855,6 @@ export type ContractFetchFailure =
 
 export type ContractFetchResult =
   | { contract: FetchedContract; status: 'fetched' }
-  /** Read and parsed, but not a definition this step can use. */
-  | { issues: SpecIssue[]; status: 'invalidSpec' }
   | { status: ContractFetchFailure };
 
 /**
@@ -882,25 +887,21 @@ const parseContractText = (text: string): SpecDocument | null => {
 };
 
 /**
- * The last gate a parsed document passes: is it an OpenAPI definition this
- * step can preview and create from?
+ * Wraps a parsed document into a fetched contract ready for preview.
  *
- * Applied to every source, so a file dropped on the upload tab is held to the
- * same standard as one downloaded from a URL.
+ * Dialect is read from the spec but validation is deferred entirely to the
+ * backend validate-openapi call; warnings are filled in there and merged in
+ * once that response arrives. Warnings start empty here so the preview renders
+ * immediately while the backend call is still in-flight.
  */
-const acceptSpec = (spec: SpecDocument, values: ContractValues): ContractFetchResult => {
-  const validation = validateApiSpec(spec);
-  return validation.status === 'valid'
-    ? {
-        contract: {
-          dialect: validation.dialect,
-          spec,
-          values,
-          warnings: validation.warnings,
-        },
-        status: 'fetched',
-      }
-    : { issues: validation.issues, status: 'invalidSpec' };
+const acceptSpec = (rawText: string, spec: SpecDocument, values: ContractValues): ContractFetchResult => {
+  const dialectResult = readDialectFromSpec(spec);
+  const dialect: SpecDialect =
+    dialectResult === null || dialectResult === 'unsupported' ? 'openapi-3.0' : dialectResult;
+  return {
+    contract: { dialect, rawText, spec, values, warnings: [] },
+    status: 'fetched',
+  };
 };
 
 /**
@@ -939,7 +940,7 @@ const fetchDocumentFrom = async (
     return { status: 'oversized' };
   }
   const spec = parseContractText(text);
-  return spec === null ? { status: 'unreadable' } : acceptSpec(spec, values);
+  return spec === null ? { status: 'unreadable' } : acceptSpec(text, spec, values);
 };
 
 /**
@@ -968,8 +969,9 @@ export const fetchContractForPreview = async (
         return { status: 'oversized' };
       }
       try {
-        const spec = parseContractText(await readContractText(values.file));
-        return spec === null ? { status: 'unreadable' } : acceptSpec(spec, values);
+        const text = await readContractText(values.file);
+        const spec = parseContractText(text);
+        return spec === null ? { status: 'unreadable' } : acceptSpec(text, spec, values);
       } catch {
         // Malformed YAML/JSON — js-yaml's own message is developer-facing.
         return { status: 'unreadable' };
@@ -1454,16 +1456,16 @@ export const ContractSourceForm = ({
         return;
       }
 
-      // Backend validation — serialise the parsed spec back to YAML for the
-      // validate endpoint. A network failure is non-fatal: we proceed so a
-      // temporary outage doesn't block the create flow entirely.
+      // Backend validation — send the original text so format, comments and
+      // anchors are preserved in the validated bytes. A network failure is
+      // non-fatal: we proceed so a temporary outage doesn't block the create
+      // flow entirely.
       try {
-        const specYaml = yaml.dump(result.contract.spec);
         // Extend to other api types by selecting a validator for the
         // detected dialect if required
         const validation = request.apiTypeKey === 'rest'
-          ? await validateSpec.mutateAsync(specYaml)
-          : { isValid: true, errors: [] };
+          ? await validateSpec.mutateAsync(result.contract.rawText)
+          : { isValid: true, errors: [], warnings: [] };
         if (!current) return;
 
         if (!validation.isValid) {
@@ -1471,6 +1473,15 @@ export const ContractSourceForm = ({
           setBackendValidationErrors(validation.errors);
           return;
         }
+
+        // FE warning check: missingTitle, missingVersion, noServers, externalRefs.
+        // Structural errors (noPaths, noOperations, badPathKeys) are handled by BE.
+        const warnings: SpecIssue[] = collectSpecWarnings(result.contract.spec, result.contract.rawText);
+
+        if (!current) return;
+        setFetching(false);
+        setFetched({ ...result.contract, warnings });
+        return;
       } catch {
         // Network/auth error — don't block the user; validation is best-effort here.
       }
@@ -1546,9 +1557,6 @@ export const ContractSourceForm = ({
 
   /** Why the last fetch came back empty, as a sentence; `null` when it didn't. */
   const fetchErrorText = (() => {
-    if (fetchError?.status === 'invalidSpec') {
-      return <SpecIssueList issues={fetchError.issues} />;
-    }
     switch (fetchError?.status) {
       case 'oversized':
         return <FormattedMessage {...messages.specOversized} />;

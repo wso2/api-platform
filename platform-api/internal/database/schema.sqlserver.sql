@@ -764,9 +764,9 @@ CREATE TABLE dbo.user_organization_mappings (
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
 
--- Documents table for storing API-related artifact_documents (e.g. OpenAPI spec definitions).
-IF OBJECT_ID(N'dbo.artifact_documents', N'U') IS NULL
-CREATE TABLE dbo.artifact_documents (
+-- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
+IF OBJECT_ID(N'dbo.api_documents', N'U') IS NULL
+CREATE TABLE dbo.api_documents (
     uuid              VARCHAR(40)    NOT NULL,
     artifact_uuid     VARCHAR(40)    NOT NULL,
     organization_uuid VARCHAR(40)    NOT NULL,
@@ -776,17 +776,18 @@ CREATE TABLE dbo.artifact_documents (
     file_name         VARCHAR(255),
     content_type      VARCHAR(100),
     content           VARBINARY(MAX) NOT NULL,
+    data_version      INT            NOT NULL DEFAULT 0,
     created_by        VARCHAR(255),
     created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
     updated_by        VARCHAR(255),
     updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT pk_artifact_documents PRIMARY KEY (uuid),
-    CONSTRAINT fk_artifact_documents_artifact FOREIGN KEY (artifact_uuid)     REFERENCES dbo.artifacts(uuid)      ON DELETE CASCADE,
-    CONSTRAINT fk_artifact_documents_org      FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid)  ON DELETE NO ACTION
+    CONSTRAINT pk_api_documents          PRIMARY KEY (uuid),
+    CONSTRAINT fk_api_documents_artifact FOREIGN KEY (artifact_uuid)     REFERENCES dbo.artifacts(uuid)      ON DELETE CASCADE,
+    CONSTRAINT fk_api_documents_org      FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid)  ON DELETE NO ACTION
 );
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_documents_artifact' AND object_id = OBJECT_ID(N'dbo.artifact_documents'))
-CREATE INDEX idx_artifact_documents_artifact ON dbo.artifact_documents(artifact_uuid, type);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_documents_artifact' AND object_id = OBJECT_ID(N'dbo.api_documents'))
+CREATE INDEX idx_api_documents_artifact ON dbo.api_documents(artifact_uuid, type);
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_artifact_documents_artifact_handle' AND object_id = OBJECT_ID(N'dbo.artifact_documents'))
-CREATE UNIQUE INDEX uq_artifact_documents_artifact_handle ON dbo.artifact_documents(artifact_uuid, handle);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_documents_artifact_handle' AND object_id = OBJECT_ID(N'dbo.api_documents'))
+CREATE UNIQUE INDEX uq_api_documents_artifact_handle ON dbo.api_documents(artifact_uuid, handle);

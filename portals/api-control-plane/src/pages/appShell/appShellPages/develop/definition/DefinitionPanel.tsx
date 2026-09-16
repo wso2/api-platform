@@ -178,6 +178,16 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.fileTooLarge',
     defaultMessage: 'The specification exceeds the maximum allowed size (5 MB).',
   },
+  orDivider: {
+    id: 'develop.definition.DefinitionPanel.orDivider',
+    defaultMessage: 'Or',
+    description: 'Separator between the URL input and the file upload button.',
+  },
+  editorLoading: {
+    id: 'develop.definition.DefinitionPanel.editorLoading',
+    defaultMessage: 'Loading editor…',
+    description: 'Placeholder shown while Monaco editor initialises.',
+  },
 });
 
 /** Width of the expanded editor Drawer. */
@@ -192,7 +202,8 @@ function parseSpec(text: string): OpenApiSpec | null {
   const trimmed = text.trimStart();
   if (!trimmed) return null;
   try {
-    return JSON.parse(trimmed) as OpenApiSpec;
+    const doc: unknown = JSON.parse(trimmed);
+    return doc && typeof doc === 'object' && !Array.isArray(doc) ? (doc as OpenApiSpec) : null;
   } catch {
     try {
       const doc = yaml.load(trimmed);
@@ -251,7 +262,7 @@ export function DefinitionPanel() {
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Sync editor when the stored spec (re-)loads; always reset to YAML view.
+  // Sync editor when the stored spec (re-)loads. Content is always YAML (server converts on read).
   useEffect(() => {
     setEditorText(openApiData?.content ?? '');
     setPendingFileName(null);
@@ -277,14 +288,18 @@ export function DefinitionPanel() {
   const parsedSpecForOperations = useMemo(() => parseSpec(editorText), [editorText]);
 
   // savedContent in the current display format — used by the Reset button.
+  // savedContent is always YAML; convert to JSON only when the editor is in JSON mode.
   const savedInCurrentFormat = useMemo(() => {
-    if (!savedContent || format === 'yaml') return savedContent;
-    try {
-      const parsed = yaml.load(savedContent) as Record<string, unknown>;
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return savedContent;
+    if (!savedContent) return savedContent;
+    if (format === 'json') {
+      try {
+        const parsed = yaml.load(savedContent) as Record<string, unknown>;
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return savedContent;
+      }
     }
+    return savedContent;
   }, [savedContent, format]);
 
   const isSaving = isValidating || putOpenApi.isPending;
@@ -402,19 +417,18 @@ export function DefinitionPanel() {
   };
 
   const handleDownload = () => {
+    // savedContent is always YAML; convert to JSON only when the editor is in JSON mode.
     let content = savedContent;
     let filename = 'openapi.yaml';
     let mimeType = 'application/x-yaml';
 
     if (format === 'json') {
+      filename = 'openapi.json';
+      mimeType = 'application/json';
       try {
         const parsed = yaml.load(savedContent) as Record<string, unknown>;
         content = JSON.stringify(parsed, null, 2);
-        filename = 'openapi.json';
-        mimeType = 'application/json';
-      } catch {
-        // Fall back to YAML if conversion fails.
-      }
+      } catch { /* keep as-is */ }
     }
 
     const blob = new Blob([content], { type: mimeType });
@@ -428,24 +442,15 @@ export function DefinitionPanel() {
 
   const handleSave = async () => {
     if (!restApiId || isSaving) return;
-    // Always persist as YAML. Convert from JSON if the editor is in JSON mode.
-    let yamlContent = editorText;
-    if (format === 'json') {
-      try {
-        const parsed = JSON.parse(editorText) as Record<string, unknown>;
-        yamlContent = yaml.dump(parsed);
-      } catch {
-        // Invalid JSON — let the server reject it.
-      }
-    }
 
-    const isEmpty = !yamlContent.trim();
+    const content = editorText;
+    const isEmpty = !content.trim();
 
     if (!isEmpty) {
       setIsValidating(true);
       setSaveValidationErrors(null);
       try {
-        const validation = await validateSpec.mutateAsync(yamlContent);
+        const validation = await validateSpec.mutateAsync(content);
         if (!validation.isValid) {
           setSaveValidationErrors(validation.errors.map((e) => e.message));
           return;
@@ -458,9 +463,12 @@ export function DefinitionPanel() {
       }
     }
 
-    const fileName = pendingFileName ?? 'openapi.yaml';
-    const blob = new Blob([yamlContent], { type: 'application/x-yaml' });
-    const file = new File([blob], fileName, { type: 'application/x-yaml' });
+    const mimeType = format === 'json' ? 'application/json' : 'application/x-yaml';
+    const ext = format === 'json' ? '.json' : '.yaml';
+    const baseName = (pendingFileName ?? 'openapi.yaml').replace(/\.(json|yaml|yml)$/i, '');
+    const fileName = `${baseName}${ext}`;
+    const blob = new Blob([content], { type: mimeType });
+    const file = new File([blob], fileName, { type: mimeType });
     const formData = new FormData();
     formData.append('file', file);
     putOpenApi.mutate({ restApiId, formData }, { onSuccess: () => setIsEditing(false) });
@@ -517,7 +525,7 @@ export function DefinitionPanel() {
                     : intl.formatMessage(messages.dialogFetch)}
                 </Button>
                 <Divider flexItem orientation="vertical">
-                  Or
+                  {intl.formatMessage(messages.orDivider)}
                 </Divider>
                 <Button
                   onClick={() => fileInputRef.current?.click()}
@@ -676,7 +684,7 @@ export function DefinitionPanel() {
                     loading={
                       <Box sx={{ bgcolor: '#1e1e1e', height: '100%', p: 2 }}>
                         <Typography color="text.disabled" variant="body2">
-                          Loading editor…
+                          {intl.formatMessage(messages.editorLoading)}
                         </Typography>
                       </Box>
                     }
@@ -914,7 +922,7 @@ export function DefinitionPanel() {
                     loading={
                       <Box sx={{ bgcolor: '#1e1e1e', height: '100%', p: 2 }}>
                         <Typography color="text.disabled" variant="body2">
-                          Loading editor…
+                          {intl.formatMessage(messages.editorLoading)}
                         </Typography>
                       </Box>
                     }

@@ -32,7 +32,7 @@ import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } fro
 
 import { useValidateOpenApiSpec } from '@/api/resources/restApis';
 import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
-import type { ApiCreationWizardDraftState, ApiType, ContractImport } from '../types';
+import type { ApiCreationWizardDraftState, ApiType } from '../types';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
 import { DesignWithAiPanel } from './DesignWithAiPanel';
@@ -52,6 +52,8 @@ type ApproachKey = 'contract' | 'scratch';
  */
 type EditedSpec = {
   spec: SpecDocument;
+  /** The exact text the user saved, preserving their chosen format (YAML/JSON). */
+  rawText: string;
   warnings: SpecIssue[];
 };
 
@@ -137,6 +139,7 @@ export const DefineApiPanel = ({
   // doesn't throw away what was typed.
   const [contractEdit, setContractEdit] = useState<EditedSpec | null>(null);
   const [scratchEdit, setScratchEdit] = useState<EditedSpec | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
 
   /**
    * A different contract underneath - fetched, or cleared because the form's
@@ -165,8 +168,8 @@ export const DefineApiPanel = ({
     [validateSpec.mutateAsync],
   );
 
-  const handleSpecChange = (next: SpecDocument) => {
-    const edit: EditedSpec = { spec: next, warnings: [] };
+  const handleSpecChange = (next: SpecDocument, rawText: string) => {
+    const edit: EditedSpec = { rawText, spec: next, warnings: [] };
     if (approach === 'scratch') {
       setScratchEdit(edit);
       return;
@@ -180,11 +183,46 @@ export const DefineApiPanel = ({
   const edit = approach === 'scratch' ? scratchEdit : contractEdit;
   const spec = edit?.spec ?? (approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec);
 
+  // Pass the raw text for the source view: prefer the edit's own text (which
+  // carries the format the user saved in) over the original uploaded/downloaded
+  // text, falling back to undefined for scratch before any edit.
+  const rawText = edit?.rawText ?? (approach === 'contract' ? contract?.rawText : undefined);
+
   const draft = useMemo((): ApiCreationWizardDraftState | null => {
     if (spec === undefined) return null;
     const base = extractApiDetails(spec);
-    // Both approaches submit via import-openapi: contract passes the fetched spec,
-    // scratch passes the skeleton (or whatever the user has edited).
+
+    // After an edit, use the exact text the user saved — preserving whatever
+    // format (YAML or JSON) they were working in.
+    if (edit !== null) {
+      const isJson = edit.rawText.trimStart().startsWith('{');
+      const contentType = isJson ? 'application/json' : 'application/yaml';
+      const fileName = isJson ? 'openapi.json' : 'openapi.yaml';
+      const rawBlob = new Blob([edit.rawText], { type: contentType });
+      return {
+        ...base,
+        contractImport: {
+          specFile: new File([rawBlob], fileName, { type: contentType }),
+        },
+      };
+    }
+
+    // Unedited contract: preserve the original bytes so YAML format, comments,
+    // and anchors survive the round-trip to the backend.
+    if (approach === 'contract' && contract?.rawText !== undefined) {
+      const isJson = contract.rawText.trimStart().startsWith('{');
+      const contentType = isJson ? 'application/json' : 'application/yaml';
+      const fileName = isJson ? 'openapi.json' : 'openapi.yaml';
+      const rawBlob = new Blob([contract.rawText], { type: contentType });
+      return {
+        ...base,
+        contractImport: {
+          specFile: new File([rawBlob], fileName, { type: contentType }),
+        },
+      };
+    }
+
+    // Scratch approach before any edit: the skeleton is a JS object, so JSON is the only option.
     const specBlob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
     return {
       ...base,
@@ -192,12 +230,12 @@ export const DefineApiPanel = ({
         specFile: new File([specBlob], 'openapi.json', { type: 'application/json' }),
       },
     };
-  }, [spec]);
+  }, [approach, contract, edit, spec]);
 
   useEffect(() => {
-    onDraftChange(draft);
+    onDraftChange(isEditorOpen ? null : draft);
     return () => onDraftChange(null);
-  }, [draft, onDraftChange]);
+  }, [draft, isEditorOpen, onDraftChange]);
 
   return (
     <Stack spacing={3}>
@@ -327,7 +365,9 @@ export const DefineApiPanel = ({
           <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
             <ApiResourcesPreview
               onBeforeSave={handleBeforeSave}
+              onEditingChange={setIsEditorOpen}
               onSpecChange={handleSpecChange}
+              rawText={rawText}
               spec={spec}
               warnings={edit?.warnings}
             />

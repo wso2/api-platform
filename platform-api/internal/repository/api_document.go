@@ -23,11 +23,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-// DocumentRepo persists artifact_documents (e.g. OpenAPI specs) attached to artifacts.
+// DocumentRepo persists api_documents (e.g. OpenAPI specs) attached to artifacts.
 type DocumentRepo struct {
 	db *database.DB
 }
@@ -38,21 +39,37 @@ func NewDocumentRepo(db *database.DB) DocumentRepository {
 }
 
 // CreateDocument inserts a new document row.
+//
+// Singleton types (currently only model.DocumentTypeDefinition) are enforced
+// at the application layer: attempting to create a second document of a
+// singleton type for the same artifact returns apperror.Conflict.
 func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
+	if model.IsSingletonDocumentType(doc.Type) {
+		existing, err := r.GetDocumentByArtifactAndType(doc.ArtifactUUID, doc.Type, doc.OrganizationUUID)
+		if err != nil {
+			return fmt.Errorf("create document (singleton check): %w", err)
+		}
+		if existing != nil {
+			return apperror.Conflict.New(
+				fmt.Sprintf("a document of type %q already exists for this API", doc.Type),
+			)
+		}
+	}
+
 	if doc.ID == "" {
 		doc.ID = uuid.New().String()
 	}
 	now := time.Now().UTC()
 	query := r.db.Rebind(`
-		INSERT INTO artifact_documents
-			(uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content_type, content, created_by, created_at, updated_by, updated_at)
+		INSERT INTO api_documents
+			(uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content_type, content, data_version, created_by, created_at, updated_by, updated_at)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	_, err := r.db.Exec(query,
 		doc.ID, doc.ArtifactUUID, doc.OrganizationUUID, doc.Type,
 		doc.Handle, doc.DisplayName, doc.FileName, doc.ContentType, doc.Content,
-		doc.CreatedBy, now, doc.CreatedBy, now,
+		doc.DataVersion, doc.CreatedBy, now, doc.CreatedBy, now,
 	)
 	if err != nil {
 		return fmt.Errorf("create document: %w", err)
@@ -64,9 +81,9 @@ func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
 func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error) {
 	query := r.db.Rebind(`
 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
-		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
+		       COALESCE(file_name, ''), COALESCE(content_type, ''), content, data_version,
 		       COALESCE(created_by, ''), COALESCE(updated_by, '')
-		FROM artifact_documents
+		FROM api_documents
 		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
 	`)
 	row := r.db.QueryRow(query, artifactUUID, handle, orgUUID)
@@ -74,7 +91,7 @@ func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgU
 	if err := row.Scan(
 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-		&doc.CreatedBy, &doc.UpdatedBy,
+		&doc.DataVersion, &doc.CreatedBy, &doc.UpdatedBy,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -89,9 +106,9 @@ func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgU
 func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error) {
 	query := r.db.Rebind(`
 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
-		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
+		       COALESCE(file_name, ''), COALESCE(content_type, ''), content, data_version,
 		       COALESCE(created_by, ''), COALESCE(updated_by, '')
-		FROM artifact_documents
+		FROM api_documents
 		WHERE artifact_uuid = ? AND type = ? AND organization_uuid = ?
 	`)
 	row := r.db.QueryRow(query, artifactUUID, docType, orgUUID)
@@ -99,7 +116,7 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 	if err := row.Scan(
 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-		&doc.CreatedBy, &doc.UpdatedBy,
+		&doc.DataVersion, &doc.CreatedBy, &doc.UpdatedBy,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -117,8 +134,8 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	updateQuery := r.db.Rebind(`
-		UPDATE artifact_documents
-		SET file_name = ?, content_type = ?, content = ?, updated_by = ?, updated_at = ?
+		UPDATE api_documents
+		SET file_name = ?, content_type = ?, content = ?, data_version = data_version + 1, updated_by = ?, updated_at = ?
 		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
 	`)
 	result, err := r.db.Exec(updateQuery,
@@ -156,7 +173,7 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 
 // DeleteDocument removes a document by artifact UUID, handle, and org.
 func (r *DocumentRepo) DeleteDocument(artifactUUID, handle, orgUUID string) error {
-	query := r.db.Rebind(`DELETE FROM artifact_documents WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?`)
+	query := r.db.Rebind(`DELETE FROM api_documents WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?`)
 	_, err := r.db.Exec(query, artifactUUID, handle, orgUUID)
 	if err != nil {
 		return fmt.Errorf("delete document: %w", err)
@@ -170,7 +187,7 @@ func (r *DocumentRepo) DocumentHandleExistsForArtifact(artifactUUID, handle stri
 	// No LIMIT clause: QueryRow returns at most one row, and the unique constraint
 	// on (artifact_uuid, handle) guarantees at most one exists. LIMIT 1 is
 	// also incompatible with SQL Server syntax.
-	query := r.db.Rebind(`SELECT 1 FROM artifact_documents WHERE artifact_uuid = ? AND handle = ?`)
+	query := r.db.Rebind(`SELECT 1 FROM api_documents WHERE artifact_uuid = ? AND handle = ?`)
 	row := r.db.QueryRow(query, artifactUUID, handle)
 	var exists int
 	if err := row.Scan(&exists); err != nil {

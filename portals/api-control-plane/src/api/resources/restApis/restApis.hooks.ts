@@ -416,6 +416,11 @@ export const usePutRestApiOpenApi = (overrides: { orgId?: string } = {}) => {
         void queryClient.invalidateQueries({
           queryKey: restApiKeys.children(org, restApiId, 'openapi'),
         });
+        // A spec PUT re-extracts operations on the backend, so the detail cache
+        // (which carries the operations list) is stale after a successful save.
+        void queryClient.invalidateQueries({
+          queryKey: restApiKeys.detail(org, restApiId),
+        });
       }
     },
   });

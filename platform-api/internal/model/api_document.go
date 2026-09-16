@@ -19,6 +19,13 @@ package model
 
 const DocumentTypeDefinition = "DEFINITION"
 
+// IsSingletonDocumentType reports whether at most one document of the given
+// type may exist per artifact. DEFINITION is the only singleton type; all
+// other types (e.g. "HOW_TO") allow multiple documents per artifact.
+func IsSingletonDocumentType(docType string) bool {
+	return docType == DocumentTypeDefinition
+}
+
 // Document represents a stored document attached to an artifact (e.g. an OpenAPI spec).
 type Document struct {
 	ID               string
@@ -30,6 +37,7 @@ type Document struct {
 	FileName         string
 	ContentType      string
 	Content          []byte
+	DataVersion      int
 	CreatedBy        string
 	UpdatedBy        string
 }

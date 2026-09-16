@@ -202,7 +202,7 @@ export const ApiCreationWizard = () => {
     }
     const mainUrl = values.upstream?.main?.url?.trim();
     if (mainUrl) {
-      formData.append('upstream', mainUrl);
+      formData.append('upstream', JSON.stringify({ main: { url: mainUrl } }));
     }
     importOpenApiMutation.mutate(formData);
   };

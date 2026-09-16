@@ -2330,7 +2330,7 @@ export interface components {
              * @example GET
              * @enum {string}
              */
-            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | "TRACE";
             /**
              * @description Resource path for the operation
              * @example /pet/{petId}
@@ -2831,7 +2831,18 @@ export interface components {
             isValid: boolean;
             /** @description Validation errors; empty when isValid is true */
             errors: components["schemas"]["OpenAPIValidationError"][];
+            /** @description Non-blocking issues present even when isValid is true */
+            warnings?: components["schemas"]["OpenAPIValidationWarning"][];
             info?: components["schemas"]["OpenAPISpecInfo"];
+        };
+        OpenAPIValidationWarning: {
+            /**
+             * @description Machine-readable warning code matching the frontend SpecIssueCode values
+             * @example missingTitle
+             */
+            code: string;
+            /** @description Fragment of the document that triggered the warning */
+            detail?: string;
         };
         OpenAPIValidationError: {
             /** @description Human-readable description of the validation error */

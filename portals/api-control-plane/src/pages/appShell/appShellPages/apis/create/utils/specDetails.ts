@@ -32,8 +32,7 @@ import type { ApiCreationWizardDraftState, ApiOperation, Operationrequest } from
  * are understood, since the step accepts either.
  */
 
-/** Methods the gateway backend accepts on an operation. TRACE is omitted — not in the wire type. */
-const SUPPORTED_METHODS: Operationrequest['method'][] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+const SUPPORTED_METHODS: Operationrequest['method'][] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'TRACE'];
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value !== null && !Array.isArray(value)

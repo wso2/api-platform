@@ -172,12 +172,11 @@ export const validateOpenApiSpec = async (
   });
 };
 
-/** The parsed response from `GET /rest-apis/{id}/openapi`. Content is always YAML. */
 export type OpenAPIContent = {
   content: string;
 };
 
-/** Fetches the raw API definition spec. Resolves to `undefined` when no spec exists (404). */
+/** Fetches the raw API definition spec. Throws (ApiError, status 404) when no spec exists. */
 export const getRestApiOpenApi = async (
   restApiId: string,
   options?: RequestOptions,

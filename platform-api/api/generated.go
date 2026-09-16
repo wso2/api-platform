@@ -185,6 +185,7 @@ const (
 	OperationRequestMethodPATCH   OperationRequestMethod = "PATCH"
 	OperationRequestMethodPOST    OperationRequestMethod = "POST"
 	OperationRequestMethodPUT     OperationRequestMethod = "PUT"
+	OperationRequestMethodTRACE   OperationRequestMethod = "TRACE"
 )
 
 // Defines values for RESTAPILifeCycleStatus.
@@ -2066,7 +2067,7 @@ type MappedAPIKeyListResponse struct {
 
 // OpenAPIContent defines model for OpenAPIContent.
 type OpenAPIContent struct {
-	// Content Raw spec content (always YAML)
+	// Content Raw spec content
 	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
 }
 

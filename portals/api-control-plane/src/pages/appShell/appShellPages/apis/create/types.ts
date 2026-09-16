@@ -48,7 +48,7 @@ export interface UpStreamTarget {
 }
 
 export interface Operationrequest {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS' | 'TRACE';
   path: string;
 }
 

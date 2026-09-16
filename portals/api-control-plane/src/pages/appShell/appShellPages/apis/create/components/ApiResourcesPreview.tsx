@@ -63,11 +63,20 @@ export type ApiResourcesPreviewProps = {
    * backend validation and relies on the frontend check alone.
    */
   onBeforeSave?: (specText: string) => Promise<string[] | null>;
+  /** Forwarded from SpecSourceEditor — fired when edit mode opens or closes. */
+  onEditingChange?: (isEditing: boolean) => void;
   /**
    * Adopts a definition edited in the Source view. Supplying it is what makes
    * the Source view editable at all; without it the pane stays read-only.
+   * `rawText` is the exact text the user approved (preserving YAML/JSON format).
    */
-  onSpecChange?: (spec: SpecDocument) => void;
+  onSpecChange?: (spec: SpecDocument, rawText: string) => void;
+  /**
+   * The original uploaded or downloaded spec text. When present the Source
+   * view shows exactly what the user gave us — preserving YAML format,
+   * comments, and anchors — rather than a re-serialized copy.
+   */
+  rawText?: string;
   /**
    * The fetched definition, as a parsed object rather than a URL, so the viewer
    * never re-downloads the document and the Source view prints the same object
@@ -90,15 +99,18 @@ export type ApiResourcesPreviewProps = {
  * Right-hand pane of the contract step: the resources of the fetched
  * definition, or an empty state saying that is what will land here.
  */
-export const ApiResourcesPreview = ({ onBeforeSave, onSpecChange, spec, warnings }: ApiResourcesPreviewProps) => {
+export const ApiResourcesPreview = ({ onBeforeSave, onEditingChange, onSpecChange, rawText, spec, warnings }: ApiResourcesPreviewProps) => {
   const intl = useIntl();
   const [showSource, setShowSource] = useState(false);
   const hasContract = spec !== undefined;
   const editable = hasContract && onSpecChange !== undefined;
 
-  // Serialize once per spec; stringify is expensive and unchanged per view.
-  // Use JSON since `CodeBlock` highlights it (this is parsed content, not upload bytes).
-  const sourceText = useMemo(() => (spec === undefined ? '' : serializeSpec(spec, 'json')), [spec]);
+  // Read-only source view: prefer rawText so comments/format are preserved;
+  // fall back to JSON serialization when rawText isn't available.
+  const sourceText = useMemo(() => {
+    if (spec === undefined) return '';
+    return rawText ?? serializeSpec(spec, 'json');
+  }, [rawText, spec]);
 
   return (
     <Box
@@ -164,7 +176,7 @@ export const ApiResourcesPreview = ({ onBeforeSave, onSpecChange, spec, warnings
         }}
       >
         {hasContract && showSource && editable ? (
-          <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSpecChange} spec={spec} />
+          <SpecSourceEditor onBeforeSave={onBeforeSave} onEditingChange={onEditingChange} onSave={onSpecChange} rawText={rawText} spec={spec} />
         ) : null}
 
         {hasContract && showSource && !editable ? (

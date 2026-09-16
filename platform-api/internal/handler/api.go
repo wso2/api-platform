@@ -316,28 +316,40 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return apperror.ValidationFailed.New("invalid multipart form")
 	}
 
-	displayName := strings.TrimSpace(r.FormValue("displayName"))
-	apiId := strings.TrimSpace(r.FormValue("id"))
-	version := strings.TrimSpace(r.FormValue("version"))
-	context := strings.TrimSpace(r.FormValue("context"))
-	projectId := strings.TrimSpace(r.FormValue("projectId"))
-	description := strings.TrimSpace(r.FormValue("description"))
-	upstreamURL := strings.TrimSpace(r.FormValue("upstream"))
+	var req api.ImportOpenAPIRequest
+	req.DisplayName = strings.TrimSpace(r.FormValue("displayName"))
+	req.Version = strings.TrimSpace(r.FormValue("version"))
+	req.Context = strings.TrimSpace(r.FormValue("context"))
+	req.ProjectId = strings.TrimSpace(r.FormValue("projectId"))
+	if id := strings.TrimSpace(r.FormValue("id")); id != "" {
+		req.Id = &id
+	}
+	if desc := strings.TrimSpace(r.FormValue("description")); desc != "" {
+		req.Description = &desc
+	}
+	if upstreamStr := r.FormValue("upstream"); upstreamStr != "" {
+		if err := json.Unmarshal([]byte(upstreamStr), &req.Upstream); err != nil {
+			return apperror.ValidationFailed.New("upstream must be a valid JSON object")
+		}
+	}
 
-	if displayName == "" {
+	if req.DisplayName == "" {
 		return apperror.ValidationFailed.New("displayName is required")
 	}
-	if version == "" {
+	if req.Version == "" {
 		return apperror.ValidationFailed.New("version is required")
 	}
-	if context == "" {
+	if req.Context == "" {
 		return apperror.ValidationFailed.New("context is required")
 	}
-	if projectId == "" {
+	if req.ProjectId == "" {
 		return apperror.ValidationFailed.New("projectId is required")
 	}
-	if upstreamURL == "" {
-		return apperror.ValidationFailed.New("upstream is required")
+	if isEmptyUpstreamDefinition(req.Upstream.Main) && (req.Upstream.Sandbox == nil || isEmptyUpstreamDefinition(*req.Upstream.Sandbox)) {
+		return apperror.ValidationFailed.New("At least one upstream endpoint (main or sandbox) is required")
+	}
+	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
+		return err
 	}
 
 	// Obtain spec content from the uploaded file.
@@ -346,6 +358,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return apperror.ValidationFailed.New("a spec file is required")
 	}
 	defer file.Close()
+	req.File.InitFromMultipart(header)
 
 	data, err := io.ReadAll(io.LimitReader(file, importOpenAPIMaxBytes+1))
 	if err != nil {
@@ -354,7 +367,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if int64(len(data)) > importOpenAPIMaxBytes {
 		return apperror.ValidationFailed.New("spec file exceeds the maximum allowed size")
 	}
-	specFileName := normalizeSpecFileName(header.Filename)
+	specFileName := normalizeSpecFileName(req.File.Filename())
 
 	// Parse the spec once; extract operations from the parsed document.
 	sd, loadErr := loadSpecDocument(data)
@@ -371,37 +384,21 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	}
 	operations := extractOperations(sd)
 
-	// loadSpecDocument already determined the format; no re-parse needed.
-	importedContentType := specContentType(sd.isJSON)
-
-	// Always persist as YAML regardless of the uploaded format.
-	yamlBytes, err := sd.toYAML()
-	if err != nil {
-		return serviceError(err, "failed to re-encode spec as YAML")
-	}
-	specContent := string(yamlBytes)
-
-	// Build upstream.
-	upstreamConfig := api.Upstream{
-		Main: api.UpstreamDefinition{Url: &upstreamURL},
+	specContent := string(sd.raw)
+	importedContentType := "application/x-yaml"
+	if sd.isJSON {
+		importedContentType = "application/json"
 	}
 
-	// Build the create request.
-	var descPtr *string
-	if description != "" {
-		descPtr = &description
-	}
-	req := &api.CreateRESTAPIRequest{
-		DisplayName: displayName,
-		Version:     version,
-		Context:     context,
-		ProjectId:   projectId,
-		Description: descPtr,
-		Upstream:    upstreamConfig,
+	createReq := &api.CreateRESTAPIRequest{
+		Id:          req.Id,
+		DisplayName: req.DisplayName,
+		Version:     req.Version,
+		Context:     req.Context,
+		ProjectId:   req.ProjectId,
+		Description: req.Description,
+		Upstream:    req.Upstream,
 		Operations:  &operations,
-	}
-	if apiId != "" {
-		req.Id = &apiId
 	}
 
 	createdBy, err := resolveActorErr(r, h.identity, "import OpenAPI")
@@ -409,7 +406,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 
-	apiResponse, artifactUUID, err := h.apiService.CreateAPI(req, orgId, createdBy)
+	apiResponse, artifactUUID, err := h.apiService.CreateAPI(createReq, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create API from OpenAPI spec in org %s", orgId))
 	}
@@ -452,21 +449,9 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	return nil
 }
 
-// normalizeSpecFileName ensures the stored filename always carries a .yaml extension.
+// normalizeSpecFileName strips the directory component from the uploaded filename.
 func normalizeSpecFileName(name string) string {
-	base := filepath.Base(name)
-	if strings.EqualFold(filepath.Ext(base), ".json") {
-		return strings.TrimSuffix(base, filepath.Ext(base)) + ".yaml"
-	}
-	return base
-}
-
-// specContentType maps the isJSON result from parseSpecRoot to a MIME type string.
-func specContentType(isJSON bool) string {
-	if isJSON {
-		return "application/json"
-	}
-	return "application/x-yaml"
+	return filepath.Base(name)
 }
 
 // specDoc holds a libopenapi-parsed document with format metadata and a pre-built
@@ -490,6 +475,23 @@ func isJSONBytes(data []byte) bool {
 		return b == '{'
 	}
 	return false
+}
+
+// jsonToYAML converts a JSON-encoded spec to YAML. If data is already YAML
+// (i.e. not JSON), it is returned unchanged.
+func jsonToYAML(data []byte) ([]byte, error) {
+	if !isJSONBytes(data) {
+		return data, nil
+	}
+	var obj interface{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON spec: %w", err)
+	}
+	out, err := yaml.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert spec to YAML: %w", err)
+	}
+	return out, nil
 }
 
 // loadSpecDocument parses the spec with libopenapi, builds the typed model,
@@ -528,24 +530,7 @@ func loadSpecDocument(data []byte) (*specDoc, error) {
 	return sd, nil
 }
 
-// toYAML re-encodes the spec as YAML. YAML input is returned as-is;
-// JSON input is round-tripped through json.Unmarshal + yaml.Marshal.
-func (sd *specDoc) toYAML() ([]byte, error) {
-	if !sd.isJSON {
-		return sd.raw, nil
-	}
-	var root interface{}
-	if err := json.Unmarshal(sd.raw, &root); err != nil {
-		return nil, fmt.Errorf("failed to parse spec JSON for YAML conversion: %w", err)
-	}
-	out, err := yaml.Marshal(root)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal spec as YAML: %w", err)
-	}
-	return out, nil
-}
-
-// validateSpec validates the spec and returns a validateOpenAPIResult with
+// validateSpec validates the spec and returns an api.ValidateOpenAPIResponse with
 // Info (title/version) populated when valid.
 //
 // For OpenAPI 3.x, the document is validated against the full OpenAPI JSON
@@ -555,22 +540,22 @@ func (sd *specDoc) toYAML() ([]byte, error) {
 //
 // For Swagger 2.x, libopenapi-validator does not support v2, so build errors
 // from BuildV2Model are used instead.
-func validateSpec(sd *specDoc) validateOpenAPIResult {
+func validateSpec(sd *specDoc) api.ValidateOpenAPIResponse {
 	if sd.isV3 {
 		return validateSpecV3(sd)
 	}
 	return validateSpecV2(sd)
 }
 
-func validateSpecV3(sd *specDoc) validateOpenAPIResult {
+func validateSpecV3(sd *specDoc) api.ValidateOpenAPIResponse {
 	// Surface any model-build errors first ($ref resolution failures, etc.).
 	// When present, skip the JSON Schema validator — NewValidator would also fail.
 	if len(sd.errs) > 0 {
-		errs := make([]validateOpenAPIError, 0, len(sd.errs))
+		errs := make([]api.OpenAPIValidationError, 0, len(sd.errs))
 		for _, e := range sd.errs {
-			errs = append(errs, validateOpenAPIError{Message: e.Error()})
+			errs = append(errs, api.OpenAPIValidationError{Message: e.Error()})
 		}
-		return validateOpenAPIResult{IsValid: false, Errors: errs}
+		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
 	}
 
 	// NewValidator internally calls BuildV3Model and — critically — sets the
@@ -578,57 +563,61 @@ func validateSpecV3(sd *specDoc) validateOpenAPIResult {
 	// not set that field, causing the "Document is not set" error.
 	v, vErrs := openapivalidator.NewValidator(sd.doc)
 	if vErrs != nil {
-		errs := make([]validateOpenAPIError, 0, len(vErrs))
+		errs := make([]api.OpenAPIValidationError, 0, len(vErrs))
 		for _, e := range vErrs {
-			errs = append(errs, validateOpenAPIError{Message: e.Error()})
+			errs = append(errs, api.OpenAPIValidationError{Message: e.Error()})
 		}
-		return validateOpenAPIResult{IsValid: false, Errors: errs}
+		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
 	}
 
 	valid, valErrs := v.ValidateDocument()
 	if !valid {
-		errs := make([]validateOpenAPIError, 0, len(valErrs))
+		errs := make([]api.OpenAPIValidationError, 0, len(valErrs))
 		for _, e := range valErrs {
 			if len(e.SchemaValidationErrors) > 0 {
 				for _, sve := range e.SchemaValidationErrors {
-					errs = append(errs, validateOpenAPIError{
+					var path *string
+					if p := sve.FieldPath; p != "" {
+						path = &p
+					}
+					errs = append(errs, api.OpenAPIValidationError{
 						Message: sve.Reason,
-						Path:    sve.FieldPath,
+						Path:    path,
 					})
 				}
 			} else {
-				errs = append(errs, validateOpenAPIError{
+				var path *string
+				if p := e.SpecPath; p != "" {
+					path = &p
+				}
+				errs = append(errs, api.OpenAPIValidationError{
 					Message: e.Message,
-					Path:    e.SpecPath,
+					Path:    path,
 				})
 			}
 		}
-		return validateOpenAPIResult{IsValid: false, Errors: errs}
+		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
 	}
-	result := validateOpenAPIResult{IsValid: true, Errors: []validateOpenAPIError{}}
+	result := api.ValidateOpenAPIResponse{IsValid: true, Errors: []api.OpenAPIValidationError{}}
 	if sd.v3.Model.Info != nil {
-		result.Info = &validateOpenAPIInfo{
-			Title:   sd.v3.Model.Info.Title,
-			Version: sd.v3.Model.Info.Version,
-		}
+		title, version := sd.v3.Model.Info.Title, sd.v3.Model.Info.Version
+		result.Info = &api.OpenAPISpecInfo{Title: &title, Version: &version}
 	}
 	return result
 }
 
-func validateSpecV2(sd *specDoc) validateOpenAPIResult {
+func validateSpecV2(sd *specDoc) api.ValidateOpenAPIResponse {
 	if len(sd.errs) > 0 {
-		errs := make([]validateOpenAPIError, 0, len(sd.errs))
+		errs := make([]api.OpenAPIValidationError, 0, len(sd.errs))
 		for _, e := range sd.errs {
-			errs = append(errs, validateOpenAPIError{Message: e.Error()})
+			errs = append(errs, api.OpenAPIValidationError{Message: e.Error()})
 		}
-		return validateOpenAPIResult{IsValid: false, Errors: errs}
+		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
 	}
-	result := validateOpenAPIResult{IsValid: true, Errors: []validateOpenAPIError{}}
+	result := api.ValidateOpenAPIResponse{IsValid: true, Errors: []api.OpenAPIValidationError{}}
 	if sd.v2 != nil && sd.v2.Model.Info != nil {
-		result.Info = &validateOpenAPIInfo{
-			Title:   sd.v2.Model.Info.Title,
-			Version: sd.v2.Model.Info.Version,
-		}
+		title, version := sd.v2.Model.Info.Title, sd.v2.Model.Info.Version
+		result.Info = &api.OpenAPISpecInfo{Title: &title, Version: &version}
 	}
 	return result
 }
@@ -771,7 +760,11 @@ func (h *APIHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.NotFound.New("API definition not found")
 	}
 
-	content := string(doc.Content)
+	yamlContent, err := jsonToYAML(doc.Content)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to convert stored spec to YAML for API %s", restApiId))
+	}
+	content := string(yamlContent)
 	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
 	return nil
 }
@@ -803,6 +796,8 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New("spec file is required (field: file)")
 	}
 	defer file.Close()
+	var specReq api.OpenAPISpecFileRequest
+	specReq.File.InitFromMultipart(header)
 
 	specContent, err := io.ReadAll(io.LimitReader(file, importOpenAPIMaxBytes+1))
 	if err != nil {
@@ -825,15 +820,10 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New(msg)
 	}
 
-	// loadSpecDocument already determined the format; no re-parse needed.
-	importedContentType := specContentType(sd.isJSON)
-
-	// Always persist as YAML regardless of the uploaded format.
-	yamlBytes, err := sd.toYAML()
-	if err != nil {
-		return serviceError(err, "failed to re-encode spec as YAML")
+	importedContentType := "application/x-yaml"
+	if sd.isJSON {
+		importedContentType = "application/json"
 	}
-	specContent = yamlBytes
 
 	updatedBy, err := resolveActorErr(r, h.identity, "update API openapi spec")
 	if err != nil {
@@ -845,7 +835,7 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return serviceError(err, fmt.Sprintf("failed to resolve API %s in org %s", restApiId, orgId))
 	}
 
-	specFileName := normalizeSpecFileName(header.Filename)
+	specFileName := normalizeSpecFileName(specReq.File.Filename())
 
 	// Re-use the existing document's handle so we update in place rather than
 	// creating a second DEFINITION document. If no document exists yet, generate
@@ -903,7 +893,11 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return serviceError(err, fmt.Sprintf("failed to upsert openapi spec for API %s", restApiId))
 	}
 
-	content := string(specContent)
+	yamlSpecContent, err := jsonToYAML(specContent)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to convert spec to YAML for API %s", restApiId))
+	}
+	content := string(yamlSpecContent)
 	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
 	return nil
 }
@@ -942,22 +936,6 @@ func (h *APIHandler) computeSyncedOperations(restApiId, orgId string, specOps []
 }
 
 
-type validateOpenAPIError struct {
-	Message string `json:"message"`
-	Path    string `json:"path,omitempty"`
-}
-
-type validateOpenAPIInfo struct {
-	Title   string `json:"title,omitempty"`
-	Version string `json:"version,omitempty"`
-}
-
-type validateOpenAPIResult struct {
-	IsValid bool                  `json:"isValid"`
-	Errors  []validateOpenAPIError `json:"errors"`
-	Info    *validateOpenAPIInfo   `json:"info,omitempty"`
-}
-
 // ValidateOpenAPI handles POST /api/v0.9/rest-apis/validate-openapi.
 // Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
 // any resource. Accepts multipart/form-data with a `file` field containing the
@@ -988,9 +966,9 @@ func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) err
 
 	sd, loadErr := loadSpecDocument([]byte(strings.TrimSpace(string(data))))
 	if loadErr != nil {
-		httputil.WriteJSON(w, http.StatusOK, validateOpenAPIResult{
+		httputil.WriteJSON(w, http.StatusOK, api.ValidateOpenAPIResponse{
 			IsValid: false,
-			Errors:  []validateOpenAPIError{{Message: loadErr.Error()}},
+			Errors:  []api.OpenAPIValidationError{{Message: loadErr.Error()}},
 		})
 		return nil
 	}

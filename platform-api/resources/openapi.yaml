@@ -451,6 +451,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -492,6 +494,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6771,6 +6775,7 @@ components:
             - PATCH
             - HEAD
             - OPTIONS
+            - TRACE
           example: "GET"
         path:
           type: string
@@ -7437,7 +7442,7 @@ components:
       properties:
         content:
           type: string
-          description: Raw spec content (always YAML)
+          description: Raw spec content
 
     TimeUnit:
       type: string
