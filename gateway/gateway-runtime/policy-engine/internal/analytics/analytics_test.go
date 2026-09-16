@@ -1134,6 +1134,113 @@ func TestPrepareAnalyticEvent_WithMCPAnalyticsInvalidJSON(t *testing.T) {
 	require.NotNil(t, mcpAnalytics)
 }
 
+func TestPrepareAnalyticEvent_WithGraphQLAnalytics(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:                   "GraphQLApi",
+		"graphql_request_properties": `{"operationName":"CreatePost","operationType":"mutation"}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	graphqlAnalytics, ok := event.Properties["graphqlAnalytics"]
+	require.True(t, ok)
+	require.NotNil(t, graphqlAnalytics)
+
+	graphqlMap, ok := graphqlAnalytics.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "CreatePost", graphqlMap["operationName"])
+	assert.Equal(t, "mutation", graphqlMap["operationType"])
+}
+
+func TestPrepareAnalyticEvent_WithGraphQLAnalyticsInvalidJSON(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	// Create log entry with invalid JSON for GraphQL properties
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:                   "GraphQLApi",
+		"graphql_request_properties": `{invalid json`,
+	})
+
+	// Should not panic, should fallback to raw string
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	graphqlAnalytics, ok := event.Properties["graphqlAnalytics"]
+	require.True(t, ok)
+	require.NotNil(t, graphqlAnalytics)
+
+	graphqlMap, ok := graphqlAnalytics.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, `{invalid json`, graphqlMap["graphql_request_properties"])
+}
+
+func TestPrepareAnalyticEvent_WithGraphQLResponseErrorProperties(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:                    "GraphQLApi",
+		"graphql_request_properties":  `{"operationName":"CreatePost","operationType":"mutation"}`,
+		"graphql_response_properties": `{"isError":true,"errorCount":1,"errorCode":"BAD_USER_INPUT"}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	graphqlAnalytics, ok := event.Properties["graphqlAnalytics"]
+	require.True(t, ok)
+
+	graphqlMap, ok := graphqlAnalytics.(map[string]interface{})
+	require.True(t, ok)
+	// Request- and response-phase properties merge into the same map.
+	assert.Equal(t, "CreatePost", graphqlMap["operationName"])
+	assert.Equal(t, "mutation", graphqlMap["operationType"])
+	assert.Equal(t, true, graphqlMap["isError"])
+	assert.Equal(t, float64(1), graphqlMap["errorCount"])
+	assert.Equal(t, "BAD_USER_INPUT", graphqlMap["errorCode"])
+}
+
+func TestPrepareAnalyticEvent_WithGraphQLResponseErrorPropertiesInvalidJSON(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:                    "GraphQLApi",
+		"graphql_response_properties": `{invalid json`,
+	})
+
+	// Should not panic, should fallback to raw string
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	graphqlAnalytics, ok := event.Properties["graphqlAnalytics"]
+	require.True(t, ok)
+
+	graphqlMap, ok := graphqlAnalytics.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, `{invalid json`, graphqlMap["graphql_response_properties"])
+}
+
+func TestPrepareAnalyticEvent_NonGraphQLAPIDoesNotGetGraphQLAnalytics(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey: "RestApi",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	_, ok := event.Properties["graphqlAnalytics"]
+	assert.False(t, ok)
+}
+
 func TestPrepareAnalyticEvent_WithEmptyUserName(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)

@@ -41,12 +41,12 @@ type AnalyticsSteps struct {
 // AnalyticsEvent represents the structure of a Moesif analytics event
 type AnalyticsEvent struct {
 	Request struct {
-		Time      string                 `json:"time"`
-		URI       string                 `json:"uri"`
-		Verb      string                 `json:"verb"`
-		Headers   map[string]string      `json:"headers"`
-		APIVersion string                `json:"api_version"`
-		IPAddress string                 `json:"ip_address"`
+		Time       string            `json:"time"`
+		URI        string            `json:"uri"`
+		Verb       string            `json:"verb"`
+		Headers    map[string]string `json:"headers"`
+		APIVersion string            `json:"api_version"`
+		IPAddress  string            `json:"ip_address"`
 	} `json:"request"`
 	Response struct {
 		Time    string            `json:"time"`
@@ -64,7 +64,7 @@ type AnalyticsEvent struct {
 // RegisterAnalyticsSteps registers all analytics step definitions
 func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
 	a := &AnalyticsSteps{state: state, httpSteps: httpSteps}
-	
+
 	ctx.Step(`^I reset the analytics collector$`, a.iResetTheAnalyticsCollector)
 	ctx.Step(`^I wait (\d+) seconds for analytics to be published$`, a.iWaitSecondsForAnalytics)
 	ctx.Step(`^the analytics collector should have received (\d+) events?$`, a.theAnalyticsCollectorShouldHaveReceivedEvents)
@@ -117,66 +117,66 @@ func (a *AnalyticsSteps) iWaitSecondsForAnalytics(seconds int) error {
 // theAnalyticsCollectorShouldHaveReceivedEvents verifies exact event count
 func (a *AnalyticsSteps) theAnalyticsCollectorShouldHaveReceivedEvents(expectedCount int) error {
 	url := fmt.Sprintf("http://localhost:8086/test/events/count")
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create count request: %w", err)
 	}
-	
+
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to get event count: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("count request failed with status %d", resp.StatusCode)
 	}
-	
+
 	var result map[string]int
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("failed to decode count response: %w", err)
 	}
-	
+
 	actualCount := result["count"]
 	if actualCount != expectedCount {
 		return fmt.Errorf("expected %d events, but got %d", expectedCount, actualCount)
 	}
-	
+
 	return nil
 }
 
 // theAnalyticsCollectorShouldHaveReceivedAtLeastEvents verifies minimum event count
 func (a *AnalyticsSteps) theAnalyticsCollectorShouldHaveReceivedAtLeastEvents(minCount int) error {
 	url := fmt.Sprintf("http://localhost:8086/test/events/count")
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create count request: %w", err)
 	}
-	
+
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to get event count: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("count request failed with status %d", resp.StatusCode)
 	}
-	
+
 	var result map[string]int
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("failed to decode count response: %w", err)
 	}
-	
+
 	actualCount := result["count"]
 	if actualCount < minCount {
 		return fmt.Errorf("expected at least %d events, but got %d", minCount, actualCount)
 	}
-	
+
 	return nil
 }
 
@@ -282,7 +282,9 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveResponseStatus(expecte
 	return nil
 }
 
-// theLatestAnalyticsEventShouldHaveMetadataField verifies a metadata field in the latest event
+// theLatestAnalyticsEventShouldHaveMetadataField verifies a metadata field in the latest event.
+// fieldName may be a dot-separated path (e.g. "graphqlAnalytics.operationType") to reach into a
+// nested metadata object such as the mcpAnalytics/graphqlAnalytics maps.
 func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldName, expectedValue string) error {
 	// Use the last matched event if available, otherwise fetch latest without filter
 	event := a.lastMatchedEvent
@@ -298,9 +300,9 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldNam
 		return fmt.Errorf("event has no metadata")
 	}
 
-	actualValue, ok := event.Metadata[fieldName]
-	if !ok {
-		return fmt.Errorf("metadata field '%s' not found", fieldName)
+	actualValue, err := lookupNestedMetadataField(event.Metadata, fieldName)
+	if err != nil {
+		return err
 	}
 
 	actualValueStr := fmt.Sprintf("%v", actualValue)
@@ -548,6 +550,25 @@ func sortedKeys(m map[string]interface{}) string {
 		return "none"
 	}
 	return strings.Join(keys, ", ")
+}
+
+// lookupNestedMetadataField resolves a dot-separated field path against a metadata map,
+// descending into nested map[string]interface{} values one segment at a time.
+func lookupNestedMetadataField(metadata map[string]interface{}, fieldPath string) (interface{}, error) {
+	segments := strings.Split(fieldPath, ".")
+	var current interface{} = metadata
+	for i, segment := range segments {
+		currentMap, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("metadata field '%s' not found: '%s' is not a nested object", fieldPath, strings.Join(segments[:i], "."))
+		}
+		value, exists := currentMap[segment]
+		if !exists {
+			return nil, fmt.Errorf("metadata field '%s' not found", fieldPath)
+		}
+		current = value
+	}
+	return current, nil
 }
 
 // iSendGETRequestToAnalyticsCollectorEvents sends a GET request to the analytics collector events endpoint
