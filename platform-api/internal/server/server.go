@@ -143,6 +143,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	secretRepo := repository.NewSecretRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
+	apiPortalRepo := repository.NewApiPortalRepo(db)
+	apiDocumentRepo := repository.NewApiDocumentRepo(db)
+	publicationRepo := repository.NewPublicationRepo(db)
 
 	// Seed the file-based organization on startup if file auth mode is selected.
 	if cfg.Auth.Mode == config.AuthModeFile {
@@ -253,6 +256,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, apiDocumentRepo, subscriptionPlanRepo, publicationRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
@@ -333,6 +337,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
+	publicationHandler := handler.NewPublicationHandler(publicationService, identityService, cfg.PublicationContentMaxBytes, cfg.PublicationThumbnailMaxBytes, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
@@ -393,6 +398,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayHandler.RegisterRoutes(core)
 	subscriptionHandler.RegisterRoutes(core)
 	subscriptionPlanHandler.RegisterRoutes(core)
+	publicationHandler.RegisterRoutes(core)
 	wsHandler.RegisterRoutes(core)
 	internalGatewayHandler.RegisterRoutes(core)
 	apiKeyHandler.RegisterRoutes(core)

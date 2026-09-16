@@ -37,12 +37,22 @@ type graph struct {
 	planLimit                  string
 	secretHandle               string
 	customPolicy               string
+	apiPortal                  string
+	apiDoc                     string
 }
 
 // seedOrgGraph inserts a representative object graph for one organization that
 // touches every table whose foreign keys were changed for SQL Server
-// (applications, subscriptions, deployments, deployment_status,
-// publication_mappings) plus their parents.
+// (applications, subscriptions, deployments, deployment_status, api_portals)
+// plus their parents. api_portals is the API Publication feature's Slice 0
+// fixture (DB_design_refined.md §"Fixture data"): one active portal row per
+// org. api_documents now also carries one fixture row (moved up from the
+// original Slice 4 plan into Slice 1 — api_publication_doc_mappings.doc_uuid
+// has a hard FK to api_documents(uuid), so real docIds resolution needed a
+// real row to resolve against as soon as Slice 1 touched the field, not
+// later). api_publications itself stays unseeded — no repository code writes
+// it via this fixture path; the integration tests that exercise it seed
+// through PublicationService/PublicationRepo directly instead.
 func seedOrgGraph(t *testing.T, it *itDB) graph {
 	t.Helper()
 	g := graph{
@@ -53,6 +63,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		planLimit:    id(),
 		secretHandle: id(),
 		customPolicy: id(),
+		apiPortal:    id(),
+		apiDoc:       id(),
 	}
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
@@ -104,6 +116,17 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.customPolicy, g.org, "policy-"+g.customPolicy[:8], "v1.0.0", []byte("{}"))
 	it.exec(t, `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`,
 		g.customPolicy, g.apiArtifact)
+
+	// One active API Portal (Slice 0 fixture). api_publications itself stays
+	// unseeded here — no repository code writes it via this fixture path.
+	it.exec(t, `INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.apiPortal, g.org, "portal-"+g.apiPortal[:8], "portal", "active", "local", []byte("{}"), []byte("{}"))
+
+	// One API document (moved up from Slice 4 into Slice 1 — see the comment
+	// above the graph struct). Real doc content owned by another team; this is
+	// only ever resolved by handle, never served, by this feature.
+	it.exec(t, `INSERT INTO api_documents (uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content_type, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.apiDoc, g.apiArtifact, g.org, "MARKDOWN", "doc-"+g.apiDoc[:8], "Quickstart", "quickstart.md", "text/markdown", []byte("# Quickstart"))
 	return g
 }
 
@@ -273,6 +296,32 @@ func TestCascade_DeleteSubscriptionPlanRemovesLimits(t *testing.T) {
 
 	if got := it.count(t, "subscription_plan_limits", "uuid", g.planLimit); got != 0 {
 		t.Fatalf("[%s] subscription_plan_limit not removed after plan delete: %d remain", it.driver, got)
+	}
+}
+
+// TestCascade_APIPublicationFixtures verifies the API Publication feature's
+// fixture data (Implementation_Plan.md "Done when: service boots clean,
+// fixtures insert without error") across every dialect: one active
+// api_portals row and one api_documents row both insert cleanly against the
+// real schema.
+func TestCascade_APIPublicationFixtures(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+
+	if got := it.count(t, "api_portals", "uuid", g.apiPortal); got != 1 {
+		t.Fatalf("[%s] want 1 api_portals row, got %d", it.driver, got)
+	}
+	var status string
+	q := it.db.Rebind(`SELECT workflow_status FROM api_portals WHERE uuid = ?`)
+	if err := it.db.QueryRow(q, g.apiPortal).Scan(&status); err != nil {
+		t.Fatalf("[%s] querying api_portals.workflow_status: %v", it.driver, err)
+	}
+	if status != "active" {
+		t.Fatalf("[%s] want workflow_status 'active', got %q", it.driver, status)
+	}
+	if got := it.count(t, "api_documents", "uuid", g.apiDoc); got != 1 {
+		t.Fatalf("[%s] want 1 api_documents row, got %d", it.driver, got)
 	}
 }
 
