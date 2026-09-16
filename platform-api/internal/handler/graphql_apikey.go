@@ -98,8 +98,9 @@ func (h *GraphQLAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reque
 			WithLogMessage(fmt.Sprintf("invalid API key creation request for user %s", userId))
 	}
 
-	if req.ApiKey == "" {
-		return apperror.ValidationFailed.New("API key value is required")
+	if req.DisplayName == "" {
+		return apperror.ValidationFailed.New("Display name is required").
+			WithLogMessage(fmt.Sprintf("missing display name in GraphQL API key creation request for user %s", userId))
 	}
 
 	var name string
@@ -114,7 +115,7 @@ func (h *GraphQLAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reque
 		req.Id = &name
 	}
 
-	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.GraphQLApi, orgId, userId, &req); err != nil {
+	if _, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.GraphQLApi, orgId, userId, &req); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
