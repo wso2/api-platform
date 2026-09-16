@@ -103,6 +103,14 @@ type Server struct {
 	// responses (internal/utils/mcp.go). <= 0 falls back to the fetcher's built-in 10 MiB
 	// default — mirroring OpenAPISpecMaxFetchBytes's own zero-means-default convention.
 	MCPResponseMaxBytes int64 `koanf:"mcp_response_max_fetch_bytes"`
+	// PublicationContentMaxBytes bounds an API Publication draft/publication definition
+	// or landing-page upload (internal/handler/api_publication.go). <= 0 falls back to
+	// a 10 MiB default — same zero-means-default convention as the two fields above.
+	PublicationContentMaxBytes int64 `koanf:"publication_content_max_bytes"`
+	// PublicationThumbnailMaxBytes bounds an API Publication draft/publication thumbnail
+	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
+	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
+	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
 
 	Database    Database         `koanf:"database"`
 	Auth        Auth             `koanf:"auth"`

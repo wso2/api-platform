@@ -216,6 +216,62 @@ type SubscriptionPlanRepository interface {
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
+	// GetUUIDsByHandles resolves each handle to its subscription_plan_uuid,
+	// scoped to the organization. A handle absent from the returned map does
+	// not exist in the org's catalog. Used by API Publication draft/publish
+	// save to validate and resolve subscriptionPlanIds.
+	GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error)
+	// GetHandlesByIDs is the inverse of GetUUIDsByHandles: subscription_plan_uuid
+	// to handle, for reconstructing a subscriptionPlanIds response from stored
+	// mapping rows.
+	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
+}
+
+// ApiPortalRepository defines the interface for API Portal lookups this feature
+// needs. api_portals is a stub table (see schema.*.sql) owned by another team —
+// this is deliberately minimal, not a full CRUD interface.
+type ApiPortalRepository interface {
+	GetByHandleAndOrg(handle, orgUUID string) (*model.APIPortal, error)
+}
+
+// ApiDocumentRepository defines the interface for API document handle/UUID
+// resolution this feature needs. api_documents is a stub table (see
+// schema.*.sql) owned by another team — reading/serving a document's own
+// content is that team's feature, not this one's; this interface only ever
+// resolves a handle to the internal doc_uuid api_publication_doc_mappings
+// stores, and back.
+type ApiDocumentRepository interface {
+	// GetUUIDsByHandles resolves each handle to its doc_uuid, scoped to the
+	// organization. A handle absent from the returned map does not exist.
+	GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error)
+	// GetHandlesByUUIDs is the inverse, for reconstructing a docIds response
+	// from stored api_publication_doc_mappings rows.
+	GetHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error)
+}
+
+// PublicationRepository defines the interface for api_publications and its
+// satellite tables (api_publication_contents, api_publication_doc_mappings,
+// api_publication_plan_mappings). Slice 1 only ever operates on draft rows
+// (IsDraft true); publication (live) rows are Slice 2+.
+type PublicationRepository interface {
+	// GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
+	// plus the raw subscription-plan and document UUIDs its mapping tables
+	// store (not yet resolved to handles — the caller does that). Returns
+	// (nil, nil, nil, nil) when no draft has been saved.
+	GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	// SaveDraftDetails creates the draft row on first save (any artifactUUID +
+	// apiPortalUUID pairing with no existing draft), or replaces an existing
+	// one in full, together with its plan/document mapping rows (planUUIDs /
+	// docUUIDs — already resolved from handles by the caller). Returns the
+	// saved row with its resolved UUID and audit timestamps.
+	SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error)
+	// GetContent returns one content row (definition/landing page/thumbnail)
+	// for a publication row, or nil if none is stored.
+	GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error)
+	// SaveContent replaces the named content row for publicationUUID and bumps
+	// the parent api_publications row's updated_at/updated_by in the same
+	// transaction — REST_Design.md §6: "One timestamp covers all four pieces."
+	SaveContent(content *model.PublicationContent, actor string) error
 }
 
 // SubscriptionRepository defines the interface for application-level subscription data operations
