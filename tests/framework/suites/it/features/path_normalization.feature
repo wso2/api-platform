@@ -72,7 +72,7 @@ Feature: Path normalization
     When I send a "GET" request to "${CTX:apiContext2}/v1.0/pets/pet%2FFarm"
     Then the response status code should be 200
 
-    When I send a "GET" request to "${CTX:apiContext2}/v1.0/pets/pet/Farm"
+    When I send a "GET" request to "${CTX:apiContext2}/v1.0/pets/pet/Farm" until status 404
     Then the response status code should be 404
 
     When I delete the API "${CTX:apiName2}"

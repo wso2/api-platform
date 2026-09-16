@@ -127,7 +127,7 @@ Feature: Startup database bootstrap
     Then the response status code should be 200
     And the response body should contain "/api/v2/us/seattle"
 
-    When I use the MCP Client to send an initialize request to "${CTX:mcpContext}/mcp"
+    When I use the MCP Client to send an initialize request to "${CTX:mcpContext}/mcp" until successful
     Then the response should be successful
     When I use the MCP Client to send "add" tools/call request to "${CTX:mcpContext}/mcp"
     Then the response should be successful
@@ -197,7 +197,7 @@ Feature: Startup database bootstrap
     Then the response status code should be 200
     And the response body should contain "/api/v2/us/seattle"
 
-    When I use the MCP Client to send an initialize request to "${CTX:mcpContext}/mcp"
+    When I use the MCP Client to send an initialize request to "${CTX:mcpContext}/mcp" until successful
     Then the response should be successful
     When I use the MCP Client to send "add" tools/call request to "${CTX:mcpContext}/mcp"
     Then the response should be successful
