@@ -357,17 +357,27 @@ func applyInstanceSuffix(path, suffix string) error {
 }
 
 // stageComposeFiles materializes the compose file and its bind mounts in one directory.
+func absoluteRealPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
+}
+
 // containedSource resolves src and asserts it stays inside repoRoot. Both sides are resolved
 // so a symlinked checkout compares in the same namespace as the sources it holds.
 func containedSource(repoRoot, src string) (string, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return src, nil
 	}
-	root, err := filepath.EvalSymlinks(repoRoot)
+	// Absolute first: EvalSymlinks leaves a relative path relative, and "." never prefixes
+	// the cleaned path of a file beneath it.
+	root, err := absoluteRealPath(repoRoot)
 	if err != nil {
 		return "", fmt.Errorf("resolving the repository root %q: %w", repoRoot, err)
 	}
-	resolved, err := filepath.EvalSymlinks(src)
+	resolved, err := absoluteRealPath(src)
 	if err != nil {
 		return "", fmt.Errorf("resolving %q: %w", src, err)
 	}
