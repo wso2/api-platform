@@ -1216,7 +1216,7 @@ type DeploymentResponse struct {
 type DeploymentResponseStatus string
 
 // DocIdList defines model for DocIdList.
-type DocIdList = []openapi_types.UUID
+type DocIdList = []string
 
 // Error The single error shape returned by every failed request across the API.
 type Error struct {

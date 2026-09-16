@@ -1393,7 +1393,7 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       summary: Save publication draft
-      description: Replaces the draft's details, subscription plans and documents, creating the draft on first save. Every plan handle and document id must exist in the organization.
+      description: Replaces the draft's details, subscription plans and documents, creating the draft on first save. Every plan handle and document handle must exist in the organization.
       operationId: saveApiPublicationDraft
       security:
         - OAuth2Security:
@@ -9589,8 +9589,7 @@ components:
       type: array
       items:
         type: string
-        format: uuid
-        description: Document id from GET /apis/{apiType}/{apiId}/docs.
+        description: Document handle from GET /apis/{apiType}/{apiId}/docs, not the database UUID.
 
     PublicationDraftDetailsInput:
       allOf:
@@ -9795,7 +9794,7 @@ components:
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
     PublicationBadRequest:
-      description: The payload failed validation — a plan handle or document id absent from the organization, or content over the configured size ceiling.
+      description: The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling.
       content:
         application/json:
           schema:
