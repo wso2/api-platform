@@ -242,6 +242,35 @@ func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID
 	return pub, planUUIDs, docUUIDs, nil
 }
 
+// ListStatusByArtifact returns every api_publications row (draft and/or
+// live) for artifactUUID, reduced to the portal UUID, tier, status and
+// updated_at the GET /api-publications rollup (Slice 3) needs.
+func (r *PublicationRepo) ListStatusByArtifact(artifactUUID, orgUUID string) ([]*model.PublicationStatusRow, error) {
+	rows, err := r.db.Query(r.db.Rebind(`
+		SELECT api_portal_uuid, is_draft, status, updated_at
+		FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ?
+	`), orgUUID, artifactUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list publication status rows: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*model.PublicationStatusRow
+	for rows.Next() {
+		row := &model.PublicationStatusRow{}
+		var isDraft int
+		var status sql.NullString
+		if err := rows.Scan(&row.APIPortalUUID, &isDraft, &status, &row.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan publication status row: %w", err)
+		}
+		row.IsDraft = isDraft != 0
+		row.Status = status.String
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
 // SaveDraftDetails creates the draft row on first save, or replaces an
 // existing one in full, together with its plan/document mapping rows.
 func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error) {

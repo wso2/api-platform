@@ -77,6 +77,39 @@ type Publication struct {
 	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
 }
 
+// PublicationStatusRow is one api_publications row for one artifact, reduced
+// to just what the GET /api-publications rollup (Slice 3) needs to annotate
+// a portal: which tier the row belongs to, the live tier's status, and its
+// own updated_at. A row is returned regardless of whether it's the draft or
+// the live listing — the caller (PublicationService.ListPublicationSummary)
+// splits by IsDraft.
+type PublicationStatusRow struct {
+	APIPortalUUID string
+	IsDraft       bool
+	Status        string // only meaningful when IsDraft is false
+	UpdatedAt     time.Time
+}
+
+// PublicationSummary is one row of the GET /api-publications rollup (Slice 3)
+// — one active API Portal annotated with this API's publication status
+// against it. Status is NOT_PUBLISHED/PUBLISHED/DEPRECATED: NOT_PUBLISHED is
+// this view's own label for "no live row exists," covering both "never
+// published" and "unpublished since" without distinguishing them
+// (REST_Design.md §7) — api_publications itself never stores that value.
+type PublicationSummary struct {
+	APIPortalHandle      string
+	APIPortalName        string
+	APIPortalDescription string
+	APIPortalURL         string
+	Status               string
+	DraftUpdatedAt       *time.Time
+	PublicationUpdatedAt *time.Time
+
+	// APIPortalCreatedAt is the portal's own registration time, carried
+	// through purely as the "createdAt" sort key — not part of the response.
+	APIPortalCreatedAt time.Time
+}
+
 // PublicationContent is one row of api_publication_contents: the definition,
 // landing page, or thumbnail attached to a draft or live Publication row.
 type PublicationContent struct {

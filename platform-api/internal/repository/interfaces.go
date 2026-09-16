@@ -232,6 +232,11 @@ type SubscriptionPlanRepository interface {
 // this is deliberately minimal, not a full CRUD interface.
 type ApiPortalRepository interface {
 	GetByHandleAndOrg(handle, orgUUID string) (*model.APIPortal, error)
+	// ListActiveByOrg returns every api_portals row for orgUUID whose
+	// workflow_status is "active" — the GET /api-publications rollup
+	// (Slice 3) lists only these; a portal still provisioning or failed is
+	// absent entirely (REST_Design.md §5).
+	ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error)
 }
 
 // ApiDocumentRepository defines the interface for API document handle/UUID
@@ -276,6 +281,12 @@ type PublicationRepository interface {
 	// the parent api_publications row's updated_at/updated_by in the same
 	// transaction — REST_Design.md §6: "One timestamp covers all four pieces."
 	SaveContent(content *model.PublicationContent, actor string) error
+	// ListStatusByArtifact returns every api_publications row (draft and/or
+	// live) for artifactUUID across all API Portals, reduced to the portal
+	// UUID, tier, status and updated_at the GET /api-publications rollup
+	// (Slice 3) needs — one query instead of a GetDraft/GetPublication call
+	// per portal.
+	ListStatusByArtifact(artifactUUID, orgUUID string) ([]*model.PublicationStatusRow, error)
 }
 
 // SubscriptionRepository defines the interface for application-level subscription data operations

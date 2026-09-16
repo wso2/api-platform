@@ -63,3 +63,36 @@ func (r *ApiPortalRepo) GetByHandleAndOrg(handle, orgUUID string) (*model.APIPor
 	portal.URL = url.String
 	return portal, nil
 }
+
+// ListActiveByOrg returns every api_portals row for orgUUID whose
+// workflow_status is "active", ordered by registration time for a
+// deterministic default order.
+func (r *ApiPortalRepo) ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error) {
+	query := `
+		SELECT uuid, organization_uuid, handle, display_name, description, url, workflow_status, created_at
+		FROM api_portals
+		WHERE organization_uuid = ? AND workflow_status = ?
+		ORDER BY created_at, uuid
+	`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, model.APIPortalWorkflowStatusActive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active API Portals: %w", err)
+	}
+	defer rows.Close()
+
+	var portals []*model.APIPortal
+	for rows.Next() {
+		portal := &model.APIPortal{}
+		var description, url sql.NullString
+		if err := rows.Scan(
+			&portal.UUID, &portal.OrganizationUUID, &portal.Handle, &portal.DisplayName,
+			&description, &url, &portal.WorkflowStatus, &portal.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan API Portal row: %w", err)
+		}
+		portal.Description = description.String
+		portal.URL = url.String
+		portals = append(portals, portal)
+	}
+	return portals, rows.Err()
+}

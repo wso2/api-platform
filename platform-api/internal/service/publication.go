@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -494,4 +496,98 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 		return nil, apperror.NotFound.New()
 	}
 	return content, nil
+}
+
+// publicationStatusNotPublished is the rollup's own label (REST_Design.md
+// §7) for "no live row exists" — never a value api_publications itself
+// stores.
+const publicationStatusNotPublished = "NOT_PUBLISHED"
+
+// ListPublicationSummary returns the GET /api-publications rollup (Slice 3):
+// every active API Portal for the org, annotated with this API's publication
+// status against it. search is matched case-insensitively against the
+// portal's handle and display name; sortBy is "name" (portal display name)
+// or anything else, including "createdAt" and unrecognized values, which
+// falls back to the portal's own registration time — the same
+// unrecognized-falls-back-to-default convention parseListOptions documents
+// for every other collection GET. The returned slice is already
+// filtered/sorted in full; the caller windows it for pagination.
+func (s *PublicationService) ListPublicationSummary(apiType, apiId, orgUUID, sortBy, sortOrder, search string) ([]*model.PublicationSummary, error) {
+	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	portals, err := s.apiPortalRepo.ListActiveByOrg(orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active API Portals: %w", err)
+	}
+	statusRows, err := s.publicationRepo.ListStatusByArtifact(artifactUUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list publication status: %w", err)
+	}
+
+	draftUpdatedAt := make(map[string]time.Time, len(statusRows))
+	liveStatus := make(map[string]string, len(statusRows))
+	liveUpdatedAt := make(map[string]time.Time, len(statusRows))
+	for _, row := range statusRows {
+		if row.IsDraft {
+			draftUpdatedAt[row.APIPortalUUID] = row.UpdatedAt
+		} else {
+			liveStatus[row.APIPortalUUID] = row.Status
+			liveUpdatedAt[row.APIPortalUUID] = row.UpdatedAt
+		}
+	}
+
+	search = strings.ToLower(strings.TrimSpace(search))
+	summaries := make([]*model.PublicationSummary, 0, len(portals))
+	for _, portal := range portals {
+		if search != "" &&
+			!strings.Contains(strings.ToLower(portal.DisplayName), search) &&
+			!strings.Contains(strings.ToLower(portal.Handle), search) {
+			continue
+		}
+
+		status := publicationStatusNotPublished
+		if st, ok := liveStatus[portal.UUID]; ok {
+			status = st
+		}
+		summary := &model.PublicationSummary{
+			APIPortalHandle:      portal.Handle,
+			APIPortalName:        portal.DisplayName,
+			APIPortalDescription: portal.Description,
+			APIPortalURL:         portal.URL,
+			Status:               status,
+			APIPortalCreatedAt:   portal.CreatedAt,
+		}
+		if t, ok := draftUpdatedAt[portal.UUID]; ok {
+			summary.DraftUpdatedAt = &t
+		}
+		if t, ok := liveUpdatedAt[portal.UUID]; ok {
+			summary.PublicationUpdatedAt = &t
+		}
+		summaries = append(summaries, summary)
+	}
+
+	sortPublicationSummaries(summaries, sortBy, sortOrder)
+	return summaries, nil
+}
+
+// sortPublicationSummariesLess reports whether a sorts strictly before b,
+// ascending, for the given sortBy field.
+func sortPublicationSummariesLess(a, b *model.PublicationSummary, sortBy string) bool {
+	if sortBy == "name" {
+		return strings.ToLower(a.APIPortalName) < strings.ToLower(b.APIPortalName)
+	}
+	return a.APIPortalCreatedAt.Before(b.APIPortalCreatedAt)
+}
+
+// sortPublicationSummaries sorts items in place by sortBy/sortOrder.
+func sortPublicationSummaries(items []*model.PublicationSummary, sortBy, sortOrder string) {
+	sort.SliceStable(items, func(i, j int) bool {
+		if sortOrder == "asc" {
+			return sortPublicationSummariesLess(items[i], items[j], sortBy)
+		}
+		return sortPublicationSummariesLess(items[j], items[i], sortBy)
+	})
 }

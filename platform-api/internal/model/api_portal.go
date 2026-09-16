@@ -17,6 +17,8 @@
 
 package model
 
+import "time"
+
 // APIPortalWorkflowStatusActive is the only api_portals.workflow_status value
 // a fully-registered portal carries. "pending"/"failed" rows exist in the
 // table (registration in progress or failed) but are excluded from the
@@ -36,4 +38,9 @@ type APIPortal struct {
 	Description      string
 	URL              string
 	WorkflowStatus   string
+
+	// CreatedAt is the portal's own registration time — used only as the
+	// GET /api-publications rollup's "createdAt" sort key (Slice 3), not
+	// otherwise read by this feature.
+	CreatedAt time.Time
 }

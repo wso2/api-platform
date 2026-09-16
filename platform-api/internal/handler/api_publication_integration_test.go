@@ -379,3 +379,113 @@ func TestPublicationHandler_GetPublication_RoundTrip(t *testing.T) {
 		t.Fatalf("GET publication thumbnail: want Content-Type image/png, got %q", ct)
 	}
 }
+
+const listPublicationsPath = "/api/v0.9/api-publications?apiType=rest-api&apiId=my-api"
+
+// TestPublicationHandler_ListPublications_MixedStatuses seeds a second
+// (published, active) portal and a third (pending, not-yet-active) one
+// alongside the base env's "my-portal", then verifies the rollup: an
+// unpublished portal reports NOT_PUBLISHED, a published one PUBLISHED, a
+// deprecated one DEPRECATED, and the pending portal is excluded entirely.
+func TestPublicationHandler_ListPublications_MixedStatuses(t *testing.T) {
+	r, db, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	seed := []string{
+		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata)
+			VALUES ('portal-2', 'org-1', 'partner-portal', 'Partner Portal', 'active', 'local', '{}', '{}')`,
+		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata)
+			VALUES ('portal-3', 'org-1', 'staging-portal', 'Staging Portal', 'pending', 'local', '{}', '{}')`,
+		// my-portal (portal-1): a draft only -> still NOT_PUBLISHED, but draftUpdatedAt is set.
+		`INSERT INTO api_publications (uuid, organization_uuid, artifact_uuid, api_portal_uuid, is_draft, display_name, version, created_by, updated_by)
+			VALUES ('draft-1', 'org-1', 'api-artifact-1', 'portal-1', 1, 'My Listing', '1.0.0', 'alice', 'alice')`,
+		// partner-portal (portal-2): a live, deprecated row.
+		`INSERT INTO api_publications (uuid, organization_uuid, artifact_uuid, api_portal_uuid, is_draft, status, display_name, version, created_by, updated_by)
+			VALUES ('pub-2', 'org-1', 'api-artifact-1', 'portal-2', 0, 'DEPRECATED', 'My Listing', '1.0.0', 'alice', 'alice')`,
+	}
+	for _, q := range seed {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("seed failed (%s): %v", q, err)
+		}
+	}
+
+	w := doPublicationRequest(r, http.MethodGet, listPublicationsPath, "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET api-publications: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	list, _ := body["list"].([]any)
+	if len(list) != 2 {
+		t.Fatalf("want 2 active portals (staging-portal excluded), got %d: %v", len(list), list)
+	}
+
+	byPortal := make(map[string]map[string]any, len(list))
+	for _, raw := range list {
+		item, _ := raw.(map[string]any)
+		byPortal[item["apiPortalId"].(string)] = item
+	}
+
+	myPortal, ok := byPortal["my-portal"]
+	if !ok {
+		t.Fatalf("want my-portal in the rollup, got %v", byPortal)
+	}
+	if myPortal["status"] != "NOT_PUBLISHED" {
+		t.Fatalf("my-portal: want status NOT_PUBLISHED (draft only), got %v", myPortal["status"])
+	}
+	if myPortal["draftUpdatedAt"] == nil {
+		t.Fatalf("my-portal: want non-null draftUpdatedAt, got %v", myPortal)
+	}
+	if myPortal["publicationUpdatedAt"] != nil {
+		t.Fatalf("my-portal: want null publicationUpdatedAt, got %v", myPortal)
+	}
+
+	partnerPortal, ok := byPortal["partner-portal"]
+	if !ok {
+		t.Fatalf("want partner-portal in the rollup, got %v", byPortal)
+	}
+	if partnerPortal["status"] != "DEPRECATED" {
+		t.Fatalf("partner-portal: want status DEPRECATED, got %v", partnerPortal["status"])
+	}
+	if partnerPortal["publicationUpdatedAt"] == nil {
+		t.Fatalf("partner-portal: want non-null publicationUpdatedAt, got %v", partnerPortal)
+	}
+
+	if _, excluded := byPortal["staging-portal"]; excluded {
+		t.Fatalf("want staging-portal (pending) excluded from the rollup, got %v", byPortal)
+	}
+
+	pagination, _ := body["pagination"].(map[string]any)
+	if pagination["total"] != float64(2) {
+		t.Fatalf("want pagination.total 2, got %v", pagination)
+	}
+}
+
+// TestPublicationHandler_ListPublications_QueryFilter verifies the `query`
+// param filters by portal handle/display name.
+func TestPublicationHandler_ListPublications_QueryFilter(t *testing.T) {
+	r, db, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	if _, err := db.Exec(`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata)
+		VALUES ('portal-2', 'org-1', 'partner-portal', 'Partner Portal', 'active', 'local', '{}', '{}')`); err != nil {
+		t.Fatalf("seed failed: %v", err)
+	}
+
+	w := doPublicationRequest(r, http.MethodGet, listPublicationsPath+"&query=partner", "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET api-publications: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	list, _ := body["list"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("want 1 portal matching query=partner, got %d: %v", len(list), list)
+	}
+	item, _ := list[0].(map[string]any)
+	if item["apiPortalId"] != "partner-portal" {
+		t.Fatalf("want partner-portal, got %v", item)
+	}
+}

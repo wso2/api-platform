@@ -88,6 +88,7 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/publication/definition", middleware.MapErrors(h.slogger, h.GetPublicationDefinition))
 	mux.HandleFunc("GET "+base+"/publication/landing-page", middleware.MapErrors(h.slogger, h.GetPublicationLandingPage))
 	mux.HandleFunc("GET "+base+"/publication/thumbnail", middleware.MapErrors(h.slogger, h.GetPublicationThumbnail))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/api-publications", middleware.MapErrors(h.slogger, h.ListPublications))
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -360,6 +361,36 @@ func (h *PublicationHandler) GetPublicationThumbnail(w http.ResponseWriter, r *h
 	return nil
 }
 
+// ListPublications handles GET /api-publications?apiType=&apiId=&... — the
+// cross-portal rollup (Slice 3, REST_Design.md §5): every active API Portal
+// for the org, annotated with this API's publication status against it.
+func (h *PublicationHandler) ListPublications(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	apiType := r.URL.Query().Get("apiType")
+	apiId := r.URL.Query().Get("apiId")
+	opts := parseListOptions(r)
+
+	summaries, err := h.service.ListPublicationSummary(apiType, apiId, orgId, opts.SortBy, opts.SortOrder, opts.Search)
+	if err != nil {
+		return serviceError(err, "failed to list API publications")
+	}
+
+	resp := api.PublicationSummaryResponse{
+		List: publicationSummariesToResponse(pageWindow(summaries, opts.Limit, opts.Offset)),
+		Pagination: api.Pagination{
+			Total:  len(summaries),
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
+		},
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
+}
+
 // writeContent writes a stored definition/landing-page/thumbnail as its raw
 // bytes with its stored Content-Type — matching how the portal itself serves
 // this same content (REST_Design.md §9).
@@ -499,6 +530,30 @@ func draftModelToResponse(pub *model.Publication) api.PublicationDraftDetails {
 		resp.UpdatedBy = &pub.UpdatedBy
 	}
 	return resp
+}
+
+// publicationSummariesToResponse converts the internal rollup rows into the
+// generated PublicationSummaryItem list.
+func publicationSummariesToResponse(items []*model.PublicationSummary) []api.PublicationSummaryItem {
+	out := make([]api.PublicationSummaryItem, 0, len(items))
+	for _, item := range items {
+		status := api.PublicationSummaryItemStatus(item.Status)
+		resp := api.PublicationSummaryItem{
+			ApiPortalId:          &item.APIPortalHandle,
+			ApiPortalName:        &item.APIPortalName,
+			DraftUpdatedAt:       item.DraftUpdatedAt,
+			PublicationUpdatedAt: item.PublicationUpdatedAt,
+			Status:               &status,
+		}
+		if item.APIPortalDescription != "" {
+			resp.ApiPortalDescription = &item.APIPortalDescription
+		}
+		if item.APIPortalURL != "" {
+			resp.ApiPortalUrl = &item.APIPortalURL
+		}
+		out = append(out, resp)
+	}
+	return out
 }
 
 // publicationModelToResponse converts the internal model into the generated
