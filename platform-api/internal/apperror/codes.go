@@ -205,3 +205,16 @@ const (
 	CodeHmacSecretInvalidValue  = "HMAC_SECRET_INVALID_VALUE"
 	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
 )
+
+// API Publication domain codes, matching the error table in
+// ~/Downloads/publish-api-design/REST_Design.md §11. CodeAPIPublicationAPINotFound
+// covers an unknown (apiType, apiId) pair or an apiType this build doesn't serve —
+// distinct from CodeArtifactNotFound (used elsewhere in the codebase for the same
+// resolution mechanism) because this feature's own design doc documents API_NOT_FOUND
+// as part of its client-facing contract.
+const (
+	CodeAPIPublicationAPINotFound       = "API_NOT_FOUND"
+	CodeAPIPublicationAPIPortalNotFound = "API_PORTAL_NOT_FOUND"
+	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
+	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
+)

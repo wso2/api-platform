@@ -216,3 +216,14 @@ var (
 	HmacSecretInvalidValue  = def(CodeHmacSecretInvalidValue, http.StatusBadRequest, "The secret value must be at least 32 characters.")
 	HmacSecretNotConfigured = def(CodeHmacSecretNotConfigured, http.StatusServiceUnavailable, "HMAC secret management is not configured on this server.")
 )
+
+// API Publication entries (Slice 1: the per-portal draft). See REST_Design.md §11.
+var (
+	APIPublicationAPINotFound       = def(CodeAPIPublicationAPINotFound, http.StatusNotFound, "The specified API could not be found.")
+	APIPublicationAPIPortalNotFound = def(CodeAPIPublicationAPIPortalNotFound, http.StatusNotFound, "The specified API Portal could not be found.")
+	APIPublicationDraftNotFound     = def(CodeAPIPublicationDraftNotFound, http.StatusNotFound, "No draft has been saved for this API on this API Portal.")
+	// APIPublicationValidationFailed's message is call-site-specific (an
+	// unresolvable plan/document handle, or content over the configured size
+	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.
+	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
+)
