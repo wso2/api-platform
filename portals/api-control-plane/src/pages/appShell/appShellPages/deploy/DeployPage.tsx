@@ -84,6 +84,7 @@ export function DeployPage() {
   return (
     <AppPage>
       <ScopeGate
+        graphqlTo={routes.graphqlApiDeploy}
         prompt="Deployments are made for a single API."
         requires="api"
         to={routes.apiDeploy}
