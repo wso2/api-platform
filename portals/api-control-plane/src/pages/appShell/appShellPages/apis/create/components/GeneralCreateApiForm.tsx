@@ -36,6 +36,7 @@ import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { versionLabel as toVersionSegment } from '@/utils/versionLabel';
 import {
   CONTEXT_PATTERN,
   HANDLE_MAX_LENGTH,
@@ -193,7 +194,7 @@ const messages = defineMessages({
   },
   versionHelper: {
     id: 'api.create.generalForm.version.helper',
-    defaultMessage: 'e.g. 1.0.0',
+    defaultMessage: 'e.g. 1.0',
   },
   versionLabel: {
     id: 'api.create.generalForm.version.label',
@@ -205,7 +206,7 @@ export const DEFAULT_FORM_STATE: GeneralApiCreationFormState = {
   id: '',
   displayName: '',
   description: '',
-  version: '1.0.0',
+  version: '1.0',
   context: '',
   readOnly: false,
   kind: 'RestApis',
@@ -240,7 +241,7 @@ const toBasePath = (
   const segments = [
     projectHandler?.trim(),
     apiHandle.trim(),
-    version.trim() === '' ? undefined : `v${version.trim()}`,
+    version.trim() === '' ? undefined : toVersionSegment(version.trim()),
   ].filter((segment): segment is string => Boolean(segment));
 
   return `/${segments.join('/')}`;
