@@ -34,7 +34,14 @@ import {
 import { Boxes, Layers } from '@wso2/oxygen-ui-icons-react';
 import { useNavigate } from 'react-router-dom';
 
-import { useRestApis } from '../api/resources/restApis';
+import { useAllGraphQLApis } from '../api/resources/graphqlApis';
+import { useAllRestApis } from '../api/resources/restApis';
+import { apiKindLabel } from '../pages/appShell/appShellPages/apis/utils/restApiDisplay';
+import {
+  toGraphQLListableApi,
+  toRestListableApi,
+  type ListableApi,
+} from '../pages/appShell/appShellPages/apis/listing/apiListItem';
 import { ErrorState, LoadingState } from '../components/StateViews';
 import { routes, type ApiPathBuilder } from '../routes/paths';
 import { useConsoleScope } from './ConsoleScopeContext';
@@ -59,6 +66,18 @@ export type ScopeGateProps = {
    * user picks, so submitting lands on this same page, now fully scoped.
    */
   to: ApiPathBuilder;
+  /**
+   * This page's GraphQL-API equivalent, for the (currently two) pages that
+   * have one — `routes.graphqlApiDeploy` for `DeployPage`,
+   * `routes.graphqlApiTestConsole` for `ApiConsolePage`. The API picker lists
+   * every API regardless (REST and GraphQL are both "an API" from here), so
+   * when the page itself has no GraphQL-specific implementation yet
+   * (Develop/Insights/Observability/Manage/Admin/curl/chat), picking a
+   * GraphQL API falls back to that API's own Overview page — a real,
+   * always-existing destination — rather than building a REST-shaped URL a
+   * GraphQL API was never meant to answer.
+   */
+  graphqlTo?: ApiPathBuilder;
 };
 
 /**
@@ -73,13 +92,13 @@ export type ScopeGateProps = {
  * where `children` render. The alternative — hiding the item until scope
  * happens to be right — leaves the user with no way to reach the page at all.
  */
-export function ScopeGate({ children, prompt, requires, to }: ScopeGateProps) {
+export function ScopeGate({ children, graphqlTo, prompt, requires, to }: ScopeGateProps) {
   const { isApiScope, isProjectScope } = useConsoleScope();
   const satisfied = requires === 'api' ? isApiScope : isProjectScope;
 
   // Picker in separate component so API-list query only mounts when gate is closed.
   if (satisfied) return <>{children}</>;
-  return <ScopeSelection prompt={prompt} requires={requires} to={to} />;
+  return <ScopeSelection graphqlTo={graphqlTo} prompt={prompt} requires={requires} to={to} />;
 }
 
 const DEFAULT_PROMPT: Record<RequiredScope, string> = {
@@ -96,6 +115,7 @@ const SELECT_VALUE_SX = {
 } as const;
 
 function ScopeSelection({
+  graphqlTo,
   prompt,
   requires,
   to,
@@ -111,11 +131,17 @@ function ScopeSelection({
   const [chosenApi, setChosenApi] = useState('');
 
   const needsApi = requires === 'api';
-  const apisQuery = useRestApis(
-    {},
-    { projectId: needsApi ? chosenProject || undefined : undefined }
-  );
-  const apis = apisQuery.data?.list ?? [];
+  const projectFilter = needsApi ? chosenProject || undefined : undefined;
+  // Both resource types are "an API" from this picker's point of view — see
+  // `graphqlTo` above for what happens on submit when the page itself has no
+  // GraphQL-specific destination.
+  const restApisQuery = useAllRestApis({}, { projectId: projectFilter });
+  const graphqlApisQuery = useAllGraphQLApis({}, { projectId: projectFilter });
+  const apisPending = restApisQuery.isPending || graphqlApisQuery.isPending;
+  const apis: ListableApi[] = [
+    ...(restApisQuery.data?.list ?? []).map(toRestListableApi),
+    ...(graphqlApisQuery.data?.list ?? []).map(toGraphQLListableApi),
+  ];
 
   if (projectsError) {
     return (
@@ -132,8 +158,13 @@ function ScopeSelection({
   const canContinue = Boolean(chosenProject && (!needsApi || chosenApi));
   const submit = () => {
     if (!canContinue) return;
+    const selected = apis.find((api) => api.id === chosenApi);
+    // A GraphQL API on a page with no GraphQL-specific destination lands on
+    // that API's own Overview page instead — see `graphqlTo` on `ScopeGateProps`.
+    const builder =
+      selected?.apiType === 'graphql' ? (graphqlTo ?? routes.graphqlApi) : to;
     // `replace` keeps Back on the previous page.
-    navigate(to(orgHandle, chosenProject, chosenApi || null), {
+    navigate(builder(orgHandle, chosenProject, chosenApi || null), {
       replace: true,
     });
   };
@@ -273,14 +304,14 @@ function ScopeSelection({
                     </FormLabel>
                     <Select
                       labelId="scope-gate-api-label"
-                      value={chosenProject && apisQuery.isPending ? '__loading__' : chosenApi}
+                      value={apisPending ? '__loading__' : chosenApi}
                       onChange={(event) => setChosenApi(String(event.target.value))}
                       displayEmpty
-                      disabled={!chosenProject || apisQuery.isPending}
+                      disabled={!chosenProject || apisPending}
                       MenuProps={{ PaperProps: { sx: { maxHeight: 300, maxWidth: 300 } } }}
                       sx={SELECT_VALUE_SX}
                     >
-                      {chosenProject &&apisQuery.isPending ? (
+                      {apisPending ? (
                         <MenuItem value="__loading__" disabled>
                           <FormattedMessage
                             id="scopeGate.loadingApis"
@@ -312,6 +343,7 @@ function ScopeSelection({
                               </ComplexSelect.MenuItem.Icon>
                               <ComplexSelect.MenuItem.Text
                                 primary={api.displayName}
+                                secondary={apiKindLabel(api.kind)}
                                 sx={{ minWidth: 0, my: 0 }}
                                 slotProps={{ primary: { noWrap: true } }}
                               />
@@ -348,7 +380,7 @@ function ScopeSelection({
 
           {needsApi &&
             chosenProject &&
-            !apisQuery.isPending &&
+            !apisPending &&
             apis.length === 0 && (
               <Typography color="text.secondary" sx={{ mt: 2 }}>
                 <FormattedMessage

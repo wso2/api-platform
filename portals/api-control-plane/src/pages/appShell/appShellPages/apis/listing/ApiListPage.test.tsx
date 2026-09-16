@@ -23,11 +23,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import {
+  aGraphQLApi,
   aRestApi,
   apiUrl,
   collection,
   manyRestApis,
   recorder,
+  type GraphQLApiFixture,
   type RestApiFixture,
   type Recorder,
 } from '@/test/msw';
@@ -35,6 +37,7 @@ import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { routes } from '@/routes/paths';
 import { makeConsoleScope } from '@/test/mockScope';
+import { ApiList } from './ApiList';
 import { ApiListPage } from './ApiListPage';
 
 const ORG = 'api-platform-demo';
@@ -53,7 +56,7 @@ const manyApis = manyRestApis(14);
  * not its display name — the handler has to mirror that or the search test
  * would pass against behaviour the server does not have.
  */
-const matchesHandle = (api: RestApiFixture, term: string) =>
+const matchesHandle = (api: RestApiFixture | GraphQLApiFixture, term: string) =>
   (api.id ?? '').toLowerCase().includes(term);
 
 let requests: Recorder;
@@ -82,19 +85,50 @@ function renderPage() {
   );
 }
 
+/** Same harness as `renderPage`, but for `ApiList` directly with a `typeFilter` — `ApiListPage` itself never passes one; only `ProjectHomePage`'s stat-card click does. */
+function renderList(typeFilter: 'rest' | 'graphql' | 'grpc' | 'async') {
+  return renderWithProviders(
+    <ApiScopeProvider orgId={ORG} projectId={PROJECT}>
+      <Routes>
+        <Route
+          element={<ApiList typeFilter={typeFilter} />}
+          path="/organizations/:orgHandle/projects/:projectHandler/apis"
+        />
+      </Routes>
+    </ApiScopeProvider>,
+    {
+      route: `/organizations/${ORG}/projects/${PROJECT}/apis`,
+      scope: makeConsoleScope(),
+    },
+  );
+}
+
+/**
+ * Every test needs a `/graphql-apis` handler too — `ApiList` fetches both
+ * resource types unconditionally to merge them into one list (that merge is
+ * the whole point: a GraphQL API is otherwise invisible here after creation).
+ * Most tests are about REST-only behaviour, so this defaults to an empty
+ * GraphQL collection; tests covering the merge itself override it.
+ */
+const serveNoGraphQLApis = () => server.use(collection('/graphql-apis', []));
+
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  serveNoGraphQLApis();
 });
 
 describe('ApiListPage', () => {
-  it('renders the first page and asks the server for the paging window', async () => {
+  it('fetches the full REST collection in one request, not the on-screen page', async () => {
     server.use(collection('/rest-apis', apiFixtures, { record: requests }));
     renderPage();
 
     expect(await screen.findByText('Orders API')).toBeInTheDocument();
     expect(screen.getByText('Inventory API')).toBeInTheDocument();
-    expect(requests.last()?.params.get('limit')).toBe('12');
+    // Pagination is client-side over the merged REST+GraphQL list — the
+    // request always asks for the server's max page size, not the UI's
+    // current rows-per-page.
+    expect(requests.last()?.params.get('limit')).toBe('100');
     expect(requests.last()?.params.get('offset')).toBe('0');
   });
 
@@ -104,6 +138,37 @@ describe('ApiListPage', () => {
 
     // 14 APIs exist; only 12 fit the first page.
     expect(await screen.findByText('14')).toBeInTheDocument();
+  });
+
+  it('includes a GraphQL API in the same list as REST APIs', async () => {
+    server.use(collection('/rest-apis', apiFixtures));
+    server.use(collection('/graphql-apis', [aGraphQLApi({ displayName: 'Countries API' })]));
+    renderPage();
+
+    expect(await screen.findByText('Orders API')).toBeInTheDocument();
+    expect(screen.getByText('Countries API')).toBeInTheDocument();
+    // 2 REST + 1 GraphQL.
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  it('matches the GraphQL type filter even when the server omits `kind` on the list item', async () => {
+    // Regression test: GraphQLAPIListItem.kind was never populated by the
+    // real backend (server-side bug, since fixed) — matching on it here
+    // meant selecting the "GraphQL" filter always showed "No matching APIs"
+    // even though the API existed. `kind: undefined` reproduces that
+    // response shape; the filter must not depend on `kind` for this branch.
+    server.use(collection('/rest-apis', apiFixtures));
+    server.use(
+      collection('/graphql-apis', [
+        aGraphQLApi({ displayName: 'Countries API', kind: undefined }),
+      ]),
+    );
+
+    renderList('graphql');
+
+    expect(await screen.findByText('Countries API')).toBeInTheDocument();
+    expect(screen.queryByText('Orders API')).not.toBeInTheDocument();
+    expect(screen.queryByText('No matching APIs')).not.toBeInTheDocument();
   });
 
   it('searches server-side rather than filtering the current page', async () => {
@@ -132,20 +197,22 @@ describe('ApiListPage', () => {
     expect(requests.last()?.params.get('sortOrder')).toBe('desc');
   });
 
-  it('requests the next page when the pagination control advances', async () => {
+  it('pages locally over the already-fetched collection, issuing no new request', async () => {
     server.use(collection('/rest-apis', manyApis, { record: requests }));
     const { user } = renderPage();
 
     await screen.findByText('API 1');
     expect(screen.queryByText('API 13')).not.toBeInTheDocument();
+    const requestCountBeforePaging = requests.count();
 
     await user.click(screen.getByRole('button', { name: /next page/i }));
 
-    await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
     expect(await screen.findByText('API 13')).toBeInTheDocument();
+    // The whole collection was already in hand — paging is a local slice.
+    expect(requests.count()).toBe(requestCountBeforePaging);
   });
 
-  it('returns to the first page when the search changes', async () => {
+  it('returns to the first local page when the search changes', async () => {
     server.use(
       collection('/rest-apis', manyApis, {
         matches: matchesHandle,
@@ -156,11 +223,12 @@ describe('ApiListPage', () => {
 
     await screen.findByText('API 1');
     await user.click(screen.getByRole('button', { name: /next page/i }));
-    await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
+    await screen.findByText('API 13');
 
     await user.type(screen.getByPlaceholderText('Search APIs'), 'api');
 
-    await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('0'));
+    await waitFor(() => expect(requests.last()?.params.get('query')).toBe('api'));
+    expect(await screen.findByText('API 1')).toBeInTheDocument();
   });
 
   it('keeps the create prompt for an empty project but not for a missed search', async () => {
@@ -174,7 +242,7 @@ describe('ApiListPage', () => {
     expect(screen.queryByText('Create your first API')).not.toBeInTheDocument();
   });
 
-  it('shows the empty state when the project has no APIs', async () => {
+  it('shows the empty state when the project has no APIs of either kind', async () => {
     server.use(collection('/rest-apis', []));
     renderPage();
 
@@ -200,23 +268,20 @@ describe('ApiListPage', () => {
     expect(screen.queryByRole('button', { name: /next page/i })).not.toBeInTheDocument();
   });
 
-  it('widens the paging window and returns to the first page on rows-per-page', async () => {
+  it('widens the local page and fits every API without a page turn', async () => {
     server.use(collection('/rest-apis', manyApis, { record: requests }));
     const { user } = renderPage();
 
     await screen.findByText('API 1');
-    await user.click(screen.getByRole('button', { name: /next page/i }));
-    await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
+    expect(screen.queryByText('API 13')).not.toBeInTheDocument();
+    const requestCountBeforeResize = requests.count();
 
     await user.click(screen.getByRole('combobox', { name: /APIs per page/i }));
     await user.click(screen.getByRole('option', { name: '24' }));
 
-    await waitFor(() => {
-      expect(requests.last()?.params.get('limit')).toBe('24');
-      // The old offset of 12 would land mid-collection under the wider window.
-      expect(requests.last()?.params.get('offset')).toBe('0');
-    });
+    // All 14 now fit in one local page — no server round trip needed for it.
     expect(await screen.findByText('API 13')).toBeInTheDocument();
+    expect(requests.count()).toBe(requestCountBeforeResize);
   });
 
   it('falls back a page when a delete empties the last one', async () => {
@@ -236,7 +301,6 @@ describe('ApiListPage', () => {
     // 13 APIs over a page size of 12 leaves API 13 alone on the second page.
     await screen.findByText('API 1');
     await user.click(screen.getByRole('button', { name: /next page/i }));
-    await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
     await screen.findByText('API 13');
 
     await user.click(screen.getByRole('button', { name: 'Delete API 13' }));
@@ -244,9 +308,10 @@ describe('ApiListPage', () => {
     await user.type(within(dialog).getByRole('textbox'), 'API 13');
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-    // Page 2 no longer exists; the next request must ask for one that does.
-    await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('0'));
+    // Page 2 no longer exists once the delete's refetch lands — the clamp
+    // effect must fall back to the last page that still does.
     expect(await screen.findByText('API 1')).toBeInTheDocument();
+    expect(screen.queryByText('API 13')).not.toBeInTheDocument();
   });
 
   it('opens an API from the keyboard in both views', async () => {

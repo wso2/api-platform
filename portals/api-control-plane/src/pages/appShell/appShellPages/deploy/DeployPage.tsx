@@ -81,7 +81,12 @@ const messages = defineMessages({
  */
 export function DeployPage() {
   return (
-    <ScopeGate prompt="Deployments are made for a single API." requires="api" to={routes.apiDeploy}>
+    <ScopeGate
+      graphqlTo={routes.graphqlApiDeploy}
+      prompt="Deployments are made for a single API."
+      requires="api"
+      to={routes.apiDeploy}
+    >
       <Deploy />
     </ScopeGate>
   );

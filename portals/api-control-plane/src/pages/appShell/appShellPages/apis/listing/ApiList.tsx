@@ -32,7 +32,9 @@ import { LayoutGrid, List, Plus } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { useDeleteRestApi, useRestApis, type RestApi } from '@/api/resources/restApis';
+import { useAllGraphQLApis, useDeleteGraphQLApi } from '@/api/resources/graphqlApis';
+import { useAllRestApis, useDeleteRestApi } from '@/api/resources/restApis';
+import { toGraphQLListableApi, toRestListableApi, type ListableApi } from './apiListItem';
 import { ApiGridView } from './ApiGridView';
 import { ApiListView } from './ApiListView';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -136,42 +138,60 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();
-  const deleteApiMutation = useDeleteRestApi();
+  const deleteRestApiMutation = useDeleteRestApi();
+  const deleteGraphQLApiMutation = useDeleteGraphQLApi();
   const { notify } = useNotifications();
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
   const [view, setView] = useState<ViewMode>('grid');
-  const [toDelete, setToDelete] = useState<RestApi | null>(null);
+  const [toDelete, setToDelete] = useState<ListableApi | null>(null);
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
 
   // Reset to page 1 when the filter or sort changes.
   useEffect(() => setPage(0), [debouncedSearch, typeFilter]);
 
-  // Server-side, so search and pagination agree: `query` is a substring match
-  // on the API handle, applied across the whole collection rather than to the
-  // page already in cache.
-  const apisQuery = useRestApis({
-    limit: typeFilter ? 100 : rowsPerPage,
-    offset: typeFilter ? 0 : page * rowsPerPage,
+  // Two independent resource types, each already sorted `createdAt desc` by
+  // the server — fetched in full (not paged server-side) so they can be
+  // merged, filtered, and paged together as one list. Search is still a
+  // server-side substring match on each source; only the combining is local.
+  const restApisQuery = useAllRestApis({
+    query: debouncedSearch || undefined,
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+  });
+  const graphqlApisQuery = useAllGraphQLApis({
     query: debouncedSearch || undefined,
     sortBy: 'createdAt',
     sortOrder: 'desc',
   });
 
-  const responseApis = apisQuery.data?.list ?? [];
+  const isPending = restApisQuery.isPending || graphqlApisQuery.isPending;
+  const error = restApisQuery.error ?? graphqlApisQuery.error;
+
+  const restItems = (restApisQuery.data?.list ?? []).map(toRestListableApi);
+  const graphqlItems = (graphqlApisQuery.data?.list ?? []).map(toGraphQLListableApi);
+  const mergedApis: ListableApi[] = [...restItems, ...graphqlItems].sort((a, b) =>
+    (b.createdAt ?? '').localeCompare(a.createdAt ?? ''),
+  );
+
+  // GraphQL items are known-good by construction (they only ever came from
+  // the GraphQL endpoint) — matched on `apiType`, not `kind`. The backend's
+  // `GraphQLAPIListItem.kind` is a real field, but relying on it here would
+  // make this filter fragile to a server omission again (see the "GraphQL"
+  // filter matching zero rows despite APIs existing — the list item's `kind`
+  // was simply never populated server-side; fixed, but the client should not
+  // depend on it for the one type it can determine for certain another way).
   const filteredApis = typeFilter
-    ? responseApis.filter((api) => matchesApiType(api.kind, typeFilter))
-    : responseApis;
-  const total = typeFilter
-    ? filteredApis.length
-    : (apisQuery.data?.pagination?.total ?? responseApis.length);
+    ? mergedApis.filter((api) =>
+        typeFilter === 'graphql' ? api.apiType === 'graphql' : matchesApiType(api.kind, typeFilter),
+      )
+    : mergedApis;
+  const total = filteredApis.length;
   const lastPage = Math.max(0, Math.ceil(total / rowsPerPage) - 1);
-  const apis = typeFilter
-    ? filteredApis.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
-    : filteredApis;
+  const apis = filteredApis.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
   // Deleting the last card of the last page leaves `page` past the end. Render
   // the clamped value (an out-of-range `page` makes TablePagination complain),
   // and correct the state so the next request asks for a window that exists.
@@ -186,30 +206,37 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
 
   const confirmDelete = () => {
     if (!toDelete?.id) return;
-    const { displayName } = toDelete;
-    deleteApiMutation.mutate(
-      { restApiId: toDelete.id },
-      {
-        onSuccess: () => {
-          notify(intl.formatMessage(messages.deleteSucceeded, { name: displayName }), 'success');
-          setToDelete(null);
-        },
-        onError: (error) =>
-          notify(error.message || intl.formatMessage(messages.deleteFailed), 'error'),
+    const { apiType, displayName, id } = toDelete;
+    const onSettled = {
+      onSuccess: () => {
+        notify(intl.formatMessage(messages.deleteSucceeded, { name: displayName }), 'success');
+        setToDelete(null);
       },
-    );
+      onError: (error: { message?: string }) =>
+        notify(error.message || intl.formatMessage(messages.deleteFailed), 'error'),
+    };
+    if (apiType === 'graphql') {
+      deleteGraphQLApiMutation.mutate({ graphqlApiId: id }, onSettled);
+    } else {
+      deleteRestApiMutation.mutate({ restApiId: id }, onSettled);
+    }
   };
 
-  const openApi = (api: RestApi) => navigate(routes.api(orgHandle, projectHandler, api.id ?? ''));
+  const openApi = (api: ListableApi) =>
+    navigate(
+      api.apiType === 'graphql'
+        ? routes.graphqlApi(orgHandle, projectHandler, api.id ?? '')
+        : routes.api(orgHandle, projectHandler, api.id ?? ''),
+    );
   const createApi = () => navigate(routes.newApi(orgHandle, projectHandler));
 
-  // `isPending` rather than `isLoading`: the query stays disabled until the
+  // `isPending` rather than `isLoading`: the queries stay disabled until the
   // route's org/project resolve, and in that window `isLoading` is already
   // false with no data, which would flash the "No APIs yet" empty state.
-  if (apisQuery.isPending) {
+  if (isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
-  if (apisQuery.error) {
+  if (error) {
     return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
   }
 
@@ -292,7 +319,10 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
               <Box
                 sx={{
                   flexGrow: 1,
-                  opacity: apisQuery.isPlaceholderData ? 0.6 : 1,
+                  opacity:
+                    restApisQuery.isPlaceholderData || graphqlApisQuery.isPlaceholderData
+                      ? 0.6
+                      : 1,
                   transition: 'opacity .15s ease',
                 }}
               >
@@ -331,7 +361,7 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
         confirmLabel={intl.formatMessage(messages.deleteConfirm)}
         confirmPhrase={toDelete?.displayName ?? ''}
         destructive
-        loading={deleteApiMutation.isPending}
+        loading={deleteRestApiMutation.isPending || deleteGraphQLApiMutation.isPending}
         message={
           toDelete
             ? intl.formatMessage(messages.deleteMessage, {

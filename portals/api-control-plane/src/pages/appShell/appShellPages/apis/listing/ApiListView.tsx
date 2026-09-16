@@ -19,7 +19,7 @@
 import { Box, Card, Stack, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { RestApi } from '@/api/resources/restApis';
+import type { ListableApi } from './apiListItem';
 import { openableProps } from '@/components/openable';
 import { focusRingSx } from '@/theme';
 import {
@@ -50,9 +50,9 @@ const rowGridSx = {
 } as const;
 
 type ApiRowProps = {
-  api: RestApi;
-  onOpen: (api: RestApi) => void;
-  onDelete?: (api: RestApi) => void;
+  api: ListableApi;
+  onOpen: (api: ListableApi) => void;
+  onDelete?: (api: ListableApi) => void;
 };
 
 /**
@@ -130,9 +130,9 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
 }
 
 type ApiListViewProps = {
-  apis: RestApi[];
-  onOpen: (api: RestApi) => void;
-  onDelete?: (api: RestApi) => void;
+  apis: ListableApi[];
+  onOpen: (api: ListableApi) => void;
+  onDelete?: (api: ListableApi) => void;
 };
 
 /** Compact row layout for APIs, the list-view counterpart of ApiCardGrid. */
