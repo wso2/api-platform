@@ -210,8 +210,14 @@ GATEWAY_NETWORK=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks
   | grep 'gateway-network' | head -1)
 [[ -n "${GATEWAY_NETWORK}" ]] || error "The gateway-controller is not attached to a gateway network."
 
-docker network connect "${GATEWAY_NETWORK}" "${MOCK_CONTAINER}" 2>/dev/null || true
-success "Mock backend attached to ${GATEWAY_NETWORK}."
+if connect_error=$(docker network connect "${GATEWAY_NETWORK}" "${MOCK_CONTAINER}" 2>&1); then
+  success "Mock backend attached to ${GATEWAY_NETWORK}."
+elif [[ "${connect_error}" == *"already exists in network"* ]]; then
+  info "Mock backend is already attached to ${GATEWAY_NETWORK}."
+else
+  error "Could not attach ${MOCK_CONTAINER} to ${GATEWAY_NETWORK}.
+        Docker said: ${connect_error}"
+fi
 
 # --- Resources -------------------------------------------------------------
 for provider_yaml in "${PROVIDER_YAMLS[@]}"; do
