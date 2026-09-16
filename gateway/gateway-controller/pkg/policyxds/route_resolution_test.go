@@ -188,6 +188,20 @@ func TestExistingKindGoldenRouteConfigContent(t *testing.T) {
 	}, got)
 }
 
+func TestRouteConfigKeepsProjectIDAndAddsProjectHandle(t *testing.T) {
+	rdc := restRDC()
+	rdc.Metadata.ProjectHandle = "new-project"
+
+	resources, err := testTranslator().TranslateRuntimeConfigs([]*models.RuntimeDeployConfig{rdc})
+	require.NoError(t, err)
+
+	const routeKey = "GET|/petstore/v1/pets|localhost"
+	got := decodeRouteConfig(t, resources[RouteConfigTypeURL][routeKey])
+	meta := got["metadata"].(map[string]interface{})
+	assert.Equal(t, "proj-1", meta["project_id"])
+	assert.Equal(t, "new-project", meta["project_handle"])
+}
+
 // ─── Per-route resolver selection ────────────────────────────────────────────
 
 // The reason resolver selection moved onto the route: one API can hold both shapes at

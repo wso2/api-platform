@@ -262,6 +262,9 @@ func (m *Moesif) Publish(event *dto.Event) {
 	metadataMap["subType"] = event.API.SubType
 	metadataMap["apiId"] = event.API.APIID
 	metadataMap["projectId"] = event.API.ProjectID
+	if event.API.ProjectHandle != "" {
+		metadataMap["projectHandle"] = event.API.ProjectHandle
+	}
 
 	// AI Metadata.
 	// Only include aiMetadata and aiTokenUsage for LlmProvider and LlmProxy events.

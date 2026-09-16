@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -382,6 +383,11 @@ func (t *Translator) createRouteConfigResource(
 		"api_context":  rdc.Context,
 		"vhost":        route.Vhost,
 		"path":         route.OperationPath,
+	}
+	// Separate from project_id: Moesif keeps the original project id and also
+	// receives the user-facing handle when the control plane stamped one.
+	if handle := strings.TrimSpace(rdc.Metadata.ProjectHandle); handle != "" {
+		metadataMap["project_handle"] = handle
 	}
 	if rdc.Metadata.LLM != nil {
 		metadataMap["template_handle"] = rdc.Metadata.LLM.TemplateHandle

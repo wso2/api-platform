@@ -201,6 +201,31 @@ func (s *APIService) modelToRESTAPIUnresolved(apiModel *model.API) (*api.RESTAPI
 	return s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
 }
 
+// attachProjectHandle sets the derived project handle used when building gateway
+// deployment YAML. The handle is not stored on the API row and is not loaded by
+// API repository reads; artifact generation resolves it here, the same way
+// modelToRESTAPIUnresolved resolves the handle for API responses.
+//
+// Lookup failures are soft: ProjectHandle is analytics-only (Moesif metadata),
+// so a transient DB error must not block deployment. The project-id annotation
+// is still stamped from apiModel.ProjectID; Moesif omits projectHandle when empty.
+func attachProjectHandle(projectRepo repository.ProjectRepository, apiModel *model.API, logger *slog.Logger) {
+	if apiModel == nil || projectRepo == nil || strings.TrimSpace(apiModel.ProjectID) == "" {
+		return
+	}
+	project, err := projectRepo.GetProjectByUUID(apiModel.ProjectID)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("failed to resolve project handle; continuing without project-handle annotation",
+				"projectID", apiModel.ProjectID, "error", err)
+		}
+		return
+	}
+	if project != nil {
+		apiModel.ProjectHandle = project.Handle
+	}
+}
+
 // modelToRESTAPI converts an internal API model to the API representation,
 // resolving the project's handle for the response's projectId field and the
 // createdBy/updatedBy UUIDs to their raw external identity.
@@ -366,6 +391,7 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	// and defaults the origin to control_plane).
 	updatedAPIModel.Handle = existingAPIModel.Handle
 	updatedAPIModel.ProjectID = existingAPIModel.ProjectID
+	updatedAPIModel.ProjectHandle = existingAPIModel.ProjectHandle
 	updatedAPIModel.Kind = existingAPIModel.Kind
 	updatedAPIModel.Origin = existingAPIModel.Origin
 	updatedAPIModel.CreatedBy = existingAPIModel.CreatedBy

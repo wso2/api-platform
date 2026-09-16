@@ -79,6 +79,16 @@ func extractProjectID(cfg *models.StoredConfig) string {
 	return ""
 }
 
+// extractProjectHandle reads the analytics-facing project handle annotation when present.
+func extractProjectHandle(cfg *models.StoredConfig) string {
+	if annotations := cfg.GetAnnotations(); annotations != nil {
+		if handle, exists := (*annotations)[commonconstants.AnnotationProjectHandle]; exists {
+			return strings.TrimSpace(handle)
+		}
+	}
+	return ""
+}
+
 func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployConfig, error) {
 	restCfg, ok := cfg.Configuration.(api.RestAPI)
 	if !ok {
@@ -87,15 +97,17 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	apiData := restCfg.Spec
 
 	projectID := extractProjectID(cfg)
+	projectHandle := extractProjectHandle(cfg)
 
 	rdc := &models.RuntimeDeployConfig{
 		Metadata: models.Metadata{
-			UUID:        cfg.UUID,
-			Kind:        cfg.Kind,
-			Handle:      cfg.Handle,
-			Version:     apiData.Version,
-			DisplayName: apiData.DisplayName,
-			ProjectID:   projectID,
+			UUID:          cfg.UUID,
+			Kind:          cfg.Kind,
+			Handle:        cfg.Handle,
+			Version:       apiData.Version,
+			DisplayName:   apiData.DisplayName,
+			ProjectID:     projectID,
+			ProjectHandle: projectHandle,
 		},
 		Context:             strings.ReplaceAll(apiData.Context, "$version", apiData.Version),
 		PolicyChainResolver: "route-key",

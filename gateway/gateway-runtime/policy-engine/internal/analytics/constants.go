@@ -107,6 +107,8 @@ const (
 	APIOrganizationIDKey = Wso2MetadataPrefix + "api-organization-id"
 	// ProjectIDKey is the key for the project ID.
 	ProjectIDKey = Wso2MetadataPrefix + "project-id"
+	// ProjectHandleKey is the key for the user-facing project handle.
+	ProjectHandleKey = Wso2MetadataPrefix + "project-handle"
 
 	// AppIDKey is the key for the application ID.
 	AppIDKey = Wso2MetadataPrefix + "application-id"

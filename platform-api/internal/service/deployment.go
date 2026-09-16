@@ -53,6 +53,7 @@ var vhostLabelRe = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0
 // DeploymentService handles business logic for API deployment operations
 type DeploymentService struct {
 	apiRepo              repository.APIRepository
+	projectRepo          repository.ProjectRepository
 	artifactRepo         repository.ArtifactRepository
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
@@ -68,6 +69,7 @@ type DeploymentService struct {
 // NewDeploymentService creates a new deployment service
 func NewDeploymentService(
 	apiRepo repository.APIRepository,
+	projectRepo repository.ProjectRepository,
 	artifactRepo repository.ArtifactRepository,
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
@@ -81,6 +83,7 @@ func NewDeploymentService(
 ) *DeploymentService {
 	return &DeploymentService{
 		apiRepo:              apiRepo,
+		projectRepo:          projectRepo,
 		artifactRepo:         artifactRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
@@ -140,6 +143,9 @@ func (s *DeploymentService) CreateBuild(apiUUID, orgUUID, createdBy, description
 // customization of it.
 func (s *DeploymentService) renderBuild(apiModel *model.API, apiUUID, orgUUID, createdBy string,
 	metadata map[string]interface{}) (*model.Build, *dto.APIDeploymentYAML, error) {
+	// Resolve the project handle here — it is not stored on the API row, and
+	// repository reads do not populate it. Soft-fail: analytics-only field.
+	attachProjectHandle(s.projectRepo, apiModel, s.slogger)
 	apiDeployment, err := s.apiUtil.BuildAPIDeploymentYAML(apiModel)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build API deployment YAML: %w", err)

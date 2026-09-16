@@ -344,6 +344,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	extendedAPI.APIContext = keyValuePairsFromMetadata[APIContextKey]
 	extendedAPI.EnvironmentID = keyValuePairsFromMetadata[APIEnvironmentKey]
 	extendedAPI.ProjectID = keyValuePairsFromMetadata[ProjectIDKey]
+	extendedAPI.ProjectHandle = keyValuePairsFromMetadata[ProjectHandleKey]
 
 	request := logEntry.GetRequest()
 	response := logEntry.GetResponse()

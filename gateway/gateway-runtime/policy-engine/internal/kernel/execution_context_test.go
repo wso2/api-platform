@@ -416,6 +416,7 @@ func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
 		TemplateHandle: "gpt-4",
 		ProviderName:   "openai",
 		ProjectID:      "proj-123",
+		ProjectHandle:  "new-project",
 	}
 
 	execCtx.buildRequestContexts(headers, routeMetadata)
@@ -425,6 +426,7 @@ func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
 	assert.Equal(t, "gpt-4", execCtx.sharedCtx.Metadata["template_handle"])
 	assert.Equal(t, "openai", execCtx.sharedCtx.Metadata["provider_name"])
 	assert.Equal(t, "proj-123", execCtx.sharedCtx.ProjectID)
+	assert.Equal(t, "new-project", execCtx.projectHandle)
 }
 
 func TestBuildRequestContext_MultipleHeaderValues(t *testing.T) {

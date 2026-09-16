@@ -68,6 +68,11 @@ type PolicyExecutionContext struct {
 	// Pointed to by each per-phase context's SharedContext field.
 	sharedCtx *policy.SharedContext
 
+	// projectHandle is the user-facing project handle for analytics. Kept on the
+	// kernel context rather than policy.SharedContext so the gateway image can
+	// build against the published SDK, which does not carry this field.
+	projectHandle string
+
 	// downstreamHeaders is a snapshot of the client request headers, captured at
 	// buildRequestContexts before any policy mutation.
 	// Exposed to policies via Request*Context.Downstream and, on the response
@@ -1405,6 +1410,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		OperationPath: routeMetadata.OperationPath,
 		Metadata:      make(map[string]interface{}),
 	}
+	ec.projectHandle = routeMetadata.ProjectHandle
 	if routeMetadata.TemplateHandle != "" {
 		sharedCtx.Metadata["template_handle"] = routeMetadata.TemplateHandle
 	}
