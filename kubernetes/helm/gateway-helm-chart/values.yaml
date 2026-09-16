@@ -1018,6 +1018,22 @@ gateway:
         # When set, the built-in ConfigMap is not created and this one is used instead.
         configMapName: ""
 
+    # Client certificate material for gateway-runtime's two xDS clients --
+    # Envoy (the router) and the policy-engine -- to authenticate to
+    # gateway-controller's server.xds_tls / policy_server.tls mTLS listeners
+    # above. Required (secretName must be set) when either of those is
+    # enabled; ignored otherwise. The referenced Secret must contain the CA
+    # cert plus a client cert/key pair per client (see the docker-compose
+    # gateway-controller/listener-certs mounts for the equivalent local
+    # material: ca.crt, envoy-client.crt/key, policy-engine-client.crt/key).
+    xdsClientCerts:
+      secretName: ""
+      caCertKey: ca.crt
+      routerCertKey: envoy-client.crt
+      routerKeyKey: envoy-client.key
+      policyEngineCertKey: policy-engine-client.crt
+      policyEngineKeyKey: policy-engine-client.key
+
     deployment:
       enabled: true
       replicaCount: 1

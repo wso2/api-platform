@@ -2,6 +2,20 @@
 {{- $deployment := $unified.deployment -}}
 {{- $policies := $unified.policies -}}
 {{- $config := .Values.gateway.config -}}
+{{- /*
+  gateway-runtime's docker-entrypoint.sh defaults XDS_TLS_ENABLED to "true"
+  (matching config-template.toml's own default for non-Helm deployments), but
+  this chart's server.xds_tls/policy_server.tls default to "false" -- so both
+  must be passed through explicitly below, or an unconfigured deployment
+  crash-loops on the entrypoint's fail-closed missing-cert-paths check.
+*/ -}}
+{{- $xdsTLS := $config.controller.server.xds_tls -}}
+{{- $policyTLS := $config.controller.policy_server.tls -}}
+{{- $xdsClientCerts := $unified.xdsClientCerts | default dict -}}
+{{- $xdsMTLSEnabled := or $xdsTLS.enabled $policyTLS.enabled -}}
+{{- if and $xdsMTLSEnabled (not $xdsClientCerts.secretName) -}}
+{{- fail "gateway.gatewayRuntime.xdsClientCerts.secretName is required when gateway.config.controller.server.xds_tls.enabled or policy_server.tls.enabled is true." -}}
+{{- end -}}
 {{- $trafficLogVolume := $unified.trafficLogVolume | default dict -}}
 {{- $fileSinkSelected := false -}}
 {{- if and $config.traffic_logging $config.traffic_logging.outputs -}}
@@ -127,6 +141,26 @@ spec:
             {{- end }}
             - name: ROUTER_ADMIN_ENABLED
               value: {{ default false $deployment.env.routerAdminEnabled | quote }}
+            - name: XDS_TLS_ENABLED
+              value: {{ $xdsTLS.enabled | quote }}
+            - name: POLICY_ENGINE_XDS_TLS_ENABLED
+              value: {{ $policyTLS.enabled | quote }}
+            {{- if $xdsTLS.enabled }}
+            - name: XDS_CLIENT_CERT_PATH
+              value: {{ printf "/etc/xds-certs/%s" (default "envoy-client.crt" $xdsClientCerts.routerCertKey) }}
+            - name: XDS_CLIENT_KEY_PATH
+              value: {{ printf "/etc/xds-certs/%s" (default "envoy-client.key" $xdsClientCerts.routerKeyKey) }}
+            - name: XDS_CLIENT_CA_PATH
+              value: {{ printf "/etc/xds-certs/%s" (default "ca.crt" $xdsClientCerts.caCertKey) }}
+            {{- end }}
+            {{- if $policyTLS.enabled }}
+            - name: POLICY_ENGINE_XDS_CLIENT_CERT_PATH
+              value: {{ printf "/etc/xds-certs/%s" (default "policy-engine-client.crt" $xdsClientCerts.policyEngineCertKey) }}
+            - name: POLICY_ENGINE_XDS_CLIENT_KEY_PATH
+              value: {{ printf "/etc/xds-certs/%s" (default "policy-engine-client.key" $xdsClientCerts.policyEngineKeyKey) }}
+            - name: POLICY_ENGINE_XDS_CLIENT_CA_PATH
+              value: {{ printf "/etc/xds-certs/%s" (default "ca.crt" $xdsClientCerts.caCertKey) }}
+            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}
@@ -207,6 +241,11 @@ spec:
             - name: traffic-log
               mountPath: {{ $trafficLogVolume.mountPath | quote }}
             {{- end }}
+            {{- if $xdsMTLSEnabled }}
+            - name: xds-client-certs
+              mountPath: /etc/xds-certs
+              readOnly: true
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -235,6 +274,11 @@ spec:
             {{- if $trafficLogVolume.medium }}
             medium: {{ $trafficLogVolume.medium | quote }}
             {{- end }}
+        {{- end }}
+        {{- if $xdsMTLSEnabled }}
+        - name: xds-client-certs
+          secret:
+            secretName: {{ $xdsClientCerts.secretName }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}
