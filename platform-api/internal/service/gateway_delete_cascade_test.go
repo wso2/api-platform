@@ -203,10 +203,12 @@ func TestDeleteGateway_SkipsWhatIsNotOnTheGateway(t *testing.T) {
 	}
 }
 
-// The records must go even when the events cannot be published — a gateway that is
-// offline, or already gone, still has to be removable. Refusing would strand records for
-// a gateway the user asked to delete.
-func TestDeleteGateway_RemovesRecordsEvenWhenTheGatewayCannotBeReached(t *testing.T) {
+// An event store that refuses the write is NOT the same as an offline gateway: an offline
+// gateway's event is queued fine and waits. If the undeployment cannot even be queued,
+// deleting the records would leave the gateway serving an artifact nothing refers to —
+// the original bug. The delete must be refused, and the deployment put back so a retry
+// picks it up again (runningOnGateway only selects deployed/deploying).
+func TestDeleteGateway_RefusesWhenTheUndeploymentCannotBeQueued(t *testing.T) {
 	gwRepo := &cascadeGatewayRepo{}
 	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: []*model.DeploymentInfo{
 		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
@@ -214,11 +216,20 @@ func TestDeleteGateway_RemovesRecordsEvenWhenTheGatewayCannotBeReached(t *testin
 	hub := &failingEventHub{}
 	svc := newCascadeService(gwRepo, depRepo, hub)
 
-	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
-		t.Fatalf("DeleteGateway failed because the gateway was unreachable: %v", err)
+	err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester")
+	if err == nil {
+		t.Fatal("the gateway was deleted even though its undeployment could not be queued")
 	}
-	if !gwRepo.deleted {
-		t.Error("the gateway records were kept because the undeployment could not be published")
+	if gwRepo.deleted {
+		t.Error("the records were removed while the gateway still serves the artifact")
+	}
+	// Last write must put the deployment back, or a retry would skip it forever.
+	if len(depRepo.transitions) < 2 {
+		t.Fatalf("transitions = %v, want the UNDEPLOYING attempt followed by a restore",
+			depRepo.transitions)
+	}
+	if last := depRepo.transitions[len(depRepo.transitions)-1]; last != string(model.DeploymentStatusDeployed) {
+		t.Errorf("deployment left as %q; a retry would not re-select it", last)
 	}
 }
 

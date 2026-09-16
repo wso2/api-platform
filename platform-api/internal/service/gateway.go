@@ -846,7 +846,9 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 	// Undeploy what the gateway is running, and wait for it to confirm, BEFORE the
 	// records go. Deleting the records alone leaves the gateway serving artifacts the
 	// control plane has forgotten, with nothing left to undeploy them with.
-	s.drainGateway(gateway.ID, orgID)
+	if err := s.drainGateway(gateway.ID, orgID); err != nil {
+		return err
+	}
 
 	// Delete gateway by UUID; the repository explicitly removes deployment-related rows and
 	// association mappings, and FK CASCADE removes gateway_tokens/gateway_endpoints.
@@ -866,7 +868,13 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 // gatewayDrainTimeout bounds how long a gateway delete waits for the gateway to confirm
 // it has dropped the artifacts. A connected gateway acknowledges within a hub poll plus a
 // round trip; one that never answers is offline, and the delete proceeds without it.
-const gatewayDrainTimeout = 15 * time.Second
+//
+// It is deliberately under ten seconds. Callers reach this endpoint through proxies that
+// bound how long they wait for response headers — the AI Workspace BFF allows 10s — so a
+// drain that outlasted them would have the caller told the delete failed while it went on
+// to succeed. Eight seconds leaves room above the 3s event-hub poll plus a round trip
+// (a connected gateway answers in about a second) and still returns before that bound.
+const gatewayDrainTimeout = 8 * time.Second
 
 // gatewayDrainPollInterval is how often the drain re-reads the deployment statuses while
 // waiting for acknowledgements.
@@ -894,48 +902,82 @@ const gatewayDrainPollInterval = 250 * time.Millisecond
 //
 // Data-plane-originated artifacts are excluded by the query: the gateway owns those and
 // pushed them up, so the control plane does not undeploy them.
-func (s *GatewayService) drainGateway(gatewayUUID, orgID string) {
+func (s *GatewayService) drainGateway(gatewayUUID, orgID string) error {
 	if s.deploymentRepo == nil || s.gatewayEventsService == nil {
-		return
+		return nil
 	}
 	running, err := s.runningOnGateway(gatewayUUID, orgID)
 	if err != nil {
 		s.slogger.Error("Failed to list deployments while deleting gateway; the gateway may keep serving them",
 			slog.String("gateway_uuid", gatewayUUID), slog.String("org_id", orgID), slog.Any("error", err))
-		return
+		return nil
 	}
 	if len(running) == 0 {
-		return
+		return nil
 	}
 
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	undeploying := 0
+	unsent := 0
 	for _, deployment := range running {
 		if _, err := s.deploymentRepo.SetCurrentWithDetails(
 			deployment.ArtifactID, orgID, gatewayUUID, deployment.DeploymentID,
 			model.DeploymentStatusUndeploying, string(model.DeploymentStatusUndeployed),
 			&performedAt, "",
 		); err != nil {
-			s.slogger.Warn("Failed to mark deployment undeploying while deleting gateway",
+			s.slogger.Error("Failed to mark deployment undeploying while deleting gateway",
 				slog.String("gateway_uuid", gatewayUUID),
 				slog.String("deployment_id", deployment.DeploymentID),
 				slog.Any("error", err))
+			unsent++
 			continue
 		}
 		if err := s.publishUndeployment(gatewayUUID, deployment, performedAt); err != nil {
-			s.slogger.Warn("Failed to publish undeployment event while deleting gateway",
+			s.slogger.Error("Failed to publish undeployment event while deleting gateway",
 				slog.String("gateway_uuid", gatewayUUID),
 				slog.String("deployment_id", deployment.DeploymentID),
 				slog.String("artifact_kind", deployment.Type),
 				slog.Any("error", err))
+			// Put the deployment back as it was. Nothing is queued to move it on, and
+			// leaving it UNDEPLOYING would hide it from a retry — runningOnGateway only
+			// picks up what is deployed or deploying.
+			s.restoreDeployment(gatewayUUID, orgID, deployment)
+			unsent++
 			continue
 		}
 		undeploying++
 	}
+
+	// A publish failure is the event store refusing the write, NOT evidence that the
+	// gateway is offline: an offline gateway's event is queued perfectly well and simply
+	// waits for it to reconnect. Deleting the records here would be the original bug
+	// again — the gateway carries on serving an artifact nothing refers to. Refuse
+	// instead, with the deployments back in a state a retry re-selects.
+	if unsent > 0 {
+		return fmt.Errorf("could not undeploy %d of %d artifact(s) on gateway %s; gateway not deleted",
+			unsent, len(running), gatewayUUID)
+	}
 	if undeploying == 0 {
-		return
+		return nil
 	}
 	s.waitForGatewayToDrain(gatewayUUID, orgID)
+	return nil
+}
+
+// restoreDeployment puts a deployment back to the state it was in before the drain moved
+// it, used when the undeployment event could not be queued. Best effort: if this write
+// fails too the store is unhealthy, and the delete is refused either way.
+func (s *GatewayService) restoreDeployment(gatewayUUID, orgID string, deployment *model.DeploymentInfo) {
+	previous := deployment.PerformedAt
+	if _, err := s.deploymentRepo.SetCurrentWithDetails(
+		deployment.ArtifactID, orgID, gatewayUUID, deployment.DeploymentID,
+		deployment.Status, string(deployment.StatusDesired), &previous, "",
+	); err != nil {
+		s.slogger.Error("Failed to restore deployment status after a failed undeployment publish",
+			slog.String("gateway_uuid", gatewayUUID),
+			slog.String("deployment_id", deployment.DeploymentID),
+			slog.Any("error", err))
+	}
 }
 
 // waitForGatewayToDrain blocks until the gateway has acknowledged every undeployment, or
