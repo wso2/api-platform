@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func toApplicationID(name string) string {
 }
 
 // opensGenAIApplications switches the current project's view to its GenAI Applications list.
-func (u *UI) opensGenAIApplications(ctx context.Context) error {
+func (u *Steps) opensGenAIApplications(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -62,7 +62,7 @@ func (u *UI) opensGenAIApplications(ctx context.Context) error {
 
 // createsGenAIApplication creates a new GenAI application with the given name from the
 // current project's GenAI Applications list.
-func (u *UI) createsGenAIApplication(ctx context.Context, name string) error {
+func (u *Steps) createsGenAIApplication(ctx context.Context, name string) error {
 	if err := u.opensGenAIApplications(ctx); err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func (u *UI) createsGenAIApplication(ctx context.Context, name string) error {
 
 // onGenAIApplicationOverview asserts the browser reached a real application's own overview
 // page, not the transient create route.
-func (u *UI) onGenAIApplicationOverview(ctx context.Context) error {
+func (u *Steps) onGenAIApplicationOverview(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -110,7 +110,7 @@ func (u *UI) onGenAIApplicationOverview(ctx context.Context) error {
 
 // deletesGenAIApplication opens the delete confirmation for the named application's card on
 // the GenAI Applications list and confirms it.
-func (u *UI) deletesGenAIApplication(ctx context.Context, name string) error {
+func (u *Steps) deletesGenAIApplication(ctx context.Context, name string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

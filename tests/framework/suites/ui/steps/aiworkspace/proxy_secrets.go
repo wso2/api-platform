@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -31,7 +31,7 @@ import (
 )
 
 // opensProxyProviderTab switches the proxy overview to its Provider tab.
-func (u *UI) opensProxyProviderTab(ctx context.Context) error {
+func (u *Steps) opensProxyProviderTab(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -45,8 +45,8 @@ func (u *UI) opensProxyProviderTab(ctx context.Context) error {
 // changesProxyCredential types a new value into the unmasked API key field and clicks the
 // page's Save button — editing stages the change locally; Save is what persists it,
 // recording the calls the save makes.
-func (u *UI) changesProxyCredential(ctx context.Context, newValue string) error {
-	if err := markSensitiveArtifacts(ctx); err != nil {
+func (u *Steps) changesProxyCredential(ctx context.Context, newValue string) error {
+	if err := u.markSensitive(ctx); err != nil {
 		return err
 	}
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
@@ -67,7 +67,7 @@ func (u *UI) changesProxyCredential(ctx context.Context, newValue string) error 
 
 // changesProxyCredentialToPlaceholder is changesProxyCredential, with the new value built
 // as a placeholder referencing an existing secret handle.
-func (u *UI) changesProxyCredentialToPlaceholder(ctx context.Context, handle string) error {
+func (u *Steps) changesProxyCredentialToPlaceholder(ctx context.Context, handle string) error {
 	return u.changesProxyCredential(ctx, secretPlaceholder(handle))
 }
 
@@ -89,7 +89,7 @@ func proxyAuthValue(call recordedCall) (string, error) {
 
 // proxyCallCarriesAPlaceholder asserts the most recent request of the given method carries
 // a secret placeholder and never the plaintext credential.
-func (u *UI) proxyCallCarriesAPlaceholder(ctx context.Context, method, plaintext string) error {
+func (u *Steps) proxyCallCarriesAPlaceholder(ctx context.Context, method, plaintext string) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (u *UI) proxyCallCarriesAPlaceholder(ctx context.Context, method, plaintext
 
 // proxyCallCarriesPlaceholderFor asserts the most recent request of the given method
 // carries a placeholder referencing the given secret handle.
-func (u *UI) proxyCallCarriesPlaceholderFor(ctx context.Context, method, handle string) error {
+func (u *Steps) proxyCallCarriesPlaceholderFor(ctx context.Context, method, handle string) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -132,23 +132,23 @@ func (u *UI) proxyCallCarriesPlaceholderFor(ctx context.Context, method, handle 
 	return nil
 }
 
-func (u *UI) theProxyWasCreatedWithAPlaceholder(ctx context.Context, plaintext string) error {
+func (u *Steps) theProxyWasCreatedWithAPlaceholder(ctx context.Context, plaintext string) error {
 	return u.proxyCallCarriesAPlaceholder(ctx, "POST", plaintext)
 }
 
-func (u *UI) theProxyWasCreatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
+func (u *Steps) theProxyWasCreatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
 	return u.proxyCallCarriesPlaceholderFor(ctx, "POST", handle)
 }
 
-func (u *UI) theProxyWasUpdatedWithAPlaceholder(ctx context.Context, plaintext string) error {
+func (u *Steps) theProxyWasUpdatedWithAPlaceholder(ctx context.Context, plaintext string) error {
 	return u.proxyCallCarriesAPlaceholder(ctx, "PUT", plaintext)
 }
 
-func (u *UI) theProxyWasUpdatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
+func (u *Steps) theProxyWasUpdatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
 	return u.proxyCallCarriesPlaceholderFor(ctx, "PUT", handle)
 }
 
-func (u *UI) theProxyWasNotCreated(ctx context.Context) error {
+func (u *Steps) theProxyWasNotCreated(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (u *UI) theProxyWasNotCreated(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) theProxyWasNotUpdated(ctx context.Context) error {
+func (u *Steps) theProxyWasNotUpdated(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -170,7 +170,7 @@ func (u *UI) theProxyWasNotUpdated(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) theProxyWasUpdated(ctx context.Context) error {
+func (u *Steps) theProxyWasUpdated(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -190,7 +190,7 @@ const keyOriginalSecretHandle = "uiOriginalSecretHandle"
 // theCurrentSecretIsRememberedAsTheOriginal snapshots the most recently created secret's
 // handle into a key later actions in the scenario won't overwrite, so a subsequent
 // credential rotation can still be checked against it.
-func (u *UI) theCurrentSecretIsRememberedAsTheOriginal(ctx context.Context) error {
+func (u *Steps) theCurrentSecretIsRememberedAsTheOriginal(ctx context.Context) error {
 	handle, ok := tcontext.Get(ctx, keyLastSecretHandle)
 	if !ok {
 		return fmt.Errorf("no secret handle has been recorded yet")
@@ -203,7 +203,7 @@ func (u *UI) theCurrentSecretIsRememberedAsTheOriginal(ctx context.Context) erro
 // the soft-delete a credential rotation leaves behind. Cleanup runs server-side after the
 // rotation succeeds and is not awaited by the browser, so this polls rather than reading
 // the secret once.
-func (u *UI) theOriginalSecretIsNowDeprecated(ctx context.Context) error {
+func (u *Steps) theOriginalSecretIsNowDeprecated(ctx context.Context) error {
 	v, ok := tcontext.Get(ctx, keyOriginalSecretHandle)
 	if !ok {
 		return fmt.Errorf("no original secret handle was remembered in this scenario")

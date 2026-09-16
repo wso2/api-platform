@@ -78,8 +78,9 @@ func composeFile(t *testing.T) map[string]any {
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err, "cannot read %s", path)
 
+	rendered := strings.ReplaceAll(string(raw), "${INSTANCE:-}", "")
 	var doc map[string]any
-	require.NoError(t, yaml.Unmarshal(raw, &doc), "%s is not valid YAML", path)
+	require.NoError(t, yaml.Unmarshal([]byte(rendered), &doc), "%s is not valid YAML", path)
 	return doc
 }
 

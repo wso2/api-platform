@@ -19,7 +19,7 @@
 suite: ui-suite
 
 defaults:
-  parallel: 1
+  parallel: 2
   components:
     platform-api:
       db: sqlite
@@ -30,12 +30,88 @@ defaults:
     propagation: 60s
 
 blocks:
+  # The API Portal smoke topology: the portal against the real control plane and a
+  # remote browser on the same network. PostgreSQL is the database supported by the
+  # framework API Portal component definition.
+  - name: api-portal-core
+    parallel: 6
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+      - name: browser
+    runners:
+      - name: smoke
+        features:
+          - features/apiportal_smoke.feature
+      - name: portal-access
+        features:
+          - features/apiportal_access.feature
+      - name: file-based-login
+        features:
+          - features/apiportal_file_based_login.feature
+      - name: views-labels
+        features:
+          - features/apiportal_views_labels.feature
+      - name: api-listing
+        features:
+          - features/apiportal_api_listing.feature
+      - name: mcp-listing
+        features:
+          - features/apiportal_mcp_listing.feature
+      - name: rest-api-details
+        features:
+          - features/apiportal_rest_api_details.feature
+      - name: api-workflows
+        features:
+          - features/apiportal_api_workflows.feature
+
+  # This scenario asserts that no key manager exists in the portal. It needs its
+  # own API Portal/database stack because other application scenarios create
+  # key managers as shared portal-level resources.
+  - name: api-portal-application-no-key-manager
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+      - name: browser
+    runners:
+      - name: application-no-key-manager
+        features:
+          - features/apiportal_application_no_key_manager.feature
+
+  # Key managers are portal-global resources. Keep their application scenarios
+  # on a dedicated stack and serialize them to avoid cross-runner interference.
+  - name: api-portal-key-manager
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+      - name: browser
+    runners:
+      - name: key-managers
+        features:
+          - features/apiportal_key_managers.feature
+      - name: applications
+        features:
+          - features/apiportal_applications.feature
+
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai
   # service is the LLM the journeys invoke), and the browser that drives it all — on the
   # SAME network, so the browser resolves the aliases the products address each other by.
   - name: ai-core
-    parallel: 1
+    parallel: 5
     components:
       - name: platform-api
       - name: platform-gateway

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -31,7 +31,7 @@ import (
 const keyPlatformAPIToken = "uiPlatformAPIToken"
 
 // platformAPIBaseURL is platform-api's own address, resolved on the block's network.
-func (u *UI) platformAPIBaseURL() (string, error) {
+func (u *Steps) platformAPIBaseURL() (string, error) {
 	inst, err := u.topo.Component("platform-api")
 	if err != nil {
 		return "", err
@@ -39,7 +39,7 @@ func (u *UI) platformAPIBaseURL() (string, error) {
 	return inst.InternalURL("https")
 }
 
-func (u *UI) platformAPI(ctx context.Context) (playwright.Page, string, string, error) {
+func (u *Steps) platformAPI(ctx context.Context) (playwright.Page, string, string, error) {
 	page, err := u.page(ctx)
 	if err != nil {
 		return nil, "", "", err
@@ -57,7 +57,7 @@ func (u *UI) platformAPI(ctx context.Context) (playwright.Page, string, string, 
 
 // platformAPIToken returns a bearer token for the fixed admin identity, authenticating
 // once per scenario and caching the result.
-func (u *UI) platformAPIToken(ctx context.Context) (string, error) {
+func (u *Steps) platformAPIToken(ctx context.Context) (string, error) {
 	if v, ok := tcontext.Get(ctx, keyPlatformAPIToken); ok {
 		if token, ok := v.(string); ok && token != "" {
 			return token, nil
@@ -98,7 +98,7 @@ func (u *UI) platformAPIToken(ctx context.Context) (string, error) {
 }
 
 // createSecretDirectly stores a secret through platform-api's own API, bypassing the UI.
-func (u *UI) createSecretDirectly(ctx context.Context, handle, value string) error {
+func (u *Steps) createSecretDirectly(ctx context.Context, handle, value string) error {
 	page, base, token, err := u.platformAPI(ctx)
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func (u *UI) createSecretDirectly(ctx context.Context, handle, value string) err
 
 // deletesProviderDirectly removes a provider through platform-api's own API, bypassing the
 // UI — for tearing down a provider mid-scenario without navigating back to it.
-func (u *UI) deletesProviderDirectly(ctx context.Context, name string) error {
+func (u *Steps) deletesProviderDirectly(ctx context.Context, name string) error {
 	page, base, token, err := u.platformAPI(ctx)
 	if err != nil {
 		return err
@@ -151,7 +151,7 @@ func (u *UI) deletesProviderDirectly(ctx context.Context, name string) error {
 
 // fetchSecretDirectly reads a secret's stored fields through platform-api's own API and
 // returns the raw response body.
-func (u *UI) fetchSecretDirectly(ctx context.Context, handle string) (string, error) {
+func (u *Steps) fetchSecretDirectly(ctx context.Context, handle string) (string, error) {
 	page, base, token, err := u.platformAPI(ctx)
 	if err != nil {
 		return "", err

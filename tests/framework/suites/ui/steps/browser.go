@@ -200,6 +200,9 @@ func (u *UI) collectBrowserCoverage(ctx context.Context, scenario string) error 
 			u.topo.Block.Name, scenario, err)
 	}
 	if istanbulReport == nil {
+		if page.URL() == "about:blank" {
+			return nil
+		}
 		return fmt.Errorf("ui: Istanbul browser coverage is missing for block %q, scenario %q; source-level instrumentation is required",
 			u.topo.Block.Name, scenario)
 	}

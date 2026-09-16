@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -233,7 +233,7 @@ type callTrackerState struct {
 // watchSecretAndProviderCalls starts recording every /secrets, /llm-providers, and
 // /llm-proxies request for the rest of the scenario, replacing any tracker from an
 // earlier action.
-func (u *UI) watchSecretAndProviderCalls(ctx context.Context) error {
+func (u *Steps) watchSecretAndProviderCalls(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -249,7 +249,7 @@ func (u *UI) watchSecretAndProviderCalls(ctx context.Context) error {
 	return tcontext.Set(ctx, keyCallTracker, &callTrackerState{tracker: tracker, handler: handler})
 }
 
-func (u *UI) tracker(ctx context.Context) (*callTracker, error) {
+func (u *Steps) tracker(ctx context.Context) (*callTracker, error) {
 	v, ok := tcontext.Get(ctx, keyCallTracker)
 	if !ok {
 		return nil, fmt.Errorf("no network calls have been recorded in this scenario")
@@ -265,9 +265,9 @@ func (u *UI) tracker(ctx context.Context) (*callTracker, error) {
 
 // submitsProviderWithCredential fills and submits the OpenAI template's provider form with
 // an explicit credential, recording the /secrets and /llm-providers calls it makes.
-func (u *UI) submitsProviderWithCredential(ctx context.Context, name, credential string) error {
+func (u *Steps) submitsProviderWithCredential(ctx context.Context, name, credential string) error {
 	if credential != "" {
-		if err := markSensitiveArtifacts(ctx); err != nil {
+		if err := u.markSensitive(ctx); err != nil {
 			return err
 		}
 	}
@@ -300,7 +300,7 @@ func (u *UI) submitsProviderWithCredential(ctx context.Context, name, credential
 
 // submitsProviderWithCredentialPlaceholder is submitsProviderWithCredential, with the
 // credential built as a placeholder referencing an existing secret handle.
-func (u *UI) submitsProviderWithCredentialPlaceholder(ctx context.Context, name, handle string) error {
+func (u *Steps) submitsProviderWithCredentialPlaceholder(ctx context.Context, name, handle string) error {
 	return u.submitsProviderWithCredential(ctx, name, secretPlaceholder(handle))
 }
 
@@ -312,7 +312,7 @@ func credentialField(page playwright.Page) playwright.Locator {
 }
 
 // opensProviderConnectionTab switches the provider overview to its Connection tab.
-func (u *UI) opensProviderConnectionTab(ctx context.Context) error {
+func (u *Steps) opensProviderConnectionTab(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -326,7 +326,7 @@ func (u *UI) opensProviderConnectionTab(ctx context.Context) error {
 // opensProviderFromList navigates to the provider list, reloading so a list already
 // fetched earlier in this scenario reflects the provider just created, searches for it so
 // it is not lost among others the org has accumulated, and opens its card.
-func (u *UI) opensProviderFromList(ctx context.Context, name string) error {
+func (u *Steps) opensProviderFromList(ctx context.Context, name string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -349,8 +349,8 @@ func (u *UI) opensProviderFromList(ctx context.Context, name string) error {
 // changesProviderCredential clears the masked credential field, types a new value, and
 // clicks the page's Save button — editing stages the change locally; Save is what
 // persists it, recording the calls the save makes.
-func (u *UI) changesProviderCredential(ctx context.Context, newValue string) error {
-	if err := markSensitiveArtifacts(ctx); err != nil {
+func (u *Steps) changesProviderCredential(ctx context.Context, newValue string) error {
+	if err := u.markSensitive(ctx); err != nil {
 		return err
 	}
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
@@ -378,13 +378,13 @@ func (u *UI) changesProviderCredential(ctx context.Context, newValue string) err
 
 // changesProviderCredentialToPlaceholder is changesProviderCredential, with the new value
 // built as a placeholder referencing an existing secret handle.
-func (u *UI) changesProviderCredentialToPlaceholder(ctx context.Context, handle string) error {
+func (u *Steps) changesProviderCredentialToPlaceholder(ctx context.Context, handle string) error {
 	return u.changesProviderCredential(ctx, secretPlaceholder(handle))
 }
 
 // secretCreationAlwaysFails stubs every secret-creation call for the rest of the scenario
 // with a server error, so the caller's own handling of that failure can be exercised.
-func (u *UI) secretCreationAlwaysFails(ctx context.Context) error {
+func (u *Steps) secretCreationAlwaysFails(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -405,7 +405,7 @@ const keyLastSecretHandle = "uiLastSecretHandle"
 // aSecretWasCreatedForThatCredential asserts exactly one secret was created, waiting for
 // the network listener to catch up the same way awaitProviderCall/awaitProxyCall do, since
 // this step is sometimes the first one to check the tracker after a page navigation.
-func (u *UI) aSecretWasCreatedForThatCredential(ctx context.Context) error {
+func (u *Steps) aSecretWasCreatedForThatCredential(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -436,7 +436,7 @@ func (u *UI) aSecretWasCreatedForThatCredential(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) noSecretWasCreatedForThatCredential(ctx context.Context) error {
+func (u *Steps) noSecretWasCreatedForThatCredential(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -467,7 +467,7 @@ func providerAuthValue(call recordedCall) (string, error) {
 
 // providerCallCarriesAPlaceholder asserts the most recent request of the given method
 // carries a secret placeholder and never the plaintext credential.
-func (u *UI) providerCallCarriesAPlaceholder(ctx context.Context, method, plaintext string) error {
+func (u *Steps) providerCallCarriesAPlaceholder(ctx context.Context, method, plaintext string) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -491,7 +491,7 @@ func (u *UI) providerCallCarriesAPlaceholder(ctx context.Context, method, plaint
 
 // providerCallCarriesPlaceholderFor asserts the most recent request of the given method
 // carries a placeholder referencing the given secret handle.
-func (u *UI) providerCallCarriesPlaceholderFor(ctx context.Context, method, handle string) error {
+func (u *Steps) providerCallCarriesPlaceholderFor(ctx context.Context, method, handle string) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -510,23 +510,23 @@ func (u *UI) providerCallCarriesPlaceholderFor(ctx context.Context, method, hand
 	return nil
 }
 
-func (u *UI) theProviderWasCreatedWithAPlaceholder(ctx context.Context, plaintext string) error {
+func (u *Steps) theProviderWasCreatedWithAPlaceholder(ctx context.Context, plaintext string) error {
 	return u.providerCallCarriesAPlaceholder(ctx, "POST", plaintext)
 }
 
-func (u *UI) theProviderWasCreatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
+func (u *Steps) theProviderWasCreatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
 	return u.providerCallCarriesPlaceholderFor(ctx, "POST", handle)
 }
 
-func (u *UI) theProviderWasUpdatedWithAPlaceholder(ctx context.Context, plaintext string) error {
+func (u *Steps) theProviderWasUpdatedWithAPlaceholder(ctx context.Context, plaintext string) error {
 	return u.providerCallCarriesAPlaceholder(ctx, "PUT", plaintext)
 }
 
-func (u *UI) theProviderWasUpdatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
+func (u *Steps) theProviderWasUpdatedWithThePlaceholderReferencing(ctx context.Context, handle string) error {
 	return u.providerCallCarriesPlaceholderFor(ctx, "PUT", handle)
 }
 
-func (u *UI) theProviderWasNotCreated(ctx context.Context) error {
+func (u *Steps) theProviderWasNotCreated(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -537,7 +537,7 @@ func (u *UI) theProviderWasNotCreated(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) theProviderWasNotUpdated(ctx context.Context) error {
+func (u *Steps) theProviderWasNotUpdated(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -548,7 +548,7 @@ func (u *UI) theProviderWasNotUpdated(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) theProviderWasUpdated(ctx context.Context) error {
+func (u *Steps) theProviderWasUpdated(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -564,7 +564,7 @@ func (u *UI) theProviderWasUpdated(ctx context.Context) error {
 }
 
 // pageNeverShows asserts text does not appear anywhere in the page's rendered content.
-func (u *UI) pageNeverShows(ctx context.Context, text string) error {
+func (u *Steps) pageNeverShows(ctx context.Context, text string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -581,7 +581,7 @@ func (u *UI) pageNeverShows(ctx context.Context, text string) error {
 
 // seesAnErrorNotification asserts a snackbar notification is visible, regardless of the
 // exact message it carries.
-func (u *UI) seesAnErrorNotification(ctx context.Context) error {
+func (u *Steps) seesAnErrorNotification(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -591,11 +591,11 @@ func (u *UI) seesAnErrorNotification(ctx context.Context) error {
 
 // --- direct-to-platform-api secret steps ---
 
-func (u *UI) aSecretAlreadyHoldsTheValue(ctx context.Context, handle, value string) error {
+func (u *Steps) aSecretAlreadyHoldsTheValue(ctx context.Context, handle, value string) error {
 	return u.createSecretDirectly(ctx, handle, value)
 }
 
-func (u *UI) fetchingTheSecretDirectlyReturnsNoPlaintextValue(ctx context.Context, handle string) error {
+func (u *Steps) fetchingTheSecretDirectlyReturnsNoPlaintextValue(ctx context.Context, handle string) error {
 	body, err := u.fetchSecretDirectly(ctx, handle)
 	if err != nil {
 		return err

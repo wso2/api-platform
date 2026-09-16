@@ -30,9 +30,15 @@ services:
     volumes:
       - ./config.toml:/app/configs/config.toml:ro
       - ./keys/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
+      - ./role-to-scope-mapping.yaml:/etc/api-portal/role-to-scope-mapping.yaml:ro
       - ./certs/cert.pem:/etc/api-portal/certs/cert.pem:ro
     ports:
       - "9543"
+    deploy:
+      resources:
+        limits:
+          cpus: "${APIP_CPU_LIMIT:-1.5}"
+          memory: ${APIP_MEMORY_LIMIT_MB:-2048}M
     networks:
       - gateway
 

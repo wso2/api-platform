@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 // opensMCPProxyBackendConnectionTab switches the MCP proxy overview to its Backend
 // Connection tab and waits for the endpoint field to render, confirming the proxy's stored
 // connection details have loaded.
-func (u *UI) opensMCPProxyBackendConnectionTab(ctx context.Context) error {
+func (u *Steps) opensMCPProxyBackendConnectionTab(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (u *UI) opensMCPProxyBackendConnectionTab(ctx context.Context) error {
 // theBackendConnectionAuthValueFieldShowsTheMaskedSentinel asserts the auth value field
 // displays the masked placeholder rather than a real credential — the value is write-only
 // server-side, so this is the only thing the field can ever legitimately show on load.
-func (u *UI) theBackendConnectionAuthValueFieldShowsTheMaskedSentinel(ctx context.Context) error {
+func (u *Steps) theBackendConnectionAuthValueFieldShowsTheMaskedSentinel(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -52,7 +52,7 @@ func (u *UI) theBackendConnectionAuthValueFieldShowsTheMaskedSentinel(ctx contex
 	return u.expect.Locator(page.Locator(`[data-testid="backend-connection-auth-value"]`)).ToHaveValue("******")
 }
 
-func (u *UI) editsBackendConnectionURL(ctx context.Context, newURL string) error {
+func (u *Steps) editsBackendConnectionURL(ctx context.Context, newURL string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func (u *UI) editsBackendConnectionURL(ctx context.Context, newURL string) error
 	return nil
 }
 
-func (u *UI) editsBackendConnectionAuthHeader(ctx context.Context, newHeader string) error {
+func (u *Steps) editsBackendConnectionAuthHeader(ctx context.Context, newHeader string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func (u *UI) editsBackendConnectionAuthHeader(ctx context.Context, newHeader str
 
 // editsBackendConnectionAuthValue focuses the masked value field before filling it, mirroring
 // the product's own flow for clearing the sentinel to type a live credential.
-func (u *UI) editsBackendConnectionAuthValue(ctx context.Context, newValue string) error {
+func (u *Steps) editsBackendConnectionAuthValue(ctx context.Context, newValue string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (u *UI) editsBackendConnectionAuthValue(ctx context.Context, newValue strin
 
 // clicksRefetchServerInfo triggers the Backend Connection tab's own validation probe,
 // recording the /mcp-proxies/fetch-server-info request it makes.
-func (u *UI) clicksRefetchServerInfo(ctx context.Context) error {
+func (u *Steps) clicksRefetchServerInfo(ctx context.Context) error {
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (u *UI) clicksRefetchServerInfo(ctx context.Context) error {
 
 // savesBackendConnection clicks the Backend Connection tab's Save button, recording the
 // /secrets and /mcp-proxies calls the save makes.
-func (u *UI) savesBackendConnection(ctx context.Context) error {
+func (u *Steps) savesBackendConnection(ctx context.Context) error {
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func decodeFetchServerInfoRequest(call recordedCall) (fetchServerInfoRequest, er
 // theRefetchRequestUsedOnlyTheStoredProxy asserts the most recent fetch-server-info request
 // carries only the proxy's own id, letting the backend resolve the stored url and
 // credential itself.
-func (u *UI) theRefetchRequestUsedOnlyTheStoredProxy(ctx context.Context) error {
+func (u *Steps) theRefetchRequestUsedOnlyTheStoredProxy(ctx context.Context) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -178,7 +178,7 @@ func (u *UI) theRefetchRequestUsedOnlyTheStoredProxy(ctx context.Context) error 
 
 // theRefetchRequestSentTheLiveCredential asserts the most recent fetch-server-info request
 // validates the live, unsaved url and credential directly, omitting proxyId.
-func (u *UI) theRefetchRequestSentTheLiveCredential(ctx context.Context, url, header, value string) error {
+func (u *Steps) theRefetchRequestSentTheLiveCredential(ctx context.Context, url, header, value string) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err
@@ -215,7 +215,7 @@ func (u *UI) theRefetchRequestSentTheLiveCredential(ctx context.Context, url, he
 // theRefetchRequestUsedTheEditedURLAndStoredProxy asserts the most recent fetch-server-info
 // request validates an unsaved endpoint edit while still letting the backend supply the
 // stored credential via proxyId.
-func (u *UI) theRefetchRequestUsedTheEditedURLAndStoredProxy(ctx context.Context, url string) error {
+func (u *Steps) theRefetchRequestUsedTheEditedURLAndStoredProxy(ctx context.Context, url string) error {
 	t, err := u.tracker(ctx)
 	if err != nil {
 		return err

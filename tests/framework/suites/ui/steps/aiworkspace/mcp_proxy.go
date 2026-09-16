@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 
 // opensProject navigates from the organization's project list into the named project's
 // own scoped workspace.
-func (u *UI) opensProject(ctx context.Context, name string) error {
+func (u *Steps) opensProject(ctx context.Context, name string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -42,7 +42,7 @@ func (u *UI) opensProject(ctx context.Context, name string) error {
 }
 
 // opensMCPProxies switches the current project's view to its MCP Proxies list.
-func (u *UI) opensMCPProxies(ctx context.Context) error {
+func (u *Steps) opensMCPProxies(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -55,7 +55,7 @@ func (u *UI) opensMCPProxies(ctx context.Context) error {
 
 // startsCreatingMCPProxy opens the MCP proxy create form from the current project's MCP
 // Proxies list.
-func (u *UI) startsCreatingMCPProxy(ctx context.Context) error {
+func (u *Steps) startsCreatingMCPProxy(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -72,7 +72,7 @@ func (u *UI) startsCreatingMCPProxy(ctx context.Context) error {
 // endpoint: starts the create flow, probes the sample URL, then names and submits the
 // proxy. The probe is a real backend call validating the sample endpoint, and the Next
 // button only appears once it resolves.
-func (u *UI) createsMCPProxyUsingSampleURL(ctx context.Context, name string) error {
+func (u *Steps) createsMCPProxyUsingSampleURL(ctx context.Context, name string) error {
 	if err := u.startsCreatingMCPProxy(ctx); err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ var mcpProxyOverviewURL = regexp.MustCompile(`/mcp-proxy/([^/]+)$`)
 // the transient create route. RE2 has no lookahead, so the two facts are asserted
 // separately: the shape first (retrying until the redirect lands), then that the id is not
 // the literal "create".
-func (u *UI) onMCPProxyOverview(ctx context.Context) error {
+func (u *Steps) onMCPProxyOverview(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -133,7 +133,7 @@ func (u *UI) onMCPProxyOverview(ctx context.Context) error {
 
 // deletesMCPProxy opens the delete confirmation for the named proxy's row on the MCP
 // Proxies list and confirms it.
-func (u *UI) deletesMCPProxy(ctx context.Context, name string) error {
+func (u *Steps) deletesMCPProxy(ctx context.Context, name string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -158,7 +158,7 @@ func (u *UI) deletesMCPProxy(ctx context.Context, name string) error {
 }
 
 // returnsToOrganizationLevel leaves the current project's scoped workspace.
-func (u *UI) returnsToOrganizationLevel(ctx context.Context) error {
+func (u *Steps) returnsToOrganizationLevel(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func (u *UI) returnsToOrganizationLevel(ctx context.Context) error {
 
 // deletesProject opens the delete confirmation for the named project's card on the
 // project list and confirms it.
-func (u *UI) deletesProject(ctx context.Context, name string) error {
+func (u *Steps) deletesProject(ctx context.Context, name string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

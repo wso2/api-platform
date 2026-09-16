@@ -1,0 +1,2 @@
+[api_portal.auth.authorization]
+mode = "role"

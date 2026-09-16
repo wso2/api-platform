@@ -100,12 +100,18 @@ type TransientMatcher func(*Response) bool
 type Options struct {
 	// Timeout bounds one request.
 	Timeout time.Duration
+	// FollowRedirects enables normal HTTP redirect handling.
+	FollowRedirects bool
 	// MaxRetries bounds transient-error retries.
 	MaxRetries int
 	// RetryDelay is the pause between transient retries.
 	RetryDelay time.Duration
 	// RetryOn recognises transient responses.
 	RetryOn []TransientMatcher
+	// TLSClientConfig configures certificate verification for trusted test services.
+	// A nil value uses the system verification roots and hostname from the URL, unless
+	// InsecureSkipVerify is explicitly enabled.
+	TLSClientConfig *tls.Config
 	// InsecureSkipVerify disables TLS certificate and hostname verification. Use only for
 	// local test targets that intentionally use self-signed certificates.
 	InsecureSkipVerify bool
@@ -123,22 +129,29 @@ func NewClient(opts Options) *Client {
 		opts.RetryDelay = 2 * time.Second
 	}
 
-	return &Client{
-		http: &http.Client{
-			Timeout: opts.Timeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384},
-					InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec // explicit opt-in for local self-signed test targets
-				},
-				MaxIdleConns:        200,
-				MaxIdleConnsPerHost: 50,
-				MaxConnsPerHost:     100,
-			},
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+	tlsConfig := opts.TLSClientConfig
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{
+			CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384},
+			InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec // explicit opt-in for local self-signed test targets
+		}
+	}
+	httpClient := &http.Client{
+		Timeout: opts.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig:     tlsConfig,
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 50,
+			MaxConnsPerHost:     100,
 		},
+	}
+	if !opts.FollowRedirects {
+		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	return &Client{
+		http:    httpClient,
 		retryOn: append([]TransientMatcher(nil), opts.RetryOn...),
 	}
 }

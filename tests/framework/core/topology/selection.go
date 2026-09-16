@@ -21,6 +21,7 @@ package topology
 import (
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 	"strings"
@@ -277,6 +278,7 @@ func cloneBlock(block ResolvedBlock) ResolvedBlock {
 		for key, value := range component.ExternalParameters {
 			out.Components[i].ExternalParameters[key] = value
 		}
+		out.Components[i].StagedFiles = maps.Clone(component.StagedFiles)
 	}
 	out.Runners = make([]Runner, len(block.Runners))
 	for i, runner := range block.Runners {

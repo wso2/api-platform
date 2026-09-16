@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -32,7 +32,7 @@ import (
 const keyTemplateVersionIDs = "uiLatestTemplateVersionIDs"
 
 // opensLLMProviderTemplates navigates to the organization's LLM Provider Templates list.
-func (u *UI) opensLLMProviderTemplates(ctx context.Context) error {
+func (u *Steps) opensLLMProviderTemplates(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (u *UI) opensLLMProviderTemplates(ctx context.Context) error {
 
 // createsLLMProviderTemplate creates a new custom LLM provider template with the given
 // display name and endpoint URL, registering its first version (v1.0) for cleanup.
-func (u *UI) createsLLMProviderTemplate(ctx context.Context, name, url string) error {
+func (u *Steps) createsLLMProviderTemplate(ctx context.Context, name, url string) error {
 	if err := u.opensLLMProviderTemplates(ctx); err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func (u *UI) createsLLMProviderTemplate(ctx context.Context, name, url string) e
 
 // opensLLMProviderTemplate opens the named template's own overview page from the LLM
 // Provider Templates list.
-func (u *UI) opensLLMProviderTemplate(ctx context.Context, name string) error {
+func (u *Steps) opensLLMProviderTemplate(ctx context.Context, name string) error {
 	if err := u.opensLLMProviderTemplates(ctx); err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (u *UI) opensLLMProviderTemplate(ctx context.Context, name string) error {
 // createsLLMProviderTemplateVersion creates a new version of the template currently open,
 // starting from the version selector's current entry, and registers the new version for
 // cleanup.
-func (u *UI) createsLLMProviderTemplateVersion(ctx context.Context, fromVersion, toVersion, url string) error {
+func (u *Steps) createsLLMProviderTemplateVersion(ctx context.Context, fromVersion, toVersion, url string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -124,7 +124,7 @@ func (u *UI) createsLLMProviderTemplateVersion(ctx context.Context, fromVersion,
 
 // registerCreatedTemplateVersion records a template version create response's id, keyed by
 // its version string, both for later deregistration lookup and for scenario cleanup.
-func (u *UI) registerCreatedTemplateVersion(ctx context.Context, version string, resp playwright.Response) error {
+func (u *Steps) registerCreatedTemplateVersion(ctx context.Context, version string, resp playwright.Response) error {
 	if resp.Status() < 200 || resp.Status() >= 300 {
 		return nil
 	}
@@ -151,7 +151,7 @@ func (u *UI) registerCreatedTemplateVersion(ctx context.Context, version string,
 }
 
 // templateVersionIDs returns the version-to-id map recorded so far in this scenario.
-func (u *UI) templateVersionIDs(ctx context.Context) (map[string]string, error) {
+func (u *Steps) templateVersionIDs(ctx context.Context) (map[string]string, error) {
 	v, ok := tcontext.Get(ctx, keyTemplateVersionIDs)
 	if !ok {
 		return map[string]string{}, nil
@@ -164,7 +164,7 @@ func (u *UI) templateVersionIDs(ctx context.Context) (map[string]string, error) 
 }
 
 // seesVersionButton asserts the version selector currently shows the given version.
-func (u *UI) seesVersionButton(ctx context.Context, version string) error {
+func (u *Steps) seesVersionButton(ctx context.Context, version string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -175,7 +175,7 @@ func (u *UI) seesVersionButton(ctx context.Context, version string) error {
 
 // createsProviderFromTemplateVersion creates a provider from the named template's specific
 // version.
-func (u *UI) createsProviderFromTemplateVersion(ctx context.Context, providerName, templateName, version string) error {
+func (u *Steps) createsProviderFromTemplateVersion(ctx context.Context, providerName, templateName, version string) error {
 	if err := u.startAddingProviderFromTemplateVersion(ctx, templateName, version); err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func (u *UI) createsProviderFromTemplateVersion(ctx context.Context, providerNam
 
 // confirmsTemplateVersionDelete opens the delete confirmation for the template version
 // currently open and confirms it, without assuming the deletion succeeds.
-func (u *UI) confirmsTemplateVersionDelete(ctx context.Context) error {
+func (u *Steps) confirmsTemplateVersionDelete(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -202,13 +202,13 @@ func (u *UI) confirmsTemplateVersionDelete(ctx context.Context) error {
 
 // attemptsToDeleteCurrentTemplateVersion confirms a delete that is expected to be blocked
 // because a provider still references the version, so cleanup state is left untouched.
-func (u *UI) attemptsToDeleteCurrentTemplateVersion(ctx context.Context) error {
+func (u *Steps) attemptsToDeleteCurrentTemplateVersion(ctx context.Context) error {
 	return u.confirmsTemplateVersionDelete(ctx)
 }
 
 // deletesTemplateVersion confirms a delete that is expected to succeed for the named
 // version, and deregisters it from cleanup.
-func (u *UI) deletesTemplateVersion(ctx context.Context, version string) error {
+func (u *Steps) deletesTemplateVersion(ctx context.Context, version string) error {
 	if err := u.confirmsTemplateVersionDelete(ctx); err != nil {
 		return err
 	}

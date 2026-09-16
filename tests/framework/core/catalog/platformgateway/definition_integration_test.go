@@ -22,7 +22,6 @@ package platformgateway
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -162,8 +161,7 @@ func TestPlatformGatewayBootsAsOneComponent(t *testing.T) {
 		require.NoError(t, err)
 
 		client := &http.Client{
-			Timeout:   10 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec
+			Timeout: 10 * time.Second,
 		}
 		resp, err := client.Get(admin + "/api/admin/v1/health")
 		require.NoError(t, err, "the controller admin API should answer through the gateway component")

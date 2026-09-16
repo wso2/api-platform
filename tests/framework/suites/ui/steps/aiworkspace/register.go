@@ -16,79 +16,54 @@
  * under the License.
  */
 
-// Package steps holds the UI suite's step definitions: godog features driving a real
-// browser (on the block's network) against the AI Workspace.
-package steps
+// Package aiworkspace contains AI Workspace-specific UI bindings.
+package aiworkspace
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
-	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
-// assertTimeoutMs bounds every web-first assertion. Generous over a fresh SPA load,
-// still far below any scenario timeout.
-const assertTimeoutMs = 15000
-
-const keyBrowserCoverageReset = "uiBrowserCoverageReset"
-
-// UI holds what the UI steps need.
-type UI struct {
-	topo         *frameworkruntime.Topology
-	expect       playwright.PlaywrightAssertions
-	coverageSink *coverage.Sink
+// Steps contains AI Workspace-specific bindings and their suite dependencies.
+type Steps struct {
+	topo          *frameworkruntime.Topology
+	expect        playwright.PlaywrightAssertions
+	pageGetter    func(context.Context) (playwright.Page, error)
+	markSensitive func(context.Context) error
+	browserGetter func() (playwright.Browser, error)
+	closePage     func(context.Context)
+	newPage       func(playwright.BrowserContext, bool) (playwright.Page, error)
+	coverage      bool
 }
 
-// New builds the step set for one block's topology.
-func New(topo *frameworkruntime.Topology, coverageSink *coverage.Sink) *UI {
-	return &UI{
-		topo:         topo,
-		expect:       playwright.NewPlaywrightAssertions(assertTimeoutMs),
-		coverageSink: coverageSink,
-	}
+// New constructs AI Workspace bindings using the suite's isolated page.
+func New(topo *frameworkruntime.Topology, expect playwright.PlaywrightAssertions,
+	pageGetter func(context.Context) (playwright.Page, error),
+	markSensitive func(context.Context) error,
+	browserGetter func() (playwright.Browser, error), closePage func(context.Context),
+	newPage func(playwright.BrowserContext, bool) (playwright.Page, error), coverage bool) *Steps {
+	return &Steps{topo: topo, expect: expect, pageGetter: pageGetter, markSensitive: markSensitive,
+		browserGetter: browserGetter, closePage: closePage, newPage: newPage, coverage: coverage}
 }
 
-// Register wires the browser lifecycle and every step this suite provides.
-func (u *UI) Register(sc *godog.ScenarioContext) {
-	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
-		return u.openScenarioPage(ctx)
-	})
-	sc.StepContext().After(func(ctx context.Context, _ *godog.Step, _ godog.StepResultStatus, _ error) (context.Context, error) {
-		if u.coverageSink == nil || tcontext.Contains(ctx, keyBrowserCoverageReset) {
-			return ctx, nil
-		}
-		if err := u.resetBrowserCoverage(ctx); err != nil {
-			return ctx, err
-		}
-		if err := tcontext.Set(ctx, keyBrowserCoverageReset, true); err != nil {
-			return ctx, err
-		}
-		return ctx, nil
-	})
-	sc.After(func(ctx context.Context, scn *godog.Scenario, scenarioErr error) (context.Context, error) {
-		if scenarioErr != nil {
-			name := artifactBaseName(scn.Name)
-			u.saveFailureArtifacts(ctx, name)
-			u.stopTracing(ctx, name, true)
-		} else {
-			u.stopTracing(ctx, "", false)
-		}
-		coverageErr := u.collectBrowserCoverage(ctx, scn.Name)
-		u.closeScenarioPage(ctx)
-		if coverageErr != nil {
-			return ctx, coverageErr
-		}
-		// The step's own failure is already recorded; returning it again would re-report
-		// it as a hook failure.
-		return ctx, nil
-	})
+func (u *Steps) page(ctx context.Context) (playwright.Page, error) {
+	return u.pageGetter(ctx)
+}
 
+func (u *Steps) browserFor() (playwright.Browser, error) { return u.browserGetter() }
+
+func (u *Steps) closeScenarioPage(ctx context.Context) { u.closePage(ctx) }
+
+func (u *Steps) newAppPage(ctx playwright.BrowserContext) (playwright.Page, error) {
+	return u.newPage(ctx, u.coverage)
+}
+
+// Register wires AI Workspace-specific steps into the scenario context.
+func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the user opens the workspace$`, u.openWorkspace)
 	sc.Step(`^the browser has no runtime configuration$`, u.withoutRuntimeConfiguration)
 	sc.Step(`^the runtime configuration fallback is active$`, u.runtimeConfigurationFallbackIsActive)
@@ -212,76 +187,4 @@ func (u *UI) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the user attempts to delete the current template version$`, u.attemptsToDeleteCurrentTemplateVersion)
 	sc.Step(`^the user deletes the provider "([^"]*)" directly$`, u.deletesProviderDirectly)
 	sc.Step(`^the user deletes the template's "([^"]*)" version$`, u.deletesTemplateVersion)
-}
-
-// workspaceURL is the address a user's browser opens: the alias form, resolved on the
-// block's network where the browser runs. The /ai-workspace suffix is the SPA's base path.
-func (u *UI) workspaceURL() (string, error) {
-	inst, err := u.topo.Component("ai-workspace")
-	if err != nil {
-		return "", err
-	}
-	base, err := inst.InternalURL("https")
-	if err != nil {
-		return "", err
-	}
-	return base + "/ai-workspace", nil
-}
-
-func (u *UI) openWorkspace(ctx context.Context) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	url, err := u.workspaceURL()
-	if err != nil {
-		return err
-	}
-	if _, err := page.Goto(url); err != nil {
-		return fmt.Errorf("opening %s: %w", url, err)
-	}
-	return nil
-}
-
-func (u *UI) withoutRuntimeConfiguration(ctx context.Context) error {
-	v, ok := tcontext.Get(ctx, keyBrowserContext)
-	if !ok {
-		return fmt.Errorf("ui: no browser context in scope")
-	}
-	bctx, ok := v.(playwright.BrowserContext)
-	if !ok {
-		return fmt.Errorf("ui: browser context has unexpected type %T", v)
-	}
-	return bctx.Route("**/runtime-config.js", func(route playwright.Route) {
-		_ = route.Fulfill(playwright.RouteFulfillOptions{
-			Body:        "globalThis.__RUNTIME_CONFIG__ = {};",
-			ContentType: playwright.String("application/javascript"),
-		})
-	})
-}
-
-func (u *UI) runtimeConfigurationFallbackIsActive(ctx context.Context) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	value, err := page.Evaluate(`globalThis.__RUNTIME_CONFIG__ || null`)
-	if err != nil {
-		return fmt.Errorf("reading runtime configuration: %w", err)
-	}
-	if value == nil {
-		return fmt.Errorf("runtime configuration fallback was not loaded")
-	}
-	return nil
-}
-
-func (u *UI) seesSignInForm(ctx context.Context) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator(`input[placeholder="username"]`)).ToBeVisible(); err != nil {
-		return fmt.Errorf("the username field never became visible: %w", err)
-	}
-	return u.expect.Locator(page.Locator(`input[type="password"]`)).ToBeVisible()
 }

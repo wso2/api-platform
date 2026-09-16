@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -36,7 +36,7 @@ const keySignedInState = "uiSignedInState"
 // signInAsAdministrator drives the real sign-in form with the test overlay's admin
 // credentials. This is the step for the scenarios ABOUT logging in; everything else uses
 // "the user is signed in", which replays the saved state instead of the form.
-func (u *UI) signInAsAdministrator(ctx context.Context) error {
+func (u *Steps) signInAsAdministrator(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -55,7 +55,7 @@ func (u *UI) signInAsAdministrator(ctx context.Context) error {
 
 // landsOnOrganizationHome asserts what a signed-in user SEES: the organization URL and the
 // home content — the same three facts the product's own suite treats as "logged in".
-func (u *UI) landsOnOrganizationHome(ctx context.Context) error {
+func (u *Steps) landsOnOrganizationHome(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -72,7 +72,7 @@ func (u *UI) landsOnOrganizationHome(ctx context.Context) error {
 // isSignedIn boots the scenario into an authenticated session. The runner's FIRST use pays
 // for one real UI login and saves the browser state; every later use starts a fresh context
 // FROM that state — no login UI, no shared cookies jar, still a real session.
-func (u *UI) isSignedIn(ctx context.Context) (context.Context, error) {
+func (u *Steps) isSignedIn(ctx context.Context) (context.Context, error) {
 	local, ok := tcontext.LocalOf(ctx)
 	if !ok {
 		return ctx, fmt.Errorf("ui: no runner scope in context")
@@ -107,7 +107,7 @@ func (u *UI) isSignedIn(ctx context.Context) (context.Context, error) {
 }
 
 // reopenWithState swaps the scenario's fresh context for one born signed-in.
-func (u *UI) reopenWithState(ctx context.Context, state *playwright.OptionalStorageState) (context.Context, error) {
+func (u *Steps) reopenWithState(ctx context.Context, state *playwright.OptionalStorageState) (context.Context, error) {
 	u.closeScenarioPage(ctx)
 
 	b, err := u.browserFor()
@@ -121,7 +121,7 @@ func (u *UI) reopenWithState(ctx context.Context, state *playwright.OptionalStor
 	if err != nil {
 		return ctx, fmt.Errorf("ui: creating the signed-in context: %w", err)
 	}
-	page, err := newAppPage(bctx, u.coverageSink != nil)
+	page, err := u.newAppPage(bctx)
 	if err != nil {
 		_ = bctx.Close()
 		return ctx, err
