@@ -1,6 +1,3 @@
 node_modules/
 package-lock.json
-.server.pid
-.server.log
-.client-*.log
 .DS_Store
