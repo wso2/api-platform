@@ -121,7 +121,7 @@ export const API_TYPES: ApiType[] = [
     title: messages.graphQlTitle,
     description: messages.graphQlDescription,
     icon: <GraphqlIcon />,
-    enabled: false,
+    enabled: true,
   },
   {
     key: 'websub',
