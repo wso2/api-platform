@@ -251,14 +251,18 @@ type ApiDocumentRepository interface {
 
 // PublicationRepository defines the interface for api_publications and its
 // satellite tables (api_publication_contents, api_publication_doc_mappings,
-// api_publication_plan_mappings). Slice 1 only ever operates on draft rows
-// (IsDraft true); publication (live) rows are Slice 2+.
+// api_publication_plan_mappings). Slice 1 operates on draft rows (IsDraft
+// true); Slice 2 adds read-only access to live rows (IsDraft false).
 type PublicationRepository interface {
 	// GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
 	// plus the raw subscription-plan and document UUIDs its mapping tables
 	// store (not yet resolved to handles — the caller does that). Returns
 	// (nil, nil, nil, nil) when no draft has been saved.
 	GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	// GetPublication is GetDraft's counterpart for the live (IsDraft false)
+	// row. Returns (nil, nil, nil, nil) when this API is not published to
+	// this portal.
+	GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
 	// SaveDraftDetails creates the draft row on first save (any artifactUUID +
 	// apiPortalUUID pairing with no existing draft), or replaces an existing
 	// one in full, together with its plan/document mapping rows (planUUIDs /

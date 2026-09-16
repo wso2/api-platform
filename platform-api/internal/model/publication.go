@@ -62,6 +62,14 @@ type Publication struct {
 	HasThumbnail   bool `json:"hasThumbnail"`
 	HasLandingPage bool `json:"hasLandingPage"`
 
+	// APIPortalHandle/APIPortalName are populated only for a live publication
+	// read (PublicationService.GetPublication) — the portal's own handle and
+	// display name for the response's apiPortalId/apiPortalName fields. Left
+	// empty for a draft, which is always read in the context of one portal
+	// already named in the request path.
+	APIPortalHandle string `json:"-"`
+	APIPortalName   string `json:"-"`
+
 	DataVersion string    `json:"-" db:"data_version"`
 	CreatedBy   string    `json:"createdBy,omitempty" db:"created_by"`
 	CreatedAt   time.Time `json:"createdAt" db:"created_at"`

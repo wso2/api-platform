@@ -92,17 +92,28 @@ func (s *PublicationService) resolveArtifact(apiType, apiId, orgUUID string) (st
 
 // resolvePortal resolves apiPortalId (handle) to the portal's internal UUID.
 func (s *PublicationService) resolvePortal(apiPortalId, orgUUID string) (string, error) {
+	portal, err := s.resolvePortalRow(apiPortalId, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	return portal.UUID, nil
+}
+
+// resolvePortalRow is resolvePortal's counterpart for callers that also need
+// the portal's own handle/display name (the live publication read, for its
+// apiPortalId/apiPortalName response fields).
+func (s *PublicationService) resolvePortalRow(apiPortalId, orgUUID string) (*model.APIPortal, error) {
 	if apiPortalId == "" {
-		return "", apperror.APIPublicationAPIPortalNotFound.New()
+		return nil, apperror.APIPublicationAPIPortalNotFound.New()
 	}
 	portal, err := s.apiPortalRepo.GetByHandleAndOrg(apiPortalId, orgUUID)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve API Portal by handle: %w", err)
+		return nil, fmt.Errorf("failed to resolve API Portal by handle: %w", err)
 	}
 	if portal == nil {
-		return "", apperror.APIPublicationAPIPortalNotFound.New()
+		return nil, apperror.APIPublicationAPIPortalNotFound.New()
 	}
-	return portal.UUID, nil
+	return portal, nil
 }
 
 // getDraftRow resolves the API and API Portal, then loads the draft row (with
@@ -407,6 +418,77 @@ func (s *PublicationService) getDraftContent(apiType, apiId, apiPortalId, orgUUI
 	content, err := s.publicationRepo.GetContent(pub.UUID, contentType, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get publication draft content: %w", err)
+	}
+	if content == nil {
+		return nil, apperror.NotFound.New()
+	}
+	return content, nil
+}
+
+// getPublicationRow resolves the API and API Portal, then loads the live
+// (is_draft = 0) row — GetDraft's read-only counterpart for Slice 2. Returns
+// APIPublicationNotFound when this API has no live listing on this portal.
+func (s *PublicationService) getPublicationRow(apiType, apiId, apiPortalId, orgUUID string) (*model.Publication, error) {
+	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	portal, err := s.resolvePortalRow(apiPortalId, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	pub, planUUIDs, docUUIDs, err := s.publicationRepo.GetPublication(artifactUUID, portal.UUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get publication: %w", err)
+	}
+	if pub == nil {
+		return nil, apperror.APIPublicationNotFound.New()
+	}
+	if err := s.resolveHandles(pub, planUUIDs, docUUIDs, orgUUID); err != nil {
+		return nil, err
+	}
+	pub.APIPortalHandle = portal.Handle
+	pub.APIPortalName = portal.DisplayName
+	return pub, nil
+}
+
+// GetPublication returns the live listing's details, subscription plans and
+// documents.
+func (s *PublicationService) GetPublication(apiType, apiId, apiPortalId, orgUUID string) (*model.Publication, error) {
+	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
+}
+
+// GetPublicationDefinition returns the live listing's stored definition
+// content.
+func (s *PublicationService) GetPublicationDefinition(apiType, apiId, apiPortalId, orgUUID string) (*model.PublicationContent, error) {
+	return s.getPublicationContent(apiType, apiId, apiPortalId, orgUUID, model.PublicationContentTypeDefinition)
+}
+
+// GetPublicationLandingPage returns the live listing's stored landing page
+// content.
+func (s *PublicationService) GetPublicationLandingPage(apiType, apiId, apiPortalId, orgUUID string) (*model.PublicationContent, error) {
+	return s.getPublicationContent(apiType, apiId, apiPortalId, orgUUID, model.PublicationContentTypeMarketing)
+}
+
+// GetPublicationThumbnail returns the live listing's stored thumbnail
+// content.
+func (s *PublicationService) GetPublicationThumbnail(apiType, apiId, apiPortalId, orgUUID string) (*model.PublicationContent, error) {
+	return s.getPublicationContent(apiType, apiId, apiPortalId, orgUUID, model.PublicationContentTypeImage)
+}
+
+// getPublicationContent loads the live listing's content row of the given
+// type, returning a generic NotFound (not APIPublicationNotFound) when the
+// listing exists but has not stored this particular piece — mirrors
+// getDraftContent's same distinction for the draft tier.
+func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, orgUUID string, contentType model.PublicationContentType) (*model.PublicationContent, error) {
+	pub, err := s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	content, err := s.publicationRepo.GetContent(pub.UUID, contentType, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get publication content: %w", err)
 	}
 	if content == nil {
 		return nil, apperror.NotFound.New()

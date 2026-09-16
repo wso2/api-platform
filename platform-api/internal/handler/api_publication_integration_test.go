@@ -42,7 +42,7 @@ import (
 // in-memory SQLite DB, seeded with one org, one rest_apis artifact ("my-api"),
 // one active API Portal ("my-portal") and one subscription plan ("gold") — the
 // minimum every draft endpoint needs to resolve its path.
-func setupPublicationTestEnv(t *testing.T) (http.Handler, func()) {
+func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -93,7 +93,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, func()) {
 	h.RegisterRoutes(mux)
 
 	cleanup := func() { sqlDB.Close() }
-	return middleware.NewTestContextMiddleware(mux), cleanup
+	return middleware.NewTestContextMiddleware(mux), db, cleanup
 }
 
 const draftPath = "/api/v0.9/api-portals/my-portal/apis/rest-api/my-api/draft"
@@ -113,7 +113,7 @@ func doPublicationRequest(r http.Handler, method, path, contentType string, body
 // TestPublicationHandler_GetDraft_404BeforeAnySave verifies the draft-not-found
 // path returns the DRAFT_NOT_FOUND code through the real HTTP stack.
 func TestPublicationHandler_GetDraft_404BeforeAnySave(t *testing.T) {
-	r, cleanup := setupPublicationTestEnv(t)
+	r, _, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
 
 	w := doPublicationRequest(r, http.MethodGet, draftPath, "", nil)
@@ -132,7 +132,7 @@ func TestPublicationHandler_GetDraft_404BeforeAnySave(t *testing.T) {
 // conversion (draftInputToModel/draftModelToResponse) is correct end-to-end —
 // not just the underlying service call.
 func TestPublicationHandler_SaveAndGetDraft_RoundTrip(t *testing.T) {
-	r, cleanup := setupPublicationTestEnv(t)
+	r, _, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
 
 	reqBody := []byte(`{
@@ -192,7 +192,7 @@ func TestPublicationHandler_SaveAndGetDraft_RoundTrip(t *testing.T) {
 // TestPublicationHandler_SaveDraft_UnknownDocId verifies the 400 path renders
 // correctly through the real HTTP stack.
 func TestPublicationHandler_SaveDraft_UnknownDocId(t *testing.T) {
-	r, cleanup := setupPublicationTestEnv(t)
+	r, _, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
 
 	reqBody := []byte(`{"displayName": "x", "version": "1.0", "docIds": ["no-such-doc"]}`)
@@ -211,7 +211,7 @@ func TestPublicationHandler_SaveDraft_UnknownDocId(t *testing.T) {
 // thumbnail PUT+GET through the real HTTP stack, including the one multipart
 // upload in this feature.
 func TestPublicationHandler_ContentEndpoints(t *testing.T) {
-	r, cleanup := setupPublicationTestEnv(t)
+	r, _, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
 
 	// Details must exist before any content PUT.
@@ -282,5 +282,100 @@ func TestPublicationHandler_ContentEndpoints(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
 	if got["hasThumbnail"] != true || got["hasLandingPage"] != true {
 		t.Fatalf("GET draft: want hasThumbnail/hasLandingPage true, got %v", got)
+	}
+}
+
+const publicationPath = "/api/v0.9/api-portals/my-portal/apis/rest-api/my-api/publication"
+
+// TestPublicationHandler_GetPublication_404WhenNotPublished verifies the
+// not-published path returns PUBLICATION_NOT_FOUND — publish doesn't exist
+// until Slice 6, so there is no other way to reach a live row yet.
+func TestPublicationHandler_GetPublication_404WhenNotPublished(t *testing.T) {
+	r, _, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	w := doPublicationRequest(r, http.MethodGet, publicationPath, "", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body["code"] != "PUBLICATION_NOT_FOUND" {
+		t.Fatalf("want code PUBLICATION_NOT_FOUND, got %v", body)
+	}
+}
+
+// TestPublicationHandler_GetPublication_RoundTrip seeds a live (is_draft = 0)
+// row directly — Slice 2 is read-only, publish doesn't exist until Slice 6 —
+// and drives all four publication reads through the real HTTP stack.
+func TestPublicationHandler_GetPublication_RoundTrip(t *testing.T) {
+	r, db, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	seedPublication := []string{
+		`INSERT INTO api_publications (
+			uuid, organization_uuid, artifact_uuid, api_portal_uuid, is_draft, status,
+			display_name, version, description, agent_visibility, created_by, updated_by
+		) VALUES (
+			'pub-1', 'org-1', 'api-artifact-1', 'portal-1', 0, 'PUBLISHED',
+			'My Listing', '1.0.0', 'live desc', 'VISIBLE', 'alice', 'alice'
+		)`,
+		`INSERT INTO api_publication_plan_mappings (organization_uuid, publication_uuid, subscription_plan_uuid, created_by)
+			VALUES ('org-1', 'pub-1', 'plan-1', 'alice')`,
+		`INSERT INTO api_publication_doc_mappings (organization_uuid, publication_uuid, doc_uuid, created_by)
+			VALUES ('org-1', 'pub-1', 'doc-1', 'alice')`,
+		`INSERT INTO api_publication_contents (uuid, organization_uuid, publication_uuid, type, content_type, content, created_by, updated_by)
+			VALUES ('content-1', 'org-1', 'pub-1', 'API_DEFINITION', 'application/json', '{"openapi":"3.0.0"}', 'alice', 'alice')`,
+		`INSERT INTO api_publication_contents (uuid, organization_uuid, publication_uuid, type, content_type, content, created_by, updated_by)
+			VALUES ('content-2', 'org-1', 'pub-1', 'MARKETING', 'text/markdown', '# Live', 'alice', 'alice')`,
+		`INSERT INTO api_publication_contents (uuid, organization_uuid, publication_uuid, type, content_type, content, created_by, updated_by)
+			VALUES ('content-3', 'org-1', 'pub-1', 'IMAGE', 'image/png', X'89504e470d0a1a0a', 'alice', 'alice')`,
+	}
+	for _, q := range seedPublication {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("seed failed (%s): %v", q, err)
+		}
+	}
+
+	w := doPublicationRequest(r, http.MethodGet, publicationPath, "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET publication: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if got["displayName"] != "My Listing" || got["status"] != "PUBLISHED" {
+		t.Fatalf("GET publication: unexpected core fields: %v", got)
+	}
+	if got["apiPortalId"] != "my-portal" || got["apiPortalName"] != "My Portal" {
+		t.Fatalf("GET publication: want apiPortalId/apiPortalName from the resolved portal, got %v", got)
+	}
+	plans, _ := got["subscriptionPlanIds"].([]any)
+	if len(plans) != 1 || plans[0] != "gold" {
+		t.Fatalf("GET publication: want subscriptionPlanIds [gold], got %v", got["subscriptionPlanIds"])
+	}
+	docs, _ := got["docIds"].([]any)
+	if len(docs) != 1 || docs[0] != "quickstart" {
+		t.Fatalf("GET publication: want docIds [quickstart], got %v", got["docIds"])
+	}
+	if got["hasThumbnail"] != true || got["hasLandingPage"] != true {
+		t.Fatalf("GET publication: want hasThumbnail/hasLandingPage true, got %v", got)
+	}
+
+	w = doPublicationRequest(r, http.MethodGet, publicationPath+"/definition", "", nil)
+	if w.Code != http.StatusOK || w.Body.String() != `{"openapi":"3.0.0"}` {
+		t.Fatalf("GET publication definition: want 200 with stored body, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = doPublicationRequest(r, http.MethodGet, publicationPath+"/landing-page", "", nil)
+	if w.Code != http.StatusOK || w.Body.String() != "# Live" {
+		t.Fatalf("GET publication landing-page: want 200 with stored body, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = doPublicationRequest(r, http.MethodGet, publicationPath+"/thumbnail", "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET publication thumbnail: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("GET publication thumbnail: want Content-Type image/png, got %q", ct)
 	}
 }

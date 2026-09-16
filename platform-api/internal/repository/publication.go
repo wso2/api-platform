@@ -192,22 +192,36 @@ func (r *PublicationRepo) docUUIDsForPublication(exec sqlExecutor, publicationUU
 // plus its raw plan/document UUIDs. Returns (nil, nil, nil, nil) when no draft
 // has been saved.
 func (r *PublicationRepo) GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (*model.Publication, []string, []string, error) {
+	return r.getPublicationRow(artifactUUID, apiPortalUUID, orgUUID, true)
+}
+
+// GetPublication returns the live (is_draft = 0) row for (artifactUUID,
+// apiPortalUUID, orgUUID), plus its raw plan/document UUIDs. Returns
+// (nil, nil, nil, nil) when this API is not published to this portal.
+func (r *PublicationRepo) GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (*model.Publication, []string, []string, error) {
+	return r.getPublicationRow(artifactUUID, apiPortalUUID, orgUUID, false)
+}
+
+// getPublicationRow loads either tier of api_publications — the draft
+// (isDraft true) or the live listing (isDraft false), which differ only in
+// that discriminator. Returns (nil, nil, nil, nil) when no such row exists.
+func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID string, isDraft bool) (*model.Publication, []string, []string, error) {
 	query := `SELECT ` + publicationDetailColumns + `
 		FROM api_publications
-		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1`
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = ?`
 
 	pub := &model.Publication{
 		OrganizationUUID: orgUUID,
 		ArtifactUUID:     artifactUUID,
 		APIPortalUUID:    apiPortalUUID,
-		IsDraft:          true,
+		IsDraft:          isDraft,
 	}
-	row := r.db.QueryRow(r.db.Rebind(query), orgUUID, artifactUUID, apiPortalUUID)
+	row := r.db.QueryRow(r.db.Rebind(query), orgUUID, artifactUUID, apiPortalUUID, boolToInt(isDraft))
 	if err := scanPublicationDetails(row, pub); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil, nil, nil
 		}
-		return nil, nil, nil, fmt.Errorf("failed to get publication draft: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get publication row: %w", err)
 	}
 
 	planUUIDs, err := r.planUUIDsForPublication(r.db, pub.UUID, orgUUID)

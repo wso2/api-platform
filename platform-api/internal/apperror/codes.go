@@ -216,5 +216,6 @@ const (
 	CodeAPIPublicationAPINotFound       = "API_NOT_FOUND"
 	CodeAPIPublicationAPIPortalNotFound = "API_PORTAL_NOT_FOUND"
 	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
+	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
 )

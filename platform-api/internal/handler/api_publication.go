@@ -84,6 +84,10 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("PUT "+base+"/draft/landing-page", middleware.MapErrors(h.slogger, h.SaveDraftLandingPage))
 	mux.HandleFunc("GET "+base+"/draft/thumbnail", middleware.MapErrors(h.slogger, h.GetDraftThumbnail))
 	mux.HandleFunc("PUT "+base+"/draft/thumbnail", middleware.MapErrors(h.slogger, h.SaveDraftThumbnail))
+	mux.HandleFunc("GET "+base+"/publication", middleware.MapErrors(h.slogger, h.GetPublication))
+	mux.HandleFunc("GET "+base+"/publication/definition", middleware.MapErrors(h.slogger, h.GetPublicationDefinition))
+	mux.HandleFunc("GET "+base+"/publication/landing-page", middleware.MapErrors(h.slogger, h.GetPublicationLandingPage))
+	mux.HandleFunc("GET "+base+"/publication/thumbnail", middleware.MapErrors(h.slogger, h.GetPublicationThumbnail))
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -291,6 +295,71 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 	return nil
 }
 
+// GetPublication handles GET .../publication
+func (h *PublicationHandler) GetPublication(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiType, apiId := draftPathParams(r)
+
+	pub, err := h.service.GetPublication(apiType, apiId, apiPortalId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to get publication")
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, publicationModelToResponse(pub))
+	return nil
+}
+
+// GetPublicationDefinition handles GET .../publication/definition
+func (h *PublicationHandler) GetPublicationDefinition(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiType, apiId := draftPathParams(r)
+
+	content, err := h.service.GetPublicationDefinition(apiType, apiId, apiPortalId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to get publication definition")
+	}
+	writeContent(w, content)
+	return nil
+}
+
+// GetPublicationLandingPage handles GET .../publication/landing-page
+func (h *PublicationHandler) GetPublicationLandingPage(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiType, apiId := draftPathParams(r)
+
+	content, err := h.service.GetPublicationLandingPage(apiType, apiId, apiPortalId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to get publication landing page")
+	}
+	writeContent(w, content)
+	return nil
+}
+
+// GetPublicationThumbnail handles GET .../publication/thumbnail
+func (h *PublicationHandler) GetPublicationThumbnail(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiType, apiId := draftPathParams(r)
+
+	content, err := h.service.GetPublicationThumbnail(apiType, apiId, apiPortalId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to get publication thumbnail")
+	}
+	writeContent(w, content)
+	return nil
+}
+
 // writeContent writes a stored definition/landing-page/thumbnail as its raw
 // bytes with its stored Content-Type — matching how the portal itself serves
 // this same content (REST_Design.md §9).
@@ -369,6 +438,95 @@ func draftModelToResponse(pub *model.Publication) api.PublicationDraftDetails {
 	}
 	if pub.AgentVisibility != "" {
 		av := api.PublicationDraftDetailsAgentVisibility(pub.AgentVisibility)
+		resp.AgentVisibility = &av
+	}
+	if len(pub.Tags) > 0 {
+		resp.Tags = &pub.Tags
+	}
+	if len(pub.Labels) > 0 {
+		resp.Labels = &pub.Labels
+	}
+	if pub.ProductionURL != "" || pub.SandboxURL != "" {
+		resp.Endpoints = &struct {
+			ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
+			SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
+		}{}
+		if pub.ProductionURL != "" {
+			resp.Endpoints.ProductionUrl = &pub.ProductionURL
+		}
+		if pub.SandboxURL != "" {
+			resp.Endpoints.SandboxUrl = &pub.SandboxURL
+		}
+	}
+	if pub.BusinessOwner != "" || pub.BusinessOwnerEmail != "" || pub.TechnicalOwner != "" || pub.TechnicalOwnerEmail != "" {
+		resp.Owners = &struct {
+			BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
+			BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
+			TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
+			TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
+		}{}
+		if pub.BusinessOwner != "" {
+			resp.Owners.BusinessOwner = &pub.BusinessOwner
+		}
+		if pub.BusinessOwnerEmail != "" {
+			email := openapi_types.Email(pub.BusinessOwnerEmail)
+			resp.Owners.BusinessOwnerEmail = &email
+		}
+		if pub.TechnicalOwner != "" {
+			resp.Owners.TechnicalOwner = &pub.TechnicalOwner
+		}
+		if pub.TechnicalOwnerEmail != "" {
+			email := openapi_types.Email(pub.TechnicalOwnerEmail)
+			resp.Owners.TechnicalOwnerEmail = &email
+		}
+	}
+
+	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
+	resp.SubscriptionPlanIds = &planIds
+	docIds := api.DocIdList(pub.DocIds)
+	resp.DocIds = &docIds
+
+	if !pub.CreatedAt.IsZero() {
+		resp.CreatedAt = &pub.CreatedAt
+	}
+	if pub.CreatedBy != "" {
+		resp.CreatedBy = &pub.CreatedBy
+	}
+	if !pub.UpdatedAt.IsZero() {
+		resp.UpdatedAt = &pub.UpdatedAt
+	}
+	if pub.UpdatedBy != "" {
+		resp.UpdatedBy = &pub.UpdatedBy
+	}
+	return resp
+}
+
+// publicationModelToResponse converts the internal model into the generated
+// live-publication response shape — the same fields as draftModelToResponse
+// plus apiPortalId/apiPortalName/status, which only ever apply to a live
+// listing (REST_Design.md's Publication schema, not PublicationDraftDetails).
+func publicationModelToResponse(pub *model.Publication) api.Publication {
+	resp := api.Publication{
+		DisplayName:    &pub.DisplayName,
+		Version:        &pub.Version,
+		HasThumbnail:   &pub.HasThumbnail,
+		HasLandingPage: &pub.HasLandingPage,
+	}
+	if pub.APIPortalHandle != "" {
+		resp.ApiPortalId = &pub.APIPortalHandle
+	}
+	if pub.APIPortalName != "" {
+		resp.ApiPortalName = &pub.APIPortalName
+	}
+	if pub.Status != "" {
+		status := api.PublicationStatus(pub.Status)
+		resp.Status = &status
+	}
+	if pub.Description != "" {
+		resp.Description = &pub.Description
+	}
+	if pub.AgentVisibility != "" {
+		av := api.PublicationAgentVisibility(pub.AgentVisibility)
 		resp.AgentVisibility = &av
 	}
 	if len(pub.Tags) > 0 {
