@@ -273,7 +273,10 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		if err != nil {
 			return nil, err
 		}
-		sourceDataVersion = gatewaytranslator.PlatformDataVersion(apiModel.DataVersion)
+		// The build's own data version, not apiModel's, for the same reason as the
+		// vhost sentinel below: the build is what gets deployed, and it was rendered
+		// from a separate read.
+		sourceDataVersion = gatewaytranslator.PlatformDataVersion(newBuild.DataVersion)
 	}
 
 	// Generate deployment ID
@@ -289,10 +292,17 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 
 	// A build carries no vhost, so default to the sentinel and let the gateway
 	// resolve and persist its own.
+	//
+	// Whether there is a sandbox to give a vhost to is read off the artifact being
+	// DEPLOYED, not off the API as it stands now. Those are not the same thing: a
+	// `build` deploy ships a snapshot taken earlier, and a `current` deploy ships a
+	// snapshot rendered by renderBuild on its own read of the API. Taking it from
+	// apiModel let a sandbox added or removed since the snapshot decide the vhost
+	// for content that does not have it.
 	mainSentinel := constants.VhostGatewayDefault
 	vhostMain := &mainSentinel
 	var vhostSandbox *string
-	if apiModel.Configuration.Upstream.Sandbox != nil {
+	if apiDeployment.Spec.Upstream != nil && apiDeployment.Spec.Upstream.Sandbox != nil {
 		sandboxSentinel := constants.VhostGatewayDefault
 		vhostSandbox = &sandboxSentinel
 	}

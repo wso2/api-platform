@@ -860,6 +860,8 @@ paths:
                 $ref: '#/components/schemas/BuildListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -897,6 +899,8 @@ paths:
                 $ref: '#/components/schemas/BuildResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1900,6 +1904,8 @@ paths:
                 $ref: '#/components/schemas/BuildListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1942,6 +1948,8 @@ paths:
                 $ref: '#/components/schemas/BuildResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -2734,6 +2742,8 @@ paths:
                 $ref: '#/components/schemas/BuildListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -2776,6 +2786,8 @@ paths:
                 $ref: '#/components/schemas/BuildResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -3528,6 +3540,8 @@ paths:
                 $ref: '#/components/schemas/BuildListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -3570,6 +3584,8 @@ paths:
                 $ref: '#/components/schemas/BuildResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':

@@ -658,3 +658,42 @@ func TestDeployAPI_ADeploymentIdIsNotABase(t *testing.T) {
 			depRepo.getWithContentCalls)
 	}
 }
+
+// Whether a deployment gets a sandbox vhost follows the artifact being DEPLOYED,
+// not the API as it stands now. A build is a snapshot taken earlier: if the API
+// gained a sandbox after the build was prepared, deploying that build must not
+// stamp a sandbox vhost onto content that has no sandbox upstream to serve it.
+func TestDeployAPI_SandboxVhostFollowsTheDeployedArtifactNotTheCurrentAPI(t *testing.T) {
+	// The snapshot has a main upstream only.
+	const snapshot = "apiVersion: gateway.wso2.com/v1\nkind: RestApi\nmetadata:\n  name: orders-api\n" +
+		"spec:\n  context: /orders\n  upstream:\n    main:\n      url: https://main.example.com\n"
+	depRepo := &buildTestDeploymentRepo{
+		build: &model.Build{
+			UUID:        buildTestBuildUUID,
+			BuildID:     buildTestBuildID,
+			ArtifactID:  buildTestAPIUUID,
+			Content:     []byte(snapshot),
+			DataVersion: "1.0",
+		},
+	}
+	// The API has since gained a sandbox upstream the build knows nothing about.
+	current := buildTestAPI()
+	current.Configuration.Upstream.Sandbox = &model.UpstreamEndpoint{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: current}, depRepo)
+
+	if _, err := service.DeployAPI(buildTestAPIUUID, &api.DeployRequest{
+		Name:      "orders-dev",
+		Base:      "build",
+		BuildId:   ptr(buildTestBuildID),
+		GatewayId: "test-gateway",
+	}, buildTestOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeployAPI: %v", err)
+	}
+	if depRepo.created == nil {
+		t.Fatal("no deployment was created")
+	}
+	if strings.Contains(string(depRepo.created.Content), "sandbox") {
+		t.Errorf("the deployment carries a sandbox vhost the build has no upstream for:\n%s",
+			depRepo.created.Content)
+	}
+}
