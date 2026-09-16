@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -722,6 +723,13 @@ func TestGraphQLList_NoProjectFilter_ReturnsAllAndResolvesHandles(t *testing.T) 
 	for _, item := range resp.List {
 		if item.ProjectId != "default-project" {
 			t.Errorf("expected ProjectId resolved to handle %q, got %q", "default-project", item.ProjectId)
+		}
+		// Regression guard: mapGraphQLAPIModelToListItem once omitted Kind
+		// entirely, so every list item silently failed any client-side
+		// filter/label keyed on it (e.g. the console's "GraphQL" API-type
+		// filter matched zero rows even though the APIs existed).
+		if item.Kind == nil || *item.Kind != constants.GraphQLApi {
+			t.Errorf("expected Kind %q, got %v", constants.GraphQLApi, item.Kind)
 		}
 	}
 }
