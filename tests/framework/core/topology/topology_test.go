@@ -260,6 +260,63 @@ blocks:
 	require.Equal(t, "gc:legacy", r.Blocks[0].Components[0].Def.Image.Ref)
 }
 
+func TestAddPoliciesFromResolvesForPlatformGateway(t *testing.T) {
+	r := testRegistry(t)
+	require.NoError(t, r.Register(&components.Definition{
+		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+	}))
+	require.NoError(t, r.Validate())
+
+	resolved, err := Load([]byte(`
+suite: s
+blocks:
+  - name: gateway
+    components:
+      - name: platform-gateway
+        addPoliciesFrom: ../gateway-controllers/policies
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+	require.NoError(t, err)
+	require.Equal(t, "../gateway-controllers/policies", resolved.Blocks[0].Components[0].AddPoliciesFrom)
+	require.True(t, resolved.Blocks[0].Components[0].BuildFromSource)
+}
+
+func TestAddPoliciesFromRejectsUnsupportedAndAbsoluteValues(t *testing.T) {
+	r := testRegistry(t)
+	t.Run("unsupported component", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: s
+blocks:
+  - name: b
+    components:
+      - name: gateway-controller
+        addPoliciesFrom: policies
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+		require.ErrorContains(t, err, "component \"gateway-controller\" does not support addPoliciesFrom")
+	})
+
+	t.Run("absolute path", func(t *testing.T) {
+		pg := &components.Definition{
+			Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+			Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+		}
+		require.NoError(t, r.Register(pg))
+		require.NoError(t, r.Validate())
+		_, err := Load([]byte(`
+suite: s
+blocks:
+  - name: b
+    components:
+      - name: platform-gateway
+        addPoliciesFrom: /tmp/policies
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+		require.ErrorContains(t, err, "addPoliciesFrom must be a relative path")
+	})
+}
+
 func TestDBResolutionOrder(t *testing.T) {
 	src := `
 suite: s
@@ -1143,9 +1200,25 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	require.NoError(t, err)
 	component := got.Blocks[0].Components[0]
 	require.Equal(t, "1.1.0", component.Version)
+	require.False(t, component.BuildFromSource)
 	require.Equal(t, "gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
 	require.Equal(t, "gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
 	require.Equal(t, "gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
+
+	sourceSuite := &Resolved{Blocks: []ResolvedBlock{{
+		Name: "gateway-controller-policies",
+		Components: []ResolvedComponent{{
+			Def:             original,
+			BuildFromSource: true,
+			AddPoliciesFrom: "../gateway-controllers/policies",
+		}},
+	}}}
+	got, err = flags.Apply(sourceSuite)
+	require.NoError(t, err)
+	component = got.Blocks[0].Components[0]
+	require.Equal(t, "1.1.0", component.Version)
+	require.False(t, component.BuildFromSource,
+		"gateway-version must switch a source-build gateway to versioned mode")
 }
 
 func TestCloudEnvironmentSelectionOverride(t *testing.T) {

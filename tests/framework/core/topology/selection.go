@@ -138,6 +138,7 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 				if component.Def != nil && component.Def.Name == "platform-gateway" {
 					component.Def = component.Def.WithImageVersion(version)
 					component.Version = version
+					component.BuildFromSource = false
 				}
 			}
 		}

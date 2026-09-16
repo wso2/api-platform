@@ -19,6 +19,8 @@
 package platformgateway
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,8 +30,42 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 )
+
+type policyRecordingRunner struct {
+	commands []frameworkbuilder.Command
+	failAt   int
+}
+
+func (r *policyRecordingRunner) Run(_ context.Context, command frameworkbuilder.Command) error {
+	r.commands = append(r.commands, command)
+	if r.failAt > 0 && len(r.commands) == r.failAt {
+		return fmt.Errorf("synthetic command failure")
+	}
+	return nil
+}
+
+func unitRepoRoot(t *testing.T) string {
+	t.Helper()
+	root, ok := shared.RepoRootFromCallerFile()
+	require.True(t, ok, "repository root not found")
+	return root
+}
+
+func gatewayControllersPolicySource(t *testing.T) string {
+	t.Helper()
+	root := unitRepoRoot(t)
+	source := filepath.Join(root, "..", "gateway-controllers", "policies")
+	info, err := os.Stat(source)
+	if os.IsNotExist(err) {
+		t.Skipf("gateway-controllers policy checkout is not present at %s", source)
+	}
+	require.NoError(t, err, "gateway-controllers policy checkout is required at %s", source)
+	require.True(t, info.IsDir(), "gateway-controllers policy checkout is not a directory: %s", source)
+	return filepath.Join("..", "gateway-controllers", "policies")
+}
 
 // composeFile is the gateway stack the suite actually runs.
 func composeFile(t *testing.T) map[string]any {
@@ -153,4 +189,148 @@ func TestPlatformGatewayCoverageEnvironmentFollowsRunMode(t *testing.T) {
 
 	t.Setenv(shared.EnvCoverageMode, "true")
 	require.Equal(t, "/coverage", PlatformGateway().Compose.Env["GOCOVERDIR"])
+}
+
+func TestBuildSourceWithPoliciesStagesCompletePolicyTree(t *testing.T) {
+	root := unitRepoRoot(t)
+	source := gatewayControllersPolicySource(t)
+	runner := &policyRecordingRunner{}
+
+	images, err := BuildSourceWithPolicies(context.Background(), root, "1.2.0-SNAPSHOT", source, runner, false)
+	require.NoError(t, err)
+	require.Contains(t, images.Controller, "local/apip-gateway-controller:framework-1.2.0-snapshot-policies-")
+	require.Contains(t, images.Runtime, "local/apip-gateway-runtime:framework-1.2.0-snapshot-policies-")
+	require.Len(t, runner.commands, 4)
+	require.Contains(t, strings.Join(runner.commands[0].Args, " "), "--build-context")
+	require.Contains(t, strings.Join(runner.commands[0].Args, " "), "dev-policies=")
+	require.Contains(t, strings.Join(runner.commands[0].Args, " "), images.Runtime)
+	require.Contains(t, strings.Join(runner.commands[3].Args, " "), images.Controller)
+	require.Equal(t, root, runner.commands[0].Directory)
+}
+
+func TestStagePolicyWorkspaceGeneratesDeterministicManifest(t *testing.T) {
+	root := unitRepoRoot(t)
+	source, err := os.MkdirTemp(root, ".framework-policy-source-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(source)) })
+	for _, policy := range []struct {
+		name    string
+		version string
+	}{{"z-policy", "v1.0.0"}, {"a-policy", "v2.0.0"}} {
+		dir := filepath.Join(source, policy.name)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "policy-definition.yaml"), []byte(
+			"name: "+policy.name+"\nversion: "+policy.version+"\n"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.go"), []byte("package policy\n"), 0o644))
+	}
+
+	relative, err := filepath.Rel(root, source)
+	require.NoError(t, err)
+	workspace, err := stagePolicyWorkspace(root, relative)
+	require.NoError(t, err)
+	data, err := os.ReadFile(workspace.BuildFile)
+	require.NoError(t, err)
+	var manifest policyBuildFile
+	require.NoError(t, yaml.Unmarshal(data, &manifest))
+	require.Equal(t, "v1", manifest.Version)
+	require.Equal(t, []policyBuildEntry{
+		{Name: "a-policy", FilePath: "policies/a-policy"},
+		{Name: "z-policy", FilePath: "policies/z-policy"},
+	}, manifest.Policies)
+	sourceData, err := os.ReadFile(filepath.Join(workspace.Target, "build.yaml"))
+	require.NoError(t, err)
+	var sourceManifest policyBuildFile
+	require.NoError(t, yaml.Unmarshal(sourceData, &sourceManifest))
+	require.Equal(t, "dev-policies/a-policy", sourceManifest.Policies[0].FilePath)
+	require.NotEmpty(t, workspace.Digest)
+
+	workspace.close()
+	_, err = os.Stat(workspace.Root)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestBuildVersionedWithPoliciesUsesGatewayBuilderAndDerivedImages(t *testing.T) {
+	root := unitRepoRoot(t)
+	source := gatewayControllersPolicySource(t)
+	runner := &policyRecordingRunner{}
+
+	images, err := BuildVersionedWithPolicies(context.Background(), root, "1.2.0-SNAPSHOT", source,
+		"ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT",
+		"ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT", runner)
+	require.NoError(t, err)
+	require.Contains(t, images.Controller, "local/apip-gateway-controller:framework-1.2.0-snapshot-policies-")
+	require.Contains(t, images.Runtime, "local/apip-gateway-runtime:framework-1.2.0-snapshot-policies-")
+	require.Len(t, runner.commands, 3)
+	require.Equal(t, "docker", runner.commands[0].Args[0])
+	require.Contains(t, strings.Join(runner.commands[0].Args, " "), "gateway-builder:1.2.0-SNAPSHOT")
+	require.Contains(t, strings.Join(runner.commands[0].Args, " "), "-gateway-controller-base-image")
+	require.Contains(t, strings.Join(runner.commands[1].Args, " "), "gateway-runtime/Dockerfile")
+	require.Contains(t, strings.Join(runner.commands[2].Args, " "), "gateway-controller/Dockerfile")
+}
+
+func TestPolicyWorkspaceRejectsNonPolicyEntries(t *testing.T) {
+	root := unitRepoRoot(t)
+	source, err := os.MkdirTemp(root, ".framework-policy-source-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(source)) })
+	require.NoError(t, os.MkdirAll(source, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(source, "README.md"), []byte("not a policy"), 0o644))
+
+	relative, err := filepath.Rel(root, source)
+	require.NoError(t, err)
+	_, err = BuildSourceWithPolicies(context.Background(), root, "1.2.0-SNAPSHOT", relative, &policyRecordingRunner{}, false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a directory")
+}
+
+func TestPolicyWorkspaceRejectsSourceOutsideApprovedRoots(t *testing.T) {
+	root := unitRepoRoot(t)
+	outside := t.TempDir()
+	source, err := filepath.Rel(root, outside)
+	require.NoError(t, err)
+
+	_, err = stagePolicyWorkspace(root, source)
+	require.ErrorContains(t, err, "must resolve within repository root or ../gateway-controllers/policies")
+}
+
+func TestPolicyWorkspaceRejectsDuplicatePolicyNames(t *testing.T) {
+	root := unitRepoRoot(t)
+	source, err := os.MkdirTemp(root, ".framework-policy-duplicate-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(source)) })
+	for _, name := range []string{"one", "two"} {
+		dir := filepath.Join(source, name)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "policy-definition.yaml"), []byte(
+			"name: same-policy\nversion: v1.0.0\n"), 0o644))
+	}
+
+	relative, err := filepath.Rel(root, source)
+	require.NoError(t, err)
+	_, err = BuildSourceWithPolicies(context.Background(), root, "1.2.0-SNAPSHOT", relative, &policyRecordingRunner{}, false)
+	require.ErrorContains(t, err, "duplicate policy name")
+}
+
+func TestPolicyBuildValidatesInputsBeforeStaging(t *testing.T) {
+	root := unitRepoRoot(t)
+	runner := &policyRecordingRunner{}
+	_, err := BuildSourceWithPolicies(context.Background(), root, "", "missing", runner, false)
+	require.ErrorContains(t, err, "gateway version is required")
+	_, err = BuildSourceWithPolicies(context.Background(), root, "1.2.0-SNAPSHOT", "missing", nil, false)
+	require.ErrorContains(t, err, "build runner is required")
+	_, err = BuildVersionedWithPolicies(context.Background(), root, "1.2.0-SNAPSHOT", "missing", "controller", "runtime", runner)
+	require.ErrorContains(t, err, "resolving policy source")
+}
+
+func TestVersionedPolicyBuildDoesNotReturnImagesAfterCommandFailure(t *testing.T) {
+	root := unitRepoRoot(t)
+	runner := &policyRecordingRunner{failAt: 2}
+
+	images, err := BuildVersionedWithPolicies(context.Background(), root, "1.2.0-SNAPSHOT",
+		gatewayControllersPolicySource(t),
+		"ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT",
+		"ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT", runner)
+	require.ErrorContains(t, err, "versioned policy build command 2")
+	require.Empty(t, images.Controller)
+	require.Empty(t, images.Runtime)
 }
