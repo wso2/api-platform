@@ -156,6 +156,11 @@ export const useAllRestApis = (
       offset: 0,
     }),
     enabled,
+    // A filter change (e.g. `query`) is a new cache key with no data of its
+    // own yet — without this, a caller merging this into a live search would
+    // flash back to a full loading state on every debounced keystroke instead
+    // of dimming what's already on screen (`isPlaceholderData`, below).
+    placeholderData: keepPreviousData,
   });
 
   const total = firstPage.data?.pagination.total ?? 0;
@@ -186,6 +191,7 @@ export const useAllRestApis = (
     data: list ? { list, pagination: firstPage.data!.pagination } : undefined,
     error,
     isPending,
+    isPlaceholderData: firstPage.isPlaceholderData,
   };
 };
 
