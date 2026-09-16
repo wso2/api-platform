@@ -31,6 +31,7 @@ import { Boxes, Clock, Globe, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { relativeTime } from '@/utils/relativeTime';
+import { versionLabel } from '@/utils/versionLabel';
 import {
   apiKindLabel,
   deploymentMeta,
@@ -122,7 +123,7 @@ export function VersionChip({ version }: { version?: string }) {
 
   return (
     <Chip
-      label={`v${version}`}
+      label={versionLabel(version)}
       size="small"
       sx={{ flexShrink: 0, fontSize: '0.7rem' }}
       variant="outlined"
