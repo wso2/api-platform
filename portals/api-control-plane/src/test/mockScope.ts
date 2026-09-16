@@ -45,6 +45,7 @@ export function makeConsoleScope(overrides: Partial<ConsoleScope> = {}): Console
     capabilities: getApiCapabilities(component),
     component,
     isApiScope: Boolean(component),
+    isGraphQLApiScope: Boolean(params.graphqlApiHandler),
     isLoading: false,
     isOrganizationScope: Boolean(organization),
     isProjectScope: Boolean(project),

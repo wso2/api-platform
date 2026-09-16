@@ -29,6 +29,7 @@ import {
 } from './ConsoleScopeContext';
 import { getRouteParamsFromPathname } from './consoleRouteParams';
 import { useRestApi } from '../api/resources/restApis';
+import { useGraphQLApi } from '../api/resources/graphqlApis';
 import { useOrganizations } from '../api/resources/organizations';
 import { useProject, useProjects } from '../api/resources/projects';
 
@@ -56,6 +57,8 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
         routeParams.apiHandler || pathnameParams.apiHandler,
       deploymentId: routeParams.deploymentId || pathnameParams.deploymentId,
       environmentId: routeParams.environmentId || pathnameParams.environmentId,
+      graphqlApiHandler:
+        routeParams.graphqlApiHandler || pathnameParams.graphqlApiHandler,
       orgHandle: routeParams.orgHandle || pathnameParams.orgHandle,
       projectHandler:
         routeParams.projectHandler || pathnameParams.projectHandler,
@@ -64,11 +67,13 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       pathnameParams.apiHandler,
       pathnameParams.deploymentId,
       pathnameParams.environmentId,
+      pathnameParams.graphqlApiHandler,
       pathnameParams.orgHandle,
       pathnameParams.projectHandler,
       routeParams.apiHandler,
       routeParams.deploymentId,
       routeParams.environmentId,
+      routeParams.graphqlApiHandler,
       routeParams.orgHandle,
       routeParams.projectHandler,
     ]
@@ -116,6 +121,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     tokenReadyOrgHandle === params.orgHandle ? params.orgHandle : undefined;
 
   const apiQuery = useRestApi(params.apiHandler, {orgId: queryOrgHandle });
+  const graphqlApiQuery = useGraphQLApi(params.graphqlApiHandler, {orgId: queryOrgHandle });
   const organizationsQuery = useOrganizations();
   const projectsQuery = useProjects({}, {orgId: queryOrgHandle });
   const projectQuery = useProject(params.projectHandler, {orgId: queryOrgHandle });
@@ -131,6 +137,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     projectsQuery.data?.list?.find((item) => item.id === params.projectHandler);
 
   const component = apiQuery.data;
+  const graphqlComponent = graphqlApiQuery.data;
   const capabilities = useMemo(
     () => getApiCapabilities(component),
     [component]
@@ -148,7 +155,9 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       },
       capabilities,
       component,
+      graphqlComponent,
       isApiScope: Boolean(params.apiHandler),
+      isGraphQLApiScope: Boolean(params.graphqlApiHandler),
       isLoading:
         organizationsQuery.isLoading ||
         Boolean(params.orgHandle && !tokenReadyOrgHandle && !orgTokenError) ||
@@ -167,6 +176,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     [
       capabilities,
       component,
+      graphqlComponent,
       apiQuery.isLoading,
       organization,
       organizationsQuery.data,

@@ -21,8 +21,10 @@ import { Boxes, Building, Layers, X } from '@wso2/oxygen-ui-icons-react';
 import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
-import { useRestApis } from '../../api/resources/restApis';
+import { useAllGraphQLApis } from '../../api/resources/graphqlApis';
+import { useAllRestApis } from '../../api/resources/restApis';
 import SearchableComplexSelect from '../../components/common/SearchableComplexSelect';
+import { toGraphQLListableApi, toRestListableApi } from './appShellPages/apis/listing/apiListItem';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import APIQuickSelector from './APIQuickSelector';
@@ -77,7 +79,9 @@ export function HeaderScopeSwitchers() {
 
   const changeApi = (apiHandler: string) => {
     if (!params.orgHandle || !params.projectHandler || !apiHandler) return;
-    navigate(routes.api(params.orgHandle, params.projectHandler, apiHandler));
+    const isGraphQLApi = graphqlApiHandlers.has(apiHandler);
+    const builder = isGraphQLApi ? routes.graphqlApi : routes.api;
+    navigate(builder(params.orgHandle, params.projectHandler, apiHandler));
   };
 
   const clearProjectSelection = () => {
@@ -105,11 +109,25 @@ export function HeaderScopeSwitchers() {
       : params.projectHandler && project ? [{ handler: params.projectHandler, name: project.displayName || params.projectHandler }]
         : [];
 
-  const apisQuery = useRestApis(
+  const restApisQuery = useAllRestApis({}, { projectId: project?.id, orgId: organization?.id });
+  const graphqlApisQuery = useAllGraphQLApis(
     {},
-    { projectId: project?.id, orgId: organization?.id }
+    { projectId: project?.id, orgId: organization?.id },
   );
-  const apis = apisQuery.data?.list ?? [];
+  const apisLoading = restApisQuery.isPending || graphqlApisQuery.isPending;
+  const apisErrorValue = restApisQuery.error ?? graphqlApisQuery.error;
+  const apis = [
+    ...(restApisQuery.data?.list ?? []).map(toRestListableApi),
+    ...(graphqlApisQuery.data?.list ?? []).map(toGraphQLListableApi),
+  ];
+  // The switcher only ever navigates by handler, so this is the one place
+  // that needs to remember which handlers are GraphQL — everything else
+  // downstream just carries `{handler, name}` through, same as before.
+  const graphqlApiHandlers = new Set(
+    (graphqlApisQuery.data?.list ?? [])
+      .map((api) => api.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
   const loadedApiOptions: { handler: string; name: string }[] =
     (projects.length > 0 && project) ?
     apis
@@ -122,13 +140,19 @@ export function HeaderScopeSwitchers() {
       .map((api) => ({ handler: api.id, name: api.displayName ?? api.id }))
     : [];
 
+  // Whichever kind of API is in scope — REST's `apiHandler` or GraphQL's
+  // `graphqlApiHandler` (see `graphqlApiPath`'s doc comment for why they're
+  // separate params) — is "the selected API" for this switcher; the two are
+  // never both set at once.
+  const selectedApiHandler = params.apiHandler || params.graphqlApiHandler;
+
   // apis may not be loaded yet on first paint; keep the current API selectable
   // so the switcher never renders an out-of-range value.
   const apiOptions: { handler: string; name: string }[] =
     loadedApiOptions.length > 0
       ? loadedApiOptions
-      : params.apiHandler
-        ? [{ handler: params.apiHandler, name: component?.displayName || params.apiHandler }]
+      : selectedApiHandler
+        ? [{ handler: selectedApiHandler, name: component?.displayName || selectedApiHandler }]
         : [];
 
   // A single loaded organization is read-only; use the loaded list so the
@@ -254,13 +278,13 @@ export function HeaderScopeSwitchers() {
         />
       )}
 
-      {params.apiHandler && (
+      {selectedApiHandler && (
         <Box sx={{position: 'relative'}}>
           <SearchableComplexSelect
             aria-label={intl.formatMessage({ id: 'appShell.header.api.aria', defaultMessage: 'APIs' })}
             label={intl.formatMessage({ id: 'appShell.header.api.label', defaultMessage: 'APIs' })}
-            value={params.apiHandler}
-            selectedOption={apiOptions.filter((item) => item.handler === params.apiHandler).map(item => ({
+            value={selectedApiHandler}
+            selectedOption={apiOptions.filter((item) => item.handler === selectedApiHandler).map(item => ({
               id: item.handler,
               handler: item.handler,
               name: item.name,
@@ -317,11 +341,11 @@ export function HeaderScopeSwitchers() {
         </Box>
       )}
 
-      {!params.apiHandler && params.projectHandler && (
+      {!selectedApiHandler && params.projectHandler && (
         <APIQuickSelector
           disabled={!params.projectHandler}
-          isApisLoading={apisQuery.isLoading}
-          apisError={apisQuery.error}
+          isApisLoading={apisLoading}
+          apisError={apisErrorValue}
           apiOptions={apiOptions.map((item) => ({
             id: item.handler,
             handler: item.handler,

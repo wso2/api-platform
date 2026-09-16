@@ -37,6 +37,10 @@ import { runtimeConfig } from '../../config/runtime';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { usePageTitle } from '../../navigation/usePageTitle';
 import { routes } from '../../routes/paths';
+import type { GraphQLApiDetail } from '../../api/resources/graphqlApis';
+import type { RestApi } from '../../api/resources/restApis';
+import type { Project } from '../../api/resources/projects';
+import type { ConsoleRouteParams } from '../../scope/ConsoleScopeContext';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
 import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostPort';
@@ -57,11 +61,61 @@ import { FormattedMessage, useIntl } from 'react-intl';
  */
 const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway(), routes.apiPortalPublish()];
 
+/** One crumb's data — a `path` rather than an `onClick`, so this stays a pure function to unit test. */
+type ScopeCrumb = { key: string; label: string; path: string };
+
+/**
+ * The breadcrumb trail for the current scope, org down to whichever kind of
+ * API (if any) is open — pulled out of the component so it can be unit
+ * tested without rendering the rest of the shell (header, sidebar, and their
+ * own data fetching).
+ *
+ * REST and GraphQL APIs are mutually exclusive tiers here, exactly like
+ * `params.apiHandler`/`params.graphqlApiHandler` themselves (see
+ * `ConsoleRouteParams`): a GraphQL route never sets `apiHandler`, so without
+ * its own branch reading `graphqlApiHandler`/`graphqlComponent`, the trail
+ * silently stopped one level short, at the project.
+ */
+export const buildScopeCrumbs = (
+  params: ConsoleRouteParams,
+  homeLabel: string,
+  project?: Project,
+  component?: RestApi,
+  graphqlComponent?: GraphQLApiDetail,
+): ScopeCrumb[] => {
+  const crumbs: ScopeCrumb[] = [];
+  if (params.orgHandle) {
+    crumbs.push({ key: 'org', label: homeLabel, path: routes.organizationHome(params.orgHandle) });
+  }
+  if (params.orgHandle && params.projectHandler) {
+    crumbs.push({
+      key: 'project',
+      label: project?.displayName || params.projectHandler,
+      path: routes.projectHome(params.orgHandle, params.projectHandler),
+    });
+  }
+  if (params.orgHandle && params.projectHandler && params.apiHandler) {
+    crumbs.push({
+      key: 'api',
+      label: component?.displayName || params.apiHandler,
+      path: routes.api(params.orgHandle, params.projectHandler, params.apiHandler),
+    });
+  }
+  if (params.orgHandle && params.projectHandler && params.graphqlApiHandler) {
+    crumbs.push({
+      key: 'api',
+      label: graphqlComponent?.displayName || params.graphqlApiHandler,
+      path: routes.graphqlApi(params.orgHandle, params.projectHandler, params.graphqlApiHandler),
+    });
+  }
+  return crumbs;
+};
+
 export default function AppLayout() {
   const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
-  const { project, component, params } = useConsoleScope();
+  const { project, component, graphqlComponent, params } = useConsoleScope();
   const { notify } = useNotifications();
 
   // Every page inside the shell gets its tab title from here, so a new route
@@ -85,32 +139,14 @@ export default function AppLayout() {
     apiFetch: extensionApiFetch,
   };
 
-  const crumbs: BreadcrumbItem[] = [];
-  if (params.orgHandle) {
-    crumbs.push({
-      key: 'org',
-      label: intl.formatMessage({
-        id: 'appLayout.breadcrumb.home',
-        defaultMessage: 'Home',
-      }),
-      onClick: () => navigate(routes.organizationHome(params.orgHandle!)),
-    });
-  }
-  if (params.orgHandle && params.projectHandler) {
-    crumbs.push({
-      key: 'project',
-      label: project?.displayName || params.projectHandler,
-      onClick: () => navigate(routes.projectHome(params.orgHandle!, params.projectHandler!)),
-    });
-  }
-  if (params.orgHandle && params.projectHandler && params.apiHandler) {
-    crumbs.push({
-      key: 'api',
-      label: component?.displayName || params.apiHandler,
-      onClick: () =>
-        navigate(routes.api(params.orgHandle!, params.projectHandler!, params.apiHandler!)),
-    });
-  }
+  const homeLabel = intl.formatMessage({ id: 'appLayout.breadcrumb.home', defaultMessage: 'Home' });
+  const crumbs: BreadcrumbItem[] = buildScopeCrumbs(
+    params,
+    homeLabel,
+    project,
+    component,
+    graphqlComponent,
+  ).map((crumb) => ({ key: crumb.key, label: crumb.label, onClick: () => navigate(crumb.path) }));
   // The final crumb is the current page — render it as plain text (no nav).
   const breadcrumbItems = crumbs.map((crumb, index) =>
     index === crumbs.length - 1 ? { ...crumb, onClick: undefined } : crumb,
