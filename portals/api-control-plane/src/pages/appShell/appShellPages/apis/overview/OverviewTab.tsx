@@ -62,7 +62,7 @@ export function OverviewTab({
             <>
               <Card sx={{ p: 2 }}>
                 <Stack spacing={2}>
-                  <InvokeUrlPanel context={api.context} gateways={deployedGateways} />
+                  <InvokeUrlPanel context={api.context} gateways={deployedGateways} version={api.version} />
                   {api.kind === 'RestApi' && (
                     <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
                       <ApiKeysPanel restApiId={api.id ?? ''} />
