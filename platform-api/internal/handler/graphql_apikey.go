@@ -100,7 +100,7 @@ func (h *GraphQLAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reque
 
 	if req.DisplayName == "" {
 		return apperror.ValidationFailed.New("Display name is required").
-			WithLogMessage(fmt.Sprintf("missing display name in API key creation request for user %s", userId))
+			WithLogMessage(fmt.Sprintf("missing display name in GraphQL API key creation request for user %s", userId))
 	}
 
 	var name string
