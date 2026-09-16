@@ -27,18 +27,21 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  Drawer,
   FormControl,
+  FormControlLabel,
   FormLabel,
   IconButton,
+  MenuItem,
+  Select,
   Stack,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Download, Maximize2, Minimize2, Pencil, Upload } from '@wso2/oxygen-ui-icons-react';
+import { Download, Pencil, Plus, Upload } from '@wso2/oxygen-ui-icons-react';
 import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -48,8 +51,9 @@ import {
   useRestApiOpenApi,
   useValidateOpenApiSpec,
   type OpenAPIContent,
+  type Operation,
 } from '@/api/resources/restApis';
-import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
+import { SwaggerOperationsView } from '@/components/SwaggerOperationsView';
 import { MonitorIllustration } from '@/components/illustrations/MonitorIllustration';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -94,18 +98,6 @@ const messages = defineMessages({
   edit: {
     id: 'develop.definition.DefinitionPanel.edit',
     defaultMessage: 'Edit',
-  },
-  expand: {
-    id: 'develop.definition.DefinitionPanel.expand',
-    defaultMessage: 'Expand editor',
-  },
-  collapse: {
-    id: 'develop.definition.DefinitionPanel.collapse',
-    defaultMessage: 'Collapse editor',
-  },
-  expandedTitle: {
-    id: 'develop.definition.DefinitionPanel.expandedTitle',
-    defaultMessage: 'API Definition',
   },
   save: {
     id: 'develop.definition.DefinitionPanel.save',
@@ -188,15 +180,73 @@ const messages = defineMessages({
     defaultMessage: 'Loading editor…',
     description: 'Placeholder shown while Monaco editor initialises.',
   },
+  source: {
+    id: 'develop.definition.DefinitionPanel.source',
+    defaultMessage: 'Source',
+    description: 'Toggle that switches between the raw spec editor and the operations list.',
+  },
+  addResource: {
+    id: 'develop.definition.DefinitionPanel.addResource',
+    defaultMessage: 'Add resource',
+  },
+  addResourceConfirm: {
+    id: 'develop.definition.DefinitionPanel.addResourceConfirm',
+    defaultMessage: 'Add',
+  },
+  addResourceCancel: {
+    id: 'develop.definition.DefinitionPanel.addResourceCancel',
+    defaultMessage: 'Cancel',
+  },
+  addResourcePathPlaceholder: {
+    id: 'develop.definition.DefinitionPanel.addResourcePathPlaceholder',
+    defaultMessage: '/resource/:id',
+    description: 'Placeholder for the path input in the Add resource form.',
+  },
+  addResourceDescriptionPlaceholder: {
+    id: 'develop.definition.DefinitionPanel.addResourceDescriptionPlaceholder',
+    defaultMessage: 'Description (optional)',
+    description: 'Placeholder for the description input in the Add resource form.',
+  },
+  methodLabel: {
+    id: 'develop.definition.DefinitionPanel.methodLabel',
+    defaultMessage: 'Method',
+    description: 'Accessible label for the HTTP method select in the Add resource form.',
+  },
 });
-
-/** Width of the expanded editor Drawer. */
-const EXPANDED_WIDTH = { md: 'min(1000px, 92vw)', xs: '100%' };
 
 /** 5 MiB — matches backend importOpenAPIMaxBytes. */
 const IMPORT_SPEC_MAX_BYTES = 5 * 1024 * 1024;
 
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] as const;
+type HttpMethod = (typeof HTTP_METHODS)[number];
+
 type OpenApiSpec = Record<string, unknown>;
+
+const SUPPORTED_METHODS = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options', 'trace'] as const;
+
+const asRecord = (v: unknown): Record<string, unknown> | null =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+const asText = (v: unknown): string | undefined => {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t === '' ? undefined : t;
+};
+
+function extractOperations(spec: OpenApiSpec): Operation[] {
+  const paths = asRecord(spec.paths);
+  if (!paths) return [];
+  return Object.entries(paths).flatMap(([path, pathItem]) => {
+    const item = asRecord(pathItem);
+    if (!item || !path.startsWith('/')) return [];
+    return SUPPORTED_METHODS.flatMap((method): Operation[] => {
+      const op = asRecord(item[method]);
+      if (!op) return [];
+      const name = asText(op.description);
+      return [{ name, ...(asText(op.description) !== undefined ? { description: asText(op.description) } : {}), request: { method: method.toUpperCase() as Operation['request']['method'], path } }];
+    });
+  });
+}
 
 function parseSpec(text: string): OpenApiSpec | null {
   const trimmed = text.trimStart();
@@ -224,6 +274,7 @@ function filenameFromUrl(urlStr: string): string {
   }
 }
 
+
 export function DefinitionPanel() {
   const intl = useIntl();
   const { params } = useConsoleScope();
@@ -238,44 +289,42 @@ export function DefinitionPanel() {
   const openApiError = openApiQuery.error as ApiError | null;
   const openApiData = openApiQuery.data as OpenAPIContent | undefined;
 
-  // savedContent is always YAML (server always stores YAML).
   const savedContent = openApiData?.content ?? '';
   const [editorText, setEditorText] = useState(savedContent);
-  // 'yaml' | 'json' — controls Monaco language and the format sent on Save.
-  const [format, setFormat] = useState<'yaml' | 'json'>('yaml');
-  // Tracks the filename for the next Save (set when user picks a file or fetches from URL).
+  const detectFormat = (text: string): 'yaml' | 'json' =>
+    text.trimStart().startsWith('{') ? 'json' : 'yaml';
+  const [format, setFormat] = useState<'yaml' | 'json'>(() => detectFormat(savedContent));
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
 
-  // Validation errors from the backend spec validator. Cleared when edit mode is exited.
   const [saveValidationErrors, setSaveValidationErrors] = useState<string[] | null>(null);
   const [isValidating, setIsValidating] = useState(false);
-
-  // Whether the editor is expanded into a full-width right Drawer.
-  const [expanded, setExpanded] = useState(false);
-
-  // Whether the editor is in edit mode (writable). Read-only by default.
   const [isEditing, setIsEditing] = useState(false);
 
-  // Dialog state — import / update dialog
+  // true = Monaco editor (Source), false = operations list.
+  const [showSource, setShowSource] = useState(true);
+
+  // Add-resource form state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newMethod, setNewMethod] = useState<HttpMethod>('GET');
+  const [newPath, setNewPath] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [specUrl, setSpecUrl] = useState('');
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Sync editor when the stored spec (re-)loads. Content is always YAML (server converts on read).
   useEffect(() => {
-    setEditorText(openApiData?.content ?? '');
+    const content = openApiData?.content ?? '';
+    setEditorText(content);
     setPendingFileName(null);
-    setFormat('yaml');
+    setFormat(detectFormat(content));
   }, [openApiData?.content]);
 
-  // Clear save-time validation errors whenever the editor content changes.
   useEffect(() => {
     setSaveValidationErrors(null);
   }, [editorText]);
 
-  // Dirty check compares parsed semantic content, not raw strings.
-  // Format-toggling (YAML ↔ JSON) never affects dirty state.
   const isDirty = useMemo(() => {
     const savedParsed = parseSpec(savedContent);
     const editorParsed = parseSpec(editorText);
@@ -284,11 +333,13 @@ export function DefinitionPanel() {
     return JSON.stringify(savedParsed) !== JSON.stringify(editorParsed);
   }, [savedContent, editorText]);
 
-  // Parsed spec for the operations panel — derived live from editor text.
-  const parsedSpecForOperations = useMemo(() => parseSpec(editorText), [editorText]);
+  const parsedSpec = useMemo(() => parseSpec(editorText), [editorText]);
 
-  // savedContent in the current display format — used by the Reset button.
-  // savedContent is always YAML; convert to JSON only when the editor is in JSON mode.
+  const extractedOperations = useMemo<Operation[]>(
+    () => (parsedSpec ? extractOperations(parsedSpec) : []),
+    [parsedSpec],
+  );
+
   const savedInCurrentFormat = useMemo(() => {
     if (!savedContent) return savedContent;
     if (format === 'json') {
@@ -304,8 +355,6 @@ export function DefinitionPanel() {
 
   const isSaving = isValidating || putOpenApi.isPending;
 
-  // Ref so async callbacks (URL-fetch stream reader) can read the live isSaving
-  // value without capturing a stale closure copy.
   const isSavingRef = useRef(false);
   useEffect(() => {
     isSavingRef.current = isSaving;
@@ -323,7 +372,7 @@ export function DefinitionPanel() {
           setEditorText(yaml.dump(parsed));
         }
       } catch {
-        // If conversion fails (invalid content), just switch the display language.
+        // Switch language mode even if content is invalid.
       }
       setFormat(newFormat);
     },
@@ -336,13 +385,10 @@ export function DefinitionPanel() {
     setFetchError(null);
   };
 
-  // Load content into the editor from a file — does NOT immediately PUT to backend.
-  // Always loads as YAML; converts JSON uploads automatically.
-  // When a saved spec exists, auto-enter edit mode so the save bar is visible.
   const applyFileContent = (file: File) => {
     void file.text().then((text) => {
-      const parsedSpec = parseSpec(text);
-      setEditorText(parsedSpec ? yaml.dump(parsedSpec) : text);
+      const parsedSpecContent = parseSpec(text);
+      setEditorText(parsedSpecContent ? yaml.dump(parsedSpecContent) : text);
       setPendingFileName(file.name.replace(/\.json$/i, '.yaml'));
       setFormat('yaml');
       setIsEditing(true);
@@ -362,7 +408,6 @@ export function DefinitionPanel() {
     closeDialog();
   };
 
-  // Fetch spec from URL and load into the editor — does NOT immediately PUT.
   const handleFetchSpec = async () => {
     const url = specUrl.trim();
     if (!url) return;
@@ -393,18 +438,16 @@ export function DefinitionPanel() {
         offset += chunk.length;
       }
       const text = new TextDecoder().decode(combined);
-      // A save may have started while the network read was in progress; discard
-      // the result rather than overwriting what the user is saving.
       if (isSavingRef.current) {
         setFetchError(intl.formatMessage(messages.dialogFetchError));
         return;
       }
-      const parsedSpec = parseSpec(text);
-      if (!parsedSpec) {
+      const parsedSpecContent = parseSpec(text);
+      if (!parsedSpecContent) {
         setFetchError(intl.formatMessage(messages.dialogParseError));
         return;
       }
-      setEditorText(yaml.dump(parsedSpec));
+      setEditorText(yaml.dump(parsedSpecContent));
       setPendingFileName(filenameFromUrl(url).replace(/\.json$/i, '.yaml'));
       setFormat('yaml');
       setIsEditing(true);
@@ -417,7 +460,6 @@ export function DefinitionPanel() {
   };
 
   const handleDownload = () => {
-    // savedContent is always YAML; convert to JSON only when the editor is in JSON mode.
     let content = savedContent;
     let filename = 'openapi.yaml';
     let mimeType = 'application/x-yaml';
@@ -474,6 +516,49 @@ export function DefinitionPanel() {
     putOpenApi.mutate({ restApiId, formData }, { onSuccess: () => setIsEditing(false) });
   };
 
+  /** Adds a new operation to the spec (editorText) and enters edit mode. */
+  const handleAddOperation = () => {
+    const raw = newPath.trim();
+    if (!raw) return;
+    const path = raw.startsWith('/') ? raw : `/${raw}`;
+    const spec: OpenApiSpec = parseSpec(editorText) ?? {};
+    const paths = ((spec.paths as Record<string, Record<string, unknown>>) ?? {});
+    const lm = newMethod.toLowerCase();
+    if (!paths[path]) paths[path] = {};
+    if (!(paths[path] as Record<string, unknown>)[lm]) {
+      const description = newDescription.trim();
+      (paths[path] as Record<string, unknown>)[lm] = {
+        ...(description ? { description } : {}),
+        responses: { '200': { description: 'OK' } },
+      };
+    }
+    spec.paths = paths;
+    const newText = format === 'json' ? JSON.stringify(spec, null, 2) : yaml.dump(spec);
+    setEditorText(newText);
+    setIsEditing(true);
+    setShowAddForm(false);
+    setNewPath('');
+    setNewMethod('GET');
+    setNewDescription('');
+  };
+
+  /** Removes an operation by its index in extractedOperations and enters edit mode. */
+  const handleDeleteOperation = (index: number) => {
+    const op = extractedOperations[index];
+    if (!op) return;
+    const { method, path } = op.request;
+    const spec = parseSpec(editorText);
+    if (!spec) return;
+    const paths = spec.paths as Record<string, Record<string, unknown>> | undefined;
+    if (!paths?.[path]) return;
+    const lm = method.toLowerCase();
+    delete (paths[path] as Record<string, unknown>)[lm];
+    if (Object.keys(paths[path]).length === 0) delete paths[path];
+    const newText = format === 'json' ? JSON.stringify(spec, null, 2) : yaml.dump(spec);
+    setEditorText(newText);
+    setIsEditing(true);
+  };
+
   if (openApiQuery.isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
@@ -483,6 +568,8 @@ export function DefinitionPanel() {
   }
 
   const hasSpec = Boolean(openApiData);
+
+  const showSaveBar = isEditing || !hasSpec;
 
   return (
     <>
@@ -574,109 +661,82 @@ export function DefinitionPanel() {
             )}
           </Stack>
 
-          {/* Split view: left = spec editor, right = live resources.
-              Both panels carry an explicit height so Monaco's height="100%"
-              resolves correctly through the flex chain. */}
-          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: '3fr 2fr' }}>
-            {/* Left panel — spec editor (blurred static preview when the Drawer is open) */}
-            {expanded ? (
-              <Box
-                sx={{
-                  bgcolor: 'background.paper',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                  filter: 'blur(2px)',
-                  opacity: 0.45,
-                  overflow: 'hidden',
-                  pointerEvents: 'none',
-                  userSelect: 'none',
-                }}
-              >
-                <Box
-                  component="pre"
-                  sx={{
-                    bgcolor: '#1e1e1e',
-                    color: '#d4d4d4',
-                    fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                    fontSize: 12,
-                    height: '100%',
-                    lineHeight: '20px',
-                    m: 0,
-                    overflow: 'hidden',
-                    p: 2,
-                    whiteSpace: 'pre',
-                  }}
-                >
-                  {editorText}
-                </Box>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  bgcolor: 'background.paper',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Editor toolbar: title left | format toggle + expand right */}
-                <Box
-                  sx={{
-                    alignItems: 'center',
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    display: 'flex',
-                    flexShrink: 0,
-                    justifyContent: 'space-between',
-                    px: 2,
-                    py: 1,
-                  }}
-                >
-                  <Typography sx={{ fontWeight: 600 }} variant="subtitle2">
-                    <FormattedMessage {...messages.editorHeading} />
-                  </Typography>
-                  <Stack alignItems="center" direction="row" spacing={1}>
-                    {hasSpec && !isEditing && (
-                      <Button
-                        onClick={() => setIsEditing(true)}
-                        size="small"
-                        startIcon={<Pencil size={16} />}
-                        variant="outlined"
-                      >
-                        <FormattedMessage {...messages.edit} />
-                      </Button>
-                    )}
-                    <ToggleButtonGroup
-                      aria-label={intl.formatMessage(messages.formatLabel)}
-                      color="primary"
-                      disabled={isSaving}
-                      exclusive
-                      onChange={(_event, next: 'yaml' | 'json' | null) => {
-                        if (next !== null) handleFormatToggle(next);
-                      }}
+          {/* Single panel with Spec / Operations toggle */}
+          <Box
+            sx={{
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              height: 'clamp(560px, calc(100vh - 300px), 960px)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Panel header: Edit + JSON/YAML (left) | Source switch (right) */}
+            <Box
+              sx={{
+                alignItems: 'center',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                display: 'flex',
+                flexShrink: 0,
+                justifyContent: 'space-between',
+                px: 2,
+                py: 1,
+              }}
+            >
+              {showSource ? (
+                <Stack alignItems="center" direction="row" spacing={1}>
+                  {hasSpec && !isEditing && (
+                    <Button
+                      onClick={() => setIsEditing(true)}
                       size="small"
-                      value={format}
+                      startIcon={<Pencil size={16} />}
+                      variant="outlined"
                     >
-                      <ToggleButton value="yaml">YAML</ToggleButton>
-                      <ToggleButton value="json">JSON</ToggleButton>
-                    </ToggleButtonGroup>
-                    <Tooltip title={intl.formatMessage(messages.expand)}>
-                      <IconButton
-                        aria-label={intl.formatMessage(messages.expand)}
-                        onClick={() => setExpanded(true)}
-                        size="small"
-                      >
-                        <Maximize2 size={16} />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Box>
+                      <FormattedMessage {...messages.edit} />
+                    </Button>
+                  )}
+                  <ToggleButtonGroup
+                    aria-label={intl.formatMessage(messages.formatLabel)}
+                    color="primary"
+                    disabled={isSaving}
+                    exclusive
+                    onChange={(_event, next: 'yaml' | 'json' | null) => {
+                      if (next !== null) handleFormatToggle(next);
+                    }}
+                    size="small"
+                    value={format}
+                  >
+                    <ToggleButton value="yaml">YAML</ToggleButton>
+                    <ToggleButton value="json">JSON</ToggleButton>
+                  </ToggleButtonGroup>
+                </Stack>
+              ) : (
+                <Box />
+              )}
 
-                {/* Monaco editor — fills remaining height */}
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showSource}
+                    onChange={(e) => setShowSource(e.target.checked)}
+                    size="small"
+                    slotProps={{ input: { 'aria-label': intl.formatMessage(messages.source) } }}
+                  />
+                }
+                label={<FormattedMessage {...messages.source} />}
+                labelPlacement="start"
+                sx={{ m: 0 }}
+              />
+            </Box>
+
+            {/* Panel content */}
+            <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
+              {showSource ? (
+                /* Raw spec editor */
                 <Box sx={{ flex: 1, minHeight: 0, p: 1 }}>
                   <Editor
                     height="100%"
@@ -702,305 +762,160 @@ export function DefinitionPanel() {
                     value={editorText}
                   />
                 </Box>
-
-                {/* Save / Reset bar — shown in edit mode or when a pending import awaits saving */}
-                {(isEditing || !hasSpec) && (
-                  <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
-                    {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
-                      <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
-                        <FormattedMessage {...messages.saveSpecInvalid} />
-                        <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
-                          {saveValidationErrors.map((msg, i) => (
-                            <Typography component="li" key={i} variant="body2">
-                              {msg}
-                            </Typography>
-                          ))}
-                        </Box>
-                      </Alert>
-                    )}
-                    <Box
-                      sx={{
-                        alignItems: 'center',
-                        display: 'flex',
-                        gap: 1,
-                        justifyContent: 'flex-end',
-                        px: 2,
-                        py: 1.5,
-                      }}
-                    >
+              ) : (
+                /* Operations list */
+                <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 2 }}>
+                  {/* Add resource area */}
+                  <Box sx={{ mb: 2 }}>
+                    {showAddForm ? (
+                      <Stack spacing={1}>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                          <Select
+                            aria-label={intl.formatMessage(messages.methodLabel)}
+                            onChange={(e) => setNewMethod(e.target.value as HttpMethod)}
+                            size="small"
+                            sx={{ flexShrink: 0, minWidth: 110 }}
+                            value={newMethod}
+                          >
+                            {HTTP_METHODS.map((m) => (
+                              <MenuItem key={m} value={m}>
+                                {m}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                          <TextField
+                            autoFocus
+                            fullWidth
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setNewPath(val && !val.startsWith('/') ? `/${val}` : val);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddOperation();
+                            }}
+                            placeholder={intl.formatMessage(messages.addResourcePathPlaceholder)}
+                            size="small"
+                            value={newPath}
+                          />
+                          <TextField
+                            fullWidth
+                            onChange={(e) => setNewDescription(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddOperation();
+                            }}
+                            placeholder={intl.formatMessage(messages.addResourceDescriptionPlaceholder)}
+                            size="small"
+                            value={newDescription}
+                          />
+                          <Button
+                            onClick={handleAddOperation}
+                            size="small"
+                            sx={{ flexShrink: 0 }}
+                            variant="contained"
+                          >
+                            {intl.formatMessage(messages.addResourceConfirm)}
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setShowAddForm(false);
+                              setNewPath('');
+                              setNewMethod('GET');
+                              setNewDescription('');
+                            }}
+                            size="small"
+                            sx={{ flexShrink: 0 }}
+                            variant="outlined"
+                          >
+                            {intl.formatMessage(messages.addResourceCancel)}
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    ) : (
                       <Button
-                        color="secondary"
-                        disabled={isSaving}
-                        onClick={() => {
-                          if (hasSpec) {
-                            setEditorText(savedInCurrentFormat);
-                            setIsEditing(false);
-                          } else {
-                            setEditorText('');
-                          }
-                          setPendingFileName(null);
-                          setSaveValidationErrors(null);
-                        }}
+                        onClick={() => setShowAddForm(true)}
                         size="small"
+                        startIcon={<Plus size={16} />}
                         variant="outlined"
                       >
-                        {hasSpec
-                          ? intl.formatMessage(messages.reset)
-                          : intl.formatMessage(messages.discard)}
+                        {intl.formatMessage(messages.addResource)}
                       </Button>
-                      <Button
-                        disabled={!isDirty || !editorText.trim()}
-                        loading={isSaving}
-                        onClick={() => void handleSave()}
-                        size="small"
-                        variant="contained"
-                      >
-                        {intl.formatMessage(messages.save)}
-                      </Button>
-                    </Box>
+                    )}
                   </Box>
-                )}
-              </Box>
-            )}
 
-            {/* Right panel — live resources derived from spec */}
-            <Box
-              sx={{
-                bgcolor: 'background.paper',
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              {/* Resources panel header */}
-              <Box
-                sx={{
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  flexShrink: 0,
-                  px: 2,
-                  py: 1,
-                }}
-              >
-                <Typography sx={{ fontWeight: 600 }} variant="subtitle2">
-                  <FormattedMessage {...messages.operationsHeading} />
-                </Typography>
-              </Box>
-
-              {/* Resources viewer — updates in real time as the editor text changes */}
-              <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, py: 0.5 }}>
-                {parsedSpecForOperations ? (
-                  <Box
-                    sx={{
-                      '& .swagger-ui': { bgcolor: 'transparent' },
-                      '& .swagger-ui .opblock-tag': { position: 'relative' },
-                      '& .swagger-ui .opblock-tag a, & .swagger-ui .opblock-tag a.nostyle': {
-                        fontSize: '1rem',
-                        fontWeight: 600,
-                      },
-                      '& .swagger-ui .opblock-tag small': { fontSize: '0.8125rem' },
-                      '& .swagger-ui .opblock-summary-method': { fontSize: '0.8125rem' },
-                      '& .swagger-ui .opblock-summary-path, & .swagger-ui .opblock-summary-path span': {
-                        fontSize: '0.9375rem',
-                      },
-                      '& .swagger-ui .opblock-summary-description': { fontSize: '0.8125rem' },
-                      '& .swagger-ui .opblock-tag::before': {
-                        color: 'currentColor',
-                        content: '"›"',
-                        display: 'inline-block',
-                        fontSize: '1.1rem',
-                        fontWeight: 700,
-                        marginRight: '6px',
-                        opacity: 0.6,
-                        transform: 'rotate(0deg)',
-                        transition: 'transform 0.15s ease',
-                      },
-                      '& .swagger-ui .opblock-tag[data-is-open="true"]::before': {
-                        transform: 'rotate(90deg)',
-                      },
-                    }}
-                  >
-                    <SwaggerSpecViewer
-                      disableResponseSection
-                      disableTryOutBtn
-                      hideInfoSection
-                      hideServers
-                      spec={parsedSpecForOperations}
+                  {parsedSpec ? (
+                    <SwaggerOperationsView
+                      onDelete={handleDeleteOperation}
+                      operations={extractedOperations}
+                      showDelete
                     />
-                  </Box>
-                ) : (
-                  <Box
-                    sx={{
-                      alignItems: 'center',
-                      display: 'flex',
-                      height: '100%',
-                      justifyContent: 'center',
-                      px: 3,
-                    }}
-                  >
-                    <Typography color="text.secondary" textAlign="center" variant="body2">
+                  ) : (
+                    <Typography color="text.secondary" variant="body2">
                       {intl.formatMessage(messages.operationsParseError)}
                     </Typography>
-                  </Box>
-                )}
-              </Box>
+                  )}
+                </Box>
+              )}
             </Box>
-          </Box>
 
-          {/* Expanded editor Drawer — only one Monaco instance is ever mounted; text
-              survives the open/close transition as React state. */}
-          <Drawer
-            anchor="right"
-            onClose={() => setExpanded(false)}
-            open={expanded}
-            slotProps={{ paper: { sx: { width: EXPANDED_WIDTH } } }}
-          >
-            {expanded && (
-              <Stack spacing={0} sx={{ height: '100%', minHeight: 0 }}>
-                {/* Drawer toolbar */}
+            {/* Save / Reset bar */}
+            {showSaveBar && (
+              <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
+                {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
+                  <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
+                    <FormattedMessage {...messages.saveSpecInvalid} />
+                    <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+                      {saveValidationErrors.map((msg, i) => (
+                        <Typography component="li" key={i} variant="body2">
+                          {msg}
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Alert>
+                )}
                 <Box
                   sx={{
                     alignItems: 'center',
-                    bgcolor: 'background.paper',
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
                     display: 'flex',
-                    flexShrink: 0,
-                    justifyContent: 'space-between',
-                    px: 3,
+                    gap: 1,
+                    justifyContent: 'flex-end',
+                    px: 2,
                     py: 1.5,
                   }}
                 >
-                  <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
-                    {intl.formatMessage(messages.expandedTitle)}
-                  </Typography>
-                  <Stack alignItems="center" direction="row" spacing={1}>
-                    {hasSpec && !isEditing && (
-                      <Button
-                        onClick={() => setIsEditing(true)}
-                        size="small"
-                        startIcon={<Pencil size={16} />}
-                        variant="outlined"
-                      >
-                        <FormattedMessage {...messages.edit} />
-                      </Button>
-                    )}
-                    <ToggleButtonGroup
-                      aria-label={intl.formatMessage(messages.formatLabel)}
-                      color="primary"
-                      disabled={isSaving}
-                      exclusive
-                      onChange={(_event, next: 'yaml' | 'json' | null) => {
-                        if (next !== null) handleFormatToggle(next);
-                      }}
-                      size="small"
-                      value={format}
-                    >
-                      <ToggleButton value="yaml">YAML</ToggleButton>
-                      <ToggleButton value="json">JSON</ToggleButton>
-                    </ToggleButtonGroup>
-                    <Tooltip title={intl.formatMessage(messages.collapse)}>
-                      <IconButton
-                        aria-label={intl.formatMessage(messages.collapse)}
-                        onClick={() => setExpanded(false)}
-                        size="small"
-                      >
-                        <Minimize2 size={16} />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Box>
-
-                {/* Monaco fills the remaining Drawer height */}
-                <Box sx={{ flex: 1, minHeight: 0 }}>
-                  <Editor
-                    height="100%"
-                    language={format}
-                    loading={
-                      <Box sx={{ bgcolor: '#1e1e1e', height: '100%', p: 2 }}>
-                        <Typography color="text.disabled" variant="body2">
-                          {intl.formatMessage(messages.editorLoading)}
-                        </Typography>
-                      </Box>
-                    }
-                    onChange={(value) => setEditorText(value ?? '')}
-                    options={{
-                      automaticLayout: true,
-                      fontSize: 12,
-                      lineHeight: 20,
-                      minimap: { enabled: true },
-                      readOnly: isSaving || (hasSpec && !isEditing),
-                      scrollBeyondLastLine: false,
-                      wordWrap: 'on',
+                  <Button
+                    color="secondary"
+                    disabled={isSaving}
+                    onClick={() => {
+                      if (hasSpec) {
+                        setEditorText(savedInCurrentFormat);
+                        setIsEditing(false);
+                      } else {
+                        setEditorText('');
+                      }
+                      setPendingFileName(null);
+                      setSaveValidationErrors(null);
+                      setShowAddForm(false);
                     }}
-                    theme="vs-dark"
-                    value={editorText}
-                  />
+                    size="small"
+                    variant="outlined"
+                  >
+                    {hasSpec
+                      ? intl.formatMessage(messages.reset)
+                      : intl.formatMessage(messages.discard)}
+                  </Button>
+                  <Button
+                    disabled={!isDirty || (!editorText.trim() && hasSpec)}
+                    loading={isSaving}
+                    onClick={() => void handleSave()}
+                    size="small"
+                    variant="contained"
+                  >
+                    {intl.formatMessage(messages.save)}
+                  </Button>
                 </Box>
-
-                {/* Save / Reset bar inside the Drawer — shown in edit mode or pending import */}
-                {(isEditing || !hasSpec) && (
-                  <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
-                    {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
-                      <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
-                        <FormattedMessage {...messages.saveSpecInvalid} />
-                        <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
-                          {saveValidationErrors.map((msg, i) => (
-                            <Typography component="li" key={i} variant="body2">
-                              {msg}
-                            </Typography>
-                          ))}
-                        </Box>
-                      </Alert>
-                    )}
-                    <Box
-                      sx={{
-                        alignItems: 'center',
-                        display: 'flex',
-                        gap: 1,
-                        justifyContent: 'flex-end',
-                        px: 3,
-                        py: 1.5,
-                      }}
-                    >
-                      <Button
-                        color="secondary"
-                        disabled={isSaving}
-                        onClick={() => {
-                          if (hasSpec) {
-                            setEditorText(savedInCurrentFormat);
-                            setIsEditing(false);
-                          } else {
-                            setEditorText('');
-                          }
-                          setPendingFileName(null);
-                          setSaveValidationErrors(null);
-                        }}
-                        size="small"
-                        variant="outlined"
-                      >
-                        {hasSpec
-                          ? intl.formatMessage(messages.reset)
-                          : intl.formatMessage(messages.discard)}
-                      </Button>
-                      <Button
-                        disabled={!isDirty || !editorText.trim()}
-                        loading={isSaving}
-                        onClick={() => void handleSave()}
-                        size="small"
-                        variant="contained"
-                      >
-                        {intl.formatMessage(messages.save)}
-                      </Button>
-                    </Box>
-                  </Box>
-                )}
-              </Stack>
+              </Box>
             )}
-          </Drawer>
+          </Box>
         </Stack>
       ) : (
         /* Empty state: no spec uploaded yet. */

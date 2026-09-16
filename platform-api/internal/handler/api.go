@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
-	"gopkg.in/yaml.v3"
 )
 
 const importOpenAPIMaxBytes = 5 << 20 // 5 MiB
@@ -477,23 +476,6 @@ func isJSONBytes(data []byte) bool {
 	return false
 }
 
-// jsonToYAML converts a JSON-encoded spec to YAML. If data is already YAML
-// (i.e. not JSON), it is returned unchanged.
-func jsonToYAML(data []byte) ([]byte, error) {
-	if !isJSONBytes(data) {
-		return data, nil
-	}
-	var obj interface{}
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON spec: %w", err)
-	}
-	out, err := yaml.Marshal(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert spec to YAML: %w", err)
-	}
-	return out, nil
-}
-
 // loadSpecDocument parses the spec with libopenapi, builds the typed model,
 // and returns an error only for unparseable input or missing openapi/swagger key.
 // Build/validation errors are stored in sd.errs.
@@ -760,11 +742,7 @@ func (h *APIHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.NotFound.New("API definition not found")
 	}
 
-	yamlContent, err := jsonToYAML(doc.Content)
-	if err != nil {
-		return serviceError(err, fmt.Sprintf("failed to convert stored spec to YAML for API %s", restApiId))
-	}
-	content := string(yamlContent)
+	content := string(doc.Content)
 	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
 	return nil
 }
@@ -893,11 +871,7 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return serviceError(err, fmt.Sprintf("failed to upsert openapi spec for API %s", restApiId))
 	}
 
-	yamlSpecContent, err := jsonToYAML(specContent)
-	if err != nil {
-		return serviceError(err, fmt.Sprintf("failed to convert spec to YAML for API %s", restApiId))
-	}
-	content := string(yamlSpecContent)
+	content := string(specContent)
 	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
 	return nil
 }

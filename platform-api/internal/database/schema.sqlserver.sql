@@ -776,7 +776,7 @@ CREATE TABLE dbo.api_documents (
     file_name         VARCHAR(255),
     content_type      VARCHAR(100),
     content           VARBINARY(MAX) NOT NULL,
-    data_version      INT            NOT NULL DEFAULT 0,
+    data_version      VARCHAR(20)    NOT NULL DEFAULT '1.0',
     created_by        VARCHAR(255),
     created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
     updated_by        VARCHAR(255),

@@ -62,7 +62,7 @@ export type SwaggerOperationsViewProps = {
   showDelete?: boolean;
 };
 
-/** Compact Swagger-style operation summary shared by pages that do not need Swagger's detail UI. */
+/** Compact operation summary shared by pages that do not need the full spec viewer UI. */
 export function SwaggerOperationsView({
   operations,
   isOperationDisabled,
@@ -114,16 +114,14 @@ export function SwaggerOperationsView({
             <Typography sx={{ flexShrink: 0, fontSize: '0.95rem', fontWeight: 700 }}>
               {path}
             </Typography>
-            {operation.description && (
-              <Typography
-                color="text.secondary"
-                noWrap
-                sx={{ flex: 1, minWidth: 0, opacity: 0.7 }}
-                variant="body2"
-              >
-                {operation.description}
-              </Typography>
-            )}
+            <Typography
+              color="text.secondary"
+              noWrap
+              sx={{ flex: 1, minWidth: 0 }}
+              variant="body2"
+            >
+              {operation.name ?? ''}
+            </Typography>
             {showDelete && onDelete && (
               <Tooltip title="Delete resource">
                 <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0 }}>

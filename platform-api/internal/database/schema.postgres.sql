@@ -654,7 +654,7 @@ CREATE TABLE IF NOT EXISTS api_documents (
     file_name         VARCHAR(255),
     content_type      VARCHAR(100),
     content           BYTEA        NOT NULL,
-    data_version      INTEGER      NOT NULL DEFAULT 0,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
     created_by        VARCHAR(255),
     created_at        TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
     updated_by        VARCHAR(255),

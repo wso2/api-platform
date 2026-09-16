@@ -1318,7 +1318,15 @@ export const ContractSourceForm = ({
 
   const handleSourceChange = (next: ContractSourceKey) => {
     setSourceKey(next);
+    // Reset every source's input so the previous tab's values don't persist
+    contractUrl.setValue('');
+    setFile(null);
+    setFileError(null);
+    setFetched(null);
+    setRequest(null);
+    setFetching(false);
     setFetchError(null);
+    setBackendValidationErrors(null);
   };
 
   /** An accepted file is a finished selection, so it is read straight away. */

@@ -16,30 +16,42 @@
  * under the License.
  */
 
+import Editor from '@monaco-editor/react';
 import {
   Alert,
   Box,
-  CodeBlock,
   FormControlLabel,
   Stack,
   Switch,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
 import { ResourcePreviewPlaceholder } from '../../components/ResourcePreviewPlaceholder';
-import { serializeSpec, type SpecDocument } from '../utils/specText';
+import { serializeSpec, type SpecDocument, type SpecFormat } from '../utils/specText';
 import type { SpecIssue } from '../utils/specValidation';
 import { SpecIssueList } from './SpecIssueList';
 import { SpecSourceEditor } from './SpecSourceEditor';
 
 const messages = defineMessages({
+  editorLoading: {
+    id: 'api.create.apiResourcesPreview.editorLoading',
+    defaultMessage: 'Loading editor…',
+    description: 'Placeholder shown while Monaco editor initialises.',
+  },
+  formatLabel: {
+    id: 'api.create.apiResourcesPreview.formatLabel',
+    defaultMessage: 'Source format',
+    description: 'Accessible name for the YAML / JSON toggle buttons.',
+  },
   source: {
     id: 'api.create.apiResourcesPreview.source',
     defaultMessage: 'Source',
-    description: 'Toggle that swaps the rendered resources for the definition’s own text.',
+    description: "Toggle that swaps the rendered resources for the definition's own text.",
   },
   title: {
     id: 'api.create.apiResourcesPreview.title',
@@ -54,6 +66,10 @@ const messages = defineMessages({
  * a laptop screen without leaving a stubby box on a tall one.
  */
 const PANE_HEIGHT = 'clamp(420px, calc(100vh - 260px), 560px)';
+
+/** Returns 'json' when rawText starts with `{`, otherwise 'yaml'. */
+const detectFormat = (rawText: string | undefined): SpecFormat =>
+  rawText !== undefined && rawText.trimStart().startsWith('{') ? 'json' : 'yaml';
 
 export type ApiResourcesPreviewProps = {
   /**
@@ -105,12 +121,24 @@ export const ApiResourcesPreview = ({ onBeforeSave, onEditingChange, onSpecChang
   const hasContract = spec !== undefined;
   const editable = hasContract && onSpecChange !== undefined;
 
-  // Read-only source view: prefer rawText so comments/format are preserved;
-  // fall back to JSON serialization when rawText isn't available.
-  const sourceText = useMemo(() => {
+  // Default format is derived from the spec's own format. Reset it whenever a
+  // new contract lands so the toggle tracks the new file rather than the old one.
+  const [format, setFormat] = useState<SpecFormat>(() => detectFormat(rawText));
+  useEffect(() => {
+    setFormat(detectFormat(rawText));
+  }, [rawText]);
+
+  // Text for the read-only Monaco editor. Prefer rawText when it already
+  // matches the chosen format (preserves YAML comments, anchors, and layout).
+  const displayText = useMemo((): string => {
     if (spec === undefined) return '';
-    return rawText ?? serializeSpec(spec, 'json');
-  }, [rawText, spec]);
+    const rawIsYaml = rawText !== undefined && !rawText.trimStart().startsWith('{');
+    // Preserve rawText only for YAML — comments, anchors, and key order survive.
+    // JSON is always re-serialized so it comes out pretty-printed regardless of
+    // whether the uploaded file was minified.
+    if (format === 'yaml' && rawIsYaml) return rawText!;
+    return serializeSpec(spec, format);
+  }, [format, rawText, spec]);
 
   return (
     <Box
@@ -133,9 +161,29 @@ export const ApiResourcesPreview = ({ onBeforeSave, onEditingChange, onSpecChang
             justifyContent: 'space-between',
           }}
         >
-          <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
-            <FormattedMessage {...messages.title} />
-          </Typography>
+          {/* Left: title + YAML/JSON toggle (only visible in read-only source mode) */}
+          <Stack alignItems="center" direction="row" spacing={1}>
+            <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+            {showSource && !editable && (
+              <ToggleButtonGroup
+                aria-label={intl.formatMessage(messages.formatLabel)}
+                color="primary"
+                exclusive
+                onChange={(_event, next: SpecFormat | null) => {
+                  if (next !== null) setFormat(next);
+                }}
+                size="small"
+                value={format}
+              >
+                <ToggleButton value="yaml">YAML</ToggleButton>
+                <ToggleButton value="json">JSON</ToggleButton>
+              </ToggleButtonGroup>
+            )}
+          </Stack>
+
+          {/* Right: Source switch */}
           <FormControlLabel
             control={
               <Switch
@@ -170,17 +218,40 @@ export const ApiResourcesPreview = ({ onBeforeSave, onEditingChange, onSpecChang
           flex: 1,
           minHeight: 0,
           mt: hasContract ? 1 : 0,
-          // The editor manages its own scrolling so its toolbar stays put; the
-          // read-only views are blocks this box has to scroll for.
-          overflow: editable && showSource ? 'hidden' : 'auto',
+          // Monaco manages its own scrolling; the SwaggerSpecViewer is a block
+          // this box has to scroll for.
+          overflow: showSource ? 'hidden' : 'auto',
         }}
       >
+        {/* Editable source view: SpecSourceEditor owns format toggle + save bar. */}
         {hasContract && showSource && editable ? (
           <SpecSourceEditor onBeforeSave={onBeforeSave} onEditingChange={onEditingChange} onSave={onSpecChange} rawText={rawText} spec={spec} />
         ) : null}
 
+        {/* Read-only source view: Monaco editor, format toggled in the header above. */}
         {hasContract && showSource && !editable ? (
-          <CodeBlock code={sourceText} language="json" showLineNumbers />
+          <Editor
+            height="100%"
+            language={format}
+            loading={
+              <Box sx={{ bgcolor: '#1e1e1e', height: '100%', p: 2 }}>
+                <Typography color="text.disabled" variant="body2">
+                  {intl.formatMessage(messages.editorLoading)}
+                </Typography>
+              </Box>
+            }
+            options={{
+              automaticLayout: true,
+              fontSize: 12,
+              lineHeight: 20,
+              minimap: { enabled: false },
+              readOnly: true,
+              scrollBeyondLastLine: false,
+              wordWrap: 'on',
+            }}
+            theme="vs-dark"
+            value={displayText}
+          />
         ) : null}
 
         {hasContract && !showSource ? (
