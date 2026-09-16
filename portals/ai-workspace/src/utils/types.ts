@@ -902,6 +902,8 @@ export interface MCPServerInfoFetchResponse {
     name: string;
     version: string;
   };
+  /** MCP protocol versions the server reported. Absent when none could be determined. */
+  supportedVersions?: string[];
   tools?: MCPServerTool[];
   resources?: MCPServerResource[];
   prompts?: MCPServerPrompt[];

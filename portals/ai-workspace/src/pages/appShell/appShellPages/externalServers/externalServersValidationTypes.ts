@@ -58,5 +58,6 @@ export type EndpointValidationResponse = {
     name: string;
     version: string;
   };
+  supportedVersions?: string[];
   tools: ToolItem[];
 };

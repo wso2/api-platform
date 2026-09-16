@@ -82,6 +82,12 @@ const itemDetailsSx = {
   bgcolor: 'rgba(245, 239, 227, 0.10)',
 };
 
+const versionsCardSx = {
+  borderRadius: 1,
+  px: 2,
+  py: 1.5,
+};
+
 const accordionDetailsSx = {
   maxHeight: 320,
   overflowY: 'auto',
@@ -107,6 +113,8 @@ export default function ExternalServersValidationDetails({
   const tools = validationResult.tools ?? [];
   const resources = validationResult.resources ?? [];
   const prompts = validationResult.prompts ?? [];
+  // undefined means no probe ran (the stored-proxy case); empty means one ran and found none.
+  const supportedVersions = validationResult.supportedVersions;
   const hasTools = tools.length > 0;
   const hasResources = resources.length > 0;
   const hasPrompts = prompts.length > 0;
@@ -125,6 +133,28 @@ export default function ExternalServersValidationDetails({
             variant="outlined"
           />
         </Stack>
+      ) : null}
+
+      {supportedVersions ? (
+        <Card sx={versionsCardSx}>
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography sx={{ fontWeight: 600 }}>
+                Supported MCP Versions
+              </Typography>
+              {supportedVersions.length === 0 ? (
+                <Chip label="Not detected" size="small" />
+              ) : null}
+            </Stack>
+            {supportedVersions.length > 0 ? (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {supportedVersions.map((version) => (
+                  <Chip key={version} label={version} size="small" />
+                ))}
+              </Stack>
+            ) : null}
+          </Stack>
+        </Card>
       ) : null}
 
       {hasTools ? (

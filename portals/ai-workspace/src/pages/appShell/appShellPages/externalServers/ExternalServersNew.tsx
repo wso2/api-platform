@@ -190,6 +190,8 @@ export default function ExternalServersNew(): JSX.Element {
           name: response.serverInfo?.name ?? '',
           version: response.serverInfo?.version ?? '',
         },
+        // Defaulted so the details view can tell "probed, found none" from "never probed".
+        supportedVersions: response.supportedVersions ?? [],
         tools: (response.tools ?? []) as unknown as EndpointValidationResponse['tools'],
         resources: (response.resources ?? []) as unknown as EndpointValidationResponse['resources'],
         prompts: (response.prompts ?? []) as unknown as EndpointValidationResponse['prompts'],
