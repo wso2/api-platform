@@ -59,6 +59,16 @@ const atApi = () =>
       projectHandler: aProject().id,
     },
   });
+const GRAPHQL_API = `${PROJECT}/graphql-apis/graphql-api-1`;
+const atGraphqlApi = () =>
+  makeConsoleScope({
+    isGraphQLApiScope: true,
+    params: {
+      graphqlApiHandler: 'graphql-api-1',
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
+    },
+  });
 
 /*
  * The sidebar has one item per *concern*, not per scope: Overview is the summary
@@ -80,12 +90,21 @@ describe('Overview adapts to the deepest scope', () => {
     expect(definitionFor('overview').to(atApi())).toBe(API);
   });
 
+  // A GraphQL API sets `params.graphqlApiHandler`, never `params.apiHandler`
+  // (see `graphqlApiPath`'s doc comment), so the 'api' tier needs its own
+  // `graphqlTo` to resolve — without it, Overview fell through to the
+  // project tier and landed on the project's own overview instead.
+  it('links to the GraphQL API overview once one is open, not the project overview', () => {
+    expect(definitionFor('overview').to(atGraphqlApi())).toBe(GRAPHQL_API);
+  });
+
   // Opening a project or an API navigates into a deeper tier of this same item,
   // so Overview has to stay lit rather than handing off to another item.
   it.each([
     ['organization home', `${ORG}/home`],
     ['project home', `${PROJECT}/home`],
     ['api overview', API],
+    ['graphql api overview', GRAPHQL_API],
   ])('stays active on the %s page', (_name, pathname) => {
     expect(matcherFor('overview')(pathname)).toBe(true);
   });
