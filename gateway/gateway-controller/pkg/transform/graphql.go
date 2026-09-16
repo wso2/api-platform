@@ -95,6 +95,22 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 	chain := t.buildPolicyChain(apiPolicies)
 	injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
 
+	// A GraphQLApi has no per-operation list to add an OPTIONS entry to the way a
+	// RestApi does, so a cors policy's route never exists and a browser's preflight
+	// 404s before any policy — including cors itself — ever runs. When cors is
+	// attached, synthesize an OPTIONS route (mirroring
+	// utils.addMCPSpecificOperations's optionsRequired pattern for MCP, the other
+	// no-real-operations API kind) so the preflight has somewhere to match.
+	corsRequired := false
+	if apiData.Policies != nil {
+		for _, p := range *apiData.Policies {
+			if strings.EqualFold(p.Name, "cors") {
+				corsRequired = true
+				break
+			}
+		}
+	}
+
 	// fullPath has no operation-path suffix: a GraphQLApi's whole route match is the
 	// resolved context (ConstructFullPath(context, version, "") == context+version,
 	// since appending "" is a no-op).
@@ -149,6 +165,29 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 	}
 	rdc.PolicyChains[mainRouteKey] = sdkChainToModel(injected)
 
+	if corsRequired {
+		mainOptionsRouteKey := xds.GenerateRouteName("OPTIONS", apiData.Context, apiData.Version, "", mainVhost)
+		rdc.Routes[mainOptionsRouteKey] = &models.Route{
+			Method:          "OPTIONS",
+			Path:            fullPath,
+			OperationPath:   "graphql",
+			PathMatchType:   "Exact",
+			Vhost:           mainVhost,
+			AutoHostRewrite: mainAutoHostRewrite,
+			Upstream: models.RouteUpstream{
+				ClusterKey: mainUpstream.ClusterKey,
+				Default:    &mainUpstreamInfo,
+			},
+		}
+		// Same chain as the POST route: cors is API-level policy here (there's no
+		// operation-level list to scope it to), so it — and every other API-level
+		// policy — runs against the preflight in declared order. A policy earlier in
+		// the list that fails closed on missing credentials (e.g. jwt-auth) will
+		// short-circuit before cors runs, same as it would for an explicit REST
+		// OPTIONS operation; declare cors first if that matters for a given API.
+		rdc.PolicyChains[mainOptionsRouteKey] = sdkChainToModel(injected)
+	}
+
 	// Sandbox is active when a sandbox upstream is configured (GraphQLApi only
 	// supports a direct url — see validateGraphQLUpstream — never a ref).
 	hasSandbox := apiData.Upstream.Sandbox != nil &&
@@ -186,6 +225,23 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 			},
 		}
 		rdc.PolicyChains[sandboxRouteKey] = sdkChainToModel(injected)
+
+		if corsRequired {
+			sandboxOptionsRouteKey := xds.GenerateRouteName("OPTIONS", apiData.Context, apiData.Version, "", sandboxVhost)
+			rdc.Routes[sandboxOptionsRouteKey] = &models.Route{
+				Method:          "OPTIONS",
+				Path:            fullPath,
+				OperationPath:   "graphql",
+				PathMatchType:   "Exact",
+				Vhost:           sandboxVhost,
+				AutoHostRewrite: sbAutoHostRewrite,
+				Upstream: models.RouteUpstream{
+					ClusterKey: sbUpstream.ClusterKey,
+					Default:    &sbUpstreamInfo,
+				},
+			}
+			rdc.PolicyChains[sandboxOptionsRouteKey] = sdkChainToModel(injected)
+		}
 	}
 
 	return rdc, nil
