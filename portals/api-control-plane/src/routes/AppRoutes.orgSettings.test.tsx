@@ -52,6 +52,7 @@ describe('Org-level Settings', () => {
       collection('/projects', [project]),
       resource('/projects/:projectId', project),
       collection('/rest-apis', []),
+      collection('/graphql-apis', []),
     );
   });
   afterEach(() => vi.unstubAllEnvs());
