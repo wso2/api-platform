@@ -34,20 +34,36 @@ import { ApiCreationWizard } from './ApiCreationWizard';
  */
 vi.mock('./components/ApiTypeSelector', () => ({
   ApiTypeSelector: ({ onChange }: { onChange: (apiType: unknown) => void }) => (
-    <button
-      onClick={() =>
-        onChange({
-          description: { defaultMessage: 'REST', id: 'test.apiType.description' },
-          enabled: true,
-          icon: null,
-          key: 'rest',
-          title: { defaultMessage: 'REST API', id: 'test.apiType.title' },
-        })
-      }
-      type="button"
-    >
-      Choose REST
-    </button>
+    <>
+      <button
+        onClick={() =>
+          onChange({
+            description: { defaultMessage: 'REST', id: 'test.apiType.description' },
+            enabled: true,
+            icon: null,
+            key: 'rest',
+            title: { defaultMessage: 'REST API', id: 'test.apiType.title' },
+          })
+        }
+        type="button"
+      >
+        Choose REST
+      </button>
+      <button
+        onClick={() =>
+          onChange({
+            description: { defaultMessage: 'GraphQL', id: 'test.apiType.description' },
+            enabled: true,
+            icon: null,
+            key: 'graphql',
+            title: { defaultMessage: 'GraphQL API', id: 'test.apiType.title' },
+          })
+        }
+        type="button"
+      >
+        Choose GraphQL
+      </button>
+    </>
   ),
 }));
 
@@ -94,12 +110,43 @@ vi.mock('./components/DefineApiPanel', () => ({
   },
 }));
 
+/*
+ * The GraphQL source step is stubbed the same way, and for the same reason:
+ * what it resolves is covered by `GraphqlDefinePanel.test.tsx`, and these
+ * tests are about where the wizard's *create* step leads, not how a schema
+ * gets resolved.
+ */
+vi.mock('./components/graphql/GraphqlDefinePanel', () => ({
+  GraphqlDefinePanel: ({
+    onDraftChange,
+  }: {
+    onDraftChange: (draft: unknown) => void;
+  }) => {
+    useEffect(() => () => onDraftChange(null), [onDraftChange]);
+
+    return (
+      <button
+        onClick={() =>
+          onDraftChange({
+            endpointUrl: 'https://backend.example.com/graphql',
+            schemaSource: 'introspection',
+            sdl: 'type Query { hello: String }',
+          })
+        }
+        type="button"
+      >
+        Use this schema
+      </button>
+    );
+  },
+}));
+
 const scope = makeConsoleScope();
 const route = '/organizations/api-platform-demo/projects/retail-apis/apis/create';
 
 beforeEach(() => {
   resetHttpClient();
-  server.use(collection('/rest-apis', []));
+  server.use(collection('/rest-apis', []), collection('/graphql-apis', []));
   server.use(accepts('post', '/rest-apis/validate-openapi', { isValid: true, errors: [] }));
 });
 
@@ -149,6 +196,62 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(createRequests.count()).toBe(1);
+  });
+});
+
+/** Runs the wizard's GraphQL path as far as a submitted create request. */
+const submitGraphqlCreate = async () => {
+  const rendered = renderWithProviders(<ApiCreationWizard />, { route, scope });
+  const { user } = rendered;
+
+  await user.click(screen.getByRole('button', { name: 'Choose GraphQL' }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+  await user.click(screen.getByRole('button', { name: 'Use this schema' }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+  await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+  await user.click(screen.getByRole('button', { name: 'Create' }));
+
+  return rendered;
+};
+
+describe('ApiCreationWizard — GraphQL creation', () => {
+  it('posts a GraphQL create request and lands on the confirmation screen', async () => {
+    const createRequests = recorder();
+    server.use(
+      accepts(
+        'post',
+        '/graphql-apis',
+        {
+          context: '/countries-api/v1.0.0',
+          displayName: 'Countries API',
+          id: 'countries-api',
+          upstream: { main: { url: 'https://backend.example.com/graphql' } },
+        },
+        { record: createRequests },
+      ),
+    );
+
+    await submitGraphqlCreate();
+
+    expect(await screen.findByText('Countries API created')).toBeInTheDocument();
+    expect(createRequests.count()).toBe(1);
+    expect(createRequests.last()?.url.pathname).toContain('/graphql-apis');
+  });
+
+  it('returns to the configure form with the server’s reason, on a rejected create', async () => {
+    server.use(
+      failure('post', '/graphql-apis', 409, 'CONFLICT', {
+        errors: [{ field: 'id', message: 'A GraphQL API with this identifier already exists.' }],
+        message: 'The API could not be created.',
+      }),
+    );
+
+    await submitGraphqlCreate();
+
+    expect(
+      await screen.findByText('A GraphQL API with this identifier already exists.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Identifier/)).toHaveValue('countries-api');
   });
 });
 
