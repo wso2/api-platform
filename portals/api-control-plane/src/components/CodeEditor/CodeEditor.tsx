@@ -34,17 +34,25 @@ import editorWorker from 'monaco-editor/editor/editor.worker.js?worker';
 import jsonWorker from 'monaco-editor/languages/features/json/json.worker.js?worker';
 import { useEffect, useState } from 'react';
 
-import type { SpecFormat } from '../utils/specText';
-
 /**
  * Monaco, wired to this app rather than to its own defaults.
  *
- * Everything that touches the `monaco-editor` package lives in this one module
- * so the rest of the step doesn't: it is the only file that has to change if
- * Monaco moves its ESM paths again, and — because it is loaded lazily by
- * `SpecSourceEditor` — the only one that drags the editor's weight into a
- * chunk. Tests replace this module wholesale rather than running Monaco in
- * jsdom, which it does not support.
+ * Everything that touches the `monaco-editor` package lives in this one module,
+ * and every caller reaches Monaco through it: it is the only file that has to
+ * change if Monaco moves its ESM paths again, and the only one that drags the
+ * editor's weight into a chunk. Tests replace this module wholesale rather than
+ * running Monaco in jsdom, which it does not support.
+ *
+ * It sits in `components/` rather than inside a feature because two features
+ * now use it — the API creation wizard's Source view and the test console's
+ * cURL body editor. That placement is what makes the sharing real: both import
+ * this module lazily, so Rollup gives them one Monaco chunk between them and
+ * whichever view opens first pays for it. A second wrapper would double the
+ * `loader.config`/`MonacoEnvironment` wiring below and split the chunk.
+ *
+ * Every caller must load it with `lazy()`/`import()`. A static import anywhere
+ * pulls ~3.9 MB of editor into that caller's chunk whether or not the editor is
+ * ever shown.
  */
 
 /**
@@ -73,11 +81,16 @@ window.MonacoEnvironment = {
     label === 'json' ? new jsonWorker() : new editorWorker(),
 };
 
-/** Monaco's own language ids for the two formats the source view offers. */
-const LANGUAGE_FOR: Record<SpecFormat, string> = {
-  json: 'json',
-  yaml: 'yaml',
-};
+/**
+ * The languages this editor is set up for — Monaco's own ids, so callers name
+ * the language directly and there is no mapping table here to fall out of step.
+ *
+ * Highlighting, folding and bracket matching come from a grammar for all four.
+ * Real diagnostics do not: only `json` has a language service (the worker
+ * above), so a caller wanting to report errors in `xml`, `yaml` or `plaintext`
+ * has to validate the text itself.
+ */
+export type CodeEditorLanguage = 'json' | 'plaintext' | 'xml' | 'yaml';
 
 /**
  * Which of Monaco's built-in themes matches the app's.
@@ -109,16 +122,27 @@ const useIsDarkScheme = (): boolean => {
   return isDark;
 };
 
-export type SpecCodeEditorProps = {
-  /** Which language Monaco highlights and completes against. */
-  format: SpecFormat;
+export type CodeEditorProps = {
   /**
-   * Room for a minimap. Off in the pane, where it would eat a third of an
-   * already narrow column; on in the expanded view, where it earns its place.
+   * Accessible name for the editor's text area.
+   *
+   * Monaco's own default is a generic description of the widget, so a caller
+   * with more than one editor on a page — or any caller whose tests look the
+   * field up by name — should say what this one holds.
+   */
+  ariaLabel?: string;
+  /** Which language Monaco highlights and completes against. */
+  language: CodeEditorLanguage;
+  /**
+   * Room for a minimap. Off in a pane or a short field, where it would eat a
+   * third of an already narrow column; on in an expanded view, where it earns
+   * its place.
    */
   minimap?: boolean;
   /** Every keystroke, with the buffer's full text. Absent while read-only. */
   onChange?: (value: string) => void;
+  /** Hint shown while the buffer is empty. Monaco renders it as ghost text. */
+  placeholder?: string;
   /** Read mode. The editor still scrolls, folds and selects — it just can't be typed into. */
   readOnly?: boolean;
   /** The text to show. */
@@ -129,29 +153,37 @@ export type SpecCodeEditorProps = {
  * A code editor sized to fill whatever it is put in.
  *
  * The height comes from the parent rather than a prop: the same editor has to
- * fill a column of the contract step and, unchanged, a full-height side panel.
+ * fill a column of the contract step, a full-height side panel, and a short
+ * fixed well in the cURL builder, all unchanged. The parent must actually give
+ * it one — Monaco measures its container, so dropping it into a box with
+ * auto height renders an editor zero pixels tall.
  */
-export const SpecCodeEditor = ({
-  format,
+export const CodeEditor = ({
+  ariaLabel,
+  language,
   minimap = false,
   onChange,
+  placeholder,
   readOnly = false,
   value,
-}: SpecCodeEditorProps) => {
+}: CodeEditorProps) => {
   const isDark = useIsDarkScheme();
 
   return (
     <Editor
       height="100%"
-      language={LANGUAGE_FOR[format]}
+      language={language}
       onChange={(next) => onChange?.(next ?? '')}
       options={{
         // The pane and the panel are both resizable; without this the editor
         // keeps whatever size it was first measured at.
         automaticLayout: true,
+        ariaLabel,
         fontSize: 13,
-        // A definition is mostly long URLs and descriptions, and this editor is
-        // often in a narrow column — wrapping beats a horizontal scrollbar.
+        placeholder,
+        // Definitions are mostly long URLs and descriptions, request bodies
+        // carry long string values, and this editor is often in a narrow
+        // column — wrapping beats a horizontal scrollbar in both.
         wordWrap: 'on',
         lineNumbers: 'on',
         minimap: { enabled: minimap },
@@ -166,4 +198,4 @@ export const SpecCodeEditor = ({
   );
 };
 
-export default SpecCodeEditor;
+export default CodeEditor;

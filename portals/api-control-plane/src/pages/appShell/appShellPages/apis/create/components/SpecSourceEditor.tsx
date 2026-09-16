@@ -47,9 +47,14 @@ import { SpecIssueList } from './SpecIssueList';
  * Monaco is the single heaviest thing this app can load, and nothing needs it
  * until someone actually opens the Source view; so it is split out into its
  * own chunk and fetched then, rather than riding along with the wizard.
+ *
+ * The wrapper lives in `components/` because the test console's cURL body
+ * editor loads the same module, and one lazy chunk shared between them beats
+ * two copies of Monaco's wiring. Keep this a `lazy()`/`import()`, a static
+ * import would put the whole editor back into the wizard's chunk.
  */
-const SpecCodeEditor = lazy(() =>
-  import('./SpecCodeEditor').then((module) => ({ default: module.SpecCodeEditor })),
+const CodeEditor = lazy(() =>
+  import('@/components/CodeEditor/CodeEditor').then((module) => ({ default: module.CodeEditor })),
 );
 
 const messages = defineMessages({
@@ -342,8 +347,8 @@ export const SpecSourceEditor = ({ onSave, spec }: SpecSourceEditorProps) => {
       })}
     >
       <Suspense fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}>
-        <SpecCodeEditor
-          format={format}
+        <CodeEditor
+          language={format}
           minimap={expanded}
           onChange={setDraft}
           readOnly={!editing}
