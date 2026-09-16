@@ -87,3 +87,26 @@ export interface GeneralApiCreationFormState {
 
 // This is what Api Creation wizard holds and all the sub compoennt emits.
 export type ApiCreationWizardDraftState = Partial<GeneralApiCreationFormState>;
+
+/** How the GraphQL wizard's source step declares its schema was supplied. */
+export type GraphqlSchemaSource = 'inline' | 'url' | 'file' | 'introspection';
+
+export interface GraphqlApiCreationFormState {
+  id: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  context: string;
+  /** `upstream.main.url` — the single GraphQL endpoint the gateway routes to. */
+  endpointUrl: string;
+  schemaSource: GraphqlSchemaSource;
+  /** Resolved SDL text, however it was obtained — never a document reference. */
+  sdl?: string;
+  /** Only meaningful when `schemaSource` is `'url'`. */
+  sdlUrl?: string;
+  /** Only meaningful when `schemaSource` is `'file'`. */
+  sdlFile?: File;
+}
+
+/** What the GraphQL wizard's source step hands forward to the configure step. */
+export type GraphqlCreationWizardDraftState = Partial<GraphqlApiCreationFormState>;

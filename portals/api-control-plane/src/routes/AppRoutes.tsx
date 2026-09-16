@@ -119,6 +119,41 @@ const DefinitionPage = lazy(() =>
     default: m.DefinitionPage,
   })),
 );
+const GraphqlApiDetailPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/overview/GraphqlApiDetailPage').then((m) => ({
+    default: m.GraphqlApiDetailPage,
+  })),
+);
+const GraphqlApiEditPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/edit/GraphqlApiEditPage').then((m) => ({
+    default: m.GraphqlApiEditPage,
+  })),
+);
+const GraphqlDeployPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/deploy/GraphqlDeployPage').then((m) => ({
+    default: m.GraphqlDeployPage,
+  })),
+);
+const GraphqlTestConsolePage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/testConsole/GraphqlTestConsolePage').then(
+    (m) => ({ default: m.GraphqlTestConsolePage }),
+  ),
+);
+const GraphqlDevelopPoliciesPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/develop/GraphqlDevelopPoliciesPage').then(
+    (m) => ({ default: m.GraphqlDevelopPoliciesPage }),
+  ),
+);
+const GraphqlDevelopDocumentsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/develop/GraphqlDevelopDocumentsPage').then(
+    (m) => ({ default: m.GraphqlDevelopDocumentsPage }),
+  ),
+);
+const GraphqlPublishPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/publish/GraphqlPublishPage').then((m) => ({
+    default: m.GraphqlPublishPage,
+  })),
+);
 const AlertsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/AlertsPage').then((m) => ({
     default: m.AlertsPage,
@@ -332,6 +367,26 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             alone.
           */}
           <Route path={routes.apiEdit()} element={<ApiEditPage />} />
+          {/*
+            GraphQL API pages live under a distinct `graphql-apis` segment (see
+            `graphqlApiPath`), so `ConsoleScopeProvider`'s REST-only api-scope
+            matching never fires for them. They have no sidebar entry and are
+            only ever reached with a concrete id, so — like the create/edit
+            pages above — each takes only its fully-scoped path, no alias.
+          */}
+          <Route path={routes.graphqlApi()} element={<GraphqlApiDetailPage />} />
+          <Route path={routes.graphqlApiEdit()} element={<GraphqlApiEditPage />} />
+          <Route path={routes.graphqlApiDeploy()} element={<GraphqlDeployPage />} />
+          <Route path={routes.graphqlApiTestConsole()} element={<GraphqlTestConsolePage />} />
+          <Route
+            path={routes.graphqlApiDevelopPolicies()}
+            element={<GraphqlDevelopPoliciesPage />}
+          />
+          <Route
+            path={routes.graphqlApiDevelopDocuments()}
+            element={<GraphqlDevelopDocumentsPage />}
+          />
+          <Route path={routes.graphqlApiPublish()} element={<GraphqlPublishPage />} />
           {/*
             Test, Observability and Manage are sidebar parents with no page of
             their own — only their children are routed. Out of API scope a parent
