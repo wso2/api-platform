@@ -119,7 +119,11 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 
 	case api.LLMProxyConfiguration:
 		// Get provider name and template handle from referenced provider
-		providerCfg, err := t.store.GetByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), sc.Spec.Provider.Id)
+		primary, err := models.PrimaryLLMProxyAttachment(sc.Spec)
+		if err != nil {
+			return meta
+		}
+		providerCfg, err := t.store.GetByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), primary.Id)
 		if err != nil || providerCfg == nil {
 			return meta
 		}

@@ -2010,7 +2010,7 @@ func validProxyWithResilience(r *api.Resilience) api.LLMProxyConfiguration {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "my-proxy",
 			Version:     "v1.0",
-			Provider:    api.LLMProxyProvider{Id: "openai"},
+			Provider:    &api.LLMProxyProvider{Id: "openai"},
 			Resilience:  r,
 		},
 	}
@@ -2088,7 +2088,7 @@ func TestValidateLLMProxy_ReservedHealthPath(t *testing.T) {
 				DisplayName: "my-proxy",
 				Version:     "v1.0",
 				Context:     context,
-				Provider:    api.LLMProxyProvider{Id: "openai"},
+				Provider:    &api.LLMProxyProvider{Id: "openai"},
 			},
 		}
 	}
@@ -2193,7 +2193,7 @@ func validProxyWithAuth(auth *api.LLMUpstreamAuth) api.LLMProxyConfiguration {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "my-proxy",
 			Version:     "v1.0",
-			Provider:    api.LLMProxyProvider{Id: "openai", Auth: auth},
+			Provider:    &api.LLMProxyProvider{Id: "openai", Auth: auth},
 		},
 	}
 }
@@ -2553,4 +2553,112 @@ func TestValidateLLMProviderTemplate_ProviderFieldsErrorsAreKeyed(t *testing.T) 
 		"spec.providerFields.choices.location",
 		"spec.providerFields.searchContextSize.identifier",
 	}, fields)
+}
+
+// TestLLMValidator_ProviderShapeRejections covers the four ways a provider
+// shape can be malformed. Each must be rejected with a message naming the
+// problem rather than one shape silently winning (FR-000c, FR-000d, FR-000e).
+func TestLLMValidator_ProviderShapeRejections(t *testing.T) {
+	validator := NewLLMValidator()
+
+	proxyWith := func(spec api.LLMProxyConfigData) api.LLMProxyConfiguration {
+		spec.DisplayName = "shape-rejection"
+		spec.Version = "v1.0"
+		return api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
+			Metadata:   api.Metadata{Name: "shape-rejection"},
+			Spec:       spec,
+		}
+	}
+
+	cases := []struct {
+		name        string
+		spec        api.LLMProxyConfigData
+		wantMessage string
+	}{
+		{
+			name: "both shapes supplied",
+			spec: api.LLMProxyConfigData{
+				Provider:  &api.LLMProxyProvider{Id: "openai-provider"},
+				Providers: &[]api.LLMProxyProviderEntry{{Id: "openai-provider", IsPrimary: true}},
+			},
+			wantMessage: "only one provider shape may be used",
+		},
+		{
+			name: "no entry marked primary",
+			spec: api.LLMProxyConfigData{
+				Providers: &[]api.LLMProxyProviderEntry{
+					{Id: "openai-provider"}, {Id: "anthropic-provider"},
+				},
+			},
+			wantMessage: "none is marked",
+		},
+		{
+			name: "several entries marked primary",
+			spec: api.LLMProxyConfigData{
+				Providers: &[]api.LLMProxyProviderEntry{
+					{Id: "openai-provider", IsPrimary: true}, {Id: "anthropic-provider", IsPrimary: true},
+				},
+			},
+			wantMessage: "2 are marked",
+		},
+		{
+			name:        "empty providers list",
+			spec:        api.LLMProxyConfigData{Providers: &[]api.LLMProxyProviderEntry{}},
+			wantMessage: "must not be empty",
+		},
+		{
+			name:        "no provider at all",
+			spec:        api.LLMProxyConfigData{},
+			wantMessage: "must declare a provider",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errors := validator.Validate(proxyWith(tc.spec))
+			if len(errors) == 0 {
+				t.Fatalf("expected the configuration to be rejected")
+			}
+			var messages []string
+			for _, e := range errors {
+				messages = append(messages, e.Message)
+			}
+			joined := strings.Join(messages, " | ")
+			if !strings.Contains(joined, tc.wantMessage) {
+				t.Errorf("errors = %s, want one mentioning %q", joined, tc.wantMessage)
+			}
+		})
+	}
+}
+
+// TestLLMValidator_AliasUniquenessIncludesPrimary: the primary carries an alias
+// now, so it takes part in the same uniqueness rule as every additional
+// provider (FR-004).
+func TestLLMValidator_AliasUniquenessIncludesPrimary(t *testing.T) {
+	validator := NewLLMValidator()
+
+	proxy := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "alias-collision"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "alias-collision",
+			Version:     "v1.0",
+			Provider:    &api.LLMProxyProvider{Id: "openai-provider", As: stringPtr("shared-name")},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{
+				{Id: "anthropic-provider", As: stringPtr("shared-name")},
+			},
+		},
+	}
+
+	errors := validator.Validate(proxy)
+	var joined []string
+	for _, e := range errors {
+		joined = append(joined, e.Message)
+	}
+	if !strings.Contains(strings.Join(joined, " | "), "duplicate upstream name 'shared-name'") {
+		t.Errorf("expected a duplicate upstream name error, got %v", joined)
+	}
 }
