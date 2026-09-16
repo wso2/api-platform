@@ -200,6 +200,13 @@ func TestPolicyProductsResolveSourceAndVersionedBuilds(t *testing.T) {
 		require.Equal(t, source, products[0].source)
 		require.NotEmpty(t, products[0].version)
 		require.Equal(t, products[0].version, resolved.Blocks[0].Components[0].Version)
+		require.True(t, resolved.Blocks[0].Components[0].BuildFromSource)
+
+		products, err = policyProducts(resolved)
+		require.NoError(t, err)
+		require.Len(t, products, 1)
+		require.True(t, products[0].buildFromSource,
+			"source-build mode must remain stable after the source version is stored")
 	})
 
 	t.Run("versioned extension", func(t *testing.T) {

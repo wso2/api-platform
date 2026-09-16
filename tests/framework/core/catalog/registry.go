@@ -153,7 +153,11 @@ func policyProducts(resolved *topology.Resolved) ([]policyProduct, error) {
 				continue
 			}
 			version := strings.TrimSpace(component.Version)
-			fromSource := version == ""
+			fromSource := component.BuildFromSource
+			if version == "" {
+				fromSource = true
+				component.BuildFromSource = true
+			}
 			if fromSource {
 				var ok bool
 				version, ok = shared.SourceVersion(component.Def.Name)

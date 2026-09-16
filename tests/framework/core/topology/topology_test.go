@@ -1200,9 +1200,25 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	require.NoError(t, err)
 	component := got.Blocks[0].Components[0]
 	require.Equal(t, "1.1.0", component.Version)
+	require.False(t, component.BuildFromSource)
 	require.Equal(t, "gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
 	require.Equal(t, "gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
 	require.Equal(t, "gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
+
+	sourceSuite := &Resolved{Blocks: []ResolvedBlock{{
+		Name: "gateway-controller-policies",
+		Components: []ResolvedComponent{{
+			Def:             original,
+			BuildFromSource: true,
+			AddPoliciesFrom: "../gateway-controllers/policies",
+		}},
+	}}}
+	got, err = flags.Apply(sourceSuite)
+	require.NoError(t, err)
+	component = got.Blocks[0].Components[0]
+	require.Equal(t, "1.1.0", component.Version)
+	require.False(t, component.BuildFromSource,
+		"gateway-version must switch a source-build gateway to versioned mode")
 }
 
 func TestCloudEnvironmentSelectionOverride(t *testing.T) {
