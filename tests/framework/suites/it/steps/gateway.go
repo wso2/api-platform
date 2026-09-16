@@ -363,8 +363,33 @@ func (g *Gateway) lazyResourceCount(ctx context.Context, want int, id string) er
 }
 
 func (g *Gateway) mcpInitialize(ctx context.Context, path string) error {
-	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"roots":{"listChanged":true}},"clientInfo":{"name":"framework-client","version":"1.0.0"}}}`
+	body := mcpInitializeBody()
 	return g.sendMCPRequest(ctx, path, body)
+}
+
+func (g *Gateway) mcpInitializeUntilSuccessful(ctx context.Context, path string) error {
+	response, err := retry.Until(ctx, retry.Options{},
+		func(ctx context.Context) (*httpx.Response, error) {
+			response, requestErr := g.mcpRequest(ctx, path, mcpInitializeBody())
+			if requestErr != nil {
+				return nil, retry.Transient(requestErr)
+			}
+			return response, nil
+		},
+		func(response *httpx.Response) bool { return response.Succeeded() },
+	)
+	if err != nil {
+		return err
+	}
+	if !response.Succeeded() {
+		return fmt.Errorf("waiting for MCP initialize to succeed: the condition never held; the last response was %s",
+			response.Describe())
+	}
+	return g.funnel.Publish(ctx, response)
+}
+
+func mcpInitializeBody() string {
+	return `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"roots":{"listChanged":true}},"clientInfo":{"name":"framework-client","version":"1.0.0"}}}`
 }
 
 func (g *Gateway) mcpToolCall(ctx context.Context, tool, path string) error {
@@ -374,13 +399,21 @@ func (g *Gateway) mcpToolCall(ctx context.Context, tool, path string) error {
 
 // sendMCPRequest sends a streamable HTTP MCP request and publishes its JSON-RPC payload.
 func (g *Gateway) sendMCPRequest(ctx context.Context, path, body string) error {
-	resolved, err := stepscommon.Expand(ctx, path)
+	resp, err := g.mcpRequest(ctx, path, body)
 	if err != nil {
 		return err
 	}
+	return g.funnel.Publish(ctx, resp)
+}
+
+func (g *Gateway) mcpRequest(ctx context.Context, path, body string) (*httpx.Response, error) {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return nil, err
+	}
 	url, err := g.gatewayURL(resolved)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	resp, err := g.funnel.Send(ctx, httpx.Request{
 		Method: http.MethodPost,
@@ -395,10 +428,10 @@ func (g *Gateway) sendMCPRequest(ctx context.Context, path, body string) error {
 		Host: g.requestHost(ctx),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	resp.Body = mcpJSONPayload(resp.Body)
-	return g.funnel.Publish(ctx, resp)
+	return resp, nil
 }
 
 // mcpJSONPayload extracts the JSON-RPC document from a streamable HTTP SSE response.
@@ -529,6 +562,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^the policy engine route metadata should contain provider_name "([^"]*)"$`, g.routeMetadataProvider)
 	sc.Step(`^the lazy resources should have at least (\d+) resources with id "([^"]*)"$`, g.lazyResourceCount)
 	sc.Step(`^I use the MCP Client to send an initialize request to "([^"]*)"$`, g.mcpInitialize)
+	sc.Step(`^I use the MCP Client to send an initialize request to "([^"]*)" until successful$`,
+		g.mcpInitializeUntilSuccessful)
 	sc.Step(`^I use the MCP Client to send "([^"]*)" tools/call request to "([^"]*)"$`, g.mcpToolCall)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the rate limit reports (\d+) remaining$`,
 		g.sendUntilQuotaRemaining)
