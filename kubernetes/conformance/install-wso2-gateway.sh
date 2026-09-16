@@ -36,6 +36,18 @@ OPERATOR_CHART="${OPERATOR_CHART:-${REPO_ROOT}/kubernetes/helm/operator-helm-cha
 OPERATOR_NS="${OPERATOR_NS:-gateway-system}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# The operator's own chart defaults gateway.helm.chartName/chartVersion to the
+# last PUBLISHED gateway-helm-chart release (oci://ghcr.io/.../gateway:1.2.0) --
+# not this checkout. Left as-is, the operator deploys the freshly-built
+# gateway-controller/gateway-runtime images (from this PR) using that old,
+# already-released chart, silently skipping any in-flight chart change (e.g. a
+# new required env var/volume the chart now needs to wire up). CHART_REGISTRY_NS
+# hosts a throwaway plain-HTTP OCI registry so this script can push THIS
+# checkout's chart and point the operator at it instead — the same pattern
+# .github/workflows/operator-integration-test.yml already uses.
+CHART_REGISTRY_NS="${CHART_REGISTRY_NS:-gateway-chart-registry}"
+CHART_VERSION="${CHART_VERSION:-0.0.0-conformance}"
+
 # Namespaces the Gateway API conformance suite creates for its fixtures.
 CONFORMANCE_NAMESPACES=(
   gateway-conformance-infra
@@ -122,6 +134,10 @@ cleanup() {
   helm uninstall cert-manager --namespace cert-manager --wait 2>/dev/null || true
   kubectl delete namespace cert-manager --ignore-not-found --timeout=120s || true
 
+  echo ">> Deleting the local gateway chart registry"
+  pkill -f "kubectl port-forward.*svc/registry.*-n ${CHART_REGISTRY_NS}" 2>/dev/null || true
+  kubectl delete namespace "${CHART_REGISTRY_NS}" --ignore-not-found --timeout=120s || true
+
   # 6. Optionally remove the Gateway API CRDs (default: keep them for the next install).
   if [ -n "${PURGE_CRDS:-}" ]; then
     echo ">> Deleting Gateway API CRDs (PURGE_CRDS set)"
@@ -156,6 +172,63 @@ helm upgrade --install cert-manager jetstack/cert-manager \
 kubectl wait --namespace cert-manager \
   --for=condition=available deployment --all --timeout=180s
 
+# --- 1a. Local OCI registry for THIS checkout's gateway-helm-chart ----------
+# See the CHART_REGISTRY_NS comment above for why this exists: without it the
+# operator would deploy this checkout's images with an old, already-released
+# chart. Plain HTTP (no TLS) — it never leaves the cluster network.
+echo ">> Deploying a local OCI registry for the gateway Helm chart"
+kubectl create namespace "${CHART_REGISTRY_NS}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: ${CHART_REGISTRY_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      containers:
+        - name: registry
+          image: registry:2
+          ports:
+            - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: ${CHART_REGISTRY_NS}
+spec:
+  selector:
+    app: registry
+  ports:
+    - port: 5000
+      targetPort: 5000
+EOF
+kubectl wait --for=condition=available deployment/registry -n "${CHART_REGISTRY_NS}" --timeout=120s
+kubectl wait --for=condition=ready pod -l app=registry -n "${CHART_REGISTRY_NS}" --timeout=120s
+
+echo ">> Packaging and pushing gateway-helm-chart ${CHART_VERSION} to the local registry"
+CHART_TGZ_DIR="$(mktemp -d)"
+helm package "${REPO_ROOT}/kubernetes/helm/gateway-helm-chart" --version "${CHART_VERSION}" --destination "${CHART_TGZ_DIR}"
+pkill -f "kubectl port-forward.*svc/registry.*-n ${CHART_REGISTRY_NS}" 2>/dev/null || true
+kubectl port-forward "svc/registry" -n "${CHART_REGISTRY_NS}" 5000:5000 >/dev/null 2>&1 &
+REGISTRY_PF_PID=$!
+trap 'kill "${REGISTRY_PF_PID}" >/dev/null 2>&1 || true' EXIT
+sleep 5
+helm push "${CHART_TGZ_DIR}/gateway-${CHART_VERSION}.tgz" "oci://localhost:5000/charts" --plain-http
+kill "${REGISTRY_PF_PID}" >/dev/null 2>&1 || true
+trap - EXIT
+rm -rf "${CHART_TGZ_DIR}"
+GATEWAY_CHART_OCI_REF="oci://registry.${CHART_REGISTRY_NS}.svc.cluster.local:5000/charts/gateway"
+
 # --- 2. Gateway operator (installs the bundled Gateway API CRDs too) --------
 # Tags come from versions.sh so helm deploys exactly the images load-images.sh loaded
 # (imagePullPolicy=IfNotPresent); hardcoding them made the freshly built images be ignored.
@@ -167,11 +240,15 @@ echo ">> Installing the gateway operator from ${OPERATOR_CHART}"
 echo "   gateway-controller -> ${GW_VERSION}"
 echo "   gateway-runtime -> ${GW_VERSION}"
 echo "   gateway-operator -> ${OPERATOR_VERSION}"
+echo "   gateway-helm-chart -> ${GATEWAY_CHART_OCI_REF}:${CHART_VERSION} (this checkout, pushed above)"
 helm upgrade --install gateway-operator "${OPERATOR_CHART}" \
   --namespace "${OPERATOR_NS}" --create-namespace \
   --set image.repository="${REGISTRY}/gateway-operator" \
   --set image.tag="${OPERATOR_VERSION}" \
   --set image.pullPolicy=IfNotPresent \
+  --set gateway.helm.chartName="${GATEWAY_CHART_OCI_REF}" \
+  --set gateway.helm.chartVersion="${CHART_VERSION}" \
+  --set gateway.helm.plainHTTP=true \
   --set gateway.values.gateway.controller.image.repository="${REGISTRY}/gateway-controller" \
   --set gateway.values.gateway.controller.image.tag="${GW_VERSION}" \
   --set gateway.values.gateway.controller.image.pullPolicy=IfNotPresent \
