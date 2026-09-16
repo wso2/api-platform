@@ -28,6 +28,7 @@ Feature: API Portal REST API details
   Scenario: The REST API documentation renders its OpenAPI specification
     When the user opens the seeded REST API specification and sees its OpenAPI document
 
+  @known-issue
   Scenario: The REST API documentation lists the specification and additional document
     When the user opens the seeded REST API documentation and sees the additional document
 

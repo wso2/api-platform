@@ -42,6 +42,8 @@ const maxCaptureBodyBytes = 10 << 20
 
 const defaultMaxCapturedPaths = 1024
 
+const maxPartitionBodyBytes = 32 << 20
+
 // requestInfo is the shape returned by both the reflecting upstream and the capture lookup.
 type requestInfo struct {
 	Method  string              `json:"method"`
@@ -61,6 +63,7 @@ type Service struct {
 type partition struct {
 	mu       sync.RWMutex
 	captured map[string]requestInfo
+	bytes    int
 }
 
 // New returns a new capture service.
@@ -147,27 +150,38 @@ func (s *Service) reflect(key string, w http.ResponseWriter, r *http.Request) {
 		info.Body = string(body)
 	}
 
-	s.record(key, r.URL.Path, info)
+	if !s.record(key, r.URL.Path, info) {
+		http.Error(w, "capture: retained body budget exhausted for this block", http.StatusInsufficientStorage)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, info)
 }
 
-func (s *Service) record(key, path string, info requestInfo) {
+// record reports whether the partition's byte budget accepted the capture. A full path table
+// is still ignored quietly, as it was before the budget existed.
+func (s *Service) record(key, path string, info requestInfo) bool {
 	p := s.getPartition(key)
 	p.mu.Lock()
-	if _, exists := p.captured[path]; !exists {
+	defer p.mu.Unlock()
+	existing, exists := p.captured[path]
+	if !exists {
 		limit := s.maxCapturedPaths
 		if limit <= 0 {
 			limit = defaultMaxCapturedPaths
 		}
 		if len(p.captured) >= limit {
-			p.mu.Unlock()
-			return
+			return true
 		}
 	}
+	retained := p.bytes - len(existing.Body) + len(info.Body)
+	if retained > maxPartitionBodyBytes {
+		return false
+	}
+	p.bytes = retained
 	p.captured[path] = info
-	p.mu.Unlock()
+	return true
 }
 
 func (s *Service) getPartition(key string) *partition {

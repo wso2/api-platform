@@ -289,10 +289,9 @@ func (t *Topology) startComponent(
 			env[k] = v
 		}
 	}
-	// Values produced by dependencies.
-	// Compose replicas resolve dependency provisions inside the replica loop below, because
-	// each instance needs its own identity. Single-container components can resolve them once.
-	if !def.IsCompose() {
+	// Values produced by dependencies. Replicas resolve them per instance in the loops
+	// below, because each instance needs its own identity.
+	if def.Shared {
 		for _, dep := range rc.AllDependencies() {
 			values, err := t.provisionedBy(ctx, dep, def.Name)
 			if err != nil {
@@ -393,16 +392,24 @@ func (t *Topology) startComponent(
 	for ordinal := range rc.Replicas {
 		instOpts := opts
 		instOpts.Ordinal = ordinal
-		if dsnEnv, ok := t.Storage.Env[KeyFor(def.Name, ordinal)]; ok {
-			merged := map[string]string{}
-			for k, v := range env {
-				merged[k] = v
-			}
-			for k, v := range dsnEnv {
-				merged[k] = v
-			}
-			instOpts.Env = merged
+		replicaEnv := make(map[string]string, len(env))
+		for k, v := range env {
+			replicaEnv[k] = v
 		}
+		for k, v := range t.Storage.Env[KeyFor(def.Name, ordinal)] {
+			replicaEnv[k] = v
+		}
+		dependent := components.Label(def.Name, ordinal, rc.Replicas)
+		for _, dep := range rc.AllDependencies() {
+			values, err := t.provisionedBy(ctx, dep, dependent)
+			if err != nil {
+				return err
+			}
+			for k, v := range values {
+				replicaEnv[k] = v
+			}
+		}
+		instOpts.Env = replicaEnv
 
 		container, err := Launch(ctx, def, instOpts)
 		if container != nil {

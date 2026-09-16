@@ -184,8 +184,14 @@ func LaunchCompose(
 	result := &ComposeStack{stack: stack, def: def, stageDir: stageDir, block: opts.Network.Block(), suffix: suffix}
 
 	if err := stack.Up(ctx, tccompose.Wait(true)); err != nil {
+		// Up is the readiness wait: no producer is attached yet and Stop removes the containers.
+		logs := result.Logs(ctx)
+		if opts.LogWriter != nil {
+			opts.LogWriter.Consumer(def.Name).Accept(testcontainers.Log{Content: []byte(logs)})
+		}
 		cleanupErr := result.Stop(context.Background())
-		return nil, fmt.Errorf("runtime: bringing up %s: %w", def, errors.Join(err, cleanupErr))
+		return nil, fmt.Errorf("runtime: bringing up %s: %w\nservice logs:\n%s",
+			def, errors.Join(err, cleanupErr), logs)
 	}
 
 	if opts.LogWriter != nil {
@@ -351,6 +357,26 @@ func applyInstanceSuffix(path, suffix string) error {
 }
 
 // stageComposeFiles materializes the compose file and its bind mounts in one directory.
+// containedSource resolves src and asserts it stays inside repoRoot. Both sides are resolved
+// so a symlinked checkout compares in the same namespace as the sources it holds.
+func containedSource(repoRoot, src string) (string, error) {
+	if strings.TrimSpace(repoRoot) == "" {
+		return src, nil
+	}
+	root, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolving the repository root %q: %w", repoRoot, err)
+	}
+	resolved, err := filepath.EvalSymlinks(src)
+	if err != nil {
+		return "", fmt.Errorf("resolving %q: %w", src, err)
+	}
+	if resolved != root && !strings.HasPrefix(resolved, filepath.Clean(root)+string(filepath.Separator)) {
+		return "", fmt.Errorf("source %q resolves outside the repository", src)
+	}
+	return resolved, nil
+}
+
 func stageComposeFiles(
 	def *components.Definition, spec *components.ComposeSpec, repoRoot string, substitutions map[string]string,
 ) (string, error) {
@@ -385,6 +411,10 @@ func stageComposeFiles(
 		src := source
 		if !filepath.IsAbs(src) && repoRoot != "" {
 			src = filepath.Join(repoRoot, source)
+		}
+		src, err := containedSource(repoRoot, src)
+		if err != nil {
+			return fmt.Errorf("runtime: staging %s for %s: %w", source, def, err)
 		}
 		info, err := os.Stat(src)
 		if err != nil {

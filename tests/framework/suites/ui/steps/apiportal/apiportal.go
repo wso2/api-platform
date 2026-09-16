@@ -2098,13 +2098,36 @@ func (u *Steps) openRESTAPIDocumentation(ctx context.Context) error {
 		return fmt.Errorf("opening REST API additional document: %w", err)
 	}
 	content := page.Locator(".api-markdown-content")
-	return retry.Await(ctx, retry.Options{}, func(context.Context) (bool, error) {
-		value, err := content.TextContent()
-		if err != nil {
-			return false, err
-		}
-		return strings.Contains(value, "Getting Started"), nil
-	}, func(found bool) bool { return found }, "waiting for REST API additional document content")
+	if err := u.expect.Locator(content).ToContainText("Getting Started"); err != nil {
+		return fmt.Errorf("%w%s", err, u.describeServedDocument(ctx, docURL))
+	}
+	return nil
+}
+
+func (u *Steps) describeServedDocument(ctx context.Context, docURL string) string {
+	page, err := u.page(ctx)
+	if err != nil {
+		return ""
+	}
+	response, err := page.Context().Request().Get(docURL)
+	if err != nil {
+		return fmt.Sprintf("\nre-requesting %s for diagnosis failed: %v", docURL, err)
+	}
+	body, err := response.Body()
+	if err != nil {
+		return fmt.Sprintf("\nreading the re-requested %s failed: %v", docURL, err)
+	}
+	return fmt.Sprintf("\nserver returned HTTP %d for %s on re-request; body %s the document content and %s the file badge",
+		response.Status(), docURL,
+		containsWord(string(body), "Getting Started"),
+		containsWord(string(body), "adoc-file-badge"))
+}
+
+func containsWord(body, needle string) string {
+	if strings.Contains(body, needle) {
+		return "contains"
+	}
+	return "omits"
 }
 
 func (u *Steps) restAPISpecificationExposesTryIt(ctx context.Context) error {

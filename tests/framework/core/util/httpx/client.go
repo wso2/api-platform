@@ -137,7 +137,10 @@ func NewClient(opts Options) *Client {
 	} else {
 		tlsConfig = tlsConfig.Clone()
 	}
-	tlsConfig.CurvePreferences = normalizedCurves(tlsConfig.CurvePreferences)
+	// Left nil, crypto/tls offers its full default set; a value here filters that set down.
+	if len(tlsConfig.CurvePreferences) > 0 {
+		tlsConfig.CurvePreferences = normalizedCurves(tlsConfig.CurvePreferences)
+	}
 	httpClient := &http.Client{
 		Timeout: opts.Timeout,
 		Transport: &http.Transport{

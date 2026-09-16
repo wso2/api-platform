@@ -20,6 +20,8 @@ package components
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -111,6 +113,21 @@ func (d *Definition) validateCompose() error {
 		if strings.TrimSpace(rel) == "" {
 			errs.addf("%s: staged file %q has no source path", d, name)
 		}
+	}
+
+	// Everything below is staged into one directory, so a repeated name overwrites a file.
+	staged := make(map[string]bool, 1+len(c.ComposeOverrideFiles)+len(c.StagedFiles))
+	for _, name := range c.StagingNames() {
+		if staged[name] {
+			errs.addf("%s: compose file %q is staged more than once", d, name)
+		}
+		staged[name] = true
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.StagedFiles)) {
+		if staged[name] {
+			errs.addf("%s: staged file %q collides with a compose file of the same name", d, name)
+		}
+		staged[name] = true
 	}
 	seenCoverage := make(map[string]bool, len(c.CoverageServices))
 	for _, service := range c.CoverageServices {

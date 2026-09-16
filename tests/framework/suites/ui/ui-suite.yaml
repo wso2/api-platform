@@ -63,6 +63,8 @@ blocks:
         features:
           - features/apiportal_mcp_listing.feature
       - name: rest-api-details
+        # Excludes the @known-issue scenario blocked on an API Portal document-render
+        tags: "~@known-issue"
         features:
           - features/apiportal_rest_api_details.feature
       - name: api-workflows

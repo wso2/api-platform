@@ -112,8 +112,21 @@ func Validate(r *Resolved, registry *components.Registry) error {
 }
 
 type featureOwner struct {
-	block  *ResolvedBlock
 	runner string
+	// Every matrix variant of the source block, not just the last one resolved.
+	databases map[components.DBType]bool
+}
+
+func platformAPIDatabase(b *ResolvedBlock) components.DBType {
+	if b == nil {
+		return ""
+	}
+	for _, component := range b.Components {
+		if component.Def != nil && component.Def.Name == "platform-api" {
+			return component.DB
+		}
+	}
+	return ""
 }
 
 // allowDatabaseVariantFeatureOwners permits a feature to be intentionally repeated by
@@ -121,38 +134,26 @@ type featureOwner struct {
 // expansion already collapses variants within one source block; this exception covers separate
 // blocks used when two components must vary together, since a block supports only one matrix.
 func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
+	if len(owners) < 2 {
+		return false
+	}
 	var runnerName string
-	platformAPIDB := make(map[string]components.DBType)
+	seenDB := map[components.DBType]bool{}
 	for _, owner := range owners {
 		if runnerName == "" {
 			runnerName = owner.runner
 		} else if runnerName != owner.runner {
 			return false
 		}
-		if owner.block == nil {
+		if len(owner.databases) == 0 {
 			return false
 		}
-		var db components.DBType
-		for _, component := range owner.block.Components {
-			if component.Def != nil && component.Def.Name == "platform-api" {
-				db = component.DB
-				break
+		for db := range owner.databases {
+			if !db.Valid() || seenDB[db] {
+				return false
 			}
+			seenDB[db] = true
 		}
-		if !db.Valid() || platformAPIDB[owner.block.Source] != "" && platformAPIDB[owner.block.Source] != db {
-			return false
-		}
-		platformAPIDB[owner.block.Source] = db
-	}
-	if len(platformAPIDB) < 2 {
-		return false
-	}
-	seenDB := make(map[components.DBType]bool, len(platformAPIDB))
-	for _, db := range platformAPIDB {
-		if seenDB[db] {
-			return false
-		}
-		seenDB[db] = true
 	}
 	return true
 }
@@ -257,7 +258,12 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 			if featureOwners[f] == nil {
 				featureOwners[f] = map[string]featureOwner{}
 			}
-			featureOwners[f][owner] = featureOwner{block: b, runner: run.Name}
+			entry, ok := featureOwners[f][owner]
+			if !ok {
+				entry = featureOwner{runner: run.Name, databases: map[components.DBType]bool{}}
+			}
+			entry.databases[platformAPIDatabase(b)] = true
+			featureOwners[f][owner] = entry
 		}
 	}
 
