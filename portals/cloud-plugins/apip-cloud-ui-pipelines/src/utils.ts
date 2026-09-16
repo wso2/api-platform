@@ -7,14 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import type {
-  DefaultGateway,
-  Environment,
-  Gateway,
-  Pipeline,
-  PipelineStage,
-  PromotionPath,
-} from './types';
+import type { Environment, PipelineStage, PromotionPath } from './types';
 
 /** The organization's default pipeline is the one named `default`. */
 export const DEFAULT_PIPELINE_NAME = 'default';
@@ -88,89 +81,31 @@ export const isLinearPipeline = (paths: PromotionPath[]): boolean => {
 };
 
 /**
- * The gateway name shown for an environment in a pipeline: the one marked
- * default, or the environment's single gateway when it has exactly one
- * (defaulted implicitly). Falls back to the raw id if the reference data has no
- * matching gateway.
- */
-export const resolveGatewayName = (
-  pipeline: Pipeline,
-  environments: Environment[],
-  environmentName: string
-): string => {
-  const environment = environments.find((candidate) => candidate.name === environmentName);
-  const markedId = pipeline.defaultGateways.find(
-    (entry) => entry.environment === environmentName
-  )?.gatewayId;
-  const gatewayId =
-    markedId ?? (environment?.gateways.length === 1 ? environment.gateways[0].id : '');
-  return environment?.gateways.find((gateway) => gateway.id === gatewayId)?.name ?? gatewayId;
-};
-
-/**
- * The default gateway id for one environment of a pipeline: the one marked
- * default, or the environment's single gateway when it has exactly one
- * (defaulted implicitly), or '' otherwise.
- */
-export const resolveDefaultGatewayId = (
-  pipeline: { defaultGateways: DefaultGateway[] },
-  environments: Environment[],
-  environmentName: string
-): string => {
-  const environment = environments.find((candidate) => candidate.name === environmentName);
-  const markedId = pipeline.defaultGateways.find(
-    (entry) => entry.environment === environmentName
-  )?.gatewayId;
-  return markedId ?? (environment?.gateways.length === 1 ? environment.gateways[0].id : '');
-};
-
-/**
- * Projects a pipeline's `promotionPaths` + `defaultGateways` into the
- * promotion-ordered `PipelineStage[]` the stage-card chain renders. Environments
- * are resolved to their assembled ids so the cards can look up the environment and
- * its default gateway.
+ * Projects a pipeline's `promotionPaths` into the promotion-ordered
+ * `PipelineStage[]` the stage-card chain renders. Environments are resolved to
+ * their assembled ids so the cards can look the environment up.
  */
 export const buildStages = (
-  pipeline: { promotionPaths: PromotionPath[]; defaultGateways: DefaultGateway[] },
+  pipeline: { promotionPaths: PromotionPath[] },
   environments: Environment[]
 ): PipelineStage[] =>
   orderEnvironments(pipeline.promotionPaths).map((environmentName) => {
     const environmentId =
       environments.find((environment) => environment.name === environmentName)?.id ?? environmentName;
-    return {
-      id: environmentId,
-      environmentId,
-      defaultGatewayId: resolveDefaultGatewayId(pipeline, environments, environmentName),
-    };
+    return { id: environmentId, environmentId };
   });
 
 /** Reference-data shapes returned by the platform-api list endpoints. */
 export type EnvironmentDTO = { id?: string; name: string; isProduction?: boolean };
-export type ManagedGatewayDTO = {
-  id: string;
-  environment: string;
-  host?: string;
-  /** The gateway's human-friendly display name; preferred over the host for labels. */
-  displayName?: string;
-};
 
 /**
- * Joins `/environments` with `/managed-gateways` (grouped by environment name)
- * into the reference `Environment[]` the picker and cards render. Reference-data
- * assembly for lookups — it does not touch the pipeline shape.
+ * Maps `/environments` into the reference `Environment[]` the picker and cards
+ * render. Reference-data assembly for lookups — it does not touch the pipeline
+ * shape, and it needs no gateway data: a pipeline names environments only.
  */
-export const assembleEnvironments = (
-  environments: EnvironmentDTO[],
-  gateways: ManagedGatewayDTO[]
-): Environment[] =>
+export const assembleEnvironments = (environments: EnvironmentDTO[]): Environment[] =>
   environments.map((environment) => ({
     id: environment.id ?? environment.name,
     name: environment.name,
     critical: environment.isProduction ?? false,
-    gateways: gateways
-      .filter((gateway) => gateway.environment === environment.name)
-      .map((gateway): Gateway => ({
-        id: gateway.id,
-        name: gateway.displayName || gateway.host || gateway.id,
-      })),
   }));

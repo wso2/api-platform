@@ -46,6 +46,23 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
+// maxRecvMsgSize bounds a single policy-xDS response this client will accept.
+//
+// It must stay equal to policyXDSMaxMessageSize in the controller's
+// pkg/policyxds/server.go, which sets the matching grpc.MaxRecvMsgSize/
+// MaxSendMsgSize on the serving side. The two live in separate modules, so the
+// value is repeated here rather than shared.
+//
+// Left unset, gRPC-Go defaults a client's receive limit to 4 MiB
+// (defaultClientMaxReceiveMessageSize) while leaving its send limit at
+// MaxInt32 — a library default, not anything the gRPC wire protocol requires.
+// That asymmetry is what makes the mismatch silent from the controller's side:
+// a policy-xDS snapshot is state-of-the-world, one message carrying every
+// policy chain for this node, so the controller would serialize and send a
+// snapshot above 4 MiB that this client then rejects on receipt with
+// ResourceExhausted.
+const maxRecvMsgSize = 16 * 1024 * 1024
+
 // Client is the xDS client that subscribes to policy chain configurations via ADS
 type Client struct {
 	config           *Config
@@ -310,6 +327,7 @@ func (c *Client) dial() (*grpc.ClientConn, error) {
 	// Add keepalive parameters
 	opts = append(opts,
 		grpc.WithBlock(),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxRecvMsgSize)),
 	)
 
 	conn, err := grpc.DialContext(ctx, c.config.ServerAddress, opts...)

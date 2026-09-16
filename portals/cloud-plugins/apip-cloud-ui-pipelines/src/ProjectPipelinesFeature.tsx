@@ -17,7 +17,6 @@ import {
   buildStages,
   DEFAULT_PIPELINE_NAME,
   type EnvironmentDTO,
-  type ManagedGatewayDTO,
 } from './utils';
 
 export type ProjectPipelinesFeatureProps = {
@@ -25,7 +24,6 @@ export type ProjectPipelinesFeatureProps = {
 };
 
 type EnvironmentListDTO = { count?: number; list?: EnvironmentDTO[] };
-type ManagedGatewayListDTO = { list?: ManagedGatewayDTO[] };
 type PipelineDTO = Partial<Pipeline> & { id: string; name: string };
 type PipelineListDTO = { count?: number; list?: PipelineDTO[] };
 type ProjectPipelineDTO = { pipeline?: string };
@@ -56,10 +54,7 @@ const ProjectPipelinesFeature: FC<ProjectPipelinesFeatureProps> = ({ port }) => 
     setLoading(true);
     setError(null);
     try {
-      const [environmentList, gatewayList] = await Promise.all([
-        apiFetch<EnvironmentListDTO>('GET', '/environments'),
-        apiFetch<ManagedGatewayListDTO>('GET', '/managed-gateways'),
-      ]);
+      const environmentList = await apiFetch<EnvironmentListDTO>('GET', '/environments');
       const pipelineList = await apiFetch<PipelineListDTO>('GET', '/pipelines');
       // The binding endpoint returns 200 with an empty `pipeline` for a project
       // that has no binding yet, so absence is a successful empty read — not an
@@ -73,10 +68,7 @@ const ProjectPipelinesFeature: FC<ProjectPipelinesFeatureProps> = ({ port }) => 
       // The binding stores the pipeline's OpenChoreo resource name — `Pipeline.id`
       // here — not its display name.
       const bound = binding?.pipeline ?? '';
-      const assembledEnvironments = assembleEnvironments(
-        environmentList?.list ?? [],
-        gatewayList?.list ?? []
-      );
+      const assembledEnvironments = assembleEnvironments(environmentList?.list ?? []);
       setEnvironments(assembledEnvironments);
       setPipelines(
         (pipelineList?.list ?? []).map((dto) => {
@@ -84,7 +76,6 @@ const ProjectPipelinesFeature: FC<ProjectPipelinesFeatureProps> = ({ port }) => 
             id: dto.id,
             name: dto.name,
             promotionPaths: dto.promotionPaths ?? [],
-            defaultGateways: dto.defaultGateways ?? [],
           };
           return {
             ...base,

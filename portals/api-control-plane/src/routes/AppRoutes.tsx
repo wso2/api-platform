@@ -33,6 +33,7 @@ import AppLayout from '@/pages/appShell/AppLayout';
 import {
   extensionScopedPaths,
   isSidebarExtension,
+  PAGE_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   settingsTabExtensions,
   type ApiControlPlaneExtension,
@@ -158,6 +159,11 @@ const RuntimeLogsPage = lazy(() =>
     default: m.RuntimeLogsPage,
   })),
 );
+const PortalsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/portals/PortalsPage').then((m) => ({
+    default: m.PortalsPage,
+  })),
+);
 const SettingsLayout = lazy(() =>
   import('../pages/appShell/appShellPages/settings/SettingsLayout').then((m) => ({
     default: m.SettingsLayout,
@@ -240,6 +246,23 @@ function GatewaysRoute() {
   );
 }
 
+/**
+ * The API's Deploy page. Renders a cloud override registered against
+ * `PAGE_API_DEPLOY_SLOT` when one is present, otherwise the built-in page.
+ * Unlike gateways this is a single route rather than a subtree, so there are no
+ * nested paths to redirect.
+ */
+function ApiDeployRoute() {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_API_DEPLOY_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={PAGE_API_DEPLOY_SLOT}>
+      <DeployPage />
+    </Hideable>
+  );
+}
+
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   // Extensions registered against a `settings.<level>.tabs` slot render nested
   // under the matching Settings layout, at a path relative to it — so the tab's
@@ -315,11 +338,15 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTest), <TestPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiDeploy), <DeployPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDeploy), <ApiDeployRoute />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityMetrics), <MetricsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityLogs), <RuntimeLogsPage />)}
+          <Route path={routes.organizationPortals()} element={<PortalsPage />} />
+          <Route path={routes.projectPortals()} element={<PortalsPage />} />
+          <Route path={routes.apiPortals()} element={<PortalsPage />} />
           {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}

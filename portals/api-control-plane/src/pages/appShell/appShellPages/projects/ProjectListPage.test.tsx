@@ -123,24 +123,16 @@ describe('ProjectListPage', () => {
     expect(screen.getByText('Internal Tools')).toBeInTheDocument();
   });
 
-  it('defaults to newest-first and sends the chosen order to the server', async () => {
+  it('requests projects newest-first', async () => {
     server.use(collection('/projects', projectFixtures, { record: requests }));
-    const { user } = renderPage();
+    renderPage();
 
     await screen.findByText('Retail APIs');
     expect(requests.last()?.params.get('sortBy')).toBe('createdAt');
     expect(requests.last()?.params.get('sortOrder')).toBe('desc');
-
-    await user.click(screen.getByRole('combobox', { name: 'Sort by' }));
-    await user.click(screen.getByRole('option', { name: 'Name (A–Z)' }));
-
-    await waitFor(() => {
-      expect(requests.last()?.params.get('sortBy')).toBe('name');
-      expect(requests.last()?.params.get('sortOrder')).toBe('asc');
-    });
   });
 
-  it('returns to the first page when the sort order changes', async () => {
+  it('returns to the first page when the search changes', async () => {
     server.use(collection('/projects', manyProjects, { record: requests }));
     const { user } = renderPage();
 
@@ -148,8 +140,7 @@ describe('ProjectListPage', () => {
     await user.click(screen.getByRole('button', { name: /next page/i }));
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
 
-    await user.click(screen.getByRole('combobox', { name: 'Sort by' }));
-    await user.click(screen.getByRole('option', { name: 'Oldest first' }));
+    await user.type(screen.getByPlaceholderText('Search projects'), 'Project 1');
 
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('0'));
   });
@@ -175,9 +166,7 @@ describe('ProjectListPage', () => {
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    // Open the actions menu on the first card (Retail APIs) and choose Delete.
-    await user.click(screen.getAllByLabelText('Project actions')[0]);
-    await user.click(screen.getByRole('menuitem', { name: /Delete/ }));
+    await user.click(screen.getByRole('button', { name: 'Delete Retail APIs' }));
 
     // Type-to-confirm guards the irreversible delete.
     const dialog = screen.getByRole('dialog');

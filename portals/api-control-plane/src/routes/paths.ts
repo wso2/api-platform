@@ -204,6 +204,14 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
+  organizationPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals`,
+  projectPortals: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
+    projectPath(orgHandle, projectHandler, 'portals'),
+  apiPortals: (
+    orgHandle = ':orgHandle',
+    projectHandler = ':projectHandler',
+    apiHandler = ':apiHandler',
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'portals'),
   apiAdmin: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

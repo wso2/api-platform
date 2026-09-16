@@ -1,0 +1,6 @@
+apiVersion: ${VALUE:apiVersion}
+kind: LlmProviderTemplate
+metadata:
+  name: ${VALUE:name}
+spec:
+  displayName: ${VALUE:displayName}

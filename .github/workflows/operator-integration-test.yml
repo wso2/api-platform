@@ -58,8 +58,8 @@ jobs:
           cd kubernetes/gateway-operator
           IMG=${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} make docker-build
 
-      - name: Build Mock JWKS image
-        run: make -C tests/mock-servers build MOCKS=mock-jwks DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }}
+      - name: Build mock server images
+        run: make -C tests/mock-servers build MOCKS="mock-jwks a2a-trip-planner" DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }}
 
       - name: Load images into Kind
         run: |
@@ -67,6 +67,7 @@ jobs:
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-runtime:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/mock-jwks:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.DOCKER_REGISTRY }}/a2a-trip-planner:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
 
       - name: Deploy OCI Registry (HTTP)
         run: |
@@ -204,6 +205,58 @@ jobs:
           EOF
 
           kubectl wait --for=condition=ready pod -l app=mock-jwks --timeout=120s
+
+      # Upstream for the Agent CR below. This is a real A2A agent built on the
+      # official SDK (tests/mock-servers/a2a-trip-planner), so the protocol
+      # framing the gateway is tested against is the SDK's, not a stand-in's.
+      # Its JSON-RPC binding is mounted at "/" and its HTTP+JSON binding at
+      # "/v1" — the values the Agent declares as pathPrefix.
+      - name: Deploy A2A Trip Planner agent
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: a2a-trip-planner
+            namespace: default
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: a2a-trip-planner
+            template:
+              metadata:
+                labels:
+                  app: a2a-trip-planner
+              spec:
+                containers:
+                - name: a2a-trip-planner
+                  image: ${{ env.DOCKER_REGISTRY }}/a2a-trip-planner:${{ env.VERSION }}
+                  imagePullPolicy: Never
+                  ports:
+                  - containerPort: 9099
+                  env:
+                  - name: TRIP_STREAM_STEPS
+                    value: "3"
+                  - name: TRIP_STREAM_STEP_DELAY
+                    value: "0.5"
+                  - name: TRIP_SLOW_HOLD_SECONDS
+                    value: "60"
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: a2a-trip-planner
+            namespace: default
+          spec:
+            selector:
+              app: a2a-trip-planner
+            ports:
+            - port: 9099
+              targetPort: 9099
+          EOF
+
+          kubectl wait --for=condition=ready pod -l app=a2a-trip-planner --timeout=180s
 
       - name: Install cert-manager
         run: |
@@ -1031,6 +1084,309 @@ jobs:
           fi
 
           echo "Updated JWT API invocation test passed (correctly rejected)!"
+
+      # ==================== AGENT (A2A) ====================
+      # Deploy an Agent, reach it over both A2A protocol bindings, then update
+      # it and delete it. The Agent uses its own port-forward on 8085 so it
+      # cannot disturb the 8080 forward that later steps rely on.
+      - name: Create test Agent
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1
+          kind: Agent
+          metadata:
+            name: trip-agent
+            namespace: default
+          spec:
+            displayName: Trip Agent
+            version: v1.0
+            context: /trip
+            upstream:
+              url: http://a2a-trip-planner.default.svc.cluster.local:9099
+            a2a:
+              protocolVersion: "1.0"
+              operationConfigs:
+                transports:
+                  - protocolBinding: JSONRPC
+                    pathPrefix: /
+                  - protocolBinding: HTTP+JSON
+                    pathPrefix: /v1
+              agentCard:
+                public:
+                  mode: passthrough
+          EOF
+
+      - name: Wait for Agent to be programmed
+        run: |
+          echo "Waiting for Agent to be programmed..."
+          kubectl wait --for=condition=Programmed agent/trip-agent --timeout=180s
+
+          echo "Agent status:"
+          kubectl get agent trip-agent -o yaml
+
+      - name: Test Agent A2A invocation
+        run: |
+          set -euo pipefail
+          pkill -f "kubectl port-forward.*8085:8080" || true
+          sleep 2
+          kubectl port-forward svc/test-gateway-gw-gateway-runtime 8085:8080 &
+          PF_PID=$!
+          trap 'kill "${PF_PID}" >/dev/null 2>&1 || true' EXIT
+          sleep 10
+
+          PORT=8085
+          VER='A2A-Version: 1.0'
+          CT='Content-Type: application/json'
+
+          # The card is a passthrough card, so a body containing the agent's own
+          # name is what says the request reached the upstream through the gateway.
+          # Programmed=True means the controller accepted the Agent; the routes
+          # reach Envoy over the policy snapshot a moment later, so this first
+          # request is the one that waits for the snapshot.
+          BODY=""
+          for i in $(seq 1 30); do
+            RESP=$(curl -sS -w "\n%{http_code}" "http://localhost:${PORT}/trip/.well-known/agent-card.json" || true)
+            CODE=$(echo "${RESP}" | tail -n1)
+            BODY=$(echo "${RESP}" | sed '$d')
+            if [ "${CODE}" = "200" ] && printf '%s' "${BODY}" | grep -q 'Trip Planner'; then
+              break
+            fi
+            if [ $((i % 10)) -eq 0 ]; then echo "Attempt ${i}: card status=${CODE}"; fi
+            sleep 2
+          done
+          echo "GET /trip/.well-known/agent-card.json HTTP ${CODE}"
+          if [ "${CODE}" != "200" ]; then echo "${BODY}"; exit 1; fi
+          if ! printf '%s' "${BODY}" | grep -q 'Trip Planner'; then echo "${BODY}"; exit 1; fi
+
+          # The itinerary is fully determined by destination and day count, so an
+          # exact match means the request arrived intact rather than merely
+          # reaching something that answered.
+          MSG='{"messageId":"op-it-1","role":"ROLE_USER","parts":[{"text":"Plan a 2 day trip to Galle"}]}'
+
+          # JSON-RPC binding: pathPrefix "/" under context "/trip".
+          RESP=$(curl -sS -w "\n%{http_code}" \
+            -H "${CT}" -H "${VER}" \
+            --request POST \
+            --url "http://localhost:${PORT}/trip" \
+            --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",\"params\":{\"message\":${MSG}}}")
+          CODE=$(echo "${RESP}" | tail -n1)
+          RPC_BODY=$(echo "${RESP}" | sed '$d')
+          echo "POST /trip (JSONRPC SendMessage) HTTP ${CODE}"
+          if [ "${CODE}" != "200" ]; then echo "${RPC_BODY}"; exit 1; fi
+          if ! printf '%s' "${RPC_BODY}" | grep -q 'Trip plan for Galle: 2 days'; then echo "${RPC_BODY}"; exit 1; fi
+
+          # HTTP+JSON binding: pathPrefix "/v1", same operation, same agent.
+          RESP=$(curl -sS -w "\n%{http_code}" \
+            -H "${CT}" -H "${VER}" \
+            --request POST \
+            --url "http://localhost:${PORT}/trip/v1/message:send" \
+            --data "{\"message\":${MSG}}")
+          CODE=$(echo "${RESP}" | tail -n1)
+          REST_BODY=$(echo "${RESP}" | sed '$d')
+          echo "POST /trip/v1/message:send (HTTP+JSON SendMessage) HTTP ${CODE}"
+          if [ "${CODE}" != "200" ]; then echo "${REST_BODY}"; exit 1; fi
+          if ! printf '%s' "${REST_BODY}" | grep -q 'Trip plan for Galle: 2 days'; then echo "${REST_BODY}"; exit 1; fi
+
+          # A2A 1.0 makes declaring the protocol version the client's job, and the
+          # gateway checks it before it resolves an operation. A 200 here would
+          # mean the guard is not on this route at all.
+          NOVER=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "${CT}" \
+            --request POST \
+            --url "http://localhost:${PORT}/trip/v1/message:send" \
+            --data "{\"message\":${MSG}}")
+          echo "POST /trip/v1/message:send (no A2A-Version): ${NOVER}"
+          if [ "${NOVER}" != "400" ]; then exit 1; fi
+
+          echo "Agent A2A invocation tests passed!"
+
+      - name: Update test Agent with managed card and JWT policy
+        run: |
+          echo "Updating trip-agent: passthrough card -> managed card, plus jwt-auth..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1
+          kind: Agent
+          metadata:
+            name: trip-agent
+            namespace: default
+          spec:
+            displayName: Trip Agent
+            version: v1.0
+            context: /trip
+            upstream:
+              url: http://a2a-trip-planner.default.svc.cluster.local:9099
+            a2a:
+              protocolVersion: "1.0"
+              operationConfigs:
+                transports:
+                  - protocolBinding: JSONRPC
+                    pathPrefix: /
+                  - protocolBinding: HTTP+JSON
+                    pathPrefix: /v1
+                policies:
+                  - name: jwt-auth
+                    version: v1
+                    params:
+                      issuers:
+                        - MockKeyManager
+              agentCard:
+                public:
+                  mode: managed
+                  # The card is served as supplied, so it is written as the JSON
+                  # document a client will read. Every configured transport must
+                  # be advertised, over https, with a path that is exactly where
+                  # the gateway serves that binding (context + pathPrefix) —
+                  # otherwise the managed card is rejected at validation time.
+                  # 8443 is this gateway's own HTTPS listener.
+                  content: {
+                    "name": "Gateway Managed Trip Card",
+                    "description": "Card served by the gateway, not the agent",
+                    "version": "1.0.0",
+                    "protocolVersion": "1.0",
+                    "supportedInterfaces": [
+                      {"protocolBinding": "JSONRPC", "protocolVersion": "1.0",
+                       "url": "https://localhost:8443/trip"},
+                      {"protocolBinding": "HTTP+JSON", "protocolVersion": "1.0",
+                       "url": "https://localhost:8443/trip/v1"}
+                    ],
+                    "capabilities": {"streaming": true},
+                    "defaultInputModes": ["text/plain"],
+                    "defaultOutputModes": ["text/plain"],
+                    "skills": [{"id": "plan_trip", "name": "Plan a trip"}]
+                  }
+          EOF
+
+      - name: Wait for updated Agent to be programmed
+        run: |
+          echo "Waiting for updated Agent to be programmed..."
+          # Give the operator a few seconds to trigger reconciliation
+          sleep 10
+          kubectl wait --for=condition=Programmed agent/trip-agent --timeout=180s
+
+          echo "Agent status after update:"
+          kubectl get agent trip-agent -o yaml
+
+      - name: Test updated Agent invocation
+        run: |
+          set -euo pipefail
+          kubectl port-forward svc/mock-jwks 8086:8080 >/tmp/agent-jwks-port-forward.log 2>&1 &
+          JWKS_PID=$!
+          sleep 5
+          TOKEN=$(curl -s http://localhost:8086/token)
+          kill "${JWKS_PID}" >/dev/null 2>&1 || true
+          echo "Got token: ${TOKEN:0:20}..."
+
+          pkill -f "kubectl port-forward.*8085:8080" || true
+          sleep 2
+          kubectl port-forward svc/test-gateway-gw-gateway-runtime 8085:8080 &
+          PF_PID=$!
+          trap 'kill "${PF_PID}" >/dev/null 2>&1 || true' EXIT
+          sleep 10
+
+          PORT=8085
+          VER='A2A-Version: 1.0'
+          CT='Content-Type: application/json'
+          MSG='{"messageId":"op-it-2","role":"ROLE_USER","parts":[{"text":"Plan a 2 day trip to Galle"}]}'
+
+          # In managed mode the gateway serves the card itself, so the agent's own
+          # name must no longer appear. The card is a discovery document and is not
+          # covered by the operation policies below, so it stays unauthenticated.
+          # The card flipping to the managed content is also what says the updated
+          # snapshot has reached the data plane, so the retry lives here rather
+          # than around the policy assertions further down.
+          BODY=""
+          for i in $(seq 1 30); do
+            RESP=$(curl -sS -w "\n%{http_code}" "http://localhost:${PORT}/trip/.well-known/agent-card.json" || true)
+            CODE=$(echo "${RESP}" | tail -n1)
+            BODY=$(echo "${RESP}" | sed '$d')
+            if [ "${CODE}" = "200" ] && printf '%s' "${BODY}" | grep -q 'Gateway Managed Trip Card'; then
+              break
+            fi
+            if [ $((i % 10)) -eq 0 ]; then echo "Attempt ${i}: managed card status=${CODE}"; fi
+            sleep 2
+          done
+          echo "GET /trip/.well-known/agent-card.json (managed) HTTP ${CODE}"
+          if [ "${CODE}" != "200" ]; then echo "${BODY}"; exit 1; fi
+          if ! printf '%s' "${BODY}" | grep -q 'Gateway Managed Trip Card'; then echo "${BODY}"; exit 1; fi
+          if printf '%s' "${BODY}" | grep -q 'Trip Planner'; then
+            echo "Managed card still carries the upstream card content:"
+            echo "${BODY}"
+            exit 1
+          fi
+
+          # jwt-auth now guards every A2A operation, on both bindings.
+          for URL in "http://localhost:${PORT}/trip" "http://localhost:${PORT}/trip/v1/message:send"; do
+            case "${URL}" in
+              */v1/message:send) DATA="{\"message\":${MSG}}" ;;
+              *) DATA="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",\"params\":{\"message\":${MSG}}}" ;;
+            esac
+
+            UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "${CT}" -H "${VER}" --request POST --url "${URL}" --data "${DATA}")
+            echo "POST ${URL} (no token): ${UNAUTH}"
+            if [ "${UNAUTH}" != "401" ]; then exit 1; fi
+
+            RESP=$(curl -sS -w "\n%{http_code}" \
+              -H "${CT}" -H "${VER}" -H "Authorization: Bearer ${TOKEN}" \
+              --request POST --url "${URL}" --data "${DATA}")
+            CODE=$(echo "${RESP}" | tail -n1)
+            BODY=$(echo "${RESP}" | sed '$d')
+            echo "POST ${URL} (with token): ${CODE}"
+            if [ "${CODE}" != "200" ]; then echo "${BODY}"; exit 1; fi
+            if ! printf '%s' "${BODY}" | grep -q 'Trip plan for Galle: 2 days'; then echo "${BODY}"; exit 1; fi
+          done
+
+          echo "Updated Agent invocation tests passed!"
+
+      - name: Delete test Agent
+        run: |
+          set -euo pipefail
+          echo "Deleting Agent trip-agent..."
+          kubectl delete agent trip-agent
+          if ! kubectl wait --for=delete agent/trip-agent --timeout=180s; then
+            echo "Agent trip-agent was not removed; dumping diagnostics..."
+            kubectl get agent trip-agent -o yaml || true
+            kubectl describe agent trip-agent || true
+            kubectl logs -n operator -l app.kubernetes.io/name=gateway-operator --tail=200 || true
+            exit 1
+          fi
+
+          echo "Waiting for routes to be removed..."
+          sleep 15
+
+          pkill -f "kubectl port-forward.*8085:8080" || true
+          sleep 2
+          kubectl port-forward svc/test-gateway-gw-gateway-runtime 8085:8080 &
+          PF_PID=$!
+          trap 'kill "${PF_PID}" >/dev/null 2>&1 || true' EXIT
+          sleep 10
+
+          PORT=8085
+          # The card route and both bindings' operation routes must all be gone:
+          # a delete that removed only the record, or only one route set, would
+          # leave one of these answering.
+          CARD=""
+          for i in $(seq 1 15); do
+            CARD=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/trip/.well-known/agent-card.json" || true)
+            if [ "${CARD}" = "404" ]; then break; fi
+            sleep 2
+          done
+          echo "GET /trip/.well-known/agent-card.json after delete: ${CARD}"
+          if [ "${CARD}" != "404" ]; then exit 1; fi
+
+          RPC=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
+            --request POST --url "http://localhost:${PORT}/trip" \
+            --data '{"jsonrpc":"2.0","id":1,"method":"ListTasks","params":{}}')
+          echo "POST /trip (JSONRPC) after delete: ${RPC}"
+          if [ "${RPC}" != "404" ]; then exit 1; fi
+
+          REST=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H 'A2A-Version: 1.0' "http://localhost:${PORT}/trip/v1/tasks")
+          echo "GET /trip/v1/tasks (HTTP+JSON) after delete: ${REST}"
+          if [ "${REST}" != "404" ]; then exit 1; fi
+
+          echo "Agent deletion and route removal verified!"
 
       # Uses the same manifests as kubernetes/helm/resources/apigateway-restapi-operator-demo
       # (README apply order): namespace demo workloads stay in apigateway-demo so hello-backend FQDNs
@@ -2099,6 +2455,14 @@ jobs:
           echo ""
           echo "=== Scoped RestApi Status ==="
           kubectl describe restapi scoped-api -n scoped-test || true
+
+          echo ""
+          echo "=== Agent Status ==="
+          kubectl describe agent trip-agent || true
+
+          echo ""
+          echo "=== A2A Trip Planner Logs ==="
+          kubectl logs -l app=a2a-trip-planner --tail=200 || true
 
           echo ""
           echo "=== All Pods Description ==="

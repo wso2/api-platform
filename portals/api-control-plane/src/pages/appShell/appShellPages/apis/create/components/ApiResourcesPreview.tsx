@@ -105,39 +105,39 @@ export const ApiResourcesPreview = ({ onSpecChange, spec, warnings }: ApiResourc
         overflow: 'hidden',
       }}
     >
-      <Stack
-        direction="row"
-        spacing={2}
-        sx={{
-          alignItems: 'center',
-          flexShrink: 0,
-          justifyContent: 'space-between',
-        }}
-      >
-        <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
-          <FormattedMessage {...messages.title} />
-        </Typography>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={showSource}
-              onChange={(event) => setShowSource(event.target.checked)}
-              size="small"
-              // MUI v9 routes input attributes through slotProps; the older
-              // `inputProps` never reaches the element, leaving the control
-              // without an accessible name.
-              slotProps={{
-                input: { 'aria-label': intl.formatMessage(messages.source) },
-              }}
-            />
-          }
-          // Nothing to read until something has been fetched.
-          disabled={!hasContract}
-          label={<FormattedMessage {...messages.source} />}
-          labelPlacement="start"
-          sx={{ m: 0 }}
-        />
-      </Stack>
+      {hasContract ? (
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            alignItems: 'center',
+            flexShrink: 0,
+            justifyContent: 'space-between',
+          }}
+        >
+          <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
+            <FormattedMessage {...messages.title} />
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showSource}
+                onChange={(event) => setShowSource(event.target.checked)}
+                size="small"
+                // MUI v9 routes input attributes through slotProps; the older
+                // `inputProps` never reaches the element, leaving the control
+                // without an accessible name.
+                slotProps={{
+                  input: { 'aria-label': intl.formatMessage(messages.source) },
+                }}
+              />
+            }
+            label={<FormattedMessage {...messages.source} />}
+            labelPlacement="start"
+            sx={{ m: 0 }}
+          />
+        </Stack>
+      ) : null}
 
       {/* The edited definition's own verdict, above both views because it
           describes the document rather than either way of looking at it. */}
@@ -151,7 +151,7 @@ export const ApiResourcesPreview = ({ onSpecChange, spec, warnings }: ApiResourc
         sx={{
           flex: 1,
           minHeight: 0,
-          mt: 1,
+          mt: hasContract ? 1 : 0,
           // The editor manages its own scrolling so its toolbar stays put; the
           // read-only views are blocks this box has to scroll for.
           overflow: editable && showSource ? 'hidden' : 'auto',

@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -47,14 +48,18 @@ import { Edit, Plus, Search, Settings, Trash2 } from '@wso2/oxygen-ui-icons-reac
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
 import { gatewayTypeLabel } from './utils/gateway';
 import NoGatewaysImage from './assets/images/NoGW.svg';
+import type { AIWorkspaceHostPort } from './hostPort';
 import type { Environment, Gateway } from './types';
 
 export type GatewaysListProps = {
   gateways: Gateway[];
   environments: Environment[];
+  /** Passed through to the configuration drawer, which calls platform-api itself. */
+  port: AIWorkspaceHostPort;
   onAddClick: () => void;
   onEditClick: (gatewayId: string) => void;
-  onDelete: (gatewayId: string, name: string) => void;
+  /** Returning a promise lets the confirm dialog stay open, and busy, until the delete settles. */
+  onDelete: (gatewayId: string, name: string) => void | Promise<void>;
 };
 
 function truncateText(text: string, maxLength: number): string {
@@ -65,12 +70,14 @@ function truncateText(text: string, maxLength: number): string {
 const GatewaysList: FC<GatewaysListProps> = ({
   gateways,
   environments,
+  port,
   onAddClick,
   onEditClick,
   onDelete,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
 
   // Environments are keyed by name, so a gateway that points at an environment
@@ -89,10 +96,18 @@ const GatewaysList: FC<GatewaysListProps> = ({
     );
   }, [gateways, searchQuery]);
 
-  const handleDeleteConfirm = () => {
-    if (!deleteTarget) return;
-    onDelete(deleteTarget.id, deleteTarget.name);
-    setDeleteTarget(null);
+  const handleDeleteConfirm = async () => {
+    // The dialog stays open, with its button busy, until the delete settles:
+    // closing first left the row on screen with nothing to say a delete was even
+    // running, and let a second gateway be deleted while the first was in flight.
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(deleteTarget.id, deleteTarget.name);
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -191,6 +206,18 @@ const GatewaysList: FC<GatewaysListProps> = ({
                                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                   {truncateText(gateway.name, 25)}
                                 </Typography>
+                                {/* The default is per gateway TYPE, so several
+                                    gateways in one environment can each be
+                                    marked — one per type. */}
+                                {gateway.isDefault ? (
+                                  <Chip
+                                    label="Default"
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                                  />
+                                ) : null}
                               </Box>
                             </TableCell>
                             <TableCell>
@@ -255,26 +282,33 @@ const GatewaysList: FC<GatewaysListProps> = ({
         )}
       </Grid>
 
-      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
+      <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)}>
         <DialogTitle>Delete Gateway</DialogTitle>
         <DialogContent>
           <DialogContentText>Are you sure you want to delete {deleteTarget?.name}?</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)} variant="outlined" color="secondary">
+          <Button onClick={() => setDeleteTarget(null)} variant="outlined" color="secondary" disabled={deleting}>
             Cancel
           </Button>
-          <Button color="error" onClick={handleDeleteConfirm}>
-            Delete
+          <Button
+            color="error"
+            onClick={handleDeleteConfirm}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
 
+      {/* Keyed by gateway so the form's draft state belongs to one gateway and cannot outlive it. */}
       <GatewaySettingsDrawer
+        key={settingsGateway?.id ?? 'none'}
         open={settingsGateway !== null}
         onClose={() => setSettingsGateway(null)}
         gateway={settingsGateway}
-        environments={environments}
+        port={port}
       />
     </PageContent>
   );

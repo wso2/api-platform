@@ -4,10 +4,18 @@
 {{- $tls := $pa.tls -}}
 {{- $https := $pa.config.server.https -}}
 {{- $jwt := $pa.config.auth.jwt -}}
-{{- $jwtKeysMounted := has $pa.config.auth.mode (list "internal_token" "file") -}}
+{{- /*
+     Which modes actually open a local PEM. "file" always does (it signs its own
+     login tokens); "internal_token" does unless skipValidation turns every
+     signature/expiry/issuer check off, in which case the Go config validation
+     (validateAuthModeConfig) never asks for the key either, so requiring it here
+     would block a configuration the binary accepts.
+*/ -}}
+{{- $skipJwtValidation := and (eq $pa.config.auth.mode "internal_token") (dig "internalToken" "skipValidation" false $pa.config.auth) -}}
+{{- $jwtKeysMounted := and (has $pa.config.auth.mode (list "internal_token" "file")) (not $skipJwtValidation) -}}
 {{- $jwtKeyDir := "" -}}
 {{- if $jwtKeysMounted -}}
-{{- $jwtPublicKeyFile := required "platform-api: config.auth.jwt.publicKeyFile is required when config.auth.mode is \"internal_token\" or \"file\" — it is the mount path of the PEM that verifies token signatures." $jwt.publicKeyFile -}}
+{{- $jwtPublicKeyFile := required "platform-api: config.auth.jwt.publicKeyFile is required when config.auth.mode is \"internal_token\" or \"file\" — it is the mount path of the PEM that verifies token signatures. In \"internal_token\" mode, set config.auth.internalToken.skipValidation=true to run without a verifying key." $jwt.publicKeyFile -}}
 {{- if not (hasPrefix "/" $jwtPublicKeyFile) -}}
 {{- fail (printf "platform-api: config.auth.jwt.publicKeyFile must be an absolute path (got %q) — the chart derives the jwt-keys volume mountPath from its parent directory." $jwtPublicKeyFile) -}}
 {{- end -}}
@@ -219,6 +227,8 @@ spec:
         # RS256 JWT keys mounted as PEM files from the external Secret. The
         # public key verifies tokens in internal_token and file modes; the
         # private key signs file-mode login tokens (mounted only in file mode).
+        # Not mounted at all when internal_token mode skips validation — there is
+        # no key to verify with, so the Secret needn't carry the PEM.
         - name: jwt-keys
           secret:
             secretName: {{ $secretName }}

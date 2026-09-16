@@ -94,4 +94,22 @@ describe('runtimeConfig', () => {
 
     expect(runtimeConfig.billingProxyEnabled).toBe(false);
   });
+
+  it('cloudProxyEnabled defaults to false when absent', async () => {
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.cloudProxyEnabled).toBe(false);
+  });
+
+  it('reads cloudProxyEnabled and moesifAppUrl from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      cloudProxyEnabled: 'true',
+      moesifAppUrl: 'https://www.moesif.com',
+    };
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.cloudProxyEnabled).toBe(true);
+    expect(runtimeConfig.moesifAppUrl).toBe('https://www.moesif.com');
+  });
 });

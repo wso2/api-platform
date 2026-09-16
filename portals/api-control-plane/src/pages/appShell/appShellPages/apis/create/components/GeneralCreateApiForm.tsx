@@ -25,7 +25,7 @@ import {
   FormControl,
   FormHelperText,
   Grid,
-  InputLabel,
+  FormLabel,
   OutlinedInput,
   Paper,
   Stack,
@@ -47,6 +47,8 @@ import type { CreateApiFormErrors, CreateApiFormField } from '../utils/serverFie
 import { ApiCreationWizardDraftState, GeneralApiCreationFormState } from '../types';
 
 export type GeneralCreateApiFormProps = {
+  formId?: string;
+  hideActions?: boolean;
   initialValues?: ApiCreationWizardDraftState;
   onSubmit: (values: GeneralApiCreationFormState) => void;
   onBack: () => void;
@@ -110,6 +112,11 @@ const messages = defineMessages({
     id: 'api.create.generalForm.section.backendEndpoint',
     defaultMessage: 'Backend endpoint',
   },
+  placeholderBackendNotice: {
+    id: 'api.create.generalForm.targetUrl.placeholder.notice',
+    defaultMessage:
+      'This API is using https://example.com as a placeholder backend. Replace it with your actual backend URL now, or update it before deploying.',
+  },
   identifierErrorPattern: {
     id: 'api.create.generalForm.identifier.error.pattern',
     defaultMessage: 'Use lowercase letters and numbers, separated by single hyphens.',
@@ -147,10 +154,6 @@ const messages = defineMessages({
     id: 'api.create.generalForm.identifier.status.checking',
     defaultMessage: 'Checking whether this identifier is free…',
   },
-  subtitle: {
-    id: 'api.create.generalForm.subtitle',
-    defaultMessage: 'Provide the details to configure and expose your API proxy.',
-  },
   targetUrlErrorInvalid: {
     id: 'api.create.generalForm.targetUrl.error.invalid',
     defaultMessage: 'Enter a full URL, for example https://api.example.com.',
@@ -166,10 +169,6 @@ const messages = defineMessages({
   targetUrlLabel: {
     id: 'api.create.generalForm.targetUrl.label',
     defaultMessage: 'Target URL',
-  },
-  title: {
-    id: 'api.create.generalForm.title',
-    defaultMessage: 'Create an API Proxy',
   },
   versionErrorPattern: {
     id: 'api.create.generalForm.version.error.pattern',
@@ -188,16 +187,6 @@ const messages = defineMessages({
     defaultMessage: 'Version',
   },
 });
-
-/**
- * Small uppercase rule above a group of fields. `Form.Header` is fixed at `h4`,
- * so the size comes from the theme's `overline` typography rather than a
- * font-size literal.
- */
-const SECTION_LABEL_SX = {
-  color: 'text.secondary',
-  typography: 'overline',
-} as const;
 
 export const DEFAULT_FORM_STATE: GeneralApiCreationFormState = {
   id: '',
@@ -529,16 +518,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   const targetUrlLabel = intl.formatMessage(messages.targetUrlLabel);
 
   return (
-    <Stack component="form" noValidate spacing={3} onSubmit={onFormSubmit}>
-      <Box>
-        <Typography sx={{ fontWeight: 700 }} variant="h5">
-          <FormattedMessage {...messages.title} />
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-          <FormattedMessage {...messages.subtitle} />
-        </Typography>
-      </Box>
-
+    <Stack component="form" id={props.formId} noValidate spacing={3} onSubmit={onFormSubmit}>
       {/* `Alert` carries `role="alert"`, so this is announced when it appears
         ,the inputs themselves say which values to change. */}
       {showRejection && (
@@ -562,20 +542,20 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
       )}
 
       <Paper component="section" sx={{ p: 3 }}>
-        <Form.Header sx={SECTION_LABEL_SX}>
+        <Typography sx={{ fontWeight: 600 }} variant="body2">
           <FormattedMessage {...messages.basicInformation} />
-        </Form.Header>
+        </Typography>
 
         <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 4 }}>
               <FormControl error={Boolean(fieldErrors.displayName)} fullWidth required>
-                <InputLabel htmlFor="displayName">{nameLabel}</InputLabel>
+                <FormLabel htmlFor="displayName">{nameLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="displayName-error"
                   id="displayName"
-                  label={nameLabel}
                   name="displayName"
+                  sx={{ mt: 0.75 }}
                   onBlur={() => markTouched('displayName')}
                   onChange={(event) => handleDisplayNameChange(event.target.value)}
                   value={formState.displayName}
@@ -586,12 +566,12 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
             <Grid size={{ xs: 12, md: 4 }}>
               <FormControl error={Boolean(fieldErrors.id)} fullWidth required>
-                <InputLabel htmlFor="identifier">{identifierLabel}</InputLabel>
+                <FormLabel htmlFor="identifier">{identifierLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="identifier-error"
                   id="identifier"
-                  label={identifierLabel}
                   name="identifier"
+                  sx={{ mt: 0.75 }}
                   onBlur={() => markTouched('id')}
                   onChange={(event) => handleIdentifierChange(event.target.value)}
                   value={formState.id}
@@ -604,12 +584,12 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
             <Grid size={{ xs: 12, md: 4 }}>
               <FormControl error={Boolean(fieldErrors.version)} fullWidth required>
-                <InputLabel htmlFor="version">{versionLabel}</InputLabel>
+                <FormLabel htmlFor="version">{versionLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="version-error"
                   id="version"
-                  label={versionLabel}
                   name="version"
+                  sx={{ mt: 0.75 }}
                   onBlur={() => markTouched('version')}
                   onChange={(event) => handleVersionChange(event.target.value)}
                   value={formState.version}
@@ -620,12 +600,12 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
           </Grid>
 
           <FormControl error={Boolean(fieldErrors.context)} fullWidth required>
-            <InputLabel htmlFor="context">{contextLabel}</InputLabel>
+            <FormLabel htmlFor="context">{contextLabel}</FormLabel>
             <OutlinedInput
               aria-describedby="context-error"
               id="context"
-              label={contextLabel}
               name="context"
+              sx={{ mt: 0.75 }}
               onBlur={() => markTouched('context')}
               onChange={(event) => handleBasePathChange(event.target.value)}
               value={formState.context}
@@ -634,14 +614,14 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
           </FormControl>
 
           <FormControl fullWidth>
-            <InputLabel htmlFor="description">{descriptionLabel}</InputLabel>
+            <FormLabel htmlFor="description">{descriptionLabel}</FormLabel>
             <OutlinedInput
               id="description"
-              label={descriptionLabel}
               multiline
               name="description"
               onChange={(event) => setField('description', event.target.value)}
               rows={3}
+              sx={{ mt: 0.75 }}
               value={formState.description ?? ''}
             />
           </FormControl>
@@ -649,18 +629,24 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
       </Paper>
 
       <Paper component="section" sx={{ p: 3, mt: 1 }}>
-        <Form.Header sx={SECTION_LABEL_SX}>
+        <Typography sx={{ fontWeight: 600 }} variant="body2">
           <FormattedMessage {...messages.endpointSection} />
-        </Form.Header>
+        </Typography>
 
         <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
+          {formState.upstream.main.url.trim() === 'https://example.com' ? (
+            <Alert severity="info">
+              <FormattedMessage {...messages.placeholderBackendNotice} />
+            </Alert>
+          ) : null}
+
           <FormControl error={Boolean(fieldErrors.targetUrl)} fullWidth required>
-            <InputLabel htmlFor="targetUrl">{targetUrlLabel}</InputLabel>
+            <FormLabel htmlFor="targetUrl">{targetUrlLabel}</FormLabel>
             <OutlinedInput
               aria-describedby="targetUrl-error"
               id="targetUrl"
-              label={targetUrlLabel}
               name="targetUrl"
+              sx={{ mt: 0.75 }}
               onBlur={() => markTouched('targetUrl')}
               onChange={(event) => setMainUpstreamUrl(event.target.value)}
               value={formState.upstream.main.url}
@@ -670,18 +656,24 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
         </Form.Stack>
       </Paper>
 
-      <Divider />
+      {!props.hideActions && <Divider />}
 
       {/* Both buttons on the trailing edge, the same pairing as the step
           before this one. */}
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <Button variant="text" onClick={props.onBack}>
-          <FormattedMessage {...messages.back} />
-        </Button>
-        <Button type="submit" variant="contained">
-          <FormattedMessage {...messages.create} />
-        </Button>
-      </Stack>
+      {!props.hideActions && (
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{ alignItems: 'center', justifyContent: 'flex-end' }}
+        >
+          <Button onClick={props.onBack} type="button" variant="text">
+            <FormattedMessage {...messages.back} />
+          </Button>
+          <Button type="submit" variant="contained">
+            <FormattedMessage {...messages.create} />
+          </Button>
+        </Stack>
+      )}
     </Stack>
   );
 };

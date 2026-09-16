@@ -14,9 +14,7 @@ export type { ProjectPipelinesFeatureProps } from './ProjectPipelinesFeature';
 export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity } from './hostPort';
 export type {
   CreatePipelineInput,
-  DefaultGateway,
   Environment,
-  Gateway,
   Pipeline,
   PromotionPath,
   UpdatePipelineInput,

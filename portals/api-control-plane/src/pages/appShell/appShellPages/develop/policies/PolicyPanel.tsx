@@ -25,11 +25,14 @@ import {
   CardContent,
   Chip,
   Divider,
+  InputAdornment,
+  MenuItem,
   Stack,
+  TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, Globe } from '@wso2/oxygen-ui-icons-react';
-import { useState } from 'react';
+import { ChevronDown, Globe, Search } from '@wso2/oxygen-ui-icons-react';
+import { useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useIsPolicyHubConfigured, type PolicySummary } from '@/api/resources/policyHub';
@@ -38,6 +41,7 @@ import { useNotifications } from '@/components/Notifications';
 import { AttachedPolicyList } from './AttachedPolicyList';
 import { AvailablePoliciesPanel } from './AvailablePoliciesPanel';
 import { SaveBar } from '../SaveBar';
+import { useDirtyTracking } from '../useDirtyTracking';
 import {
   type EditableOperation,
   methodColor,
@@ -71,17 +75,37 @@ const messages = defineMessages({
   },
   globalEmpty: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalEmpty',
-    defaultMessage: 'Drag and drop policies here to apply at the global level.',
+    defaultMessage: 'Drag and drop policies here to apply across all resources',
+  },
+  globalDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalDescription',
+    defaultMessage: 'Policies applied here will affect all API resources',
   },
   resources: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resources',
-    defaultMessage: 'Resources',
+    defaultMessage: 'Resource-wise policies',
     description: "Section listing the API's operations, each with its own policies. Noun.",
+  },
+  resourcesDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourcesDescription',
+    defaultMessage: 'Attach policies only to the specific resources',
+  },
+  searchResources: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.searchResources',
+    defaultMessage: 'Search resources',
+  },
+  allMethods: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.allMethods',
+    defaultMessage: 'All methods',
   },
   noResources: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noResources',
     defaultMessage: 'No resources. Add them in the Routing tab.',
     description: '"Routing" is the name of a sibling page in this console.',
+  },
+  noMatchingResources: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noMatchingResources',
+    defaultMessage: 'No resources match the filters.',
   },
   resourceEmpty: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty',
@@ -166,6 +190,24 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const [picked, setPicked] = useState<PolicySummary | null>(null);
   const [editing, setEditing] = useState<EditState>(null);
   const [activeZone, setActiveZone] = useState<string | null>(null);
+  const [resourceSearch, setResourceSearch] = useState('');
+  const [methodFilter, setMethodFilter] = useState('all');
+
+  // Only the fields `save` actually submits count towards "unsaved" — not the
+  // resource search/filter or which config drawer is open.
+  const { dirty, markSaved } = useDirtyTracking({ apiPolicies, operations });
+
+  const methods = useMemo(
+    () => [...new Set(operations.map((operation) => operation.method))].sort(),
+    [operations],
+  );
+  const visibleOperations = operations
+    .map((operation, index) => ({ operation, index }))
+    .filter(({ operation }) => {
+      const matchesMethod = methodFilter === 'all' || operation.method === methodFilter;
+      const term = resourceSearch.trim().toLowerCase();
+      return matchesMethod && (term === '' || operation.path.toLowerCase().includes(term));
+    });
 
   const policiesFor = (s: PolicyScope): Policy[] =>
     s.kind === 'api' ? apiPolicies : operations[s.index].policies || [];
@@ -239,6 +281,12 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const reorderAt = (s: PolicyScope, from: number, to: number) =>
     setPoliciesFor(s, reorderPolicies(policiesFor(s), from, to));
 
+  const cancel = () => {
+    setApiPolicies(api.policies ?? []);
+    setOperations(toEditableOperations(api));
+    closeFlow();
+  };
+
   const save = () => {
     // The API was fetched by handle, so `id` is present; the guard exists
     // because the spec marks it optional and a PUT to `/rest-apis/` would
@@ -248,7 +296,12 @@ export function PolicyPanel({ api }: { api: RestApi }) {
       { restApiId, body: withPolicyEdits(api, { policies: apiPolicies, operations }) },
       // No `onError`: the query client's `onMutationError` already notifies, and
       // a local handler would replace the optimistic rollback in `useUpdateRestApi`.
-      { onSuccess: () => notify(intl.formatMessage(messages.saved), 'success') },
+      {
+        onSuccess: () => {
+          markSaved();
+          notify(intl.formatMessage(messages.saved), 'success');
+        },
+      },
     );
   };
 
@@ -265,29 +318,40 @@ export function PolicyPanel({ api }: { api: RestApi }) {
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {/* LEFT: Policies (drop targets) */}
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
-          <Card sx={{ height: '100%' }} variant="outlined">
-            <CardContent>
-              <Typography sx={{ mb: 0.5 }} variant="subtitle1">
+          <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
+            <Box sx={{ px: 2, py: 1.5 }}>
+              <Typography sx={{ fontWeight: 700 }} variant="h6">
                 <FormattedMessage {...messages.heading} />
               </Typography>
-              <Typography color="text.secondary" sx={{ mb: 2 }} variant="body2">
-                <FormattedMessage {...(hubEnabled ? messages.hint : messages.hubUnavailable)} />
-              </Typography>
-
+            </Box>
+            <Divider />
+            <CardContent sx={{ px: { lg: 5, xs: 2 }, py: 2 }}>
               {/* Global / API-level */}
-              <DropZone
-                active={activeZone === scopeId({ kind: 'api' })}
-                onDrop={() => dropOnScope({ kind: 'api' })}
-                onEnter={() => setActiveZone(scopeId({ kind: 'api' }))}
-                onLeave={() => setActiveZone(null)}
+              <Card
+                sx={{
+                  borderRadius: 2,
+                  mb: 3,
+                  p: 2.5,
+                }}
               >
-                <Box sx={{ mb: 2 }}>
-                  <Stack alignItems="center" direction="row" spacing={1} sx={{ mb: 1 }}>
-                    <Globe size={16} />
-                    <Typography sx={{ fontWeight: 600 }}>
-                      <FormattedMessage {...messages.globalPolicies} />
-                    </Typography>
-                  </Stack>
+                <Stack alignItems="center" direction="row" spacing={1.25}>
+                  <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, display: 'flex', p: 1 }}>
+                    <Globe size={18} />
+                  </Box>
+                  <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
+                    <FormattedMessage {...messages.globalPolicies} />
+                  </Typography>
+                </Stack>
+                <Typography color="text.secondary" sx={{ mb: 2, mt: 0.75 }} variant="body2">
+                  <FormattedMessage {...messages.globalDescription} />
+                </Typography>
+                <DropZone
+                  active={activeZone === scopeId({ kind: 'api' })}
+
+                  onDrop={() => dropOnScope({ kind: 'api' })}
+                  onEnter={() => setActiveZone(scopeId({ kind: 'api' }))}
+                  onLeave={() => setActiveZone(null)}
+                >
                   <AttachedPolicyList
                     canAdd={hubEnabled}
                     emptyText={intl.formatMessage(messages.globalEmpty)}
@@ -295,98 +359,159 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                       setEditing(null);
                       setScope({ kind: 'api' });
                       setPicked(null);
-                      // open the catalog hint by selecting scope; user drags or
-                      // clicks a catalog item to proceed
                     }}
                     onEdit={(i) => openEdit({ kind: 'api' }, i)}
                     onReorder={(from, to) => reorderAt({ kind: 'api' }, from, to)}
                     onRemove={(i) => removeAt({ kind: 'api' }, i)}
                     policies={apiPolicies}
+                    showHeader={false}
                   />
-                </Box>
-              </DropZone>
+                </DropZone>
+              </Card>
 
-              <Divider sx={{ my: 1 }} />
-              <Typography sx={{ fontWeight: 600, mb: 1 }}>
-                <FormattedMessage {...messages.resources} />
-              </Typography>
-              {operations.length === 0 ? (
-                <Typography color="text.secondary" variant="body2">
-                  <FormattedMessage {...messages.noResources} />
-                </Typography>
-              ) : (
-                <Stack spacing={1}>
-                  {operations.map((op, index) => {
-                    const zid = scopeId({ kind: 'operation', index });
-                    // The "/" fallback is a URL path, not prose — kept out of
-                    // JSX so it is never mistaken for translatable text.
-                    const displayPath = op.path || '/';
-                    return (
-                      <DropZone
-                        active={activeZone === zid}
-                        key={index}
-                        onDrop={() => dropOnScope({ kind: 'operation', index })}
-                        onEnter={() => setActiveZone(zid)}
-                        onLeave={() => setActiveZone(null)}
+              <Card sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                <Accordion
+                  disableGutters
+                  elevation={0}
+                  sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
+                >
+                  <AccordionSummary
+                    expandIcon={<ChevronDown size={18} />}
+                    sx={{ px: 2.5, py: 1.25 }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 700 }}>
+                        <FormattedMessage {...messages.resources} />
+                      </Typography>
+                      <Typography color="text.secondary" variant="body2">
+                        <FormattedMessage {...messages.resourcesDescription} />
+                      </Typography>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 2.5, pb: 2.5 }}>
+                    <Stack direction={{ sm: 'row', xs: 'column' }} spacing={1.5} sx={{ mb: 2 }}>
+                      <TextField
+                        fullWidth
+                        onChange={(event) => setResourceSearch(event.target.value)}
+                        placeholder={intl.formatMessage(messages.searchResources)}
+                        size="small"
+                        slotProps={{
+                          input: {
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <Search size={18} />
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                        value={resourceSearch}
+                      />
+                      <TextField
+                        onChange={(event) => setMethodFilter(event.target.value)}
+                        select
+                        size="small"
+                        sx={{ minWidth: 180 }}
+                        value={methodFilter}
                       >
-                        <Accordion
-                          disableGutters
-                          sx={{ '&:before': { display: 'none' } }}
-                          variant="outlined"
-                        >
-                          <AccordionSummary expandIcon={<ChevronDown size={18} />}>
-                            <Stack
-                              alignItems="center"
-                              direction="row"
-                              spacing={1.5}
-                              sx={{ minWidth: 0 }}
+                        <MenuItem value="all">
+                          <FormattedMessage {...messages.allMethods} />
+                        </MenuItem>
+                        {methods.map((method) => (
+                          <MenuItem key={method} value={method}>
+                            {method}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Stack>
+                    {visibleOperations.length === 0 ? (
+                      <Typography color="text.secondary" variant="body2">
+                        <FormattedMessage
+                          {...(operations.length === 0
+                            ? messages.noResources
+                            : messages.noMatchingResources)}
+                        />
+                      </Typography>
+                    ) : (
+                      <Stack spacing={1}>
+                        {visibleOperations.map(({ operation: op, index }) => {
+                          const zid = scopeId({ kind: 'operation', index });
+                          // The "/" fallback is a URL path, not prose — kept out of
+                          // JSX so it is never mistaken for translatable text.
+                          const displayPath = op.path || '/';
+                          return (
+                            <Accordion
+                              disableGutters
+                              key={index}
+                              sx={{ '&:before': { display: 'none' } }}
+                              variant="outlined"
                             >
-                              <Chip
-                                color={methodColor(op.method)}
-                                label={op.method}
-                                size="small"
-                                sx={{ fontWeight: 700, minWidth: 58 }}
-                              />
-                              <Typography noWrap sx={{ fontFamily: 'monospace' }}>
-                                {displayPath}
-                              </Typography>
-                              {(op.policies?.length || 0) > 0 && (
-                                <Chip label={op.policies!.length} size="small" variant="outlined" />
-                              )}
-                            </Stack>
-                          </AccordionSummary>
-                          <AccordionDetails>
-                            <AttachedPolicyList
-                              canAdd={hubEnabled}
-                              emptyText={intl.formatMessage(messages.resourceEmpty)}
-                              onAdd={() => {
-                                setEditing(null);
-                                setScope({ kind: 'operation', index });
-                                setPicked(null);
-                              }}
-                              onEdit={(i) => openEdit({ kind: 'operation', index }, i)}
-                              onReorder={(from, to) =>
-                                reorderAt({ kind: 'operation', index }, from, to)
-                              }
-                              onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
-                              policies={op.policies || []}
-                            />
-                          </AccordionDetails>
-                        </Accordion>
-                      </DropZone>
-                    );
-                  })}
-                </Stack>
-              )}
+                              <AccordionSummary expandIcon={<ChevronDown size={18} />}>
+                                <Stack
+                                  alignItems="center"
+                                  direction="row"
+                                  spacing={1.5}
+                                  sx={{ minWidth: 0 }}
+                                >
+                                  <Chip
+                                    color={methodColor(op.method)}
+                                    label={op.method}
+                                    size="small"
+                                    sx={{ fontWeight: 700, minWidth: 58 }}
+                                  />
+                                  <Typography noWrap sx={{ fontFamily: 'monospace' }}>
+                                    {displayPath}
+                                  </Typography>
+                                  {(op.policies?.length || 0) > 0 && (
+                                    <Chip
+                                      label={op.policies!.length}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                  )}
+                                </Stack>
+                              </AccordionSummary>
+                              <AccordionDetails>
+                                <DropZone
+                                  active={activeZone === zid}
+                                  onDrop={() => dropOnScope({ kind: 'operation', index })}
+                                  onEnter={() => setActiveZone(zid)}
+                                  onLeave={() => setActiveZone(null)}
+                                >
+                                  <AttachedPolicyList
+                                    canAdd={hubEnabled}
+                                    emptyText={intl.formatMessage(messages.resourceEmpty)}
+                                    onAdd={() => {
+                                      setEditing(null);
+                                      setScope({ kind: 'operation', index });
+                                      setPicked(null);
+                                    }}
+                                    onEdit={(i) => openEdit({ kind: 'operation', index }, i)}
+                                    onReorder={(from, to) =>
+                                      reorderAt({ kind: 'operation', index }, from, to)
+                                    }
+                                    onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
+                                    policies={op.policies || []}
+                                    showHeader={false}
+                                  />
+                                </DropZone>
+                              </AccordionDetails>
+                            </Accordion>
+                          );
+                        })}
+                      </Stack>
+                    )}
+                  </AccordionDetails>
+                </Accordion>
+              </Card>
             </CardContent>
           </Card>
         </Box>
 
         {/* RIGHT: Available Policies (drag source) */}
         {hubEnabled && (
-          <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 340 } }}>
-            <Card sx={{ height: '100%' }} variant="outlined">
-              <CardContent sx={{ height: 560 }}>
+          <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
+            <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
+              <CardContent sx={{ height: 620, p: 2 }}>
                 <AvailablePoliciesPanel onSelect={pickFromCatalog} />
               </CardContent>
             </Card>
@@ -394,7 +519,13 @@ export function PolicyPanel({ api }: { api: RestApi }) {
         )}
       </Stack>
 
-      <SaveBar disabled={!restApiId} onSave={save} saving={update.isPending} />
+      <SaveBar
+        dirty={dirty}
+        disabled={!restApiId}
+        onCancel={cancel}
+        onSave={save}
+        saving={update.isPending}
+      />
 
       <PolicyConfigDrawer
         initialValues={editing?.policy.params}

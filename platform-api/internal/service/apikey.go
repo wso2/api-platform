@@ -41,6 +41,13 @@ const (
 	apiKeyNameMaxLength     = 63
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
+
+	// apiKeyIssuerMaxLength / apiKeyAllowedTargetsMaxLength bound the two free-form
+	// API-key fields to the width they are persisted in (VARCHAR(255)). Both are
+	// carried verbatim — issuer is an exact-match lookup key and allowedTargets is
+	// a parsed gateway allow-list — so an over-length value is rejected, not truncated.
+	apiKeyIssuerMaxLength         = 255
+	apiKeyAllowedTargetsMaxLength = 255
 )
 
 var (
@@ -49,6 +56,21 @@ var (
 	// consecutiveHyphensRegex collapses runs of hyphens into a single hyphen
 	consecutiveHyphensRegex = regexp.MustCompile(`-+`)
 )
+
+// validateAPIKeyIssuerAndTargets enforces the storage-width limit (VARCHAR(255))
+// on the issuer and allowedTargets fields of an API-key create/update request.
+// Returns a 400 validation error when either exceeds 255 characters; the values
+// are never truncated because both are matched exactly at gateway key-resolution
+// time (issuer via `AND k.issuer = ?`, allowedTargets as a parsed gateway allow-list).
+func validateAPIKeyIssuerAndTargets(issuer *string, allowedTargets string) error {
+	if issuer != nil && len(*issuer) > apiKeyIssuerMaxLength {
+		return apperror.ValidationFailed.New("issuer must be at most 255 characters.")
+	}
+	if len(allowedTargets) > apiKeyAllowedTargetsMaxLength {
+		return apperror.ValidationFailed.New("allowedTargets must be at most 255 characters.")
+	}
+	return nil
+}
 
 // APIKeyService handles API key management operations for external API key injection
 type APIKeyService struct {
@@ -524,6 +546,10 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	allowedTargets := constants.APIKeyAllowedTargetsAll
 
+	if err := validateAPIKeyIssuerAndTargets(issuer, allowedTargets); err != nil {
+		return nil, err
+	}
+
 	displayName := strings.TrimSpace(req.DisplayName)
 	if displayName == "" {
 		displayName = keyName
@@ -650,6 +676,10 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if err != nil {
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
+	}
+
+	if err := validateAPIKeyIssuerAndTargets(req.Issuer, constants.APIKeyAllowedTargetsAll); err != nil {
+		return err
 	}
 
 	dbKey := &model.APIKey{

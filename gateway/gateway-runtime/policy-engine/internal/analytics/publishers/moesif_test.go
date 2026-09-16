@@ -19,6 +19,7 @@ package publishers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"sync"
@@ -358,6 +359,206 @@ func TestPublish_McpAPIType(t *testing.T) {
 	assert.NotNil(t, metadata["mcpAnalytics"])
 	mcpAnalytics := metadata["mcpAnalytics"].(map[string]interface{})
 	assert.Equal(t, "search", mcpAnalytics["toolName"])
+}
+
+// Total latency has to reach the publisher, not just the event: the other four
+// latencies are all partial spans, so a percentile computed from them measures a phase
+// rather than what the caller waited.
+func TestPublish_ForwardsTotalDuration(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.Latencies = &dto.Latencies{
+		Duration:                 250,
+		BackendLatency:           100,
+		ResponseLatency:          100,
+		RequestMediationLatency:  50,
+		ResponseMediationLatency: 50,
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, int64(250), metadata["duration"],
+		"total request duration must be forwarded, not only its component spans")
+	assert.Equal(t, int64(100), metadata["backendLatency"])
+}
+
+// The published Agent contract, asserted at its actual boundary: what a downstream
+// consumer reads is the serialized metadata, so the whole envelope is checked as JSON
+// rather than field by field through Go accessors. It pins that the envelope keeps its
+// agentAnalytics.a2a nesting while the a2a section itself is one flat level, with a
+// `response` prefix only on the two identifiers a request field also carries.
+func TestPublish_AgentAnalyticsEnvelopeNesting(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	partCount := 2
+	returnImmediately, isError := false, false
+	event := createBaseEvent()
+	event.API.APIType = "Agent"
+	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
+		A2A: &dto.A2AAnalytics{
+			RequestType:     "operation",
+			Operation:       "SendMessage",
+			Transport:       "JSONRPC",
+			ProtocolVersion: "1.0",
+			A2ARequestAnalytics: dto.A2ARequestAnalytics{
+				MessageID:         "msg-1",
+				TaskID:            "task-existing",
+				InputPartCount:    &partCount,
+				ReturnImmediately: &returnImmediately,
+			},
+			A2AResponseAnalytics: dto.A2AResponseAnalytics{
+				IsError:           &isError,
+				PayloadType:       "task",
+				ResponseTaskID:    "task-9",
+				ResponseContextID: "ctx-9",
+				TaskState:         "TASK_STATE_COMPLETED",
+			},
+			Outcome: "SUCCESS",
+		},
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	require.NotNil(t, metadata[agentAnalyticsProperty])
+
+	encoded, err := json.Marshal(metadata[agentAnalyticsProperty])
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"a2a": {
+			"requestType": "operation",
+			"operation": "SendMessage",
+			"transport": "JSONRPC",
+			"protocolVersion": "1.0",
+			"messageId": "msg-1",
+			"taskId": "task-existing",
+			"inputPartCount": 2,
+			"returnImmediately": false,
+			"isError": false,
+			"payloadType": "task",
+			"responseTaskId": "task-9",
+			"responseContextId": "ctx-9",
+			"taskState": "TASK_STATE_COMPLETED",
+			"outcome": "SUCCESS"
+		}
+	}`, string(encoded))
+}
+
+// The flat a2aAnalytics key this envelope replaced must not be published alongside it.
+// A consumer that found both would be reading two shapes of the same event depending
+// on which gateway version produced it, and whichever it picked would go stale
+// silently when the other stopped being written.
+func TestPublish_LegacyFlatA2AAnalyticsKeyIsNotPublished(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "Agent"
+	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
+		A2A: &dto.A2AAnalytics{RequestType: "operation", Operation: "SendMessage"},
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.NotContains(t, metadata, "a2aAnalytics",
+		"the legacy flat key must not be published, not even alongside the envelope")
+	assert.Contains(t, metadata, agentAnalyticsProperty)
+}
+
+// A card fetch carries only requestType, so it stays distinguishable from an
+// invocation all the way out to the consumer rather than only inside the gateway.
+func TestPublish_AgentCardEventCarriesOnlyRequestType(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "Agent"
+	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
+		A2A: &dto.A2AAnalytics{RequestType: "agentCard"},
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	encoded, err := json.Marshal(getMetadata(moesif.events[0])[agentAnalyticsProperty])
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"a2a": {"requestType": "agentCard"}}`, string(encoded))
+}
+
+// The block is gated on the API kind, the way the MCP block is: an Agent's dimensions
+// are meaningless on any other kind, and forwarding the key unconditionally would put
+// an empty object on every event the gateway publishes.
+func TestPublish_AgentAnalyticsNotForwardedForOtherKinds(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "RestApi"
+	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
+		A2A: &dto.A2AAnalytics{Operation: "SendMessage"},
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	assert.Nil(t, getMetadata(moesif.events[0])[agentAnalyticsProperty])
+}
+
+// The fault taxonomy reaches Moesif, not only the OTLP publisher: both read the
+// same classification off the canonical event. Exactly three keys, matching what
+// API Manager's Moesif integration already reads.
+func TestPublish_WithFaultClassification(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.ErrorType = string(dto.FaultCategoryTargetConnectivity)
+	event.Error = &dto.Error{ErrorCode: 504, ErrorMessage: dto.TargetConnectivityConnectionTimeout}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, "TARGET_CONNECTIVITY", metadata["errorType"])
+	assert.Equal(t, 504, metadata["errorCode"])
+	assert.Equal(t, "CONNECTION_TIMEOUT", metadata["errorMessage"])
+	// The category/event-category enums belong to the in-development fault flow
+	// and must not be published from here.
+	for _, absent := range []string{"eventCategory", "faultCategory", "faultSubCategory"} {
+		assert.NotContains(t, metadata, absent)
+	}
+}
+
+// A request that was not a gateway fault carries none of the three keys, so a
+// consumer can filter on presence.
+func TestPublish_SuccessOmitsFaultFields(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+	moesif.Publish(createBaseEvent())
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	for _, key := range []string{"errorType", "errorCode", "errorMessage"} {
+		assert.NotContains(t, metadata, key, "%s must be absent on a successful event", key)
+	}
+}
+
+// Every value errorType can take is one of the four categories API Manager
+// expects — never an Envoy flag name or a status code.
+func TestPublish_ErrorTypeIsAlwaysAFaultCategory(t *testing.T) {
+	for _, category := range []dto.FaultCategory{
+		dto.FaultCategoryAuth, dto.FaultCategoryThrottled,
+		dto.FaultCategoryTargetConnectivity, dto.FaultCategoryOther,
+	} {
+		moesif := createTestMoesifWithoutAPI()
+		event := createBaseEvent()
+		event.ErrorType = string(category)
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, string(category), metadata["errorType"])
+	}
 }
 
 func TestPublish_WithPayloads(t *testing.T) {

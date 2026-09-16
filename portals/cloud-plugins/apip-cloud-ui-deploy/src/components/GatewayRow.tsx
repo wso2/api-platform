@@ -18,10 +18,8 @@
 
 import { useState, type FC } from 'react';
 import { Box, Button, Card, CardContent, Collapse, Typography } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronUp, Eye } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronUp, Clock, Eye } from '@wso2/oxygen-ui-icons-react';
 import ActionRow from './ActionRow';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import DeploymentStatusBar from './DeploymentStatusBar';
 import EndpointUrlDrawer from './EndpointUrlDrawer';
 import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
@@ -33,19 +31,47 @@ export type GatewayRowProps = {
   gateway: Gateway;
   /** Used only to label the scope of this gateway's drawers, e.g. "Development · EU Gateway". */
   environmentName: string;
+  busy: boolean;
   onRetry: () => void;
+  /** Puts a suspended deployment back on the gateway, unchanged. */
   onStop: () => void;
 };
 
-const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, onStop }) => {
+const GatewayRow: FC<GatewayRowProps> = ({
+  gateway,
+  environmentName,
+  busy,
+  onRetry,
+  onStop,
+}) => {
   const [expanded, setExpanded] = useState(false);
   const [endpointUrlOpen, setEndpointUrlOpen] = useState(false);
   const tone = gatewayStatusTone(gateway.status);
   const scopeLabel = `${environmentName} · ${gateway.name}`;
 
-  const actionLabel = gateway.status === 'failed' ? 'Re deploy' : 'Stop deployment';
-  const actionDisabled = gateway.status === 'none' || gateway.status === 'deploying';
-  const handleActionClick = gateway.status === 'failed' ? onRetry : onStop;
+  // What the one action button does depends on what the gateway is doing:
+  //
+  //  - failed — deploy its build again, which makes a new deployment;
+  //  - serving — stop it.
+  //
+  // A stopped gateway offers nothing here. Putting one back is a deploy, which
+  // goes through the deploy dialog so it joins the build the environment is on —
+  // reviving its old deployment from this row would put that old build back
+  // while the rest of the environment had moved on.
+  //
+  // Nothing to do while a deployment is still settling, or where there is none.
+  const action: 'retry' | 'stop' = gateway.status === 'FAILED' ? 'retry' : 'stop';
+  const actionLabel = action === 'stop' ? 'Stop deployment' : 'Retry';
+  const actionDisabled =
+    busy ||
+    gateway.status === 'NOT_DEPLOYED' ||
+    gateway.status === 'UNDEPLOYED' ||
+    gateway.status === 'DEPLOYING' ||
+    gateway.status === 'UNDEPLOYING' ||
+    // Retrying re-deploys the build, so it needs no deployment; stopping acts on
+    // the deployment itself.
+    (action !== 'retry' && !gateway.deploymentId);
+  const handleActionClick = action === 'retry' ? onRetry : onStop;
 
   return (
     <Card>
@@ -70,6 +96,11 @@ const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, on
             <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
               {gateway.name}
             </Typography>
+            {gateway.host ? (
+              <Typography variant="caption" color="text.secondary" noWrap display="block">
+                {gateway.host}
+              </Typography>
+            ) : null}
           </Box>
           <StatusPill tone={tone} variant="outlined" />
           <Box sx={{ display: 'flex', color: 'text.secondary' }}>
@@ -79,38 +110,44 @@ const GatewayRow: FC<GatewayRowProps> = ({ gateway, environmentName, onRetry, on
 
         <Collapse in={expanded}>
           <Box sx={{ pt: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {/* <DeploymentStatusBar tone={tone} /> */}
-
-            {gateway.status !== 'none' ? (
-              <Card>
-                <CardContent
-                  sx={{
-                    p: 1.25,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    '&:last-child': { pb: 1.25 },
-                  }}
-                >
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      ID {gateway.buildId}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Deployed {gateway.deployedAt ? relativeTime(gateway.deployedAt) : '—'}
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
+            {gateway.statusReason ? (
+              <Typography variant="caption" color="error">
+                {gateway.statusReason}
+              </Typography>
             ) : null}
 
-            <ActionRow
-              label="Environment Variables"
-              icon={<Eye size={14} />}
-              onClick={() => setEndpointUrlOpen(true)}
-            />
+            {gateway.status !== 'NOT_DEPLOYED' ? (
+              <>
+                {/*
+                  When the deployment landed, as a plain line rather than a card: the
+                  build it runs is shown once on the environment, so repeating it per
+                  gateway only added a label with nothing beside it whenever the build
+                  had since been reclaimed.
+                */}
+                {gateway.deployedAt ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Clock size={13} />
+                    <Typography variant="caption" color="text.secondary">
+                      Deployed {relativeTime(gateway.deployedAt)}
+                    </Typography>
+                  </Box>
+                ) : null}
 
-            <Button fullWidth variant="outlined" color="error" disabled={actionDisabled} onClick={handleActionClick}>
+                <ActionRow
+                  label="Endpoint URL"
+                  icon={<Eye size={14} />}
+                  onClick={() => setEndpointUrlOpen(true)}
+                />
+              </>
+            ) : null}
+
+            <Button
+              fullWidth
+              variant="outlined"
+              color={action === 'stop' ? 'error' : 'primary'}
+              disabled={actionDisabled}
+              onClick={handleActionClick}
+            >
               {actionLabel}
             </Button>
           </Box>

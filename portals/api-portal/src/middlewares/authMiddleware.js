@@ -47,6 +47,7 @@ const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { effectiveScopes, isAuthorizationEnabled, isRoleMode } = require('./authorization');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
+const sharedKeyAuth = require('./sharedKeyAuth');
 
 // In-process cache so an already-known (sub, org) pair doesn't re-hit the DB on
 // every request from the same session — resolveUserUuid runs on every
@@ -279,6 +280,22 @@ async function resolvePortalOrg(req) {
  */
 async function authResolver(req, res, next) {
     try {
+        // Shared-key S2S runs first so a bad SharedKey token never falls through to another path.
+        // Skips the portal-isolation gate: this is a service identity, not a session.
+        const sharedKeyResult = sharedKeyAuth.tryAuthenticate(req);
+        if (sharedKeyResult.matched) {
+            if (!sharedKeyResult.auth) {
+                const err = new Error('Authentication required');
+                err.status = 401;
+                return next(err);
+            }
+            // Service-to-service call against this instance; org is this instance's own.
+            const orgErr = await resolvePortalOrg(req);
+            if (orgErr) return next(orgErr);
+            req.auth = sharedKeyResult.auth;
+            return next();
+        }
+
         // Portal isolation: any session-authenticated request must have been issued by this
         // portal's login flow.
         if (req.isAuthenticated && req.isAuthenticated()) {
@@ -454,7 +471,8 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
         throw err;
     }
     if (req.auth.preauthorized) return true;
-    if (req.auth.mode !== 'oauth2' && req.auth.mode !== 'platform-jwt') {
+    // Shared-key goes through the normal scope check; its narrow scope list is what limits it.
+    if (req.auth.mode !== 'oauth2' && req.auth.mode !== 'platform-jwt' && req.auth.mode !== sharedKeyAuth.SHARED_KEY_AUTH_MODE) {
         const err = new Error('Authentication required');
         err.status = 401;
         throw err;

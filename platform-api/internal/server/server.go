@@ -436,10 +436,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways: gatewayService,
-		Projects: projectService,
-		Config:   cfg,
-		Logger:   slogger,
+		Gateways:    gatewayService,
+		Projects:    projectService,
+		Deployments: deploymentService,
+		Config:      cfg,
+		Logger:      slogger,
 	}
 
 	wiring, err := initPlugins(slogger, mux, scopeRegistry, pluginDeps, pdkDeps, internalPlugins, externalPlugins)
@@ -677,7 +678,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if cfg.Auth.Mode != config.AuthModeIDP {
 		var publicKey *rsa.PublicKey
 		if cfg.Auth.InternalToken.SkipValidation {
-			slogger.Warn("Auth mode: internal_token (JWT validation DISABLED — not suitable for production)")
+			slogger.Info("Auth mode: internal_token (signature, expiry and issuer validation skipped — " +
+				"tokens are trusted as minted by a trusted platform component)")
 		} else {
 			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
 			var err error

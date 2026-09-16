@@ -524,6 +524,43 @@ func TestValidateAuthorizationConfig(t *testing.T) {
 	}
 }
 
+// skip_validation turns off signature, expiry and issuer checks, so there is no
+// key to verify with — requiring auth.jwt.public_key_file anyway would block the
+// dev setup the flag exists for. The flag is off by default (GO-AUTH-011), so the
+// omitted-flag case must still demand the key; both directions are asserted here
+// because only the pair proves the exemption is scoped to the opt-in.
+func TestValidateAuthConfig_InternalTokenSkipValidation(t *testing.T) {
+	t.Run("no public key needed when validation is skipped", func(t *testing.T) {
+		auth := Auth{
+			Mode:          AuthModeInternalToken,
+			InternalToken: InternalToken{SkipValidation: true},
+			Authorization: Authorization{Mode: AuthzModeScope},
+		}
+		assert.NoError(t, validateAuthConfig(&auth))
+	})
+
+	t.Run("public key still required when the flag is absent", func(t *testing.T) {
+		auth := Auth{
+			Mode:          AuthModeInternalToken,
+			Authorization: Authorization{Mode: AuthzModeScope},
+		}
+		err := validateAuthConfig(&auth)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Auth.JWT.PublicKeyFile is required")
+	})
+
+	t.Run("file mode ignores the flag and still requires the key pair", func(t *testing.T) {
+		auth := Auth{
+			Mode:          AuthModeFile,
+			InternalToken: InternalToken{SkipValidation: true},
+			Authorization: Authorization{Mode: AuthzModeScope},
+		}
+		err := validateAuthConfig(&auth)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Auth.JWT.PublicKeyFile is required")
+	})
+}
+
 // Role-based authorization is configured independently of the authentication
 // mode, so it must validate in internal_token mode too — where it previously
 // lived under [auth.idp] and was unreachable.

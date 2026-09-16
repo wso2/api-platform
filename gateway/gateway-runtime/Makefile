@@ -65,6 +65,7 @@ build: test ## Build Gateway Runtime Docker image using buildx
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -94,6 +95,7 @@ extract-policies: ## Extract controller policy YAMLs from the policy-compiler st
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -119,6 +121,7 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -150,6 +153,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -182,6 +186,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \

@@ -487,42 +487,48 @@ CREATE TABLE IF NOT EXISTS event_deliveries (
 CREATE INDEX IF NOT EXISTS idx_event_delivery_event_uuid ON event_deliveries(event_uuid);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_event_delivery_event_subscriber ON event_deliveries(event_uuid, subscriber_id, portal_id);
 
--- Sessions table, used by connect-session-sequelize for server-side Express session storage.
+-- Sessions table, used by the app's SqlSessionStore for server-side Express session storage.
+-- Portal-scoped: each portal's sessions are isolated at the schema level; the DAO scopes every
+-- query by portal_id so one portal's process can never observe another portal's session rows.
 CREATE TABLE IF NOT EXISTS sessions (
-    sid VARCHAR(255) PRIMARY KEY,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    sid VARCHAR(255) NOT NULL,
     sess TEXT NOT NULL,
-    expire DATETIME NOT NULL
+    expire DATETIME NOT NULL,
+    PRIMARY KEY (portal_id, sid)
 );
 CREATE INDEX IF NOT EXISTS idx_session_expire ON sessions(expire);
 
--- User IdP References table (one durable record per IdP `sub` claim; referenced by uuid
--- from created_by/updated_by-style columns elsewhere WITHOUT a foreign key, so those
--- columns keep pointing at a uuid after the row here is deleted)
+-- User IdP References table (one durable record per IdP `sub` claim per portal; referenced
+-- by uuid from created_by/updated_by-style columns elsewhere WITHOUT a foreign key, so those
+-- columns keep pointing at a uuid after the row here is deleted).
 --
--- NOT portal-scoped: The org to idp_ref_id mapping is 1-to-1: all portals serving the
--- same org share the same IdP user base, so the same physical user must resolve to the
--- same uuid regardless of which portal they authenticate through.
+-- Portal-scoped: each portal maintains its own view of a user identity so cross-portal reads
+-- are structurally impossible. If the same IdP `sub` is used across two portals, each portal
+-- gets its own row.
 CREATE TABLE IF NOT EXISTS user_idp_references (
-    uuid VARCHAR(40) PRIMARY KEY,
-    idp_id VARCHAR(255) NOT NULL UNIQUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    uuid VARCHAR(40) NOT NULL,
+    idp_id VARCHAR(255) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, uuid),
+    UNIQUE (portal_id, idp_id)
 );
 
--- User-Organization mappings (live membership record -- both sides cascade on delete,
--- unlike the "hanging creator" created_by/updated_by pattern used elsewhere)
+-- User-Organization mappings (live membership record; both sides cascade on delete,
+-- unlike the "hanging creator" created_by/updated_by pattern used elsewhere).
 --
--- NOT portal-scoped at the identity level. user_uuid references a global identity in
--- user_idp_references. portal_id is retained here only because org_uuid is portal-specific
--- in organizations.
+-- Portal-scoped: portal_id participates in the primary key and in the composite FKs to
+-- user_idp_references and organizations, so memberships never span portals.
 CREATE TABLE IF NOT EXISTS user_organization_mappings (
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
     user_uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    PRIMARY KEY (user_uuid, org_uuid),
-    FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
+    PRIMARY KEY (portal_id, user_uuid, org_uuid),
+    FOREIGN KEY (portal_id, user_uuid) REFERENCES user_idp_references(portal_id, uuid) ON DELETE CASCADE,
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_user_organization_mappings_org_uuid ON user_organization_mappings(org_uuid, portal_id);
+CREATE INDEX IF NOT EXISTS idx_user_organization_mappings_org_uuid ON user_organization_mappings(portal_id, org_uuid);
 
 -- Webhook Subscribers table (portal-scoped outbound event subscribers)
 CREATE TABLE IF NOT EXISTS webhook_subscribers (

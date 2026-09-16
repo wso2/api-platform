@@ -62,6 +62,25 @@ beforeEach(() => {
 });
 
 describe('GeneralCreateApiForm — initial values', () => {
+  it('explains that the scratch backend is a placeholder until it is replaced', async () => {
+    const { user } = renderForm({
+      displayName: 'Untitled API',
+      upstream: { main: { url: 'https://example.com' } },
+    });
+
+    expect(
+      screen.getByText(/using https:\/\/example\.com as a placeholder backend/i),
+    ).toBeInTheDocument();
+
+    const targetUrl = screen.getByLabelText(/Target URL/);
+    await user.clear(targetUrl);
+    await user.type(targetUrl, 'https://api.example.org');
+
+    expect(
+      screen.queryByText(/using https:\/\/example\.com as a placeholder backend/i),
+    ).not.toBeInTheDocument();
+  });
+
   it('derives the base path from project, identifier and version when the draft names none', () => {
     renderForm({ displayName: 'Orders API', version: '2.1' });
 
