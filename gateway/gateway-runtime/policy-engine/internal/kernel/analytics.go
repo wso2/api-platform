@@ -36,6 +36,7 @@ const (
 	OperationPathKey   = Wso2MetadataPrefix + "operation-path"
 	APIKindKey         = Wso2MetadataPrefix + "api-kind"
 	ProjectIDKey       = Wso2MetadataPrefix + "project-id"
+	ProjectHandleKey   = Wso2MetadataPrefix + "project-handle"
 
 	// ResolvedOperationKey carries the canonical protocol operation the request
 	// resolved to, on an API kind whose operation is not knowable from the route.
@@ -125,6 +126,9 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		if sharedCtx.ProjectID != "" {
 			fields[ProjectIDKey] = structpb.NewStringValue(sharedCtx.ProjectID)
 		}
+		if execCtx.projectHandle != "" {
+			fields[ProjectHandleKey] = structpb.NewStringValue(execCtx.projectHandle)
+		}
 		// Omitted rather than empty-stringed when the route resolved directly, so a
 		// consumer can tell "this kind has no operation dimension" from "the
 		// operation was not determined".
@@ -156,6 +160,9 @@ func extractMetadataFromRouteMetadata(routeMeta RouteMetadata) map[string]interf
 	}
 	if routeMeta.ProjectID != "" {
 		metadata[ProjectIDKey] = routeMeta.ProjectID
+	}
+	if routeMeta.ProjectHandle != "" {
+		metadata[ProjectHandleKey] = routeMeta.ProjectHandle
 	}
 	return metadata
 }

@@ -145,13 +145,19 @@ func ArtifactImportRank(kind string) int {
 }
 
 // ResolveImportProject extracts the project handle from the k8s-shaped metadata.
-// The project is identified by the domain-prefixed project-id annotation or the deprecated bare label as a fallback.
+// Prefer the dedicated project-handle annotation. Fall back to the project-id
+// annotation, then the deprecated bare label, for older artifacts that still
+// carry the handle in project-id. Control-plane artifacts stamp a UUID on
+// project-id and the handle on project-handle, so those must not be looked up
+// as a handle via project-id.
 func ResolveImportProject(md dto.ArtifactImportMetadata) string {
-	projectHandle := md.Annotations[commonconstants.AnnotationProjectID]
-	if projectHandle == "" {
-		projectHandle = md.Labels[commonconstants.DeprecatedLabelProjectID]
+	if handle := strings.TrimSpace(md.Annotations[commonconstants.AnnotationProjectHandle]); handle != "" {
+		return handle
 	}
-	return projectHandle
+	if project := strings.TrimSpace(md.Annotations[commonconstants.AnnotationProjectID]); project != "" {
+		return project
+	}
+	return strings.TrimSpace(md.Labels[commonconstants.DeprecatedLabelProjectID])
 }
 
 // IsNewerDeployment reports whether incoming supersedes the working copy's current

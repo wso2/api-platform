@@ -717,6 +717,21 @@ func TestPublish_MetadataContainsAPIInfo(t *testing.T) {
 	assert.Equal(t, "Rest", metadata["subType"])
 	assert.Equal(t, "api-123", metadata["apiId"])
 	assert.Equal(t, "project-123", metadata["projectId"])
+	_, hasHandle := metadata["projectHandle"]
+	assert.False(t, hasHandle, "projectHandle must be omitted when unset")
+}
+
+func TestPublish_MetadataIncludesProjectHandleAlongsideProjectID(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.ProjectHandle = "new-project"
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, "project-123", metadata["projectId"])
+	assert.Equal(t, "new-project", metadata["projectHandle"])
 }
 
 // Test that the subType in metadata mirrors the APIType for various API types.

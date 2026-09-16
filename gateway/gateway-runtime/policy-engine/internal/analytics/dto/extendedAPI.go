@@ -14,7 +14,7 @@
  *  limitations under the License.
  *
  */
- 
+
 package dto
 
 // ExtendedAPI represents an extended API object with organization and environment details.
@@ -22,6 +22,7 @@ type ExtendedAPI struct {
 	API
 	OrganizationID string `json:"organizationId"`
 	ProjectID      string `json:"projectId"`
+	ProjectHandle  string `json:"projectHandle"`
 	EnvironmentID  string `json:"environmentId"`
 	APIContext     string `json:"apiContext"`
 }

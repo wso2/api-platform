@@ -867,6 +867,7 @@ type RouteMetadata struct {
 	TemplateHandle          string
 	ProviderName            string
 	ProjectID               string
+	ProjectHandle           string
 	DefaultUpstreamCluster  string            // Default cluster for dynamic cluster routing
 	UpstreamBasePath        string            // Base path for the upstream (e.g., /anything)
 	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL base paths

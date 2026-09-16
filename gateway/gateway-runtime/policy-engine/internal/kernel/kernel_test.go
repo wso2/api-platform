@@ -566,6 +566,7 @@ func TestBuildAnalyticsStruct_WithExecutionContext(t *testing.T) {
 			APIKind:       "REST",
 			ProjectID:     "proj-456",
 		},
+		projectHandle: "new-project",
 	}
 
 	data := map[string]any{
@@ -588,6 +589,7 @@ func TestBuildAnalyticsStruct_WithExecutionContext(t *testing.T) {
 	assert.Equal(t, "/pets/{id}", result.Fields[OperationPathKey].GetStringValue())
 	assert.Equal(t, "REST", result.Fields[APIKindKey].GetStringValue())
 	assert.Equal(t, "proj-456", result.Fields[ProjectIDKey].GetStringValue())
+	assert.Equal(t, "new-project", result.Fields[ProjectHandleKey].GetStringValue())
 }
 
 func TestBuildAnalyticsStruct_WithPartialSharedContext(t *testing.T) {

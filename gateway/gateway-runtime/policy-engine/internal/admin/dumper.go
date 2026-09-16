@@ -107,6 +107,7 @@ func dumpRouteMetadata(k *kernel.Kernel) RouteMetadataDump {
 			TemplateHandle:          cfg.Metadata.TemplateHandle,
 			ProviderName:            cfg.Metadata.ProviderName,
 			ProjectID:               cfg.Metadata.ProjectID,
+			ProjectHandle:           cfg.Metadata.ProjectHandle,
 			DefaultUpstreamCluster:  cfg.Metadata.DefaultUpstreamCluster,
 			UpstreamBasePath:        cfg.Metadata.UpstreamBasePath,
 			UpstreamDefinitionPaths: cfg.Metadata.UpstreamDefinitionPaths,

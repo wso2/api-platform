@@ -61,7 +61,7 @@ type ImportContext struct {
 	DeployedAt    *time.Time
 	Properties    map[string]interface{}
 
-	ProjectHandle string // project handle from the project-id annotation (may be empty)
+	ProjectHandle string // project handle from project-handle, or project-id on older artifacts (may be empty)
 	ProjectID     string // resolved project UUID (empty for org-level kinds)
 
 	// Existing is the already-stored artifacts-table row keyed by ID, or nil if new.
@@ -256,8 +256,9 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 	// Resolve project for project-scoped kinds. Org-level kinds ignore the project.
 	if importer.RequiresProject() {
 		if ictx.ProjectHandle == "" {
-			// The gateway must always supply the project (as the project-id annotation) for
-			// project-scoped kinds; a push without one is a contract violation.
+			// The gateway must always supply the project (project-handle, or project-id
+			// on older artifacts) for project-scoped kinds; a push without one is a
+			// contract violation.
 			s.slogger.Error("Project is required for gateway-imported artifact but was not provided",
 				"kind", kind, "artifactId", req.DPID)
 			return nil, apperror.ValidationFailed.New(fmt.Sprintf("A project is required for artifact kind %q.", kind))

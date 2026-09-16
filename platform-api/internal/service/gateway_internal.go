@@ -135,6 +135,8 @@ func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[strin
 		return nil, apperror.RESTAPINotFound.New()
 	}
 
+	// Soft-fail: project handle is analytics-only; deploy YAML still carries project-id.
+	attachProjectHandle(s.projectRepo, apiModel, s.slogger)
 	apiYaml, err := s.apiUtil.GenerateAPIDeploymentYAML(apiModel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate API YAML: %w", err)

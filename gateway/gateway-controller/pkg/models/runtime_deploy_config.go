@@ -47,13 +47,14 @@ type RuntimeDeployConfig struct {
 
 // Metadata contains identity information for the deployed API.
 type Metadata struct {
-	UUID        string
-	Kind        string
-	Handle      string
-	Version     string
-	DisplayName string
-	ProjectID   string
-	LLM         *LLMMetadata // nil for non-LLM kinds
+	UUID          string
+	Kind          string
+	Handle        string
+	Version       string
+	DisplayName   string
+	ProjectID     string       // from gateway.api-platform.wso2.com/project-id (UUID for CP deploys)
+	ProjectHandle string       // from gateway.api-platform.wso2.com/project-handle; analytics-only, not a substitute for ProjectID
+	LLM           *LLMMetadata // nil for non-LLM kinds
 }
 
 // LLMMetadata carries LLM-specific metadata for provider/proxy scenarios.

@@ -54,9 +54,11 @@ type ArtifactImportConfig struct {
 }
 
 // ArtifactImportMetadata carries the artifact's identity in a k8s-shaped form
-// (name + labels/annotations). The project is conveyed via labels/annotations
-// (the "project-id" label or the "gateway.api-platform.wso2.com/project-id"
-// annotation) so the descriptor maps cleanly onto a Kubernetes custom resource.
+// (name + labels/annotations). The project handle is conveyed via
+// "gateway.api-platform.wso2.com/project-handle", with a fallback to the
+// "gateway.api-platform.wso2.com/project-id" annotation or the "project-id"
+// label for older artifacts, so the descriptor maps cleanly onto a Kubernetes
+// custom resource.
 // The project is required for project-scoped kinds (REST API, LLM Proxy, MCP Proxy)
 // and ignored for organization-level kinds (LLM Provider, LLM Provider Template).
 type ArtifactImportMetadata struct {
