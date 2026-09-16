@@ -2054,6 +2054,39 @@ func (u *Steps) openRESTAPIDocumentation(ctx context.Context) error {
 	if err := u.expect.Locator(doc).ToContainText("getting-started"); err != nil {
 		return err
 	}
+	docHref, err := doc.GetAttribute("href")
+	if err != nil {
+		return fmt.Errorf("reading REST API additional document link: %w", err)
+	}
+	if strings.TrimSpace(docHref) == "" {
+		return fmt.Errorf("REST API additional document link has no URL")
+	}
+	base, err := u.apiPortalURL()
+	if err != nil {
+		return err
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return fmt.Errorf("parsing API Portal URL: %w", err)
+	}
+	documentURL, err := url.Parse(docHref)
+	if err != nil {
+		return fmt.Errorf("parsing REST API additional document URL: %w", err)
+	}
+	docURL := baseURL.ResolveReference(documentURL).String()
+	if err := retry.Await(ctx, retry.Options{}, func(context.Context) (bool, error) {
+		response, err := page.Context().Request().Get(docURL)
+		if err != nil {
+			return false, err
+		}
+		body, bodyErr := response.Body()
+		if bodyErr != nil {
+			return false, bodyErr
+		}
+		return response.Status() >= 200 && response.Status() < 300 && strings.Contains(string(body), "Getting Started"), nil
+	}, func(available bool) bool { return available }, "waiting for REST API additional document availability"); err != nil {
+		return err
+	}
 	if err := doc.Click(); err != nil {
 		return fmt.Errorf("opening REST API additional document: %w", err)
 	}

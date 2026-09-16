@@ -56,7 +56,11 @@ const (
 	EnvComposeCPULimit      = "APIP_CPU_LIMIT"
 	EnvComposeMemoryLimitMB = "APIP_MEMORY_LIMIT_MB"
 	EnvInstanceSuffix       = "INSTANCE"
+
+	defaultMaxComponentDBFileBytes int64 = 256 << 20
 )
+
+var maxComponentDBFileBytes = defaultMaxComponentDBFileBytes
 
 func instanceSuffix(ordinal, replicas int) string {
 	if replicas <= 1 {
@@ -612,9 +616,24 @@ func (c *ComposeStack) CopyFileFromContainer(ctx context.Context, service, path 
 		return nil, fmt.Errorf("runtime: copying %q from service %q: %w", path, service, err)
 	}
 	defer func() { _ = reader.Close() }()
-	data, err := io.ReadAll(reader)
+	data, err := readComponentDBFile(reader)
 	if err != nil {
 		return nil, fmt.Errorf("runtime: reading %q from service %q: %w", path, service, err)
+	}
+	return data, nil
+}
+
+func readComponentDBFile(reader io.Reader) ([]byte, error) {
+	limit := maxComponentDBFileBytes
+	if limit <= 0 {
+		limit = defaultMaxComponentDBFileBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("file exceeds the %d-byte limit", limit)
 	}
 	return data, nil
 }
@@ -765,7 +784,13 @@ func (c *ComposeStack) CoverageServices() []components.CoverageService {
 	}
 	out := make([]components.CoverageService, len(c.def.Compose.CoverageServices))
 	for i, service := range c.def.Compose.CoverageServices {
-		out[i] = components.CoverageService{Name: service.Name + c.suffix, Types: service.Types}
+		outputName := service.OutputName
+		if outputName != "" {
+			outputName += c.suffix
+		}
+		out[i] = components.CoverageService{
+			Name: service.Name + c.suffix, OutputName: outputName, Types: service.Types,
+		}
 	}
 	return out
 }

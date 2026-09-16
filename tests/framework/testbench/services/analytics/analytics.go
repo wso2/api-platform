@@ -38,6 +38,8 @@ import (
 // Port is the container port used by the testbench.
 const Port = 3007
 
+const maxRetainedEvents = 1024
+
 // maxBodyBytes bounds the decompressed size of one ingest request.
 const maxBodyBytes = 8 << 20
 
@@ -142,7 +144,7 @@ func (s *Service) Handler() http.Handler {
 	routes.HandleFunc("POST /test/reset", s.scoped(s.reset))
 	routes.HandleFunc("GET /test/health", s.scoped(s.health))
 
-	return boundedGzipBodies(testbench.PartitionRouter(routes))
+	return boundedGzipBodies(testbench.NormalizeMethod(testbench.PartitionRouter(routes)))
 }
 
 func (s *Service) events(key string) []Event {
@@ -199,7 +201,7 @@ func (s *Service) ingestOne(key string, w http.ResponseWriter, r *http.Request) 
 		s.partitions[key] = p
 	}
 	p.mu.Lock()
-	p.events = append(p.events, event)
+	p.events = appendRetained(p.events, []Event{event})
 	p.mu.Unlock()
 	s.mu.Unlock()
 
@@ -225,7 +227,7 @@ func (s *Service) ingestBatch(key string, w http.ResponseWriter, r *http.Request
 		s.partitions[key] = p
 	}
 	p.mu.Lock()
-	p.events = append(p.events, events...)
+	p.events = appendRetained(p.events, events)
 	p.mu.Unlock()
 	s.mu.Unlock()
 
@@ -263,6 +265,25 @@ func (s *Service) reset(key string, w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, map[string]string{"status": "reset"})
+}
+
+func appendRetained(existing, incoming []Event) []Event {
+	if len(incoming) >= maxRetainedEvents {
+		retained := make([]Event, maxRetainedEvents)
+		copy(retained, incoming[len(incoming)-maxRetainedEvents:])
+		return retained
+	}
+
+	total := len(existing) + len(incoming)
+	if total <= maxRetainedEvents {
+		return append(existing, incoming...)
+	}
+
+	retained := make([]Event, maxRetainedEvents)
+	keepExisting := maxRetainedEvents - len(incoming)
+	copy(retained, existing[len(existing)-keepExisting:])
+	copy(retained[keepExisting:], incoming)
+	return retained
 }
 
 // health returns the partitioned service health status.

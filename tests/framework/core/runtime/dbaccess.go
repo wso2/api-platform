@@ -21,6 +21,7 @@ package runtime
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -30,6 +31,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver
 	_ "github.com/mattn/go-sqlite3"    // registers the "sqlite3" driver
+	"github.com/moby/moby/client"
+	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/wso2/api-platform/tests/framework/core/components"
 )
@@ -127,13 +130,29 @@ func (t *Topology) openEmbeddedSQLite(ctx context.Context, service, database str
 	cleanup := func() error { return os.RemoveAll(dir) }
 
 	dbPath := filepath.Join(dir, database+".db")
-	if err := copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db", database), dbPath); err != nil {
+	resume, err := pauseContainer(ctx, stack, resolvedService)
+	if err != nil {
 		_ = cleanup()
-		return nil, nil, fmt.Errorf("runtime: copying %s's database file: %w", service, err)
+		return nil, nil, fmt.Errorf("runtime: pausing %s for a consistent SQLite snapshot: %w", service, err)
 	}
-	// Best-effort: absent whenever the owner has nothing outstanding to checkpoint.
-	_ = copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db-wal", database), dbPath+"-wal")
-	_ = copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db-shm", database), dbPath+"-shm")
+
+	copyErr := copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db", database), dbPath)
+	if copyErr == nil {
+		// These sidecars are absent after a checkpoint, but must be copied while the
+		// owner is paused whenever they exist so the snapshot remains consistent.
+		_ = copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db-wal", database), dbPath+"-wal")
+		_ = copyContainerFile(ctx, stack, resolvedService, fmt.Sprintf("/app/data/%s.db-shm", database), dbPath+"-shm")
+	}
+	resumeErr := resume()
+	if copyErr != nil {
+		_ = cleanup()
+		return nil, nil, fmt.Errorf("runtime: copying %s's database file: %w", service,
+			errors.Join(copyErr, resumeErr))
+	}
+	if resumeErr != nil {
+		_ = cleanup()
+		return nil, nil, fmt.Errorf("runtime: resuming %s after SQLite snapshot: %w", service, resumeErr)
+	}
 
 	db, err := sql.Open("sqlite3", "file:"+dbPath)
 	if err != nil {
@@ -147,6 +166,27 @@ func (t *Topology) openEmbeddedSQLite(ctx context.Context, service, database str
 			return closeErr
 		}
 		return removeErr
+	}, nil
+}
+
+func pauseContainer(ctx context.Context, stack *ComposeStack, service string) (func() error, error) {
+	id, err := stack.ServiceContainerID(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	docker, err := testcontainers.NewDockerClientWithOpts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := docker.ContainerPause(ctx, id, client.ContainerPauseOptions{}); err != nil {
+		_ = docker.Close()
+		return nil, err
+	}
+
+	return func() error {
+		_, unpauseErr := docker.ContainerUnpause(context.Background(), id, client.ContainerUnpauseOptions{})
+		closeErr := docker.Close()
+		return errors.Join(unpauseErr, closeErr)
 	}, nil
 }
 

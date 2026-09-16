@@ -32,6 +32,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   ui:
     runs-on: ubuntu-24.04
@@ -91,12 +94,12 @@ jobs:
         run: |
           npm ci
           npm rebuild better-sqlite3 --ignore-scripts=false
-          test_files="$(find src -type f -name '*.test.js' -print)"
-          if [ -z "$test_files" ]; then
+          mapfile -d '' -t test_files < <(find src -type f -name '*.test.js' -print0)
+          if [ "${#test_files[@]}" -eq 0 ]; then
             echo 'No API Portal unit-test files found' >&2
             exit 1
           fi
-          node --test $test_files
+          node --test "${test_files[@]}"
 
       - name: Build testbench image
         run: make -C tests/framework testbench

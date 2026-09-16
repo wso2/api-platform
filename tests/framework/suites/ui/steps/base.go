@@ -58,9 +58,10 @@ func New(topo *frameworkruntime.Topology, coverageSink *coverage.Sink) *UI {
 // Register wires the browser lifecycle and every step this suite provides.
 func (u *UI) Register(sc *godog.ScenarioContext) {
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
-		return u.openScenarioPage(ctx)
-	})
-	sc.StepContext().After(func(ctx context.Context, _ *godog.Step, _ godog.StepResultStatus, _ error) (context.Context, error) {
+		ctx, err := u.openScenarioPage(ctx)
+		if err != nil {
+			return ctx, err
+		}
 		if u.coverageSink == nil || tcontext.Contains(ctx, keyBrowserCoverageReset) {
 			return ctx, nil
 		}

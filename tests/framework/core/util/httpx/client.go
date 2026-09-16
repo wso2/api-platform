@@ -43,6 +43,8 @@ type Response struct {
 	Elapsed time.Duration
 }
 
+const maxResponseBodyBytes int64 = 10 << 20
+
 // Text returns the body as a string.
 func (r *Response) Text() string {
 	if r == nil {
@@ -131,11 +133,11 @@ func NewClient(opts Options) *Client {
 
 	tlsConfig := opts.TLSClientConfig
 	if tlsConfig == nil {
-		tlsConfig = &tls.Config{
-			CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384},
-			InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec // explicit opt-in for local self-signed test targets
-		}
+		tlsConfig = &tls.Config{InsecureSkipVerify: opts.InsecureSkipVerify} //nolint:gosec // explicit opt-in for local self-signed test targets
+	} else {
+		tlsConfig = tlsConfig.Clone()
 	}
+	tlsConfig.CurvePreferences = normalizedCurves(tlsConfig.CurvePreferences)
 	httpClient := &http.Client{
 		Timeout: opts.Timeout,
 		Transport: &http.Transport{
@@ -154,6 +156,23 @@ func NewClient(opts Options) *Client {
 		http:    httpClient,
 		retryOn: append([]TransientMatcher(nil), opts.RetryOn...),
 	}
+}
+
+func normalizedCurves(configured []tls.CurveID) []tls.CurveID {
+	curves := make([]tls.CurveID, 0, len(configured)+3)
+	seen := make(map[tls.CurveID]struct{}, len(configured)+3)
+	for _, curve := range []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384} {
+		curves = append(curves, curve)
+		seen[curve] = struct{}{}
+	}
+	for _, curve := range configured {
+		if _, ok := seen[curve]; ok {
+			continue
+		}
+		curves = append(curves, curve)
+		seen[curve] = struct{}{}
+	}
+	return curves
 }
 
 // Request describes one call.
@@ -236,9 +255,13 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("httpx: reading the body of %s %s: %w", req.Method, req.URL, err)
+	}
+	if int64(len(raw)) > maxResponseBodyBytes {
+		return nil, fmt.Errorf("httpx: response body of %s %s exceeds the %d-byte limit",
+			req.Method, req.URL, maxResponseBodyBytes)
 	}
 
 	return &Response{

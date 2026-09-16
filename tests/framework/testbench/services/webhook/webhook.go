@@ -21,6 +21,7 @@ package webhook
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -31,6 +32,10 @@ import (
 
 // Port is the container port used by the testbench.
 const Port = 3012
+
+const maxDeliveryBodyBytes = 10 << 20
+
+const maxRetainedDeliveries = 1024
 
 type delivery struct {
 	Headers map[string][]string `json:"headers"`
@@ -65,7 +70,7 @@ func (s *Service) Handler() http.Handler {
 	routes.HandleFunc("GET /test/event", s.scoped(s.event))
 	routes.HandleFunc("POST /test/reset", s.scoped(s.reset))
 	routes.HandleFunc("GET /test/health", s.scoped(s.health))
-	return testbench.PartitionRouter(routes)
+	return testbench.NormalizeMethod(testbench.PartitionRouter(routes))
 }
 
 func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) http.HandlerFunc {
@@ -80,12 +85,21 @@ func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) ht
 }
 
 func (s *Service) receive(key string, w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	defer func() { _ = r.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxDeliveryBodyBytes+1))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "webhook: reading request body failed", http.StatusBadRequest)
 		return
 	}
-	defer func() { _ = r.Body.Close() }()
+	if len(body) > maxDeliveryBodyBytes {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if !json.Valid(body) {
 		http.Error(w, "webhook: request body is not JSON", http.StatusBadRequest)
 		return
@@ -177,5 +191,8 @@ func (s *Service) record(key string, item delivery) {
 	}
 	p.mu.Lock()
 	p.deliveries = append(p.deliveries, item)
+	if len(p.deliveries) > maxRetainedDeliveries {
+		p.deliveries = p.deliveries[len(p.deliveries)-maxRetainedDeliveries:]
+	}
 	p.mu.Unlock()
 }

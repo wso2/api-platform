@@ -284,8 +284,10 @@ func (t *Topology) startComponent(
 			env[k] = v
 		}
 	}
-	for k, v := range t.Storage.Env[KeyFor(def.Name, 0)] {
-		env[k] = v
+	if !def.IsCompose() {
+		for k, v := range t.Storage.Env[KeyFor(def.Name, 0)] {
+			env[k] = v
+		}
 	}
 	// Values produced by dependencies.
 	// Compose replicas resolve dependency provisions inside the replica loop below, because
@@ -335,14 +337,10 @@ func (t *Topology) startComponent(
 			for key, value := range env {
 				replicaEnv[key] = value
 			}
+			for key, value := range t.Storage.Env[KeyFor(def.Name, ordinal)] {
+				replicaEnv[key] = value
+			}
 			for _, dep := range rc.AllDependencies() {
-				oldValues, err := t.provisionedBy(ctx, dep, def.Name)
-				if err != nil {
-					return err
-				}
-				for key := range oldValues {
-					delete(replicaEnv, key)
-				}
 				values, err := t.provisionedBy(ctx, dep, dependent)
 				if err != nil {
 					return err

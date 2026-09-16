@@ -21,7 +21,9 @@ package oauth2
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,6 +43,7 @@ const (
 	resourcePass = "hunter2"
 	defaultTTL   = 300
 	maxBodyBytes = 1 << 20
+	maxHistory   = 1024
 )
 
 type tokenRequest struct {
@@ -87,7 +90,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /debug/stats", s.stats)
 	mux.HandleFunc("POST /debug/reset", s.reset)
 	mux.HandleFunc("GET /healthz", health)
-	return testbench.PartitionRouter(mux)
+	return testbench.NormalizeMethod(testbench.PartitionRouter(mux))
 }
 
 func (s *Service) scoped(r *http.Request) (*partition, bool) {
@@ -111,8 +114,15 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "oauth2: missing partition", http.StatusInternalServerError)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	body := r.Body
+	defer func() { _ = body.Close() }()
+	r.Body = http.MaxBytesReader(w, io.NopCloser(io.LimitReader(body, maxBodyBytes+1)), maxBodyBytes)
 	if err := r.ParseForm(); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid_request", "failed to parse form body")
 		return
 	}
@@ -131,7 +141,7 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	scope := r.PostForm.Get("scope")
 	if err != nil {
 		s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "invalid_client", Headers: customHeaders(r)})
-		writeError(w, http.StatusBadRequest, "invalid_client", err.Error())
+		writeUnauthorized(w)
 		return
 	}
 	grant := r.PostForm.Get("grant_type")
@@ -140,7 +150,7 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if grant == "password" && (r.PostForm.Get("username") != resourceUser || r.PostForm.Get("password") != resourcePass) {
-		writeError(w, http.StatusBadRequest, "invalid_grant", "resource owner credentials are invalid")
+		writeUnauthorized(w)
 		return
 	}
 	if id == "broken-client" {
@@ -155,7 +165,7 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	}
 	if id != clientID || secret != clientSecret {
 		s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "invalid_client", Headers: customHeaders(r)})
-		writeError(w, http.StatusBadRequest, "invalid_client", "client credentials are invalid")
+		writeUnauthorized(w)
 		return
 	}
 	if v, _ := strconv.Atoi(r.FormValue("failFirstN")); v > 0 {
@@ -227,6 +237,9 @@ func customHeaders(r *http.Request) map[string]string {
 func (s *Service) record(p *partition, request tokenRequest) {
 	p.mu.Lock()
 	p.history = append(p.history, request)
+	if len(p.history) > maxHistory {
+		p.history = p.history[len(p.history)-maxHistory:]
+	}
 	p.mu.Unlock()
 }
 
@@ -266,4 +279,13 @@ func writeError(w http.ResponseWriter, status int, code, description string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "error_description": description})
+}
+
+func writeUnauthorized(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":   "unauthorized",
+		"message": "Invalid or expired credentials.",
+	})
 }

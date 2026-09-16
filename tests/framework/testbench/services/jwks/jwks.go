@@ -127,6 +127,7 @@ func (s *Service) serveJWKS(w http.ResponseWriter, r *http.Request) {
 // issueToken signs a token using the request's issuer, scope, and claim_* parameters.
 func (s *Service) issueToken(w http.ResponseWriter, r *http.Request) {
 	method := strings.ToUpper(r.Method)
+	r.Method = method
 	if method != http.MethodGet && method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodGet+", "+http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

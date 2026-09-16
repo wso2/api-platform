@@ -26,6 +26,7 @@ package capture
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -36,6 +37,10 @@ import (
 
 // Port is the container port used by the testbench.
 const Port = 3010
+
+const maxCaptureBodyBytes = 10 << 20
+
+const defaultMaxCapturedPaths = 1024
 
 // requestInfo is the shape returned by both the reflecting upstream and the capture lookup.
 type requestInfo struct {
@@ -48,8 +53,9 @@ type requestInfo struct {
 
 // Service implements testbench.Service and testbench.Partitioned.
 type Service struct {
-	mu         sync.RWMutex
-	partitions map[string]*partition
+	mu               sync.RWMutex
+	partitions       map[string]*partition
+	maxCapturedPaths int
 }
 
 type partition struct {
@@ -58,7 +64,16 @@ type partition struct {
 }
 
 // New returns a new capture service.
-func New() *Service { return &Service{partitions: map[string]*partition{}} }
+func New() *Service { return NewWithRetentionLimit(defaultMaxCapturedPaths) }
+
+// NewWithRetentionLimit returns a capture service with a per-partition limit on distinct
+// paths. A non-positive limit uses the safe default.
+func NewWithRetentionLimit(limit int) *Service {
+	if limit <= 0 {
+		limit = defaultMaxCapturedPaths
+	}
+	return &Service{partitions: map[string]*partition{}, maxCapturedPaths: limit}
+}
 
 // Name returns the service registration name.
 func (s *Service) Name() string { return "capture" }
@@ -80,7 +95,7 @@ func (s *Service) Handler() http.Handler {
 	routes.HandleFunc("GET /test/health", s.scoped(s.health))
 	routes.HandleFunc("/", s.scoped(s.reflect))
 
-	return testbench.PartitionRouter(routes)
+	return testbench.NormalizeMethod(testbench.PartitionRouter(routes))
 }
 
 // scoped adapts a partition-aware handler to http.HandlerFunc.
@@ -101,8 +116,21 @@ func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) ht
 // exactly what was recorded here, regardless of what a response-side policy does to this
 // response afterward.
 func (s *Service) reflect(key string, w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxCaptureBodyBytes+1))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "capture: reading request body failed", http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxCaptureBodyBytes {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	headers := r.Header.Clone()
 	if r.Host != "" {
@@ -128,6 +156,16 @@ func (s *Service) reflect(key string, w http.ResponseWriter, r *http.Request) {
 func (s *Service) record(key, path string, info requestInfo) {
 	p := s.getPartition(key)
 	p.mu.Lock()
+	if _, exists := p.captured[path]; !exists {
+		limit := s.maxCapturedPaths
+		if limit <= 0 {
+			limit = defaultMaxCapturedPaths
+		}
+		if len(p.captured) >= limit {
+			p.mu.Unlock()
+			return
+		}
+	}
 	p.captured[path] = info
 	p.mu.Unlock()
 }
