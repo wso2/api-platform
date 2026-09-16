@@ -19,23 +19,25 @@
 import {
   Box,
   Button,
-  Card,
-  Divider,
   InputAdornment,
+  MenuItem,
   PageTitle,
   Stack,
   TablePagination,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Plus, Search } from '@wso2/oxygen-ui-icons-react';
+import { LayoutGrid, List, Plus, Search } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
-import { useDeleteProject, useProjects } from '@/api/resources/projects';
+import { useDeleteProject, useProjects, type ProjectListFilters } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
+import { ProjectsList } from './ProjectsList';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -48,10 +50,18 @@ import { ProjectFolderIllustration } from '@/components/illustrations/ProjectFol
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 const SEARCH_DEBOUNCE_MS = 300;
 
+type ViewMode = 'grid' | 'list';
+
+/**
+ * Server-side sort is limited to `name | createdAt` and `asc | desc`.
+ */
+type SortBy = NonNullable<ProjectListFilters['sortBy']>;
+type SortOrder = NonNullable<ProjectListFilters['sortOrder']>;
+
 const messages = defineMessages({
   createProject: {
     id: 'project.list.createProjectButton',
-    defaultMessage: 'New project',
+    defaultMessage: 'Create Project',
   },
   deleteConfirmInputLabel: {
     id: 'project.list.delete.confirmInputLabel',
@@ -96,6 +106,16 @@ const messages = defineMessages({
     id: 'project.list.error.message',
     defaultMessage: 'Unable to load projects. {reason}',
   },
+  gridView: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView',
+    defaultMessage: 'Grid view',
+    description: 'Accessible label for the button switching to the card grid.',
+  },
+  listView: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.listView',
+    defaultMessage: 'List view',
+    description: 'Accessible label for the button switching to the table rows.',
+  },
   loading: {
     id: 'project.list.loading',
     defaultMessage: 'Loading projects',
@@ -108,6 +128,10 @@ const messages = defineMessages({
     id: 'project.list.noMatches.title',
     defaultMessage: 'No matching projects',
   },
+  projectCount: {
+    id: 'project.list.count',
+    defaultMessage: '{count, plural, one {# project} other {# projects}}',
+  },
   rowsPerPage: {
     id: 'project.list.rowsPerPage',
     defaultMessage: 'Projects per page',
@@ -116,7 +140,69 @@ const messages = defineMessages({
     id: 'project.list.searchPlaceholder',
     defaultMessage: 'Search projects',
   },
+  sortLabel: {
+    id: 'project.list.sortLabel',
+    defaultMessage: 'Sort by',
+    description: 'Label for the control choosing the project list order.',
+  },
+  sortNameAscending: {
+    id: 'project.list.sort.nameAscending',
+    defaultMessage: 'Name (A–Z)',
+    description: 'Sort option: alphabetical by project name, ascending.',
+  },
+  sortNameDescending: {
+    id: 'project.list.sort.nameDescending',
+    defaultMessage: 'Name (Z–A)',
+    description: 'Sort option: alphabetical by project name, descending.',
+  },
+  sortNewest: {
+    id: 'project.list.sort.newest',
+    defaultMessage: 'Newest first',
+    description: 'Sort option: by creation date, most recent project first.',
+  },
+  sortOldest: {
+    id: 'project.list.sort.oldest',
+    defaultMessage: 'Oldest first',
+    description: 'Sort option: by creation date, earliest project first.',
+  },
 });
+
+/**
+ * Sort options with both field and direction.
+ */
+const SORT_OPTIONS = [
+  {
+    label: messages.sortNewest,
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+    value: 'createdAt:desc',
+  },
+  {
+    label: messages.sortOldest,
+    sortBy: 'createdAt',
+    sortOrder: 'asc',
+    value: 'createdAt:asc',
+  },
+  {
+    label: messages.sortNameAscending,
+    sortBy: 'name',
+    sortOrder: 'asc',
+    value: 'name:asc',
+  },
+  {
+    label: messages.sortNameDescending,
+    sortBy: 'name',
+    sortOrder: 'desc',
+    value: 'name:desc',
+  },
+] as const satisfies readonly {
+  label: MessageDescriptor;
+  sortBy: SortBy;
+  sortOrder: SortOrder;
+  value: string;
+}[];
+
+type SortOption = (typeof SORT_OPTIONS)[number];
 
 export function ProjectListPage() {
   const { orgHandle = '' } = useParams();
@@ -128,20 +214,22 @@ export function ProjectListPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
+  const [sort, setSort] = useState<SortOption>(SORT_OPTIONS[0]);
+  const [view, setView] = useState<ViewMode>('grid');
   const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Project | null>(null);
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
 
-  // A new filter starts from the first page.
-  useEffect(() => setPage(0), [debouncedSearch]);
+  // Reset to page 1 when filter or sort changes.
+  useEffect(() => setPage(0), [debouncedSearch, sort.value]);
 
   const projectsQuery = useProjects({
     limit: rowsPerPage,
     offset: page * rowsPerPage,
     query: debouncedSearch || undefined,
-    sortBy: 'createdAt',
-    sortOrder: 'desc',
+    sortBy: sort.sortBy,
+    sortOrder: sort.sortOrder,
   });
   const deleteProjectMutation = useDeleteProject();
 
@@ -209,6 +297,18 @@ export function ProjectListPage() {
             />
           )}
         </PageTitle.SubHeader>
+        {!isFirstRun && (
+          <PageTitle.Actions>
+            <Button
+              onClick={() => setCreateOpen(true)}
+              startIcon={<Plus />}
+              sx={{ borderRadius: 5 }}
+              variant="contained"
+            >
+              <FormattedMessage {...messages.createProject} />
+            </Button>
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
       {isFirstRun ? (
@@ -221,63 +321,76 @@ export function ProjectListPage() {
           illustration={<ProjectFolderIllustration />}
         />
       ) : (
-        <Card sx={{ overflow: 'hidden' }}>
-          <Stack
-            alignItems="center"
-            direction={{ sm: 'row', xs: 'column' }}
-            justifyContent="space-between"
-            spacing={2}
-            sx={{ p: 2.5, width: '100%' }}
+        <Stack spacing={2} sx={{ flexGrow: 1 }}>
+          {/* Full-bleed search: the field owns its own row across the page. */}
+          <TextField
+            fullWidth
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={intl.formatMessage(messages.searchPlaceholder)}
+            size="small"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={18} />
+                  </InputAdornment>
+                ),
+              },
+            }}
+            value={search}
+          />
+          <Box
+            sx={{
+              alignItems: 'center',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 2,
+              justifyContent: 'space-between',
+            }}
           >
-            <Stack alignItems="center" direction="row" spacing={2}>
-              <Typography sx={{ fontWeight: 700 }} variant="h6">
-                <FormattedMessage id="project.list.title" defaultMessage="Projects" />
-              </Typography>
-              <Divider flexItem orientation="vertical" />
-              <Typography color="text.secondary" variant="body1">
-                {total}
-              </Typography>
-            </Stack>
-            <Stack
-              alignItems="center"
-              direction={{ sm: 'row', xs: 'column' }}
-              spacing={2}
-              sx={{ width: { sm: 'auto', xs: '100%' } }}
-            >
+            <Typography variant="h6">
+              <FormattedMessage {...messages.projectCount} values={{ count: total }} />
+            </Typography>
+            <Stack alignItems="center" direction="row" spacing={1.5}>
               <TextField
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={intl.formatMessage(messages.searchPlaceholder)}
-                size="small"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search size={18} />
-                      </InputAdornment>
-                    ),
-                  },
+                label={intl.formatMessage(messages.sortLabel)}
+                onChange={(event) => {
+                  const next = SORT_OPTIONS.find((option) => option.value === event.target.value);
+                  if (next) setSort(next);
                 }}
-                sx={{ width: { sm: 320, xs: '100%' } }}
-                value={search}
-              />
-              <Button
-                onClick={() => setCreateOpen(true)}
-                startIcon={<Plus />}
-                sx={{ borderRadius: 5, whiteSpace: 'nowrap' }}
-                variant="outlined"
+                select
+                size="small"
+                sx={{ minWidth: 200 }}
+                value={sort.value}
               >
-                <FormattedMessage {...messages.createProject} />
-              </Button>
+                {SORT_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {intl.formatMessage(option.label)}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <ToggleButtonGroup
+                exclusive
+                onChange={(_event, value: ViewMode | null) => {
+                  if (value) setView(value);
+                }}
+                size="small"
+                value={view}
+              >
+                <ToggleButton aria-label={intl.formatMessage(messages.gridView)} value="grid">
+                  <LayoutGrid size={16} />
+                </ToggleButton>
+                <ToggleButton aria-label={intl.formatMessage(messages.listView)} value="list">
+                  <List size={16} />
+                </ToggleButton>
+              </ToggleButtonGroup>
             </Stack>
-          </Stack>
-          <Divider />
+          </Box>
           {projects.length === 0 ? (
-            <Box sx={{ py: 6 }}>
-              <EmptyState
-                title={intl.formatMessage(messages.noMatchesTitle)}
-                description={intl.formatMessage(messages.noMatchesDescription)}
-              />
-            </Box>
+            <EmptyState
+              title={intl.formatMessage(messages.noMatchesTitle)}
+              description={intl.formatMessage(messages.noMatchesDescription)}
+            />
           ) : (
             <>
               <Box
@@ -287,10 +400,14 @@ export function ProjectListPage() {
                   transition: 'opacity .15s ease',
                 }}
               >
-                <ProjectsGrid onDelete={setToDelete} onOpen={openProject} projects={projects} />
+                {view === 'grid' ? (
+                  <ProjectsGrid onDelete={setToDelete} onOpen={openProject} projects={projects} />
+                ) : (
+                  <ProjectsList onDelete={setToDelete} onOpen={openProject} projects={projects} />
+                )}
               </Box>
               {total > PAGE_SIZE_OPTIONS[0] && (
-                <Box sx={{ borderTop: 1, borderColor: 'divider' }}>
+                <Box>
                   <TablePagination
                     component="div"
                     count={total}
@@ -308,7 +425,7 @@ export function ProjectListPage() {
               )}
             </>
           )}
-        </Card>
+        </Stack>
       )}
 
       <NewProjectDialog

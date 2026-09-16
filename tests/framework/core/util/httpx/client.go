@@ -106,6 +106,9 @@ type Options struct {
 	RetryDelay time.Duration
 	// RetryOn recognises transient responses.
 	RetryOn []TransientMatcher
+	// InsecureSkipVerify disables TLS certificate and hostname verification. Use only for
+	// local test targets that intentionally use self-signed certificates.
+	InsecureSkipVerify bool
 }
 
 // NewClient returns a client suitable for talking to components under test.
@@ -124,7 +127,10 @@ func NewClient(opts Options) *Client {
 		http: &http.Client{
 			Timeout: opts.Timeout,
 			Transport: &http.Transport{
-				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+				TLSClientConfig: &tls.Config{
+					CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384},
+					InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec // explicit opt-in for local self-signed test targets
+				},
 				MaxIdleConns:        200,
 				MaxIdleConnsPerHost: 50,
 				MaxConnsPerHost:     100,

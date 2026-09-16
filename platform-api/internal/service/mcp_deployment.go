@@ -47,12 +47,15 @@ type MCPDeploymentService struct {
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	utils                *utils.MCPUtils
-	slogger              *slog.Logger
+	// builds is the shared build store every artifact kind uses.
+	builds  *BuildService
+	slogger *slog.Logger
 }
 
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
-	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
+	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
+	definitions ArtifactDefinitions, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
@@ -63,8 +66,50 @@ func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRe
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		utils:                &utils.MCPUtils{},
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
 		slogger:              slogger,
 	}
+}
+
+// CreateBuildByHandle prepares a build of an MCP proxy without deploying it.
+//
+// Builds are the same thing for every artifact kind, so these four delegate to the
+// shared store; only resolving the handle is MCP's own, which keeps the not-found
+// this kind already reports.
+func (s *MCPDeploymentService) CreateBuildByHandle(proxyHandle, orgUUID, createdBy, description string,
+	metadata map[string]interface{}) (*api.BuildResponse, error) {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Create(proxyUUID, orgUUID, constants.MCPProxy, createdBy, description, metadata)
+}
+
+// GetBuildByHandle returns one of an MCP proxy's builds.
+func (s *MCPDeploymentService) GetBuildByHandle(proxyHandle, buildID, orgUUID string) (*api.BuildResponse, error) {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Get(proxyUUID, buildID, orgUUID, constants.MCPProxy)
+}
+
+// GetBuildsByHandle lists an MCP proxy's builds, newest first.
+func (s *MCPDeploymentService) GetBuildsByHandle(proxyHandle, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.List(proxyUUID, orgUUID, constants.MCPProxy, limit)
+}
+
+// DeleteBuildByHandle removes one of an MCP proxy's builds.
+func (s *MCPDeploymentService) DeleteBuildByHandle(proxyHandle, buildID, orgUUID string) error {
+	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
+	if err != nil {
+		return err
+	}
+	return s.builds.Delete(proxyUUID, buildID, orgUUID, constants.MCPProxy)
 }
 
 // DeployMCPProxyByHandle creates a new immutable deployment artifact using MCP proxy handle
@@ -183,8 +228,10 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if req == nil {
 		return nil, apperror.MCPProxyDeploymentValidationFailed.New("A request body is required.")
 	}
-	if req.Base == "" {
-		return nil, apperror.MCPProxyDeploymentValidationFailed.New("Base is required.")
+	base, requestedBuild, err := ValidateDeployBase(req.Base, req.BuildId,
+		apperror.MCPProxyDeploymentValidationFailed)
+	if err != nil {
+		return nil, err
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
@@ -255,67 +302,49 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, err
 	}
 
-	var baseDeploymentID *string
-	var contentBytes []byte
+	// What this deploy ships: a build prepared earlier, or a snapshot of the proxy
+	// as it stands now. Either way it comes back as one shape, and a snapshot comes
+	// back unstored so it commits with the deployment below.
+	source, err := s.builds.SourceForDeploy(proxyUUID, orgId, constants.MCPProxy, createdBy, base, requestedBuild)
+	if err != nil {
+		return nil, err
+	}
+	d, ok := source.Definition.(*model.MCPProxyDeploymentYAML)
+	if !ok {
+		// Only reachable if the artifact row claims another kind, which would be a
+		// corrupted row rather than anything a caller did.
+		return nil, fmt.Errorf("artifact %s did not render as an MCP proxy definition", proxyUUID)
+	}
 
-	if req.Base == "current" {
-		// Build struct directly, apply overrides on struct, marshal once
-		d, err := s.utils.BuildMCPDeploymentYAML(mcpProxy)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build MCP deployment YAML: %w", err)
-		}
-		if endpointURL != nil {
-			d.Spec.Upstream.URL = *endpointURL
-			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
-		}
-		sourceDataVersion := gatewaytranslator.PlatformDataVersion(mcpProxy.DataVersion)
-		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-		if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
-			return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
-		}
-		contentBytes, err = yaml.Marshal(d)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
-		}
-	} else {
-		// Use existing deployment as base
-		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, proxyUUID, orgId)
-		if err != nil {
-			if apperror.DeploymentNotFound.Is(err) {
-				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
-			}
-			return nil, fmt.Errorf("failed to get base deployment: %w", err)
-		}
-		contentBytes = baseDeployment.Content
-		baseDeploymentID = &req.Base
-
-		if endpointURL != nil {
-			// Unmarshal into the correct MCP type, apply override, marshal back
-			var mcpDeployment model.MCPProxyDeploymentYAML
-			if err := yaml.Unmarshal(contentBytes, &mcpDeployment); err != nil {
-				return nil, fmt.Errorf("failed to parse MCP deployment YAML: %w", err)
-			}
-			mcpDeployment.Spec.Upstream.URL = *endpointURL
-			contentBytes, err = yaml.Marshal(&mcpDeployment)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal modified MCP deployment YAML: %w", err)
-			}
-			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
-		}
+	// The build holds the definition as it stood; this deployment's own endpoint is
+	// applied here, after the snapshot, so it never reaches the build.
+	if endpointURL != nil {
+		d.Spec.Upstream.URL = *endpointURL
+		s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+	}
+	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
+	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+	if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
+		return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
+	}
+	contentBytes, err := yaml.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
 	}
 
 	// Create new deployment record with limit enforcement
 	// Hard limit = soft limit (configured) + 5 buffer for concurrent deployments
 	deployment := &model.Deployment{
-		DeploymentID:     deploymentID,
-		Name:             req.Name,
-		ArtifactID:       proxyUUID,
-		OrganizationID:   orgId,
-		GatewayID:        gatewayID,
-		BaseDeploymentID: baseDeploymentID,
-		Content:          contentBytes,
-		Metadata:         metadata,
-		CreatedBy:        createdBy,
+		DeploymentID:   deploymentID,
+		Name:           req.Name,
+		ArtifactID:     proxyUUID,
+		OrganizationID: orgId,
+		GatewayID:      gatewayID,
+		BuildUUID:      source.BuildUUID,
+		BuildID:        source.BuildID,
+		Content:        contentBytes,
+		Metadata:       metadata,
+		CreatedBy:      createdBy,
 	}
 
 	// Use CreateDeploymentWithLimitEnforcement - handles count, cleanup, insert, and status update atomically
@@ -323,7 +352,19 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
-	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+	// A build rendered for this deploy is stored with the deployment, in one
+	// transaction: a recorded deployment always has the build it runs, and a deploy
+	// that fails leaves no build behind.
+	if source.NewBuild != nil {
+		err = s.deploymentRepo.CreateWithBuild(deployment, source.NewBuild,
+			s.cfg.Deployments.MaxBuildsPerAPI, hardLimit)
+	} else {
+		err = s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit)
+	}
+	if err != nil {
+		if limitErr := s.builds.LimitError(err); limitErr != err {
+			return nil, limitErr
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
@@ -713,8 +754,11 @@ func (s *MCPDeploymentService) getMCPProxyUUIDByHandle(handle, orgUUID string) (
 	if err != nil {
 		return "", err
 	}
-	if artifact == nil {
-		return "", apperror.ArtifactNotFound.New()
+	// Handles are unique only WITHIN a kind, and this lookup spans every kind's
+	// table, so an artifact of another kind that happens to share the handle must
+	// not be reachable through this endpoint.
+	if artifact == nil || artifact.Type != constants.MCPProxy {
+		return "", apperror.MCPProxyNotFound.New()
 	}
 
 	return artifact.UUID, nil

@@ -139,6 +139,7 @@ func runBlock(
 		t.Fatalf("block %q failed to boot after %s: %v",
 			block.Name, time.Since(start).Round(time.Millisecond), err)
 	}
+	topo.PropagationTimeout = resolved.Timeouts.Propagation
 	log.Info("block booted", "block", block.Name,
 		"components", topo.Instances.Len(), "elapsed", time.Since(start).Round(time.Millisecond))
 

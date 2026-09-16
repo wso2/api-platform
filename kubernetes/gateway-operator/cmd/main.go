@@ -223,6 +223,7 @@ func main() {
 		{"LlmProvider", controller.NewLlmProviderReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"LlmProxy", controller.NewLlmProxyReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"Mcp", controller.NewMcpReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"Agent", controller.NewAgentReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"ManagedSecret", controller.NewManagedSecretReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"Certificate", controller.NewCertificateReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 		{"ApiKey", controller.NewApiKeyReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},

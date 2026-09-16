@@ -66,6 +66,7 @@ build: ## Build Docker image using buildx
 		--build-context sdk-core=../../sdk/core \
 		--build-context sdk-python=../../sdk-python \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
@@ -95,6 +96,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk-core=../../sdk/core \
 		--build-context sdk-python=../../sdk-python \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \

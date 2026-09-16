@@ -31,13 +31,14 @@ import (
 // code. When that claim is absent the display name falls back to email, then
 // the subject id.
 type ClaimMapping struct {
-	Username  string
-	Email     string
-	Roles     string
-	Scope     string
-	OrgID     string
-	OrgName   string
-	OrgHandle string
+	Username      string
+	Email         string
+	Roles         string
+	Scope         string
+	OrgID         string
+	OrgName       string
+	OrgHandle     string
+	Organizations string
 
 	// AuthzMode mirrors the Platform API's auth.authorization.mode: "scope"
 	// (default) reads the user's effective scopes from the scope claim, "role"
@@ -60,13 +61,14 @@ const AuthzModeRole = "role"
 // tokens. Callers may override individual keys to match a specific IDP.
 func DefaultClaimMapping() ClaimMapping {
 	return ClaimMapping{
-		Username:  "username",
-		Email:     "email",
-		Roles:     "roles",
-		Scope:     "scope",
-		OrgID:     "organization",
-		OrgName:   "org_name",
-		OrgHandle: "org_handle",
+		Username:      "username",
+		Email:         "email",
+		Roles:         "roles",
+		Scope:         "scope",
+		OrgID:         "organization",
+		OrgName:       "org_name",
+		OrgHandle:     "org_handle",
+		Organizations: "organizations",
 	}
 }
 
@@ -153,6 +155,8 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 		}
 		u.Org = &Org{ID: orgID, Name: name, Handle: orgHandle}
 	}
+
+	u.Organizations = strSliceClaim(claims, m.Organizations)
 	return u
 }
 

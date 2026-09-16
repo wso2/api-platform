@@ -153,6 +153,26 @@ type Endpoint struct {
 	Service string
 }
 
+// ExternalEndpoint names an endpoint published by an external component.
+// Its URL is resolved when the component is booted, rather than from container ports.
+type ExternalEndpoint struct {
+	// Name identifies the endpoint.
+	Name string
+}
+
+// ExternalSpec describes a component that is reachable outside the test process.
+// External components have no image, container, network, or database lifecycle.
+type ExternalSpec struct {
+	// Endpoints are the named addresses exposed by the component.
+	Endpoints []ExternalEndpoint
+
+	// RequiredParameters are runtime parameters that must be supplied before Resolve runs.
+	RequiredParameters []string
+
+	// Resolve constructs endpoint URLs from the repository root and runtime parameters.
+	Resolve func(repoRoot string, parameters map[string]string) (map[string]string, error)
+}
+
 // HealthCheck describes an application-level readiness probe.
 type HealthCheck struct {
 	// Endpoint names the Endpoint to probe.
@@ -276,6 +296,10 @@ type Definition struct {
 	// exclusive with Image.
 	Compose *ComposeSpec
 
+	// External describes a component hosted outside the test process. It is mutually
+	// exclusive with Image and Compose.
+	External *ExternalSpec
+
 	// Alias is the component's DNS name on its network.
 	Alias string
 
@@ -322,7 +346,7 @@ type Definition struct {
 
 // WithImageVersion returns a copy whose image references use version.
 func (d *Definition) WithImageVersion(version string) *Definition {
-	if d == nil || strings.TrimSpace(version) == "" {
+	if d == nil || d.IsExternal() || strings.TrimSpace(version) == "" {
 		return d
 	}
 	out := *d

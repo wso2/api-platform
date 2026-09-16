@@ -256,7 +256,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
+	// One definition per artifact kind, indexed by the kind the artifact row
+	// carries. Builds and deployments are shared across kinds; rendering is the
+	// one thing that is not, so this is where each kind supplies its own.
+	artifactDefinitions := service.NewArtifactDefinitions(
+		service.NewRestAPIDefinition(apiRepo, apiUtil),
+		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
+		service.NewLLMProxyDefinition(llmProxyRepo),
+		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
+	)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
@@ -274,6 +283,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
@@ -287,6 +298,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
@@ -298,8 +311,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		artifactRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactDefinitions,
 		cfg,
 		slogger,
+	)
+	// One place that knows which service serves which artifact kind, so plugins and
+	// the per-kind paths reach the same code.
+	deploymentsByKind := service.NewDeploymentsByKind(
+		deploymentService,
+		mcpDeploymentService,
+		llmProxyDeploymentService,
+		llmProviderDeploymentService,
 	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,
@@ -330,7 +352,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
@@ -441,10 +463,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways:      gatewayService,
-		Projects:      projectService,
-		APIPortals:    apiPortalService,
-		Deployments:   deploymentService,
+		Gateways:   gatewayService,
+		Projects:   projectService,
+		APIPortals: apiPortalService,
+		// Kind-routed, so a plugin names the artifact kind alongside the handle and
+		// reaches the same services the platform's own per-kind paths do.
+		Deployments:   deploymentsByKind,
 		Organizations: orgService,
 		Config:        cfg,
 		Logger:        slogger,
@@ -666,15 +690,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 // resolved IDP-role-to-scope table alongside it.
 func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]string) middleware.ClaimMappings {
 	return middleware.ClaimMappings{
-		OrganizationClaim: cm.Organization,
-		OrgNameClaim:      cm.OrgName,
-		OrgHandleClaim:    cm.OrgHandle,
-		UserIDClaim:       cm.UserID,
-		UsernameClaim:     cm.Username,
-		EmailClaim:        cm.Email,
-		ScopeClaim:        cm.Scope,
-		RolesClaimPath:    cm.Roles,
-		RoleScopeMap:      roleScopeMap,
+		OrganizationClaim:  cm.Organization,
+		OrgNameClaim:       cm.OrgName,
+		OrgHandleClaim:     cm.OrgHandle,
+		OrganizationsClaim: cm.Organizations,
+		UserIDClaim:        cm.UserID,
+		UsernameClaim:      cm.Username,
+		EmailClaim:         cm.Email,
+		ScopeClaim:         cm.Scope,
+		RolesClaimPath:     cm.Roles,
+		RoleScopeMap:       roleScopeMap,
 	}
 }
 

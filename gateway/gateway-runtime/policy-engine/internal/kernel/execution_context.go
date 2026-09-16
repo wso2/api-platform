@@ -204,6 +204,15 @@ type PolicyExecutionContext struct {
 	// operation is the canonical protocol operation the caller invoked. Empty for a
 	// directly-resolved route, whose chain key is already the route name on the span.
 	operation string
+
+	// resolutionAttributes are the protocol-derived request facts the route's
+	// resolver captured while identifying the operation, already bounded in count
+	// and value length by ValidateResolution. Nil for a directly-resolved route.
+	//
+	// Held read-only: a route whose resolution is fixed at ingest shares one map
+	// across every request on it, so writing here would leak one request's facts
+	// into the next.
+	resolutionAttributes map[string]string
 }
 
 // generatedResponse ties a policy-engine-generated ImmediateResponse to the span
@@ -361,6 +370,32 @@ func (ec *PolicyExecutionContext) finalResponseStatus() int {
 	return 0 // request phase — no response status exists yet
 }
 
+// terminalReasonForImmediateResponse classifies a policy-produced
+// ImmediateResponse as a refusal or as the policy answering the request itself.
+//
+// A short-circuit is one mechanism serving two purposes: an auth denial and a
+// managed Agent Card served with a 200 are the same ext_proc response shape, so
+// only the status separates them. Anything a client would read as success or a
+// redirect — 2xx, 3xx, the card's 200 and its conditional-GET 304 — is the
+// policy answering; everything else is a refusal.
+//
+// A status outside both ranges (0, or a stray 1xx) is a malformed policy
+// response that Envoy will reject anyway. It is classified as a denial rather
+// than an answer, matching the fail-toward-visible default that
+// tracing.upstreamFaultReasons keeps as a denylist: an unclassifiable outcome
+// stays attributed to the engine short-circuiting instead of being quietly
+// counted as a success.
+//
+// Used by both terminal-outcome paths — this file's span stamp and
+// collectShortCircuitAnalytics — so the tag on the span and the field in the
+// analytics line can never disagree.
+func terminalReasonForImmediateResponse(statusCode int) string {
+	if statusCode >= http.StatusOK && statusCode < http.StatusBadRequest {
+		return constants.TerminalReasonPolicyAnswered
+	}
+	return constants.TerminalReasonPolicyDenied
+}
+
 // resolveTerminalOutcome derives the terminal HTTP outcome of the phase that is
 // about to return resp, and memoizes it on ec for the root-span stamp in
 // Process. Reading the outgoing ext_proc response rather than tracking state at
@@ -380,11 +415,13 @@ func (ec *PolicyExecutionContext) resolveTerminalOutcome(resp *extprocv3.Process
 			out = ec.generated.outcome
 		} else {
 			// Every other ImmediateResponse originates from a policy returning
-			// policy.ImmediateResponse (auth denial, rate limit, guardrail, or a
-			// python-bridge fault).
+			// policy.ImmediateResponse (auth denial, rate limit, guardrail, a
+			// python-bridge fault, or a policy answering the request itself — a
+			// managed Agent Card).
+			status := int(imm.GetStatus().GetCode())
 			out = tracing.HTTPOutcome{
-				StatusCode: int(imm.GetStatus().GetCode()),
-				Reason:     constants.TerminalReasonPolicyDenied,
+				StatusCode: status,
+				Reason:     terminalReasonForImmediateResponse(status),
 			}
 		}
 	} else if status := ec.finalResponseStatus(); status != 0 {
@@ -1282,6 +1319,44 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 }
 
 // ─── Context builders ────────────────────────────────────────────────────────
+
+// applyBoundResolution records the outcome of binding a chain: on the execution
+// context for logs, metrics and spans, and on the shared policy context so the
+// chain's own policies can see which operation they are running for.
+//
+// Every binding path funnels through here — the header-phase static and
+// body-reading paths in extproc.go and the deferred path in resolution.go — rather
+// than each assigning the fields it happens to know about. That is what keeps the
+// three in step: a policy reading SharedContext.ResolvedOperation and an operator
+// reading resolver.operation off a span are looking at the same value, whichever
+// phase bound the chain.
+//
+// It is deliberately a no-op for the API kinds that shipped before Agent: their
+// routes are directly resolved, so BoundResolution.Operation is empty and its
+// Attributes nil, and both fields stay at their zero values rather than being
+// filled with something derived from the route (which OperationPath already
+// carries).
+//
+// The shared context exists by the time this runs on every path: the static and
+// body-reading paths call it immediately after newBoundExecutionContext, which
+// builds the contexts, and the deferred path binds at the request-body callback,
+// long after the header callback built them. A nil check keeps a future caller
+// that reorders that from panicking rather than from being silently wrong.
+func (ec *PolicyExecutionContext) applyBoundResolution(bound resolver.BoundResolution) {
+	ec.operation = bound.Operation
+	ec.resolutionAttributes = bound.Attributes
+
+	if ec.sharedCtx == nil {
+		return
+	}
+	ec.sharedCtx.ResolvedOperation = bound.Operation
+	// Handed over by reference, not copied. Wrapping is what puts the map out of a
+	// policy's reach — policy.ResolutionAttributes exposes no mutation path — so
+	// there is nothing left for a per-request copy to defend against, and the
+	// request path pays no allocation for the guarantee. It matters because a route
+	// resolved at ingest shares one map across every request on it.
+	ec.sharedCtx.ResolutionAttributes = policy.NewResolutionAttributes(bound.Attributes)
+}
 
 // buildRequestContexts converts Envoy request headers into per-phase context objects.
 // Both requestHeaderCtx and requestBodyCtx are initialized here; requestBodyCtx.Body

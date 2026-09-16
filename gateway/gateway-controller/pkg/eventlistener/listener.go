@@ -238,6 +238,8 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processLLMTemplateEvent(event)
 	case eventhub.EventTypeMCPProxy:
 		l.processMCPProxyEvent(event)
+	case eventhub.EventTypeAgent:
+		l.processAgentEvent(event)
 	case eventhub.EventTypeWebhookSecret:
 		if l.webhookSecretHandler != nil {
 			l.webhookSecretHandler.HandleEvent(event)

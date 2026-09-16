@@ -33,6 +33,7 @@ import {
 } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
+import { routes } from '@/routes/paths';
 import { makeConsoleScope } from '@/test/mockScope';
 import { ApiListPage } from './ApiListPage';
 
@@ -70,6 +71,8 @@ function renderPage() {
           element={<ApiListPage />}
           path="/organizations/:orgHandle/projects/:projectHandler/apis"
         />
+        {/* Stands in for the API overview, so opening an API is observable. */}
+        <Route element={<div>api overview</div>} path={routes.api()} />
       </Routes>
     </ApiScopeProvider>,
     {
@@ -244,6 +247,33 @@ describe('ApiListPage', () => {
     // Page 2 no longer exists; the next request must ask for one that does.
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('0'));
     expect(await screen.findByText('API 1')).toBeInTheDocument();
+  });
+
+  it('opens an API from the keyboard in both views', async () => {
+    // Each card/row carries a delete button, which was the only thing in it a
+    // keyboard could reach — the card itself was not focusable at all.
+    server.use(collection('/rest-apis', apiFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Orders API');
+    screen.getByRole('button', { name: 'Open Orders API' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByText('api overview')).toBeInTheDocument();
+  });
+
+  it('opens an API from a table row with Space', async () => {
+    server.use(collection('/rest-apis', apiFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Orders API');
+    await user.click(screen.getByRole('button', { name: 'List view' }));
+
+    const rows = await screen.findByTestId('api-list-view');
+    within(rows).getByRole('button', { name: 'Open Orders API' }).focus();
+    await user.keyboard(' ');
+
+    expect(await screen.findByText('api overview')).toBeInTheDocument();
   });
 
   it('switches between the card grid and the compact list', async () => {

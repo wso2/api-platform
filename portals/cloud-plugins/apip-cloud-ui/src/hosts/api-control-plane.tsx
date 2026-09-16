@@ -7,12 +7,14 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { BarChart3, Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { BarChart3, Layers, ScrollText, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
+import { LogsFeature } from '@wso2-enterprise/apip-cloud-ui-logs';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
@@ -26,6 +28,13 @@ import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
+
+/**
+ * The kinds of gateway this host manages. Module scope, not a literal at the
+ * use site: the gateways feature asks the server for exactly these kinds, and a
+ * fresh array on every render would make that request repeat.
+ */
+const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
 
 /**
  * Cloud features registered for the api-control-plane host. All live in this
@@ -108,7 +117,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         group: '',
         order: 45,
         routePath: 'gateways',
-        render: (port) => <GatewaysFeature gatewayTypes={['regular', 'event']} port={port} />,
+        render: (port) => <GatewaysFeature gatewayTypes={API_GATEWAY_TYPES} port={port} />,
         label: 'Gateways',
         level: 'organization',
       },
@@ -137,6 +146,31 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         ),
         label: 'Deploy',
         level: 'api',
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'logs',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'logs',
+        slot: 'sidebar.organization',
+        // After Pipelines (50). Same unnamed divider cluster as Environments,
+        // Gateways and Pipelines, which it reads alongside.
+        order: 55,
+        routePath: 'logs',
+        render: (port) => <LogsFeature port={port} />,
+        label: 'Logs',
+        icon: <ScrollText size={20} />,
+        // Organization, not project: the observability API scopes a log query
+        // by organization namespace and has no project filter that would work
+        // here — every provisioned gateway lives in one shared project, and a
+        // gateway's log line carries no API identity to attribute it by. When
+        // RBAC lands, project scoping has to be a server-side filter in
+        // apip-platform-api rather than a second extension registered at
+        // 'project'.
+        level: 'organization',
       },
     ],
   }),

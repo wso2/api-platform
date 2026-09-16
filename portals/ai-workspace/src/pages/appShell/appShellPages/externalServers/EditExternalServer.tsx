@@ -126,8 +126,7 @@ export default function EditExternalServer() {
     };
   }, [serverId, organizationId, apimBaseUrl]);
 
-  const isContextChanged =
-    server !== null && context !== (server.context || '');
+  const isContextChanged = server !== null && context !== (server.context || '');
 
   const isFormValid = (): boolean => {
     if (!name || name.trim().length === 0) return false;
@@ -150,6 +149,7 @@ export default function EditExternalServer() {
         ...server,
         displayName: name,
         description: description || undefined,
+        version: server.version,
         context: context || undefined,
       };
       // Remove read-only fields before sending
@@ -269,29 +269,27 @@ export default function EditExternalServer() {
                 changes to take effect.
               </Alert>
             )}
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <FormControl sx={{ flex: 1 }}>
-                <FormLabel required>Name</FormLabel>
-                <TextField
-                  fullWidth
-                  required
-                  value={name}
-                  disabled={isReadOnlyServer}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setFieldErrors((prev) => ({ ...prev, name: '' }));
-                  }}
-                  placeholder="Enter server name"
-                  error={name.length > MAX_NAME_LENGTH || Boolean(fieldErrors.name)}
-                  helperText={
-                    fieldErrors.name ||
-                    (name.length > MAX_NAME_LENGTH
-                      ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
-                      : '')
-                  }
-                />
-              </FormControl>
-            </Box>
+            <FormControl fullWidth>
+              <FormLabel required>Name</FormLabel>
+              <TextField
+                fullWidth
+                required
+                value={name}
+                disabled={isReadOnlyServer}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, name: '' }));
+                }}
+                placeholder="Enter server name"
+                error={name.length > MAX_NAME_LENGTH || Boolean(fieldErrors.name)}
+                helperText={
+                  fieldErrors.name ||
+                  (name.length > MAX_NAME_LENGTH
+                    ? `Name must not exceed ${MAX_NAME_LENGTH} characters (${name.length}/${MAX_NAME_LENGTH})`
+                    : '')
+                }
+              />
+            </FormControl>
 
             <FormControl fullWidth>
               <FormLabel>Description</FormLabel>

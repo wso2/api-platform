@@ -273,14 +273,14 @@ function ScopeSelection({
                     </FormLabel>
                     <Select
                       labelId="scope-gate-api-label"
-                      value={apisQuery.isPending ? '__loading__' : chosenApi}
+                      value={chosenProject && apisQuery.isPending ? '__loading__' : chosenApi}
                       onChange={(event) => setChosenApi(String(event.target.value))}
                       displayEmpty
                       disabled={!chosenProject || apisQuery.isPending}
                       MenuProps={{ PaperProps: { sx: { maxHeight: 300, maxWidth: 300 } } }}
                       sx={SELECT_VALUE_SX}
                     >
-                      {apisQuery.isPending ? (
+                      {chosenProject &&apisQuery.isPending ? (
                         <MenuItem value="__loading__" disabled>
                           <FormattedMessage
                             id="scopeGate.loadingApis"

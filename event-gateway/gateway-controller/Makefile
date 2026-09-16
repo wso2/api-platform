@@ -71,6 +71,7 @@ build: generate-server-code test ## Build Docker image using buildx
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../../gateway/common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-controller=../../gateway/gateway-controller \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
@@ -96,6 +97,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../../gateway/common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-controller=../../gateway/gateway-controller \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
@@ -117,6 +119,7 @@ build-coverage-image: test ## Build coverage-instrumented event-gateway-controll
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../../gateway/common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-controller=../../gateway/gateway-controller \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
@@ -137,6 +140,7 @@ build-debug: ## Build debug image for remote debugging with dlv (VS Code attach 
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../../gateway/common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-controller=../../gateway/gateway-controller \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \

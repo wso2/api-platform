@@ -54,9 +54,10 @@ type Suite struct {
 // New creates the step bindings for one resolved block.
 func New(topo *frameworkruntime.Topology, featureRoot ...string) *Suite {
 	client := httpx.NewClient(httpx.Options{
-		Timeout:    30 * time.Second,
-		MaxRetries: 3,
-		RetryDelay: 2 * time.Second,
+		Timeout:            30 * time.Second,
+		MaxRetries:         3,
+		RetryDelay:         2 * time.Second,
+		InsecureSkipVerify: true,
 	})
 	root := ""
 	if len(featureRoot) > 0 {

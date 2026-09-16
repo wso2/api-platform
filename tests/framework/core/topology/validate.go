@@ -164,6 +164,11 @@ func validateBlockComponents(b *ResolvedBlock) error {
 				b.Name, c.Def.Name, c.Replicas)
 		}
 
+		if c.Def.IsExternal() && c.Replicas > 1 {
+			errs.addf("block %q: external component %q cannot have replicas (%d requested)",
+				b.Name, c.Def.Name, c.Replicas)
+		}
+
 		if c.Replicas > 1 && c.Def.DB != nil && !c.Def.DB.Owns() {
 			errs.addf("block %q: component %q shares another component's store and cannot be replicated",
 				b.Name, c.Def.Name)

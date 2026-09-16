@@ -90,6 +90,9 @@ type ResolvedComponent struct {
 	// Wiring is the decoded, validated wiring value, or nil when the block supplied none.
 	Wiring any
 
+	// ExternalParameters are selection-time values passed to an external resolver.
+	ExternalParameters map[string]string
+
 	// DependsOn are block-specific boot-order dependencies.
 	DependsOn []string
 }
@@ -465,6 +468,10 @@ func resolveBlock(
 			version = defaults[c.Name].Version
 		}
 		if version != "" {
+			if def.IsExternal() {
+				errs.addf("block %q: external component %q does not support a version", name, c.Name)
+				continue
+			}
 			def = def.WithImageVersion(version)
 		}
 
@@ -481,6 +488,11 @@ func resolveBlock(
 		}
 
 		replicas := c.EffectiveReplicas()
+		if replicas > 1 && def.IsExternal() {
+			errs.addf("block %q: external component %q cannot have replicas (%d requested)",
+				name, c.Name, replicas)
+			continue
+		}
 		if replicas > 1 && def.AliasIsFixed {
 			errs.addf("block %q: component %q has a fixed alias and cannot have replicas (%d requested)",
 				name, c.Name, replicas)

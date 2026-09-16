@@ -860,6 +860,8 @@ paths:
                 $ref: '#/components/schemas/BuildListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -897,6 +899,8 @@ paths:
                 $ref: '#/components/schemas/BuildResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1802,6 +1806,206 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-providers/{llmProviderId}/builds:
+    post:
+      summary: Prepare a build of a LLM provider
+      description: |
+        Renders the LLM provider's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A LLM provider keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:create
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a LLM provider
+      description: |
+        Lists the LLM provider's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProviderBuilds
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:read
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{llmProviderId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:read
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the LLM provider's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:delete
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-providers/{llmProviderId}/deployments:
     post:
       summary: Create and deploy a new LLM provider deployment
@@ -2440,6 +2644,206 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-proxies/{llmProxyId}/builds:
+    post:
+      summary: Prepare a build of a LLM proxy
+      description: |
+        Renders the LLM proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A LLM proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:create
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a LLM proxy
+      description: |
+        Lists the LLM proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:read
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{llmProxyId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:read
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the LLM proxy's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:delete
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-proxies/{llmProxyId}/deployments:
     post:
       summary: Create and deploy a new LLM proxy deployment
@@ -3035,6 +3439,206 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{mcpProxyId}/builds:
+    post:
+      summary: Prepare a build of a MCP proxy
+      description: |
+        Renders the MCP proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A MCP proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:create
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a MCP proxy
+      description: |
+        Lists the MCP proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:read
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{mcpProxyId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:read
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the MCP proxy's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:delete
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5132,19 +5736,23 @@ components:
             ap:gateway:manage: Full access to gateways
             ap:gateway:manifest:read: Read a gateway manifest
             ap:gateway:read: Read gateways
-            ap:gateway_custom_policy:create: Create a gateway custom policy
-            ap:gateway_custom_policy:delete: Delete a gateway custom policy
-            ap:gateway_custom_policy:manage: Full access to gateway custom policies
-            ap:gateway_custom_policy:read: Read gateway custom policies
             ap:gateway:token:create: Create a gateway token
             ap:gateway:token:delete: Delete a gateway token
             ap:gateway:token:manage: Full access to gateway tokens
             ap:gateway:token:read: Read gateway tokens
             ap:gateway:update: Update a gateway
+            ap:gateway_custom_policy:create: Create a gateway custom policy
+            ap:gateway_custom_policy:delete: Delete a gateway custom policy
+            ap:gateway_custom_policy:manage: Full access to gateway custom policies
+            ap:gateway_custom_policy:read: Read gateway custom policies
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
             ap:llm_provider:api_key:read: Read LLM provider API keys
+            ap:llm_provider:build:create: Prepare a build of an LLM provider
+            ap:llm_provider:build:delete: Delete a build of an LLM provider
+            ap:llm_provider:build:manage: Full access to an LLM provider's builds
+            ap:llm_provider:build:read: Read builds of an LLM provider
             ap:llm_provider:create: Create an LLM provider
             ap:llm_provider:delete: Delete an LLM provider
             ap:llm_provider:deployment:create: Deploy an LLM provider
@@ -5160,6 +5768,10 @@ components:
             ap:llm_proxy:api_key:delete: Delete an LLM proxy API key
             ap:llm_proxy:api_key:manage: Full access to LLM proxy API keys
             ap:llm_proxy:api_key:read: Read LLM proxy API keys
+            ap:llm_proxy:build:create: Prepare a build of an LLM proxy
+            ap:llm_proxy:build:delete: Delete a build of an LLM proxy
+            ap:llm_proxy:build:manage: Full access to an LLM proxy's builds
+            ap:llm_proxy:build:read: Read builds of an LLM proxy
             ap:llm_proxy:create: Create an LLM proxy
             ap:llm_proxy:delete: Delete an LLM proxy
             ap:llm_proxy:deployment:create: Deploy an LLM proxy
@@ -5176,6 +5788,10 @@ components:
             ap:llm_template:manage: Full access to LLM provider templates
             ap:llm_template:read: Read LLM provider templates
             ap:llm_template:update: Update an LLM provider template
+            ap:mcp_proxy:build:create: Prepare a build of an MCP proxy
+            ap:mcp_proxy:build:delete: Delete a build of an MCP proxy
+            ap:mcp_proxy:build:manage: Full access to an MCP proxy's builds
+            ap:mcp_proxy:build:read: Read builds of an MCP proxy
             ap:mcp_proxy:create: Create an MCP proxy
             ap:mcp_proxy:delete: Delete an MCP proxy
             ap:mcp_proxy:deployment:create: Deploy an MCP proxy
@@ -7064,11 +7680,13 @@ components:
             - `current` — render the artifact from the definition as it stands now.
             - `build` — deploy a build prepared earlier, named by `buildId`.
 
-            REST API deployments accept only these two and always run a build: `current`
-            stores what it renders as one, so a running deployment is always traceable to
-            a stored snapshot. MCP proxy, LLM and event API deployments accept a
-            `deploymentId` here as well, to promote that deployment by reusing its
-            rendered artifact.
+            These are the only two values, for REST APIs, MCP proxies, LLM providers and
+            LLM proxies alike. Every deployment runs a build: `current` stores what it
+            renders as one, so a running deployment is always traceable to a stored
+            snapshot, and promoting carries that snapshot rather than re-rendering it.
+
+            A `deploymentId` is no longer accepted here — see the note on this
+            operation.
           example: "current"
         buildId:
           type: string

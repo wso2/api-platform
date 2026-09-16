@@ -1148,6 +1148,97 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	require.Equal(t, "gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
 }
 
+func TestCloudEnvironmentSelectionOverride(t *testing.T) {
+	var flags Selection
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags.Flags(fs)
+	require.NoError(t, fs.Parse([]string{"-cloud-env=staging"}))
+	require.Equal(t, "staging", flags.CloudEnvironment)
+
+	original := &components.Definition{
+		Name: "cloud-console", Alias: "cloud-console",
+		External: &components.ExternalSpec{
+			Endpoints:          []components.ExternalEndpoint{{Name: "api"}},
+			RequiredParameters: []string{"environment"},
+			Resolve: func(string, map[string]string) (map[string]string, error) {
+				return map[string]string{"api": "https://example.com"}, nil
+			},
+		},
+	}
+	suite := &Resolved{Blocks: []ResolvedBlock{{
+		Name:       "cloud",
+		Components: []ResolvedComponent{{Def: original}},
+	}}}
+
+	got, err := flags.Apply(suite)
+	require.NoError(t, err)
+	component := got.Blocks[0].Components[0]
+	require.Equal(t, "staging", component.ExternalParameters["environment"])
+	require.Equal(t, "environment", original.External.RequiredParameters[0], "the catalog definition must not be mutated")
+}
+
+func TestCloudEnvironmentIsRequiredForExternalComponents(t *testing.T) {
+	suite := &Resolved{Blocks: []ResolvedBlock{{
+		Name: "cloud",
+		Components: []ResolvedComponent{{
+			Def: &components.Definition{
+				Name: "cloud-console", Alias: "cloud-console",
+				External: &components.ExternalSpec{
+					Endpoints:          []components.ExternalEndpoint{{Name: "api"}},
+					RequiredParameters: []string{"environment"},
+					Resolve: func(string, map[string]string) (map[string]string, error) {
+						return map[string]string{"api": "https://example.com"}, nil
+					},
+				},
+			},
+		}},
+	}}}
+	_, err := (Selection{Blocks: []string{"cloud"}}).Apply(suite)
+	require.ErrorContains(t, err, `external component "cloud-console" in block "cloud" requires -cloud-env`)
+}
+
+func TestExternalBlocksAreOptInWithoutCloudEnvironment(t *testing.T) {
+	cloud := &components.Definition{
+		Name: "cloud-console", Alias: "cloud-console",
+		External: &components.ExternalSpec{
+			Endpoints:          []components.ExternalEndpoint{{Name: "api"}},
+			RequiredParameters: []string{"environment"},
+			Resolve: func(string, map[string]string) (map[string]string, error) {
+				return map[string]string{"api": "https://example.com"}, nil
+			},
+		},
+	}
+	suite := &Resolved{Blocks: []ResolvedBlock{{
+		Name: "cloud", Components: []ResolvedComponent{{Def: cloud}},
+	}}}
+	_, err := (Selection{}).Apply(suite)
+	require.ErrorContains(t, err, "selection matched no blocks")
+}
+
+func TestCloudEnvironmentIsNotRequiredForExcludedExternalBlocks(t *testing.T) {
+	local := &components.Definition{
+		Name: "local", Alias: "local", Image: components.ImageRef{Ref: "local:test"},
+	}
+	cloud := &components.Definition{
+		Name: "cloud-console", Alias: "cloud-console",
+		External: &components.ExternalSpec{
+			Endpoints:          []components.ExternalEndpoint{{Name: "api"}},
+			RequiredParameters: []string{"environment"},
+			Resolve: func(string, map[string]string) (map[string]string, error) {
+				return map[string]string{"api": "https://example.com"}, nil
+			},
+		},
+	}
+	suite := &Resolved{Blocks: []ResolvedBlock{
+		{Name: "local", Components: []ResolvedComponent{{Def: local}}},
+		{Name: "cloud", Components: []ResolvedComponent{{Def: cloud}}},
+	}}
+	got, err := (Selection{Blocks: []string{"local"}}).Apply(suite)
+	require.NoError(t, err)
+	require.Len(t, got.Blocks, 1)
+	require.Equal(t, "local", got.Blocks[0].Name)
+}
+
 func TestGatewayVersionCannotBeCombinedWithCoverage(t *testing.T) {
 	_, err := (Selection{GatewayVersion: "1.1.0", Coverage: true}).Apply(matrixSuite())
 	require.ErrorContains(t, err, "cannot be combined with -coverage")
