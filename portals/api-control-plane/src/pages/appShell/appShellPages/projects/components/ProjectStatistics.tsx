@@ -21,6 +21,7 @@ import { Box, ButtonBase, Divider, Grid, Skeleton, Stack, Typography } from '@ws
 import { Network } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 
+import { useAllGraphQLApis } from '@/api/resources/graphqlApis';
 import { useAllRestApis } from '@/api/resources/restApis';
 import grpcIcon from '@/assets/icons/gRPC.svg';
 import graphqlIcon from '@/assets/icons/graphql.svg';
@@ -51,6 +52,10 @@ const messages = defineMessages({
   statusSummary: {
     id: 'apiControlPlane.projects.ProjectStatistics.statusSummary',
     defaultMessage: '{published} published · {created} created',
+    description:
+      'Caption under the total API count. GraphQL APIs count as "published" ' +
+      'here as a stand-in — this app does not yet track their real dev-portal ' +
+      'publish state — so the caption keeps summing to the total above it.',
   },
 });
 
@@ -134,17 +139,39 @@ type ProjectStatisticsProps = {
 export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectStatisticsProps) {
   const intl = useIntl();
   const apisQuery = useAllRestApis();
-  const total = apisQuery.data?.pagination.total;
+  const graphqlApisQuery = useAllGraphQLApis();
+  const isPending = apisQuery.isPending || graphqlApisQuery.isPending;
+  const restTotal = apisQuery.data?.pagination.total;
+  const graphqlTotal = graphqlApisQuery.data?.pagination.total;
+  // Undefined while either source is still loading, rather than treating an
+  // in-flight GraphQL count as zero and understating the combined total.
+  const total =
+    restTotal === undefined || graphqlTotal === undefined ? undefined : restTotal + graphqlTotal;
   const apis = apisQuery.data?.list;
+  // GraphQL has no `kind` variants of its own to filter — its whole list
+  // already is the "graphql" bucket, unlike REST's `matchesApiType` scan.
   const countType = (type: ApiTypeFilter) =>
-    apis?.filter((api) => matchesApiType(api.kind, type)).length;
-  const published = apis?.filter((api) => api.lifeCycleStatus === 'PUBLISHED').length;
+    type === 'graphql'
+      ? graphqlApisQuery.data?.list.length
+      : apis?.filter((api) => matchesApiType(api.kind, type)).length;
+  // GraphQL APIs can be published to a dev portal as a product concept, but
+  // that lifecycle lives entirely in the separate api-portal service —
+  // platform-api's `GraphQLAPIListItem` carries no `lifeCycleStatus` field at
+  // all (removed in e171e794f; there was no honest signal to expose). Until
+  // this app is wired to that real state, every GraphQL API counts toward
+  // "published" here as a deliberate stand-in, so this caption keeps summing
+  // to the total above it rather than silently excluding GraphQL APIs from it.
+  const restPublished = apis?.filter((api) => api.lifeCycleStatus === 'PUBLISHED').length;
+  const published =
+    restPublished === undefined || graphqlTotal === undefined
+      ? undefined
+      : restPublished + graphqlTotal;
   const created = apis?.filter((api) => api.lifeCycleStatus === 'CREATED').length;
   const selectType = (type: ApiTypeFilter) =>
     onTypeFilterChange(selectedType === type ? null : type);
   const filterLabel = (label: string) => intl.formatMessage(messages.selectType, { type: label });
 
-  if (!apisQuery.isPending && total === 0) return null;
+  if (!isPending && total === 0) return null;
 
   const metrics = [
     { type: 'rest' as const, message: messages.rest, icon: restIcon },
