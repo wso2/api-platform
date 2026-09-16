@@ -130,6 +130,8 @@ func mapGraphQLAPIModelToListItem(m *model.GraphQLAPI) *api.GraphQLAPIListItem {
 		return nil
 	}
 
+	kind := constants.GraphQLApi
+
 	var introspectionMode *api.GraphQLIntrospectionMode
 	if m.Configuration.IntrospectionMode != "" {
 		im := api.GraphQLIntrospectionMode(m.Configuration.IntrospectionMode)
@@ -145,6 +147,7 @@ func mapGraphQLAPIModelToListItem(m *model.GraphQLAPI) *api.GraphQLAPIListItem {
 		Context:           utils.ValueOrEmpty(m.Configuration.Context),
 		ProjectId:         m.ProjectID,
 		Description:       utils.StringPtrIfNotEmpty(m.Description),
+		Kind:              &kind,
 		IntrospectionMode: introspectionMode,
 		Upstream:          &upstream,
 		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
