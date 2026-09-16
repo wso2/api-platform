@@ -83,7 +83,7 @@ func (r *cascadeDeploymentRepo) GetControlPlaneDeploymentsByGateway(
 	out := make([]*model.DeploymentInfo, 0, len(r.deployments))
 	for _, d := range r.deployments {
 		copied := *d
-		if copied.Status.IsDeployedOrDeploying() {
+		if copied.Status.IsDeployedOrDeploying() || copied.Status == model.DeploymentStatusUndeploying {
 			if acked {
 				copied.Status = model.DeploymentStatusUndeployed
 			} else {
@@ -334,5 +334,29 @@ func TestDeleteGateway_WaitsForTheGatewayToConfirm(t *testing.T) {
 	}
 	if !gwRepo.deleted {
 		t.Error("the gateway was never deleted after the artifacts drained")
+	}
+}
+
+// A deployment left UNDEPLOYING with nothing queued to move it on — a publish failed and
+// the restore failed too — must still be picked up by a later delete. Selecting only
+// deployed/deploying made it invisible to every retry, so the records would be removed
+// while the gateway carried on serving the artifact.
+func TestDeleteGateway_RetriesADeploymentStuckUndeploying(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{}
+	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: []*model.DeploymentInfo{
+		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusUndeploying),
+	}}
+	hub := &capturingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway: %v", err)
+	}
+	if len(hub.published) != 1 {
+		t.Fatalf("published %d events; a deployment stuck UNDEPLOYING was never re-undeployed",
+			len(hub.published))
+	}
+	if !gwRepo.deleted {
+		t.Error("the gateway was not deleted")
 	}
 }

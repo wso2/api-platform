@@ -906,7 +906,7 @@ func (s *GatewayService) drainGateway(gatewayUUID, orgID string) error {
 	if s.deploymentRepo == nil || s.gatewayEventsService == nil {
 		return nil
 	}
-	running, err := s.runningOnGateway(gatewayUUID, orgID)
+	running, err := s.toUndeployOnGateway(gatewayUUID, orgID)
 	if err != nil {
 		s.slogger.Error("Failed to list deployments while deleting gateway; the gateway may keep serving them",
 			slog.String("gateway_uuid", gatewayUUID), slog.String("org_id", orgID), slog.Any("error", err))
@@ -938,9 +938,9 @@ func (s *GatewayService) drainGateway(gatewayUUID, orgID string) error {
 				slog.String("deployment_id", deployment.DeploymentID),
 				slog.String("artifact_kind", deployment.Type),
 				slog.Any("error", err))
-			// Put the deployment back as it was. Nothing is queued to move it on, and
-			// leaving it UNDEPLOYING would hide it from a retry — runningOnGateway only
-			// picks up what is deployed or deploying.
+			// Put the deployment back as it was, so its state still reflects reality.
+			// A retry re-selects it either way — toUndeployOnGateway also picks up
+			// UNDEPLOYING — so a restore that itself fails is not a dead end.
 			s.restoreDeployment(gatewayUUID, orgID, deployment)
 			unsent++
 			continue
@@ -1011,20 +1011,30 @@ func (s *GatewayService) waitForGatewayToDrain(gatewayUUID, orgID string) {
 	}
 }
 
-// runningOnGateway returns the control-plane deployments the gateway still has, meaning
-// those deployed or still moving towards it. These are what the drain undeploys.
-func (s *GatewayService) runningOnGateway(gatewayUUID, orgID string) ([]*model.DeploymentInfo, error) {
+// toUndeployOnGateway returns the control-plane deployments the gateway may still be
+// serving, which is what the drain undeploys.
+//
+// UNDEPLOYING counts alongside deployed and deploying. It means an undeployment was
+// started and not confirmed, and the gateway may well still be serving the artifact —
+// including the case where an earlier drain queued no event and could not put the
+// deployment back. Leaving those out made them invisible to every later attempt, so a
+// retry would delete the records while the gateway carried on serving.
+//
+// Re-undeploying something already on its way out is harmless: it is stamped afresh and
+// the drain waits for that stamp, so the outcome is the same undeployed state.
+func (s *GatewayService) toUndeployOnGateway(gatewayUUID, orgID string) ([]*model.DeploymentInfo, error) {
 	all, err := s.deploymentRepo.GetControlPlaneDeploymentsByGateway(gatewayUUID, orgID, nil)
 	if err != nil {
 		return nil, err
 	}
-	running := make([]*model.DeploymentInfo, 0, len(all))
+	pending := make([]*model.DeploymentInfo, 0, len(all))
 	for _, deployment := range all {
-		if deployment.Status.IsDeployedOrDeploying() {
-			running = append(running, deployment)
+		if deployment.Status.IsDeployedOrDeploying() ||
+			deployment.Status == model.DeploymentStatusUndeploying {
+			pending = append(pending, deployment)
 		}
 	}
-	return running, nil
+	return pending, nil
 }
 
 // awaitingAckOnGateway counts the deployments still waiting for the gateway to confirm
