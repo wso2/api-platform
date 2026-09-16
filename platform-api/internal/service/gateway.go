@@ -74,6 +74,7 @@ type GatewayService struct {
 	orgRepo                             repository.OrganizationRepository
 	apiRepo                             repository.APIRepository
 	customPolicyRepo                    repository.CustomPolicyRepository
+	deploymentRepo                      repository.DeploymentRepository
 	gatewayEventsService                *GatewayEventsService
 	slogger                             *slog.Logger
 	enableVersionVerification           bool
@@ -85,6 +86,7 @@ type GatewayService struct {
 // NewGatewayService creates a new gateway service
 func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, customPolicyRepo repository.CustomPolicyRepository,
+	deploymentRepo repository.DeploymentRepository,
 	gatewayEventsService *GatewayEventsService, slogger *slog.Logger,
 	enableVersionVerification bool, enableFunctionalityTypeVerification bool,
 	auditRepo repository.AuditRepository, identity *IdentityService) *GatewayService {
@@ -93,6 +95,7 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 		orgRepo:                             orgRepo,
 		apiRepo:                             apiRepo,
 		customPolicyRepo:                    customPolicyRepo,
+		deploymentRepo:                      deploymentRepo,
 		gatewayEventsService:                gatewayEventsService,
 		slogger:                             slogger,
 		enableVersionVerification:           enableVersionVerification,
@@ -840,6 +843,11 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 		return apperror.GatewayNotFound.New()
 	}
 
+	// Tell the gateway to drop what it is running BEFORE the records go. Deleting the
+	// records alone leaves the gateway serving artifacts the control plane has forgotten,
+	// with nothing left to undeploy them with.
+	s.undeployAllOnGateway(gateway.ID, orgID)
+
 	// Delete gateway by UUID; the repository explicitly removes deployment-related rows and
 	// association mappings, and FK CASCADE removes gateway_tokens/gateway_endpoints.
 	err = s.gatewayRepo.Delete(gateway.ID, orgID)
@@ -852,6 +860,87 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 	}
 
 	return nil
+}
+
+
+// undeployAllOnGateway publishes an undeployment event for everything the gateway is
+// currently running, so a gateway being deleted stops serving its artifacts.
+//
+// It never fails the delete. The events go to the event hub rather than straight down the
+// gateway's socket, so publishing does not need the gateway to be connected — and a
+// gateway that is offline (or already gone) must still have its control-plane records
+// removed, which is the state the caller asked for. A publish that fails is logged and
+// the delete continues: refusing to delete would leave records for a gateway the user has
+// asked to remove, which is the worse of the two outcomes.
+//
+// Data-plane-originated artifacts are excluded by the query: the gateway owns those and
+// pushed them up, so the control plane does not undeploy them.
+func (s *GatewayService) undeployAllOnGateway(gatewayUUID, orgID string) {
+	if s.deploymentRepo == nil || s.gatewayEventsService == nil {
+		return
+	}
+	deployments, err := s.deploymentRepo.GetControlPlaneDeploymentsByGateway(gatewayUUID, orgID, nil)
+	if err != nil {
+		s.slogger.Error("Failed to list deployments while deleting gateway; the gateway may keep serving them",
+			slog.String("gateway_uuid", gatewayUUID), slog.String("org_id", orgID), slog.Any("error", err))
+		return
+	}
+
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
+	for _, deployment := range deployments {
+		// Only what the gateway actually has. An already-undeployed record needs no event,
+		// and sending one would ask the gateway to drop something it is not serving.
+		if !deployment.Status.IsDeployedOrDeploying() {
+			continue
+		}
+		if err := s.undeployOneOnGateway(gatewayUUID, deployment, performedAt); err != nil {
+			s.slogger.Warn("Failed to publish undeployment event while deleting gateway",
+				slog.String("gateway_uuid", gatewayUUID),
+				slog.String("deployment_id", deployment.DeploymentID),
+				slog.String("artifact_kind", deployment.Type),
+				slog.Any("error", err))
+		}
+	}
+}
+
+// undeployOneOnGateway publishes the undeployment event for one deployment, in the shape
+// its artifact kind expects. Every kind identifies the artifact by its UUID.
+func (s *GatewayService) undeployOneOnGateway(gatewayUUID string,
+	deployment *model.DeploymentInfo, performedAt time.Time) error {
+
+	switch deployment.Type {
+	case constants.RestApi:
+		return s.gatewayEventsService.BroadcastUndeploymentEvent(gatewayUUID, &model.APIUndeploymentEvent{
+			ApiId:        deployment.ArtifactID,
+			DeploymentID: deployment.DeploymentID,
+			PerformedAt:  performedAt,
+		})
+	case constants.LLMProvider:
+		return s.gatewayEventsService.BroadcastLLMProviderUndeploymentEvent(gatewayUUID,
+			&model.LLMProviderUndeploymentEvent{
+				ProviderId:   deployment.ArtifactID,
+				DeploymentID: deployment.DeploymentID,
+				PerformedAt:  performedAt,
+			})
+	case constants.LLMProxy:
+		return s.gatewayEventsService.BroadcastLLMProxyUndeploymentEvent(gatewayUUID,
+			&model.LLMProxyUndeploymentEvent{
+				ProxyId:      deployment.ArtifactID,
+				DeploymentID: deployment.DeploymentID,
+				PerformedAt:  performedAt,
+			})
+	case constants.MCPProxy:
+		return s.gatewayEventsService.BroadcastMCPProxyUndeploymentEvent(gatewayUUID,
+			&model.MCPProxyUndeploymentEvent{
+				ProxyId:      deployment.ArtifactID,
+				DeploymentID: deployment.DeploymentID,
+				PerformedAt:  performedAt,
+			})
+	default:
+		// A kind with no undeployment event of its own (plugin-owned kinds register their
+		// own lifecycle). Skipping is deliberate: there is nothing to send.
+		return nil
+	}
 }
 
 // VerifyToken verifies a plain-text token and returns the associated gateway

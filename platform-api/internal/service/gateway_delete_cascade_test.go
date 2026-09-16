@@ -1,0 +1,207 @@
+/*
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package service
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
+)
+
+const (
+	cascadeGatewayHandle = "prod-gw"
+	cascadeGatewayUUID   = "gw-uuid-1"
+	cascadeOrgUUID       = "org-uuid-1"
+)
+
+// cascadeGatewayRepo serves one gateway and records that Delete ran.
+type cascadeGatewayRepo struct {
+	repository.GatewayRepository
+	deleted   bool
+	deleteErr error
+}
+
+func (r *cascadeGatewayRepo) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error) {
+	if handle != cascadeGatewayHandle || orgID != cascadeOrgUUID {
+		return nil, nil
+	}
+	return &model.Gateway{ID: cascadeGatewayUUID, Handle: cascadeGatewayHandle}, nil
+}
+
+func (r *cascadeGatewayRepo) Delete(gatewayID, orgID string) error {
+	r.deleted = true
+	return r.deleteErr
+}
+
+// cascadeDeploymentRepo serves a fixed deployment list for the gateway.
+type cascadeDeploymentRepo struct {
+	repository.DeploymentRepository
+	deployments []*model.DeploymentInfo
+	err         error
+}
+
+func (r *cascadeDeploymentRepo) GetControlPlaneDeploymentsByGateway(
+	gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.deployments, nil
+}
+
+func deployedOn(artifactUUID, deploymentID, kind string, status model.DeploymentStatus) *model.DeploymentInfo {
+	return &model.DeploymentInfo{
+		DeploymentID: deploymentID,
+		ArtifactID:   artifactUUID,
+		Type:         kind,
+		Status:       status,
+	}
+}
+
+func newCascadeService(gwRepo *cascadeGatewayRepo, depRepo *cascadeDeploymentRepo,
+	hub eventhub.EventHub) *GatewayService {
+
+	return &GatewayService{
+		gatewayRepo:          gwRepo,
+		deploymentRepo:       depRepo,
+		gatewayEventsService: NewGatewayEventsService(hub, nil, slog.Default()),
+		slogger:              slog.Default(),
+	}
+}
+
+// Deleting a gateway must tell it to drop everything it is serving. Without this the
+// records go and the gateway keeps serving artifacts nothing refers to any more.
+func TestDeleteGateway_UndeploysEveryKindItIsRunning(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{}
+	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
+		deployedOn("prov-1", "dep-2", constants.LLMProvider, model.DeploymentStatusDeployed),
+		deployedOn("proxy-1", "dep-3", constants.LLMProxy, model.DeploymentStatusDeployed),
+		deployedOn("mcp-1", "dep-4", constants.MCPProxy, model.DeploymentStatusDeployed),
+	}}
+	hub := &capturingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway: %v", err)
+	}
+	if len(hub.published) != 4 {
+		t.Fatalf("published %d undeployment events, want one per deployment", len(hub.published))
+	}
+	// Each kind must get ITS OWN event: an MCP proxy told to undeploy through the REST
+	// event would not be matched by the gateway, and the artifact would stay serving.
+	want := map[string]string{
+		"dep-1": EventTypeAPIUndeployed,
+		"dep-2": EventTypeLLMProviderUndeployed,
+		"dep-3": EventTypeLLMProxyUndeployed,
+		"dep-4": EventTypeMCPProxyUndeployed,
+	}
+	for _, published := range hub.published {
+		var envelope struct {
+			Type    string `json:"type"`
+			Payload struct {
+				DeploymentID string `json:"deploymentId"`
+			} `json:"payload"`
+		}
+		if err := json.Unmarshal([]byte(published.EventData), &envelope); err != nil {
+			t.Fatalf("event data is not the expected envelope: %v", err)
+		}
+		expected, known := want[envelope.Payload.DeploymentID]
+		if !known {
+			t.Errorf("an event was published for unknown deployment %q", envelope.Payload.DeploymentID)
+			continue
+		}
+		if envelope.Type != expected {
+			t.Errorf("deployment %s was undeployed as %q, want %q",
+				envelope.Payload.DeploymentID, envelope.Type, expected)
+		}
+		delete(want, envelope.Payload.DeploymentID)
+	}
+	if len(want) != 0 {
+		t.Errorf("no undeployment event for %v", want)
+	}
+	if !gwRepo.deleted {
+		t.Error("the gateway was not deleted")
+	}
+}
+
+// A deployment the gateway is not serving needs no event: sending one would ask it to
+// drop something it does not have.
+func TestDeleteGateway_SkipsWhatIsNotOnTheGateway(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{}
+	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
+		deployedOn("rest-2", "dep-2", constants.RestApi, model.DeploymentStatusUndeployed),
+	}}
+	hub := &capturingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway: %v", err)
+	}
+	if len(hub.published) != 1 {
+		t.Errorf("published %d events, want only the deployed one", len(hub.published))
+	}
+}
+
+// The records must go even when the events cannot be published — a gateway that is
+// offline, or already gone, still has to be removable. Refusing would strand records for
+// a gateway the user asked to delete.
+func TestDeleteGateway_RemovesRecordsEvenWhenTheGatewayCannotBeReached(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{}
+	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
+	}}
+	hub := &failingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway failed because the gateway was unreachable: %v", err)
+	}
+	if !gwRepo.deleted {
+		t.Error("the gateway records were kept because the undeployment could not be published")
+	}
+}
+
+// Likewise if the deployments cannot even be listed: the delete still proceeds.
+func TestDeleteGateway_ProceedsWhenTheDeploymentsCannotBeListed(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{}
+	depRepo := &cascadeDeploymentRepo{err: errors.New("database unavailable")}
+	hub := &capturingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway: %v", err)
+	}
+	if !gwRepo.deleted {
+		t.Error("the gateway was not deleted")
+	}
+}
+
+// failingEventHub stands in for a gateway that cannot be reached.
+type failingEventHub struct{ capturingEventHub }
+
+func (h *failingEventHub) PublishEvent(string, eventhub.Event) error {
+	return errors.New("gateway not connected")
+}
