@@ -60,6 +60,11 @@ type cascadeDeploymentRepo struct {
 	repository.DeploymentRepository
 	deployments []*model.DeploymentInfo
 	err         error
+	listCalls   int
+	// acksAfter: after this many list calls, report nothing deployed (gateway acked).
+	acksAfter   int
+	transitions []string
+	performedAt []time.Time
 }
 
 func (r *cascadeDeploymentRepo) GetControlPlaneDeploymentsByGateway(
@@ -67,7 +72,40 @@ func (r *cascadeDeploymentRepo) GetControlPlaneDeploymentsByGateway(
 	if r.err != nil {
 		return nil, r.err
 	}
-	return r.deployments, nil
+	r.listCalls++
+	// Once the drain has moved them to UNDEPLOYING, report that state — this is what the
+	// wait polls on. acksAfter simulates the gateway acknowledging: from that read
+	// onwards they are UNDEPLOYED, which ends the wait.
+	if len(r.transitions) == 0 {
+		return r.deployments, nil
+	}
+	acked := r.acksAfter > 0 && r.listCalls > r.acksAfter
+	out := make([]*model.DeploymentInfo, 0, len(r.deployments))
+	for _, d := range r.deployments {
+		copied := *d
+		if copied.Status.IsDeployedOrDeploying() {
+			if acked {
+				copied.Status = model.DeploymentStatusUndeployed
+			} else {
+				copied.Status = model.DeploymentStatusUndeploying
+			}
+		}
+		out = append(out, &copied)
+	}
+	return out, nil
+}
+
+// SetCurrentWithDetails records the UNDEPLOYING transition the drain makes before it
+// publishes, so a test can assert the performed_at token is stored (the gateway's
+// acknowledgement is matched against it).
+func (r *cascadeDeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string,
+	status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
+
+	r.transitions = append(r.transitions, string(status))
+	if performedAt != nil {
+		r.performedAt = append(r.performedAt, *performedAt)
+	}
+	return time.Time{}, nil
 }
 
 func deployedOn(artifactUUID, deploymentID, kind string, status model.DeploymentStatus) *model.DeploymentInfo {
@@ -94,7 +132,7 @@ func newCascadeService(gwRepo *cascadeGatewayRepo, depRepo *cascadeDeploymentRep
 // records go and the gateway keeps serving artifacts nothing refers to any more.
 func TestDeleteGateway_UndeploysEveryKindItIsRunning(t *testing.T) {
 	gwRepo := &cascadeGatewayRepo{}
-	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: []*model.DeploymentInfo{
 		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
 		deployedOn("prov-1", "dep-2", constants.LLMProvider, model.DeploymentStatusDeployed),
 		deployedOn("proxy-1", "dep-3", constants.LLMProxy, model.DeploymentStatusDeployed),
@@ -150,7 +188,7 @@ func TestDeleteGateway_UndeploysEveryKindItIsRunning(t *testing.T) {
 // drop something it does not have.
 func TestDeleteGateway_SkipsWhatIsNotOnTheGateway(t *testing.T) {
 	gwRepo := &cascadeGatewayRepo{}
-	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: []*model.DeploymentInfo{
 		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
 		deployedOn("rest-2", "dep-2", constants.RestApi, model.DeploymentStatusUndeployed),
 	}}
@@ -170,7 +208,7 @@ func TestDeleteGateway_SkipsWhatIsNotOnTheGateway(t *testing.T) {
 // a gateway the user asked to delete.
 func TestDeleteGateway_RemovesRecordsEvenWhenTheGatewayCannotBeReached(t *testing.T) {
 	gwRepo := &cascadeGatewayRepo{}
-	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: []*model.DeploymentInfo{
 		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
 	}}
 	hub := &failingEventHub{}
@@ -213,7 +251,7 @@ func (h *failingEventHub) PublishEvent(string, eventhub.Event) error {
 // undeployed with its records intact and nothing to prompt another attempt.
 func TestDeleteGateway_SurfacesADeleteFailureSoItCanBeRetried(t *testing.T) {
 	gwRepo := &cascadeGatewayRepo{deleteErr: errors.New("database unavailable")}
-	depRepo := &cascadeDeploymentRepo{deployments: []*model.DeploymentInfo{
+	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: []*model.DeploymentInfo{
 		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
 	}}
 	hub := &capturingEventHub{}
@@ -225,5 +263,65 @@ func TestDeleteGateway_SurfacesADeleteFailureSoItCanBeRetried(t *testing.T) {
 	}
 	if len(hub.published) != 1 {
 		t.Errorf("published %d events, want the undeployment to have been attempted", len(hub.published))
+	}
+}
+
+// The gateway matches its acknowledgement against the stored performed_at, so the drain
+// must record the UNDEPLOYING transition with the SAME token it puts in the event.
+// Publishing a timestamp the row does not carry has the acknowledgement discarded as
+// stale, and the artifact silently stays deployed.
+func TestDeleteGateway_RecordsTheTokenItPublishes(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{}
+	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: []*model.DeploymentInfo{
+		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
+	}}
+	hub := &capturingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway: %v", err)
+	}
+	if len(depRepo.transitions) != 1 || depRepo.transitions[0] != string(model.DeploymentStatusUndeploying) {
+		t.Fatalf("transitions = %v, want one UNDEPLOYING before the event", depRepo.transitions)
+	}
+	if len(depRepo.performedAt) != 1 {
+		t.Fatal("no performed_at token was stored; the gateway's ack would be discarded as stale")
+	}
+	var envelope struct {
+		Payload struct {
+			PerformedAt time.Time `json:"performedAt"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(hub.published[0].EventData), &envelope); err != nil {
+		t.Fatalf("event data: %v", err)
+	}
+	if !envelope.Payload.PerformedAt.Equal(depRepo.performedAt[0]) {
+		t.Errorf("published token %v does not match the stored token %v; the ack would be discarded",
+			envelope.Payload.PerformedAt, depRepo.performedAt[0])
+	}
+}
+
+// The delete must not remove the gateway until the artifacts are actually gone. The
+// events live in hub rows keyed to the gateway, so deleting it cascades them away —
+// publishing and deleting in one breath destroys the undeployment before any replica can
+// deliver it. The drain therefore re-reads until nothing is left deployed.
+func TestDeleteGateway_WaitsForTheGatewayToConfirm(t *testing.T) {
+	gwRepo := &cascadeGatewayRepo{}
+	// Still deployed on the first three reads; gone from the fourth.
+	depRepo := &cascadeDeploymentRepo{acksAfter: 3, deployments: []*model.DeploymentInfo{
+		deployedOn("rest-1", "dep-1", constants.RestApi, model.DeploymentStatusDeployed),
+	}}
+	hub := &capturingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway: %v", err)
+	}
+	if depRepo.listCalls < 3 {
+		t.Errorf("the deployments were read %d time(s); the delete did not wait for confirmation",
+			depRepo.listCalls)
+	}
+	if !gwRepo.deleted {
+		t.Error("the gateway was never deleted after the artifacts drained")
 	}
 }
