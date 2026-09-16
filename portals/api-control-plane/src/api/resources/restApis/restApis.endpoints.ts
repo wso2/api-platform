@@ -17,6 +17,20 @@
  */
 
 import { http, type RequestOptions } from '../../core/http';
+import { ApiError, ErrorCode } from '../../core/errors';
+import {
+  loadSampleDefinition,
+  NO_SAMPLE_DEFINITION,
+  sampleDefinitionIdFor,
+  type SampleDefinitionId,
+} from './mocks';
+import {
+  parseSpecContent,
+  serializeSpecContent,
+  toRestApiDefinition,
+  type OpenApiDocument,
+  type RestApiDefinition,
+} from './restApis.utils';
 import type { BodyOf, PathOf, QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
@@ -116,4 +130,95 @@ export const deleteRestApi = async (restApiId: string, options?: RequestOptions)
     ...options,
     operationName: 'DeleteRESTAPI',
   });
+};
+
+/* -------------------------------------------------------------------------- */
+/* Definition                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Loads an API's OpenAPI definition for the test console.
+ *
+ * `GET /rest-apis/{restApiId}/openapi` returns `{ content }` as YAML and may
+ * return `404` when no definition exists. Set `USE_SAMPLE_DEFINITION` to
+ * `false` to use the platform endpoint instead of the bundled sample.
+ */
+/** Response of `GET /rest-apis/{restApiId}/openapi`; replace with the generated type when available. */
+export type RestApiOpenApiResponse = {
+  /** The stored spec, as YAML text. */
+  content: string;
+};
+
+/** Whether to use a bundled sample instead of the platform endpoint. */
+const USE_SAMPLE_DEFINITION: boolean = true;
+
+export type { OpenApiDocument, SampleDefinitionId };
+
+/** The real endpoint. Reached once `USE_SAMPLE_DEFINITION` is false. */
+const fetchRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<RestApiOpenApiResponse> => {
+  return http.get<RestApiOpenApiResponse>(`${resourcePath(restApiId)}/openapi`, {
+    ...options,
+    operationName: 'GetRESTAPIOpenAPI',
+  });
+};
+
+/** Bundled sample in the endpoint's response shape and YAML format. */
+const sampleRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<RestApiOpenApiResponse> => {
+  // Keep cancellation consistent with the real request path.
+  options?.signal?.throwIfAborted();
+
+  const choice = sampleDefinitionIdFor(restApiId);
+
+  // Some catalog entries intentionally simulate APIs with no uploaded definition.
+  if (choice === NO_SAMPLE_DEFINITION) {
+    throw new ApiError('This API has no stored definition', {
+      code: ErrorCode.NOT_FOUND,
+      kind: 'http',
+      operation: 'GetRESTAPIOpenAPI',
+      status: 404,
+    });
+  }
+
+  const document = await loadSampleDefinition(choice);
+  return { content: serializeSpecContent(document) };
+};
+
+/**
+ * Loads one bundled sample by id, bypassing the per-API selection.
+ *
+ * For tests and local exploration only — production code calls
+ * `getRestApiDefinition`. Delete this along with `./mocks` at switch time.
+ */
+export const getSampleRestApiDefinition = async (
+  sampleId: SampleDefinitionId,
+): Promise<RestApiDefinition> => {
+  const content = serializeSpecContent(await loadSampleDefinition(sampleId));
+  return toRestApiDefinition(parseSpecContent(content), 'sample');
+};
+
+/**
+ * An API's OpenAPI definition.
+ *
+ * Rejects when the API has no stored spec — the endpoint answers `404`, which
+ * the transport surfaces as an `ApiError` and the query leaves as an error
+ * state rather than empty data.
+ */
+export const getRestApiDefinition = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<RestApiDefinition> => {
+  const response = USE_SAMPLE_DEFINITION
+    ? await sampleRestApiOpenApi(restApiId, options)
+    : await fetchRestApiOpenApi(restApiId, options);
+
+  return toRestApiDefinition(
+    parseSpecContent(response.content),
+    USE_SAMPLE_DEFINITION ? 'sample' : 'platform',
+  );
 };

@@ -16,87 +16,400 @@
  * under the License.
  */
 
-import { Card, CardContent, CodeBlock, PageTitle } from '@wso2/oxygen-ui';
+import { useCallback, useMemo, useState } from 'react';
+import { Card, PageTitle, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
+import { LucideBookOpenCheck, Rocket, SquareTerminal } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { useNavigate } from 'react-router-dom';
 
-import { useRestApi } from '@/api/resources/restApis';
-import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useRestApi, useRestApiDefinition } from '@/api/resources/restApis';
+import { useDeployments } from '@/api/resources/restApis/deployments';
+import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import { isTestKeyExpired, testKeyRemainingMs } from './utils/testApiKey';
+import { useTestApiKey } from './utils/useTestApiKey';
+import type { Gateway } from '@/api/resources/gateways';
+import { isApiError } from '@/api/core/errors';
+import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDesignerCanvasIllustration';
+import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
+import { segmentedSwitchSx } from '@/theme/receipes';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ScopeGate } from '@/scope/ScopeGate';
+import { buildInvokeUrl } from '../apis/overview/InvokeUrlPanel';
+import { gatewayEndpoint } from '../gateways/utils/gatewayDisplay';
+import { MOCK_ENVIRONMENTS } from '../gateways/utils/gatewayEnvironments';
+import { CurlBuilder } from './curl/CurlBuilder';
+import { deployedGateways as deployedGatewaysOf } from './utils/deployedGateways';
+import { apiKeyAuthOf } from './utils/apiKeyAuth';
+import { GatewaySection } from './components/GatewaySection';
+import { buildConsoleRequest, firstOperationOf } from './utils/operationRequest';
+import TestConsoleSpecViewer from './console/TestConsoleSpecViewer';
+import { TestKeySection } from './components/TestKeySection';
+import { emptyRequest, withTarget, type ConsoleRequest, type KeyValueRow } from './utils/types';
 
 const messages = defineMessages({
   apiNotFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.apiNotFound',
     defaultMessage: 'API not found',
   },
+  consoleView: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.consoleView',
+    defaultMessage: 'Console view',
+    description: 'Toggle option showing the interactive spec console.',
+  },
+  curlView: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.curlView',
+    defaultMessage: 'cURL view',
+    description: 'Toggle option showing the command builder.',
+  },
+  deployAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.deployAction',
+    defaultMessage: 'Deploy API',
+    description: 'Button in the not-deployed banner that opens the Deploy page. A command.',
+  },
+  notDeployedTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.notDeployedTitle',
+    defaultMessage: 'You must deploy the API to start testing.',
+    description:
+      'Heading of the empty state shown when the API is not deployed anywhere, so there is no endpoint to send requests to.',
+  },
+  noDefinitionTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.noDefinitionTitle',
+    defaultMessage: 'You must add an API definition to start testing.',
+    description:
+      'Heading of the empty state shown when the API has no stored OpenAPI definition, so there are no resources to test.',
+  },
+  definitionUnavailable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.definitionUnavailable',
+    defaultMessage: 'This API’s definition could not be loaded.',
+    description:
+      "Shown when fetching or parsing the API's OpenAPI definition failed — distinct from the API simply not having one.",
+  },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading',
     defaultMessage: 'Loading test console',
-    description: 'Shown while the API the curl command is built from is being fetched.',
+    description: 'Shown while the API and its definition are being fetched.',
   },
   scopePrompt: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.scopePrompt',
-    defaultMessage: 'The curl console runs against a single API.',
+    defaultMessage: 'The test console runs against a single API.',
     description: 'Explains why an API must be picked before this page can render.',
   },
-  subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle',
-    defaultMessage: 'Use the following curl command to test the API.',
+  subtitleConsoleView: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle.console',
+    defaultMessage: 'Send requests to a deployed gateway.',
+  },
+  subtitleCurlView: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle.curl',
+    defaultMessage: 'Copy a command to run in a terminal.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.title',
-    defaultMessage: 'Test {apiName}',
-    description:
-      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
+    defaultMessage: 'Test',
+    description: 'Page heading.',
+  },
+  viewLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.viewLabel',
+    defaultMessage: 'Console or cURL view',
+    description: 'Accessible label for the toggle between the two views.',
   },
 });
 
-/** Builds a curl command for testing an API. Uses $API_BASE_URL as unresolved shell variable. */
-const curlCommand = (context: string) =>
-  `curl -X GET "$API_BASE_URL${context}" \\\n  -H "Authorization: Bearer <token>"`;
+type ConsoleView = 'console' | 'curl';
+
+/** Gateway label as "Name — Environment", matching the Invoke URL panel. */
+const gatewayOptionLabel = (gateway: Gateway): string => {
+  const name = gateway.displayName || gateway.id || '';
+  const environment = MOCK_ENVIRONMENTS.find(
+    (candidate) => candidate.id === gateway.properties?.environment,
+  )?.name;
+  return environment ? `${name} — ${environment}` : name;
+};
 
 export function TestPage() {
   const intl = useIntl();
 
   return (
-    <ScopeGate
-      prompt={intl.formatMessage(messages.scopePrompt)}
-      requires="api"
-      to={routes.apiTestCurl}
-    >
-      <Test />
+    <ScopeGate prompt={intl.formatMessage(messages.scopePrompt)} requires="api" to={routes.apiTest}>
+      <TestConsole />
     </ScopeGate>
   );
 }
 
-function Test() {
+function TestConsole() {
   const intl = useIntl();
+  const navigate = useNavigate();
   const { params } = useConsoleScope();
   const apiQuery = useRestApi(params.apiHandler);
+  const restApiId = apiQuery.data?.id;
 
-  if (apiQuery.isPending) return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  const definitionQuery = useRestApiDefinition(restApiId);
+  const gatewaysQuery = useRestApiGateways(restApiId);
+  const deploymentsQuery = useDeployments(restApiId);
+
+  /** API `api-key-auth` configuration, if present. */
+  const apiKeyAuth = useMemo(() => apiKeyAuthOf(apiQuery.data), [apiQuery.data]);
+  const needsApiKey = apiKeyAuth !== undefined;
+
+  /**
+   * Minting is enabled only when the API requires an API key.
+   * Passing `undefined` disables the query and prevents unnecessary keys.
+   */
+  const testApiKey = useTestApiKey(restApiId, needsApiKey);
+
+  const [view, setView] = useState<ConsoleView>('console');
+  const [selectedGatewayId, setSelectedGatewayId] = useState('');
+  const [request, setRequest] = useState<ConsoleRequest | undefined>(undefined);
+
+  /**
+   * Optional user override for the credential name. Preserved across Console
+   * view synchronizations, which rebuild the injected rows.
+   */
+  const [keyHeaderName, setKeyHeaderName] = useState<string | undefined>(undefined);
+
+  const gateways = useMemo(
+    () => deployedGatewaysOf(gatewaysQuery.data?.list ?? [], deploymentsQuery.data?.list ?? []),
+    [deploymentsQuery.data, gatewaysQuery.data],
+  );
+
+  const selectedGateway =
+    gateways.find((gateway) => gateway.id === selectedGatewayId) ?? gateways[0];
+
+  const resolvedBaseUrl = selectedGateway
+    ? buildInvokeUrl(gatewayEndpoint(selectedGateway), apiQuery.data?.context)
+    : '';
+
+  const baseUrl = resolvedBaseUrl;
+
+  /** True while we still do not know whether the API is deployed. */
+  const deploymentUnknown = gatewaysQuery.isPending || deploymentsQuery.isPending;
+
+  /** True when both deployment queries have settled and no gateway exists. */
+  const notDeployed = !deploymentUnknown && gateways.length === 0;
+
+  /** Destination for the banner, using the Overview page's deployment route. */
+  const deployPath = routes.apiDeploy(
+    params.orgHandle ?? '',
+    params.projectHandler ?? null,
+    params.apiHandler ?? null,
+  );
+
+  /** Credential sent by the console. Absent until one has been minted. */
+  const testKey = testApiKey.key;
+
+  // The policy is the source of the name; page state only holds a user's edit.
+  const headerName = keyHeaderName ?? apiKeyAuth?.name ?? '';
+  const keyExpired = isTestKeyExpired(testKey, Date.now());
+
+  /** Injectable credential row, assigned exclusively to the policy-selected list. */
+  const credentialRows = useMemo<KeyValueRow[]>(
+    () =>
+      needsApiKey && testKey && !keyExpired && headerName.trim() !== ''
+        ? [
+            {
+              auto: true,
+              enabled: true,
+              id: 'test-key',
+              name: headerName,
+              secret: true,
+              value: testKey.value,
+            },
+          ]
+        : [],
+    [headerName, keyExpired, needsApiKey, testKey],
+  );
+
+  /** Which list the credential goes in — the two are mutually exclusive. */
+  const credentialIn = apiKeyAuth?.in ?? 'header';
+  const extraHeaders = credentialIn === 'header' ? credentialRows : [];
+  const extraQueryParams = credentialIn === 'query' ? credentialRows : [];
+
+  const spec = definitionQuery.data?.spec;
+
+  /** True when the API has no stored definition (`404`). */
+  const definitionMissing =
+    !definitionQuery.isPending &&
+    isApiError(definitionQuery.error) &&
+    definitionQuery.error.isNotFound;
+
+  /**
+   * Derives the cURL request from the latest request, the document's first
+   * operation, or an empty request, then applies the current gateway and key.
+   * Keeping this derived avoids synchronization conflicts with the Console view.
+   */
+  const seeded = useMemo(() => {
+    if (request) return request;
+    if (!spec) return undefined;
+
+    const first = firstOperationOf(spec);
+    if (!first) return undefined;
+
+    return buildConsoleRequest({ baseUrl, method: first.method, path: first.path, spec });
+  }, [baseUrl, request, spec]);
+
+  const effectiveRequest = useMemo(
+    () => withTarget(seeded ?? emptyRequest(baseUrl), baseUrl, credentialRows, credentialIn),
+    [baseUrl, credentialIn, credentialRows, seeded],
+  );
+
+  /** Edits from the builder, lifting a rename of the key header into state. */
+  const handleBuilderChange = useCallback(
+    (next: ConsoleRequest) => {
+      // The credential row lives in whichever tab the policy placed it in, so
+      // a rename can arrive from either.
+      const autoRow =
+        next.headers.find((row) => row.auto) ?? next.queryParams.find((row) => row.auto);
+      if (autoRow && autoRow.name !== headerName) setKeyHeaderName(autoRow.name);
+      setRequest(next);
+    },
+    [headerName],
+  );
+
+  /** Live sync from the Console view's try-out form. */
+  const handleConsoleRequestChange = useCallback((next: ConsoleRequest) => {
+    setRequest(next);
+  }, []);
+
+  // Wait for deployment and API state to avoid a console flash without an endpoint.
+  if (apiQuery.isPending || deploymentUnknown) {
+    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  }
   if (apiQuery.error || !apiQuery.data) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
   }
 
   const api = apiQuery.data;
 
+  /** Shared by the two empty states and the page itself, so they cannot drift. */
+  const heading = (
+    <PageTitle.Header>
+      <Stack alignItems="baseline" direction="row" spacing={1.5}>
+        <FormattedMessage {...messages.title} /> {api.displayName}
+      </Stack>
+    </PageTitle.Header>
+  );
+
+  /** Render the deployment-required empty state when no gateway exists. */
+  if (notDeployed) {
+    return (
+      <>
+        <PageTitle>{heading}</PageTitle>
+        <EmptyState
+          actionIcon={<Rocket size={18} />}
+          actionLabel={intl.formatMessage(messages.deployAction)}
+          illustration={<GatewayIllustration />}
+          onAction={() => navigate(deployPath)}
+          title={intl.formatMessage(messages.notDeployedTitle)}
+        />
+      </>
+    );
+  }
+
+  // Wait for the definition to avoid swapping the console for an empty state.
+  // Check after deployment so undeployed APIs need no definition yet.
+  if (definitionQuery.isPending) {
+    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  }
+
+  /** Nothing to test without a contract; no existing-API upload page exists. */
+  if (definitionMissing) {
+    return (
+      <>
+        <PageTitle>{heading}</PageTitle>
+        <EmptyState
+          illustration={<ApiDesignerCanvasIllustration />}
+          title={intl.formatMessage(messages.noDefinitionTitle)}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} values={{ apiName: api.displayName }} />
-        </PageTitle.Header>
+        {heading}
         <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subtitle} />
+          {view === 'console' ? (
+            <FormattedMessage {...messages.subtitleConsoleView} />
+          ) : (
+            <FormattedMessage {...messages.subtitleCurlView} />
+          )}
         </PageTitle.SubHeader>
+        <PageTitle.Actions>
+          <ToggleButtonGroup
+            aria-label={intl.formatMessage(messages.viewLabel)}
+            exclusive
+            onChange={(_event, next) => next && setView(next as ConsoleView)}
+            size="small"
+            sx={segmentedSwitchSx}
+            value={view}
+          >
+            <ToggleButton value="console">
+              <Stack alignItems="center" direction="row" spacing={1}>
+                <LucideBookOpenCheck size={16} />
+                <span>
+                  <FormattedMessage {...messages.consoleView} />
+                </span>
+              </Stack>
+            </ToggleButton>
+            <ToggleButton value="curl">
+              <Stack alignItems="center" direction="row" spacing={1}>
+                <SquareTerminal size={16} />
+                <span>
+                  <FormattedMessage {...messages.curlView} />
+                </span>
+              </Stack>
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </PageTitle.Actions>
       </PageTitle>
-      <Card variant="outlined">
-        <CardContent>
-          <CodeBlock code={curlCommand(api.context || '/')} language="bash" />
-        </CardContent>
-      </Card>
+
+      <Stack spacing={2}>
+        <Card variant="outlined">
+          <GatewaySection
+            endpoint={baseUrl}
+            gateways={gateways}
+            onSelect={setSelectedGatewayId}
+            optionLabel={gatewayOptionLabel}
+            selectedGatewayId={selectedGateway?.id ?? ''}
+          />
+          {needsApiKey && (
+            <TestKeySection
+              error={Boolean(testApiKey.error)}
+              headerName={headerName}
+              loading={testApiKey.isPending}
+              onRegenerate={testApiKey.regenerate}
+              regenerating={testApiKey.isRegenerating}
+              remainingMs={testKeyRemainingMs(testKey, Date.now())}
+              value={testKey?.value}
+            />
+          )}
+        </Card>
+
+        {!spec ? (
+          <ErrorState title={intl.formatMessage(messages.definitionUnavailable)} />
+        ) : view === 'console' ? (
+          <Card sx={{ p: 2 }} variant="outlined">
+            <TestConsoleSpecViewer
+              baseUrl={baseUrl}
+              extraHeaders={extraHeaders}
+              extraQueryParams={extraQueryParams}
+              onRequestChange={handleConsoleRequestChange}
+              secretHeaderName={headerName}
+              spec={spec}
+            />
+          </Card>
+        ) : (
+          <CurlBuilder
+            onChange={handleBuilderChange}
+            onRegenerateSecret={testApiKey.regenerate}
+            regenerating={testApiKey.isRegenerating}
+            request={effectiveRequest}
+            spec={spec}
+          />
+        )}
+      </Stack>
     </>
   );
 }

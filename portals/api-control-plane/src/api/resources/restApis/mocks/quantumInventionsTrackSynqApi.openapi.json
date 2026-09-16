@@ -1,0 +1,3137 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Quantum Inventions TrackSynq Utilities API",
+    "description": "APIs to manage the TrackSynq resources",
+    "version": "v4"
+  },
+  "servers": [
+    {
+      "url": "https://apis.services.tracksynq.com"
+    }
+  ],
+  "paths": {
+    "/gpsutility/v4/events": {
+      "get": {
+        "tags": ["Events"],
+        "summary": "API to get events",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "events",
+            "in": "query",
+            "description": "Event names as comma separated (Default: IDILING,IGNITION_ONOFF,SPEEDING,SPEEDING) can use /events/eventrules API to get the available events for the application or check with developer for any additional events",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "From date, in Vehicle Tracker application local time, that you want to get the events for. (for example 01-08-2020T00:00:00 or 01-08-2020)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "To date, in Vehicle Tracker application local time, that you want to get the event for. (for example 01-08-2020T23:59:59 or 01-08-2020) If time is not provided default 23:59:59 is added to end date",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "description": "User Id, by default it is 0. If Device IMEI is provided then this param is ignored",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "vehiclePlateNumber",
+            "in": "query",
+            "description": "Vehicle unique plate number e.g SMY8829",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "deviceImei",
+            "in": "query",
+            "description": "Device IMEI/Unique Id, should be minimum 6 and maximum 20 characters and can be alpha numeric",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "openEvents",
+            "in": "query",
+            "description": "Send it as true to get open events, false to get closed events, empty will return all events",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the user events model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserEventsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/tracks/trackpoints": {
+      "get": {
+        "tags": ["Tracks"],
+        "summary": "API to get the trackpoints data",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "header",
+            "description": "Date and time including timezone in ISO 8601 format(2022-05-21T00:00:00+0800) for the track points",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "header",
+            "description": "Date and time including timezone in ISO 8601 format(2022-05-21T23:59:59+0800) for the track points",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "description": "User identifier Id, by default it is 0. If Vehicle Plate Number/Device IMEI is provided then this param is ignored",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "vehiclePlateNumber",
+            "in": "query",
+            "description": "Vehicle unique plate number e.g SMY8829",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "deviceImei",
+            "in": "query",
+            "description": "Device IMEI/Unique Id. If Vehicle Plate Number is provided then this param is ignored",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "deviceVariables",
+            "in": "query",
+            "description": "Vehicle device variables separated by comma, if specified the fields data will be included in the response, can get the variables from /server/variables API",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the trackpoints data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrackPointDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/tracks/trackinfos": {
+      "get": {
+        "tags": ["Tracks"],
+        "summary": "API to get the track infos data",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "From date, in Vehicle Tracker application local time, that you want to get the trackinfo for. (for example 01-08-2020)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "To date, in Vehicle Tracker application local time, that you want to get the trackinfo for. (for example 01-08-2020)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "description": "User identifier Id, by default it is 0. If Vehicle Plate Number/Device IMEI is provided then this param is ignored",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "vehiclePlateNumber",
+            "in": "query",
+            "description": "Vehicle unique plate number e.g SMY8829",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "deviceImei",
+            "in": "query",
+            "description": "Device IMEI/Unique Id. If Vehicle Plate Number is provided then this param is ignored",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the track infos data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrackInfoDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/tracks/tripinfos": {
+      "get": {
+        "tags": ["Tracks"],
+        "summary": "API to get the trip infos data",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "From date, in Vehicle Tracker application local time, that you want to get the trackinfo for. (for example 01-08-2020)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "To date, in Vehicle Tracker application local time, that you want to get the trackinfo for. (for example 01-08-2020)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "description": "User identifier Id, by default it is 0. If Vehicle Plate Number/Device IMEI is provided then this param is ignored",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "vehiclePlateNumber",
+            "in": "query",
+            "description": "Vehicle unique plate number e.g SMY8829",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "deviceImei",
+            "in": "query",
+            "description": "Device IMEI/Unique Id. If Vehicle Plate Number is provided then this param is ignored",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the trip infos data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TripInfoDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/vehicles": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "API to get vehicles",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Search query param for plate number e.g ABX999V",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          {
+            "name": "deviceVariables",
+            "in": "query",
+            "description": "Vehicle device variables separated by comma, if specified the fields data will be included in the response, can get the variables from /server/variables API",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the list of driver information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VehicleDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/vehicles/{vehicleid}/vehicle": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "API to get vehicle info",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicleid",
+            "in": "path",
+            "description": "User identifier id of the vehicle",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "deviceVariables",
+            "in": "query",
+            "description": "Vehicle device variables separated by comma, if specified the fields data will be included in the response, can get the variables from /server/variables API",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the vehicle information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server understood the request, but resources are found for the specified request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/vehicles/devices/{deviceimei}/vehicle": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "API to get vehicle info by device IMEI",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceimei",
+            "in": "path",
+            "description": "Device IMEI/Unique Id",
+            "required": true,
+            "schema": {
+              "maxLength": 20,
+              "minLength": 6,
+              "pattern": "^\\w+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "deviceVariables",
+            "in": "query",
+            "description": "Vehicle device variables separated by comma, if specified the fields data will be included in the response, can get the variables from /server/variables API",
+            "schema": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the vehicle information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server understood the request, but resources are found for the specified request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/vehicles/{vehicleid}/status": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "API to get vehicle status info",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceVariables",
+            "in": "query",
+            "description": "Vehicle device variables separated by comma, if specified the fields data will be included in the response, can get the variables from /server/variables API",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicleid",
+            "in": "path",
+            "description": "User identifier id of the vehicle",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the vehicle status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AssetStatus",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AssetStatusDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssetStatusDtoOld"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server understood the request, but resources are found for the specified request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/vehicles/{vehicleplatenumber}/status": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "API to get vehicle status by vehicle plate number",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "devicevariables",
+            "in": "query",
+            "description": "Vehicle device variables separated by comma, if specified the fields data will be included in the response, can get the variables from /server/variables API",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehiclePlateNumber",
+            "in": "path",
+            "description": "Vehicle unique plate number e.g SMY8829",
+            "required": true,
+            "schema": {
+              "maxLength": 12,
+              "minLength": 4,
+              "pattern": "^(?=.*[a-zA-Z])\\w+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the device status based on device IMEI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AssetStatus",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AssetStatusDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssetStatusDtoOld"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server understood the request, but resources are found for the specified request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/vehicles/devices/{deviceimei}/status": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "API to get vehicle status by device IMEI",
+        "parameters": [
+          {
+            "name": "data-access-token",
+            "in": "header",
+            "description": "Data Access Token provided by API admin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "devicevariables",
+            "in": "query",
+            "description": "Vehicle device variables separated by comma, if specified the fields data will be included in the response, can get the variables from /server/variables API",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceimei",
+            "in": "path",
+            "description": "Device IMEI/Unique Id",
+            "required": true,
+            "schema": {
+              "maxLength": 20,
+              "minLength": 6,
+              "pattern": "^\\w+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "description": "Id of the application/client to access data",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the device status based on device IMEI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AssetStatus",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AssetStatusDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssetStatusDtoOld"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server understood the request, but resources are found for the specified request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "The server understood the request, but the dependency service failed to respond. Please try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Indicates the API does not exist/not implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The server received invalid response from the intermediate server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is currently unable to handle the request due to maintenance of the server or because the service is not running"
+          }
+        }
+      }
+    },
+    "/gpsutility/v4/servers/variables": {
+      "get": {
+        "tags": ["Servers"],
+        "summary": "API to get the server device variables which need to be passed to other APIs(Tracks, Status)",
+        "parameters": [
+          {
+            "name": "serverHost",
+            "in": "query",
+            "description": "URL of the server where the Device/Vehicle is added, e.g dev.tracksynq.com",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the server device variables",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ServerDeviceVariableDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indicates the request could not be understood by the server. Some of the required parameters are missing. Check the message for missing information details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understood the request, but is refusing to fulfill it. Authentication key might be in valid and the request SHOULD NOT be repeated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Indicates that a generic error has occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ArgumentDto": {
+        "title": "Argument",
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string",
+            "description": "Argument name, arguments from events",
+            "nullable": true
+          },
+          "Value": {
+            "description": "Argument value, arguments from events. It can by any reference/value type",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AssetStatusDto": {
+        "title": "AssetStatus",
+        "type": "object",
+        "properties": {
+          "GroundSpeed": {
+            "type": "number",
+            "description": "Ground speed in m/s.",
+            "format": "double"
+          },
+          "Heading": {
+            "type": "number",
+            "description": "Direction heading.",
+            "format": "double"
+          },
+          "StatusTime": {
+            "type": "string",
+            "description": "Status time in UTC and in ISO-8601 format.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "DeviceVariables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerDeviceVariableValueDto"
+            },
+            "description": "List of the device variable data.",
+            "nullable": true
+          },
+          "LastPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Last position info.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AssetStatusDtoOld": {
+        "title": "AssetStatus",
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AssetStatusDto"
+          }
+        ],
+        "properties": {
+          "PositionAltitude": {
+            "type": "number",
+            "description": "Position altitude.",
+            "format": "double"
+          },
+          "PositionLatitude": {
+            "type": "number",
+            "description": "Position coordinates latitude.",
+            "format": "double"
+          },
+          "PositionLongitude": {
+            "type": "number",
+            "description": "Position coordinates longitude.",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthenticationInfo": {
+        "title": "AuthenticationModel",
+        "required": ["Password", "UserName"],
+        "type": "object",
+        "properties": {
+          "UserName": {
+            "minLength": 1,
+            "type": "string",
+            "description": "User identifier username"
+          },
+          "Password": {
+            "minLength": 1,
+            "type": "string",
+            "description": "User password"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillingApplicationDetailDto": {
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BillingApplicationDto"
+          }
+        ],
+        "properties": {
+          "LatestSnapshot": {
+            "$ref": "#/components/schemas/BillingLatestSnapshotSummaryDto"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Detail view of a single application, enriched with latest snapshot summary."
+      },
+      "BillingApplicationDto": {
+        "type": "object",
+        "properties": {
+          "ServerHost": {
+            "type": "string",
+            "nullable": true
+          },
+          "ApplicationId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ApplicationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "XeroContactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "XeroContactId": {
+            "type": "string",
+            "nullable": true
+          },
+          "Active": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "IsDeleted": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "LastSyncedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "LastSyncStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "LastSyncError": {
+            "type": "string",
+            "nullable": true
+          },
+          "PricingCurrency": {
+            "type": "string",
+            "nullable": true
+          },
+          "PricingUnitAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "PricingAccountCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "PricingTaxType": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingDescriptionTemplate": {
+            "type": "string",
+            "nullable": true
+          },
+          "Timezone": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryManual": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "CurrencyManual": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "BillingCustomerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingContactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingContactEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingContactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "IsBillable": {
+            "type": "boolean",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Lightweight projection of `TrackSynqApplication` for list views."
+      },
+      "BillingLatestSnapshotSummaryDto": {
+        "type": "object",
+        "properties": {
+          "BillingMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "ActiveCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "SnapshotTakenAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "RunId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillingPricingSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "Currency": {
+            "type": "string",
+            "nullable": true
+          },
+          "UnitAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "AccountCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "TaxType": {
+            "type": "string",
+            "nullable": true
+          },
+          "DescriptionTemplate": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillingRunDto": {
+        "type": "object",
+        "properties": {
+          "BillingMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "RunId": {
+            "type": "string",
+            "nullable": true
+          },
+          "Status": {
+            "type": "string",
+            "nullable": true
+          },
+          "TriggeredBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "StartedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "FinishedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "ApplicationsTotal": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ApplicationsSucceeded": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ApplicationsFailed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "InvoiceGenerator": {
+            "type": "string",
+            "nullable": true
+          },
+          "Notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillingServerDto": {
+        "type": "object",
+        "properties": {
+          "ServerHost": {
+            "type": "string",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "nullable": true
+          },
+          "BackendType": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingSnapshotsEnabled": {
+            "type": "boolean",
+            "description": "The `billing_snapshots_enabled` flag. null/true = billing-enabled; false = excluded from sync + billing.",
+            "nullable": true
+          },
+          "CountryCode": {
+            "type": "string",
+            "description": "Operator-assigned country for this server (ISO 3166-1 alpha-2 + name). Applied to the server's applications.",
+            "nullable": true
+          },
+          "CountryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "IsBillable": {
+            "type": "boolean",
+            "description": "Computed: true when the server participates in billing (flag is not explicitly false).",
+            "readOnly": true
+          },
+          "ApplicationCount": {
+            "type": "integer",
+            "description": "Total applications synced under this server.",
+            "format": "int32"
+          },
+          "BillableApplicationCount": {
+            "type": "integer",
+            "description": "Applications under this server that would actually be invoiced (Xero contact set AND active).",
+            "format": "int32"
+          },
+          "Countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Distinct ISO 3166-1 alpha-2 country codes across this server's applications (for grouping/filtering). Usually one.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Server-level projection for the dashboard's top-level navigation (servers → applications →\r\nvehicles / snapshots). Only safe metadata is exposed — connection strings / API credentials\r\nfrom the servers table are deliberately omitted."
+      },
+      "BillingSnapshotDetailDto": {
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BillingSnapshotDto"
+          }
+        ],
+        "properties": {
+          "VehicleIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "VehiclePlates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "VehicleOtherApplications": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32"
+              }
+            },
+            "description": "Parallel to VehicleIds - for the vehicle at the same index, the other billable\r\napplication ids on this server that also billed it this month (GpsGate reseller/dealer\r\nhierarchies can expose the same vehicle through more than one application; each is\r\nbilled independently, this is for audit/reconciliation visibility). Empty = no overlap.",
+            "nullable": true
+          },
+          "PricingSnapshot": {
+            "$ref": "#/components/schemas/BillingPricingSnapshotDto"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Detail view of a snapshot — adds the vehicle id/plate lists + pricing snapshot."
+      },
+      "BillingSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "BillingMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "ServerHost": {
+            "type": "string",
+            "nullable": true
+          },
+          "ApplicationId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "SnapshotId": {
+            "type": "string",
+            "nullable": true
+          },
+          "RunId": {
+            "type": "string",
+            "nullable": true
+          },
+          "ActiveCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "SnapshotTakenAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "SourceOfTruth": {
+            "type": "string",
+            "nullable": true
+          },
+          "XeroContactId": {
+            "type": "string",
+            "nullable": true
+          },
+          "InvoiceGenerator": {
+            "type": "string",
+            "nullable": true
+          },
+          "InvoiceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "InvoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "InvoiceStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "InvoiceError": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillingVehicleDto": {
+        "type": "object",
+        "properties": {
+          "ServerHostApplication": {
+            "type": "string",
+            "nullable": true
+          },
+          "VehicleId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "VehicleIdentifier": {
+            "type": "string",
+            "nullable": true
+          },
+          "PlateNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "Description": {
+            "type": "string",
+            "nullable": true
+          },
+          "Status": {
+            "type": "string",
+            "nullable": true
+          },
+          "FirstSeenAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "LastSeenAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "RemovedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "DeviceCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeviceDto": {
+        "title": "Device",
+        "type": "object",
+        "properties": {
+          "DeviceId": {
+            "type": "integer",
+            "description": "Device unique identifier.",
+            "format": "int32"
+          },
+          "IMEI": {
+            "type": "string",
+            "description": "Device IMEI and is unique.",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "description": "Device name.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DriverDevicePostDto": {
+        "title": "Driver Mobile Device",
+        "type": "object",
+        "properties": {
+          "IMEI": {
+            "type": "string",
+            "description": "Device IMEI and is unique.",
+            "nullable": true
+          },
+          "DeviceType": {
+            "type": "string",
+            "description": "Device type e.g Android, QI Generic. Check with API provider for this info.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DriverDto": {
+        "title": "Driver",
+        "type": "object",
+        "properties": {
+          "DriverId": {
+            "type": "integer",
+            "description": "Driver unique Id.",
+            "format": "int32"
+          },
+          "DriverIdentifier": {
+            "type": "string",
+            "description": "Driver identifier, e.g DriverID tag, RFID etc.",
+            "nullable": true
+          },
+          "Description": {
+            "type": "string",
+            "description": "Description about the driver.",
+            "nullable": true
+          },
+          "Email": {
+            "type": "string",
+            "description": "Driver email address.",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "description": "Given name.",
+            "nullable": true
+          },
+          "Surname": {
+            "type": "string",
+            "description": "Surname.",
+            "nullable": true
+          },
+          "UserName": {
+            "type": "string",
+            "description": "Unique username.",
+            "nullable": true
+          },
+          "PhoneNumber": {
+            "type": "string",
+            "description": "Phone number including the country code, eg. 658647894.",
+            "nullable": true
+          },
+          "LastUpdated": {
+            "type": "string",
+            "description": "Last updated status time in UTC and ISO-8601 format.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "Vehicle": {
+            "$ref": "#/components/schemas/DriverVehicleDto"
+          },
+          "Devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceDto"
+            },
+            "description": "Driver mobile tracker devices info.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DriverPostDto": {
+        "title": "Driver",
+        "type": "object",
+        "properties": {
+          "DriverId": {
+            "type": "string",
+            "description": "Driver identifier, e.g DriverID tag, RFID etc.",
+            "nullable": true
+          },
+          "Description": {
+            "type": "string",
+            "description": "Description about the driver.",
+            "nullable": true
+          },
+          "Email": {
+            "type": "string",
+            "description": "Driver email address.",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "description": "Given name.",
+            "nullable": true
+          },
+          "Surname": {
+            "type": "string",
+            "description": "Surname.",
+            "nullable": true
+          },
+          "UserName": {
+            "type": "string",
+            "description": "Unique username.",
+            "nullable": true
+          },
+          "PhoneNumber": {
+            "type": "string",
+            "description": "Phone number including the country code, eg. 658647894.",
+            "nullable": true
+          },
+          "Device": {
+            "$ref": "#/components/schemas/DriverDevicePostDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DriverVehicleDto": {
+        "title": "DriverVehicle",
+        "type": "object",
+        "properties": {
+          "UserId": {
+            "type": "integer",
+            "description": "User identifier.",
+            "format": "int32"
+          },
+          "VehicleIdentifier": {
+            "type": "string",
+            "description": "Vehicle identifier.",
+            "nullable": true
+          },
+          "PlateNumber": {
+            "type": "string",
+            "description": "Plate number, e.g SGP 5327 U.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ErrorResponse": {
+        "title": "ErrorResponse",
+        "type": "object",
+        "properties": {
+          "Message": {
+            "type": "string",
+            "description": "A human-readable explanation for the API error",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Custom application wise API error response."
+      },
+      "EventDto": {
+        "title": "Event",
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "integer",
+            "description": "Event identifier id.",
+            "format": "int32"
+          },
+          "UserId": {
+            "type": "integer",
+            "description": "Event generated by asset user identifier.",
+            "format": "int32"
+          },
+          "Name": {
+            "type": "string",
+            "description": "Event name, e.g OVER_SPEEDING, IDLING etc.",
+            "nullable": true
+          },
+          "StartTime": {
+            "type": "string",
+            "description": "Event start time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          },
+          "EndTime": {
+            "type": "string",
+            "description": "Event end time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          },
+          "StartPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Event start position info.",
+            "nullable": true
+          },
+          "EndPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Event end position info.",
+            "nullable": true
+          },
+          "OnGoing": {
+            "type": "boolean",
+            "description": "Event ongoing status e.g true/false."
+          },
+          "Arguments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArgumentDto"
+            },
+            "description": "Event arguments data.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EventRuleDto": {
+        "title": "EventRule",
+        "type": "object",
+        "properties": {
+          "RuleId": {
+            "type": "integer",
+            "description": "Rule identifier id.",
+            "format": "int32"
+          },
+          "Description": {
+            "type": "string",
+            "description": "Rule description.",
+            "nullable": true
+          },
+          "Disabled": {
+            "type": "boolean",
+            "description": "Rule disabled/enabled status, e.g. true/false"
+          },
+          "Name": {
+            "type": "string",
+            "description": "Rule name, e.g OVER_SPEEDING, IDLING etc.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EventSummaryDto": {
+        "title": "EventSummary",
+        "type": "object",
+        "properties": {
+          "UserId": {
+            "type": "integer",
+            "description": "Event summary user identifier id.",
+            "format": "int32"
+          },
+          "IMEI": {
+            "type": "string",
+            "description": "Vehicle unique IMEI/DeviceId.",
+            "nullable": true
+          },
+          "TotalCount": {
+            "type": "integer",
+            "description": "Total events count.",
+            "format": "int32"
+          },
+          "TotalDurationSeconds": {
+            "type": "number",
+            "description": "Total events duration in seconds.",
+            "format": "double"
+          },
+          "TotalOpenEvents": {
+            "type": "integer",
+            "description": "Total open events count.",
+            "format": "int32"
+          },
+          "TotalClosedEvents": {
+            "type": "integer",
+            "description": "Total closed events count.",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PositionAddress": {
+        "title": "PositionAddress",
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PositionDto"
+          }
+        ],
+        "properties": {
+          "Address": {
+            "type": "string",
+            "description": "Position address, geocoded address.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PositionDto": {
+        "title": "Position",
+        "type": "object",
+        "properties": {
+          "Latitude": {
+            "type": "number",
+            "description": "Position coordinates latitude.",
+            "format": "double"
+          },
+          "Longitude": {
+            "type": "number",
+            "description": "Position coordinates longitude.",
+            "format": "double"
+          },
+          "Altitude": {
+            "type": "number",
+            "description": "Positon coordinates altitude.",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ServerDeviceVariableDto": {
+        "title": "ServerDeviceVariable",
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string",
+            "description": "Device variable name e.g Speed, FuelPercentage, HDOP, Mileage.",
+            "nullable": true
+          },
+          "MappedVariableName": {
+            "type": "string",
+            "description": "Device variable mapped names e.g Mileage is mapped to _Odometer, Mileage.",
+            "nullable": true,
+            "readOnly": true
+          },
+          "Description": {
+            "type": "string",
+            "description": "Variable description.",
+            "nullable": true
+          },
+          "VariableType": {
+            "type": "string",
+            "description": "Variable type e.g System.Double .",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ServerDeviceVariableValueDto": {
+        "title": "ServerDeviceVariableValue",
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string",
+            "description": "Variable name, e.g Speed, FuelLevel etc.",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "description": "Variable data type, e.g System.String.",
+            "nullable": true
+          },
+          "Value": {
+            "type": "string",
+            "description": "Variable value respresented as string, refer to Type property to convert the value.",
+            "nullable": true
+          },
+          "ReceivedOn": {
+            "type": "string",
+            "description": "Variable data last received at server in UTC and in ISO-8601 format.",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TokenResponseDto": {
+        "title": "TokenResponse",
+        "type": "object",
+        "properties": {
+          "DataAccessToken": {
+            "type": "string",
+            "description": "Data access token.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TrackInfoDto": {
+        "title": "TrackInfo",
+        "type": "object",
+        "properties": {
+          "TrackDate": {
+            "type": "string",
+            "description": "Track date in ISO-8601 format.",
+            "format": "date-time"
+          },
+          "StartDateTime": {
+            "type": "string",
+            "description": "Track start date & time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          },
+          "EndDateTime": {
+            "type": "string",
+            "description": "Track end date & time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          },
+          "Description": {
+            "type": "string",
+            "description": "Description.",
+            "nullable": true
+          },
+          "EndPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Track start position info.",
+            "nullable": true
+          },
+          "StartPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Track end position info.",
+            "nullable": true
+          },
+          "TotalTrackPoints": {
+            "type": "integer",
+            "description": "Total track points count.",
+            "format": "int32"
+          },
+          "TrackInfoId": {
+            "type": "integer",
+            "description": "Track info identifier id.",
+            "format": "int32"
+          },
+          "TotalDistance": {
+            "type": "number",
+            "description": "Track total distance in (m).",
+            "format": "double"
+          },
+          "TrackUpdatedOn": {
+            "type": "string",
+            "description": "Track last updated date & time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TrackPointDto": {
+        "title": "TrackPoint",
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string",
+            "description": "User full name.",
+            "nullable": true
+          },
+          "Latitude": {
+            "type": "number",
+            "description": "Position coordinate latitude.",
+            "format": "double"
+          },
+          "Longitude": {
+            "type": "number",
+            "description": "Position coordinate longitude.",
+            "format": "double"
+          },
+          "Altitude": {
+            "type": "number",
+            "description": "Position coordinate altitude.",
+            "format": "double"
+          },
+          "UtcTime": {
+            "type": "string",
+            "description": "Track point date & time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          },
+          "Speed": {
+            "type": "number",
+            "description": "Ground speed in m/s.",
+            "format": "double"
+          },
+          "Heading": {
+            "type": "number",
+            "description": "Direction heading.",
+            "format": "double"
+          },
+          "Variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerDeviceVariableValueDto"
+            },
+            "description": "Device variables data.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TriggerBillingRunRequest": {
+        "type": "object",
+        "properties": {
+          "Month": {
+            "type": "string",
+            "description": "\"YYYY-MM\" or \"previous\" (default if omitted).",
+            "nullable": true
+          },
+          "ApplicationId": {
+            "type": "integer",
+            "description": "Optional — scope the run to one application. Must be supplied together with QI.TrackSynq.API.Controllers.v4.TriggerBillingRunRequest.ServerHost.",
+            "format": "int32",
+            "nullable": true
+          },
+          "ServerHost": {
+            "type": "string",
+            "description": "Optional — scope the run to one application. Must be supplied together with QI.TrackSynq.API.Controllers.v4.TriggerBillingRunRequest.ApplicationId.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Request body for `POST /admin/v4/billing/run`."
+      },
+      "TripInfoDto": {
+        "title": "TripInfo",
+        "type": "object",
+        "properties": {
+          "TripDate": {
+            "type": "string",
+            "description": "Trip date in ISO-8601 format.",
+            "format": "date-time"
+          },
+          "StartDateTime": {
+            "type": "string",
+            "description": "Trip start date & time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          },
+          "EndDateTime": {
+            "type": "string",
+            "description": "Trip end date & time in UTC and ISO-8601 format.",
+            "format": "date-time"
+          },
+          "EndPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Trip end position info.",
+            "nullable": true
+          },
+          "StartPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Trip start positio info.",
+            "nullable": true
+          },
+          "TrackInfoId": {
+            "type": "integer",
+            "description": "Trip info identifier id.",
+            "format": "int32"
+          },
+          "TotalDistance": {
+            "type": "number",
+            "description": "Trip total distance in (m).",
+            "format": "double"
+          },
+          "IsIdle": {
+            "type": "boolean",
+            "description": "Trip idle status e.g true/false ."
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateBillingApplicationRequest": {
+        "type": "object",
+        "properties": {
+          "XeroContactId": {
+            "type": "string",
+            "nullable": true
+          },
+          "XeroContactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "Active": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "PricingCurrency": {
+            "type": "string",
+            "nullable": true
+          },
+          "PricingUnitAmount": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "PricingAccountCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "PricingTaxType": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingDescriptionTemplate": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryCode": {
+            "type": "string",
+            "description": "Manual country override. Setting QI.TrackSynq.API.Models.Dtos.Billing.UpdateBillingApplicationRequest.CountryCode (ISO 3166-1 alpha-2) marks the\r\napplication's country as manually maintained — the sync stops re-deriving it from the\r\ntimezone. QI.TrackSynq.API.Models.Dtos.Billing.UpdateBillingApplicationRequest.CountryName is optional; if omitted it's derived from the code.",
+            "nullable": true
+          },
+          "CountryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingCustomerName": {
+            "type": "string",
+            "description": "Billing-specific customer details (independent of the Xero mapping). Null fields are left unchanged.",
+            "nullable": true
+          },
+          "BillingContactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingContactEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingContactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "BillingAddress": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "PUT body for `/admin/v4/billing/applications/{serverHost}/{applicationId}`. Every\r\nproperty is nullable — null fields don't overwrite the existing value on the row. Allows\r\nthe portal to send sparse partial updates (e.g. \"just the unit amount\")."
+      },
+      "UserEventsDto": {
+        "title": "UserEvents",
+        "type": "object",
+        "properties": {
+          "UserId": {
+            "type": "integer",
+            "description": "User identifier id.",
+            "format": "int32"
+          },
+          "IMEI": {
+            "type": "string",
+            "description": "User/Vehicle assigned IMEI/Device id.",
+            "nullable": true
+          },
+          "Events": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EventDto"
+              },
+              "nullable": true
+            },
+            "description": "User events, in key/pair format where in key is the event name and pair is the events info.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UserInfoDto": {
+        "title": "UserInfo",
+        "type": "object",
+        "properties": {
+          "UserId": {
+            "type": "integer",
+            "description": "User identifier id.",
+            "format": "int32"
+          },
+          "UserIdentifier": {
+            "type": "string",
+            "description": "User unique identifier.",
+            "nullable": true
+          },
+          "Description": {
+            "type": "string",
+            "description": "User description.",
+            "nullable": true
+          },
+          "Email": {
+            "type": "string",
+            "description": "User email address.",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "description": "User given name.",
+            "nullable": true
+          },
+          "Surname": {
+            "type": "string",
+            "description": "User surname.",
+            "nullable": true
+          },
+          "UserName": {
+            "type": "string",
+            "description": "User identifier username.",
+            "nullable": true
+          },
+          "PhoneNumber": {
+            "type": "string",
+            "description": "User phonenumber including country code e.g 6584698226 .",
+            "nullable": true
+          },
+          "UserType": {
+            "type": "string",
+            "description": "User type e.g Supervisor, Area Manager etc.",
+            "nullable": true
+          },
+          "UserRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array or user roles.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UserTagDto": {
+        "title": "UserTag",
+        "type": "object",
+        "properties": {
+          "TagId": {
+            "type": "integer",
+            "description": "Tag identifier id.",
+            "format": "int32"
+          },
+          "Name": {
+            "type": "string",
+            "description": "Tag name.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "VehicleCountByApplicationDto": {
+        "type": "object",
+        "properties": {
+          "ServerHost": {
+            "type": "string",
+            "nullable": true
+          },
+          "ApplicationId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ApplicationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "VehicleCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Billable vehicle count for one application for a given month. Duplication across\r\napplications is intentional here (a vehicle visible through more than one application on a\r\nserver bills independently under each) - see QI.TrackSynq.API.Models.Dtos.Billing.VehicleCountByServerDto and\r\nQI.TrackSynq.API.Models.Dtos.Billing.VehicleCountByCountryDto for the deduplicated rollups."
+      },
+      "VehicleCountByCountryDto": {
+        "type": "object",
+        "properties": {
+          "CountryCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "VehicleCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Distinct billable vehicle count for one country for a given month, summed across every\r\nserver/application in that country. Deduplicated the same way as\r\nQI.TrackSynq.API.Models.Dtos.Billing.VehicleCountByServerDto - never double-counts a vehicle visible through more\r\nthan one application. CountryCode is null for applications with no resolved country."
+      },
+      "VehicleCountByServerDto": {
+        "type": "object",
+        "properties": {
+          "ServerHost": {
+            "type": "string",
+            "nullable": true
+          },
+          "ServerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "VehicleCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Distinct billable vehicle count for one server for a given month. Deduplicated by vehicle id\r\nacross every application on that server - a vehicle counted under two applications on the\r\nsame server (GpsGate reseller/dealer hierarchies can expose it through more than one) counts\r\nonce here, unlike QI.TrackSynq.API.Models.Dtos.Billing.VehicleCountByApplicationDto."
+      },
+      "VehicleDto": {
+        "title": "Vehicle",
+        "type": "object",
+        "properties": {
+          "VehicleId": {
+            "type": "integer",
+            "description": "Vehicle identifier id.",
+            "format": "int32"
+          },
+          "DriverIdentifier": {
+            "type": "string",
+            "description": "Paired driver id, it will the Driver ID tag/RFID.",
+            "nullable": true
+          },
+          "VehicleIdentifier": {
+            "type": "string",
+            "description": "Vehicle unique identifier.",
+            "nullable": true
+          },
+          "PlateNumber": {
+            "type": "string",
+            "description": "Vehicle plate number.",
+            "nullable": true
+          },
+          "DeviceActivity": {
+            "type": "string",
+            "description": "Vehicle device last activity date & time in UTC and ISO-8601 format.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "LastPosition": {
+            "title": "Position",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              },
+              {
+                "$ref": "#/components/schemas/PositionAddress"
+              }
+            ],
+            "description": "Vehicle last position info.",
+            "nullable": true
+          },
+          "Devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceDto"
+            },
+            "description": "Vehicle installed devices info.",
+            "nullable": true
+          },
+          "Speed": {
+            "type": "number",
+            "description": "Vehicle speed in m/s.",
+            "format": "double"
+          },
+          "Direction": {
+            "type": "number",
+            "description": "Vehicle direction.",
+            "format": "double"
+          },
+          "DeviceVariables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerDeviceVariableValueDto"
+            },
+            "description": "List of the device variable data.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "x-api-key": {
+        "type": "apiKey",
+        "description": "API key for authorization",
+        "name": "x-api-key",
+        "in": "header"
+      }
+    }
+  },
+  "security": [
+    {
+      "x-api-key": []
+    }
+  ]
+}

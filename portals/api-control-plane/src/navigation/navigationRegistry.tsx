@@ -31,15 +31,13 @@ import {
   GitBranch,
   Home,
   Layers,
-  MessagesSquare,
   Network,
   Rocket,
   Route,
   ScrollText,
   Settings,
   ShieldCheck,
-  SquareTerminal,
-  Terminal,
+  FlaskConical,
 } from '@wso2/oxygen-ui-icons-react';
 
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
@@ -76,7 +74,7 @@ const toRouteRegex = (pattern: string): RegExp =>
   new RegExp(
     `^${pattern
       .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+')}$`
+      .replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+')}$`,
   );
 
 /**
@@ -115,11 +113,7 @@ const apiLevelTo =
   (build: ApiPathBuilder): NavigationDefinition['to'] =>
   ({ params }) =>
     params.orgHandle
-      ? build(
-          params.orgHandle,
-          params.projectHandler ?? null,
-          params.apiHandler ?? null
-        )
+      ? build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null)
       : undefined;
 
 /** One entry in a submenu: its own id, label, icon and page. */
@@ -163,7 +157,7 @@ const subItem = ({ icon, id, label, to }: SubItem): NavigationDefinition => ({
  *   scope resolves. Oxygen leaves an expanded parent unhighlighted by design.
  */
 const submenu = (
-  items: SubItem[]
+  items: SubItem[],
 ): Pick<NavigationDefinition, 'children' | 'match' | 'requires' | 'to'> => ({
   children: items.map(subItem),
   match: matchRoutes(...items.flatMap((item) => apiScopeSelectPaths(item.to))),
@@ -216,29 +210,20 @@ const tierPattern = ({ level, to }: ScopeTier): string => {
  * { id: 'overview', ...adaptive([{ level: 'api', to: routes.api }, ...]) }
  * ```
  */
-const adaptive = (
-  tiers: ScopeTier[]
-): Pick<NavigationDefinition, 'match' | 'to'> => {
+const adaptive = (tiers: ScopeTier[]): Pick<NavigationDefinition, 'match' | 'to'> => {
   const deepestFirst = [...tiers].sort(
-    (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level]
+    (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level],
   );
 
   return {
     match: matchRoutes(...tiers.map(tierPattern)),
     to: ({ params }) => {
       if (!params.orgHandle) return undefined;
-      const tier = deepestFirst.find((candidate) =>
-        isLevelInScope(candidate.level, params)
-      );
-      return tier?.to(
-        params.orgHandle,
-        params.projectHandler,
-        params.apiHandler
-      );
+      const tier = deepestFirst.find((candidate) => isLevelInScope(candidate.level, params));
+      return tier?.to(params.orgHandle, params.projectHandler, params.apiHandler);
     },
   };
 };
-
 
 /**
  * Capability gating for an API-level item, applied only once an API is actually
@@ -253,7 +238,7 @@ const adaptive = (
  */
 const apiCapability =
   (
-    isSupported: (capabilities: ApiCapabilities) => boolean
+    isSupported: (capabilities: ApiCapabilities) => boolean,
   ): NonNullable<NavigationDefinition['isVisible']> =>
   ({ capabilities, isApiScope }) =>
     !isApiScope || isSupported(capabilities);
@@ -327,28 +312,12 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Test',
     group: CLUSTER.api,
     order: 40,
-    icon: <Terminal />,
+    icon: <FlaskConical />,
     isVisible: apiCapability(({ canTest }) => canTest),
-    ...submenu([
-      {
-        icon: <SquareTerminal />,
-        id: 'test-console',
-        label: 'API Console',
-        to: routes.apiTestConsole,
-      },
-      {
-        icon: <Terminal />,
-        id: 'test-curl',
-        label: 'Curl',
-        to: routes.apiTestCurl,
-      },
-      {
-        icon: <MessagesSquare />,
-        id: 'test-chat',
-        label: 'API Chat',
-        to: routes.apiTestChat,
-      },
-    ]),
+    // A leaf, not a parent: the console, the cURL builder and the response all
+    // live on one page, so there is nothing to disclose beneath it.
+    to: apiLevelTo(routes.apiTest),
+    match: matchRoutes(...apiScopedPaths(routes.apiTest)),
   },
   {
     id: 'deploy',
