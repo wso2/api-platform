@@ -95,9 +95,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-reports
-          path: |
-            tests/framework/suites/it/coverage-out/**/*.html
-            tests/framework/suites/it/coverage-out/**/*.txt
+          # The whole report tree: splitting by extension dropped the LCOV files Codecov
+          # actually consumes and the CSS/JS/images the HTML reports need to render. The
+          # raw per-run inputs live under a dot-prefixed .run-* directory, which
+          # upload-artifact excludes while include-hidden-files stays unset.
+          path: tests/framework/suites/it/coverage-out/**
           if-no-files-found: warn
 
       - name: Upload container log captures

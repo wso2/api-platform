@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/netip"
 	"path/filepath"
@@ -94,6 +95,11 @@ type Options struct {
 	// container lifetime, tagged with the component's name. Nil in a default run — the
 	// suite decides whether container output is being collected at all.
 	LogWriter *logcapture.Writer
+
+	// SharedLogs, when non-nil, is the run-scoped sink LaunchShared writes a shared
+	// component's output to. A shared component outlives every block, so LogWriter — which
+	// belongs to one block — is the wrong destination for it.
+	SharedLogs *logcapture.Sink
 }
 
 // Container is a started component: its Instance for addressing, plus the handle needed
@@ -469,6 +475,7 @@ var (
 	sharedMu   sync.Mutex
 	sharedHome *Network
 	sharedRun  = map[string]*Container{}
+	sharedLogs = map[string]*logcapture.Writer{}
 )
 
 // homeNetwork returns the network used to start shared components.
@@ -506,6 +513,10 @@ func LaunchShared(
 
 	opts.Network = home
 	opts.StableHostPorts = true
+	// The caller's LogWriter belongs to whichever block happened to start this component
+	// first, and is closed when that block ends - leaving the rest of the run's output
+	// unrecorded. Write to the run-scoped sink instead, for the container's whole life.
+	opts.LogWriter = sharedLogWriter(def.Name, opts.SharedLogs)
 	c, err := Launch(ctx, def, opts)
 	if err != nil {
 		return c, err
@@ -513,6 +524,45 @@ func LaunchShared(
 
 	sharedRun[def.Name] = c
 	return c, nil
+}
+
+// sharedLogWriter returns the run-scoped writer for a shared component, opening it on first
+// use. Callers hold sharedMu. A sink that cannot produce a file leaves the component
+// uncaptured rather than failing the run: log capture is a diagnostic, not a prerequisite.
+func sharedLogWriter(name string, sink *logcapture.Sink) *logcapture.Writer {
+	if sink == nil {
+		return nil
+	}
+	if w, ok := sharedLogs[name]; ok {
+		return w
+	}
+	path, err := sink.SharedFileFor(name)
+	if err != nil {
+		slog.Warn("log capture disabled for shared component", "component", name, "error", err)
+		return nil
+	}
+	w, err := logcapture.NewWriter(path)
+	if err != nil {
+		slog.Warn("log capture disabled for shared component", "component", name, "error", err)
+		return nil
+	}
+	sharedLogs[name] = w
+	return w
+}
+
+// CloseSharedLogs flushes and closes every shared component's log writer. Shared containers
+// outlive all blocks and are reaped at process exit, so nothing else closes these files -
+// the suite calls this once the run is over.
+func CloseSharedLogs() {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	for name, w := range sharedLogs {
+		w.Close()
+		if dropped := w.Dropped(); dropped > 0 {
+			slog.Warn("log capture dropped lines", "component", name, "dropped", dropped)
+		}
+		delete(sharedLogs, name)
+	}
 }
 
 // AttachTo connects a shared container to a block network under its alias.

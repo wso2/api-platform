@@ -77,7 +77,11 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	// Shared components outlive every block and are reaped at process exit, so nothing
+	// else flushes their log files.
+	frameworkruntime.CloseSharedLogs()
+	os.Exit(code)
 }
 
 // suiteShape returns the resolved block count and largest runner concurrency.

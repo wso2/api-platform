@@ -164,7 +164,7 @@ func runBlock(
 	}
 
 	start := time.Now()
-	topo, err := BootBlock(bootCtx, block, deps.RepoRoot, logWriter)
+	topo, err := BootBlock(bootCtx, block, deps.RepoRoot, logWriter, deps.Logs)
 	if err != nil {
 		t.Fatalf("block %q failed to boot after %s: %v",
 			block.Name, time.Since(start).Round(time.Millisecond), err)

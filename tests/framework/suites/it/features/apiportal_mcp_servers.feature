@@ -102,7 +102,7 @@ Feature: API Portal MCP server management
     Then the response status code should be 201
     When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher" until status 404
     Then the response status code should be 404
 
   Scenario: A publisher lists MCP servers

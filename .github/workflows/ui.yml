@@ -128,9 +128,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-coverage-reports
-          path: |
-            tests/framework/suites/ui/coverage-out/**/*.html
-            tests/framework/suites/ui/coverage-out/**/*.txt
+          # The whole report tree: splitting by extension dropped the LCOV files Codecov
+          # actually consumes and the CSS/JS/images the HTML reports need to render. The
+          # raw per-run inputs live under a dot-prefixed .run-* directory, which
+          # upload-artifact excludes while include-hidden-files stays unset.
+          path: tests/framework/suites/ui/coverage-out/**
           if-no-files-found: warn
 
       - name: Upload UI container log captures
@@ -203,7 +205,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           disable_search: true
           files: tests/framework/suites/ui/coverage-out/ai-workspace/ui/lcov.info
-          handle_no_reports_found: true
           flags: ai-workspace-ui-integration
 
       - name: Upload API Portal server integration coverage to Codecov
@@ -224,7 +225,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           disable_search: true
           files: tests/framework/suites/ui/coverage-out/api-portal/ui/lcov.info
-          handle_no_reports_found: true
           flags: api-portal-ui-integration
 
       - name: Upload gateway-controller integration coverage to Codecov

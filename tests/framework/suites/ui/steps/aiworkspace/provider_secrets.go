@@ -104,6 +104,22 @@ func (t *callTracker) secretCount() int {
 	return len(t.secrets)
 }
 
+// lastSecretCall returns the most recent POST to /secrets, if one was observed.
+func (t *callTracker) lastSecretCall() (recordedCall, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.secrets) == 0 {
+		return recordedCall{}, false
+	}
+	return t.secrets[len(t.secrets)-1], true
+}
+
+// awaitSecretCall waits for the secret-creating POST behind a settled page state.
+func (t *callTracker) awaitSecretCall(ctx context.Context) (recordedCall, error) {
+	return awaitCall(ctx, "POST request to /secrets",
+		func() (recordedCall, bool) { return t.lastSecretCall() })
+}
+
 // lastSecretHandle returns the id of the most recently created secret, if any.
 func (t *callTracker) lastSecretHandle() (string, bool) {
 	t.mu.Lock()

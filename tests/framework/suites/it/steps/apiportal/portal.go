@@ -174,6 +174,8 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 	sc.Step(`^I reset API Portal webhook events$`, s.resetWebhookEvents)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)"$`,
 		s.sendAuthenticated)
+	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until status (\d+)$`,
+		s.sendAuthenticatedUntilStatus)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" with header "([^"]*)" set to "([^"]*)"$`,
 		s.sendAuthenticatedWithHeader)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" with JSON body:$`,
@@ -1285,6 +1287,34 @@ func mergeCookieHeader(existing string, setCookies []string) string {
 
 func (s *Steps) sendAuthenticated(ctx context.Context, method, path, role string) error {
 	return s.sendPortal(ctx, method, path, role, nil)
+}
+
+// sendAuthenticatedUntilStatus repeats a request until it answers with want, publishing the
+// matching response for the assertions that follow. A read issued immediately after a write
+// can observe the pre-write state, so a single-shot assertion on the settled status is a
+// race; the wanted status is still required, only waited for.
+func (s *Steps) sendAuthenticatedUntilStatus(ctx context.Context, method, path, role string, want int) error {
+	var last int
+	result, err := retry.Until(ctx, retry.Options{Interval: time.Second},
+		func(ctx context.Context) (bool, error) {
+			if err := s.sendPortal(ctx, method, path, role, nil); err != nil {
+				return false, retry.Transient(err)
+			}
+			response, err := httpx.Published(ctx)
+			if err != nil {
+				return false, err
+			}
+			last = response.StatusCode
+			return last == want, nil
+		}, func(matched bool) bool { return matched })
+	if err != nil {
+		return fmt.Errorf("waiting for API Portal %s %s to answer %d (last %d): %w",
+			method, path, want, last, err)
+	}
+	if !result {
+		return fmt.Errorf("API Portal %s %s never answered %d (last %d)", method, path, want, last)
+	}
+	return nil
 }
 
 func (s *Steps) sendAuthenticatedWithHeader(ctx context.Context, method, path, role, name, value string) error {
