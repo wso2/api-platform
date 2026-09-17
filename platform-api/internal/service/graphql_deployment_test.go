@@ -27,7 +27,22 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
+
+// mockGraphQLArtifactRepo resolves any UUID/org pair to a GraphQLApi-kind
+// artifact row — the only lookup BuildService.resolve does before handing off
+// to graphqlAPIDefinition.Current, which performs the real, kind-specific
+// lookup via the GraphQL repo itself. Every other method panics if invoked,
+// via the embedded (nil) interface — mirrors gqlKeyArtifactRepo's approach in
+// graphql_apikey_test.go.
+type mockGraphQLArtifactRepo struct {
+	repository.ArtifactRepository
+}
+
+func (m *mockGraphQLArtifactRepo) GetByUUID(uuid, orgUUID string) (*model.Artifact, error) {
+	return &model.Artifact{UUID: uuid, OrganizationUUID: orgUUID, Type: constants.GraphQLApi}, nil
+}
 
 // newGraphQLDeploymentTestService wires a GraphQLAPIDeploymentService for
 // tests, reusing the shared mockDeploymentRepo (deployment_test.go) and
@@ -42,7 +57,9 @@ func newGraphQLDeploymentTestService(repo *mockGraphQLAPIRepo, deploymentRepo *m
 		gatewayRepo,
 		&mockOrganizationRepo{},
 		nil,
+		&mockGraphQLArtifactRepo{},
 		nil,
+		NewArtifactDefinitions(NewGraphQLAPIDefinition(repo)),
 		&config.Server{Deployments: config.Deployments{MaxPerAPIGateway: 20}},
 		newTestLogger(),
 	)
@@ -73,6 +90,7 @@ func TestGraphQLDeployAPI_Current_Success(t *testing.T) {
 	}
 	repo := &mockGraphQLAPIRepo{
 		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
+		getByUUIDFunc:   func(uuid, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
 	}
 	gateway := graphQLDeploymentTestGateway()
 	gatewayRepo := &mockGatewayRepository{getByNameResult: gateway, getByUUIDResult: gateway}
@@ -127,6 +145,7 @@ func TestGraphQLDeployAPI_LegacyGateway_DownConvertsApiVersion(t *testing.T) {
 	}
 	repo := &mockGraphQLAPIRepo{
 		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
+		getByUUIDFunc:   func(uuid, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
 	}
 	// Below gatewaytranslator.MinGatewayV1Version ("1.2.0") — must down-convert.
 	legacyGateway := &model.Gateway{ID: "gw-uuid-1", OrganizationID: "org-1", Handle: "prod-gateway", Name: "Prod Gateway", Version: "1.1.0"}
@@ -299,6 +318,7 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxUpstream(t *testing.T) {
 	}
 	repo := &mockGraphQLAPIRepo{
 		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
+		getByUUIDFunc:   func(uuid, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
 	}
 	gateway := graphQLDeploymentTestGateway()
 	gatewayRepo := &mockGatewayRepository{getByNameResult: gateway, getByUUIDResult: gateway}

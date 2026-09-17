@@ -224,7 +224,7 @@ Feature: GraphQL API Key Management Operations
     And the JSON response field "status" should be "error"
 
   Scenario: List API keys with invalid GraphQL API ID format returns 404
-    When I send a GET request to the "gateway-controller" service at "/graphql-apis/invalid@api#id/api-keys"
+    When I send a GET request to the "gateway-controller" service at "/graphql-apis/invalid@api!id/api-keys"
     Then the response status should be 404
     And the response should be valid JSON
 
