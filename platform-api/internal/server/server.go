@@ -269,6 +269,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
 		service.NewLLMProxyDefinition(llmProxyRepo),
 		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
+		service.NewGraphQLAPIDefinition(graphqlAPIRepo),
 	)
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
@@ -327,7 +328,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayRepo,
 		orgRepo,
 		apiKeyRepo,
+		artifactRepo,
 		gatewayEventsService,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
