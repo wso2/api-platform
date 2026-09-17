@@ -38,10 +38,10 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// restAPITypeValue is REST_Design.md §2's type-agnostic path value for
-// RestApi. The publish/unpublish/deprecate routes are pinned to this one
-// literal per type (§4) — unlike the shared read/draft routes, apiType is not
-// a path variable here.
+// restAPITypeValue is the type-agnostic path value for RestApi. The
+// publish/unpublish/deprecate routes are pinned to this one literal per
+// type — unlike the shared read/draft routes, apiType is not a path
+// variable here.
 const restAPITypeValue = "rest-api"
 
 // defaultPublicationContentMaxBytes/defaultPublicationThumbnailMaxBytes apply
@@ -52,7 +52,7 @@ const (
 	defaultPublicationThumbnailMaxBytes int64 = 2 << 20  // 2 MiB — a small icon, not a spec document
 )
 
-// PublicationHandler serves the API Publication draft endpoints (Slice 1).
+// PublicationHandler serves the API Publication draft endpoints.
 type PublicationHandler struct {
 	service           *service.PublicationService
 	identity          *service.IdentityService
@@ -370,8 +370,8 @@ func (h *PublicationHandler) GetPublicationThumbnail(w http.ResponseWriter, r *h
 }
 
 // ListPublications handles GET /api-publications?apiType=&apiId=&... — the
-// cross-portal rollup (Slice 3, REST_Design.md §5): every active API Portal
-// for the org, annotated with this API's publication status against it.
+// cross-portal rollup: every active API Portal for the org, annotated with
+// this API's publication status against it.
 func (h *PublicationHandler) ListPublications(w http.ResponseWriter, r *http.Request) error {
 	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -399,10 +399,9 @@ func (h *PublicationHandler) ListPublications(w http.ResponseWriter, r *http.Req
 	return nil
 }
 
-// Publish handles POST .../rest-api/{apiId}/publish — REST_Design.md §7
-// "Publishing". Bodyless: the client always saves the draft (PUT) immediately
-// before calling this action, so DRAFT_NOT_FOUND here is a defensive check,
-// not a normal user-facing gate.
+// Publish handles POST .../rest-api/{apiId}/publish. Bodyless: the client
+// always saves the draft (PUT) immediately before calling this action, so
+// DRAFT_NOT_FOUND here is a defensive check, not a normal user-facing gate.
 func (h *PublicationHandler) Publish(w http.ResponseWriter, r *http.Request) error {
 	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -429,8 +428,8 @@ func (h *PublicationHandler) Publish(w http.ResponseWriter, r *http.Request) err
 	return nil
 }
 
-// Unpublish handles POST .../rest-api/{apiId}/unpublish — REST_Design.md §7
-// "Unpublishing". Valid only when currently published or deprecated.
+// Unpublish handles POST .../rest-api/{apiId}/unpublish. Valid only when
+// currently published or deprecated.
 func (h *PublicationHandler) Unpublish(w http.ResponseWriter, r *http.Request) error {
 	orgId, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -453,7 +452,7 @@ func (h *PublicationHandler) Unpublish(w http.ResponseWriter, r *http.Request) e
 
 // writeContent writes a stored definition/landing-page/thumbnail as its raw
 // bytes with its stored Content-Type — matching how the portal itself serves
-// this same content (REST_Design.md §9).
+// this same content.
 func writeContent(w http.ResponseWriter, content *model.PublicationContent) {
 	if content.ContentType != "" {
 		w.Header().Set("Content-Type", content.ContentType)
@@ -619,7 +618,7 @@ func publicationSummariesToResponse(items []*model.PublicationSummary) []api.Pub
 // publicationModelToResponse converts the internal model into the generated
 // live-publication response shape — the same fields as draftModelToResponse
 // plus apiPortalId/apiPortalName/status, which only ever apply to a live
-// listing (REST_Design.md's Publication schema, not PublicationDraftDetails).
+// listing (the Publication schema, not PublicationDraftDetails).
 func publicationModelToResponse(pub *model.Publication) api.Publication {
 	resp := api.Publication{
 		DisplayName:    &pub.DisplayName,

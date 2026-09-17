@@ -212,12 +212,11 @@ const (
 	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
 )
 
-// API Publication domain codes, matching the error table in
-// ~/Downloads/publish-api-design/REST_Design.md §11. CodeAPIPublicationAPINotFound
-// covers an unknown (apiType, apiId) pair or an apiType this build doesn't serve —
-// distinct from CodeArtifactNotFound (used elsewhere in the codebase for the same
-// resolution mechanism) because this feature's own design doc documents API_NOT_FOUND
-// as part of its client-facing contract.
+// API Publication domain codes. CodeAPIPublicationAPINotFound covers an
+// unknown (apiType, apiId) pair or an apiType this build doesn't serve —
+// distinct from CodeArtifactNotFound (used elsewhere in the codebase for the
+// same resolution mechanism) because this feature documents API_NOT_FOUND as
+// part of its own client-facing contract.
 const (
 	CodeAPIPublicationAPINotFound       = "API_NOT_FOUND"
 	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
@@ -225,11 +224,10 @@ const (
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
 	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
 	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
-	// CodeAPIPublicationNotLive covers Slice 6 (Unpublish)'s precondition:
-	// valid only when the API is currently published or deprecated to this
-	// portal. Distinct from CodeAPIPublicationNotFound (404, used by the
-	// live-listing reads) — REST_Design.md §7 calls for a 409 here, since
-	// this is a state-precondition failure on an action, not a missing-
-	// resource read.
+	// CodeAPIPublicationNotLive covers Unpublish's precondition: valid only
+	// when the API is currently published or deprecated to this portal.
+	// Distinct from CodeAPIPublicationNotFound (404, used by the
+	// live-listing reads) — this is a 409 state-precondition failure on an
+	// action, not a missing-resource read.
 	CodeAPIPublicationNotLive = "PUBLICATION_NOT_LIVE"
 )

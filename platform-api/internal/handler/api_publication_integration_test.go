@@ -329,8 +329,7 @@ func TestPublicationHandler_ContentEndpoints(t *testing.T) {
 const publicationPath = "/api/v0.9/api-portals/my-portal/apis/rest-api/my-api/publication"
 
 // TestPublicationHandler_GetPublication_404WhenNotPublished verifies the
-// not-published path returns PUBLICATION_NOT_FOUND — publish doesn't exist
-// until Slice 6, so there is no other way to reach a live row yet.
+// not-published path returns PUBLICATION_NOT_FOUND.
 func TestPublicationHandler_GetPublication_404WhenNotPublished(t *testing.T) {
 	r, _, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
@@ -347,8 +346,8 @@ func TestPublicationHandler_GetPublication_404WhenNotPublished(t *testing.T) {
 }
 
 // TestPublicationHandler_GetPublication_RoundTrip seeds a live (is_draft = 0)
-// row directly — Slice 2 is read-only, publish doesn't exist until Slice 6 —
-// and drives all four publication reads through the real HTTP stack.
+// row directly, isolating the read path from Publish, and drives all four
+// publication reads through the real HTTP stack.
 func TestPublicationHandler_GetPublication_RoundTrip(t *testing.T) {
 	r, db, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()

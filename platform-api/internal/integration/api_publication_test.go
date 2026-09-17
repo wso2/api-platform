@@ -48,8 +48,8 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 // newPublicationTestService wires a real PublicationService against it.db,
 // using the same repositories production code uses. Unlike the rest of this
 // package (which drives repositories directly), these tests go through the
-// service layer: Slice 1's actual validation/resolution logic (handle
-// resolution, unknown-handle rejection) lives there, not in the repository.
+// service layer: the actual validation/resolution logic (handle resolution,
+// unknown-handle rejection) lives there, not in the repository.
 func newPublicationTestService(it *itDB) *service.PublicationService {
 	return service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
@@ -70,12 +70,12 @@ func portalHandleFor(g graph) string { return "portal-" + g.apiPortal[:8] }
 func planHandleFor(g graph) string   { return "plan-" + g.plan[:8] }
 func docHandleFor(g graph) string    { return "doc-" + g.apiDoc[:8] }
 
-// TestPublicationDraft_SaveAndGetRoundTrip drives Slice 1's draft-details save
-// through the real service+repository stack: PUT a complete draft — including
-// a non-empty docIds and subscriptionPlanIds — GET it back, and confirm every
-// field round-trips (Implementation_Plan.md's Slice 1 "Done when"), then save
-// again to confirm the second save updates the same row rather than creating
-// a second one, and correctly replaces (not merges) the mapping tables.
+// TestPublicationDraft_SaveAndGetRoundTrip drives the draft-details save
+// through the real service+repository stack: PUT a complete draft —
+// including a non-empty docIds and subscriptionPlanIds — GET it back, and
+// confirm every field round-trips, then save again to confirm the second
+// save updates the same row rather than creating a second one, and
+// correctly replaces (not merges) the mapping tables.
 func TestPublicationDraft_SaveAndGetRoundTrip(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()
@@ -213,7 +213,7 @@ func TestPublicationDraft_UnknownPlanHandleRejected(t *testing.T) {
 
 // TestPublicationDraft_NotFoundCases verifies the three distinct 404s: an
 // unknown API Portal handle, an unknown (apiType, apiId) pair, and a
-// not-yet-saved draft — each on its own dedicated code, per REST_Design.md §11.
+// not-yet-saved draft — each on its own dedicated code.
 func TestPublicationDraft_NotFoundCases(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()
@@ -332,13 +332,12 @@ func TestPublicationPublish_DraftNotFound(t *testing.T) {
 	}
 }
 
-// TestPublicationPublish_CreateRepublishNoOp drives Slice 5's full lifecycle
-// through the real service+repository stack — the "Done when" from
-// Implementation_Plan.md: save draft, publish (create), GET publication
-// shows it, edit + publish again (republish, merges into the existing live
-// row — the anchor — in place, never leaving two live rows and never
-// changing the anchor's uuid), then publish again with no changes (no-op
-// refresh).
+// TestPublicationPublish_CreateRepublishNoOp drives the full publish
+// lifecycle through the real service+repository stack: save draft, publish
+// (create), GET publication shows it, edit + publish again (republish,
+// merges into the existing live row — the anchor — in place, never leaving
+// two live rows and never changing the anchor's uuid), then publish again
+// with no changes (no-op refresh).
 func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()
@@ -443,9 +442,9 @@ func TestPublicationUnpublish_NotLive(t *testing.T) {
 	}
 }
 
-// TestPublicationUnpublish_DemotesWhenNoDraft drives Slice 6's "Done when":
-// publish, unpublish, and confirm the demoted publication is now readable as
-// the draft (same uuid, no content copy), while GetPublication 404s.
+// TestPublicationUnpublish_DemotesWhenNoDraft publishes, unpublishes, and
+// confirms the demoted publication is now readable as the draft (same uuid,
+// no content copy), while GetPublication 404s.
 func TestPublicationUnpublish_DemotesWhenNoDraft(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()
@@ -495,8 +494,7 @@ func TestPublicationUnpublish_DemotesWhenNoDraft(t *testing.T) {
 // that draft's content into the anchor (the live row being unpublished)
 // instead of leaving the draft's own row as the survivor — the anchor's uuid
 // is the durable identity for this (artifact, portal) pairing and must not
-// change across an unpublish, any more than across a republish
-// (Implementation_Plan.md Slice 6's "Behavior — uuid identity" note).
+// change across an unpublish, any more than across a republish.
 func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()

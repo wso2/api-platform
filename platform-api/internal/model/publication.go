@@ -78,10 +78,10 @@ type Publication struct {
 }
 
 // PublicationStatusRow is one api_publications row for one artifact, reduced
-// to just what the GET /api-publications rollup (Slice 3) needs to annotate
-// a portal: which tier the row belongs to, the live tier's status, and its
-// own updated_at. A row is returned regardless of whether it's the draft or
-// the live listing — the caller (PublicationService.ListPublicationSummary)
+// to just what the GET /api-publications rollup needs to annotate a portal:
+// which tier the row belongs to, the live tier's status, and its own
+// updated_at. A row is returned regardless of whether it's the draft or the
+// live listing — the caller (PublicationService.ListPublicationSummary)
 // splits by IsDraft.
 type PublicationStatusRow struct {
 	APIPortalUUID string
@@ -90,12 +90,12 @@ type PublicationStatusRow struct {
 	UpdatedAt     time.Time
 }
 
-// PublicationSummary is one row of the GET /api-publications rollup (Slice 3)
-// — one active API Portal annotated with this API's publication status
-// against it. Status is NOT_PUBLISHED/PUBLISHED/DEPRECATED: NOT_PUBLISHED is
-// this view's own label for "no live row exists," covering both "never
-// published" and "unpublished since" without distinguishing them
-// (REST_Design.md §7) — api_publications itself never stores that value.
+// PublicationSummary is one row of the GET /api-publications rollup — one
+// active API Portal annotated with this API's publication status against
+// it. Status is NOT_PUBLISHED/PUBLISHED/DEPRECATED: NOT_PUBLISHED is this
+// view's own label for "no live row exists," covering both "never
+// published" and "unpublished since" without distinguishing them —
+// api_publications itself never stores that value.
 type PublicationSummary struct {
 	APIPortalHandle      string
 	APIPortalName        string

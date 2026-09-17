@@ -24,10 +24,9 @@ import (
 )
 
 // StripEmbeddedHTML removes HTML markup embedded in Markdown text before
-// storage, per REST_Design.md's landing-page requirement ("Embedded raw HTML
-// is stripped before storage — stricter than the portal's own handling").
-// This is defense-in-depth on top of, not a substitute for, whatever
-// eventually renders this Markdown to HTML applying its own output encoding.
+// storage — stricter than the portal's own handling for landing pages. This
+// is defense-in-depth on top of, not a substitute for, whatever eventually
+// renders this Markdown to HTML applying its own output encoding.
 //
 // Ordinary Markdown syntax (*bold*, # heading, [text](url), ...) passes
 // through untouched — the HTML5 tokenizer only recognizes literal tag-like

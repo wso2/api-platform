@@ -23,13 +23,13 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-// PortalPublisher pushes a publication to its API Portal (REST_Design.md §8):
-// an existence check decides create vs update, both addressed by the API's
-// own handle — no portal-returned reference ID is stored locally.
-// HTTPPortalPublisher (http_portal_publisher.go) implements the existence
-// check and the metadata+definition push (§8 steps 1-2) for real. Step 3
-// (the content ZIP — thumbnail/landing-page/docs) is not yet implemented
-// there — see that file's doc comment.
+// PortalPublisher pushes a publication to its API Portal: an existence check
+// decides create vs update, both addressed by the API's own handle — no
+// portal-returned reference ID is stored locally. HTTPPortalPublisher
+// (http_portal_publisher.go) implements the existence check and the
+// metadata+definition push for real. The content ZIP (thumbnail,
+// landing-page, docs) is not yet implemented there — see that file's doc
+// comment.
 type PortalPublisher interface {
 	// Publish pushes pub (identified to the portal by apiHandle — this API's
 	// own handle, which is also api-portal's own handle/referenceId for the
@@ -41,12 +41,11 @@ type PortalPublisher interface {
 	// PUBLICATION_PORTAL_UNAVAILABLE).
 	Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error
 
-	// Unpublish removes apiHandle's listing from portal (REST_Design.md §7
-	// "Unpublishing"). A nil error means the portal no longer carries the
-	// listing — including the case where it was already gone, which the
-	// implementation must treat as success so a retry after an
-	// already-successful removal doesn't surface as an error. A
-	// *PortalConflictError means the portal rejected removal and will keep
+	// Unpublish removes apiHandle's listing from portal. A nil error means
+	// the portal no longer carries the listing — including the case where it
+	// was already gone, which the implementation must treat as success so a
+	// retry after an already-successful removal doesn't surface as an error.
+	// A *PortalConflictError means the portal rejected removal and will keep
 	// rejecting it as-is (e.g. active subscriptions/API keys still attached
 	// — mapped to 409 PUBLICATION_PORTAL_CONFLICT, never retried); any other
 	// error is treated as transient/unavailable (503

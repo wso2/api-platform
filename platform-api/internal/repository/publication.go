@@ -244,7 +244,7 @@ func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID
 
 // ListStatusByArtifact returns every api_publications row (draft and/or
 // live) for artifactUUID, reduced to the portal UUID, tier, status and
-// updated_at the GET /api-publications rollup (Slice 3) needs.
+// updated_at the GET /api-publications rollup needs.
 func (r *PublicationRepo) ListStatusByArtifact(artifactUUID, orgUUID string) ([]*model.PublicationStatusRow, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT api_portal_uuid, is_draft, status, updated_at
@@ -501,8 +501,7 @@ func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID
 //   - Republish: an anchor already exists as the live row. The draft's
 //     content is merged into that anchor row in place (mergeDraftIntoAnchor)
 //     and the draft row is discarded — the anchor's uuid never changes
-//     across a republish (Implementation_Plan.md Slice 5's "Behavior — uuid
-//     identity" note).
+//     across a republish.
 //
 // One transaction either way. Returns (nil, false, nil) if no draft exists
 // to promote — the caller (PublicationService.Publish) treats this as a
@@ -583,9 +582,8 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	return promoted, replaced, nil
 }
 
-// UnpublishPublication is PromoteDraftToPublication's mirror for Slice 6
-// (Unpublish), called only after PortalPublisher.Unpublish has already
-// succeeded. One transaction:
+// UnpublishPublication is PromoteDraftToPublication's mirror, called only
+// after PortalPublisher.Unpublish has already succeeded. One transaction:
 //   - No draft exists: the live row (the anchor) is demoted into the draft
 //     in place — is_draft=1, status cleared to NULL (schema.sqlite.sql:
 //     "status ... set only when is_draft = 0"), same row, same uuid, no
@@ -594,8 +592,7 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 //     anchor (mergeDraftIntoAnchor) instead of deleting the anchor and
 //     leaving the draft's own row as the survivor — the anchor's uuid
 //     survives the unpublish too, inverted-but-symmetric with Publish's
-//     republish branch (Implementation_Plan.md Slice 6's "Behavior — uuid
-//     identity" note). Same discard-old-keep-new content semantics as
+//     republish branch. Same discard-old-keep-new content semantics as
 //     before, just implemented as an in-place merge instead of a row swap.
 //
 // Either way a draft survives the operation. Returns found=false if no live
@@ -683,8 +680,8 @@ func (r *PublicationRepo) GetContent(publicationUUID string, contentType model.P
 
 // SaveContent replaces the named content row for content.PublicationUUID
 // (creating it on first save) and bumps the parent api_publications row's
-// updated_at/updated_by in the same transaction — REST_Design.md §6: "One
-// timestamp covers all four pieces."
+// updated_at/updated_by in the same transaction — one timestamp covers all
+// four pieces (details, definition, landing page, thumbnail).
 func (r *PublicationRepo) SaveContent(content *model.PublicationContent, actor string) error {
 	now := time.Now().UTC()
 

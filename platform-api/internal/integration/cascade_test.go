@@ -44,15 +44,13 @@ type graph struct {
 // seedOrgGraph inserts a representative object graph for one organization that
 // touches every table whose foreign keys were changed for SQL Server
 // (applications, subscriptions, deployments, deployment_status, api_portals)
-// plus their parents. api_portals is the API Publication feature's Slice 0
-// fixture (DB_design_refined.md §"Fixture data"): one active portal row per
-// org. api_documents now also carries one fixture row (moved up from the
-// original Slice 4 plan into Slice 1 — api_publication_doc_mappings.doc_uuid
-// has a hard FK to api_documents(uuid), so real docIds resolution needed a
-// real row to resolve against as soon as Slice 1 touched the field, not
-// later). api_publications itself stays unseeded — no repository code writes
-// it via this fixture path; the integration tests that exercise it seed
-// through PublicationService/PublicationRepo directly instead.
+// plus their parents. api_portals carries one active portal row per org.
+// api_documents carries one fixture row too — api_publication_doc_mappings.doc_uuid
+// has a hard FK to api_documents(uuid), so real docIds resolution needs a real
+// row to resolve against. api_publications itself stays unseeded — no
+// repository code writes it via this fixture path; the integration tests
+// that exercise it seed through PublicationService/PublicationRepo directly
+// instead.
 func seedOrgGraph(t *testing.T, it *itDB) graph {
 	t.Helper()
 	g := graph{
@@ -117,14 +115,14 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 	it.exec(t, `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`,
 		g.customPolicy, g.apiArtifact)
 
-	// One active API Portal (Slice 0 fixture). api_publications itself stays
-	// unseeded here — no repository code writes it via this fixture path.
+	// One active API Portal fixture. api_publications itself stays unseeded
+	// here — no repository code writes it via this fixture path.
 	it.exec(t, `INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		g.apiPortal, g.org, "portal-"+g.apiPortal[:8], "portal", "active", []byte("dummy-key"), []byte("{}"))
 
-	// One API document (moved up from Slice 4 into Slice 1 — see the comment
-	// above the graph struct). Real doc content owned by another team; this is
-	// only ever resolved by handle, never served, by this feature.
+	// One API document fixture — see the comment above the graph struct.
+	// Real doc content is owned by another team; this is only ever resolved
+	// by handle, never served, by this feature.
 	it.exec(t, `INSERT INTO api_documents (uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content_type, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		g.apiDoc, g.apiArtifact, g.org, "MARKDOWN", "doc-"+g.apiDoc[:8], "Quickstart", "quickstart.md", "text/markdown", []byte("# Quickstart"))
 	return g
@@ -300,10 +298,8 @@ func TestCascade_DeleteSubscriptionPlanRemovesLimits(t *testing.T) {
 }
 
 // TestCascade_APIPublicationFixtures verifies the API Publication feature's
-// fixture data (Implementation_Plan.md "Done when: service boots clean,
-// fixtures insert without error") across every dialect: one active
-// api_portals row and one api_documents row both insert cleanly against the
-// real schema.
+// fixture data across every dialect: one active api_portals row and one
+// api_documents row both insert cleanly against the real schema.
 func TestCascade_APIPublicationFixtures(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()

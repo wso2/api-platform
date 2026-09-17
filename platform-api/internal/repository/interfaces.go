@@ -244,8 +244,8 @@ type ApiDocumentRepository interface {
 
 // PublicationRepository defines the interface for api_publications and its
 // satellite tables (api_publication_contents, api_publication_doc_mappings,
-// api_publication_plan_mappings). Slice 1 operates on draft rows (IsDraft
-// true); Slice 2 adds read-only access to live rows (IsDraft false).
+// api_publication_plan_mappings): draft rows (IsDraft true) and read-only
+// access to live rows (IsDraft false).
 type PublicationRepository interface {
 	// GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
 	// plus the raw subscription-plan and document UUIDs its mapping tables
@@ -272,8 +272,8 @@ type PublicationRepository interface {
 	// promote. replaced reports whether an existing live row was found
 	// (republish) versus this being the first publish.
 	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error)
-	// UnpublishPublication is PromoteDraftToPublication's mirror for Slice 6
-	// (Unpublish), called after the portal removal succeeds: if no draft
+	// UnpublishPublication is PromoteDraftToPublication's mirror, called
+	// after the portal removal succeeds: if no draft
 	// exists for (artifactUUID, apiPortalUUID, orgUUID), the live row (the
 	// anchor) is demoted into the draft in place (is_draft=1, status
 	// cleared) — same row, same uuid, no content copy. If a draft already
@@ -290,13 +290,14 @@ type PublicationRepository interface {
 	GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error)
 	// SaveContent replaces the named content row for publicationUUID and bumps
 	// the parent api_publications row's updated_at/updated_by in the same
-	// transaction — REST_Design.md §6: "One timestamp covers all four pieces."
+	// transaction — one timestamp covers all four pieces (details,
+	// definition, landing page, thumbnail).
 	SaveContent(content *model.PublicationContent, actor string) error
 	// ListStatusByArtifact returns every api_publications row (draft and/or
 	// live) for artifactUUID across all API Portals, reduced to the portal
 	// UUID, tier, status and updated_at the GET /api-publications rollup
-	// (Slice 3) needs — one query instead of a GetDraft/GetPublication call
-	// per portal.
+	// needs — one query instead of a GetDraft/GetPublication call per
+	// portal.
 	ListStatusByArtifact(artifactUUID, orgUUID string) ([]*model.PublicationStatusRow, error)
 }
 

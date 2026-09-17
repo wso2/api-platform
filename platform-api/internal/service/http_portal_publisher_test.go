@@ -64,7 +64,7 @@ func newTestHTTPPortalPublisher(t *testing.T, sharedKey string) *HTTPPortalPubli
 
 // assertMultipartParts drains r's multipart body against boundary, returning
 // which named parts were present — verifies the metadata/definition part
-// names REST_Design.md §8 documents, without asserting exact YAML content.
+// names the portal push sends, without asserting exact YAML content.
 func assertMultipartParts(t *testing.T, r *http.Request) map[string]bool {
 	t.Helper()
 	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -437,8 +437,8 @@ func TestHTTPPortalPublisher_Unpublish_DeletesListing(t *testing.T) {
 }
 
 // TestHTTPPortalPublisher_Unpublish_NotFoundIsSuccess verifies a 404 (already
-// removed) is treated as success — the idempotency REST_Design.md §7
-// "Retrying" promises for a retry after an already-successful removal.
+// removed) is treated as success, so a retry after an already-successful
+// removal converges rather than erroring.
 func TestHTTPPortalPublisher_Unpublish_NotFoundIsSuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

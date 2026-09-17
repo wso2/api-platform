@@ -35,7 +35,7 @@ import (
 
 // definitionFileNamesByContentType maps an accepted definition Content-Type to
 // the canonical file name it's stored under, matching the API Portal's own
-// constants (DB_design_refined.md). No other media type is accepted.
+// constants. No other media type is accepted.
 var definitionFileNamesByContentType = map[string]string{
 	"application/json":    "definition.json",
 	"application/x-yaml":  "definition.yaml",
@@ -43,8 +43,8 @@ var definitionFileNamesByContentType = map[string]string{
 	"application/xml":     "definition.xml",
 }
 
-// PublicationService implements the API Publication draft (Slice 1) and, in
-// later slices, the live publication/rollup/lifecycle operations.
+// PublicationService implements the API Publication draft and the live
+// publication/rollup/lifecycle operations.
 type PublicationService struct {
 	artifactRepo         repository.ArtifactRepository
 	apiPortalRepo        repository.APIPortalRepository
@@ -79,10 +79,10 @@ func NewPublicationService(
 	}
 }
 
-// resolveArtifact resolves (apiType, apiId) to the artifact's internal UUID,
-// per REST_Design.md §4/§11: an unrecognised apiType and an unknown apiId
-// both resolve to the same 404 (API_NOT_FOUND) — not a distinguishable 400,
-// which would let a caller enumerate installed plugins.
+// resolveArtifact resolves (apiType, apiId) to the artifact's internal UUID:
+// an unrecognised apiType and an unknown apiId both resolve to the same 404
+// (API_NOT_FOUND) — not a distinguishable 400, which would let a caller
+// enumerate installed plugins.
 func (s *PublicationService) resolveArtifact(apiType, apiId, orgUUID string) (string, error) {
 	if apiType == "" || apiId == "" {
 		return "", apperror.APIPublicationAPINotFound.New()
@@ -170,9 +170,6 @@ func (s *PublicationService) resolveHandles(pub *model.Publication, planUUIDs, d
 	return nil
 }
 
-// mapValuesInOrder looks up each id in m, preserving ids's order and skipping
-// any id absent from m. Always returns a non-nil slice so it serializes as
-// "[]" rather than "null" when empty.
 // conflictReasonOrDefault returns conflict.Reason, or
 // defaultPortalConflictReason if a PortalPublisher implementation left it
 // unset (e.g. a test mock built before Reason existed) — the %s slot in
@@ -184,6 +181,9 @@ func conflictReasonOrDefault(conflict *PortalConflictError) string {
 	return conflict.Reason
 }
 
+// mapValuesInOrder looks up each id in m, preserving ids's order and skipping
+// any id absent from m. Always returns a non-nil slice so it serializes as
+// "[]" rather than "null" when empty.
 func mapValuesInOrder(ids []string, m map[string]string) []string {
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -369,8 +369,8 @@ func (s *PublicationService) GetDraftLandingPage(apiType, apiId, apiPortalId, or
 }
 
 // SaveDraftLandingPage replaces the draft's landing page. Embedded raw HTML
-// is stripped before storage (REST_Design.md §9) — stricter than the portal's
-// own handling, and defense-in-depth on top of it, not a substitute.
+// is stripped before storage — stricter than the portal's own handling, and
+// defense-in-depth on top of it, not a substitute.
 func (s *PublicationService) SaveDraftLandingPage(apiType, apiId, apiPortalId, orgUUID, actor string, markdown []byte) error {
 	pub, err := s.getDraftRow(apiType, apiId, apiPortalId, orgUUID)
 	if err != nil {
@@ -397,10 +397,9 @@ func (s *PublicationService) GetDraftThumbnail(apiType, apiId, apiPortalId, orgU
 
 // SaveDraftThumbnail replaces the draft's thumbnail. The content type is
 // sniffed from the uploaded bytes (file-access.md) — PNG and JPEG only, never
-// the declared Content-Type or file name. GIF/WebP/SVG are rejected: per
-// REST_Design.md §9, the API Portal's own image-serving code resolves a
-// correct Content-Type only for PNG/JPEG, and SVG is XML that can carry
-// scripts.
+// the declared Content-Type or file name. GIF/WebP/SVG are rejected: the API
+// Portal's own image-serving code resolves a correct Content-Type only for
+// PNG/JPEG, and SVG is XML that can carry scripts.
 func (s *PublicationService) SaveDraftThumbnail(apiType, apiId, apiPortalId, orgUUID, actor, fileName string, data []byte) error {
 	sniffed := http.DetectContentType(data)
 	if sniffed != "image/png" && sniffed != "image/jpeg" {
@@ -444,7 +443,7 @@ func (s *PublicationService) getDraftContent(apiType, apiId, apiPortalId, orgUUI
 }
 
 // getPublicationRow resolves the API and API Portal, then loads the live
-// (is_draft = 0) row — GetDraft's read-only counterpart for Slice 2. Returns
+// (is_draft = 0) row — GetDraft's read-only counterpart. Returns
 // APIPublicationNotFound when this API has no live listing on this portal.
 func (s *PublicationService) getPublicationRow(apiType, apiId, apiPortalId, orgUUID string) (*model.Publication, error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
@@ -514,22 +513,22 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 	return content, nil
 }
 
-// Publish publishes the current draft to the API Portal (REST_Design.md §7
-// "Publishing"). In the UI's own flow, the client always saves the draft
-// (draft PUT) immediately before calling this bodyless action, so a draft is
-// guaranteed to exist and already validated by the time this runs —
-// APIPublicationDraftNotFound here is a defensive, fail-closed check for a
-// client bug or a failed prior save proceeding anyway, not a normal
-// user-facing gate. Publish itself validates nothing further.
+// Publish publishes the current draft to the API Portal. In the UI's own
+// flow, the client always saves the draft (draft PUT) immediately before
+// calling this bodyless action, so a draft is guaranteed to exist and
+// already validated by the time this runs — APIPublicationDraftNotFound
+// here is a defensive, fail-closed check for a client bug or a failed prior
+// save proceeding anyway, not a normal user-facing gate. Publish itself
+// validates nothing further.
 //
-// The portal is pushed first (§8): nothing local changes unless that
-// succeeds. On success, one transaction (PublicationRepository.
-// PromoteDraftToPublication): on a first publish, flip the draft row in
-// place — same row, same uuid; on a republish, merge the draft's content
-// into the existing live row (the anchor) instead, so the anchor's uuid — the
-// durable identity for this (API, portal) pairing — never changes across a
-// republish. A repeat publish with no intervening edit goes through the same
-// path and is a normal no-op refresh, not an error.
+// The portal is pushed first: nothing local changes unless that succeeds. On
+// success, one transaction (PublicationRepository.PromoteDraftToPublication):
+// on a first publish, flip the draft row in place — same row, same uuid; on
+// a republish, merge the draft's content into the existing live row (the
+// anchor) instead, so the anchor's uuid — the durable identity for this
+// (API, portal) pairing — never changes across a republish. A repeat publish
+// with no intervening edit goes through the same path and is a normal
+// no-op refresh, not an error.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (pub *model.Publication, replaced bool, err error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
@@ -585,9 +584,9 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	return published, wasReplace, nil
 }
 
-// Unpublish removes the live listing from portal, then writes locally —
-// REST_Design.md §7 "Unpublishing". Valid only when currently published or
-// deprecated (409 PUBLICATION_NOT_LIVE otherwise). On success: if no draft
+// Unpublish removes the live listing from portal, then writes locally.
+// Valid only when currently published or deprecated (409
+// PUBLICATION_NOT_LIVE otherwise). On success: if no draft
 // exists, the live row (the anchor) is demoted into the draft in place;
 // otherwise an existing draft's content is merged into the anchor instead of
 // leaving the draft's own row as the survivor — the anchor's uuid is the
@@ -631,13 +630,12 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 	return nil
 }
 
-// publicationStatusNotPublished is the rollup's own label (REST_Design.md
-// §7) for "no live row exists" — never a value api_publications itself
-// stores.
+// publicationStatusNotPublished is the rollup's own label for "no live row
+// exists" — never a value api_publications itself stores.
 const publicationStatusNotPublished = "NOT_PUBLISHED"
 
-// ListPublicationSummary returns the GET /api-publications rollup (Slice 3):
-// every active API Portal for the org, annotated with this API's publication
+// ListPublicationSummary returns the GET /api-publications rollup: every
+// active API Portal for the org, annotated with this API's publication
 // status against it. search is matched case-insensitively against the
 // portal's handle and display name; sortBy is "name" (portal display name)
 // or anything else, including "createdAt" and unrecognized values, which

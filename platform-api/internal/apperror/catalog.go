@@ -223,8 +223,7 @@ var (
 	HmacSecretNotConfigured = def(CodeHmacSecretNotConfigured, http.StatusServiceUnavailable, "HMAC secret management is not configured on this server.")
 )
 
-// API Publication entries (Slice 1: the per-portal draft; Slice 2: the live
-// publication). See REST_Design.md §11.
+// API Publication entries: the per-portal draft and the live publication.
 var (
 	APIPublicationAPINotFound   = def(CodeAPIPublicationAPINotFound, http.StatusNotFound, "The specified API could not be found.")
 	APIPublicationDraftNotFound = def(CodeAPIPublicationDraftNotFound, http.StatusNotFound, "No draft has been saved for this API on this API Portal.")
@@ -235,8 +234,8 @@ var (
 	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
 	// APIPublicationPortalConflict is a rejection the portal will keep making
 	// (a conflicting handle/display name, active subscriptions/API keys, or
-	// any other portal-side rejection) — never retried (REST_Design.md §7
-	// "Retrying"), distinct from the transient APIPublicationPortalUnavailable.
+	// any other portal-side rejection) — never retried, distinct from the
+	// transient APIPublicationPortalUnavailable.
 	// %s carries a short, pre-approved reason phrase — e.g. "active
 	// subscriptions are removed" — resolved from a closed allowlist of known
 	// portal error codes (HTTPPortalPublisher.portalConflictReason), never
@@ -246,8 +245,8 @@ var (
 		"The API Portal rejected this request and will keep rejecting it until %s.")
 	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
 		"The API Portal could not be reached. Please try again.")
-	// APIPublicationNotLive is Slice 6 (Unpublish)'s precondition failure:
-	// the API isn't currently published or deprecated to this portal.
+	// APIPublicationNotLive is Unpublish's precondition failure: the API
+	// isn't currently published or deprecated to this portal.
 	APIPublicationNotLive = def(CodeAPIPublicationNotLive, http.StatusConflict,
 		"This API is not currently published or deprecated to this API Portal, so it cannot be unpublished.")
 )

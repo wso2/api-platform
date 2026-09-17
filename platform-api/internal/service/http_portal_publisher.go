@@ -35,19 +35,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// HTTPPortalPublisher is the real PortalPublisher implementation for
-// REST_Design.md §8 steps 1-2: an existence check (GET /apis/{handle})
-// decides whether the metadata+definition push (step 2) uses create (POST
-// /apis) or update (PUT /apis/{handle}), both addressed by the API's own
-// handle — no portal-returned reference ID is stored locally.
+// HTTPPortalPublisher is the real PortalPublisher implementation: an
+// existence check (GET /apis/{handle}) decides whether the
+// metadata+definition push uses create (POST /apis) or update (PUT
+// /apis/{handle}), both addressed by the API's own handle — no
+// portal-returned reference ID is stored locally.
 //
-// Step 3 (the content ZIP — thumbnail, landing page, documents) is NOT
-// implemented here yet: its exact multipart/ZIP shape wasn't verified
-// against API Portal's real asset-ingestion code in the session that built
-// this, and this feature has no way to fetch a document's actual content in
-// the first place (api_documents' content belongs to another team's
-// not-yet-built feature — see REST_Design.md's "Not in scope"). Add it once
-// both are confirmed rather than guess at the shape.
+// The content ZIP (thumbnail, landing page, documents) is NOT implemented
+// here yet: its exact multipart/ZIP shape hasn't been verified against API
+// Portal's real asset-ingestion code, and this feature has no way to fetch a
+// document's actual content in the first place — api_documents' content
+// belongs to another team's not-yet-built feature. Add it once both are
+// confirmed rather than guess at the shape.
 type HTTPPortalPublisher struct {
 	client       *client.RetryableHTTPClient
 	authRegistry *APIPortalAuthRegistry
@@ -175,10 +174,9 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 		// Any 4xx means the portal understood and rejected the request as-is —
 		// a conflicting handle/display name (409), an unresolvable reference
 		// like a subscription plan the portal doesn't recognize (404), or any
-		// other validation failure. All of these are "will keep rejecting"
-		// (REST_Design.md §7 "Retrying"), not "unreachable" — retrying without
-		// changing the draft can't help, same as the literal-409 case this used
-		// to special-case alone.
+		// other validation failure. All of these are "will keep rejecting",
+		// not "unreachable" — retrying without changing the draft can't help,
+		// same as the literal-409 case this used to special-case alone.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
 		return &PortalConflictError{
 			Message: fmt.Sprintf("the API Portal rejected this listing (status %d)", resp.StatusCode),
@@ -194,12 +192,12 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 // (portals/api-portal/docs/api-portal-openapi-spec-v0.9.yaml) and
 // apiMetadataService.js's deleteAPIMetadata. A 200 means removed; a 404 is
 // treated as already-removed (success), which is what makes a retry after an
-// already-successful removal converge rather than error (REST_Design.md §7
-// "Retrying"). Any other 4xx — most commonly 409, when the portal still has
-// active subscriptions/API keys attached to the listing (the
-// force-delete-with-listing capability REST_Design.md §7/§13 expects isn't
-// implemented on the portal yet) — surfaces as the same PortalConflictError
-// Publish uses for a rejection the portal will keep making.
+// already-successful removal converge rather than error. Any other 4xx —
+// most commonly 409, when the portal still has active subscriptions/API
+// keys attached to the listing (a force-delete-with-listing capability
+// isn't implemented on the portal yet) — surfaces as the same
+// PortalConflictError Publish uses for a rejection the portal will keep
+// making.
 func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error {
 	base := strings.TrimRight(portal.URL, "/")
 	escapedHandle := url.PathEscape(apiHandle)
@@ -244,8 +242,8 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 	}
 }
 
-// checkExists is REST_Design.md §8 step 1: GET /apis/{handle} on the portal.
-// 200 means it exists (update); 404 means it doesn't (create).
+// checkExists issues GET /apis/{handle} on the portal. 200 means it exists
+// (update); 404 means it doesn't (create).
 func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.APIPortal, base, escapedHandle string) (bool, error) {
 	authHeader, err := p.authHeader(ctx, portal)
 	if err != nil {
@@ -285,7 +283,7 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.API
 	}
 }
 
-// portalMetadataEnvelope is REST_Design.md §8 step 2's "metadata" part — a
+// portalMetadataEnvelope is the "metadata" part of the portal push — a
 // k8s-style envelope. apiVersion/kind are sent but unread by the portal's
 // parser (verified against the portal's own apiMetadataService.js); kept for
 // shape-consistency with the portal's own sample files.
@@ -329,7 +327,7 @@ type portalMetadataSpecBody struct {
 }
 
 // portalMetadataEndpoints always sends both keys, even when empty — the
-// portal requires the endpoints object to be present (REST_Design.md §8).
+// portal requires the endpoints object to be present.
 type portalMetadataEndpoints struct {
 	ProductionURL string `yaml:"productionUrl"`
 	SandboxURL    string `yaml:"sandboxUrl"`
@@ -342,10 +340,10 @@ type portalMetadataBusinessInfo struct {
 	TechnicalOwnerEmail string `yaml:"technicalOwnerEmail,omitempty"`
 }
 
-// buildPortalMetadataMultipart builds the two-part multipart body
-// REST_Design.md §8 step 2 sends: a "metadata" part (YAML envelope) and a
-// "definition" part (raw contract bytes, empty if the draft never stored
-// one — the portal itself decides whether that's acceptable).
+// buildPortalMetadataMultipart builds the two-part multipart body the portal
+// push sends: a "metadata" part (YAML envelope) and a "definition" part (raw
+// contract bytes, empty if the draft never stored one — the portal itself
+// decides whether that's acceptable).
 func buildPortalMetadataMultipart(apiHandle string, pub *model.Publication, definition *model.PublicationContent) (*bytes.Buffer, string, error) {
 	envelope := portalMetadataEnvelope{
 		APIVersion: "api-portal.api-platform.wso2.com/v1",

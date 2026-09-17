@@ -42,9 +42,9 @@ func TestPublicationHandler_Unpublish_NotLive(t *testing.T) {
 	}
 }
 
-// TestPublicationHandler_Unpublish_DemotesWhenNoDraft drives Slice 6's "Done
-// when": publish, then unpublish, and confirm the demoted publication is now
-// readable as the draft (same content, no copy), while GET publication 404s.
+// TestPublicationHandler_Unpublish_DemotesWhenNoDraft publishes, then
+// unpublishes, and confirms the demoted publication is now readable as the
+// draft (same content, no copy), while GET publication 404s.
 func TestPublicationHandler_Unpublish_DemotesWhenNoDraft(t *testing.T) {
 	r, db, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
