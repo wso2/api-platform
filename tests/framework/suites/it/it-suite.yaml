@@ -89,6 +89,19 @@ blocks:
       - name: artifact-uploads
         features:
           - features/apiportal_artifact_upload.feature
+
+  # Webhook subscribers are organization-wide. Keep their intentionally failing
+  # delivery targets isolated from every other API Portal runner.
+  - name: api-portal-webhooks
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+    runners:
       - name: webhook-subscribers
         features:
           - features/apiportal_webhook_subscribers.feature

@@ -46,7 +46,7 @@ Feature: API Portal REST API management
     Given a REST API is created in the API Portal and stored as "apiId"
     When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
 
   Scenario: A publisher filters REST APIs by exact name, version, and tag

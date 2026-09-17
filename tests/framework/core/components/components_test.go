@@ -634,6 +634,22 @@ func TestInstanceIdentity(t *testing.T) {
 		require.ErrorContains(t, err, "host is required")
 	})
 
+	t.Run("localhost uses the IPv4 loopback address for mapped ports", func(t *testing.T) {
+		inst, err := NewInstance(runtimeLike(), 0, 1, "localhost", map[int]int{8080: 49153})
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1", inst.Host())
+
+		endpoint, err := inst.URL("http")
+		require.NoError(t, err)
+		require.Equal(t, "http://127.0.0.1:49153", endpoint)
+	})
+
+	t.Run("a configured non-local host is preserved", func(t *testing.T) {
+		inst, err := NewInstance(runtimeLike(), 0, 1, "192.168.64.2", map[int]int{8080: 49153})
+		require.NoError(t, err)
+		require.Equal(t, "192.168.64.2", inst.Host())
+	})
+
 	t.Run("the mapping is copied, so a later caller mutation cannot corrupt it", func(t *testing.T) {
 		mapped := map[int]int{8080: 49153}
 		inst, err := NewInstance(runtimeLike(), 0, 1, "127.0.0.1", mapped)

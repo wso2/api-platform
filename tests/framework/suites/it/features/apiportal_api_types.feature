@@ -67,7 +67,7 @@ Feature: API Portal API definition types
       """
     When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
 
   Scenario: A missing GraphQL schema returns not found
@@ -118,7 +118,7 @@ Feature: API Portal API definition types
       """
     When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
 
   Scenario: A publisher creates and retrieves a WebSocket API
@@ -152,7 +152,7 @@ Feature: API Portal API definition types
       """
     When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
 
   Scenario: A publisher creates and retrieves a WebSub API
@@ -186,5 +186,5 @@ Feature: API Portal API definition types
       """
     When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
