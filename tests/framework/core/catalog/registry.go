@@ -21,11 +21,13 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/aiworkspace"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/browser"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/infrastructure"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
@@ -51,7 +53,8 @@ func BuildSpec(component, version string) (builder.Spec, error) {
 	}
 }
 
-// BuildSources builds each unversioned source product used by a resolved suite once.
+// BuildSources builds each unversioned source product used by a resolved suite once,
+// including custom platform-gateway images requested with addPoliciesFrom.
 func BuildSources(ctx context.Context, resolved *topology.Resolved, root string, runner builder.Runner, coverage bool) error {
 	if resolved == nil {
 		return fmt.Errorf("catalog: resolved suite is required")
@@ -61,9 +64,12 @@ func BuildSources(ctx context.Context, resolved *topology.Resolved, root string,
 		return err
 	}
 	if len(products) == 0 {
-		return nil
+		return buildPolicyProducts(ctx, resolved, root, runner, coverage)
 	}
-	return builder.BuildProducts(ctx, products, root, runner, coverage)
+	if err := builder.BuildProducts(ctx, products, root, runner, coverage); err != nil {
+		return err
+	}
+	return buildPolicyProducts(ctx, resolved, root, runner, coverage)
 }
 
 func sourceProducts(resolved *topology.Resolved) ([]builder.Product, error) {
@@ -72,7 +78,7 @@ func sourceProducts(resolved *topology.Resolved) ([]builder.Product, error) {
 	for blockIndex := range resolved.Blocks {
 		for componentIndex := range resolved.Blocks[blockIndex].Components {
 			component := &resolved.Blocks[blockIndex].Components[componentIndex]
-			if component.Def == nil || component.Version != "" {
+			if component.Def == nil || component.Version != "" || component.AddPoliciesFrom != "" {
 				continue
 			}
 			version, ok := shared.SourceVersion(component.Def.Name)
@@ -94,14 +100,142 @@ func sourceProducts(resolved *topology.Resolved) ([]builder.Product, error) {
 	return products, nil
 }
 
+type policyProduct struct {
+	component       string
+	version         string
+	source          string
+	buildFromSource bool
+}
+
+func buildPolicyProducts(
+	ctx context.Context, resolved *topology.Resolved, root string, runner builder.Runner, coverage bool,
+) error {
+	products, err := policyProducts(resolved)
+	if err != nil {
+		return err
+	}
+	for _, product := range products {
+		switch {
+		case product.buildFromSource:
+			images, buildErr := platformgateway.BuildSourceWithPolicies(
+				ctx, root, product.version, product.source, runner, coverage,
+			)
+			if buildErr != nil {
+				return fmt.Errorf("catalog: building %s with policies from %q: %w",
+					product.component, product.source, buildErr)
+			}
+			setPlatformGatewayImages(resolved, product, images)
+		default:
+			baseController, baseRuntime, imageErr := platformGatewayBaseImages(resolved, product)
+			if imageErr != nil {
+				return imageErr
+			}
+			images, buildErr := platformgateway.BuildVersionedWithPolicies(
+				ctx, root, product.version, product.source, baseController, baseRuntime, runner,
+			)
+			if buildErr != nil {
+				return fmt.Errorf("catalog: extending %s:%s with policies from %q: %w",
+					product.component, product.version, product.source, buildErr)
+			}
+			setPlatformGatewayImages(resolved, product, images)
+		}
+	}
+	return nil
+}
+
+func policyProducts(resolved *topology.Resolved) ([]policyProduct, error) {
+	seen := map[string]bool{}
+	products := make([]policyProduct, 0)
+	for blockIndex := range resolved.Blocks {
+		for componentIndex := range resolved.Blocks[blockIndex].Components {
+			component := &resolved.Blocks[blockIndex].Components[componentIndex]
+			if component.Def == nil || strings.TrimSpace(component.AddPoliciesFrom) == "" {
+				continue
+			}
+			version := strings.TrimSpace(component.Version)
+			fromSource := component.BuildFromSource
+			if version == "" {
+				fromSource = true
+				component.BuildFromSource = true
+			}
+			if fromSource {
+				var ok bool
+				version, ok = shared.SourceVersion(component.Def.Name)
+				if !ok {
+					return nil, fmt.Errorf("catalog: no source version for %q", component.Def.Name)
+				}
+				component.Version = version
+			}
+			key := component.Def.Name + "\x00" + version + "\x00" + component.AddPoliciesFrom + "\x00" + fmt.Sprint(fromSource)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			products = append(products, policyProduct{
+				component: component.Def.Name, version: version,
+				source: component.AddPoliciesFrom, buildFromSource: fromSource,
+			})
+		}
+	}
+	return products, nil
+}
+
+func platformGatewayBaseImages(resolved *topology.Resolved, product policyProduct) (string, string, error) {
+	for blockIndex := range resolved.Blocks {
+		for componentIndex := range resolved.Blocks[blockIndex].Components {
+			component := &resolved.Blocks[blockIndex].Components[componentIndex]
+			if component.Def == nil || component.Def.Name != product.component ||
+				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
+				component.AddPoliciesFrom != product.source {
+				continue
+			}
+			if component.Def.Compose == nil {
+				return "", "", fmt.Errorf("catalog: %s is not compose-backed", product.component)
+			}
+			controller := strings.TrimSpace(component.Def.Compose.Env[platformgateway.EnvImagePGController])
+			runtime := strings.TrimSpace(component.Def.Compose.Env[platformgateway.EnvImagePGRuntime])
+			if controller == "" || runtime == "" {
+				return "", "", fmt.Errorf("catalog: %s has no controller/runtime base images", product.component)
+			}
+			return controller, runtime, nil
+		}
+	}
+	return "", "", fmt.Errorf("catalog: no resolved %s component for policy build", product.component)
+}
+
+func setPlatformGatewayImages(resolved *topology.Resolved, product policyProduct, images platformgateway.DerivedImages) {
+	for blockIndex := range resolved.Blocks {
+		for componentIndex := range resolved.Blocks[blockIndex].Components {
+			component := &resolved.Blocks[blockIndex].Components[componentIndex]
+			if component.Def == nil || component.Def.Name != product.component ||
+				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
+				component.AddPoliciesFrom != product.source {
+				continue
+			}
+			def := *component.Def
+			compose := *component.Def.Compose
+			compose.Env = make(map[string]string, len(component.Def.Compose.Env)+2)
+			for key, value := range component.Def.Compose.Env {
+				compose.Env[key] = value
+			}
+			compose.Env[platformgateway.EnvImagePGController] = images.Controller
+			compose.Env[platformgateway.EnvImagePGRuntime] = images.Runtime
+			def.Compose = &compose
+			component.Def = &def
+		}
+	}
+}
+
 // All returns every component definition in the catalog.
 func All() []*components.Definition {
 	return []*components.Definition{
 		platformgateway.PlatformGateway(),
 		platformapi.PlatformAPI(),
 		apiportal.APIPortal(),
+		apiportal.APIPortalOtherOrg(),
 		aiworkspace.AIWorkspace(),
 		browser.Browser(),
+		cloudconsole.CloudConsole(),
 		testbench.Testbench(),
 		infrastructure.Redis(),
 	}

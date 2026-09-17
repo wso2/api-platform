@@ -81,7 +81,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       }
       try {
         const [gatewayList, environmentList] = await Promise.all([
-          client.listGateways(),
+          client.listGateways(gatewayTypes),
           client.listEnvironments(),
         ]);
         if (seq !== loadSeqRef.current) return;
@@ -100,7 +100,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         if (!silent && seq === loadSeqRef.current) setLoading(false);
       }
     },
-    [client]
+    [client, gatewayTypes]
   );
 
   useEffect(() => {

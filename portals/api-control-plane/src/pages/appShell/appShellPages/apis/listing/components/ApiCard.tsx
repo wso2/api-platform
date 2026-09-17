@@ -17,9 +17,11 @@
  */
 
 import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
+import { useIntl } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
-import { interactiveCardSx } from '@/theme';
+import { openableProps } from '@/components/openable';
+import { focusRingSx, interactiveCardSx } from '@/theme';
 import {
   apiDescriptionSx,
   ApiDeleteButton,
@@ -41,20 +43,22 @@ const AVATAR_SIZE = 42;
  * API card for the grid view, rendering the spec's `RESTAPI` shape.
  */
 export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
+  const intl = useIntl();
   const updated = api.updatedAt || api.createdAt;
 
   return (
     <Card
-      onClick={() => onOpen(api)}
-      sx={{
+      {...openableProps(intl, api.displayName, () => onOpen(api))}
+      sx={(theme) => ({
         ...interactiveCardSx,
+        ...focusRingSx(theme),
         '&:focus-within .api-delete-action, &:hover .api-delete-action': {
           opacity: 1,
         },
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-      }}
+      })}
     >
       <CardContent sx={{ flex: 1 }}>
         <Stack spacing={2}>

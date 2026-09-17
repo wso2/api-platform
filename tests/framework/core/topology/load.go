@@ -24,6 +24,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -75,6 +76,13 @@ type ResolvedComponent struct {
 	// Version is the resolved image version, if one was configured.
 	Version string
 
+	// BuildFromSource indicates that the component has no configured image version and
+	// should be built from the checked-out source.
+	BuildFromSource bool
+
+	// AddPoliciesFrom is the local policy tree used to build a custom gateway image.
+	AddPoliciesFrom string
+
 	// DB is the resolved component engine, or empty for a stateless component.
 	DB components.DBType
 
@@ -84,11 +92,17 @@ type ResolvedComponent struct {
 	// Overlay is the block-supplied configuration overlay, if any.
 	Overlay string
 
+	// StagedFiles are block-scoped component resource source overrides.
+	StagedFiles map[string]string
+
 	// Replicas is the instance count.
 	Replicas int
 
 	// Wiring is the decoded, validated wiring value, or nil when the block supplied none.
 	Wiring any
+
+	// ExternalParameters are selection-time values passed to an external resolver.
+	ExternalParameters map[string]string
 
 	// DependsOn are block-specific boot-order dependencies.
 	DependsOn []string
@@ -459,12 +473,23 @@ func resolveBlock(
 			errs.addf("block %q: unknown component %q (registered: %v)", name, c.Name, registry.Names())
 			continue
 		}
+		if source := strings.TrimSpace(c.AddPoliciesFrom); source != "" {
+			if c.Name != "platform-gateway" {
+				errs.addf("block %q: component %q does not support addPoliciesFrom", name, c.Name)
+			} else if filepath.IsAbs(source) {
+				errs.addf("block %q: addPoliciesFrom must be a relative path, got %q", name, source)
+			}
+		}
 
 		version := c.Version
 		if version == "" {
 			version = defaults[c.Name].Version
 		}
 		if version != "" {
+			if def.IsExternal() {
+				errs.addf("block %q: external component %q does not support a version", name, c.Name)
+				continue
+			}
 			def = def.WithImageVersion(version)
 		}
 
@@ -479,8 +504,20 @@ func resolveBlock(
 			errs.add(err)
 			continue
 		}
+		if len(c.StagedFiles) > 0 {
+			def, err = def.WithStagedFiles(c.StagedFiles)
+			if err != nil {
+				errs.addf("block %q: component %q: %v", name, c.Name, err)
+				continue
+			}
+		}
 
 		replicas := c.EffectiveReplicas()
+		if replicas > 1 && def.IsExternal() {
+			errs.addf("block %q: external component %q cannot have replicas (%d requested)",
+				name, c.Name, replicas)
+			continue
+		}
 		if replicas > 1 && def.AliasIsFixed {
 			errs.addf("block %q: component %q has a fixed alias and cannot have replicas (%d requested)",
 				name, c.Name, replicas)
@@ -489,7 +526,9 @@ func resolveBlock(
 
 		_, dbVariant, _ := componentVariant(c, v, defaults)
 		rb.Components = append(rb.Components, ResolvedComponent{
-			Def: def, Version: version, DB: dbType, Image: dbVariant.Image, Overlay: c.Overlay, Replicas: replicas, Wiring: wiring,
+			Def: def, Version: version, BuildFromSource: version == "", AddPoliciesFrom: strings.TrimSpace(c.AddPoliciesFrom), DB: dbType,
+			Image: dbVariant.Image, Overlay: c.Overlay, StagedFiles: maps.Clone(c.StagedFiles),
+			Replicas: replicas, Wiring: wiring,
 			DependsOn: append([]string(nil), c.DependsOn...),
 		})
 	}

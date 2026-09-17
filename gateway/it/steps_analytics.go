@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -67,6 +68,10 @@ func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	ctx.Step(`^the latest analytics event should have request method "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveRequestMethod)
 	ctx.Step(`^the latest analytics event should have response status (\d+)$`, a.theLatestAnalyticsEventShouldHaveResponseStatus)
 	ctx.Step(`^the latest analytics event should have metadata field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMetadataField)
+	ctx.Step(`^the latest analytics event should have A2A field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveA2AField)
+	ctx.Step(`^the latest analytics event should not have A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveA2AField)
+	ctx.Step(`^the latest analytics event should carry only A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldCarryOnlyA2AField)
+	ctx.Step(`^the latest analytics event should have a non-empty A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveNonEmptyA2AField)
 	ctx.Step(`^I send a GET request to the analytics collector events endpoint$`, a.iSendGETRequestToAnalyticsCollectorEvents)
 }
 
@@ -298,6 +303,169 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldNam
 	}
 
 	return nil
+}
+
+// theLatestAnalyticsEventShouldHaveA2AField verifies a field inside the A2A
+// dimension block of the latest (or last matched) event.
+//
+// It lives here rather than in steps_a2a.go so it shares lastMatchedEvent with
+// the URI-filtering step above: an A2A scenario invokes one operation over two
+// transports, so "the latest event" is ambiguous unless the scenario first
+// selects one by URI, and a separately-held event would silently assert against
+// the wrong one.
+//
+// The A2A block sits under metadata.agentAnalytics.a2a, unlike the flat metadata
+// keys theLatestAnalyticsEventShouldHaveMetadataField reads, which is why that
+// step cannot be reused. Within that block every dimension is one flat level.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, expectedValue string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+
+	actualValue, err := a2aField(block, fieldName)
+	if err != nil {
+		return err
+	}
+
+	actualValueStr := fmt.Sprintf("%v", actualValue)
+	if actualValueStr != expectedValue {
+		return fmt.Errorf("expected A2A analytics field '%s' to be '%s', but got '%s'", fieldName, expectedValue, actualValueStr)
+	}
+	return nil
+}
+
+// a2aField reads one dimension out of the A2A block.
+//
+// The published a2a section is one flat level, so a scenario names the dimension
+// directly — "taskState", or "responseTaskId" for one of the two response
+// identifiers a request field also carries.
+func a2aField(block map[string]interface{}, name string) (interface{}, error) {
+	value, ok := block[name]
+	if !ok {
+		return nil, fmt.Errorf("A2A analytics field '%s' not found in {%s}",
+			name, sortedKeys(block))
+	}
+	return value, nil
+}
+
+// theLatestAnalyticsEventShouldNotHaveA2AField asserts a dimension is absent.
+//
+// A card fetch and a preflight are reported so the traffic is visible, but must
+// not be shaped like an invocation — an operation or outcome on one lets a
+// downstream rollup count card polling as agent traffic. Absence is the
+// assertion, so it needs its own step.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveA2AField(fieldName string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+	if value, err := a2aField(block, fieldName); err == nil {
+		return fmt.Errorf("expected no A2A analytics field '%s', but it is present with value '%v'", fieldName, value)
+	}
+	return nil
+}
+
+// theLatestAnalyticsEventShouldCarryOnlyA2AField asserts the whole A2A block is one
+// named dimension and nothing else.
+//
+// A card fetch and a preflight are the only events shaped this way, and listing the
+// dimensions they must not carry would go stale the moment one is added. Asserting the
+// block's entire key set is what keeps a new dimension from silently leaking onto
+// them — the published model being one flat level is what makes that checkable.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldCarryOnlyA2AField(fieldName string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+	if len(block) != 1 || block[fieldName] == nil {
+		return fmt.Errorf("expected the A2A block to carry only '%s', but it carries {%s}",
+			fieldName, sortedKeys(block))
+	}
+	return nil
+}
+
+// theLatestAnalyticsEventShouldHaveNonEmptyA2AField asserts a dimension is present
+// and carries something, without pinning what.
+//
+// It exists for the identifiers the agent generates — a task id, a context id — whose
+// values are the agent's to choose and are different on every run. Asserting they are
+// present and non-empty is the whole claim worth making about them: an absent one means
+// correlation was lost, which is the failure this guards, while their actual value is
+// meaningful only to whoever is correlating on it.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveNonEmptyA2AField(fieldName string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+
+	value, err := a2aField(block, fieldName)
+	if err != nil {
+		return err
+	}
+	if text := fmt.Sprintf("%v", value); text == "" {
+		return fmt.Errorf("A2A analytics field '%s' is present but empty", fieldName)
+	}
+	return nil
+}
+
+// a2aAnalyticsBlock returns the a2a section of the published Agent analytics
+// envelope on the selected event.
+//
+// The envelope is keyed by domain — metadata.agentAnalytics.a2a — so a later Agent
+// analytics domain can be added as a sibling without its fields having to be told
+// apart from A2A's by name. The legacy flat metadata.a2aAnalytics key is gone; an
+// event still carrying it would mean the publisher was writing both shapes, so it
+// is reported rather than silently accepted as a fallback.
+func (a *AnalyticsSteps) a2aAnalyticsBlock() (map[string]interface{}, error) {
+	event := a.lastMatchedEvent
+	if event == nil {
+		var err error
+		event, err = a.getLatestAnalyticsEvent("")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if event.Metadata == nil {
+		return nil, fmt.Errorf("event has no metadata")
+	}
+	if _, legacy := event.Metadata["a2aAnalytics"]; legacy {
+		return nil, fmt.Errorf("event carries the legacy flat a2aAnalytics key, " +
+			"which the agentAnalytics envelope replaced")
+	}
+	raw, ok := event.Metadata["agentAnalytics"]
+	if !ok {
+		return nil, fmt.Errorf("event carries no agentAnalytics envelope (metadata keys: %s)",
+			sortedKeys(event.Metadata))
+	}
+	envelope, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("agentAnalytics is %T, expected an object", raw)
+	}
+	rawA2A, ok := envelope["a2a"]
+	if !ok {
+		return nil, fmt.Errorf("agentAnalytics carries no a2a section (keys: %s)", sortedKeys(envelope))
+	}
+	block, ok := rawA2A.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("agentAnalytics.a2a is %T, expected an object", rawA2A)
+	}
+	return block, nil
+}
+
+// sortedKeys renders a map's keys for an error message, ordered so a failure is
+// reproducible rather than reshuffled on every run.
+func sortedKeys(m map[string]interface{}) string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return "none"
+	}
+	return strings.Join(keys, ", ")
 }
 
 // iSendGETRequestToAnalyticsCollectorEvents sends a GET request to the analytics collector events endpoint

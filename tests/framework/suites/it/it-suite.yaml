@@ -28,6 +28,22 @@ defaults:
     propagation: 60s
 
 blocks:
+  # This block is intended for gateway-controllers pull requests. Its policy source is
+  # an adjacent checkout, so callers must check out gateway-controllers next to this
+  # repository and select this block explicitly.
+  - name: gateway-controller-policies
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        addPoliciesFrom: ../gateway-controllers/policies
+      - name: testbench
+    runners:
+      - name: policy-build-smoke
+        features:
+          - features/gateway_controller_policies.feature
+
   - name: gateway-core
     parallel: 10
     components:

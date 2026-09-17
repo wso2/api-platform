@@ -50,7 +50,7 @@ func Browser() *components.Definition {
 		Endpoints: []components.Endpoint{
 			{Name: "ws", Port: 3000, Scheme: "http", AwaitListening: true},
 		},
-		Limits: components.ResourceLimits{CPUs: 2, MemoryMB: 1500},
+		Limits: components.ResourceLimits{CPUs: 2, MemoryMB: 4000},
 	}
 }
 

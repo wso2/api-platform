@@ -20,10 +20,11 @@ password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
 
 # Use the organization shared with platform-api.
 [api_portal.organization]
-handle       = "default"
-display_name = "Default"
-# Plans are created and synchronized by platform-api.
-auto_create_subscription_plans = false
+handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
+portal_id    = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "portal_id" }}'
+# Provide the portal's standard plans for API detail and subscription scenarios.
+auto_create_subscription_plans = true
 
 [api_portal.auth.local]
 platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
@@ -31,6 +32,10 @@ platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platfo
 public_key_path  = "/etc/api-portal/keys/jwt_public.pem"
 # The generated platform-api certificate is mounted and trusted by Node.
 tls_skip_verify  = false
+
+[api_portal.auth.authorization]
+mode = '{{ env "APIP_AP_AUTH_AUTHORIZATION_MODE" "role" }}'
+role_to_scope_mapping = "/etc/api-portal/role-to-scope-mapping.yaml"
 
 [api_portal.security]
 encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'

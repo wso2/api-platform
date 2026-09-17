@@ -19,4 +19,5 @@
 export { default as DeployFeature } from './DeployFeature';
 export type { DeployFeatureProps } from './DeployFeature';
 export type { ApiFetch, CloudHostPort, NotifySeverity } from './hostPort';
+export type { ArtifactKind } from './deployApi';
 export type { Build, DeploymentStatus, Environment, Gateway, GatewayHealth } from './types';

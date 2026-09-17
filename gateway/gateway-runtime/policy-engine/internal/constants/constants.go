@@ -101,6 +101,27 @@ const (
 	AttrPolicyChainKey            = "policy_chain_key"
 	AttrResolvedOperation         = "resolver.operation"
 
+	// Attributes describing a request the engine refused before binding a chain.
+	//
+	// AttrResolutionPhase names *what was being checked* rather than which ext_proc
+	// callback it happened on: a body-resolved route runs operation resolution at
+	// the request-body callback and a bodyless one runs it at the header callback,
+	// and both are the same check with the same meaning.
+	AttrResolutionPhase = "resolution.phase"
+	// AttrResolutionFailureReason is the resolver's own bounded classification. It
+	// is safe on a span and as a metric label; the caller-supplied value that
+	// provoked it is not, and never appears on either.
+	AttrResolutionFailureReason = "resolution.failure_reason"
+
+	// Values for AttrResolutionPhase.
+	//
+	// ResolutionPhaseHeaders is the header-only validation a prepared resolver may
+	// run before anything is bound or buffered — the A2A request protocol version is
+	// the one that exists today. ResolutionPhaseOperation is the selection of the
+	// logical operation, and therefore of the chain.
+	ResolutionPhaseHeaders   = "headers"
+	ResolutionPhaseOperation = "operation"
+
 	// Terminal-outcome attributes. The status code itself is recorded under the
 	// OTel semantic-convention key http.response.status_code by
 	// tracing.RecordHTTPOutcome; these two are policy-engine specific.
@@ -111,17 +132,51 @@ const (
 	// the tag that keeps denials queryable.
 	TerminalReasonUpstream             = "upstream_response"      // pass-through with no policy status override; status came from the backend unmodified. The one reason exempt from the Error span status — see tracing.upstreamFaultReasons.
 	TerminalReasonPolicyStatusOverride = "policy_status_override" // a response-body policy set DownstreamResponseModifications.StatusCode
-	TerminalReasonPolicyDenied         = "policy_denied"          // a policy returned an ImmediateResponse
+	TerminalReasonPolicyDenied         = "policy_denied"          // a policy returned an ImmediateResponse refusing the request (>= 400)
 	TerminalReasonPolicyError          = "policy_error"           // handlePolicyError generated a 500
 	TerminalReasonPayloadTooLarge      = "payload_too_large"      // handlePayloadTooLarge generated a 413
 	TerminalReasonNoPolicyChain        = "no_policy_chain"        // route resolved but no chain registered
 	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
 	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
 
+	// TerminalReasonPolicyAnswered marks a request a policy answered itself with a
+	// non-denial status, rather than refusing it: the request stopped at the
+	// gateway because that is the feature, not because it was rejected.
+	//
+	// A managed Agent Card is the case that exists today — the A2A system policy
+	// serves the card body with a 200, or a 304 when the client's If-None-Match
+	// still matches. Both share the short-circuit mechanism with an auth denial
+	// and are otherwise indistinguishable from one, so without this reason every
+	// card fetch is filed under TerminalReasonPolicyDenied and a success-rate
+	// dashboard counts discovery traffic as gateway rejections — an Agent then
+	// looks broken in proportion to how often its card is read.
+	//
+	// The two are split by status rather than by a flag a policy sets, so the
+	// classification comes from what actually goes on the wire and no policy can
+	// describe its own refusal as an answer.
+	TerminalReasonPolicyAnswered = "policy_answered"
+
 	// TerminalReasonResolutionFailed marks a request whose logical operation could not
 	// be resolved to a policy chain. It exists because the status alone cannot identify
 	// one — an unknown-operation failure is an HTTP 404 just like an Envoy route miss.
 	TerminalReasonResolutionFailed = "resolution_failed"
+
+	// TerminalReasonA2AVersionRejected marks a request refused because of the A2A
+	// protocol version it stated — absent, malformed, contradictory, or a version
+	// this Agent does not expose.
+	//
+	// Separated from TerminalReasonResolutionFailed because the two say different
+	// things about the caller and want different answers. A resolution failure means
+	// the client asked for an operation that does not exist or sent a payload that
+	// did not parse; this means the client is speaking a different protocol version,
+	// and the fix is a header, not a payload. Keeping them apart is what lets an
+	// operator see a fleet of clients that never adopted the version requirement as
+	// its own signal rather than as a rise in malformed requests.
+	//
+	// The resolver's bounded failure kind (invalid-parameter,
+	// conflicting-parameter, version-not-supported) is retained alongside it on the
+	// span and the metric, so the reason stays closed while the detail survives.
+	TerminalReasonA2AVersionRejected = "a2a-version-rejected"
 
 	// Analytics metadata and property keys shared across packages.
 	GuardrailHitMetadataKey  = "isGuardrailHit"

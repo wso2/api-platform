@@ -38,8 +38,7 @@ import { alpha, type Theme } from '@wso2/oxygen-ui';
  * a `'1px solid'` literal. Pair it with a `borderColor` token — the colour is
  * the part that actually varies between light, dark and high-contrast themes.
  */
-export const hairline = (theme: Theme) =>
-  `${theme.border.width} ${theme.border.style}`;
+export const hairline = (theme: Theme) => `${theme.border.width} ${theme.border.style}`;
 
 /** Blur radius behind a glass surface. One value, so every pane matches. */
 const GLASS_BLUR = '14px';
@@ -60,7 +59,7 @@ export const glassSurfaceSx = (theme: Theme) =>
     backgroundColor: 'transparent',
     backgroundImage: `linear-gradient(135deg, ${alpha(
       theme.palette.background.paper,
-      0.6
+      0.6,
     )}, ${alpha(theme.palette.background.paper, 0.25)})`,
     border: hairline(theme),
     borderColor: alpha(theme.palette.divider, 0.6),
@@ -97,14 +96,26 @@ export const ambientGlowSx = {
  */
 export const interactiveCardSx = {
   cursor: 'pointer',
-  transition:
-    'transform .18s ease, border-color .18s ease, box-shadow .18s ease',
+  transition: 'transform .18s ease, border-color .18s ease, box-shadow .18s ease',
   '&:hover': {
     borderColor: 'primary.main',
     boxShadow: 4,
     transform: 'translateY(-3px)',
   },
 } as const;
+
+/**
+ * Focus indicator for a card or row that is itself the control (see
+ * `openableProps` in `components/openable.ts`). Inset by its own width so the
+ * ring stays inside a card that clips its overflow, and keyed to
+ * `:focus-visible` so a pointer click doesn't leave a ring behind.
+ */
+export const focusRingSx = (theme: Theme) => ({
+  '&:focus-visible': {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: '-2px',
+  },
+});
 
 /**
  * State layer for a card the user picks from a set of options: the API
@@ -116,10 +127,7 @@ export const interactiveCardSx = {
  * released, or not offered by the selected proxy type). Disabling the click is
  * the `disabled` prop's job, this only makes the state legible.
  */
-export const selectableCardSx = (
-  theme: Theme,
-  state: { disabled?: boolean; selected?: boolean }
-) =>
+export const selectableCardSx = (theme: Theme, state: { disabled?: boolean; selected?: boolean }) =>
   ({
     borderColor: state.selected ? 'primary.main' : 'divider',
     ...(state.selected && {

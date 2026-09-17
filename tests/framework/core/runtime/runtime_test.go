@@ -94,6 +94,39 @@ func TestComponentVersion(t *testing.T) {
 	}
 }
 
+func TestBootExternalOnlyBlockWithoutDocker(t *testing.T) {
+	definition := &components.Definition{
+		Name:  "external",
+		Alias: "external",
+		External: &components.ExternalSpec{
+			Endpoints: []components.ExternalEndpoint{{Name: "api"}},
+			Resolve: func(repoRoot string, parameters map[string]string) (map[string]string, error) {
+				require.Equal(t, "test", repoRoot)
+				require.Equal(t, "development", parameters["environment"])
+				return map[string]string{"api": "https://api.example.com/v1"}, nil
+			},
+		},
+	}
+	block := &topology.ResolvedBlock{
+		Name: "external-only",
+		Components: []topology.ResolvedComponent{{
+			Def: definition, Replicas: 1,
+			ExternalParameters: map[string]string{"environment": "development"},
+		}},
+	}
+
+	topo, err := BootBlock(context.Background(), block, "test")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, topo.Teardown(context.Background())) })
+	got, err := topo.URL("external", "api")
+	require.NoError(t, err)
+	require.Equal(t, "https://api.example.com/v1", got)
+	require.NotNil(t, topo.Shared)
+	_, err = topo.Component("external")
+	require.NoError(t, err)
+	require.Nil(t, topo.network, "an external-only block must not create a Docker network")
+}
+
 func (w *slowWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	n, err := w.b.Write(p)
@@ -438,12 +471,12 @@ func TestBuildPlanErrors(t *testing.T) {
 }
 
 func TestRuntimeInputValidation(t *testing.T) {
-	t.Run("compose replicas are rejected before Docker access", func(t *testing.T) {
+	t.Run("compose replicas use the normal validation path before Docker access", func(t *testing.T) {
 		def := &components.Definition{Name: "stack", Compose: &components.ComposeSpec{}}
 		_, err := LaunchCompose(context.Background(), def, &components.ComposeSpec{}, Options{
 			Network: &Network{name: "test", block: "block"}, Replicas: 2,
 		})
-		require.ErrorContains(t, err, "does not support replicas")
+		require.ErrorContains(t, err, "staged path")
 	})
 
 	t.Run("staged paths cannot escape their directory", func(t *testing.T) {
@@ -603,6 +636,57 @@ func TestLaunchWithRetryStopsOnCancelledContext(t *testing.T) {
 		})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 1, calls, "a dead run must not keep booting containers")
+}
+
+func TestLaunchComposeWithRetrySucceedsAfterFailures(t *testing.T) {
+	calls := 0
+	stack, err := launchComposeWithRetry(context.Background(), "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			if calls < 3 {
+				return nil, errors.New("container exited with code 2")
+			}
+			return &ComposeStack{}, nil
+		})
+	require.NoError(t, err)
+	require.NotNil(t, stack)
+	require.Equal(t, 3, calls)
+}
+
+func TestLaunchComposeWithRetryReturnsLastErrorWhenBudgetSpent(t *testing.T) {
+	calls := 0
+	boom := errors.New("container exited with code 2")
+	_, err := launchComposeWithRetry(context.Background(), "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			return nil, boom
+		})
+	require.ErrorIs(t, err, boom)
+	require.Equal(t, 3, calls)
+}
+
+func TestLaunchComposeWithRetrySingleAttemptFailsFast(t *testing.T) {
+	calls := 0
+	_, err := launchComposeWithRetry(context.Background(), "gateway", 1,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			return nil, errors.New("boom")
+		})
+	require.Error(t, err)
+	require.Equal(t, 1, calls)
+}
+
+func TestLaunchComposeWithRetryStopsOnCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	_, err := launchComposeWithRetry(ctx, "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			cancel()
+			return nil, errors.New("container exited with code 2")
+		})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, calls, "a dead run must not keep booting stacks")
 }
 
 func TestEngineBootAttempts(t *testing.T) {
@@ -783,4 +867,9 @@ func TestPhaseString(t *testing.T) {
 	require.Equal(t, "schema-applied", PhaseSchemaApplied.String())
 	require.Less(t, int(PhaseStarted), int(PhaseHealthy))
 	require.Less(t, int(PhaseHealthy), int(PhaseSchemaApplied))
+}
+
+func TestPostgresDSN(t *testing.T) {
+	got := postgresDSN("127.0.0.1", 54321, Credentials{User: "apip_it", Password: "Aa1!p@ss/word"}, "apip_test")
+	require.Equal(t, "postgres://apip_it:Aa1%21p%40ss%2Fword@127.0.0.1:54321/apip_test?sslmode=disable", got)
 }

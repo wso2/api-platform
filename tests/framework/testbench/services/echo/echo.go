@@ -163,8 +163,16 @@ func (s *Service) serveReflection(w http.ResponseWriter, r *http.Request, compre
 	}
 	payload = append(payload, '\n')
 
+	status := http.StatusOK
+	if raw := r.URL.Query().Get("statusCode"); raw != "" {
+		if code, err := strconv.Atoi(raw); err == nil && code >= 200 && code <= 599 {
+			status = code
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	if !compressed {
+		w.WriteHeader(status)
 		if _, err := w.Write(payload); err != nil {
 			log.Printf("echo: failed to write response: %v", err)
 		}
@@ -172,6 +180,7 @@ func (s *Service) serveReflection(w http.ResponseWriter, r *http.Request, compre
 	}
 
 	w.Header().Set("Content-Encoding", "gzip")
+	w.WriteHeader(status)
 	zw := gzip.NewWriter(w)
 	if _, err := zw.Write(payload); err != nil {
 		log.Printf("echo: failed to write gzip response: %v", err)

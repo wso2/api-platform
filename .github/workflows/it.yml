@@ -53,4 +53,6 @@ jobs:
 
       - name: Run the suite
         working-directory: tests/framework
-        run: go test ./suites/it -count=1 -timeout=25m
+        # The gateway-controller policy block requires a sibling gateway-controllers repo checkout
+        # and is exercised by that repository's workflow.
+        run: go test ./suites/it -count=1 -timeout=25m -args -skip-blocks=gateway-controller-policies
