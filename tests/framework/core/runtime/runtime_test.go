@@ -26,6 +26,7 @@ import (
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"io"
 	"net"
@@ -135,7 +136,7 @@ func TestBootExternalOnlyBlockWithoutDocker(t *testing.T) {
 		}},
 	}
 
-	topo, err := BootBlock(context.Background(), block, "test", nil)
+	topo, err := BootBlock(context.Background(), block, "test", nil, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, topo.Teardown(context.Background())) })
 	got, err := topo.URL("external", "api")
@@ -1084,4 +1085,48 @@ func TestContainedSourceRejectsEscapesFromARelativeRepositoryRoot(t *testing.T) 
 	_, err = containedSource(".", outside)
 
 	require.ErrorContains(t, err, "resolves outside the repository")
+}
+
+// A nil sink means the run is not collecting container output at all; a shared component
+// must then start uncaptured rather than fail.
+func TestSharedLogWriterWithoutASinkIsNil(t *testing.T) {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	require.Nil(t, sharedLogWriter("testbench", nil))
+}
+
+// The writer is opened once and reused, so a component attached to many blocks keeps one
+// file for the whole run instead of rebinding to whichever block started it.
+func TestSharedLogWriterIsOpenedOnceAndReused(t *testing.T) {
+	defer CloseSharedLogs()
+	sink, err := logcapture.NewSink(t.TempDir())
+	require.NoError(t, err)
+
+	sharedMu.Lock()
+	first := sharedLogWriter("testbench", sink)
+	second := sharedLogWriter("testbench", sink)
+	sharedMu.Unlock()
+
+	require.NotNil(t, first)
+	require.Same(t, first, second)
+
+	path, err := sink.SharedFileFor("testbench")
+	require.NoError(t, err)
+	require.FileExists(t, path)
+}
+
+func TestCloseSharedLogsReleasesEveryWriter(t *testing.T) {
+	sink, err := logcapture.NewSink(t.TempDir())
+	require.NoError(t, err)
+
+	sharedMu.Lock()
+	require.NotNil(t, sharedLogWriter("testbench", sink))
+	sharedMu.Unlock()
+
+	CloseSharedLogs()
+
+	sharedMu.Lock()
+	remaining := len(sharedLogs)
+	sharedMu.Unlock()
+	require.Zero(t, remaining)
 }

@@ -146,9 +146,11 @@ func NewClient(opts Options) *Client {
 	} else {
 		tlsConfig = tlsConfig.Clone()
 	}
-	if len(tlsConfig.CurvePreferences) > 0 {
-		tlsConfig.CurvePreferences = normalizedCurves(tlsConfig.CurvePreferences)
-	}
+	// Unconditional: a caller that supplies a TLS config for its own roots or server name
+	// states nothing about key exchange, and gating this on a non-empty list left those
+	// configs on the standard library's implicit preferences instead of the hybrid
+	// post-quantum ordering every other client here negotiates with.
+	tlsConfig.CurvePreferences = normalizedCurves(tlsConfig.CurvePreferences)
 	httpClient := &http.Client{
 		Timeout: opts.Timeout,
 		Transport: &http.Transport{

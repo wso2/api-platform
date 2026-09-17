@@ -68,24 +68,38 @@ func (s *Sink) Root() string {
 // FileFor returns the combined-log file path for the named block, creating its
 // containing directory. Safe to call concurrently for different blocks.
 func (s *Sink) FileFor(block string) (string, error) {
+	return s.fileIn(blocksDir, "block", block)
+}
+
+// SharedFileFor returns the log file path for a component shared across blocks, creating
+// its containing directory. Shared components are started once and outlive every block, so
+// their output belongs to the run rather than to whichever block happened to start them.
+// Safe to call concurrently for different components.
+func (s *Sink) SharedFileFor(component string) (string, error) {
+	return s.fileIn(sharedDir, "component", component)
+}
+
+// fileIn resolves one log file beneath a subdirectory of the sink root, rejecting any name
+// that would not land strictly inside it.
+func (s *Sink) fileIn(sub, kind, name string) (string, error) {
 	if s == nil || strings.TrimSpace(s.root) == "" {
 		return "", fmt.Errorf("logcapture: the sink is not initialized")
 	}
-	if strings.TrimSpace(block) == "" {
-		return "", fmt.Errorf("logcapture: a log file needs a block name")
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("logcapture: a log file needs a %s name", kind)
 	}
-	name, err := sanitize(block)
+	safe, err := sanitize(name)
 	if err != nil {
-		return "", fmt.Errorf("logcapture: invalid block name %q: %w", block, err)
+		return "", fmt.Errorf("logcapture: invalid %s name %q: %w", kind, name, err)
 	}
-	dir, err := logDir(s.root)
+	dir, err := logDir(s.root, sub)
 	if err != nil {
 		return "", err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("logcapture: creating %q: %w", dir, err)
 	}
-	path := filepath.Join(dir, name+".log")
+	path := filepath.Join(dir, safe+".log")
 	rel, err := filepath.Rel(dir, path)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("logcapture: log file %q is not strictly below %q", path, dir)
@@ -125,10 +139,17 @@ func sanitize(name string) (string, error) {
 	return replaced + "-" + hex.EncodeToString(digest[:4]), nil
 }
 
-func logDir(root string) (string, error) {
-	dir, err := filepath.Abs(filepath.Join(root, "blocks"))
+// Log files live in one of two directories beneath the run root: per-block combined output,
+// and output from components shared across blocks.
+const (
+	blocksDir = "blocks"
+	sharedDir = "shared"
+)
+
+func logDir(root, sub string) (string, error) {
+	dir, err := filepath.Abs(filepath.Join(root, sub))
 	if err != nil {
-		return "", fmt.Errorf("logcapture: resolving block log directory: %w", err)
+		return "", fmt.Errorf("logcapture: resolving %s log directory: %w", sub, err)
 	}
 	return dir, nil
 }

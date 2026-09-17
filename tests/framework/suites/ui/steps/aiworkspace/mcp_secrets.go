@@ -309,12 +309,20 @@ func (u *Steps) theSecretHandleIsARandomUUID(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Wait for the call rather than reading the tracker as soon as the overview URL lands:
+	// the redirect can settle before the network listener has processed the POST behind it.
+	call, err := t.awaitSecretCall(ctx)
+	if err != nil {
+		return fmt.Errorf("no POST to /secrets observed in this scenario: %w", err)
+	}
+	// Separated from the absent-call case above: a recorded call whose body cannot be read
+	// is a captured-response problem, not a missing secret, and the two need different fixes.
 	handle, ok := t.lastSecretHandle()
 	if !ok {
-		return fmt.Errorf("no secret handle recorded in this scenario")
+		return fmt.Errorf("secret response body carried no id (status %d): %q", call.status, call.response)
 	}
 	if !secretHandleUUID.MatchString(handle) {
-		return fmt.Errorf("secret handle is not a random UUID")
+		return fmt.Errorf("secret handle %q is not a random UUID", handle)
 	}
 	return nil
 }

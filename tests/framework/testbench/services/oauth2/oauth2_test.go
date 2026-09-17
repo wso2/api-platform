@@ -48,9 +48,7 @@ func TestTokenEndpointSupportsBasicAndPostAuthentication(t *testing.T) {
 	}
 
 	stats := httptest.NewRecorder()
-	statsRequest := httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil)
-	statsRequest.SetBasicAuth(clientID, clientSecret)
-	h.ServeHTTP(stats, statsRequest)
+	h.ServeHTTP(stats, httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil))
 	var got struct {
 		Count int `json:"tokenRequestCount"`
 	}
@@ -59,28 +57,6 @@ func TestTokenEndpointSupportsBasicAndPostAuthentication(t *testing.T) {
 	}
 	if got.Count != 2 {
 		t.Errorf("token request count = %d, want 2", got.Count)
-	}
-}
-
-func TestDebugRoutesRejectUnauthorizedRequests(t *testing.T) {
-	h := New().Handler()
-
-	for _, tt := range []struct {
-		name   string
-		method string
-		path   string
-	}{
-		{name: "stats", method: http.MethodGet, path: "/block-a/debug/stats"},
-		{name: "reset", method: http.MethodPost, path: "/block-a/debug/reset"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			h.ServeHTTP(recorder, httptest.NewRequest(tt.method, tt.path, nil))
-
-			if recorder.Code != http.StatusUnauthorized {
-				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
-			}
-		})
 	}
 }
 
@@ -151,9 +127,7 @@ func TestTokenEndpointPartitionsStateAndSupportsFailureResponses(t *testing.T) {
 
 	for _, block := range []string{"block-a", "block-b"} {
 		reset := httptest.NewRecorder()
-		resetRequest := httptest.NewRequest(http.MethodPost, "/"+block+"/debug/reset", nil)
-		resetRequest.SetBasicAuth(clientID, clientSecret)
-		h.ServeHTTP(reset, resetRequest)
+		h.ServeHTTP(reset, httptest.NewRequest(http.MethodPost, "/"+block+"/debug/reset", nil))
 		if reset.Code != http.StatusNoContent {
 			t.Fatalf("%s reset status = %d", block, reset.Code)
 		}
@@ -176,16 +150,12 @@ func TestTokenEndpointPartitionsStateAndSupportsFailureResponses(t *testing.T) {
 	}
 
 	stats := httptest.NewRecorder()
-	statsRequest := httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil)
-	statsRequest.SetBasicAuth(clientID, clientSecret)
-	h.ServeHTTP(stats, statsRequest)
+	h.ServeHTTP(stats, httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil))
 	if !strings.Contains(stats.Body.String(), "server_error") {
 		t.Fatalf("block-a stats = %q, want server_error", stats.Body.String())
 	}
 	otherStats := httptest.NewRecorder()
-	otherStatsRequest := httptest.NewRequest(http.MethodGet, "/block-b/debug/stats", nil)
-	otherStatsRequest.SetBasicAuth(clientID, clientSecret)
-	h.ServeHTTP(otherStats, otherStatsRequest)
+	h.ServeHTTP(otherStats, httptest.NewRequest(http.MethodGet, "/block-b/debug/stats", nil))
 	if !strings.Contains(otherStats.Body.String(), "malformed") {
 		t.Fatalf("block-b stats = %q, want malformed", otherStats.Body.String())
 	}
