@@ -20,7 +20,6 @@ package repository
 import (
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
@@ -260,61 +259,3 @@ func (r *OrganizationRepo) CountOrganizationsForUser(userUUID string) (int, erro
 	return total, nil
 }
 
-// handlesInClause builds a "?, ?, ..." placeholder list sized to handles, paired with the query args.
-func handlesInClause(handles []string) (string, []any) {
-	placeholders := make([]string, len(handles))
-	args := make([]any, len(handles))
-	for i, h := range handles {
-		placeholders[i] = "?"
-		args[i] = h
-	}
-	return strings.Join(placeholders, ", "), args
-}
-
-// ListOrganizationsByHandles returns the organizations whose handle is in handles, newest first.
-func (r *OrganizationRepo) ListOrganizationsByHandles(handles []string, limit, offset int) ([]*model.Organization, error) {
-	if len(handles) == 0 {
-		return nil, nil
-	}
-	inClause, args := handlesInClause(handles)
-	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
-	query := `
-		SELECT uuid, handle, display_name, region, idp_organization_ref_uuid, created_by, updated_by, created_at, updated_at
-		FROM organizations
-		WHERE handle IN (` + inClause + `)
-		ORDER BY created_at DESC
-		` + pageClause
-	args = append(args, pageArgs...)
-	rows, err := r.db.Query(r.db.Rebind(query), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var orgs []*model.Organization
-	for rows.Next() {
-		org := &model.Organization{}
-		var createdBy, updatedBy sql.NullString
-		if err := rows.Scan(&org.ID, &org.Handle, &org.Name, &org.Region, &org.IdpOrganizationRefUUID, &createdBy, &updatedBy, &org.CreatedAt, &org.UpdatedAt); err != nil {
-			return nil, err
-		}
-		org.CreatedBy = createdBy.String
-		org.UpdatedBy = updatedBy.String
-		orgs = append(orgs, org)
-	}
-	return orgs, rows.Err()
-}
-
-// CountOrganizationsByHandles returns how many of handles match an existing organization.
-func (r *OrganizationRepo) CountOrganizationsByHandles(handles []string) (int, error) {
-	if len(handles) == 0 {
-		return 0, nil
-	}
-	inClause, args := handlesInClause(handles)
-	var total int
-	query := `SELECT COUNT(*) FROM organizations WHERE handle IN (` + inClause + `)`
-	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&total); err != nil {
-		return 0, err
-	}
-	return total, nil
-}

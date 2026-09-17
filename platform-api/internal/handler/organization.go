@@ -173,9 +173,7 @@ func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.R
 	}
 
 	resolvedOrgUUID, _ := middleware.GetOrganizationFromRequest(r)
-	orgHandles, _ := middleware.GetOrganizationsFromRequest(r)
-	currentOrgHandle, _ := middleware.GetOrgHandleFromRequest(r)
-	orgs, total, err := h.orgService.ListOrganizationsForCaller(performedBy, resolvedOrgUUID, orgHandles, currentOrgHandle, limit, offset)
+	orgs, total, err := h.orgService.ListOrganizationsForUser(performedBy, resolvedOrgUUID, limit, offset)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to list organizations")
