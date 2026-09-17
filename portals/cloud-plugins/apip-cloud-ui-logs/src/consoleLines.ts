@@ -147,35 +147,21 @@ const sortedUnique = (values: Iterable<string>): string[] =>
  */
 export function deriveFacets(buffer: BufferedLine[]): LogFacets {
   const projects: string[] = [];
-  const pods: string[] = [];
   const environments: string[] = [];
-  const byProject = new Map<string, Set<string>>();
 
   for (const { entry } of buffer) {
     if (entry.projectName) projects.push(entry.projectName);
-    if (entry.podName) pods.push(entry.podName);
     if (entry.environment) environments.push(entry.environment);
-    if (entry.projectName && entry.podName) {
-      const seen = byProject.get(entry.projectName) ?? new Set<string>();
-      seen.add(entry.podName);
-      byProject.set(entry.projectName, seen);
-    }
   }
-
-  const podsByProject: Record<string, string[]> = {};
-  for (const [project, names] of byProject) podsByProject[project] = sortedUnique(names);
 
   return {
     projects: sortedUnique(projects),
-    pods: sortedUnique(pods),
-    podsByProject,
     environments: sortedUnique(environments),
   };
 }
 
-/** Whether an entry survives the view filters. An empty filter matches everything. */
+/** Whether an entry survives the view filter. An empty filter matches everything. */
 export function matchesView(entry: LogEntry, view: LogViewFilters): boolean {
   if (view.project && entry.projectName !== view.project) return false;
-  if (view.pod && entry.podName !== view.pod) return false;
   return true;
 }
