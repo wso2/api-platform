@@ -246,19 +246,14 @@ func (s *OrganizationService) ListOrganizationsForUser(userUUID, resolvedOrgUUID
 }
 
 // ListOrganizationsForCaller returns the organizations matching orgHandles
-// (the caller's "organizations" claim), falling back to currentOrgHandle
-// alone when orgHandles is empty, and finally to the caller's DB-recorded
-// memberships in user_organization_mappings when neither claim is present
-// (e.g. a session/IDP that hasn't been upgraded to emit "organizations" yet).
-func (s *OrganizationService) ListOrganizationsForCaller(userUUID, resolvedOrgUUID string, orgHandles []string, currentOrgHandle string, limit, offset int) ([]api.Organization, int, error) {
-	handles := orgHandles
-	if len(handles) == 0 && currentOrgHandle != "" {
-		handles = []string{currentOrgHandle}
-	}
-
+// (the caller's "organizations" claim), falling back to the caller's
+// DB-recorded memberships in user_organization_mappings when the claim is
+// absent (e.g. a session/IDP that hasn't been upgraded to emit
+// "organizations" yet).
+func (s *OrganizationService) ListOrganizationsForCaller(userUUID, resolvedOrgUUID string, orgHandles []string, limit, offset int) ([]api.Organization, int, error) {
 	// ListOrganizationsForUser performs its own membership-heal, so delegate
 	// before healing here to avoid a redundant AddMembership call.
-	if len(handles) == 0 {
+	if len(orgHandles) == 0 {
 		return s.ListOrganizationsForUser(userUUID, resolvedOrgUUID, limit, offset)
 	}
 
@@ -268,12 +263,12 @@ func (s *OrganizationService) ListOrganizationsForCaller(userUUID, resolvedOrgUU
 		}
 	}
 
-	total, err := s.orgRepo.CountOrganizationsByHandles(handles)
+	total, err := s.orgRepo.CountOrganizationsByHandles(orgHandles)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	orgModels, err := s.orgRepo.ListOrganizationsByHandles(handles, limit, offset)
+	orgModels, err := s.orgRepo.ListOrganizationsByHandles(orgHandles, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
