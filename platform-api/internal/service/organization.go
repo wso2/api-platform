@@ -245,48 +245,6 @@ func (s *OrganizationService) ListOrganizationsForUser(userUUID, resolvedOrgUUID
 	return orgs, total, nil
 }
 
-// ListOrganizationsForCaller returns the organizations matching orgHandles
-// (the caller's "organizations" claim), falling back to the caller's
-// DB-recorded memberships in user_organization_mappings when the claim is
-// absent (e.g. a session/IDP that hasn't been upgraded to emit
-// "organizations" yet).
-func (s *OrganizationService) ListOrganizationsForCaller(userUUID, resolvedOrgUUID string, orgHandles []string, limit, offset int) ([]api.Organization, int, error) {
-	// ListOrganizationsForUser performs its own membership-heal, so delegate
-	// before healing here to avoid a redundant AddMembership call.
-	if len(orgHandles) == 0 {
-		return s.ListOrganizationsForUser(userUUID, resolvedOrgUUID, limit, offset)
-	}
-
-	if userUUID != "" && resolvedOrgUUID != "" {
-		if err := s.userOrgMappingRepo.AddMembership(userUUID, resolvedOrgUUID); err != nil {
-			s.slogger.Warn("Failed to heal organization membership", "userUUID", userUUID, "orgUUID", resolvedOrgUUID, "error", err)
-		}
-	}
-
-	total, err := s.orgRepo.CountOrganizationsByHandles(orgHandles)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	orgModels, err := s.orgRepo.ListOrganizationsByHandles(orgHandles, limit, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	orgs := make([]api.Organization, 0, len(orgModels))
-	identityFields := make([]**string, 0, len(orgModels)*2)
-	for _, orgModel := range orgModels {
-		orgs = append(orgs, *s.modelToAPIUnresolved(orgModel))
-		last := &orgs[len(orgs)-1]
-		identityFields = append(identityFields, &last.CreatedBy, &last.UpdatedBy)
-	}
-	if err := s.identity.ResolveIdentityFields(identityFields); err != nil {
-		return nil, 0, err
-	}
-
-	return orgs, total, nil
-}
-
 func (s *OrganizationService) GetOrganizationByHandle(handle string) (*api.Organization, error) {
 	orgModel, err := s.orgRepo.GetOrganizationByHandle(handle)
 	if err != nil {

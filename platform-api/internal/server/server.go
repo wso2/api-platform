@@ -690,16 +690,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 // resolved IDP-role-to-scope table alongside it.
 func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]string) middleware.ClaimMappings {
 	return middleware.ClaimMappings{
-		OrganizationClaim:  cm.Organization,
-		OrgNameClaim:       cm.OrgName,
-		OrgHandleClaim:     cm.OrgHandle,
-		OrganizationsClaim: cm.Organizations,
-		UserIDClaim:        cm.UserID,
-		UsernameClaim:      cm.Username,
-		EmailClaim:         cm.Email,
-		ScopeClaim:         cm.Scope,
-		RolesClaimPath:     cm.Roles,
-		RoleScopeMap:       roleScopeMap,
+		OrganizationClaim: cm.Organization,
+		OrgNameClaim:      cm.OrgName,
+		OrgHandleClaim:    cm.OrgHandle,
+		UserIDClaim:       cm.UserID,
+		UsernameClaim:     cm.Username,
+		EmailClaim:        cm.Email,
+		ScopeClaim:        cm.Scope,
+		RolesClaimPath:    cm.Roles,
+		RoleScopeMap:      roleScopeMap,
 	}
 }
 

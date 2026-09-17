@@ -37,8 +37,6 @@ type OrganizationRepository interface {
 	CountOrganizations() (int, error)
 	ListOrganizationsForUser(userUUID string, limit, offset int) ([]*model.Organization, error)
 	CountOrganizationsForUser(userUUID string) (int, error)
-	ListOrganizationsByHandles(handles []string, limit, offset int) ([]*model.Organization, error)
-	CountOrganizationsByHandles(handles []string) (int, error)
 }
 
 // ProjectRepository defines the interface for project data access

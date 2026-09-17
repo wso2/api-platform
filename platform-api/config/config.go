@@ -318,15 +318,14 @@ type Authorization struct {
 
 // ClaimMappings holds JWT claim name mappings, shared across all auth modes.
 type ClaimMappings struct {
-	Organization  string `koanf:"organization"`
-	OrgName       string `koanf:"org_name"`
-	OrgHandle     string `koanf:"org_handle"`
-	Organizations string `koanf:"organizations"`
-	UserID        string `koanf:"user_id"`
-	Username      string `koanf:"username"`
-	Email         string `koanf:"email"`
-	Scope         string `koanf:"scope"`
-	Roles         string `koanf:"roles"`
+	Organization string `koanf:"organization"`
+	OrgName      string `koanf:"org_name"`
+	OrgHandle    string `koanf:"org_handle"`
+	UserID       string `koanf:"user_id"`
+	Username     string `koanf:"username"`
+	Email        string `koanf:"email"`
+	Scope        string `koanf:"scope"`
+	Roles        string `koanf:"roles"`
 }
 
 // IDP holds configuration for JWKS-based identity providers. Active when
