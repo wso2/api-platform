@@ -344,6 +344,11 @@ func (m *mockDeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *mod
 	return m.CreateWithLimitEnforcement(deployment, hardLimit)
 }
 
+func (m *mockDeploymentRepo) CreateWithBuild(deployment *model.Deployment, _ *model.Build,
+	_, hardLimit int) error {
+	return m.CreateWithLimitEnforcement(deployment, hardLimit)
+}
+
 func (m *mockDeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
 	m.createdDeployment = deployment
 	return m.createWithLimitError
