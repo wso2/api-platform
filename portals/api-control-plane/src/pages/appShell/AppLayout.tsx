@@ -34,6 +34,8 @@ import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { usePageTitle } from '../../navigation/usePageTitle';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
@@ -59,6 +61,10 @@ export default function AppLayout() {
   const location = useLocation();
   const { project, component, params } = useConsoleScope();
   const { notify } = useNotifications();
+
+  // Every page inside the shell gets its tab title from here, so a new route
+  // is named by its sidebar entry without touching the page itself.
+  useDocumentTitle(usePageTitle());
 
   const hidesBreadcrumbs = BREADCRUMB_FREE_ROUTES.some(
     (path) => matchPath(path, location.pathname) !== null,
@@ -167,7 +173,8 @@ export default function AppLayout() {
           <Box id={APP_FOOTER_ID}>
             <Footer>
               <Footer.Copyright>© {new Date().getFullYear()} WSO2 LLC.</Footer.Copyright>
-              <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
+              {/* Need to show the version on the on prem deployement, but not on the cloud deployment. Dynamic switch is to be implemented. */}
+              {/* <Footer.Version>{runtimeConfig.environmentName}</Footer.Version> */}
               <Footer.Link href={runtimeConfig.termsOfUseLink}>
                 <FormattedMessage
                   id="appLayout.footer.termsOfUse"

@@ -24,6 +24,7 @@ import { useOrganizations } from '@/api/resources/organizations';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useAuth } from '@/contexts/auth/AuthProvider';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 /**
  * Message ids are keyed by the *component*, not by this file: five unrelated
@@ -159,6 +160,10 @@ export function OrganizationRedirectPage() {
 export function UnauthorizedPage() {
   const navigate = useNavigate();
   const auth = useAuth();
+  const intl = useIntl();
+
+  // Rendered outside the app shell, so `AppLayout` doesn't name this one.
+  useDocumentTitle(intl.formatMessage(unauthorizedMessages.title));
 
   return (
     <PageContent>
@@ -185,6 +190,10 @@ export function UnauthorizedPage() {
 export function SessionExpiredPage() {
   const navigate = useNavigate();
   const auth = useAuth();
+  const intl = useIntl();
+
+  // Rendered outside the app shell, so `AppLayout` doesn't name this one.
+  useDocumentTitle(intl.formatMessage(sessionExpiredMessages.title));
 
   return (
     <PageContent>
@@ -211,6 +220,8 @@ export function SessionExpiredPage() {
 
 export function ServerErrorPage() {
   const intl = useIntl();
+
+  useDocumentTitle(intl.formatMessage(serverErrorMessages.title));
 
   return (
     <PageContent>

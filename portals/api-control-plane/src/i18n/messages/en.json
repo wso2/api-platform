@@ -668,6 +668,38 @@
     "defaultMessage": "Open {name}",
     "description": "Accessible name of a card or row that opens what it describes."
   },
+  "apiControlPlane.navigation.usePageTitle.admin": {
+    "defaultMessage": "Admin",
+    "description": "Browser tab title for the API admin page."
+  },
+  "apiControlPlane.navigation.usePageTitle.alerts": {
+    "defaultMessage": "Alerts",
+    "description": "Browser tab title for the API observability alerts page."
+  },
+  "apiControlPlane.navigation.usePageTitle.apiEdit": {
+    "defaultMessage": "Edit API",
+    "description": "Browser tab title for the page editing an API's basic information."
+  },
+  "apiControlPlane.navigation.usePageTitle.apis": {
+    "defaultMessage": "APIs",
+    "description": "Browser tab title for the API listing page."
+  },
+  "apiControlPlane.navigation.usePageTitle.lifecycle": {
+    "defaultMessage": "Lifecycle",
+    "description": "Browser tab title for the API lifecycle page."
+  },
+  "apiControlPlane.navigation.usePageTitle.monetize": {
+    "defaultMessage": "Monetize",
+    "description": "Browser tab title for the API monetization page."
+  },
+  "apiControlPlane.navigation.usePageTitle.newApi": {
+    "defaultMessage": "Create API",
+    "description": "Browser tab title for the API creation wizard."
+  },
+  "apiControlPlane.navigation.usePageTitle.settings": {
+    "defaultMessage": "Settings",
+    "description": "Browser tab title for any Settings tab."
+  },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
@@ -2403,9 +2435,6 @@
   "appShell.header.api.select": {
     "defaultMessage": "Select API"
   },
-  "appShell.header.notifications": {
-    "defaultMessage": "Notifications"
-  },
   "appShell.header.org.aria": {
     "defaultMessage": "Organizations"
   },
@@ -2444,6 +2473,10 @@
   },
   "appShell.header.title": {
     "defaultMessage": "API Platform"
+  },
+  "appShell.insightsPage.feature": {
+    "defaultMessage": "API insights",
+    "description": "Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud."
   },
   "appShell.lifeCyclePage.feature": {
     "defaultMessage": "Lifecycle management for this API"
