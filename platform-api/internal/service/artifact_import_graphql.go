@@ -54,7 +54,7 @@ func (i *graphqlAPIImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 	}
 
 	if ctx.Existing == nil {
-		i.resolveSchema(&cfg)
+		cfg.SDL, cfg.IntrospectionMode, _ = i.resolveSchema(cfg.Upstream.Main)
 		projectID := ctx.ProjectID
 		graphqlAPI := &model.GraphQLAPI{
 			ID:             ctx.ID,
@@ -90,8 +90,16 @@ func (i *graphqlAPIImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		existing.Version = version
 		existing.ProjectID = ctx.ProjectID
 		// Refresh the schema from the (possibly new) upstream alongside the rest of
-		// the configuration, the same as at create time.
-		i.resolveSchema(&cfg)
+		// the configuration, the same as at create time — but unlike create, a
+		// failed resolution here keeps the previously-stored schema instead of
+		// blanking it out (mirrors GraphQLAPIService.Update's same posture): a
+		// transient upstream issue during a metadata-only re-import must not
+		// destroy a schema that was working before this push.
+		if sdl, mode, ok := i.resolveSchema(cfg.Upstream.Main); ok {
+			cfg.SDL, cfg.IntrospectionMode = sdl, mode
+		} else {
+			cfg.SDL, cfg.IntrospectionMode = existing.Configuration.SDL, existing.Configuration.IntrospectionMode
+		}
 		existing.Configuration = cfg
 	case utils.WriteGatewaySpecificOnly:
 		// CP-owned: only the upstream is gateway-specific data; SDL/name/etc. are not
@@ -104,21 +112,20 @@ func (i *graphqlAPIImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 	return &ImportResult{ID: ctx.ID, DeployedVersion: version, Deployable: true}, nil
 }
 
-// resolveSchema derives cfg.SDL/IntrospectionMode via the same introspection path
-// CP-native create uses (fetchAndConvertGraphQLSchema, graphql_introspection.go),
+// resolveSchema derives SDL/introspectionMode via the same introspection path
+// CP-native create/update uses (fetchAndConvertGraphQLSchema, graphql_introspection.go),
 // since the gateway-pushed spec never carries the schema. Best-effort, mirroring
 // mcpProxyImporter.fetchCapabilities: an unreachable or misbehaving upstream must
-// not fail the whole import, so a failure just leaves SDL empty rather than
-// surfacing the specific reason (matches GraphQLAPIService.resolveSchema's own
-// sterile-failure posture).
-func (i *graphqlAPIImporter) resolveSchema(cfg *model.GraphQLAPIConfig) {
-	if cfg.Upstream.Main == nil || cfg.Upstream.Main.URL == "" {
-		return
+// not fail the whole import — ok reports whether resolution actually succeeded,
+// so a caller updating an existing artifact can keep its previously-stored
+// schema instead of blanking it out, the same way GraphQLAPIService.Update does.
+func (i *graphqlAPIImporter) resolveSchema(upstreamMain *model.UpstreamEndpoint) (sdl, introspectionMode string, ok bool) {
+	if upstreamMain == nil || upstreamMain.URL == "" {
+		return "", "", false
 	}
-	derived, err := fetchAndConvertGraphQLSchema(cfg.Upstream.Main.URL)
+	derived, err := fetchAndConvertGraphQLSchema(upstreamMain.URL)
 	if err != nil {
-		return
+		return "", "", false
 	}
-	cfg.SDL = derived
-	cfg.IntrospectionMode = "ENDPOINT"
+	return derived, "ENDPOINT", true
 }
