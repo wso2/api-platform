@@ -49,20 +49,28 @@ import (
 // not-yet-built feature — see REST_Design.md's "Not in scope"). Add it once
 // both are confirmed rather than guess at the shape.
 type HTTPPortalPublisher struct {
-	client    *client.RetryableHTTPClient
-	sharedKey string
+	client       *client.RetryableHTTPClient
+	authRegistry *APIPortalAuthRegistry
 }
 
 // NewHTTPPortalPublisher returns a PortalPublisher that pushes to the real
-// API Portal over HTTP, authenticating with sharedKey (the raw shared-key
-// value — see config.PublicationPortalSharedKeyPath) via the shared-key S2S
-// auth scheme.
-func NewHTTPPortalPublisher(sharedKey string, retryClient *client.RetryableHTTPClient) PortalPublisher {
-	return &HTTPPortalPublisher{client: retryClient, sharedKey: sharedKey}
+// API Portal over HTTP, authenticating via the shared-key S2S auth scheme —
+// the raw key is resolved per-portal through authRegistry (each api_portals
+// row carries its own encrypted key), never a single server-wide secret.
+func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, retryClient *client.RetryableHTTPClient) PortalPublisher {
+	return &HTTPPortalPublisher{client: retryClient, authRegistry: authRegistry}
 }
 
-func (p *HTTPPortalPublisher) authHeader() string {
-	return "sharedkey " + p.sharedKey
+// authHeader resolves the Authorization header for this specific portal via
+// the shared-key auth registry — never a fixed value, since different
+// api_portals rows (different deployed portal instances) each carry their
+// own key.
+func (p *HTTPPortalPublisher) authHeader(ctx context.Context, portal *model.APIPortal) (string, error) {
+	provider, err := p.authRegistry.Get(portal.Handle, portal.OrganizationID)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve API Portal auth: %w", err)
+	}
+	return provider.AuthorizationHeader(ctx)
 }
 
 // portalErrorBodyMaxBytes bounds how much of a 4xx response body is read
@@ -124,7 +132,7 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 	base := strings.TrimRight(portal.URL, "/")
 	escapedHandle := url.PathEscape(apiHandle)
 
-	exists, err := p.checkExists(ctx, base, escapedHandle)
+	exists, err := p.checkExists(ctx, portal, base, escapedHandle)
 	if err != nil {
 		return err
 	}
@@ -139,6 +147,11 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 		return err
 	}
 
+	authHeader, err := p.authHeader(ctx, portal)
+	if err != nil {
+		return err
+	}
+
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -147,7 +160,7 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 		return fmt.Errorf("failed to build portal metadata request: %w", err)
 	}
 	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("Authorization", p.authHeader())
+	req.Header.Set("Authorization", authHeader)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -191,6 +204,11 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 	base := strings.TrimRight(portal.URL, "/")
 	escapedHandle := url.PathEscape(apiHandle)
 
+	authHeader, err := p.authHeader(ctx, portal)
+	if err != nil {
+		return err
+	}
+
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -198,7 +216,7 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 	if err != nil {
 		return fmt.Errorf("failed to build portal unpublish request: %w", err)
 	}
-	req.Header.Set("Authorization", p.authHeader())
+	req.Header.Set("Authorization", authHeader)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -228,7 +246,12 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 
 // checkExists is REST_Design.md §8 step 1: GET /apis/{handle} on the portal.
 // 200 means it exists (update); 404 means it doesn't (create).
-func (p *HTTPPortalPublisher) checkExists(ctx context.Context, base, escapedHandle string) (bool, error) {
+func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.APIPortal, base, escapedHandle string) (bool, error) {
+	authHeader, err := p.authHeader(ctx, portal)
+	if err != nil {
+		return false, err
+	}
+
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -236,7 +259,7 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, base, escapedHand
 	if err != nil {
 		return false, fmt.Errorf("failed to build portal existence-check request: %w", err)
 	}
-	req.Header.Set("Authorization", p.authHeader())
+	req.Header.Set("Authorization", authHeader)
 
 	resp, err := p.client.Do(req)
 	if err != nil {

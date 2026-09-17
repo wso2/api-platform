@@ -19,6 +19,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log/slog"
@@ -32,11 +33,26 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// alwaysSucceedsPortalPublisher is a PortalPublisher test double for tests
+// that don't care about the portal push itself (draft CRUD, resolution
+// logic) — every call succeeds, same as the old stand-in publisher server.go
+// used before a real per-portal auth key existed to publish for real.
+type alwaysSucceedsPortalPublisher struct{}
+
+func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+	return nil
+}
+
+func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+	return nil
+}
 
 // setupPublicationTestEnv creates a full PublicationHandler stack backed by an
 // in-memory SQLite DB, seeded with one org, one rest_apis artifact ("my-api"),
@@ -85,7 +101,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewApiDocumentRepo(db),
 		repository.NewSubscriptionPlanRepo(db),
 		repository.NewPublicationRepo(db),
-		service.NewStandInPortalPublisher(),
+		alwaysSucceedsPortalPublisher{},
 		slog.Default(),
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())

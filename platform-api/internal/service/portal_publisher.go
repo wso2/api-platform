@@ -29,10 +29,7 @@ import (
 // HTTPPortalPublisher (http_portal_publisher.go) implements the existence
 // check and the metadata+definition push (§8 steps 1-2) for real. Step 3
 // (the content ZIP — thumbnail/landing-page/docs) is not yet implemented
-// there — see that file's doc comment — so every caller still gets the
-// stand-in below unless a real shared key is configured
-// (config.PublicationPortalSharedKeyPath); it always succeeds, standing in
-// for the whole push where no portal integration is configured.
+// there — see that file's doc comment.
 type PortalPublisher interface {
 	// Publish pushes pub (identified to the portal by apiHandle — this API's
 	// own handle, which is also api-portal's own handle/referenceId for the
@@ -72,23 +69,3 @@ type PortalConflictError struct {
 }
 
 func (e *PortalConflictError) Error() string { return e.Message }
-
-// standInPortalPublisher is the mock used where no portal integration is
-// configured — every method always succeeds, standing in for the real portal
-// push/removal until that integration is built (see "When the real
-// dependencies land" in Implementation_Plan.md).
-type standInPortalPublisher struct{}
-
-// NewStandInPortalPublisher returns a PortalPublisher whose methods always
-// succeed.
-func NewStandInPortalPublisher() PortalPublisher {
-	return &standInPortalPublisher{}
-}
-
-func (*standInPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
-	return nil
-}
-
-func (*standInPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
-	return nil
-}

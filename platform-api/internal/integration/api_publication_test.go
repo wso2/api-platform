@@ -31,6 +31,20 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/service"
 )
 
+// alwaysSucceedsPortalPublisher is a PortalPublisher test double for tests
+// that don't care about the portal push itself (draft CRUD, resolution
+// logic) — every call succeeds, same as the old stand-in publisher server.go
+// used before a real per-portal auth key existed to publish for real.
+type alwaysSucceedsPortalPublisher struct{}
+
+func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+	return nil
+}
+
+func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+	return nil
+}
+
 // newPublicationTestService wires a real PublicationService against it.db,
 // using the same repositories production code uses. Unlike the rest of this
 // package (which drives repositories directly), these tests go through the
@@ -43,7 +57,7 @@ func newPublicationTestService(it *itDB) *service.PublicationService {
 		repository.NewApiDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
-		service.NewStandInPortalPublisher(),
+		alwaysSucceedsPortalPublisher{},
 		nil,
 	)
 }

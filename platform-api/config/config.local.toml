@@ -21,14 +21,6 @@
 #
 # Not used by any docker-compose quickstart; those keep using config.toml as-is.
 
-[platform_api]
-# Path to the raw shared-key value platform-api sends to API Portal's
-# shared-key S2S auth when pushing a publication (Slice 5's real portal
-# push). Read directly via os.ReadFile, not the {{ file }} interpolation
-# helper — see config.go's PublicationPortalSharedKeyPath doc comment.
-# Leave unset/empty to use the stand-in publisher instead (no portal wired up).
-publication_portal_shared_key_path = "resources/keys/api-portal-internal-key.raw"
-
 [platform_api.logging]
 level = '{{ env "APIP_CP_LOGGING_LEVEL" "info" }}'
 

@@ -38,13 +38,28 @@ import (
 // This package's TestMain (main_test.go) already initializes the shared
 // outbound HTTP client that client.NewRetryableHTTPClient needs.
 
+// newTestHTTPPortalPublisher wires a publisher whose auth registry always
+// resolves to sharedKey, regardless of which portal is looked up —
+// mockAPIPortalRepository.GetByHandleAndOrgID ignores its arguments and
+// always returns the one fixed row below.
 func newTestHTTPPortalPublisher(t *testing.T, sharedKey string) *HTTPPortalPublisher {
 	t.Helper()
 	retryClient, err := client.NewRetryableHTTPClient(0, 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewRetryableHTTPClient: %v", err)
 	}
-	return &HTTPPortalPublisher{client: retryClient, sharedKey: sharedKey}
+	testVault := newTestVault(t)
+	encryptedKey, err := testVault.Encrypt(context.Background(), sharedKey)
+	if err != nil {
+		t.Fatalf("encrypt test shared key: %v", err)
+	}
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{
+		Handle:          "test-portal",
+		OrganizationID:  "test-org",
+		InternalAuthKey: encryptedKey,
+	}}
+	authRegistry := NewAPIPortalAuthRegistry(portalRepo, testVault)
+	return &HTTPPortalPublisher{client: retryClient, authRegistry: authRegistry}
 }
 
 // assertMultipartParts drains r's multipart body against boundary, returning
@@ -103,8 +118,8 @@ func TestHTTPPortalPublisher_CreatesWhenNotFound(t *testing.T) {
 	if gotMethod != http.MethodPost {
 		t.Fatalf("want POST for create, got %s", gotMethod)
 	}
-	if gotAuth != "sharedkey test-shared-key" {
-		t.Fatalf("want Authorization 'sharedkey test-shared-key', got %q", gotAuth)
+	if gotAuth != "SharedKey test-shared-key" {
+		t.Fatalf("want Authorization 'SharedKey test-shared-key', got %q", gotAuth)
 	}
 	if !gotParts["metadata"] || !gotParts["definition"] {
 		t.Fatalf("want both metadata and definition parts, got %v", gotParts)
@@ -416,8 +431,8 @@ func TestHTTPPortalPublisher_Unpublish_DeletesListing(t *testing.T) {
 	if gotMethod != http.MethodDelete || gotPath != "/apis/my-api" {
 		t.Fatalf("want DELETE /apis/my-api, got %s %s", gotMethod, gotPath)
 	}
-	if gotAuth != "sharedkey test-shared-key" {
-		t.Fatalf("want Authorization 'sharedkey test-shared-key', got %q", gotAuth)
+	if gotAuth != "SharedKey test-shared-key" {
+		t.Fatalf("want Authorization 'SharedKey test-shared-key', got %q", gotAuth)
 	}
 }
 
