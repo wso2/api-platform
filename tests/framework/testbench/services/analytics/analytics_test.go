@@ -129,7 +129,10 @@ func TestServiceRetainsOnlyTheNewestEvents(t *testing.T) {
 
 	response := serveAnalytics(service, http.MethodPost, "/block/v1/events/batch", bytes.NewReader(body), nil)
 	require.Equal(t, http.StatusCreated, response.Code)
-	require.Len(t, readAnalyticsEvents(t, service, "block"), maxRetainedEvents)
+	retained := readAnalyticsEvents(t, service, "block")
+	require.Len(t, retained, maxRetainedEvents)
+	require.Equal(t, events[1].Request.URI, retained[0].Request.URI)
+	require.Equal(t, events[len(events)-1].Request.URI, retained[len(retained)-1].Request.URI)
 }
 
 func TestServiceRejectsMalformedAndOversizedPayloads(t *testing.T) {

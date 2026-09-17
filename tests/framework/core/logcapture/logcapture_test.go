@@ -21,6 +21,7 @@ package logcapture
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -151,7 +152,14 @@ func TestNewWriterRestrictsLogFilePermissions(t *testing.T) {
 	require.NoError(t, err)
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS == "windows" {
+		// Windows uses only the owner-write bit to control the file's
+		// FILE_ATTRIBUTE_READONLY flag; its reported permission bits are not
+		// Unix-style 0600. A writable file reports the owner-write bit.
+		require.NotZero(t, info.Mode().Perm()&0o200)
+	} else {
+		require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 	w.Close()
 }
 

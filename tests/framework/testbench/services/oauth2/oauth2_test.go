@@ -19,6 +19,7 @@ package oauth2
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,7 +48,9 @@ func TestTokenEndpointSupportsBasicAndPostAuthentication(t *testing.T) {
 	}
 
 	stats := httptest.NewRecorder()
-	h.ServeHTTP(stats, httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil))
+	statsRequest := httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil)
+	statsRequest.SetBasicAuth(clientID, clientSecret)
+	h.ServeHTTP(stats, statsRequest)
 	var got struct {
 		Count int `json:"tokenRequestCount"`
 	}
@@ -56,6 +59,28 @@ func TestTokenEndpointSupportsBasicAndPostAuthentication(t *testing.T) {
 	}
 	if got.Count != 2 {
 		t.Errorf("token request count = %d, want 2", got.Count)
+	}
+}
+
+func TestDebugRoutesRejectUnauthorizedRequests(t *testing.T) {
+	h := New().Handler()
+
+	for _, tt := range []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "stats", method: http.MethodGet, path: "/block-a/debug/stats"},
+		{name: "reset", method: http.MethodPost, path: "/block-a/debug/reset"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			h.ServeHTTP(recorder, httptest.NewRequest(tt.method, tt.path, nil))
+
+			if recorder.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+			}
+		})
 	}
 }
 
@@ -126,7 +151,9 @@ func TestTokenEndpointPartitionsStateAndSupportsFailureResponses(t *testing.T) {
 
 	for _, block := range []string{"block-a", "block-b"} {
 		reset := httptest.NewRecorder()
-		h.ServeHTTP(reset, httptest.NewRequest(http.MethodPost, "/"+block+"/debug/reset", nil))
+		resetRequest := httptest.NewRequest(http.MethodPost, "/"+block+"/debug/reset", nil)
+		resetRequest.SetBasicAuth(clientID, clientSecret)
+		h.ServeHTTP(reset, resetRequest)
 		if reset.Code != http.StatusNoContent {
 			t.Fatalf("%s reset status = %d", block, reset.Code)
 		}
@@ -149,12 +176,16 @@ func TestTokenEndpointPartitionsStateAndSupportsFailureResponses(t *testing.T) {
 	}
 
 	stats := httptest.NewRecorder()
-	h.ServeHTTP(stats, httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil))
+	statsRequest := httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil)
+	statsRequest.SetBasicAuth(clientID, clientSecret)
+	h.ServeHTTP(stats, statsRequest)
 	if !strings.Contains(stats.Body.String(), "server_error") {
 		t.Fatalf("block-a stats = %q, want server_error", stats.Body.String())
 	}
 	otherStats := httptest.NewRecorder()
-	h.ServeHTTP(otherStats, httptest.NewRequest(http.MethodGet, "/block-b/debug/stats", nil))
+	otherStatsRequest := httptest.NewRequest(http.MethodGet, "/block-b/debug/stats", nil)
+	otherStatsRequest.SetBasicAuth(clientID, clientSecret)
+	h.ServeHTTP(otherStats, otherStatsRequest)
 	if !strings.Contains(otherStats.Body.String(), "malformed") {
 		t.Fatalf("block-b stats = %q, want malformed", otherStats.Body.String())
 	}
@@ -163,13 +194,21 @@ func TestTokenEndpointPartitionsStateAndSupportsFailureResponses(t *testing.T) {
 func TestTokenEndpointRetainsOnlyTheNewestHistory(t *testing.T) {
 	s := New()
 	p := &partition{}
+	firstClientID := "client-0"
+	newestClientID := fmt.Sprintf("client-%d", maxHistory)
 	for i := 0; i < maxHistory+1; i++ {
-		s.record(p, tokenRequest{ClientID: clientID})
+		s.record(p, tokenRequest{ClientID: fmt.Sprintf("client-%d", i)})
 	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.history) != maxHistory {
 		t.Fatalf("history length = %d, want %d", len(p.history), maxHistory)
+	}
+	if p.history[0].ClientID == firstClientID {
+		t.Fatalf("first retained request = %q, want the first request to be discarded", p.history[0].ClientID)
+	}
+	if got := p.history[len(p.history)-1].ClientID; got != newestClientID {
+		t.Fatalf("newest retained request = %q, want %q", got, newestClientID)
 	}
 }

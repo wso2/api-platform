@@ -45,6 +45,12 @@ type Response struct {
 
 const maxResponseBodyBytes int64 = 10 << 20
 
+// These IANA-assigned hybrid group IDs are not named by older crypto/tls packages.
+const (
+	secP256r1MLKEM768  tls.CurveID = 4587
+	secP384r1MLKEM1024 tls.CurveID = 4589
+)
+
 // Text returns the body as a string.
 func (r *Response) Text() string {
 	if r == nil {
@@ -133,11 +139,13 @@ func NewClient(opts Options) *Client {
 
 	tlsConfig := opts.TLSClientConfig
 	if tlsConfig == nil {
-		tlsConfig = &tls.Config{InsecureSkipVerify: opts.InsecureSkipVerify} //nolint:gosec // explicit opt-in for local self-signed test targets
+		tlsConfig = &tls.Config{
+			InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec // explicit opt-in for local self-signed test targets
+			CurvePreferences:   defaultCurvePreferences(),
+		}
 	} else {
 		tlsConfig = tlsConfig.Clone()
 	}
-	// Left nil, crypto/tls offers its full default set; a value here filters that set down.
 	if len(tlsConfig.CurvePreferences) > 0 {
 		tlsConfig.CurvePreferences = normalizedCurves(tlsConfig.CurvePreferences)
 	}
@@ -161,10 +169,23 @@ func NewClient(opts Options) *Client {
 	}
 }
 
+func defaultCurvePreferences() []tls.CurveID {
+	return []tls.CurveID{
+		tls.X25519MLKEM768,
+		secP256r1MLKEM768,
+		secP384r1MLKEM1024,
+		tls.X25519,
+		tls.CurveP256,
+		tls.CurveP384,
+		tls.CurveP521,
+	}
+}
+
 func normalizedCurves(configured []tls.CurveID) []tls.CurveID {
-	curves := make([]tls.CurveID, 0, len(configured)+3)
-	seen := make(map[tls.CurveID]struct{}, len(configured)+3)
-	for _, curve := range []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384} {
+	defaults := defaultCurvePreferences()
+	curves := make([]tls.CurveID, 0, len(configured)+len(defaults))
+	seen := make(map[tls.CurveID]struct{}, len(configured)+len(defaults))
+	for _, curve := range defaults {
 		curves = append(curves, curve)
 		seen[curve] = struct{}{}
 	}

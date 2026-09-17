@@ -267,13 +267,21 @@ func TestTLSVerificationIsSecureByDefaultAndCanBeOptedOutLocally(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.StatusCode)
 }
 
-func TestNewClientKeepsTheRuntimeTLSCurveDefaults(t *testing.T) {
+func TestNewClientUsesPQCFirstTLSCurveDefaults(t *testing.T) {
 	client := NewClient(Options{})
 	transport, ok := client.http.Transport.(*http.Transport)
 	require.True(t, ok)
-	// crypto/tls treats CurvePreferences as a filter, so naming any curve here would drop
-	// the ML-KEM groups and classical fallbacks the default set already offers.
-	require.Nil(t, transport.TLSClientConfig.CurvePreferences)
+	require.Equal(t,
+		[]tls.CurveID{
+			tls.X25519MLKEM768,
+			secP256r1MLKEM768,
+			secP384r1MLKEM1024,
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+			tls.CurveP521,
+		},
+		transport.TLSClientConfig.CurvePreferences)
 	require.False(t, transport.TLSClientConfig.InsecureSkipVerify)
 
 	insecureClient := NewClient(Options{InsecureSkipVerify: true})
@@ -295,7 +303,15 @@ func TestNewClientClonesAndNormalizesSuppliedTLSConfig(t *testing.T) {
 	require.NotSame(t, configured, transport.TLSClientConfig)
 	require.Equal(t, "example.test", transport.TLSClientConfig.ServerName)
 	require.Equal(t,
-		[]tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384, tls.CurveP521},
+		[]tls.CurveID{
+			tls.X25519MLKEM768,
+			secP256r1MLKEM768,
+			secP384r1MLKEM1024,
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+			tls.CurveP521,
+		},
 		transport.TLSClientConfig.CurvePreferences)
 	require.Equal(t, originalCurves, configured.CurvePreferences)
 }
