@@ -41,7 +41,7 @@ const (
 func registerAllRoutes(mux *http.ServeMux) {
 	logger := slog.Default()
 
-	handler.NewOrganizationHandler(nil, nil, "scope", logger).RegisterRoutes(mux)
+	handler.NewOrganizationHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewProjectHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewApplicationHandler(nil, nil, "scope", logger).RegisterRoutes(mux)
 	handler.NewAPIHandler(nil, nil, logger).RegisterRoutes(mux)

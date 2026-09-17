@@ -71,7 +71,13 @@ export const AI_WORKSPACE_INSIGHTS_SLOT = 'page.insights';
  * that route changes.
  */
 export type AIWorkspacePageOverride = SlotEntry & {
-  render: (port: AIWorkspaceHostPort) => ReactNode;
+  /**
+   * `artifactHandle` is given only for pages scoped to a single artifact — the
+   * per-kind Deploy pages. The route carries it (`:serverId`, `:proxyId`,
+   * `:providerId`) and the cloud plugins have no router of their own, so the portal
+   * reads it off the URL and hands it over. It is absent for every other override.
+   */
+  render: (port: AIWorkspaceHostPort, artifactHandle?: string) => ReactNode;
   /**
    * Optional nav placement for the built-in item this override replaces. When
    * `label` is given the sidebar renders the override alongside the sidebar
@@ -85,6 +91,19 @@ export type AIWorkspacePageOverride = SlotEntry & {
   /** Built-in `Hideable` regions this entry suppresses (see `slots/index.tsx`). */
   hides?: readonly string[];
 };
+
+/**
+ * Slots for overriding the built-in per-artifact Deploy pages — an MCP server's and
+ * an LLM proxy's. LLM providers are organization-scoped rather than project-scoped,
+ * so a pipeline cannot apply to them and their built-in page stays. Same Slot/Hideable split as the pages
+ * above: each built-in route and sidebar entry stays, only the body changes.
+ *
+ * There is one per kind rather than a single shared slot because the pages sit on
+ * different routes and deploy different kinds of artifact, and a replacement has to
+ * be registered for the kind it understands.
+ */
+export const AI_WORKSPACE_MCP_DEPLOY_SLOT = 'page.mcpDeploy';
+export const AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT = 'page.llmProxyDeploy';
 
 /**
  * `Hideable` region wrapping the built-in AI Gateways *sidebar item* (the page

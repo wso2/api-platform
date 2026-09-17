@@ -37,6 +37,8 @@ type OrganizationRepository interface {
 	CountOrganizations() (int, error)
 	ListOrganizationsForUser(userUUID string, limit, offset int) ([]*model.Organization, error)
 	CountOrganizationsForUser(userUUID string) (int, error)
+	ListOrganizationsByHandles(handles []string, limit, offset int) ([]*model.Organization, error)
+	CountOrganizationsByHandles(handles []string) (int, error)
 }
 
 // ProjectRepository defines the interface for project data access
@@ -305,6 +307,18 @@ type LLMProxyRepository interface {
 	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
 	// not already exist and resolves the metadata to use for the deployment.
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
+// APIPortalRepository defines the interface for API Portal persistence.
+type APIPortalRepository interface {
+	Create(portal *model.APIPortal) error
+	GetByUUID(portalID, orgUUID string) (*model.APIPortal, error)
+	GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error)
+	ListPaginated(orgUUID string, opts ListOptions) ([]*model.APIPortal, error)
+	Count(orgUUID string, search string) (int, error)
+	Update(portal *model.APIPortal) error
+	Delete(portalID, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence

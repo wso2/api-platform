@@ -155,10 +155,15 @@ func (i *Instance) Ordinal() int { return i.ordinal }
 
 // Label identifies this instance in messages, disambiguating replicas.
 func (i *Instance) Label() string {
-	if i.replicas <= 1 {
-		return i.def.Name
+	return Label(i.def.Name, i.ordinal, i.replicas)
+}
+
+// Label formats a component instance identity.
+func Label(name string, ordinal, replicas int) string {
+	if replicas <= 1 {
+		return name
 	}
-	return fmt.Sprintf("%s#%d", i.def.Name, i.ordinal+1)
+	return fmt.Sprintf("%s#%d", name, ordinal+1)
 }
 
 // Host returns the address used to reach mapped ports.

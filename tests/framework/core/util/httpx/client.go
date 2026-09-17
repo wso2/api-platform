@@ -43,6 +43,14 @@ type Response struct {
 	Elapsed time.Duration
 }
 
+const maxResponseBodyBytes int64 = 10 << 20
+
+// These IANA-assigned hybrid group IDs are not named by older crypto/tls packages.
+const (
+	secP256r1MLKEM768  tls.CurveID = 4587
+	secP384r1MLKEM1024 tls.CurveID = 4589
+)
+
 // Text returns the body as a string.
 func (r *Response) Text() string {
 	if r == nil {
@@ -100,12 +108,18 @@ type TransientMatcher func(*Response) bool
 type Options struct {
 	// Timeout bounds one request.
 	Timeout time.Duration
+	// FollowRedirects enables normal HTTP redirect handling.
+	FollowRedirects bool
 	// MaxRetries bounds transient-error retries.
 	MaxRetries int
 	// RetryDelay is the pause between transient retries.
 	RetryDelay time.Duration
 	// RetryOn recognises transient responses.
 	RetryOn []TransientMatcher
+	// TLSClientConfig configures certificate verification for trusted test services.
+	// A nil value uses the system verification roots and hostname from the URL, unless
+	// InsecureSkipVerify is explicitly enabled.
+	TLSClientConfig *tls.Config
 	// InsecureSkipVerify disables TLS certificate and hostname verification. Use only for
 	// local test targets that intentionally use self-signed certificates.
 	InsecureSkipVerify bool
@@ -123,24 +137,66 @@ func NewClient(opts Options) *Client {
 		opts.RetryDelay = 2 * time.Second
 	}
 
-	return &Client{
-		http: &http.Client{
-			Timeout: opts.Timeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384},
-					InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec // explicit opt-in for local self-signed test targets
-				},
-				MaxIdleConns:        200,
-				MaxIdleConnsPerHost: 50,
-				MaxConnsPerHost:     100,
-			},
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+	tlsConfig := opts.TLSClientConfig
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{
+			InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec // explicit opt-in for local self-signed test targets
+			CurvePreferences:   defaultCurvePreferences(),
+		}
+	} else {
+		tlsConfig = tlsConfig.Clone()
+	}
+	if len(tlsConfig.CurvePreferences) > 0 {
+		tlsConfig.CurvePreferences = normalizedCurves(tlsConfig.CurvePreferences)
+	}
+	httpClient := &http.Client{
+		Timeout: opts.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig:     tlsConfig,
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 50,
+			MaxConnsPerHost:     100,
 		},
+	}
+	if !opts.FollowRedirects {
+		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	return &Client{
+		http:    httpClient,
 		retryOn: append([]TransientMatcher(nil), opts.RetryOn...),
 	}
+}
+
+func defaultCurvePreferences() []tls.CurveID {
+	return []tls.CurveID{
+		tls.X25519MLKEM768,
+		secP256r1MLKEM768,
+		secP384r1MLKEM1024,
+		tls.X25519,
+		tls.CurveP256,
+		tls.CurveP384,
+		tls.CurveP521,
+	}
+}
+
+func normalizedCurves(configured []tls.CurveID) []tls.CurveID {
+	defaults := defaultCurvePreferences()
+	curves := make([]tls.CurveID, 0, len(configured)+len(defaults))
+	seen := make(map[tls.CurveID]struct{}, len(configured)+len(defaults))
+	for _, curve := range defaults {
+		curves = append(curves, curve)
+		seen[curve] = struct{}{}
+	}
+	for _, curve := range configured {
+		if _, ok := seen[curve]; ok {
+			continue
+		}
+		curves = append(curves, curve)
+		seen[curve] = struct{}{}
+	}
+	return curves
 }
 
 // Request describes one call.
@@ -223,9 +279,13 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("httpx: reading the body of %s %s: %w", req.Method, req.URL, err)
+	}
+	if int64(len(raw)) > maxResponseBodyBytes {
+		return nil, fmt.Errorf("httpx: response body of %s %s exceeds the %d-byte limit",
+			req.Method, req.URL, maxResponseBodyBytes)
 	}
 
 	return &Response{

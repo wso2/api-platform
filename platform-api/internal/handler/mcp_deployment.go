@@ -60,6 +60,16 @@ func (h *MCPProxyDeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments", middleware.MapErrors(h.slogger, h.GetMCPProxyDeployments))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.GetMCPProxyDeployment))
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteMCPProxyDeployment))
+
+	// The same build endpoints every artifact kind has, on this kind's own path.
+	BuildRoutes{
+		Service:   h.deploymentService,
+		Segment:   "mcp-proxies",
+		PathParam: "mcpProxyId",
+		Subject:   "MCP proxy",
+		Identity:  h.identity,
+		Slogger:   h.slogger,
+	}.Register(mux)
 }
 
 // DeployMCPProxy handles POST /api/v0.9/mcp-proxies/:id/deployments

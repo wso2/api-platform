@@ -36,11 +36,13 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways    Gateways
-	Projects    Projects
-	Deployments Deployments
+	Gateways      Gateways
+	Projects      Projects
+	APIPortals    APIPortals
+	Deployments   Deployments
+	Organizations Organizations
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
+	// (APIs, Subscriptions, Applications, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -81,6 +83,27 @@ type Projects interface {
 	DeleteProject(handle, orgID, actor string) error
 }
 
+// APIPortals exposes CRUD on API Portal records, scoped by organization.
+// orgID is always the request-context org (GO-AUTH-005), never caller input.
+type APIPortals interface {
+	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
+	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
+	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
+	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
+	DeleteAPIPortal(handle, orgID, actor string) error
+}
+
+// Organizations exposes read-only lookups over the platform's organizations.
+// Every method mirrors an existing OrganizationService method verbatim; callers
+// MUST pass an org id resolved from the request context, never one from request
+// input (GO-AUTH-005).
+type Organizations interface {
+	// GetOrganizationByUUID returns the organization identified by its internal
+	// UUID. Used by plugins that hold a JWT-derived org UUID and need the handle
+	// (or other registered attributes) without an extra HTTP hop.
+	GetOrganizationByUUID(uuid string) (*api.Organization, error)
+}
+
 // Deployments exposes build/deploy/read/undeploy access to an API's gateway
 // deployments, scoped by organization and addressed by handle. Every method
 // mirrors an existing DeploymentService method verbatim and takes the
@@ -92,50 +115,68 @@ type Projects interface {
 // named by buildId. That lets a caller fix WHAT will be deployed at a known moment
 // — so a deploy cannot silently pick up edits made since — and deploy that same
 // snapshot to any number of gateways, or onward to the next environment.
+// The artifact kinds Deployments accepts. They are the same values the platform's
+// own per-kind paths are split by and the same the artifact row carries, so a
+// plugin names a kind rather than guessing a string.
+const (
+	KindRestAPI     = "RestApi"
+	KindMCPProxy    = "Mcp"
+	KindLLMProxy    = "LlmProxy"
+	KindLLMProvider = "LlmProvider"
+)
+
 type Deployments interface {
-	// CreateBuildByHandle renders the API's current definition into an immutable
-	// snapshot without deploying it, so a later deploy can name that snapshot
-	// instead of re-rendering whatever the definition has become (Prepare).
+	// Every operation names the artifact KIND alongside the handle — the same kinds
+	// the platform's own paths are split by ("RestApi", "Mcp", "LlmProxy",
+	// "LlmProvider"). Handles are unique only WITHIN a kind, so a handle alone could
+	// reach an artifact the caller did not name; the kind settles it, and the
+	// platform checks that the artifact it resolves really is of that kind.
+
+	// CreateBuildByHandle renders the artifact's current definition into an
+	// immutable snapshot without deploying it, so a later deploy can name that
+	// snapshot instead of re-rendering whatever the definition has become (Prepare).
 	// Description is an optional note recorded with the build; metadata is stored
-	// with it and returned uninterpreted. Refused when the API is at its build
+	// with it and returned uninterpreted. Refused when the artifact is at its build
 	// limit and every stored build is in use by a current deployment; redeploying to
 	// the same gateway does not run the limit down, since a superseded deployment
 	// stops holding its build.
-	CreateBuildByHandle(apiHandle, orgID, actor, description string, metadata map[string]interface{}) (*api.BuildResponse, error)
+	CreateBuildByHandle(handle, kind, orgID, actor, description string,
+		metadata map[string]interface{}) (*api.BuildResponse, error)
 
-	// GetBuildByHandle returns one of an API's builds — its id, metadata and when
-	// it was prepared, not the rendered artifact itself (Read).
-	GetBuildByHandle(apiHandle, buildID, orgID string) (*api.BuildResponse, error)
+	// GetBuildByHandle returns one of an artifact's builds — its id, metadata and
+	// when it was prepared, not the rendered artifact itself (Read).
+	GetBuildByHandle(handle, kind, buildID, orgID string) (*api.BuildResponse, error)
 
-	// GetBuildsByHandle lists an API's builds, newest first (Read).
-	GetBuildsByHandle(apiHandle, orgID string, limit int) (*api.BuildListResponse, error)
+	// GetBuildsByHandle lists an artifact's builds, newest first (Read).
+	GetBuildsByHandle(handle, kind, orgID string, limit int) (*api.BuildListResponse, error)
 
-	// DeleteBuildByHandle removes one of an API's builds, and is how room is made
-	// once the limit refuses another (Delete). Refused only while the build is on a
-	// gateway — DEPLOYED, DEPLOYING or UNDEPLOYING; undeployed, failed and archived
-	// deployments all release it, so this reaches the builds automatic cleanup will
-	// not take. Those deployments stay redeployable from their own artifact but stop
-	// naming a build, so they can no longer be promoted onward — which is why
-	// reclaiming them is a request rather than something cleanup decides.
-	DeleteBuildByHandle(apiHandle, buildID, orgID string) error
+	// DeleteBuildByHandle removes one of an artifact's builds, and is how room is
+	// made once the limit refuses another (Delete). Refused only while the build is
+	// on a gateway — DEPLOYED, DEPLOYING or UNDEPLOYING; undeployed, failed and
+	// archived deployments all release it, so this reaches the builds automatic
+	// cleanup will not take. Those deployments stay redeployable from their own
+	// artifact but stop naming a build, so they can no longer be promoted onward —
+	// which is why reclaiming them is a request rather than something cleanup
+	// decides.
+	DeleteBuildByHandle(handle, kind, buildID, orgID string) error
 
-	// DeployAPIByHandle creates a new immutable deployment of an API onto one
+	// DeployByHandle creates a new immutable deployment of an artifact onto one
 	// gateway, from a build (Create).
-	DeployAPIByHandle(apiHandle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error)
+	DeployByHandle(handle, kind string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error)
 
-	// GetDeploymentsByHandle lists an API's deployments, optionally filtered by
+	// GetDeploymentsByHandle lists an artifact's deployments, optionally filtered by
 	// gateway handle and status (Read).
-	GetDeploymentsByHandle(apiHandle, gatewayID, status, orgID string) (*api.DeploymentListResponse, error)
+	GetDeploymentsByHandle(handle, kind, gatewayID, status, orgID string) (*api.DeploymentListResponse, error)
 
-	// GetDeploymentByHandle returns a single deployment of an API, including its
-	// persisted metadata (Read).
-	GetDeploymentByHandle(apiHandle, deploymentID, orgID string) (*api.DeploymentResponse, error)
+	// GetDeploymentByHandle returns a single deployment of an artifact, including
+	// its persisted metadata (Read).
+	GetDeploymentByHandle(handle, kind, deploymentID, orgID string) (*api.DeploymentResponse, error)
 
 	// UndeployDeploymentByHandle undeploys a deployment from its gateway (Delete).
-	UndeployDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+	UndeployDeploymentByHandle(handle, kind, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
 
 	// RestoreDeploymentByHandle puts an UNDEPLOYED or ARCHIVED deployment back on
 	// its gateway, serving the artifact it already holds rather than rendering or
 	// building anything new (Update). The deployment must not already be DEPLOYED.
-	RestoreDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+	RestoreDeploymentByHandle(handle, kind, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
 }

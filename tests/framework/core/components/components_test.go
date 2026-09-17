@@ -145,6 +145,18 @@ func TestDefinitionValidationEdges(t *testing.T) {
 		require.ErrorContains(t, err, "not in the services list")
 		require.ErrorContains(t, err, "still needs endpoints")
 	})
+
+	t.Run("negative boot attempts are rejected", func(t *testing.T) {
+		d := &Definition{
+			Name: "stack", Alias: "stack",
+			Endpoints: []Endpoint{{Name: "api", Port: 8080, Scheme: "http"}},
+			Compose: &ComposeSpec{
+				ComposeFile: "compose/stack.yaml", Services: []string{"api"}, PrimaryService: "api",
+				BootAttempts: -1,
+			},
+		}
+		require.ErrorContains(t, d.Validate(), "boot attempts must not be negative")
+	})
 }
 
 func TestHealthCheckValidation(t *testing.T) {
@@ -1188,6 +1200,7 @@ func TestComposeHelpers(t *testing.T) {
 				GeneratedFiles:   map[string][]byte{"existing": []byte("value")},
 				Env:              map[string]string{"A": "B"},
 				CoverageServices: []CoverageService{{Name: "gateway", Types: []string{"go"}}},
+				BootAttempts:     3,
 			},
 		}
 		updated := definition.Compose.WithGenerated(map[string][]byte{"generated": []byte("content")})
@@ -1195,6 +1208,7 @@ func TestComposeHelpers(t *testing.T) {
 		require.Equal(t, map[string][]byte{"existing": []byte("value"), "generated": []byte("content")}, updated.GeneratedFiles)
 		require.Equal(t, map[string]string{"A": "B"}, updated.Env)
 		require.Equal(t, []CoverageService{{Name: "gateway", Types: []string{"go"}}}, updated.CoverageServices)
+		require.Equal(t, 3, updated.BootAttempts)
 		require.NotSame(t, definition.Compose, updated)
 		updated.GeneratedFiles["existing"][0] = 'X'
 		require.Equal(t, []byte("value"), definition.Compose.GeneratedFiles["existing"])
@@ -1300,4 +1314,43 @@ func TestComposeRejectsInvalidCoverageServiceMetadata(t *testing.T) {
 		},
 	}
 	require.ErrorContains(t, definition.Validate(), "unsupported type")
+}
+
+func TestComposeRejectsDuplicateStagedNames(t *testing.T) {
+	base := func() Definition {
+		return Definition{
+			Name:      "stack",
+			Alias:     "stack",
+			Endpoints: []Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+			Compose: &ComposeSpec{
+				ComposeFile: "catalog/stack/docker-compose.yaml", PrimaryService: "api",
+				Services: []string{"api"},
+			},
+		}
+	}
+
+	t.Run("override sharing the base file name", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"catalog/overlays/docker-compose.yaml"}
+		require.ErrorContains(t, definition.Validate(), `compose file "docker-compose.yaml" is staged more than once`)
+	})
+
+	t.Run("two overrides sharing a name", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"a/extra.yaml", "b/extra.yaml"}
+		require.ErrorContains(t, definition.Validate(), `compose file "extra.yaml" is staged more than once`)
+	})
+
+	t.Run("staged file colliding with a compose file", func(t *testing.T) {
+		definition := base()
+		definition.Compose.StagedFiles = map[string]string{"docker-compose.yaml": "catalog/stack/other.yaml"}
+		require.ErrorContains(t, definition.Validate(), `staged file "docker-compose.yaml" collides`)
+	})
+
+	t.Run("distinct names are accepted", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"catalog/stack/docker-compose.other-org.yaml"}
+		definition.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": "resources/roles.yaml"}
+		require.NoError(t, definition.Validate())
+	})
 }

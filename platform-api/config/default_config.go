@@ -77,13 +77,14 @@ func defaultConfig() *Server {
 				TokenTTL: time.Hour,
 			},
 			ClaimMappings: ClaimMappings{
-				Organization: "organization",
-				OrgName:      "org_name",
-				OrgHandle:    "org_handle",
-				UserID:       "sub",
-				Username:     "username",
-				Email:        "email",
-				Scope:        "scope",
+				Organization:  "organization",
+				OrgName:       "org_name",
+				OrgHandle:     "org_handle",
+				Organizations: "organizations",
+				UserID:        "sub",
+				Username:      "username",
+				Email:         "email",
+				Scope:         "scope",
 				// Default to the flat "roles" claim — what Asgardeo and Entra ID
 				// emit, and what the file-mode login endpoint signs — so switching
 				// auth.authorization.mode to "role" needs no extra claim wiring.

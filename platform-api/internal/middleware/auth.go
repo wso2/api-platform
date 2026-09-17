@@ -36,30 +36,32 @@ import (
 type contextKey string
 
 const (
-	keyUserID       contextKey = "user_id"
-	keyUsername     contextKey = "username"
-	keyEmail        contextKey = "email"
-	keyFirstName    contextKey = "first_name"
-	keyLastName     contextKey = "last_name"
-	keyOrganization contextKey = "organization"
-	keyOrgName      contextKey = "org_name"
-	keyOrgHandle    contextKey = "org_handle"
-	keyScope        contextKey = "scope"
-	keyAudience     contextKey = "audience"
-	keyClaims       contextKey = "claims"
-	keyRoles        contextKey = "roles"
+	keyUserID        contextKey = "user_id"
+	keyUsername      contextKey = "username"
+	keyEmail         contextKey = "email"
+	keyFirstName     contextKey = "first_name"
+	keyLastName      contextKey = "last_name"
+	keyOrganization  contextKey = "organization"
+	keyOrgName       contextKey = "org_name"
+	keyOrgHandle     contextKey = "org_handle"
+	keyOrganizations contextKey = "organizations"
+	keyScope         contextKey = "scope"
+	keyAudience      contextKey = "audience"
+	keyClaims        contextKey = "claims"
+	keyRoles         contextKey = "roles"
 )
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
 type CustomClaims struct {
-	Audience     string `json:"aud"`
-	Email        string `json:"email"`
-	FirstName    string `json:"firstName"`
-	LastName     string `json:"lastName"`
-	JTI          string `json:"jti"`
-	Organization string `json:"organization"`
-	Scope        string `json:"scope"`
-	Username     string `json:"username"`
+	Audience      string   `json:"aud"`
+	Email         string   `json:"email"`
+	FirstName     string   `json:"firstName"`
+	LastName      string   `json:"lastName"`
+	JTI           string   `json:"jti"`
+	Organization  string   `json:"organization"`
+	Organizations []string `json:"organizations,omitempty"`
+	Scope         string   `json:"scope"`
+	Username      string   `json:"username"`
 	jwt.RegisteredClaims
 }
 
@@ -68,14 +70,14 @@ type AuthConfig struct {
 	// PublicKey is the RSA public key used to verify token signatures (RS256).
 	// Only asymmetric verification is supported; symmetric (HMAC) and unsigned
 	// ("none") tokens are rejected.
-	PublicKey   	*rsa.PublicKey
-	TokenIssuer 	string
-	SkipPaths   	[]string
-	SkipValidation	bool
+	PublicKey      *rsa.PublicKey
+	TokenIssuer    string
+	SkipPaths      []string
+	SkipValidation bool
 	// ClaimMappings is the same claim-name mapping used by IDP mode
 	// (PlatformClaimsMiddleware) and by the file-mode login endpoint when it
 	// signs tokens — one mapping shared by issuance and validation.
-	ClaimMappings	ClaimMappings
+	ClaimMappings ClaimMappings
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
@@ -84,12 +86,14 @@ type ClaimMappings struct {
 	OrganizationClaim string
 	OrgNameClaim      string
 	OrgHandleClaim    string
-	UserIDClaim       string
-	UsernameClaim     string
-	EmailClaim        string
-	ScopeClaim        string
-	RolesClaimPath    string
-	RoleScopeMap      map[string][]string
+	// OrganizationsClaim names the optional claim listing every org handle the caller belongs to.
+	OrganizationsClaim string
+	UserIDClaim        string
+	UsernameClaim      string
+	EmailClaim         string
+	ScopeClaim         string
+	RolesClaimPath     string
+	RoleScopeMap       map[string][]string
 }
 
 // writeAuthError writes the unified 401 response. The auth middleware runs
@@ -209,6 +213,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	}
 	orgName := getStringClaim(mapClaims, config.ClaimMappings.OrgNameClaim)
 	orgHandle := getStringClaim(mapClaims, config.ClaimMappings.OrgHandleClaim)
+	organizations := getStringSliceClaim(mapClaims, config.ClaimMappings.OrganizationsClaim)
 
 	sub, _ := mapClaims["sub"].(string)
 	username := getStringClaim(mapClaims, config.ClaimMappings.UsernameClaim)
@@ -216,12 +221,13 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		username = sub
 	}
 	claimsObj := &CustomClaims{
-		Organization: org,
-		Username:     username,
-		Email:        getStringClaim(mapClaims, config.ClaimMappings.EmailClaim),
-		Scope:        getStringClaim(mapClaims, config.ClaimMappings.ScopeClaim),
-		Audience:     audienceToString(mapClaims),
-		JTI:          getStringClaim(mapClaims, "jti"),
+		Organization:  org,
+		Organizations: organizations,
+		Username:      username,
+		Email:         getStringClaim(mapClaims, config.ClaimMappings.EmailClaim),
+		Scope:         getStringClaim(mapClaims, config.ClaimMappings.ScopeClaim),
+		Audience:      audienceToString(mapClaims),
+		JTI:           getStringClaim(mapClaims, "jti"),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: sub,
 		},
@@ -238,6 +244,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyOrganization, org)
 	ctx = context.WithValue(ctx, keyOrgName, orgName)
 	ctx = context.WithValue(ctx, keyOrgHandle, orgHandle)
+	ctx = context.WithValue(ctx, keyOrganizations, organizations)
 	ctx = context.WithValue(ctx, keyScope, claimsObj.Scope)
 	ctx = context.WithValue(ctx, keyAudience, claimsObj.Audience)
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
@@ -270,6 +277,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			org := getStringClaim(mapClaims, claimNames.OrganizationClaim)
 			orgName := getStringClaim(mapClaims, claimNames.OrgNameClaim)
 			orgHandle := getStringClaim(mapClaims, claimNames.OrgHandleClaim)
+			organizations := getStringSliceClaim(mapClaims, claimNames.OrganizationsClaim)
 
 			userID := resolveUserID(mapClaims, claimNames.UserIDClaim)
 			if userID == "" {
@@ -285,6 +293,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			sub, _ := mapClaims["sub"].(string)
 			claimsObj := &CustomClaims{
 				Organization:     org,
+				Organizations:    organizations,
 				Username:         username,
 				Email:            email,
 				Scope:            scope,
@@ -313,6 +322,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			ctx = context.WithValue(ctx, keyOrganization, org)
 			ctx = context.WithValue(ctx, keyOrgName, orgName)
 			ctx = context.WithValue(ctx, keyOrgHandle, orgHandle)
+			ctx = context.WithValue(ctx, keyOrganizations, organizations)
 			ctx = context.WithValue(ctx, keyScope, scope)
 			ctx = context.WithValue(ctx, keyAudience, aud)
 			ctx = context.WithValue(ctx, keyClaims, claimsObj)
@@ -407,6 +417,18 @@ func getStringClaim(claims jwt.MapClaims, name string) string {
 	return s
 }
 
+// getStringSliceClaim resolves name as a claim path and returns it as a string slice.
+func getStringSliceClaim(claims jwt.MapClaims, name string) []string {
+	if name == "" {
+		return nil
+	}
+	val, ok := resolveClaimPath(map[string]interface{}(claims), name)
+	if !ok {
+		return nil
+	}
+	return toStringSlice(val)
+}
+
 // resolveUserID returns the stable user identifier used for audit fields
 // (createdBy/updatedBy/etc.). It prefers an explicitly configured claim name,
 // then the conventional "user_id" claim, and finally falls back to "sub".
@@ -458,6 +480,12 @@ func GetOrgNameFromRequest(r *http.Request) (string, bool) {
 // GetOrgHandleFromRequest extracts the organization handle from the request context.
 func GetOrgHandleFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyOrgHandle)
+}
+
+// GetOrganizationsFromRequest extracts the "organizations" claim (a list of org handles) from the request context.
+func GetOrganizationsFromRequest(r *http.Request) ([]string, bool) {
+	orgs, ok := r.Context().Value(keyOrganizations).([]string)
+	return orgs, ok && len(orgs) > 0
 }
 
 // OrgUUIDResolver maps a token's organization claim to the platform
@@ -607,15 +635,21 @@ func RequireOrganization(organizationParam string) func(http.Handler) http.Handl
 }
 
 // NewTestContextMiddleware creates an http.Handler middleware for integration tests.
-// It reads X-Test-Org, X-Test-User, and X-Test-Scope request headers and injects the
-// values into the request context so that GetOrganizationFromRequest /
-// GetUsernameFromRequest / GetScopeFromRequest work without a real JWT. Never use this
-// in production code.
+// It reads X-Test-Org, X-Test-Org-Handle, X-Test-Organizations (space-separated),
+// X-Test-User, and X-Test-Scope request headers and injects the values into the
+// request context so the Get*FromRequest accessors work without a real JWT. Never
+// use this in production code.
 func NewTestContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		if org := r.Header.Get("X-Test-Org"); org != "" {
 			ctx = context.WithValue(ctx, keyOrganization, org)
+		}
+		if orgHandle := r.Header.Get("X-Test-Org-Handle"); orgHandle != "" {
+			ctx = context.WithValue(ctx, keyOrgHandle, orgHandle)
+		}
+		if orgs := r.Header.Get("X-Test-Organizations"); orgs != "" {
+			ctx = context.WithValue(ctx, keyOrganizations, strings.Fields(orgs))
 		}
 		if user := r.Header.Get("X-Test-User"); user != "" {
 			ctx = context.WithValue(ctx, keyUsername, user)
@@ -631,6 +665,16 @@ func NewTestContextMiddleware(next http.Handler) http.Handler {
 // WithOrganization is a helper for tests to inject an organization into the request context.
 func WithOrganization(r *http.Request, org string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyOrganization, org))
+}
+
+// WithOrgHandle is a helper for tests to inject an organization handle into the request context.
+func WithOrgHandle(r *http.Request, orgHandle string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyOrgHandle, orgHandle))
+}
+
+// WithOrganizations is a helper for tests to inject the "organizations" claim into the request context.
+func WithOrganizations(r *http.Request, orgs []string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyOrganizations, orgs))
 }
 
 // WithUserID is a helper for tests to inject a user ID into the request context.

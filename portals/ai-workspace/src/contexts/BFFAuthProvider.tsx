@@ -54,6 +54,7 @@ interface SessionResponse {
     role?: string | null;
     scopes?: string[];
     org?: { id: string; name: string; handle: string } | null;
+    organizations?: string[];
   };
 }
 
@@ -68,6 +69,7 @@ function toAppUser(u: SessionResponse['user']): AppUser | null {
     role: isPlatformRole(u.role) ? u.role : null,
     scopes: u.scopes ?? [],
     org,
+    organizations: u.organizations ?? [],
   };
 }
 
