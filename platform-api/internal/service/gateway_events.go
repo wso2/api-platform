@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -102,6 +103,75 @@ func NewGatewayEventsService(hub eventhub.EventHub, identity *IdentityService, s
 // BroadcastDeploymentEvent sends an API deployment event to target gateway.
 func (s *GatewayEventsService) BroadcastDeploymentEvent(gatewayID string, deployment *model.DeploymentEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeAPIDeployed, deployment)
+}
+
+// UndeploymentTarget is one artifact to undeploy, named by its kind so the right event
+// shape is built for it.
+type UndeploymentTarget struct {
+	Kind         string
+	ArtifactID   string
+	DeploymentID string
+}
+
+// BroadcastUndeploymentBatch queues an undeployment event for every target on one
+// gateway, in a single transaction where the hub supports it.
+//
+// Deleting a gateway undeploys everything it runs, which on a large gateway is thousands
+// of events; publishing them one at a time is a transaction each. It is all-or-nothing on
+// purpose: a partial batch would leave some artifacts with no queued undeployment and no
+// way for the caller to tell which.
+func (s *GatewayEventsService) BroadcastUndeploymentBatch(gatewayID string,
+	targets []UndeploymentTarget, performedAt time.Time) error {
+
+	events := make([]eventhub.Event, 0, len(targets))
+	for _, target := range targets {
+		eventType, payload := undeploymentEventFor(target, performedAt)
+		if payload == nil {
+			// A kind with no undeployment event of its own; nothing to send for it.
+			continue
+		}
+		event, err := buildHubEvent(gatewayID, uuid.New().String(), "", eventType, payload)
+		if err != nil {
+			return err
+		}
+		events = append(events, event)
+	}
+	if len(events) == 0 {
+		return nil
+	}
+
+	if batcher, ok := s.hub.(interface {
+		PublishEventBatch(string, []eventhub.Event) error
+	}); ok {
+		return batcher.PublishEventBatch(gatewayID, events)
+	}
+	for i := range events {
+		if err := s.hub.PublishEvent(gatewayID, events[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// undeploymentEventFor builds the event type and payload for one target. Every kind
+// identifies its artifact by UUID; a kind with no undeployment event returns nil.
+func undeploymentEventFor(target UndeploymentTarget, performedAt time.Time) (string, interface{}) {
+	switch target.Kind {
+	case constants.RestApi:
+		return EventTypeAPIUndeployed, &model.APIUndeploymentEvent{
+			ApiId: target.ArtifactID, DeploymentID: target.DeploymentID, PerformedAt: performedAt}
+	case constants.LLMProvider:
+		return EventTypeLLMProviderUndeployed, &model.LLMProviderUndeploymentEvent{
+			ProviderId: target.ArtifactID, DeploymentID: target.DeploymentID, PerformedAt: performedAt}
+	case constants.LLMProxy:
+		return EventTypeLLMProxyUndeployed, &model.LLMProxyUndeploymentEvent{
+			ProxyId: target.ArtifactID, DeploymentID: target.DeploymentID, PerformedAt: performedAt}
+	case constants.MCPProxy:
+		return EventTypeMCPProxyUndeployed, &model.MCPProxyUndeploymentEvent{
+			ProxyId: target.ArtifactID, DeploymentID: target.DeploymentID, PerformedAt: performedAt}
+	default:
+		return "", nil
+	}
 }
 
 // BroadcastUndeploymentEvent sends an API undeployment event to target gateway.
@@ -295,30 +365,9 @@ func (s *GatewayEventsService) broadcastEventWithUserID(gatewayID, userId, event
 		}
 	}
 
-	eventDTO := dto.GatewayEventDTO{
-		Type:          eventType,
-		Payload:       payload,
-		Timestamp:     time.Now().Format(time.RFC3339),
-		CorrelationID: correlationID,
-		UserId:        resolvedUserId,
-	}
-
-	eventJSON, err := json.Marshal(eventDTO)
+	hubEvent, err := buildHubEvent(gatewayID, correlationID, resolvedUserId, eventType, payload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal %s event: %w", eventType, err)
-	}
-	if len(eventJSON) > MaxEventPayloadSize {
-		return fmt.Errorf("%s payload exceeds maximum size: %d (limit: %d)", eventType, len(eventJSON), MaxEventPayloadSize)
-	}
-
-	hubEvent := eventhub.Event{
-		GatewayID:           gatewayID,
-		OriginatedTimestamp: time.Now(),
-		EventType:           eventTypePlatformGateway,
-		Action:              actionForEventType(eventType),
-		EntityID:            gatewayID,
-		EventID:             correlationID,
-		EventData:           string(eventJSON),
+		return err
 	}
 
 	if err := s.hub.PublishEvent(gatewayID, hubEvent); err != nil {
@@ -333,6 +382,38 @@ func (s *GatewayEventsService) broadcastEventWithUserID(gatewayID, userId, event
 
 	s.slogger.Debug("Published gateway event", "gatewayID", gatewayID, "type", eventType, "correlationID", correlationID)
 	return nil
+}
+
+// buildHubEvent wraps a payload in the gateway event envelope and the hub record that
+// carries it. Shared by the single and batched publish paths so an event has the same
+// shape however it was sent.
+func buildHubEvent(gatewayID, correlationID, userID, eventType string,
+	payload interface{}) (eventhub.Event, error) {
+
+	eventDTO := dto.GatewayEventDTO{
+		Type:          eventType,
+		Payload:       payload,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+		UserId:        userID,
+	}
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		return eventhub.Event{}, fmt.Errorf("failed to marshal %s event: %w", eventType, err)
+	}
+	if len(eventJSON) > MaxEventPayloadSize {
+		return eventhub.Event{}, fmt.Errorf("%s payload exceeds maximum size: %d (limit: %d)",
+			eventType, len(eventJSON), MaxEventPayloadSize)
+	}
+	return eventhub.Event{
+		GatewayID:           gatewayID,
+		OriginatedTimestamp: time.Now(),
+		EventType:           eventTypePlatformGateway,
+		Action:              actionForEventType(eventType),
+		EntityID:            gatewayID,
+		EventID:             correlationID,
+		EventData:           string(eventJSON),
+	}, nil
 }
 
 // actionForEventType maps a gateway event type string to the EventHub action field.

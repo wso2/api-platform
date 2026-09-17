@@ -864,7 +864,6 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 	return nil
 }
 
-
 // gatewayDrainTimeout bounds how long a gateway delete waits for the gateway to confirm
 // it has dropped the artifacts. A connected gateway acknowledges within a hub poll plus a
 // round trip; one that never answers is offline, and the delete proceeds without it.
@@ -884,7 +883,7 @@ const gatewayDrainPollInterval = 250 * time.Millisecond
 // so a gateway being deleted stops serving its artifacts.
 //
 // The undeployment is the same transition the ordinary undeploy performs — the status
-// moves to UNDEPLOYING with a performed_at token, and the event carries that same token —
+// moves to UNDEPLOYING with a performed_at token, and the events carry that same token —
 // because the gateway's acknowledgement is matched against it. Publishing an event with a
 // timestamp the row does not carry would have the acknowledgement discarded as stale.
 //
@@ -896,9 +895,9 @@ const gatewayDrainPollInterval = 250 * time.Millisecond
 // no matter which replica holds the socket, because the acknowledgement lands in the
 // shared deployment status that every replica reads.
 //
-// It never fails the delete. A gateway that does not answer within gatewayDrainTimeout is
-// offline — nothing can be delivered to it by any means — and its control-plane records
-// are removed anyway, which is the state the caller asked for.
+// Both writes are done in bulk — one statement for every status, one transaction for
+// every event — because a gateway can hold thousands of artifacts and a per-artifact
+// round trip would put the response far beyond any caller's patience.
 //
 // Data-plane-originated artifacts are excluded by the query: the gateway owns those and
 // pushed them up, so the control plane does not undeploy them.
@@ -917,67 +916,36 @@ func (s *GatewayService) drainGateway(gatewayUUID, orgID string) error {
 	}
 
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
-	undeploying := 0
-	unsent := 0
+	if _, err := s.deploymentRepo.MarkGatewayDeploymentsUndeploying(gatewayUUID, orgID, performedAt); err != nil {
+		return fmt.Errorf("could not start undeploying the %d artifact(s) on gateway %s: %w",
+			len(running), gatewayUUID, err)
+	}
+
+	targets := make([]UndeploymentTarget, 0, len(running))
 	for _, deployment := range running {
-		if _, err := s.deploymentRepo.SetCurrentWithDetails(
-			deployment.ArtifactID, orgID, gatewayUUID, deployment.DeploymentID,
-			model.DeploymentStatusUndeploying, string(model.DeploymentStatusUndeployed),
-			&performedAt, "",
-		); err != nil {
-			s.slogger.Error("Failed to mark deployment undeploying while deleting gateway",
-				slog.String("gateway_uuid", gatewayUUID),
-				slog.String("deployment_id", deployment.DeploymentID),
-				slog.Any("error", err))
-			unsent++
-			continue
-		}
-		if err := s.publishUndeployment(gatewayUUID, deployment, performedAt); err != nil {
-			s.slogger.Error("Failed to publish undeployment event while deleting gateway",
-				slog.String("gateway_uuid", gatewayUUID),
-				slog.String("deployment_id", deployment.DeploymentID),
-				slog.String("artifact_kind", deployment.Type),
-				slog.Any("error", err))
-			// Put the deployment back as it was, so its state still reflects reality.
-			// A retry re-selects it either way — toUndeployOnGateway also picks up
-			// UNDEPLOYING — so a restore that itself fails is not a dead end.
-			s.restoreDeployment(gatewayUUID, orgID, deployment)
-			unsent++
-			continue
-		}
-		undeploying++
+		targets = append(targets, UndeploymentTarget{
+			Kind:         deployment.Type,
+			ArtifactID:   deployment.ArtifactID,
+			DeploymentID: deployment.DeploymentID,
+		})
 	}
 
 	// A publish failure is the event store refusing the write, NOT evidence that the
-	// gateway is offline: an offline gateway's event is queued perfectly well and simply
-	// waits for it to reconnect. Deleting the records here would be the original bug
-	// again — the gateway carries on serving an artifact nothing refers to. Refuse
-	// instead, with the deployments back in a state a retry re-selects.
-	if unsent > 0 {
-		return fmt.Errorf("could not undeploy %d of %d artifact(s) on gateway %s; gateway not deleted",
-			unsent, len(running), gatewayUUID)
+	// gateway is offline: an offline gateway's events are queued perfectly well and simply
+	// wait for it to reconnect. Deleting the records here would be the original bug again —
+	// the gateway carries on serving artifacts nothing refers to. Refuse instead. The
+	// deployments stay UNDEPLOYING, which a retry re-selects (see toUndeployOnGateway).
+	if err := s.gatewayEventsService.BroadcastUndeploymentBatch(gatewayUUID, targets, performedAt); err != nil {
+		s.slogger.Error("Failed to queue undeployment events while deleting gateway",
+			slog.String("gateway_uuid", gatewayUUID),
+			slog.Int("artifacts", len(targets)),
+			slog.Any("error", err))
+		return fmt.Errorf("could not undeploy the %d artifact(s) on gateway %s; gateway not deleted: %w",
+			len(targets), gatewayUUID, err)
 	}
-	if undeploying == 0 {
-		return nil
-	}
+
 	s.waitForGatewayToDrain(gatewayUUID, orgID)
 	return nil
-}
-
-// restoreDeployment puts a deployment back to the state it was in before the drain moved
-// it, used when the undeployment event could not be queued. Best effort: if this write
-// fails too the store is unhealthy, and the delete is refused either way.
-func (s *GatewayService) restoreDeployment(gatewayUUID, orgID string, deployment *model.DeploymentInfo) {
-	previous := deployment.PerformedAt
-	if _, err := s.deploymentRepo.SetCurrentWithDetails(
-		deployment.ArtifactID, orgID, gatewayUUID, deployment.DeploymentID,
-		deployment.Status, string(deployment.StatusDesired), &previous, "",
-	); err != nil {
-		s.slogger.Error("Failed to restore deployment status after a failed undeployment publish",
-			slog.String("gateway_uuid", gatewayUUID),
-			slog.String("deployment_id", deployment.DeploymentID),
-			slog.Any("error", err))
-	}
 }
 
 // waitForGatewayToDrain blocks until the gateway has acknowledged every undeployment, or
@@ -988,10 +956,13 @@ func (s *GatewayService) restoreDeployment(gatewayUUID, orgID string, deployment
 // The gateway's acknowledgement moves it to UNDEPLOYED (or FAILED), and those are the
 // terminal states this is waiting for. Waiting on "deployed or deploying" instead would
 // return immediately, because the drain itself has already moved everything out of it.
+//
+// The count comes from the database rather than from reading every row: a large gateway
+// holds thousands of deployments and this asks repeatedly while it waits.
 func (s *GatewayService) waitForGatewayToDrain(gatewayUUID, orgID string) {
 	deadline := time.Now().Add(gatewayDrainTimeout)
 	for {
-		pending, err := s.awaitingAckOnGateway(gatewayUUID, orgID)
+		pending, err := s.deploymentRepo.CountGatewayDeploymentsAwaitingUndeployAck(gatewayUUID, orgID)
 		if err != nil {
 			s.slogger.Warn("Failed to re-read deployments while draining gateway",
 				slog.String("gateway_uuid", gatewayUUID), slog.Any("error", err))
@@ -1016,9 +987,9 @@ func (s *GatewayService) waitForGatewayToDrain(gatewayUUID, orgID string) {
 //
 // UNDEPLOYING counts alongside deployed and deploying. It means an undeployment was
 // started and not confirmed, and the gateway may well still be serving the artifact —
-// including the case where an earlier drain queued no event and could not put the
-// deployment back. Leaving those out made them invisible to every later attempt, so a
-// retry would delete the records while the gateway carried on serving.
+// including the case where an earlier attempt queued no event. Leaving those out made
+// them invisible to every later attempt, so a retry would delete the records while the
+// gateway carried on serving.
 //
 // Re-undeploying something already on its way out is harmless: it is stamped afresh and
 // the drain waits for that stamp, so the outcome is the same undeployed state.
@@ -1035,62 +1006,6 @@ func (s *GatewayService) toUndeployOnGateway(gatewayUUID, orgID string) ([]*mode
 		}
 	}
 	return pending, nil
-}
-
-// awaitingAckOnGateway counts the deployments still waiting for the gateway to confirm
-// their undeployment.
-func (s *GatewayService) awaitingAckOnGateway(gatewayUUID, orgID string) (int, error) {
-	all, err := s.deploymentRepo.GetControlPlaneDeploymentsByGateway(gatewayUUID, orgID, nil)
-	if err != nil {
-		return 0, err
-	}
-	pending := 0
-	for _, deployment := range all {
-		if deployment.Status == model.DeploymentStatusUndeploying {
-			pending++
-		}
-	}
-	return pending, nil
-}
-
-// publishUndeployment sends the undeployment event for one deployment, in the shape its
-// artifact kind expects. Every kind identifies the artifact by its UUID.
-func (s *GatewayService) publishUndeployment(gatewayUUID string,
-	deployment *model.DeploymentInfo, performedAt time.Time) error {
-
-	switch deployment.Type {
-	case constants.RestApi:
-		return s.gatewayEventsService.BroadcastUndeploymentEvent(gatewayUUID, &model.APIUndeploymentEvent{
-			ApiId:        deployment.ArtifactID,
-			DeploymentID: deployment.DeploymentID,
-			PerformedAt:  performedAt,
-		})
-	case constants.LLMProvider:
-		return s.gatewayEventsService.BroadcastLLMProviderUndeploymentEvent(gatewayUUID,
-			&model.LLMProviderUndeploymentEvent{
-				ProviderId:   deployment.ArtifactID,
-				DeploymentID: deployment.DeploymentID,
-				PerformedAt:  performedAt,
-			})
-	case constants.LLMProxy:
-		return s.gatewayEventsService.BroadcastLLMProxyUndeploymentEvent(gatewayUUID,
-			&model.LLMProxyUndeploymentEvent{
-				ProxyId:      deployment.ArtifactID,
-				DeploymentID: deployment.DeploymentID,
-				PerformedAt:  performedAt,
-			})
-	case constants.MCPProxy:
-		return s.gatewayEventsService.BroadcastMCPProxyUndeploymentEvent(gatewayUUID,
-			&model.MCPProxyUndeploymentEvent{
-				ProxyId:      deployment.ArtifactID,
-				DeploymentID: deployment.DeploymentID,
-				PerformedAt:  performedAt,
-			})
-	default:
-		// A kind with no undeployment event of its own (plugin-owned kinds register their
-		// own lifecycle). Skipping is deliberate: there is nothing to send.
-		return nil
-	}
 }
 
 // VerifyToken verifies a plain-text token and returns the associated gateway

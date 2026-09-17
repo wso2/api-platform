@@ -64,6 +64,32 @@ func (h *eventHub) PublishEvent(gatewayID string, event Event) error {
 	return h.backend.Publish(gatewayID, event)
 }
 
+// BatchPublisher is the optional capability of publishing many events for one gateway in
+// a single transaction. It is not part of EventhubImpl: backends that do not offer it
+// keep working, and PublishEventBatch falls back to publishing one at a time.
+type BatchPublisher interface {
+	PublishBatch(gatewayID string, events []Event) error
+}
+
+// PublishEventBatch publishes events for one gateway, in one transaction where the
+// backend supports it. Used where a single action produces an event per artifact — such
+// as undeploying everything on a gateway — so the cost does not scale with the number of
+// artifacts.
+func (h *eventHub) PublishEventBatch(gatewayID string, events []Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	if batcher, ok := h.backend.(BatchPublisher); ok {
+		return batcher.PublishBatch(gatewayID, events)
+	}
+	for i := range events {
+		if err := h.backend.Publish(gatewayID, events[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (h *eventHub) Subscribe(gatewayID string) (<-chan Event, error) {
 	return h.backend.Subscribe(gatewayID)
 }

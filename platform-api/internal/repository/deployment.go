@@ -424,6 +424,47 @@ func (r *DeploymentRepo) SetCurrent(artifactUUID, orgUUID, gatewayID, deployment
 	return r.SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID, status, "", nil, "")
 }
 
+// MarkGatewayDeploymentsUndeploying moves every deployment the gateway may still be
+// serving to UNDEPLOYING in one statement, stamped with a single performed_at that the
+// undeployment events then carry.
+//
+// One statement rather than one per deployment: a gateway can hold thousands of
+// artifacts, and a per-row write would make deleting it a few thousand round trips.
+// UNDEPLOYING is included in the selection so a deployment left that way by an earlier
+// attempt is picked up again rather than stranded.
+func (r *DeploymentRepo) MarkGatewayDeploymentsUndeploying(gatewayUUID, orgUUID string,
+	performedAt time.Time) (int64, error) {
+
+	query := `UPDATE deployment_status
+		SET status = ?, status_desired = ?, performed_at = ?, status_reason = NULL, updated_at = ?
+		WHERE gateway_uuid = ? AND organization_uuid = ? AND status IN (?, ?, ?)`
+	result, err := r.db.Exec(r.db.Rebind(query),
+		string(model.DeploymentStatusUndeploying), string(model.DeploymentStatusUndeployed),
+		performedAt.UTC(), time.Now().UTC(),
+		gatewayUUID, orgUUID,
+		string(model.DeploymentStatusDeployed), string(model.DeploymentStatusDeploying),
+		string(model.DeploymentStatusUndeploying),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// CountGatewayDeploymentsAwaitingUndeployAck counts the gateway's deployments still
+// waiting to be confirmed undeployed. Counted in the database rather than by reading
+// every row, because the drain asks repeatedly while it waits.
+func (r *DeploymentRepo) CountGatewayDeploymentsAwaitingUndeployAck(gatewayUUID, orgUUID string) (int, error) {
+	query := `SELECT COUNT(*) FROM deployment_status
+		WHERE gateway_uuid = ? AND organization_uuid = ? AND status = ?`
+	var count int
+	if err := r.db.QueryRow(r.db.Rebind(query), gatewayUUID, orgUUID,
+		string(model.DeploymentStatusUndeploying)).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // SetCurrentWithDetails inserts or updates the deployment status record with full lifecycle fields.
 // statusDesired is the user's intended final state (DEPLOYED/UNDEPLOYED).
 // performedAt, if non-nil, is used as the concurrency token; otherwise defaults to now.

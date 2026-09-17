@@ -299,6 +299,73 @@ func (b *SQLBackend) RegisterGateway(gatewayID string) error {
 	return nil
 }
 
+// PublishBatch publishes many events for one gateway in a single transaction.
+//
+// Publish opens a transaction, touches gateway_states twice and commits, per event. That
+// is fine for one event and ruinous for a thousand — undeploying everything on a large
+// gateway would otherwise be several thousand round trips. This does the same work once:
+// ensure the gateway row, insert every event, bump the version, commit.
+//
+// It is all-or-nothing on purpose. A partial batch would leave some artifacts with a
+// queued undeployment and some without, and the caller could not tell which; a failure
+// the caller can act on is more useful than a silent gap.
+func (b *SQLBackend) PublishBatch(gatewayID string, events []Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	tx, err := b.db.BeginTx(b.ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err := tx.Stmt(b.ensureGatewayStmt).Exec(gatewayID); err != nil {
+		return fmt.Errorf("failed to ensure gateway registration: %w", err)
+	}
+
+	insert := tx.Stmt(b.insertEventStmt)
+	for i := range events {
+		event := events[i]
+		eventData := strings.TrimSpace(event.EventData)
+		if eventData == "" {
+			eventData = EmptyEventData
+		}
+		eventID := strings.TrimSpace(event.EventID)
+		if eventID == "" {
+			eventID = uuid.New().String()
+		}
+		if _, err := insert.Exec(
+			gatewayID,
+			time.Now(),
+			event.OriginatedTimestamp,
+			string(event.EventType),
+			event.Action,
+			event.EntityID,
+			eventID,
+			eventData,
+		); err != nil {
+			return fmt.Errorf("failed to insert event %s: %w", eventID, err)
+		}
+	}
+
+	// TODO: (VirajSalaka) Make this UUID v7
+	if _, err := tx.Stmt(b.updateGatewayVersionStmt).Exec(uuid.New().String(), gatewayID); err != nil {
+		return fmt.Errorf("failed to update gateway version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit event batch: %w", err)
+	}
+	committed = true
+	return nil
+}
+
 // Publish publishes an event atomically (insert event + update gateway version).
 func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 	// TODO: (VirajSalaka) Make this UUID v7

@@ -166,6 +166,8 @@ type DeploymentRepository interface {
 
 	// Gateway deployment methods
 	GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
+	MarkGatewayDeploymentsUndeploying(gatewayUUID, orgUUID string, performedAt time.Time) (int64, error)
+	CountGatewayDeploymentsAwaitingUndeployAck(gatewayUUID, orgUUID string) (int, error)
 	GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error)
 	// GetSecretHandlesByGateway returns the distinct secret handles referenced by all
 	// artifacts currently deployed on a gateway, sourced from artifact_secret_refs (gateway_id rows).

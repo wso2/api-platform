@@ -20,6 +20,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -55,15 +56,16 @@ func (r *cascadeGatewayRepo) Delete(gatewayID, orgID string) error {
 	return r.deleteErr
 }
 
-// cascadeDeploymentRepo serves a fixed deployment list for the gateway.
+// cascadeDeploymentRepo models the gateway's deployments through the batched drain:
+// one bulk transition, then a count that reports what is still awaiting acknowledgement.
 type cascadeDeploymentRepo struct {
 	repository.DeploymentRepository
 	deployments []*model.DeploymentInfo
 	err         error
-	listCalls   int
-	// acksAfter: after this many list calls, report nothing deployed (gateway acked).
+	// acksAfter: after this many count calls, report nothing pending (gateway acked).
 	acksAfter   int
-	transitions []string
+	countCalls  int
+	marked      int64
 	performedAt []time.Time
 }
 
@@ -72,40 +74,25 @@ func (r *cascadeDeploymentRepo) GetControlPlaneDeploymentsByGateway(
 	if r.err != nil {
 		return nil, r.err
 	}
-	r.listCalls++
-	// Once the drain has moved them to UNDEPLOYING, report that state — this is what the
-	// wait polls on. acksAfter simulates the gateway acknowledging: from that read
-	// onwards they are UNDEPLOYED, which ends the wait.
-	if len(r.transitions) == 0 {
-		return r.deployments, nil
-	}
-	acked := r.acksAfter > 0 && r.listCalls > r.acksAfter
-	out := make([]*model.DeploymentInfo, 0, len(r.deployments))
-	for _, d := range r.deployments {
-		copied := *d
-		if copied.Status.IsDeployedOrDeploying() || copied.Status == model.DeploymentStatusUndeploying {
-			if acked {
-				copied.Status = model.DeploymentStatusUndeployed
-			} else {
-				copied.Status = model.DeploymentStatusUndeploying
-			}
-		}
-		out = append(out, &copied)
-	}
-	return out, nil
+	return r.deployments, nil
 }
 
-// SetCurrentWithDetails records the UNDEPLOYING transition the drain makes before it
-// publishes, so a test can assert the performed_at token is stored (the gateway's
-// acknowledgement is matched against it).
-func (r *cascadeDeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string,
-	status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
+// MarkGatewayDeploymentsUndeploying records the single bulk transition the drain makes
+// before publishing, with the performed_at token the events must carry.
+func (r *cascadeDeploymentRepo) MarkGatewayDeploymentsUndeploying(gatewayUUID, orgUUID string,
+	performedAt time.Time) (int64, error) {
+	r.marked++
+	r.performedAt = append(r.performedAt, performedAt)
+	return int64(len(r.deployments)), nil
+}
 
-	r.transitions = append(r.transitions, string(status))
-	if performedAt != nil {
-		r.performedAt = append(r.performedAt, *performedAt)
+func (r *cascadeDeploymentRepo) CountGatewayDeploymentsAwaitingUndeployAck(
+	gatewayUUID, orgUUID string) (int, error) {
+	r.countCalls++
+	if r.acksAfter > 0 && r.countCalls > r.acksAfter {
+		return 0, nil
 	}
-	return time.Time{}, nil
+	return len(r.deployments), nil
 }
 
 func deployedOn(artifactUUID, deploymentID, kind string, status model.DeploymentStatus) *model.DeploymentInfo {
@@ -223,13 +210,11 @@ func TestDeleteGateway_RefusesWhenTheUndeploymentCannotBeQueued(t *testing.T) {
 	if gwRepo.deleted {
 		t.Error("the records were removed while the gateway still serves the artifact")
 	}
-	// Last write must put the deployment back, or a retry would skip it forever.
-	if len(depRepo.transitions) < 2 {
-		t.Fatalf("transitions = %v, want the UNDEPLOYING attempt followed by a restore",
-			depRepo.transitions)
-	}
-	if last := depRepo.transitions[len(depRepo.transitions)-1]; last != string(model.DeploymentStatusDeployed) {
-		t.Errorf("deployment left as %q; a retry would not re-select it", last)
+	// The deployments are left UNDEPLOYING, which toUndeployOnGateway re-selects, so a
+	// retry undeploys them again rather than skipping them forever.
+	if depRepo.marked != 1 {
+		t.Errorf("bulk transition ran %d time(s), want exactly one before the failed publish",
+			depRepo.marked)
 	}
 }
 
@@ -292,9 +277,6 @@ func TestDeleteGateway_RecordsTheTokenItPublishes(t *testing.T) {
 	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
 		t.Fatalf("DeleteGateway: %v", err)
 	}
-	if len(depRepo.transitions) != 1 || depRepo.transitions[0] != string(model.DeploymentStatusUndeploying) {
-		t.Fatalf("transitions = %v, want one UNDEPLOYING before the event", depRepo.transitions)
-	}
 	if len(depRepo.performedAt) != 1 {
 		t.Fatal("no performed_at token was stored; the gateway's ack would be discarded as stale")
 	}
@@ -328,9 +310,9 @@ func TestDeleteGateway_WaitsForTheGatewayToConfirm(t *testing.T) {
 	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
 		t.Fatalf("DeleteGateway: %v", err)
 	}
-	if depRepo.listCalls < 3 {
-		t.Errorf("the deployments were read %d time(s); the delete did not wait for confirmation",
-			depRepo.listCalls)
+	if depRepo.countCalls < 3 {
+		t.Errorf("the pending count was read %d time(s); the delete did not wait for confirmation",
+			depRepo.countCalls)
 	}
 	if !gwRepo.deleted {
 		t.Error("the gateway was never deleted after the artifacts drained")
@@ -355,6 +337,66 @@ func TestDeleteGateway_RetriesADeploymentStuckUndeploying(t *testing.T) {
 	if len(hub.published) != 1 {
 		t.Fatalf("published %d events; a deployment stuck UNDEPLOYING was never re-undeployed",
 			len(hub.published))
+	}
+	if !gwRepo.deleted {
+		t.Error("the gateway was not deleted")
+	}
+}
+
+// batchingEventHub records how many publish CALLS were made, not just how many events,
+// so a test can tell one batch from many individual publishes.
+type batchingEventHub struct {
+	capturingEventHub
+	batchCalls  int
+	singleCalls int
+}
+
+func (h *batchingEventHub) PublishEvent(gatewayID string, e eventhub.Event) error {
+	h.singleCalls++
+	return h.capturingEventHub.PublishEvent(gatewayID, e)
+}
+
+func (h *batchingEventHub) PublishEventBatch(gatewayID string, events []eventhub.Event) error {
+	h.batchCalls++
+	for i := range events {
+		h.published = append(h.published, events[i])
+	}
+	return nil
+}
+
+// A gateway can hold thousands of artifacts. Undeploying them one at a time would be a
+// database transaction each, putting the delete far beyond any caller's timeout — and a
+// timeout here deletes the gateway with events still queued, which is the very bug this
+// change exists to fix. The whole set must go out as one bulk transition and one publish.
+func TestDeleteGateway_UndeploysManyArtifactsInBulk(t *testing.T) {
+	const artifacts = 500
+	deployments := make([]*model.DeploymentInfo, 0, artifacts)
+	for i := 0; i < artifacts; i++ {
+		deployments = append(deployments, deployedOn(
+			fmt.Sprintf("artifact-%d", i), fmt.Sprintf("dep-%d", i),
+			constants.RestApi, model.DeploymentStatusDeployed))
+	}
+	gwRepo := &cascadeGatewayRepo{}
+	depRepo := &cascadeDeploymentRepo{acksAfter: 1, deployments: deployments}
+	hub := &batchingEventHub{}
+	svc := newCascadeService(gwRepo, depRepo, hub)
+
+	if err := svc.DeleteGateway(cascadeGatewayHandle, cascadeOrgUUID, "tester"); err != nil {
+		t.Fatalf("DeleteGateway: %v", err)
+	}
+	if depRepo.marked != 1 {
+		t.Errorf("status transition ran %d time(s) for %d artifacts, want one bulk statement",
+			depRepo.marked, artifacts)
+	}
+	if hub.batchCalls != 1 {
+		t.Errorf("publish was called %d time(s) as a batch, want exactly one", hub.batchCalls)
+	}
+	if hub.singleCalls != 0 {
+		t.Errorf("%d event(s) were published individually; that is a transaction each",
+			hub.singleCalls)
+	}
+	if len(hub.published) != artifacts {
+		t.Errorf("published %d events, want one per artifact (%d)", len(hub.published), artifacts)
 	}
 	if !gwRepo.deleted {
 		t.Error("the gateway was not deleted")
