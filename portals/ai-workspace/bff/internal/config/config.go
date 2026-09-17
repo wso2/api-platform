@@ -326,13 +326,14 @@ type OIDCConfig struct {
 // same mapped claim names. The same keys drive the BFF's session mapping and the SPA's
 // runtime config, so one config entry keeps both layers in sync.
 type ClaimMappingConfig struct {
-	Username  string `koanf:"username"`
-	Email     string `koanf:"email"`
-	Roles     string `koanf:"roles"`
-	Scope     string `koanf:"scope"`
-	OrgID     string `koanf:"organization"`
-	OrgName   string `koanf:"org_name"`
-	OrgHandle string `koanf:"org_handle"`
+	Username      string `koanf:"username"`
+	Email         string `koanf:"email"`
+	Roles         string `koanf:"roles"`
+	Scope         string `koanf:"scope"`
+	OrgID         string `koanf:"organization"`
+	OrgName       string `koanf:"org_name"`
+	OrgHandle     string `koanf:"org_handle"`
+	Organizations string `koanf:"organizations"`
 }
 
 // CookieConfig controls the session cookie attributes. Not user-configurable: these
@@ -386,6 +387,8 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore" +
 	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
 	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
+	" ap:api_portal:read ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage" +
+	" ap:api_portal:mcp_proxy:publish ap:api_portal:mcp_proxy:unpublish ap:api_portal:mcp_proxy:manage" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
 
 // Load resolves configuration from one or more config.toml files. At least one path

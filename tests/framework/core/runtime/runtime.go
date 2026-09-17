@@ -36,21 +36,25 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 )
 
-// StepRegistrar wires a suite's step definitions to a running topology.
-type StepRegistrar func(sc *godog.ScenarioContext, topo *Topology)
+// StepRegistrar wires a suite's step definitions to its current runner.
+type StepRegistrar func(sc *godog.ScenarioContext)
+
+// StepFactory constructs isolated runner step bindings for a running topology.
+type StepFactory func(topo *Topology) (StepRegistrar, error)
 
 // Deps are what the engine needs from the suite.
 type Deps struct {
 	// RepoRoot resolves repo-relative paths.
 	RepoRoot string
 
-	// Steps registers step definitions.
-	Steps StepRegistrar
+	// Steps constructs runner-isolated step definitions.
+	Steps StepFactory
 
 	// FeatureRoot resolves the feature paths in the suite file.
 	FeatureRoot string
@@ -66,9 +70,13 @@ type Deps struct {
 	// counters at teardown. Nil in a default run — the suite decides, because only it
 	// knows whether the images are instrumented.
 	Coverage *coverage.Sink
+
+	// Logs, when non-nil, makes every block stream its containers' combined stdout/stderr
+	// into one file for the block's whole lifetime. Nil in a default run — the suite
+	// decides whether container output is being collected at all.
+	Logs *logcapture.Sink
 }
 
-// Run executes a resolved suite with parallel blocks and sequential scenarios per runner.
 var runnerOutputMu sync.Mutex
 
 // flushRunnerOutput writes one runner report without interleaving it with another report.
@@ -79,6 +87,7 @@ func flushRunnerOutput(dst io.Writer, label string, buf *bytes.Buffer) {
 	_, _ = io.Copy(dst, buf)
 }
 
+// Run executes a resolved suite with parallel blocks and sequential scenarios per runner.
 func Run(t *testing.T, resolved *topology.Resolved, deps Deps) {
 	t.Helper()
 	if resolved == nil {
@@ -133,12 +142,34 @@ func runBlock(
 	bootCtx, cancel := context.WithTimeout(context.Background(), resolved.Timeouts.Boot)
 	defer cancel()
 
+	var logWriter *logcapture.Writer
+	if deps.Logs != nil {
+		path, err := deps.Logs.FileFor(block.Name)
+		if err != nil {
+			log.Warn("log capture disabled for block", "block", block.Name, "error", err)
+		} else if w, err := logcapture.NewWriter(path); err != nil {
+			log.Warn("log capture disabled for block", "block", block.Name, "error", err)
+		} else {
+			logWriter = w
+			// Registered before BootBlock so a boot failure still flushes and closes the
+			// file, rather than leaking it whenever the block never reaches the main
+			// teardown cleanup below.
+			t.Cleanup(func() {
+				w.Close()
+				if dropped := w.Dropped(); dropped > 0 {
+					log.Warn("log capture dropped lines", "block", block.Name, "dropped", dropped)
+				}
+			})
+		}
+	}
+
 	start := time.Now()
-	topo, err := BootBlock(bootCtx, block, deps.RepoRoot)
+	topo, err := BootBlock(bootCtx, block, deps.RepoRoot, logWriter, deps.Logs)
 	if err != nil {
 		t.Fatalf("block %q failed to boot after %s: %v",
 			block.Name, time.Since(start).Round(time.Millisecond), err)
 	}
+	topo.PropagationTimeout = resolved.Timeouts.Propagation
 	log.Info("block booted", "block", block.Name,
 		"components", topo.Instances.Len(), "elapsed", time.Since(start).Round(time.Millisecond))
 
@@ -179,6 +210,10 @@ func runRunner(
 	t.Helper()
 
 	local := tcontext.NewLocal(runner.Name)
+	registrar, err := deps.Steps(topo)
+	if err != nil {
+		t.Fatalf("runner %q: constructing step bindings: %v", runner.Name, err)
+	}
 
 	nameGen, err := unique.NewGenerator()
 	if err != nil {
@@ -236,7 +271,7 @@ func runRunner(
 				return ctx, scenarioErr
 			})
 
-			deps.Steps(sc, topo)
+			registrar(sc)
 		},
 		Options: &opts,
 	}

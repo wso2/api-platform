@@ -247,6 +247,27 @@ services:
     networks:
       - it-gateway-runtime-network
 
+  # A2A trip-planning agent, built on the official a2a-sdk.
+  a2a-trip-planner:
+    container_name: a2a-trip-planner
+    image: ghcr.io/wso2/api-platform/mock-a2a-trip-planner:test
+    build:
+      context: ../../tests/mock-servers/a2a-trip-planner
+      dockerfile: Dockerfile
+    environment:
+      # Paced slowly enough that a scenario can observe an event arriving well
+      # before the task completes, and fast enough not to dominate suite time.
+      TRIP_STREAM_STEP_DELAY: "0.5"
+      TRIP_STREAM_STEPS: "3"
+      # A "plan ... slowly" task stays live long enough for GetTask, ListTasks,
+      # CancelTask and SubscribeToTask to act on a running task.
+      TRIP_SLOW_HOLD_SECONDS: "60"
+      TRIP_SLOW_TICK: "1.0"
+    ports:
+      - "9099:9099"
+    networks:
+      - it-gateway-runtime-network
+
   # Echo backend for testing cost extraction - returns request body in response JSON
   echo-backend:
     container_name: it-echo-backend

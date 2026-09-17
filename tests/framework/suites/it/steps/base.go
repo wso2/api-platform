@@ -20,9 +20,12 @@ package steps
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/textproto"
 	"regexp"
 	"strconv"
@@ -31,12 +34,29 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/apiportal"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/platformapi"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/platformgateway"
 )
+
+const elapsedTolerance = 0.05
+
+func parseSeconds(value string) (float64, error) {
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing expected seconds %q: %w", value, err)
+	}
+	if math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
+		return 0, fmt.Errorf("expected seconds must be finite and non-negative, got %q", value)
+	}
+	return seconds, nil
+}
 
 // Base holds shared state and request steps for one integration-test block.
 type Base struct {
@@ -45,18 +65,56 @@ type Base struct {
 	featureRoot string
 }
 
+// FeatureRoot returns the root directory containing suite feature assets.
+func (b *Base) FeatureRoot() string { return b.featureRoot }
+
+// GatewayURL resolves a path against the configured gateway.
+func (b *Base) GatewayURL(path string) (string, error) { return b.gatewayURL(path) }
+
+// GatewayURLAt resolves a path against a gateway selected by ordinal.
+func (b *Base) GatewayURLAt(ordinalWord, path string) (string, error) {
+	return b.gatewayURLAt(ordinalWord, path)
+}
+
+// ScenarioHeaders returns the headers accumulated by the current scenario.
+func (b *Base) ScenarioHeaders(ctx context.Context) map[string]string { return b.scenarioHeaders(ctx) }
+
+// InvokeWith sends a request through the suite HTTP funnel.
+func (b *Base) InvokeWith(ctx context.Context, method, path string, headers map[string]string, body []byte) error {
+	return b.invokeWith(ctx, method, path, headers, body)
+}
+
+// RequestHost returns the host override accumulated by the current scenario.
+func (b *Base) RequestHost(ctx context.Context) string { return b.requestHost(ctx) }
+
+// ResetRequest clears the current scenario request state.
+func (b *Base) ResetRequest(ctx context.Context) error { return b.resetRequest(ctx) }
+
+// SendUntilHeader retries a request until a response header has the expected value.
+func (b *Base) SendUntilHeader(ctx context.Context, method, path, name, want string) error {
+	return b.sendUntilHeader(ctx, method, path, name, want)
+}
+
 // Suite is the integration suite's step-binding entry point.
 type Suite struct {
 	*Base
-	gateway *Gateway
 }
 
-// New creates the step bindings for one resolved block.
-func New(topo *frameworkruntime.Topology, featureRoot ...string) *Suite {
+// New creates isolated step bindings for one runner in a resolved block.
+func New(topo *frameworkruntime.Topology, featureRoot ...string) (*Suite, error) {
+	return newSuite(topo, shared.ControlPlaneCrypto()["certs/cert.pem"], featureRoot...)
+}
+
+func newSuite(topo *frameworkruntime.Topology, caPEM []byte, featureRoot ...string) (*Suite, error) {
+	tlsConfig, err := platformAPITLSConfig(caPEM)
+	if err != nil {
+		return nil, err
+	}
 	client := httpx.NewClient(httpx.Options{
-		Timeout:    30 * time.Second,
-		MaxRetries: 3,
-		RetryDelay: 2 * time.Second,
+		Timeout:         30 * time.Second,
+		MaxRetries:      3,
+		RetryDelay:      2 * time.Second,
+		TLSClientConfig: tlsConfig,
 	})
 	root := ""
 	if len(featureRoot) > 0 {
@@ -68,13 +126,29 @@ func New(topo *frameworkruntime.Topology, featureRoot ...string) *Suite {
 		featureRoot: root,
 	}
 	stepscommon.ConfigureExpansion()
-	return &Suite{Base: base, gateway: &Gateway{Base: base}}
+	return &Suite{Base: base}, nil
+}
+
+// platformAPITLSConfig trusts the certificate generated for the Platform API component.
+// The shared step client also serves control-plane steps, while remaining generic for
+// gateway-only blocks where this configuration is simply unused.
+func platformAPITLSConfig(caPEM []byte) (*tls.Config, error) {
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil || rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+	if !rootCAs.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("loading the generated Platform API CA certificate")
+	}
+	return &tls.Config{RootCAs: rootCAs, ServerName: "platform-api"}, nil
 }
 
 // Register binds shared and product-specific Gherkin steps.
 func (s *Suite) Register(sc *godog.ScenarioContext) {
 	s.registerBaseSteps(sc)
-	s.gateway.register(sc)
+	platformgateway.Register(sc, s.Base, s.topo, s.funnel)
+	platformapi.Register(sc, s.topo, s.funnel.Client())
+	apiportal.Register(sc, s.topo, s.funnel.Client())
 }
 
 // Request-shaping state is stored in the scenario context.
@@ -98,7 +172,6 @@ func scenarioLabel(ctx context.Context) string {
 }
 
 func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
-	b.registerRawHTTPSteps(sc)
 	sc.Step(`^the response status code should be (\d+)$`, b.statusCodeIs)
 	sc.Step(`^the response status should be (\d+)$`, b.statusCodeIs)
 	sc.Step(`^the response should be successful$`, b.responseSuccessful)
@@ -113,6 +186,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response should contain metric "([^"]*)"$`, b.responseContainsMetric)
 	sc.Step(`^the response header "([^"]*)" should be "([^"]*)"$`, b.responseHeaderEquals)
 	sc.Step(`^the response header "([^"]*)" should contain "([^"]*)"$`, b.responseHeaderContains)
+	sc.Step(`^the response header "([^"]*)" should not contain "([^"]*)"$`, b.responseHeaderNotContains)
 	sc.Step(`^the response header "([^"]*)" should match pattern "([^"]*)"$`,
 		b.responseHeaderMatchesPattern)
 	sc.Step(`^the response header "([^"]*)" should (exist|not exist)$`, b.responseHeaderPresence)
@@ -125,10 +199,23 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the JSON response field "([^"]*)" should not exist$`, b.jsonFieldAbsent)
 	sc.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, b.jsonFieldIsNumber)
 	sc.Step(`^the JSON response field "([^"]*)" should be "([^"]*)"$`, b.jsonFieldIs)
+	sc.Step(`^the JSON response field "([^"]*)" should not equal "([^"]*)"$`, b.jsonFieldNotEqual)
 	sc.Step(`^the JSON response field "([^"]*)" should be:$`, b.jsonFieldIsDoc)
 	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)"$`, b.jsonFieldContains)
+	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)" before "([^"]*)"$`,
+		b.jsonFieldContainsBefore)
 	sc.Step(`^the JSON response field "([^"]*)" should be greater than (\d+)$`,
 		b.jsonFieldGreaterThan)
+	sc.Step(`^the JSON response array field "([^"]*)" should have (\d+) items?$`,
+		b.jsonFieldArrayLength)
+	sc.Step(`^the JSON response string field "([^"]*)" should have length less than (\d+)$`,
+		func(ctx context.Context, field string, threshold int) error {
+			return b.jsonFieldStringLength(ctx, field, "less than", threshold)
+		})
+	sc.Step(`^the JSON response string field "([^"]*)" should have length greater than (\d+)$`,
+		func(ctx context.Context, field string, threshold int) error {
+			return b.jsonFieldStringLength(ctx, field, "greater than", threshold)
+		})
 	sc.Step(`^I store the JSON response field "([^"]*)" as "([^"]*)"$`,
 		b.storeJSONField)
 	sc.Step(`^I set header "([^"]*)" to "([^"]*)"$`, b.setHeader)
@@ -147,8 +234,27 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
+	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
+		b.sendUntilStatusAt)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) with body:$`,
 		b.sendUntilStatusWithBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until header "([^"]*)" is "([^"]*)"$`,
+		b.sendUntilHeader)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until header "([^"]*)" is "([^"]*)" with body:$`,
+		b.sendUntilHeaderWithBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until it times out after "([^"]*)" seconds with status (\d+)$`,
+		b.sendUntilTimedOut)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the JSON field "([^"]*)" has length less than (\d+) with body:$`,
+		func(ctx context.Context, method, path, field string, threshold int, body *godog.DocString) error {
+			return b.sendUntilJSONFieldStringLength(ctx, method, path, field, "less than", threshold, body)
+		})
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the JSON field "([^"]*)" has length greater than (\d+) with body:$`,
+		func(ctx context.Context, method, path, field string, threshold int, body *godog.DocString) error {
+			return b.sendUntilJSONFieldStringLength(ctx, method, path, field, "greater than", threshold, body)
+		})
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the response body contains "([^"]*)" with body:$`,
+		b.sendUntilBodyContains)
 }
 
 func (b *Base) responseSuccessful(ctx context.Context) error {
@@ -271,18 +377,9 @@ func (b *Base) sendRequestWithHeaders(
 	for name, value := range extra {
 		headers[name] = value
 	}
-	var payload []byte
-	if body != nil {
-		content, expErr := stepscommon.Expand(ctx, body.Content)
-		if expErr != nil {
-			return expErr
-		}
-		payload = []byte(content)
-		// Default rather than override: a feature that sets Content-Type explicitly is testing
-		// how the gateway treats it. Bodyless requests get none at all.
-		if headers["Content-Type"] == "" {
-			headers["Content-Type"] = "application/json"
-		}
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
 	}
 
 	return b.invokeWith(ctx, strings.ToUpper(method), url, headers, payload)
@@ -310,6 +407,20 @@ func (b *Base) sendUntilStatus(ctx context.Context, method, path string, want in
 	return b.sendUntilStatusWithBody(ctx, method, path, want, nil)
 }
 
+func (b *Base) expandBody(ctx context.Context, body *godog.DocString, headers map[string]string) ([]byte, error) {
+	if body == nil {
+		return nil, nil
+	}
+	content, err := stepscommon.Expand(ctx, body.Content)
+	if err != nil {
+		return nil, err
+	}
+	if headers["Content-Type"] == "" {
+		headers["Content-Type"] = "application/json"
+	}
+	return []byte(content), nil
+}
+
 // sendUntilStatusWithBody polls a data-plane path, with a body when one is given, until it answers with the wanted status.
 func (b *Base) sendUntilStatusWithBody(
 	ctx context.Context, method, path string, want int, body *godog.DocString,
@@ -324,16 +435,9 @@ func (b *Base) sendUntilStatusWithBody(
 	}
 
 	headers := b.scenarioHeaders(ctx)
-	var payload []byte
-	if body != nil {
-		content, expErr := stepscommon.Expand(ctx, body.Content)
-		if expErr != nil {
-			return expErr
-		}
-		payload = []byte(content)
-		if headers["Content-Type"] == "" {
-			headers["Content-Type"] = "application/json"
-		}
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
 	}
 
 	return stepscommon.AwaitResponse(ctx,
@@ -353,17 +457,7 @@ func (b *Base) sendUntilStatusWithBody(
 		fmt.Sprintf("waiting for %s %s to return %d", strings.ToUpper(method), url, want))
 }
 
-// sendUntilHeader polls a data-plane path until a response header carries the wanted value.
-//
-// The companion to sendUntilStatus, for a fact a status cannot express. A status poll sees 200
-// both before and after a policy update, so it cannot tell which configuration is serving; a
-// header can. X-RateLimit-Limit reports the CONFIGURED limit and X-RateLimit-Remaining the
-// consumption, so polling either distinguishes "the engine is still on the pre-update config"
-// from "the new one is live".
-//
-// Costs exactly one request against whatever bucket is live once the condition holds. Polls
-// taken before that are charged to the OLD bucket, so they spend nothing the scenario counts.
-func (b *Base) sendUntilHeader(ctx context.Context, method, path, name, want string) error {
+func (b *Base) sendUntilStatusOneOf(ctx context.Context, method, path string, wantA, wantB int) error {
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return err
@@ -372,10 +466,64 @@ func (b *Base) sendUntilHeader(ctx context.Context, method, path, name, want str
 	if err != nil {
 		return err
 	}
-	wantValue, err := stepscommon.Expand(ctx, want)
+	headers := b.scenarioHeaders(ctx)
+	return stepscommon.AwaitResponse(ctx, func(ctx context.Context) (*httpx.Response, error) {
+		resp, sendErr := b.funnel.Send(ctx, httpx.Request{
+			Method: strings.ToUpper(method), URL: url, Headers: headers, Host: b.requestHost(ctx),
+		})
+		if sendErr != nil {
+			return nil, retry.Transient(sendErr)
+		}
+		return resp, nil
+	}, func(resp *httpx.Response) bool {
+		return resp != nil && (resp.StatusCode == wantA || resp.StatusCode == wantB)
+	}, fmt.Sprintf("waiting for %s %s to return %d or %d", strings.ToUpper(method), url, wantA, wantB))
+}
+
+func (b *Base) sendUntilStatusAt(ctx context.Context, method, ordinalWord, path string, want int) error {
+	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return err
 	}
+	url, err := b.gatewayURLAt(ordinalWord, resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	return stepscommon.AwaitResponse(ctx, func(ctx context.Context) (*httpx.Response, error) {
+		resp, sendErr := b.funnel.Send(ctx, httpx.Request{
+			Method: strings.ToUpper(method), URL: url, Headers: headers, Host: b.requestHost(ctx),
+		})
+		if sendErr != nil {
+			return nil, retry.Transient(sendErr)
+		}
+		return resp, nil
+	}, func(resp *httpx.Response) bool {
+		return resp != nil && resp.StatusCode == want
+	}, fmt.Sprintf("waiting for %s %s to return %d", strings.ToUpper(method), url, want))
+}
+
+// sendUntilTimedOut polls a data-plane path until it fails with the wanted status AND its
+// elapsed time proves the configured timeout value is what is actually being enforced, rather
+// than accepting the first response with a matching status regardless of cause. A route whose
+// cluster has not yet fully converged can answer with the right status well before the real
+// timeout value elapses (e.g. still on a shorter default connect timeout, or not yet
+// resolvable at all); retrying through that here means the assertion never depends on a
+// separate, unrelated readiness signal to rule it out beforehand.
+func (b *Base) sendUntilTimedOut(ctx context.Context, method, path, wantSeconds string, wantStatus int) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	want, err := parseSeconds(wantSeconds)
+	if err != nil {
+		return err
+	}
+	floor := time.Duration(want * (1 - elapsedTolerance) * float64(time.Second))
 	headers := b.scenarioHeaders(ctx)
 
 	return stepscommon.AwaitResponse(ctx,
@@ -389,10 +537,174 @@ func (b *Base) sendUntilHeader(ctx context.Context, method, path, name, want str
 			}
 			return response, nil
 		},
+		func(r *httpx.Response) bool {
+			return r != nil && r.StatusCode == wantStatus && r.Elapsed >= floor
+		},
+		fmt.Sprintf("waiting for %s %s to time out after %ss with status %d",
+			strings.ToUpper(method), url, wantSeconds, wantStatus))
+}
+
+// sendUntilHeader polls a data-plane path until a response header carries the wanted value.
+//
+// The companion to sendUntilStatus, for a fact a status cannot express. A status poll sees 200
+// both before and after a policy update, so it cannot tell which configuration is serving; a
+// header can. X-RateLimit-Limit reports the CONFIGURED limit and X-RateLimit-Remaining the
+// consumption, so polling either distinguishes "the engine is still on the pre-update config"
+// from "the new one is live".
+//
+// Costs exactly one request against whatever bucket is live once the condition holds. Polls
+// taken before that are charged to the OLD bucket, so they spend nothing the scenario counts.
+func (b *Base) sendUntilHeader(ctx context.Context, method, path, name, want string) error {
+	return b.sendUntilHeaderWithBody(ctx, method, path, name, want, nil)
+}
+
+// sendUntilHeaderWithBody polls a data-plane path, with a body when one is given, until a
+// response header carries the wanted value. See sendUntilHeader for why a header (rather than a
+// status) is the right condition for this class of wait.
+func (b *Base) sendUntilHeaderWithBody(
+	ctx context.Context, method, path, name, want string, body *godog.DocString,
+) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	wantValue, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
+	}
+
+	return stepscommon.AwaitResponse(ctx,
+		func(ctx context.Context) (*httpx.Response, error) {
+			response, sendErr := b.funnel.Send(ctx, httpx.Request{
+				Method: strings.ToUpper(method), URL: url, Body: payload, Headers: headers,
+				Host: b.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return response, nil
+		},
 		// Get is case-insensitive per RFC 7230, matching responseHeaderEquals.
 		func(r *httpx.Response) bool { return r != nil && r.Headers.Get(name) == wantValue },
 		fmt.Sprintf("waiting for %s %s to answer with header %s: %q",
 			strings.ToUpper(method), url, name, wantValue))
+}
+
+// sendUntilJSONFieldStringLength polls a data-plane path, with a body, until a JSON response
+// field's string length compares to a threshold as directed ("less than" or "greater than").
+//
+// The companion to sendUntilHeader for a body-mutating policy (compression, decoration) that has
+// no distinguishing response header: a status poll sees 200 both before and after the policy
+// takes effect on a route, and the un-mutated body is itself valid JSON, so only the field's
+// actual length tells "the engine is still on the pre-update config" from "the new one is live".
+func (b *Base) sendUntilJSONFieldStringLength(
+	ctx context.Context, method, path, field, comparison string, threshold int, body *godog.DocString,
+) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
+	}
+
+	return stepscommon.AwaitResponse(ctx,
+		func(ctx context.Context) (*httpx.Response, error) {
+			response, sendErr := b.funnel.Send(ctx, httpx.Request{
+				Method: strings.ToUpper(method), URL: url, Body: payload, Headers: headers,
+				Host: b.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return response, nil
+		},
+		func(r *httpx.Response) bool {
+			if r == nil || r.StatusCode != 200 {
+				return false
+			}
+			var doc map[string]interface{}
+			if json.Unmarshal(r.Body, &doc) != nil {
+				return false
+			}
+			got, ok := traverseJSON(doc, field)
+			if !ok {
+				return false
+			}
+			str, ok := got.(string)
+			if !ok {
+				return false
+			}
+			switch comparison {
+			case "less than":
+				return len(str) < threshold
+			case "greater than":
+				return len(str) > threshold
+			default:
+				return false
+			}
+		},
+		fmt.Sprintf("waiting for %s %s to answer with JSON field %q length %s %d",
+			strings.ToUpper(method), url, field, comparison, threshold))
+}
+
+// sendUntilBodyContains polls a data-plane path, with a body, until the response body contains
+// the wanted substring.
+//
+// A length-based wait (sendUntilJSONFieldStringLength) cannot distinguish every stale-config
+// state from a live one: a light-touch transform can drop a few words while barely moving the
+// overall length, leaving a length check satisfied against wording that has not actually
+// changed to what the scenario expects next. A substring check catches that case.
+func (b *Base) sendUntilBodyContains(ctx context.Context, method, path, want string, body *godog.DocString) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	wantValue, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
+	}
+
+	return stepscommon.AwaitResponse(ctx,
+		func(ctx context.Context) (*httpx.Response, error) {
+			response, sendErr := b.funnel.Send(ctx, httpx.Request{
+				Method: strings.ToUpper(method), URL: url, Body: payload, Headers: headers,
+				Host: b.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return response, nil
+		},
+		func(r *httpx.Response) bool {
+			return r != nil && r.StatusCode == 200 && strings.Contains(string(r.Body), wantValue)
+		},
+		fmt.Sprintf("waiting for %s %s to answer with a body containing %q",
+			strings.ToUpper(method), url, wantValue))
 }
 
 func (b *Base) statusCodeIs(ctx context.Context, want int) error {
@@ -624,6 +936,25 @@ func (b *Base) responseHeaderContains(ctx context.Context, name, want string) er
 	return nil
 }
 
+// responseHeaderNotContains asserts that a header does not carry a sensitive or disallowed
+// marker while allowing unrelated response metadata to vary.
+func (b *Base) responseHeaderNotContains(ctx context.Context, name, want string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	got := resp.Headers.Get(name)
+	if strings.Contains(got, resolved) {
+		return fmt.Errorf("expected header %q not to contain %q, got %q (%s)",
+			name, resolved, got, resp.Describe())
+	}
+	return nil
+}
+
 // responseHeaderMatchesPattern asserts a response header against an expanded regular expression.
 func (b *Base) responseHeaderMatchesPattern(ctx context.Context, name, pattern string) error {
 	resp, err := httpx.Published(ctx)
@@ -701,6 +1032,34 @@ func (b *Base) jsonFieldContains(ctx context.Context, field, want string) error 
 	return nil
 }
 
+// jsonFieldContainsBefore asserts both strings occur in a JSON string field in the stated order.
+func (b *Base) jsonFieldContainsBefore(ctx context.Context, field, first, second string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	first, err = stepscommon.Expand(ctx, first)
+	if err != nil {
+		return err
+	}
+	second, err = stepscommon.Expand(ctx, second)
+	if err != nil {
+		return err
+	}
+	value, err := jsonStringField(resp.Body, field)
+	if err != nil {
+		return err
+	}
+	// Search for the second value only beyond the first match: indexing both from the start
+	// reports "out of order" for a field that repeats the second value on either side of the
+	// first, even though an in-order occurrence exists.
+	firstIndex := strings.Index(value, first)
+	if firstIndex < 0 || !strings.Contains(value[firstIndex+len(first):], second) {
+		return fmt.Errorf("JSON field %q does not contain the requested values in order", field)
+	}
+	return nil
+}
+
 // jsonFieldGreaterThan asserts a numeric field exceeds a threshold.
 //
 // A LOWER bound rather than an equality check, deliberately: these counts are totals across
@@ -725,6 +1084,67 @@ func (b *Base) jsonFieldGreaterThan(ctx context.Context, path string, threshold 
 	}
 	if int(num) <= threshold {
 		return fmt.Errorf("expected %q to be greater than %d, got %v", path, threshold, num)
+	}
+	return nil
+}
+
+// jsonFieldArrayLength asserts an array field contains exactly the given number of items.
+func (b *Base) jsonFieldArrayLength(ctx context.Context, path string, want int) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(resp.Body), &doc); err != nil {
+		return fmt.Errorf("response is not valid JSON: %w", err)
+	}
+	got, ok := traverseJSON(doc, path)
+	if !ok {
+		return fmt.Errorf("no field %q in the response", path)
+	}
+	arr, ok := got.([]interface{})
+	if !ok {
+		return fmt.Errorf("field %q is %v, which is not an array", path, got)
+	}
+	if len(arr) != want {
+		return fmt.Errorf("expected %q to have %d items, got %d", path, want, len(arr))
+	}
+	return nil
+}
+
+// jsonFieldStringLength asserts a string field's length compares to a threshold as directed
+// ("less than" or "greater than"). Used to assert a transformation shortened or left alone a
+// field's content without pinning the exact output, which would be brittle against a
+// non-deterministic compressor/tokenizer.
+func (b *Base) jsonFieldStringLength(ctx context.Context, path, comparison string, threshold int) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(resp.Body, &doc); err != nil {
+		return fmt.Errorf("response is not valid JSON: %w (%s)", err, resp.Describe())
+	}
+	got, ok := traverseJSON(doc, path)
+	if !ok {
+		return fmt.Errorf("no field %q in the response: %s", path, resp.Describe())
+	}
+	str, ok := got.(string)
+	if !ok {
+		return fmt.Errorf("field %q is %v, which is not a string", path, got)
+	}
+	length := len(str)
+	switch comparison {
+	case "less than":
+		if length >= threshold {
+			return fmt.Errorf("expected %q length to be less than %d, got %d", path, threshold, length)
+		}
+	case "greater than":
+		if length <= threshold {
+			return fmt.Errorf("expected %q length to be greater than %d, got %d", path, threshold, length)
+		}
+	default:
+		return fmt.Errorf("unknown length comparison %q", comparison)
 	}
 	return nil
 }
@@ -855,9 +1275,45 @@ func (b *Base) jsonFieldIs(ctx context.Context, field, want string) error {
 	if !present {
 		return fmt.Errorf("JSON field %q is absent from %s", field, resp.Describe())
 	}
-	if fmt.Sprintf("%v", got) != expected {
+	gotText := fmt.Sprintf("%v", got)
+	if got == nil {
+		gotText = "null"
+	}
+	if gotText != expected {
 		return fmt.Errorf("JSON field %q: expected %q, got %q: %s",
-			field, expected, fmt.Sprintf("%v", got), resp.Describe())
+			field, expected, gotText, resp.Describe())
+	}
+	return nil
+}
+
+// jsonFieldNotEqual asserts a non-empty string field differs from a context-expanded value.
+// Its errors intentionally omit both values because callers commonly compare credentials.
+func (b *Base) jsonFieldNotEqual(ctx context.Context, field, want string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if !resp.HasBody() {
+		return fmt.Errorf("reading JSON field %s: response has no body", field)
+	}
+	expected, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(resp.Body, &doc); err != nil {
+		return fmt.Errorf("response is not a JSON object while reading field %q: %w", field, err)
+	}
+	got, present := traverseJSON(doc, field)
+	if !present {
+		return fmt.Errorf("JSON field %q is absent", field)
+	}
+	gotText, ok := got.(string)
+	if !ok || strings.TrimSpace(gotText) == "" {
+		return fmt.Errorf("JSON field %q is not a non-empty string", field)
+	}
+	if gotText == expected {
+		return fmt.Errorf("JSON field %q did not change", field)
 	}
 	return nil
 }
@@ -941,6 +1397,32 @@ func jsonStringField(body []byte, field string) (string, error) {
 // gatewayURL builds a data-plane URL, where deployed APIs are invoked.
 func (b *Base) gatewayURL(path string) (string, error) {
 	base, err := b.topo.URL("platform-gateway", "http")
+	if err != nil {
+		return "", err
+	}
+	if path != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return base + path, nil
+}
+
+func gatewayOrdinal(word string) (int, error) {
+	switch word {
+	case "first":
+		return 0, nil
+	case "second":
+		return 1, nil
+	default:
+		return 0, fmt.Errorf("unknown gateway ordinal %q", word)
+	}
+}
+
+func (b *Base) gatewayURLAt(ordinalWord, path string) (string, error) {
+	ordinal, err := gatewayOrdinal(ordinalWord)
+	if err != nil {
+		return "", err
+	}
+	base, err := b.topo.URLAt("platform-gateway", ordinal, "http")
 	if err != nil {
 		return "", err
 	}

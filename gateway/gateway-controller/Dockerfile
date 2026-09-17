@@ -12,7 +12,10 @@ ARG COVERAGE_PACKAGES=""
 # Debug build argument - set to "true" for debug builds with dlv support (disables optimizations)
 ARG ENABLE_DEBUG=false
 
-WORKDIR /build
+# The build tree mirrors the repository layout so that every `replace` directive
+# in go.mod resolves to a distinct path — `../../common` (root common) and
+# `../common` (gateway/common) would otherwise collapse onto the same directory.
+WORKDIR /gateway/gateway-controller
 
 # Install build dependencies for SQLite (CGO) and cross-compilation toolchains
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -32,6 +35,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # is only invalidated when dependencies change, not when source code changes.
 COPY --from=sdk-core go.mod /sdk/core/
 COPY --from=common go.mod go.sum /common/
+COPY --from=gateway-common go.mod /gateway/common/
 COPY --from=httpkit go.mod go.sum /httpkit/
 
 COPY go.mod go.sum ./
@@ -40,6 +44,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY --from=sdk-core . /sdk/core
 COPY --from=common . /common
+COPY --from=gateway-common . /gateway/common
 COPY --from=httpkit . /httpkit
 COPY . ./
 
@@ -88,7 +93,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
 # Copy debug-compiled binary and required runtime assets
-COPY --from=builder /build/controller .
+COPY --from=builder /gateway/gateway-controller/controller .
 COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
 COPY --from=policies . /app/default-policies
 COPY --from=target LICENSE /app/LICENSE
@@ -124,7 +129,7 @@ WORKDIR /app
 # Copy build manifest
 COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
 
-COPY --from=builder /build/controller .
+COPY --from=builder /gateway/gateway-controller/controller .
 COPY --from=policies . /app/default-policies
 COPY --from=target LICENSE /app/LICENSE
 COPY lua /app/lua

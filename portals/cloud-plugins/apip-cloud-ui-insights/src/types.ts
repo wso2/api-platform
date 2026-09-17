@@ -22,7 +22,9 @@ export type InsightsScopeLevel = 'organization' | 'project';
  * Host-specific Moesif iframe shape. Chosen by the host registry, not by
  * runtime config — the Moesif origin is configured; the path is not.
  *
- * - `api-control-plane`: `/wrap/basic` (org) and `/wrap/basic?project_id=` (project)
+ * - `api-control-plane`: `/wrap/basic` (org); project uses `?project_id=` when
+ *   `ENABLE_ACP_PROJECT_FILTER` (`config/acpProjectFilter.ts`) is true,
+ *   otherwise the same org URL
  * - `ai-workspace`: `/wrap/basic/ai-overview?...` for both org and project (no filter)
  */
 export type InsightsEmbedProfile = 'api-control-plane' | 'ai-workspace';

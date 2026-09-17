@@ -118,6 +118,23 @@ func TestServiceAcceptsBatchAndKeepsCountConsistent(t *testing.T) {
 	require.JSONEq(t, `{"count":2}`, response.Body.String())
 }
 
+func TestServiceRetainsOnlyTheNewestEvents(t *testing.T) {
+	service := New()
+	events := make([]Event, maxRetainedEvents+1)
+	for i := range events {
+		events[i] = analyticsEventFor("/" + strconv.Itoa(i))
+	}
+	body, err := json.Marshal(events)
+	require.NoError(t, err)
+
+	response := serveAnalytics(service, http.MethodPost, "/block/v1/events/batch", bytes.NewReader(body), nil)
+	require.Equal(t, http.StatusCreated, response.Code)
+	retained := readAnalyticsEvents(t, service, "block")
+	require.Len(t, retained, maxRetainedEvents)
+	require.Equal(t, events[1].Request.URI, retained[0].Request.URI)
+	require.Equal(t, events[len(events)-1].Request.URI, retained[len(retained)-1].Request.URI)
+}
+
 func TestServiceRejectsMalformedAndOversizedPayloads(t *testing.T) {
 	service := New()
 	response := serveAnalytics(service, http.MethodPost, "/block/v1/events", bytes.NewBufferString("{"), nil)

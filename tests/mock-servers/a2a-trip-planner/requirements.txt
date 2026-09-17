@@ -1,0 +1,13 @@
+# Runtime requirements for the A2A trip-planner integration-test fixture.
+#
+# Pinned exactly, never a range: this fixture exists so the gateway's A2A
+# behaviour is tested against the reference implementation's framing, and a
+# floating version would let an SDK change silently alter what the gateway is
+# being tested against. Bumping it is a deliberate act with a test run attached.
+
+# Official A2A Python SDK. The `http-server` extra pulls starlette and
+# sse-starlette, which the JSON-RPC and HTTP+JSON route factories require.
+a2a-sdk[http-server]==1.1.0
+
+# ASGI server.
+uvicorn==0.51.0

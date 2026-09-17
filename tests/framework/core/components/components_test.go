@@ -145,6 +145,18 @@ func TestDefinitionValidationEdges(t *testing.T) {
 		require.ErrorContains(t, err, "not in the services list")
 		require.ErrorContains(t, err, "still needs endpoints")
 	})
+
+	t.Run("negative boot attempts are rejected", func(t *testing.T) {
+		d := &Definition{
+			Name: "stack", Alias: "stack",
+			Endpoints: []Endpoint{{Name: "api", Port: 8080, Scheme: "http"}},
+			Compose: &ComposeSpec{
+				ComposeFile: "compose/stack.yaml", Services: []string{"api"}, PrimaryService: "api",
+				BootAttempts: -1,
+			},
+		}
+		require.ErrorContains(t, d.Validate(), "boot attempts must not be negative")
+	})
 }
 
 func TestHealthCheckValidation(t *testing.T) {
@@ -576,6 +588,34 @@ func TestInstanceURLs(t *testing.T) {
 	})
 }
 
+func TestExternalInstanceURLs(t *testing.T) {
+	definition := &Definition{
+		Name:  "external",
+		Alias: "external",
+		External: &ExternalSpec{Endpoints: []ExternalEndpoint{
+			{Name: "api"}, {Name: "auth"},
+		}},
+	}
+	inst, err := NewExternalInstance(definition, 0, 1, map[string]string{
+		"api":  "https://api.example.com/v1",
+		"auth": "https://auth.example.com/token",
+	})
+	require.NoError(t, err)
+	got, err := inst.URL("api")
+	require.NoError(t, err)
+	require.Equal(t, "https://api.example.com/v1", got)
+	require.Equal(t, []string{"api", "auth"}, inst.EndpointNames())
+	_, err = inst.MappedPort("api")
+	require.ErrorContains(t, err, "no mapped container port")
+	_, err = inst.InternalURL("api")
+	require.ErrorContains(t, err, "no internal network URL")
+	_, err = inst.URL("missing")
+	require.ErrorContains(t, err, "available: api, auth")
+
+	_, err = NewExternalInstance(definition, 0, 1, map[string]string{"api": "https://api.example.com/v1"})
+	require.ErrorContains(t, err, "returned 1 endpoint URLs, want 2")
+}
+
 func TestInstanceIdentity(t *testing.T) {
 	t.Run("a nil definition is rejected", func(t *testing.T) {
 		_, err := NewInstance(nil, 0, 1, "127.0.0.1", nil)
@@ -592,6 +632,22 @@ func TestInstanceIdentity(t *testing.T) {
 	t.Run("a host is required", func(t *testing.T) {
 		_, err := NewInstance(runtimeLike(), 0, 1, "  ", nil)
 		require.ErrorContains(t, err, "host is required")
+	})
+
+	t.Run("localhost uses the IPv4 loopback address for mapped ports", func(t *testing.T) {
+		inst, err := NewInstance(runtimeLike(), 0, 1, "localhost", map[int]int{8080: 49153})
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1", inst.Host())
+
+		endpoint, err := inst.URL("http")
+		require.NoError(t, err)
+		require.Equal(t, "http://127.0.0.1:49153", endpoint)
+	})
+
+	t.Run("a configured non-local host is preserved", func(t *testing.T) {
+		inst, err := NewInstance(runtimeLike(), 0, 1, "192.168.64.2", map[int]int{8080: 49153})
+		require.NoError(t, err)
+		require.Equal(t, "192.168.64.2", inst.Host())
 	})
 
 	t.Run("the mapping is copied, so a later caller mutation cannot corrupt it", func(t *testing.T) {
@@ -1102,6 +1158,46 @@ func TestDefinitionAndDatabaseAccessors(t *testing.T) {
 	})
 }
 
+func TestExternalDefinitionValidation(t *testing.T) {
+	valid := func() *Definition {
+		return &Definition{
+			Name: "external", Alias: "external",
+			External: &ExternalSpec{
+				Endpoints: []ExternalEndpoint{{Name: "api"}},
+				Resolve: func(string, map[string]string) (map[string]string, error) {
+					return map[string]string{"api": "https://example.com"}, nil
+				},
+			},
+		}
+	}
+
+	t.Run("valid external definition passes", func(t *testing.T) {
+		require.NoError(t, valid().Validate())
+	})
+	t.Run("resolver is required", func(t *testing.T) {
+		d := valid()
+		d.External.Resolve = nil
+		require.ErrorContains(t, d.Validate(), "external spec has no resolver")
+	})
+	t.Run("duplicate endpoint names are rejected", func(t *testing.T) {
+		d := valid()
+		d.External.Endpoints = append(d.External.Endpoints, ExternalEndpoint{Name: "api"})
+		require.ErrorContains(t, d.Validate(), "duplicate external endpoint name")
+	})
+	t.Run("container configuration is rejected", func(t *testing.T) {
+		d := valid()
+		d.Image = ImageRef{Ref: "should-not-exist"}
+		require.ErrorContains(t, d.Validate(), "must not declare an image")
+	})
+	t.Run("required parameters are non-empty and unique", func(t *testing.T) {
+		d := valid()
+		d.External.RequiredParameters = []string{"environment", "environment", " "}
+		err := d.Validate()
+		require.ErrorContains(t, err, "duplicate external required parameter")
+		require.ErrorContains(t, err, "required parameter has no name")
+	})
+}
+
 func TestComposeHelpers(t *testing.T) {
 	t.Run("compose detection and staging name", func(t *testing.T) {
 		empty := Definition{}
@@ -1120,6 +1216,7 @@ func TestComposeHelpers(t *testing.T) {
 				GeneratedFiles:   map[string][]byte{"existing": []byte("value")},
 				Env:              map[string]string{"A": "B"},
 				CoverageServices: []CoverageService{{Name: "gateway", Types: []string{"go"}}},
+				BootAttempts:     3,
 			},
 		}
 		updated := definition.Compose.WithGenerated(map[string][]byte{"generated": []byte("content")})
@@ -1127,6 +1224,7 @@ func TestComposeHelpers(t *testing.T) {
 		require.Equal(t, map[string][]byte{"existing": []byte("value"), "generated": []byte("content")}, updated.GeneratedFiles)
 		require.Equal(t, map[string]string{"A": "B"}, updated.Env)
 		require.Equal(t, []CoverageService{{Name: "gateway", Types: []string{"go"}}}, updated.CoverageServices)
+		require.Equal(t, 3, updated.BootAttempts)
 		require.NotSame(t, definition.Compose, updated)
 		updated.GeneratedFiles["existing"][0] = 'X'
 		require.Equal(t, []byte("value"), definition.Compose.GeneratedFiles["existing"])
@@ -1168,6 +1266,16 @@ func TestDefinitionWithImageVersion(t *testing.T) {
 	t.Run("does not alter references for an empty version", func(t *testing.T) {
 		definition := &Definition{Image: ImageRef{Ref: "app:current"}}
 		require.Same(t, definition, definition.WithImageVersion(" "))
+	})
+
+	t.Run("does not turn an external component into an image component", func(t *testing.T) {
+		definition := &Definition{
+			Name: "external", Alias: "external",
+			External: &ExternalSpec{Endpoints: []ExternalEndpoint{{Name: "api"}}, Resolve: func(string, map[string]string) (map[string]string, error) {
+				return map[string]string{"api": "https://example.com"}, nil
+			}},
+		}
+		require.Same(t, definition, definition.WithImageVersion("ignored"))
 	})
 }
 
@@ -1222,4 +1330,43 @@ func TestComposeRejectsInvalidCoverageServiceMetadata(t *testing.T) {
 		},
 	}
 	require.ErrorContains(t, definition.Validate(), "unsupported type")
+}
+
+func TestComposeRejectsDuplicateStagedNames(t *testing.T) {
+	base := func() Definition {
+		return Definition{
+			Name:      "stack",
+			Alias:     "stack",
+			Endpoints: []Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+			Compose: &ComposeSpec{
+				ComposeFile: "catalog/stack/docker-compose.yaml", PrimaryService: "api",
+				Services: []string{"api"},
+			},
+		}
+	}
+
+	t.Run("override sharing the base file name", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"catalog/overlays/docker-compose.yaml"}
+		require.ErrorContains(t, definition.Validate(), `compose file "docker-compose.yaml" is staged more than once`)
+	})
+
+	t.Run("two overrides sharing a name", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"a/extra.yaml", "b/extra.yaml"}
+		require.ErrorContains(t, definition.Validate(), `compose file "extra.yaml" is staged more than once`)
+	})
+
+	t.Run("staged file colliding with a compose file", func(t *testing.T) {
+		definition := base()
+		definition.Compose.StagedFiles = map[string]string{"docker-compose.yaml": "catalog/stack/other.yaml"}
+		require.ErrorContains(t, definition.Validate(), `staged file "docker-compose.yaml" collides`)
+	})
+
+	t.Run("distinct names are accepted", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"catalog/stack/docker-compose.other-org.yaml"}
+		definition.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": "resources/roles.yaml"}
+		require.NoError(t, definition.Validate())
+	})
 }

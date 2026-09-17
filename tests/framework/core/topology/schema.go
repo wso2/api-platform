@@ -109,8 +109,16 @@ type Component struct {
 	// Name references a component in the registry.
 	Name string `yaml:"name"`
 
+	// AddPoliciesFrom selects a local policy tree used to build a custom platform gateway.
+	// The path is resolved against the repository root when the build is prepared.
+	AddPoliciesFrom string `yaml:"addPoliciesFrom"`
+
 	// Overlay is an optional component configuration overlay.
 	Overlay string `yaml:"overlay"`
+
+	// StagedFiles overrides declared component resource sources for this block.
+	// Keys are the staged target names already owned by the component definition.
+	StagedFiles map[string]string `yaml:"stagedFiles"`
 
 	// DB selects the component's engine or declares its matrix.
 	DB DBSpec `yaml:"db"`

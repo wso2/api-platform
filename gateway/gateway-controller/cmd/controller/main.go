@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
@@ -381,7 +382,8 @@ func main() {
 		}
 	}
 
-	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion.
+	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
+	// (policyVersionResolver is hoisted above for the startup rehydration path).
 	// This MUST happen before the initial xDS snapshot below: the Envoy translator
 	// and the policy engine must agree on cluster names ("upstream_<name>_<host>_<port>"
 	// from the transformer path). With no transformers wired the translator silently
@@ -390,7 +392,8 @@ func main() {
 	// and every API returns 503 cluster_not_found until it is redeployed
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
 
 	// Wire the transformer into the Envoy xDS translator so Envoy routes are built from the
 	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
@@ -398,14 +401,24 @@ func main() {
 	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
 	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
 	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
-	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
-	// excluded so it keeps using the async-specific legacy translation path.
-	translator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
-	})
+	// header-matched route fail with 500 ("policy chain not found").
+	//
+	// This has to happen before the initial snapshot below, not merely somewhere during startup.
+	// The snapshot is generated exactly once here, so a translator without its transformers at
+	// this point serves a legacy-path snapshot for the whole life of the process: RestApi/Mcp
+	// routes come back under the wrong names, and a kind the legacy path cannot translate at all
+	// — Agent, whose Configuration is not an api.RestAPI — contributes no routes whatsoever and
+	// 404s until something else triggers a snapshot update.
+	//
+	// The kind list is derived from the registry rather than written out here, so a kind the
+	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
+	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
+	// own kind list instead.
+	envoyTransformers := make(map[string]models.ConfigTransformer)
+	for _, kind := range transform.EnvoyTranslatorKinds() {
+		envoyTransformers[kind] = transformerRegistry
+	}
+	translator.SetTransformers(envoyTransformers)
 
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
@@ -466,8 +479,9 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	// Share the transformer registry (built before the initial xDS snapshot above)
-	// with the policy manager so both snapshot paths key resources identically.
+	// Share the transformer registry (built earlier, before the initial xDS snapshot — see the
+	// comment there for why that ordering is load-bearing rather than incidental) with the
+	// policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
 
 	// Load runtime configs from existing API configurations on startup.
@@ -604,7 +618,18 @@ func main() {
 		sharedHTTPClient, config.NewParser(), validator, log,
 		eventHubInstance, secretsService,
 	)
-	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
+	agentSvc := agent.NewAgentService(
+		configStore, db, config.NewParser(),
+		config.NewAgentValidator().WithPolicyValidator(config.NewPolicyValidator(policyDefinitions)),
+		log, eventHubInstance, secretsService, cfg.Controller.Server.GatewayID,
+	)
+	// The DP->CP push is wired for Agents on the same terms as the LLM and MCP
+	// services above, and stays off until the control plane models the Agent kind
+	// — see agent.ControlPlanePushSupported.
+	agentSvc.SetControlPlanePusher(cpClient,
+		agent.ControlPlanePushSupported && cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+
+	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 
 	authConfig, err := generateAuthConfig(cfg)
 	if err != nil {
@@ -672,6 +697,7 @@ func main() {
 		secretsService,
 		restAPIService,
 		sharedHTTPClient,
+		agentSvc,
 	)
 	if err != nil {
 		log.Error("Failed to create API server", slog.Any("error", err))
@@ -951,6 +977,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /mcp-proxies/{id}":    {"admin", "developer"},
 		"DELETE /mcp-proxies/{id}": {"admin", "developer"},
 
+		"POST /agents":        {"admin", "developer"},
+		"GET /agents":         {"admin", "developer"},
+		"GET /agents/{id}":    {"admin", "developer"},
+		"PUT /agents/{id}":    {"admin", "developer"},
+		"DELETE /agents/{id}": {"admin", "developer"},
+
 		"POST /llm-provider-templates":        {"admin"},
 		"GET /llm-provider-templates":         {"admin"},
 		"GET /llm-provider-templates/{id}":    {"admin"},
@@ -986,6 +1018,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
 		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
 		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
+
+		"POST /agents/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /agents/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /agents/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /agents/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /agents/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
 		"POST /subscriptions":                    {"admin"},

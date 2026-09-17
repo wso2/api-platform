@@ -134,6 +134,97 @@ type AnalyticsConfig struct {
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
 type AnalyticsPublishersConfig struct {
 	Moesif MoesifPublisherConfig `koanf:"moesif"`
+	OTel   OTelPublisherConfig   `koanf:"otel"`
+}
+
+// OTelPublisherConfig configures the OpenTelemetry analytics publisher, which
+// exports each event as an OTLP log record over OTLP/HTTP.
+type OTelPublisherConfig struct {
+	// Endpoint is the full OTLP/HTTP logs URL, including the /v1/logs path.
+	Endpoint string `koanf:"endpoint"`
+	// Headers are sent on every export request. Use for a vendor's OTLP intake
+	// that authenticates by header. Values are secrets and are never logged.
+	Headers map[string]string `koanf:"headers"`
+	// ServiceName / ServiceVersion populate the OTLP resource.
+	ServiceName    string `koanf:"service_name"`
+	ServiceVersion string `koanf:"service_version"`
+	// ResourceAttributes are added to the OTLP resource, alongside service.*.
+	ResourceAttributes map[string]string `koanf:"resource_attributes"`
+	// BatchSize is the record count that triggers an export before FlushInterval.
+	BatchSize int `koanf:"batch_size"`
+	// FlushInterval bounds how long a record waits when traffic is too slow to
+	// fill a batch.
+	FlushInterval time.Duration `koanf:"flush_interval"`
+	// QueueCapacity bounds records held in memory when the endpoint is slow.
+	// Once full, OnQueueFull decides which record is dropped.
+	QueueCapacity int `koanf:"queue_capacity"`
+	// OnQueueFull is QueueDropNew (default) or QueueDropOldest.
+	OnQueueFull string `koanf:"on_queue_full"`
+	// Timeout bounds a single export attempt.
+	Timeout time.Duration `koanf:"timeout"`
+	// MaxRetries is the number of retry attempts after the initial one. Only
+	// transport errors, 429 and 5xx are retried; any other 4xx means the endpoint
+	// rejected the payload's shape, which retrying can only amplify.
+	MaxRetries int `koanf:"max_retries"`
+	// RetryBackoff is the base delay for exponential backoff, with full jitter
+	// applied per attempt so replicas retrying after a shared outage do not
+	// resynchronize into a thundering herd.
+	RetryBackoff time.Duration `koanf:"retry_backoff"`
+	// RetryAbortQueueRatio is the fraction of QueueCapacity at which a retrying
+	// batch abandons its remaining budget and returns to draining. One worker
+	// exports, so nothing drains the queue while a batch retries: past this
+	// depth, retrying to save one batch costs more records than it rescues. 0
+	// disables the check and lets every batch use its full budget.
+	RetryAbortQueueRatio float64 `koanf:"retry_abort_queue_ratio"`
+	// Compression is "none" (default, the OTLP spec's own default) or "gzip".
+	Compression string `koanf:"compression"`
+	// AllowInsecureTransport permits a plaintext http:// endpoint. Off by default
+	AllowInsecureTransport bool `koanf:"allow_insecure_transport"`
+	// TLS configures the client side of an https endpoint. Ignored for http.
+	TLS OTelTLSConfig `koanf:"tls"`
+}
+
+// Accepted values for analytics.publishers.otel.compression.
+const (
+	// OTelCompressionNone sends the OTLP-JSON payload uncompressed.
+	OTelCompressionNone = "none"
+	// OTelCompressionGzip sends it gzip-encoded with Content-Encoding: gzip.
+	OTelCompressionGzip = "gzip"
+)
+
+// DefaultOTelRetryAbortQueueRatio is the fraction of the OTel publisher's queue at
+// which a retrying batch gives up, matching the traffic-log sink's midpoint: high
+// enough that an ordinary blip still gets its full retry budget, low enough that a
+// hung endpoint cannot consume the whole queue before exporting resumes.
+const DefaultOTelRetryAbortQueueRatio = 0.5
+
+// EffectiveRetryAbortDepth returns the queue depth at which a retrying batch stops
+// retrying. Zero means the check is disabled.
+func (c OTelPublisherConfig) EffectiveRetryAbortDepth() int {
+	depth := int(float64(c.QueueCapacity) * c.RetryAbortQueueRatio)
+	if depth < 1 && c.RetryAbortQueueRatio > 0 {
+		depth = 1
+	}
+	return depth
+}
+
+// OTelTLSConfig configures TLS to the OTLP endpoint
+// ([analytics.publishers.otel.tls]). Deliberately a separate type from
+// TrafficLogHTTPTLSConfig despite the identical keys: the two config blocks are
+// independent, and sharing one type would couple them.
+type OTelTLSConfig struct {
+	// CAFile is a PEM bundle used to verify the endpoint's certificate. Empty
+	// means the system trust store, which is correct for a vendor's OTLP intake
+	// and usually wrong for an in-cluster collector fronted by a private CA.
+	CAFile string `koanf:"ca_file"`
+	// CertFile / KeyFile enable mTLS. Both must be set, or neither.
+	CertFile string `koanf:"cert_file"`
+	KeyFile  string `koanf:"key_file"`
+	// InsecureSkipVerify disables endpoint certificate verification. Off by
+	// default; when on, startup logs a warning naming the endpoint, because
+	// analytics records carry request metadata and, when body capture is
+	// enabled, request and response bodies.
+	InsecureSkipVerify bool `koanf:"insecure_skip_verify"`
 }
 
 // Traffic-log sink names accepted in traffic_logging.outputs.
@@ -162,12 +253,14 @@ const (
 	TrafficLogAuthHeader = "header"
 )
 
-// Behavior when the HTTP sink's queue is full (traffic_logging.http.on_queue_full).
+// Behavior when a bounded publisher queue is full. Shared vocabulary: both
+// traffic_logging.http.on_queue_full and analytics.publishers.otel.on_queue_full
+// accept exactly these values, so the two must never diverge.
 const (
-	// TrafficLogQueueDropNew discards the incoming line, preserving older ones.
-	TrafficLogQueueDropNew = "drop_new"
-	// TrafficLogQueueDropOldest evicts the oldest queued line to make room.
-	TrafficLogQueueDropOldest = "drop_oldest"
+	// QueueDropNew discards the incoming item, preserving older queued ones.
+	QueueDropNew = "drop_new"
+	// QueueDropOldest evicts the oldest queued item to make room for the new one.
+	QueueDropOldest = "drop_oldest"
 )
 
 // TrafficLoggingConfig holds configuration for the traffic-logging feature, which
@@ -1007,7 +1100,7 @@ func defaultTrafficLogHTTPConfig() TrafficLogHTTPConfig {
 		// ride out a short receiver blip without letting a long outage grow the
 		// heap without bound.
 		QueueCapacity:  10000,
-		OnQueueFull:    TrafficLogQueueDropNew,
+		OnQueueFull:    QueueDropNew,
 		RequestTimeout: 10 * time.Second,
 		MaxRetries:     3,
 		RetryBackoff:   time.Second,
@@ -1169,6 +1262,21 @@ func defaultConfig() *Config {
 					EventQueueSize:     10000,
 					BatchSize:          50,
 					TimerWakeupSeconds: 3,
+				},
+				OTel: OTelPublisherConfig{
+					Endpoint:       "http://otel-collector:4318/v1/logs",
+					ServiceName:    "gateway-runtime",
+					ServiceVersion: "",
+					BatchSize:      100,
+					FlushInterval:  5 * time.Second,
+					QueueCapacity:  10000,
+					OnQueueFull:    QueueDropNew,
+					Timeout:        10 * time.Second,
+					MaxRetries:     3,
+					RetryBackoff:   time.Second,
+					// Half: retry freely while the queue is shallow, stop once it fills.
+					RetryAbortQueueRatio: DefaultOTelRetryAbortQueueRatio,
+					Compression:          OTelCompressionNone,
 				},
 			},
 			GRPCEventServerCfg: map[string]interface{}{
@@ -1454,6 +1562,148 @@ func (c *Config) validateXDSConfig() error {
 	return nil
 }
 
+// validateOTelPublisherConfig validates [analytics.publishers.otel].
+func validateOTelPublisherConfig(cfg OTelPublisherConfig) error {
+	if cfg.Endpoint == "" {
+		return fmt.Errorf("analytics.publishers.otel.endpoint is required when otel is enabled")
+	}
+	u, err := url.Parse(cfg.Endpoint)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("analytics.publishers.otel.endpoint must be a valid URL (e.g. http://otel-collector:4318/v1/logs), got %q", cfg.Endpoint)
+	}
+	// Reject URL credentials to prevent endpoint leakage through logs and HTTP errors;
+	// use headers for authentication.
+	if u.User != nil {
+		return fmt.Errorf("analytics.publishers.otel.endpoint must not contain credentials in the "+
+			"URL (user:password@%s); the endpoint is written to logs, so use "+
+			"analytics.publishers.otel.headers to authenticate instead", u.Host)
+	}
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !cfg.AllowInsecureTransport {
+			return fmt.Errorf("analytics.publishers.otel.endpoint uses plaintext http:// but "+
+				"analytics.publishers.otel.allow_insecure_transport is false; analytics records carry "+
+				"API keys and consumer identity, so set allow_insecure_transport = true only for a "+
+				"trusted local collector, got %q", cfg.Endpoint)
+		}
+		slog.Warn("analytics.publishers.otel endpoint is plaintext http://; analytics records are "+
+			"transmitted unencrypted", "host", u.Host)
+		// Headers are the endpoint's intake credential. Over plaintext they are on
+		// the wire in clear text on every export, which the scheme warning alone
+		// does not convey.
+		if len(cfg.Headers) > 0 {
+			slog.Warn("analytics.publishers.otel.headers are sent over a plaintext http:// endpoint; "+
+				"the credential they carry is exposed to anyone able to intercept this connection",
+				"host", u.Host, "headerCount", len(cfg.Headers))
+		}
+	default:
+		return fmt.Errorf("analytics.publishers.otel.endpoint scheme must be https (or http with "+
+			"allow_insecure_transport), got %q", u.Scheme)
+	}
+	if cfg.ServiceName == "" {
+		return fmt.Errorf("analytics.publishers.otel.service_name is required")
+	}
+	if cfg.BatchSize <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.batch_size must be > 0, got %d", cfg.BatchSize)
+	}
+	if cfg.QueueCapacity <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.queue_capacity must be > 0, got %d; an unbounded "+
+			"queue in front of a bounded exporter is deferred unbounded memory growth", cfg.QueueCapacity)
+	}
+	// A queue smaller than a batch can never fill one, so every export would be
+	// interval-driven regardless of load.
+	if cfg.QueueCapacity < cfg.BatchSize {
+		return fmt.Errorf("analytics.publishers.otel.queue_capacity (%d) must be >= batch_size (%d)", cfg.QueueCapacity, cfg.BatchSize)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.OnQueueFull)) {
+	case QueueDropNew, QueueDropOldest:
+	default:
+		return fmt.Errorf("analytics.publishers.otel.on_queue_full must be %q or %q, got %q",
+			QueueDropNew, QueueDropOldest, cfg.OnQueueFull)
+	}
+	if cfg.FlushInterval <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.flush_interval must be > 0, got %s", cfg.FlushInterval)
+	}
+	if cfg.Timeout <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.timeout must be > 0, got %s", cfg.Timeout)
+	}
+	if cfg.MaxRetries < 0 {
+		return fmt.Errorf("analytics.publishers.otel.max_retries must be >= 0, got %d", cfg.MaxRetries)
+	}
+	if cfg.MaxRetries > 0 && cfg.RetryBackoff <= 0 {
+		return fmt.Errorf("analytics.publishers.otel.retry_backoff must be positive when max_retries > 0, got %s",
+			cfg.RetryBackoff)
+	}
+	if cfg.RetryAbortQueueRatio < 0 || cfg.RetryAbortQueueRatio > 1 {
+		return fmt.Errorf("analytics.publishers.otel.retry_abort_queue_ratio must be between 0 and 1, got %v",
+			cfg.RetryAbortQueueRatio)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Compression)) {
+	case "", OTelCompressionNone, OTelCompressionGzip:
+	default:
+		return fmt.Errorf("analytics.publishers.otel.compression must be %q or %q, got %q",
+			OTelCompressionNone, OTelCompressionGzip, cfg.Compression)
+	}
+	if err := validateOTelTLS(cfg.TLS, u.Host); err != nil {
+		return fmt.Errorf("analytics.publishers.otel.tls: %w", err)
+	}
+	return nil
+}
+
+// tlsKeyPermMask is the set of permission bits that must be clear on a TLS
+// private key: anything readable by group or other.
+const tlsKeyPermMask os.FileMode = 0o077
+
+// verifyTLSKeyPerms fails when a TLS private key is readable by group or other
+// (GO-AUTH-018). Shared so traffic_logging.http.tls can adopt the same check.
+func verifyTLSKeyPerms(field, path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("cannot stat %s %q: %w", field, path, err)
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("%s %q is a directory, not a private key file", field, path)
+	}
+	if perm := fi.Mode().Perm(); perm&tlsKeyPermMask != 0 {
+		return fmt.Errorf("%s %q has permissions %#o, which allow group/other access to a private "+
+			"key; fix it with `chmod 600 %s` and restart", field, path, perm, path)
+	}
+	return nil
+}
+
+// validateOTelTLS checks that any referenced TLS material exists and parses, so a
+// bad path fails at startup rather than on the first export.
+func validateOTelTLS(cfg OTelTLSConfig, host string) error {
+	if cfg.InsecureSkipVerify {
+		slog.Warn("analytics.publishers.otel.tls.insecure_skip_verify is true: the endpoint's "+
+			"certificate is not verified, so analytics records are exposed to anyone able to "+
+			"intercept this connection", "host", host)
+	}
+	if cfg.CAFile != "" {
+		pem, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return fmt.Errorf("cannot read ca_file %q: %w", cfg.CAFile, err)
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(pem) {
+			return fmt.Errorf("ca_file %q contains no usable PEM certificate", cfg.CAFile)
+		}
+	}
+	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
+		return fmt.Errorf("cert_file and key_file must be set together for mTLS (one is set, the other is not)")
+	}
+	if cfg.CertFile != "" {
+		// Permissions first: a key anyone can read is a finding whether or not it parses.
+		if err := verifyTLSKeyPerms("key_file", cfg.KeyFile); err != nil {
+			return err
+		}
+		if _, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile); err != nil {
+			return fmt.Errorf("cannot load client certificate/key pair: %w", err)
+		}
+	}
+	return nil
+}
+
 // validateCollectorConfig migrates deprecated analytics capture aliases onto the
 // collector and enforces the collector prerequisite: a consumer (analytics or
 // traffic logging) requires the collector that feeds it. The collector has no
@@ -1564,6 +1814,10 @@ func (c *Config) validateAnalyticsConfig() error {
 					if u, err := url.Parse(moesifCfg.BaseURL); err != nil || u.Scheme == "" || u.Host == "" {
 						return fmt.Errorf("analytics.publishers.moesif.moesif_base_url must be a valid URL (e.g. https://api.moesif.net), got %q", moesifCfg.BaseURL)
 					}
+				}
+			case "otel":
+				if err := validateOTelPublisherConfig(c.Analytics.Publishers.OTel); err != nil {
+					return err
 				}
 			default:
 				return fmt.Errorf("unknown publisher type in enabled_publishers: %s", publisherName)
@@ -1870,10 +2124,10 @@ func validateTrafficLogHTTPConfig(cfg TrafficLogHTTPConfig) error {
 			"bounded sender is deferred unbounded memory growth", cfg.QueueCapacity)
 	}
 	switch strings.ToLower(strings.TrimSpace(cfg.OnQueueFull)) {
-	case TrafficLogQueueDropNew, TrafficLogQueueDropOldest:
+	case QueueDropNew, QueueDropOldest:
 	default:
 		return fmt.Errorf("on_queue_full must be %q or %q, got %q",
-			TrafficLogQueueDropNew, TrafficLogQueueDropOldest, cfg.OnQueueFull)
+			QueueDropNew, QueueDropOldest, cfg.OnQueueFull)
 	}
 	if cfg.RequestTimeout <= 0 {
 		return fmt.Errorf("request_timeout must be positive, got %s", cfg.RequestTimeout)

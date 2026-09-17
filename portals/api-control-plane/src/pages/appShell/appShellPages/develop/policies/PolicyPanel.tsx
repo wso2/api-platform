@@ -23,7 +23,6 @@ import {
   Box,
   Card,
   CardContent,
-  Chip,
   Divider,
   InputAdornment,
   MenuItem,
@@ -38,13 +37,13 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useIsPolicyHubConfigured, type PolicySummary } from '@/api/resources/policyHub';
 import { useUpdateRestApi, type Policy, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
+import { PolicyIndicator, SwaggerResourceRow } from '@/components/SwaggerOperationsView';
 import { AttachedPolicyList } from './AttachedPolicyList';
 import { AvailablePoliciesPanel } from './AvailablePoliciesPanel';
 import { SaveBar } from '../SaveBar';
 import { useDirtyTracking } from '../useDirtyTracking';
 import {
   type EditableOperation,
-  methodColor,
   reorderPolicies,
   toEditableOperations,
   withPolicyEdits,
@@ -439,63 +438,40 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                           // JSX so it is never mistaken for translatable text.
                           const displayPath = op.path || '/';
                           return (
-                            <Accordion
-                              disableGutters
+                            <SwaggerResourceRow
+                              badge={<PolicyIndicator policies={op.policies ?? []} />}
+                              // An imported contract carries a summary; a
+                              // hand-added resource usually only has the name it
+                              // was given, so that stands in for it.
+                              description={op.description || op.name}
                               key={index}
-                              sx={{ '&:before': { display: 'none' } }}
-                              variant="outlined"
+                              method={op.method}
+                              path={displayPath}
                             >
-                              <AccordionSummary expandIcon={<ChevronDown size={18} />}>
-                                <Stack
-                                  alignItems="center"
-                                  direction="row"
-                                  spacing={1.5}
-                                  sx={{ minWidth: 0 }}
-                                >
-                                  <Chip
-                                    color={methodColor(op.method)}
-                                    label={op.method}
-                                    size="small"
-                                    sx={{ fontWeight: 700, minWidth: 58 }}
-                                  />
-                                  <Typography noWrap sx={{ fontFamily: 'monospace' }}>
-                                    {displayPath}
-                                  </Typography>
-                                  {(op.policies?.length || 0) > 0 && (
-                                    <Chip
-                                      label={op.policies!.length}
-                                      size="small"
-                                      variant="outlined"
-                                    />
-                                  )}
-                                </Stack>
-                              </AccordionSummary>
-                              <AccordionDetails>
-                                <DropZone
-                                  active={activeZone === zid}
-                                  onDrop={() => dropOnScope({ kind: 'operation', index })}
-                                  onEnter={() => setActiveZone(zid)}
-                                  onLeave={() => setActiveZone(null)}
-                                >
-                                  <AttachedPolicyList
-                                    canAdd={hubEnabled}
-                                    emptyText={intl.formatMessage(messages.resourceEmpty)}
-                                    onAdd={() => {
-                                      setEditing(null);
-                                      setScope({ kind: 'operation', index });
-                                      setPicked(null);
-                                    }}
-                                    onEdit={(i) => openEdit({ kind: 'operation', index }, i)}
-                                    onReorder={(from, to) =>
-                                      reorderAt({ kind: 'operation', index }, from, to)
-                                    }
-                                    onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
-                                    policies={op.policies || []}
-                                    showHeader={false}
-                                  />
-                                </DropZone>
-                              </AccordionDetails>
-                            </Accordion>
+                              <DropZone
+                                active={activeZone === zid}
+                                onDrop={() => dropOnScope({ kind: 'operation', index })}
+                                onEnter={() => setActiveZone(zid)}
+                                onLeave={() => setActiveZone(null)}
+                              >
+                                <AttachedPolicyList
+                                  canAdd={hubEnabled}
+                                  emptyText={intl.formatMessage(messages.resourceEmpty)}
+                                  onAdd={() => {
+                                    setEditing(null);
+                                    setScope({ kind: 'operation', index });
+                                    setPicked(null);
+                                  }}
+                                  onEdit={(i) => openEdit({ kind: 'operation', index }, i)}
+                                  onReorder={(from, to) =>
+                                    reorderAt({ kind: 'operation', index }, from, to)
+                                  }
+                                  onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
+                                  policies={op.policies || []}
+                                  showHeader={false}
+                                />
+                              </DropZone>
+                            </SwaggerResourceRow>
                           );
                         })}
                       </Stack>

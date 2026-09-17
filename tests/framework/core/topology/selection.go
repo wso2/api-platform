@@ -21,6 +21,7 @@ package topology
 import (
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 	"strings"
@@ -53,6 +54,9 @@ type Selection struct {
 
 	// GatewayVersion overrides the image version for platform-gateway components.
 	GatewayVersion string
+
+	// CloudEnvironment selects the external cloud environment used by cloud-console.
+	CloudEnvironment string
 }
 
 // Flags registers selection flags on fs.
@@ -76,6 +80,8 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 		"build instrumented source images and collect runtime coverage")
 	fs.StringVar(&s.GatewayVersion, "gateway-version", "",
 		"override the platform-gateway image version for this run")
+	fs.StringVar(&s.CloudEnvironment, "cloud-env", "",
+		"select the cloud environment for external cloud-console components")
 }
 
 func splitList(v string) []string {
@@ -133,10 +139,10 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 				if component.Def != nil && component.Def.Name == "platform-gateway" {
 					component.Def = component.Def.WithImageVersion(version)
 					component.Version = version
+					component.BuildFromSource = false
 				}
 			}
 		}
-
 		if len(include) > 0 {
 			_, byName := include[block.Name]
 			_, bySource := include[block.Source]
@@ -164,6 +170,38 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			if exclude[block.Source] {
 				matchedExclude[block.Source] = true
 			}
+			continue
+		}
+
+		skipExternalBlock := false
+		for j := range block.Components {
+			component := &block.Components[j]
+			if component.Def == nil || !component.Def.IsExternal() {
+				continue
+			}
+			parameters := make(map[string]string, len(component.ExternalParameters)+1)
+			for key, value := range component.ExternalParameters {
+				parameters[key] = value
+			}
+			if value := strings.TrimSpace(s.CloudEnvironment); value != "" {
+				parameters["environment"] = value
+			}
+			for _, required := range component.Def.External.RequiredParameters {
+				if strings.TrimSpace(parameters[required]) == "" {
+					if len(include) == 0 {
+						// External blocks are opt-in. A normal local suite run must not
+						// require cloud credentials or a target environment merely because
+						// the suite declares the cloud coverage block.
+						skipExternalBlock = true
+						break
+					}
+					return nil, fmt.Errorf("topology: external component %q in block %q requires -cloud-env",
+						component.Def.Name, block.Name)
+				}
+			}
+			component.ExternalParameters = parameters
+		}
+		if skipExternalBlock {
 			continue
 		}
 
@@ -236,6 +274,11 @@ func cloneBlock(block ResolvedBlock) ResolvedBlock {
 	for i, component := range block.Components {
 		out.Components[i] = component
 		out.Components[i].DependsOn = append([]string(nil), component.DependsOn...)
+		out.Components[i].ExternalParameters = make(map[string]string, len(component.ExternalParameters))
+		for key, value := range component.ExternalParameters {
+			out.Components[i].ExternalParameters[key] = value
+		}
+		out.Components[i].StagedFiles = maps.Clone(component.StagedFiles)
 	}
 	out.Runners = make([]Runner, len(block.Runners))
 	for i, runner := range block.Runners {

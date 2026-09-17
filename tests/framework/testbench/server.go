@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -41,11 +42,16 @@ const (
 	maxBodyBytes   = 10 << 20 // 10 MiB
 )
 
-// limitBody caps the request body every mock service reads.
+// limitBody caps the request body every mock service reads, then consumes whatever the handler
+// left behind. net/http cannot reuse a connection whose request body was not read, and closing a
+// socket that still holds unread data emits a TCP reset - so a client POSTing a body to a handler
+// that ignores it (a /debug/reset, say) intermittently reads that reset instead of the response
+// the server already wrote. The drain is bounded by the MaxBytesReader installed above.
 func limitBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		next.ServeHTTP(w, r)
+		_, _ = io.Copy(io.Discard, r.Body)
 	})
 }
 

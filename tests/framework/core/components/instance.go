@@ -21,6 +21,7 @@ package components
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,6 +60,9 @@ type Instance struct {
 
 	// mapped is canonical in-container port -> host port.
 	mapped map[int]int
+
+	// external contains complete endpoint URLs for an externally hosted component.
+	external map[string]string
 }
 
 // NewInstance creates an instance from resolved runtime values.
@@ -76,6 +80,9 @@ func NewInstance(def *Definition, ordinal, replicas int, host string, mapped map
 	if strings.TrimSpace(host) == "" {
 		return nil, fmt.Errorf("%s: instance host is required", def)
 	}
+	if def.IsExternal() {
+		return nil, fmt.Errorf("%s: external components require NewExternalInstance", def)
+	}
 
 	copied := make(map[int]int, len(mapped))
 	for k, v := range mapped {
@@ -84,7 +91,54 @@ func NewInstance(def *Definition, ordinal, replicas int, host string, mapped map
 
 	return &Instance{
 		def: def, ordinal: ordinal, replicas: replicas,
-		alias: alias, host: host, mapped: copied,
+		alias: alias, host: mappedHost(host), mapped: copied,
+	}, nil
+}
+
+// mappedHost returns an IPv4 loopback address for Docker's local host alias.
+// Docker's mapped host-port bindings can be IPv4-only, so using localhost can
+// select an unreachable IPv6 loopback address on hosts that resolve it to ::1 first.
+func mappedHost(host string) string {
+	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
+		return "127.0.0.1"
+	}
+	return host
+}
+
+// NewExternalInstance creates an instance whose endpoints are complete external URLs.
+func NewExternalInstance(def *Definition, ordinal, replicas int, urls map[string]string) (*Instance, error) {
+	if def == nil {
+		return nil, fmt.Errorf("instance: definition is required")
+	}
+	if !def.IsExternal() {
+		return nil, fmt.Errorf("%s: is not an external component", def)
+	}
+	if replicas <= 0 {
+		replicas = 1
+	}
+	alias, err := AliasFor(def, ordinal, replicas)
+	if err != nil {
+		return nil, err
+	}
+	if len(urls) != len(def.External.Endpoints) {
+		return nil, fmt.Errorf("%s: external resolver returned %d endpoint URLs, want %d",
+			def, len(urls), len(def.External.Endpoints))
+	}
+	copied := make(map[string]string, len(urls))
+	for _, endpoint := range def.External.Endpoints {
+		value := strings.TrimSpace(urls[endpoint.Name])
+		if value == "" {
+			return nil, fmt.Errorf("%s: external endpoint %q has no URL", def, endpoint.Name)
+		}
+		parsed, parseErr := url.Parse(value)
+		if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return nil, fmt.Errorf("%s: external endpoint %q URL %q is not absolute", def, endpoint.Name, value)
+		}
+		copied[endpoint.Name] = value
+	}
+	return &Instance{
+		def: def, ordinal: ordinal, replicas: replicas,
+		alias: alias, external: copied,
 	}, nil
 }
 
@@ -111,10 +165,15 @@ func (i *Instance) Ordinal() int { return i.ordinal }
 
 // Label identifies this instance in messages, disambiguating replicas.
 func (i *Instance) Label() string {
-	if i.replicas <= 1 {
-		return i.def.Name
+	return Label(i.def.Name, i.ordinal, i.replicas)
+}
+
+// Label formats a component instance identity.
+func Label(name string, ordinal, replicas int) string {
+	if replicas <= 1 {
+		return name
 	}
-	return fmt.Sprintf("%s#%d", i.def.Name, i.ordinal+1)
+	return fmt.Sprintf("%s#%d", name, ordinal+1)
 }
 
 // Host returns the address used to reach mapped ports.
@@ -122,6 +181,9 @@ func (i *Instance) Host() string { return i.host }
 
 // MappedPort returns the mapped host port for an endpoint.
 func (i *Instance) MappedPort(endpoint string) (int, error) {
+	if i != nil && i.def != nil && i.def.IsExternal() {
+		return 0, fmt.Errorf("%s: external endpoint %q has no mapped container port", i.Label(), endpoint)
+	}
 	e, ok := i.def.Endpoint(endpoint)
 	if !ok {
 		return 0, i.unknownEndpoint(endpoint)
@@ -137,6 +199,13 @@ func (i *Instance) MappedPort(endpoint string) (int, error) {
 
 // URL returns the external URL for an endpoint.
 func (i *Instance) URL(endpoint string) (string, error) {
+	if i != nil && i.def != nil && i.def.IsExternal() {
+		url, ok := i.external[endpoint]
+		if !ok {
+			return "", i.unknownEndpoint(endpoint)
+		}
+		return url, nil
+	}
 	e, ok := i.def.Endpoint(endpoint)
 	if !ok {
 		return "", i.unknownEndpoint(endpoint)
@@ -148,8 +217,26 @@ func (i *Instance) URL(endpoint string) (string, error) {
 	return buildURL(e.Scheme, i.host, port, e.PathPrefix), nil
 }
 
+// EndpointNames returns all endpoint names addressable on this instance.
+func (i *Instance) EndpointNames() []string {
+	if i == nil || i.def == nil {
+		return nil
+	}
+	if i.def.IsExternal() {
+		return i.def.ExternalEndpointNames()
+	}
+	names := make([]string, 0, len(i.def.Endpoints))
+	for _, endpoint := range i.def.Endpoints {
+		names = append(names, endpoint.Name)
+	}
+	return names
+}
+
 // InternalURL returns the network URL for an endpoint.
 func (i *Instance) InternalURL(endpoint string) (string, error) {
+	if i != nil && i.def != nil && i.def.IsExternal() {
+		return "", fmt.Errorf("%s: external endpoint %q has no internal network URL", i.Label(), endpoint)
+	}
 	e, ok := i.def.Endpoint(endpoint)
 	if !ok {
 		return "", i.unknownEndpoint(endpoint)
@@ -158,9 +245,9 @@ func (i *Instance) InternalURL(endpoint string) (string, error) {
 }
 
 func (i *Instance) unknownEndpoint(name string) error {
-	available := make([]string, 0, len(i.def.Endpoints))
-	for _, e := range i.def.Endpoints {
-		available = append(available, e.Name)
+	available := i.EndpointNames()
+	if len(available) == 0 {
+		return fmt.Errorf("%s: no endpoint %q is declared", i.Label(), name)
 	}
 	sort.Strings(available)
 	return fmt.Errorf("%s: no endpoint %q (available: %s)", i.Label(), name, strings.Join(available, ", "))
