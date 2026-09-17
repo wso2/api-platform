@@ -429,13 +429,15 @@ Feature: Prompt compressor policy
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
 
-    # 100 tokens ~ 400 chars. Send short text to match rule 1 (ratio 0.90).
+    # This 442-character, 63-word prompt stays below the 100-token threshold for
+    # rule 1. Its deliberate repetition gives ratio 0.90 a measurable gain; an
+    # unchanged response cannot satisfy the compressed-length bound.
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until status 200 with body:
       """
-      {"messages":[{"content":"This is a moderately short text that should be under 100 tokens. The policy will evaluate the first rule with upperTokenLimit: 100 and apply a ratio of 0.90. Because 0.90 doesn't cause much compression, it will likely be forwarded unchanged due to NegativeGainError."}]}
+      {"messages":[{"content":"Please carefully review the detailed deployment report and provide a concise, clear, useful summary for the team. The report repeatedly explains that the service was carefully deployed, carefully monitored, carefully verified, and carefully documented after every routine change. Please retain the essential facts, remove repeated filler, and describe the final service state, the observed results, and the next practical action for the team."}]}
       """
-    Then the JSON response string field "json.messages[0].content" should have length less than 320
-    And the JSON response string field "json.messages[0].content" should have length greater than 200
+    Then the JSON response string field "json.messages[0].content" should have length less than 400
+    And the JSON response string field "json.messages[0].content" should have length greater than 150
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful

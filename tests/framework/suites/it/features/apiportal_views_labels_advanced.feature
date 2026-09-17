@@ -53,6 +53,7 @@ Feature: API Portal view and label resolution
     Then the response status code should be 200
     And the JSON response field "displayName" should be "Updated View"
     And the JSON response array field "labels" should have 1 item
+    And the JSON response field "labels[0]" should be "${CTX:secondLabel}"
 
   Scenario: Renaming a view preserves its label associations
     Given I generate a unique resource name from "portal-label" and store it as "labelId"

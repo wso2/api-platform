@@ -193,10 +193,20 @@ Feature: API Portal REST API management
     Then the response status code should be 404
 
   Scenario: A REST API returns its labels
-    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-api-label" and store it as "labelId"
+    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
+      """
+      {"id":"${CTX:labelId}","displayName":"REST API Label"}
+      """
+    And I generate a unique value from "portal_rest_api_labelled" and store it as "apiName"
+    And a REST API with metadata values is created in the API Portal and stored as "apiId":
+      | name    | ${CTX:apiName}     |
+      | version | v1.0               |
+      | labels  | ["${CTX:labelId}"] |
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    And the JSON response field "name" should contain "portal_rest_api"
+    And the JSON response array field "labels" should have 1 item
+    And the JSON response field "labels[0]" should be "${CTX:labelId}"
 
   Scenario: A publisher searches REST APIs by free-text query
     Given a REST API is created in the API Portal and stored as "apiId"

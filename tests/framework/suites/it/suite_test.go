@@ -29,7 +29,6 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
@@ -203,8 +202,12 @@ func TestIntegrationSuite(t *testing.T) {
 		FeatureRoot: dir,
 		Coverage:    sink,
 		Logs:        logs,
-		Steps: func(sc *godog.ScenarioContext, topo *frameworkruntime.Topology) {
-			steps.New(topo, dir).Register(sc)
+		Steps: func(topo *frameworkruntime.Topology) (frameworkruntime.StepRegistrar, error) {
+			suite, err := steps.New(topo, dir)
+			if err != nil {
+				return nil, err
+			}
+			return suite.Register, nil
 		},
 		CleanupDeleters: func(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 			registerDeleters(reg, topo)

@@ -47,6 +47,8 @@ Feature: API Portal webhook delivery pipeline
     Then the response status code should be 201
     When I wait for an API Portal webhook event "application.created" containing "${CTX:appId}"
     Then the JSON response field "event_type" should be "application.created"
+    And I store the JSON response field "event_id" as "eventId"
+    And I wait for API Portal webhook event "${CTX:eventId}" to reach status "FAILED"
     When I send an authenticated API Portal "GET" request to "/webhook-subscribers/${CTX:subscriberId}/deliveries" as "admin"
     Then the response status code should be 200
     And the response body should contain "FAILED"

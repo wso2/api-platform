@@ -151,6 +151,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: gateway/gateway-controller/unit-test-coverage.txt
           flags: gateway-controller-unit
 
@@ -160,6 +161,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
           flags: policy-engine-unit
 
@@ -169,6 +171,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: platform-api/unit-test-coverage.txt
           flags: platform-api-unit
 
@@ -178,6 +181,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: portals/ai-workspace/bff/unit-test-coverage.txt
           flags: ai-workspace-bff-unit
 
@@ -187,6 +191,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/ai-workspace/bff/coverage.txt
           flags: ai-workspace-bff-integration
 
@@ -196,7 +201,9 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/ai-workspace/ui/lcov.info
+          handle_no_reports_found: true
           flags: ai-workspace-ui-integration
 
       - name: Upload API Portal server integration coverage to Codecov
@@ -205,6 +212,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/api-portal/server/lcov.info
           flags: api-portal-server-integration
 
@@ -214,7 +222,9 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/api-portal/ui/lcov.info
+          handle_no_reports_found: true
           flags: api-portal-ui-integration
 
       - name: Upload gateway-controller integration coverage to Codecov
@@ -223,6 +233,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/platform-gateway/controller/coverage.txt
           flags: gateway-controller-integration
 
@@ -232,6 +243,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/platform-gateway/runtime/coverage.txt
           flags: policy-engine-integration
 
@@ -241,5 +253,6 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/platform-api/coverage.txt
           flags: platform-api-integration

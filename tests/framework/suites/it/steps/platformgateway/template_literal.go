@@ -84,7 +84,9 @@ func containsLiteralOrJSONEscaped(haystack, needle string) bool {
 // physically on disk, independent of what any API chooses to serialize back. This is the one
 // assertion a REST call cannot make: an API response and the DB row happen to agree today, but
 // they are two separate guarantees (see template_functions.feature), and only a direct read
-// proves the second one.
+// proves the second one. The absence form is satisfied by a row written before the operation
+// under test, so pair it with a presence assertion on the same row - as template_functions.feature
+// does - to establish that write is observable first.
 func (g *Gateway) assertStoredConfiguration(ctx context.Context, kind, handle string, doc *godog.DocString, want bool) error {
 	table, ok := templateLiteralTables[kind]
 	if !ok {

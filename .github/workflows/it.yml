@@ -117,6 +117,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: gateway/gateway-controller/unit-test-coverage.txt
           flags: gateway-controller-unit
 
@@ -126,6 +127,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
           flags: policy-engine-unit
 
@@ -135,6 +137,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: platform-api/unit-test-coverage.txt
           flags: platform-api-unit
 
@@ -146,6 +149,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/it/coverage-out/platform-gateway/controller/coverage.txt
           flags: gateway-controller-integration
 
@@ -155,6 +159,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/it/coverage-out/platform-gateway/runtime/coverage.txt
           flags: policy-engine-integration
 
@@ -164,5 +169,6 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/it/coverage-out/platform-api/coverage.txt
           flags: platform-api-integration

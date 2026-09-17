@@ -3,6 +3,19 @@
 # paths like github.com/wso2/api-platform/gateway/gateway-controller/pkg/...
 fixes:
   - "github.com/wso2/api-platform/::"
+  # c8 writes the API Portal server's LCOV relative to the report directory, so its
+  # entries arrive as ../../portals/api-portal/src/... and match neither a repository
+  # file nor an api-portal-server component path. The browser reports are already
+  # repo-root-relative and are unaffected.
+  - "../../::"
+
+# Each upload carries only its own component's report (the workflows set disable_search),
+# so a flag is absent whenever its producer did not run — the browser-UI reports are
+# generated conditionally. Carry the last known report forward instead of reading that
+# absence as lost coverage.
+flag_management:
+  default_rules:
+    carryforward: true
 
 # Monorepo: per-component coverage, grouped by path regardless of which upload carried the
 # lines, so unit and integration flags roll up into the same component view. Each component

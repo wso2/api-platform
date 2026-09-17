@@ -30,6 +30,8 @@ import (
 
 const keyAuthHeader = "authHeader"
 
+// BasicAuthHeader returns the Authorization header value carrying the supplied
+// credentials as HTTP Basic authentication.
 func BasicAuthHeader(user, pass string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))
 }

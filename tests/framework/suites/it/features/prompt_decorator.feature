@@ -124,8 +124,7 @@ Feature: Prompt decorator
       {"prompt":"AI is artificial intelligence."}
       """
     Then the response should be valid JSON
-    And the JSON response field "json.prompt" should contain "Summarize the following:"
-    And the JSON response field "json.prompt" should contain "AI is artificial intelligence."
+    And the JSON response field "json.prompt" should contain "Summarize the following:" before "AI is artificial intelligence."
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
@@ -150,8 +149,7 @@ Feature: Prompt decorator
       {"prompt":"Explain quantum computing."}
       """
     Then the response should be valid JSON
-    And the JSON response field "json.prompt" should contain "Explain quantum computing."
-    And the JSON response field "json.prompt" should contain "Please be brief."
+    And the JSON response field "json.prompt" should contain "Explain quantum computing." before "Please be brief."
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
@@ -177,8 +175,7 @@ Feature: Prompt decorator
       """
     Then the response should be valid JSON
     And the JSON response field "json.messages[0].content" should be "You are helpful."
-    And the JSON response field "json.messages[1].content" should contain "List 3 colors"
-    And the JSON response field "json.messages[1].content" should contain "Format your answer in JSON."
+    And the JSON response field "json.messages[1].content" should contain "List 3 colors" before "Format your answer in JSON."
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
@@ -203,8 +200,7 @@ Feature: Prompt decorator
       {"messages":[{"role":"user","content":"Write a poem"}]}
       """
     Then the response should be valid JSON
-    And the JSON response field "json.messages[0].content" should contain "Be creative!"
-    And the JSON response field "json.messages[0].content" should contain "Write a poem"
+    And the JSON response field "json.messages[0].content" should contain "Be creative!" before "Write a poem"
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
@@ -229,8 +225,7 @@ Feature: Prompt decorator
       {"request":{"prompt":"What is machine learning?","temperature":0.7}}
       """
     Then the response should be valid JSON
-    And the JSON response field "json.request.prompt" should contain "Answer concisely:"
-    And the JSON response field "json.request.prompt" should contain "What is machine learning?"
+    And the JSON response field "json.request.prompt" should contain "Answer concisely:" before "What is machine learning?"
     And the response body should contain "0.7"
 
     When I delete the API "${CTX:apiName}"

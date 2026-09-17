@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"gopkg.in/yaml.v3"
 )
@@ -69,6 +70,69 @@ func TestJSONStringField(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNewRejectsInvalidPlatformAPICA(t *testing.T) {
+	_, err := newSuite(nil, []byte("not a PEM certificate"))
+	require.ErrorContains(t, err, "loading the generated Platform API CA certificate")
+}
+
+func TestJSONFieldNotEqual(t *testing.T) {
+	const oldToken = "previous-subscription-token"
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{name: "regenerated token", body: `{"subscriptionToken":"new-subscription-token"}`},
+		{name: "unchanged token", body: `{"subscriptionToken":"previous-subscription-token"}`, wantErr: true},
+		{name: "empty token", body: `{"subscriptionToken":""}`, wantErr: true},
+		{name: "non-string token", body: `{"subscriptionToken":1}`, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			local := tcontext.NewLocal("runner")
+			local.Set("oldToken", oldToken)
+			ctx := tcontext.WithLocal(context.Background(), local)
+			require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{Body: []byte(tt.body)}))
+
+			err := (&Base{}).jsonFieldNotEqual(ctx, "subscriptionToken", "${CTX:oldToken}")
+			if tt.wantErr {
+				require.Error(t, err)
+				require.NotContains(t, err.Error(), oldToken)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestJSONFieldContainsBefore(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		first   string
+		second  string
+		wantErr bool
+	}{
+		{name: "ordered values", body: `{"prompt":"instruction original prompt"}`, first: "instruction", second: "original"},
+		{name: "reversed values", body: `{"prompt":"original prompt instruction"}`, first: "instruction", second: "original", wantErr: true},
+		{name: "missing first value", body: `{"prompt":"original prompt"}`, first: "instruction", second: "original", wantErr: true},
+		{name: "missing second value", body: `{"prompt":"instruction"}`, first: "instruction", second: "original", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+			require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{Body: []byte(tt.body)}))
+
+			err := (&Base{}).jsonFieldContainsBefore(ctx, "prompt", tt.first, tt.second)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }

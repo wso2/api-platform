@@ -339,11 +339,28 @@ Feature: MCP proxy CRUD and connectivity
       | spec.upstream.url | http://testbench:3009/mcp          |
     Then the response should be successful
 
+    # Negative control: without it the filter could be ignored entirely and the
+    # assertion below would still pass on an unfiltered listing.
+    And I generate a unique resource name from "mcp-filter-other" and store it as "otherMcpName"
+    And I generate a unique value from "OtherMCPFilterTest" and store it as "otherMcpDisplayName"
+    And I generate a unique API version from "mcp-filter-other" and store it as "otherMcpVersion"
+    And I generate a unique API context from "/mcp-filter-other" and store it as "otherMcpContext"
+    When I create MCP proxy from "resources/templates/mcp.yaml" with values:
+      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | name              | ${CTX:otherMcpName}               |
+      | displayName       | ${CTX:otherMcpDisplayName}        |
+      | version           | ${CTX:otherMcpVersion}            |
+      | context           | ${CTX:otherMcpContext}            |
+      | specVersion       | 2025-06-18                         |
+      | spec.upstream.url | http://testbench:3009/mcp          |
+    Then the response should be successful
+
     When I send a "GET" request to the "gateway-controller" service at "/mcp-proxies?displayName=${CTX:mcpDisplayName}"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     And the response body should contain "${CTX:mcpDisplayName}"
+    And the response body should not contain "${CTX:otherMcpDisplayName}"
 
     When I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
@@ -363,10 +380,28 @@ Feature: MCP proxy CRUD and connectivity
       | spec.upstream.url | http://testbench:3009/mcp          |
     Then the response should be successful
 
+    # Negative control: a version filter that is ignored returns both proxies, and a
+    # filter that returns nothing would pass a status-only assertion.
+    And I generate a unique resource name from "mcp-version-filter-other" and store it as "otherMcpName"
+    And I generate a unique value from "mcp-version-filter-other" and store it as "otherMcpDisplayName"
+    And I generate a unique API version from "mcp-version-filter-other" and store it as "otherMcpVersion"
+    And I generate a unique API context from "/mcp-version-filter-other" and store it as "otherMcpContext"
+    When I create MCP proxy from "resources/templates/mcp.yaml" with values:
+      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | name              | ${CTX:otherMcpName}               |
+      | displayName       | ${CTX:otherMcpDisplayName}        |
+      | version           | ${CTX:otherMcpVersion}            |
+      | context           | ${CTX:otherMcpContext}            |
+      | specVersion       | 2025-06-18                         |
+      | spec.upstream.url | http://testbench:3009/mcp          |
+    Then the response should be successful
+
     When I send a "GET" request to the "gateway-controller" service at "/mcp-proxies?version=${CTX:mcpVersion}"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    And the response body should contain "${CTX:mcpDisplayName}"
+    And the response body should not contain "${CTX:otherMcpDisplayName}"
 
     When I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful

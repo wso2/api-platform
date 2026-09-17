@@ -68,15 +68,15 @@ var (
 // suite request funnels through.
 func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 	sc.Step(`^I create a secret "([^"]*)" via the control plane$`, s.createSecret)
-	sc.Step(`^I create an LLM provider "([^"]*)" via the control plane referencing template "([^"]*)"$`,
-		func(ctx context.Context, id, template string) error {
-			return s.createLLMProvider(ctx, id, template, "")
+	sc.Step(`^I create an LLM provider "([^"]*)" via the control plane with context "([^"]*)" referencing template "([^"]*)"$`,
+		func(ctx context.Context, id, resourceContext, template string) error {
+			return s.createLLMProvider(ctx, id, resourceContext, template, "")
 		})
-	sc.Step(`^I create an LLM provider "([^"]*)" via the control plane referencing template "([^"]*)" and secret "([^"]*)"$`,
+	sc.Step(`^I create an LLM provider "([^"]*)" via the control plane with context "([^"]*)" referencing template "([^"]*)" and secret "([^"]*)"$`,
 		s.createLLMProvider)
-	sc.Step(`^I create an LLM proxy "([^"]*)" via the control plane in project "([^"]*)" referencing provider "([^"]*)" and secret "([^"]*)"$`,
+	sc.Step(`^I create an LLM proxy "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" referencing provider "([^"]*)" and secret "([^"]*)"$`,
 		s.createLLMProxy)
-	sc.Step(`^I create an MCP proxy "([^"]*)" via the control plane referencing secret "([^"]*)"$`,
+	sc.Step(`^I create an MCP proxy "([^"]*)" via the control plane with context "([^"]*)" referencing secret "([^"]*)"$`,
 		s.createMCPProxy)
 	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and an upstream auth secret "([^"]*)"$`,
 		s.createRestAPIUpstreamSecret)
@@ -279,10 +279,14 @@ func secretPlaceholder(handle string) string {
 	return `{{ secret "` + handle + `" }}`
 }
 
-// createLLMProvider creates an LLM provider via platform-api. secretHandle may be empty, for
-// a plain provider (e.g. the base provider an LLM proxy references).
-func (s *Steps) createLLMProvider(ctx context.Context, id, template, secretHandle string) error {
+// createLLMProvider creates an LLM provider via platform-api at a caller-owned context.
+// secretHandle may be empty, for a plain provider (e.g. the base provider an LLM proxy references).
+func (s *Steps) createLLMProvider(ctx context.Context, id, resourceContext, template, secretHandle string) error {
 	resolvedID, err := stepscommon.Expand(ctx, id)
+	if err != nil {
+		return err
+	}
+	resolvedContext, err := stepscommon.Expand(ctx, resourceContext)
 	if err != nil {
 		return err
 	}
@@ -312,6 +316,7 @@ func (s *Steps) createLLMProvider(ctx context.Context, id, template, secretHandl
 		"id":          resolvedID,
 		"displayName": resolvedID,
 		"version":     "v1.0",
+		"context":     resolvedContext,
 		"template":    resolvedTemplate,
 		"upstream":    map[string]any{"main": upstream},
 		"accessControl": map[string]any{
@@ -323,14 +328,18 @@ func (s *Steps) createLLMProvider(ctx context.Context, id, template, secretHandl
 	return s.registerPlatformResource(ctx, platformProviderKind, resolvedID, "/llm-providers")
 }
 
-// createLLMProxy creates an LLM proxy referencing an already-deployed provider by id, with
-// its auth override set to a secret placeholder.
-func (s *Steps) createLLMProxy(ctx context.Context, id, projectHandle, providerID, secretHandle string) error {
+// createLLMProxy creates an LLM proxy at a caller-owned context referencing an already-deployed
+// provider by id, with its auth override set to a secret placeholder.
+func (s *Steps) createLLMProxy(ctx context.Context, id, projectHandle, resourceContext, providerID, secretHandle string) error {
 	resolvedID, err := stepscommon.Expand(ctx, id)
 	if err != nil {
 		return err
 	}
 	resolvedProject, err := stepscommon.Expand(ctx, projectHandle)
+	if err != nil {
+		return err
+	}
+	resolvedContext, err := stepscommon.Expand(ctx, resourceContext)
 	if err != nil {
 		return err
 	}
@@ -352,6 +361,7 @@ func (s *Steps) createLLMProxy(ctx context.Context, id, projectHandle, providerI
 		"displayName": resolvedID,
 		"version":     "v1.0",
 		"projectId":   resolvedProject,
+		"context":     resolvedContext,
 		"provider": map[string]any{
 			"id": resolvedProvider,
 			"auth": map[string]any{
@@ -366,9 +376,14 @@ func (s *Steps) createLLMProxy(ctx context.Context, id, projectHandle, providerI
 	return s.registerPlatformResource(ctx, platformProxyKind, resolvedID, "/llm-proxies")
 }
 
-// createMCPProxy creates an MCP proxy whose upstream auth value embeds a secret placeholder.
-func (s *Steps) createMCPProxy(ctx context.Context, id, secretHandle string) error {
+// createMCPProxy creates an MCP proxy at a caller-owned context whose upstream auth value embeds
+// a secret placeholder.
+func (s *Steps) createMCPProxy(ctx context.Context, id, resourceContext, secretHandle string) error {
 	resolvedID, err := stepscommon.Expand(ctx, id)
+	if err != nil {
+		return err
+	}
+	resolvedContext, err := stepscommon.Expand(ctx, resourceContext)
 	if err != nil {
 		return err
 	}
@@ -385,6 +400,7 @@ func (s *Steps) createMCPProxy(ctx context.Context, id, secretHandle string) err
 		"id":             resolvedID,
 		"displayName":    resolvedID,
 		"version":        "v1.0",
+		"context":        resolvedContext,
 		"mcpSpecVersion": "2025-06-18",
 		"upstream": map[string]any{
 			"main": map[string]any{

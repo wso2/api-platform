@@ -248,3 +248,5 @@ Feature: API Portal resource management
     Then the response status code should be 200
     And the response body should contain "mock-token"
     And the JSON response field "validityTime" should be 3600
+    And the JSON response array field "tokenScopes" should have 1 item
+    And the JSON response field "tokenScopes[0]" should be "default"

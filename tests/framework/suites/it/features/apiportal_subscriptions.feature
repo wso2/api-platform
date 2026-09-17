@@ -52,6 +52,7 @@ Feature: API Portal subscriptions
       """
     Then the response status code should be 200
     And the JSON response should have field "subscriptionToken"
+    And the JSON response field "subscriptionToken" should not equal "${CTX:oldToken}"
 
   Scenario: A developer deletes an API subscription
     When a developer subscription for API "${CTX:apiId}" using plan "Gold" is created and stored as "subscriptionId"

@@ -92,7 +92,7 @@ Feature: API Portal webhook subscribers
       """
     When I send an authenticated API Portal "GET" request to "/webhook-subscribers/${CTX:subscriberId}/deliveries" as "admin"
     Then the response status code should be 200
-    And the JSON response should have field "list"
+    And the API Portal delivery for subscriber "${CTX:subscriberId}" and event "application.created" should be "FAILED"
 
   Scenario: A webhook subscriber accepts an exact event pattern
     Given I generate a unique resource name from "portal-literal-webhook" and store it as "subscriberId"

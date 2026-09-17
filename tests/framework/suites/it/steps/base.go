@@ -100,13 +100,21 @@ type Suite struct {
 	*Base
 }
 
-// New creates the step bindings for one resolved block.
-func New(topo *frameworkruntime.Topology, featureRoot ...string) *Suite {
+// New creates isolated step bindings for one runner in a resolved block.
+func New(topo *frameworkruntime.Topology, featureRoot ...string) (*Suite, error) {
+	return newSuite(topo, shared.ControlPlaneCrypto()["certs/cert.pem"], featureRoot...)
+}
+
+func newSuite(topo *frameworkruntime.Topology, caPEM []byte, featureRoot ...string) (*Suite, error) {
+	tlsConfig, err := platformAPITLSConfig(caPEM)
+	if err != nil {
+		return nil, err
+	}
 	client := httpx.NewClient(httpx.Options{
 		Timeout:         30 * time.Second,
 		MaxRetries:      3,
 		RetryDelay:      2 * time.Second,
-		TLSClientConfig: platformAPITLSConfig(),
+		TLSClientConfig: tlsConfig,
 	})
 	root := ""
 	if len(featureRoot) > 0 {
@@ -118,21 +126,21 @@ func New(topo *frameworkruntime.Topology, featureRoot ...string) *Suite {
 		featureRoot: root,
 	}
 	stepscommon.ConfigureExpansion()
-	return &Suite{Base: base}
+	return &Suite{Base: base}, nil
 }
 
 // platformAPITLSConfig trusts the certificate generated for the Platform API component.
 // The shared step client also serves control-plane steps, while remaining generic for
 // gateway-only blocks where this configuration is simply unused.
-func platformAPITLSConfig() *tls.Config {
+func platformAPITLSConfig(caPEM []byte) (*tls.Config, error) {
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil || rootCAs == nil {
 		rootCAs = x509.NewCertPool()
 	}
-	if !rootCAs.AppendCertsFromPEM(shared.ControlPlaneCrypto()["certs/cert.pem"]) {
-		return nil
+	if !rootCAs.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("loading the generated Platform API CA certificate")
 	}
-	return &tls.Config{RootCAs: rootCAs, ServerName: "platform-api"}
+	return &tls.Config{RootCAs: rootCAs, ServerName: "platform-api"}, nil
 }
 
 // Register binds shared and product-specific Gherkin steps.
@@ -191,8 +199,11 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the JSON response field "([^"]*)" should not exist$`, b.jsonFieldAbsent)
 	sc.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, b.jsonFieldIsNumber)
 	sc.Step(`^the JSON response field "([^"]*)" should be "([^"]*)"$`, b.jsonFieldIs)
+	sc.Step(`^the JSON response field "([^"]*)" should not equal "([^"]*)"$`, b.jsonFieldNotEqual)
 	sc.Step(`^the JSON response field "([^"]*)" should be:$`, b.jsonFieldIsDoc)
 	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)"$`, b.jsonFieldContains)
+	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)" before "([^"]*)"$`,
+		b.jsonFieldContainsBefore)
 	sc.Step(`^the JSON response field "([^"]*)" should be greater than (\d+)$`,
 		b.jsonFieldGreaterThan)
 	sc.Step(`^the JSON response array field "([^"]*)" should have (\d+) items?$`,
@@ -1021,6 +1032,34 @@ func (b *Base) jsonFieldContains(ctx context.Context, field, want string) error 
 	return nil
 }
 
+// jsonFieldContainsBefore asserts both strings occur in a JSON string field in the stated order.
+func (b *Base) jsonFieldContainsBefore(ctx context.Context, field, first, second string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	first, err = stepscommon.Expand(ctx, first)
+	if err != nil {
+		return err
+	}
+	second, err = stepscommon.Expand(ctx, second)
+	if err != nil {
+		return err
+	}
+	value, err := jsonStringField(resp.Body, field)
+	if err != nil {
+		return err
+	}
+	// Search for the second value only beyond the first match: indexing both from the start
+	// reports "out of order" for a field that repeats the second value on either side of the
+	// first, even though an in-order occurrence exists.
+	firstIndex := strings.Index(value, first)
+	if firstIndex < 0 || !strings.Contains(value[firstIndex+len(first):], second) {
+		return fmt.Errorf("JSON field %q does not contain the requested values in order", field)
+	}
+	return nil
+}
+
 // jsonFieldGreaterThan asserts a numeric field exceeds a threshold.
 //
 // A LOWER bound rather than an equality check, deliberately: these counts are totals across
@@ -1243,6 +1282,38 @@ func (b *Base) jsonFieldIs(ctx context.Context, field, want string) error {
 	if gotText != expected {
 		return fmt.Errorf("JSON field %q: expected %q, got %q: %s",
 			field, expected, gotText, resp.Describe())
+	}
+	return nil
+}
+
+// jsonFieldNotEqual asserts a non-empty string field differs from a context-expanded value.
+// Its errors intentionally omit both values because callers commonly compare credentials.
+func (b *Base) jsonFieldNotEqual(ctx context.Context, field, want string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if !resp.HasBody() {
+		return fmt.Errorf("reading JSON field %s: response has no body", field)
+	}
+	expected, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(resp.Body, &doc); err != nil {
+		return fmt.Errorf("response is not a JSON object while reading field %q: %w", field, err)
+	}
+	got, present := traverseJSON(doc, field)
+	if !present {
+		return fmt.Errorf("JSON field %q is absent", field)
+	}
+	gotText, ok := got.(string)
+	if !ok || strings.TrimSpace(gotText) == "" {
+		return fmt.Errorf("JSON field %q is not a non-empty string", field)
+	}
+	if gotText == expected {
+		return fmt.Errorf("JSON field %q did not change", field)
 	}
 	return nil
 }

@@ -35,18 +35,21 @@ Feature: Platform-API-driven deployment resolves secret references on demand
     Given I generate a unique resource name from "papi-secret-provider-key" and store it as "secretHandle"
     And I create a secret "${CTX:secretHandle}" via the control plane
     And I generate a unique resource name from "papi-secret-provider" and store it as "providerId"
-    When I create an LLM provider "${CTX:providerId}" via the control plane referencing template "openai" and secret "${CTX:secretHandle}"
+    And I generate a unique API context from "/papi-secret-provider" and store it as "providerContext"
+    When I create an LLM provider "${CTX:providerId}" via the control plane with context "${CTX:providerContext}" referencing template "openai" and secret "${CTX:secretHandle}"
     And I deploy the "LlmProvider" "${CTX:providerId}" to the gateway via the control plane
     Then I send a "GET" request to the "gateway-controller" service at "/llm-providers/${CTX:providerId}" until status 200
 
   Scenario: An LLM proxy with a secret-backed auth override is deployed and active on the gateway
     Given I generate a unique resource name from "papi-secret-proxy-base" and store it as "baseProviderId"
-    And I create an LLM provider "${CTX:baseProviderId}" via the control plane referencing template "openai"
+    And I generate a unique API context from "/papi-secret-proxy-base" and store it as "baseProviderContext"
+    And I create an LLM provider "${CTX:baseProviderId}" via the control plane with context "${CTX:baseProviderContext}" referencing template "openai"
     And I deploy the "LlmProvider" "${CTX:baseProviderId}" to the gateway via the control plane
     And I generate a unique resource name from "papi-secret-proxy-key" and store it as "secretHandle"
     And I create a secret "${CTX:secretHandle}" via the control plane
     And I generate a unique resource name from "papi-secret-proxy" and store it as "proxyId"
-    When I create an LLM proxy "${CTX:proxyId}" via the control plane in project "${CTX:projectHandle}" referencing provider "${CTX:baseProviderId}" and secret "${CTX:secretHandle}"
+    And I generate a unique API context from "/papi-secret-proxy" and store it as "proxyContext"
+    When I create an LLM proxy "${CTX:proxyId}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:proxyContext}" referencing provider "${CTX:baseProviderId}" and secret "${CTX:secretHandle}"
     And I deploy the "LlmProxy" "${CTX:proxyId}" to the gateway via the control plane
     Then I send a "GET" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyId}" until status 200
 
@@ -54,7 +57,8 @@ Feature: Platform-API-driven deployment resolves secret references on demand
     Given I generate a unique resource name from "papi-secret-mcp-key" and store it as "secretHandle"
     And I create a secret "${CTX:secretHandle}" via the control plane
     And I generate a unique resource name from "papi-secret-mcp" and store it as "mcpId"
-    When I create an MCP proxy "${CTX:mcpId}" via the control plane referencing secret "${CTX:secretHandle}"
+    And I generate a unique API context from "/papi-secret-mcp" and store it as "mcpContext"
+    When I create an MCP proxy "${CTX:mcpId}" via the control plane with context "${CTX:mcpContext}" referencing secret "${CTX:secretHandle}"
     And I deploy the "Mcp" "${CTX:mcpId}" to the gateway via the control plane
     Then I send a "GET" request to the "gateway-controller" service at "/mcp-proxies/${CTX:mcpId}" until status 200
 
