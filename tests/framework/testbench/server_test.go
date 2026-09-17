@@ -26,7 +26,12 @@ func (s *fakeService) Handler() http.Handler { return s.handler }
 func (s *fakeService) Stateful() bool        { return s.stateful }
 func (s *fakeService) PartitionKey() string  { return s.partition }
 
-type unpartitionedService struct{ fakeService }
+type unpartitionedService fakeService
+
+func (s *unpartitionedService) Name() string          { return s.name }
+func (s *unpartitionedService) Port() int             { return s.port }
+func (s *unpartitionedService) Handler() http.Handler { return s.handler }
+func (s *unpartitionedService) Stateful() bool        { return s.stateful }
 
 func TestServeRejectsInvalidInputs(t *testing.T) {
 	registry := &Registry{}
@@ -110,13 +115,17 @@ func TestRegistryRejectsInvalidServices(t *testing.T) {
 		{name: "invalid port", service: &fakeService{name: "service", handler: handler}},
 		{name: "port above 65535", service: &fakeService{name: "service", port: 65536, handler: handler}},
 		{name: "nil handler", service: &fakeService{name: "service", port: 1}},
-		{name: "unpartitioned state", service: &unpartitionedService{fakeService{name: "service", port: 1, handler: handler, stateful: true}}},
+		{name: "unpartitioned state", service: &unpartitionedService{name: "service", port: 1, handler: handler, stateful: true}},
 		{name: "unknown partition", service: &fakeService{name: "service", port: 1, handler: handler, stateful: true, partition: "request"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := (&Registry{}).Register(tt.service); err == nil {
+			err := (&Registry{}).Register(tt.service)
+			if err == nil {
 				t.Fatal("Register() accepted invalid service")
+			}
+			if tt.name == "unpartitioned state" && !containsError(err, "cannot be hosted") {
+				t.Fatalf("Register() error = %v, want missing partitioning error", err)
 			}
 		})
 	}

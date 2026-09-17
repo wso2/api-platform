@@ -205,6 +205,17 @@ func TestIssueTokenNormalizesMethodBeforeValidation(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 			}
+			if method == "post" {
+				var response struct {
+					Scope string `json:"scope"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+					t.Fatalf("decoding token response: %v", err)
+				}
+				if response.Scope != "read" {
+					t.Errorf("scope = %q, want read", response.Scope)
+				}
+			}
 		})
 	}
 }

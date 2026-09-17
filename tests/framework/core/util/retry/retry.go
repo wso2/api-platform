@@ -267,7 +267,10 @@ func SettledCount(ctx context.Context, opts Options, quiet time.Duration, count 
 // transientError marks an error as worth retrying.
 type transientError struct{ err error }
 
+// Error returns the wrapped transient error message.
 func (t transientError) Error() string { return t.err.Error() }
+
+// Unwrap returns the wrapped transient error.
 func (t transientError) Unwrap() error { return t.err }
 
 // Transient marks an error as retryable — a connection refused while a component warms up,
