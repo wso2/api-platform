@@ -27,6 +27,10 @@
  *   TC-83  POST /secrets 500 → MCP server creation aborted, no server created
  *   TC-84  Create MCP server without auth → no POST /secrets, no auth block in config
  *   TC-85  Secret handle is a random UUID (unique per creation, not derived from name)
+ *   TC-86  Create with MCP versions declared -> mcpSpecVersions sent, deprecated
+ *          mcpSpecVersion never sent
+ *   TC-87  Create with the versions field left empty -> neither key sent, since
+ *          platform-api rejects a request carrying both
  */
 describe('AI Workspace — MCP server secret management', () => {
   const suffix = Date.now().toString().slice(-8);
@@ -347,6 +351,73 @@ describe('AI Workspace — MCP server secret management', () => {
         interception.response.body?.id ??
         interception.response.body?.handle ??
         toSlug(mixedName);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-86: Versions declared on create are sent as the list, never the deprecated scalar
+  // ---------------------------------------------------------------------------
+  it('TC-86: sends mcpSpecVersions and never the deprecated mcpSpecVersion', () => {
+    cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('createServer');
+
+    createProjectAndNavigateToMCPCreate(projectName);
+
+    fillMCPForm({
+      name: serverName,
+      endpointUrl: SAMPLE_MCP_URL,
+    });
+
+    cy.get('[data-testid="mcp-spec-versions-input"]', { timeout: 15000 })
+      .should('be.visible')
+      .type('2026-07-28{enter}');
+
+    cy.contains('button', 'Create', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+
+    cy.wait('@createServer').then((interception) => {
+      expect(interception.response.statusCode).to.be.oneOf([200, 201]);
+      const body = interception.request.body;
+      expect(body.mcpSpecVersions).to.deep.equal(['2026-07-28']);
+      expect(body.mcpSpecVersion, 'the deprecated scalar is never sent').to.be
+        .undefined;
+      createdServerId =
+        interception.response.body?.id ??
+        interception.response.body?.handle ??
+        serverId;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-87: An empty versions field sends neither key
+  // ---------------------------------------------------------------------------
+  it('TC-87: omits both version keys when no version is declared', () => {
+    cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('createServer');
+
+    createProjectAndNavigateToMCPCreate(projectName);
+
+    // fillMCPForm's fetch-server-info stub reports no supportedVersions, so step 2's
+    // field is left empty.
+    fillMCPForm({
+      name: serverName,
+      endpointUrl: SAMPLE_MCP_URL,
+    });
+
+    cy.contains('button', 'Create', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+
+    cy.wait('@createServer').then((interception) => {
+      expect(interception.response.statusCode).to.be.oneOf([200, 201]);
+      const body = interception.request.body;
+      // An empty list would be sent as a key, and platform-api rejects a request that
+      // carries both forms, so the field must normalize to undefined rather than [].
+      expect(body.mcpSpecVersions, 'no empty list is sent').to.be.undefined;
+      expect(body.mcpSpecVersion).to.be.undefined;
+      createdServerId =
+        interception.response.body?.id ??
+        interception.response.body?.handle ??
+        serverId;
     });
   });
 

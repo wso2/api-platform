@@ -41,6 +41,12 @@
  *   TC-100 Saving the edited connection → PUT stores a NEW secret placeholder
  *          (never the plaintext); a subsequent refetch (now unedited again)
  *          goes back to proxyId mode
+ *   TC-103 Refetch reporting upstream MCP spec versions → the snackbar counts them
+ *          and Save carries them to the PUT, which is what persists them: the
+ *          Backend Connection card renders from the stored server object, not from
+ *          the refetch, so the versions only appear on screen after a save
+ *   TC-104 Refetch reporting an empty version list → counted as zero rather than
+ *          omitted, distinguishing "asked, none" from "never asked"
  *   TC-101 Saving a URL-only edit (credential left untouched/masked) → PUT
  *          preserves the existing auth header/type, omits value (relying on
  *          the backend's preserveMCPUpstreamAuthValue fallback, same as the
@@ -60,7 +66,8 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
   let createdProjectId = '';
   let createdServerId = '';
 
-  const stubFetchServerInfo = (alias) =>
+
+  const stubFetchServerInfo = (alias, overrides = {}) =>
     cy.intercept('POST', '**/fetch-server-info*', {
       statusCode: 200,
       body: {
@@ -68,6 +75,7 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
         tools: [],
         resources: [],
         prompts: [],
+        ...overrides,
       },
     }).as(alias);
 
@@ -374,5 +382,63 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
     });
 
     cy.contains('Connection verified', { timeout: 15000 }).should('be.visible');
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-103
+  // ---------------------------------------------------------------------------
+  it('TC-103: refetch reporting upstream MCP spec versions counts them and saves them', () => {
+    const discovered = ['2025-06-18', '2026-07-28'];
+    stubFetchServerInfo('refetchVersions', { supportedVersions: discovered });
+    cy.intercept('PUT', /\/mcp-proxies\/[^/?]+(\?|$)/).as('updateVersions');
+
+    cy.get('[data-testid="backend-connection-refetch"]', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+
+    cy.wait('@refetchVersions');
+
+    cy.contains('2 MCP versions found', { timeout: 15000 }).should('be.visible');
+    cy.contains('Click Save to update the proxy').should('be.visible');
+
+    cy.contains('button', 'Save', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+
+    cy.wait('@updateVersions', { timeout: 20000 }).then((pi) => {
+      expect(pi.response.statusCode, 'PUT /mcp-proxies status').to.be.oneOf([200, 201]);
+      expect(
+        pi.request.body?.upstreamMcpSpecVersions,
+        'PUT carries the versions the refetch discovered'
+      ).to.deep.equal(discovered);
+      // Never sent to the gateway, so the proxy's own declaration must be untouched.
+      expect(
+        pi.request.body?.mcpSpecVersion,
+        'the deprecated scalar is never round-tripped'
+      ).to.be.undefined;
+      // The card re-renders from this response (setServer(updated)), not from a reload,
+      // so the versions reaching the screen depends on the response carrying them back.
+      expect(
+        pi.response.body?.upstreamMcpSpecVersions,
+        'PUT response returns the stored versions'
+      ).to.deep.equal(discovered);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-104
+  // ---------------------------------------------------------------------------
+  it('TC-104: refetch reporting no versions counts zero rather than omitting the count', () => {
+    stubFetchServerInfo('refetchNoVersions', { supportedVersions: [] });
+
+    cy.get('[data-testid="backend-connection-refetch"]', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+
+    cy.wait('@refetchNoVersions');
+
+    // An absent supportedVersions is omitted from the summary entirely; an empty list
+    // is reported as zero, which is how "asked, none" stays distinct from "never asked".
+    cy.contains('0 MCP versions found', { timeout: 15000 }).should('be.visible');
   });
 });
