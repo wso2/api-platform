@@ -93,8 +93,10 @@ func TestPublicationHandler_Unpublish_DemotesWhenNoDraft(t *testing.T) {
 }
 
 // TestPublicationHandler_Unpublish_DeletesWhenDraftExists covers the other
-// branch: an in-progress draft must survive untouched, and the superseded
-// live row is deleted rather than clobbering it.
+// branch: when an in-progress draft already exists as its own row, unpublish
+// merges its content into the anchor (the live row being unpublished)
+// instead of leaving the draft's own row as the survivor — the anchor's id
+// is the durable identity for this pairing and must not change.
 func TestPublicationHandler_Unpublish_DeletesWhenDraftExists(t *testing.T) {
 	r, db, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
@@ -108,12 +110,18 @@ func TestPublicationHandler_Unpublish_DeletesWhenDraftExists(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("POST publish: want 201, got %d: %s", w.Code, w.Body.String())
 	}
+	// The publication uuid is internal bookkeeping, never returned over the
+	// wire (api.Publication has no id field) — read it straight from the DB.
+	anchorID := livePublicationUUID(t, db)
 
-	// Start a fresh in-progress edit — must survive unpublish untouched.
+	// Start a fresh in-progress edit — its own, separate row/uuid until merged.
 	w = doPublicationRequest(r, http.MethodPut, draftPath, "application/json",
 		[]byte(`{"displayName":"In-Progress Edit","version":"2.0"}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft (in-progress): want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := draftPublicationUUID(t, db); got == anchorID {
+		t.Fatalf("PUT draft (in-progress): want a different uuid from the anchor before unpublish, got %s", got)
 	}
 
 	w = doPublicationRequest(r, http.MethodPost, unpublishPath, "", nil)
@@ -132,7 +140,10 @@ func TestPublicationHandler_Unpublish_DeletesWhenDraftExists(t *testing.T) {
 	var stillDraft map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &stillDraft)
 	if stillDraft["displayName"] != "In-Progress Edit" {
-		t.Fatalf("GET draft after unpublish: want the pre-existing draft untouched, got %v", stillDraft)
+		t.Fatalf("GET draft after unpublish: want the in-progress content merged in, got %v", stillDraft)
+	}
+	if got := draftPublicationUUID(t, db); got != anchorID {
+		t.Fatalf("GET draft after unpublish: want the anchor uuid to survive, anchor=%s got=%s", anchorID, got)
 	}
 
 	var rowCount int
@@ -140,6 +151,6 @@ func TestPublicationHandler_Unpublish_DeletesWhenDraftExists(t *testing.T) {
 		t.Fatalf("count rows: %v", err)
 	}
 	if rowCount != 1 {
-		t.Fatalf("want exactly 1 row (the surviving draft; live row deleted), got %d", rowCount)
+		t.Fatalf("want exactly 1 row (the anchor survives, merged in place; the in-progress draft's own row discarded), got %d", rowCount)
 	}
 }

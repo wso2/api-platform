@@ -274,22 +274,28 @@ type PublicationRepository interface {
 	// docUUIDs — already resolved from handles by the caller). Returns the
 	// saved row with its resolved UUID and audit timestamps.
 	SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error)
-	// PromoteDraftToPublication flips the draft row for (artifactUUID,
-	// apiPortalUUID, orgUUID) into the live publication in place — deleting
-	// any existing live row first, then flipping is_draft/status on the draft
-	// row itself (same uuid, no content copy). Returns (nil, false, nil) if
-	// no draft exists to promote. replaced reports whether an existing live
-	// row was deleted (republish) versus this being the first publish.
+	// PromoteDraftToPublication makes the draft row for (artifactUUID,
+	// apiPortalUUID, orgUUID) live. The uuid of whichever row was first
+	// published for this pairing is the durable "anchor" identity and never
+	// changes again: on a first publish the draft row itself becomes the
+	// anchor (flipped in place, same uuid); on a republish the draft's
+	// content is merged into the existing anchor row instead, and the draft
+	// row is discarded. Returns (nil, false, nil) if no draft exists to
+	// promote. replaced reports whether an existing live row was found
+	// (republish) versus this being the first publish.
 	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error)
 	// UnpublishPublication is PromoteDraftToPublication's mirror for Slice 6
-	// (Unpublish), called after the portal removal succeeds: if a draft
-	// already exists for (artifactUUID, apiPortalUUID, orgUUID), the live
-	// row is deleted outright and the draft kept untouched; otherwise the
-	// live row is demoted into the draft in place (is_draft=1, status
-	// cleared) — same row, same uuid, no content copy. found reports
-	// whether a live row existed to unpublish; false is the same defensive
-	// precondition failure the caller already checked before calling the
-	// portal.
+	// (Unpublish), called after the portal removal succeeds: if no draft
+	// exists for (artifactUUID, apiPortalUUID, orgUUID), the live row (the
+	// anchor) is demoted into the draft in place (is_draft=1, status
+	// cleared) — same row, same uuid, no content copy. If a draft already
+	// exists as its own row, that draft's content is merged into the anchor
+	// instead of deleting the anchor and leaving the draft's own row as the
+	// survivor — the anchor's uuid stays the durable identity for this
+	// pairing either way, and the draft's own row is discarded once merged.
+	// found reports whether a live row existed to unpublish; false is the
+	// same defensive precondition failure the caller already checked before
+	// calling the portal.
 	UnpublishPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error)
 	// GetContent returns one content row (definition/landing page/thumbnail)
 	// for a publication row, or nil if none is stored.

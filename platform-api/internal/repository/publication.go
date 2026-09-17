@@ -391,18 +391,124 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 	return pub, nil
 }
 
-// PromoteDraftToPublication flips the draft row for (artifactUUID,
-// apiPortalUUID, orgUUID) into the live publication in place — deleting any
-// existing live row for the same pairing first, then setting is_draft = 0,
-// status = 'PUBLISHED' on the draft row itself. One transaction. No content
-// copy: it's the same row, same uuid, so its api_publication_contents/
-// _doc_mappings/_plan_mappings rows stay correctly attached automatically
-// (Implementation_Plan.md Slice 5, revised for the merged single-table
-// schema). Returns (nil, false, nil) if no draft exists to promote — the
-// caller (PublicationService.Publish) treats this as a defensive
-// DRAFT_NOT_FOUND, not a normal outcome, since the client always saves the
-// draft immediately before calling publish. replaced reports whether an
-// existing live row was found and deleted (republish) versus this being the
+// mergeDraftIntoAnchor merges draftUUID into anchorUUID so the anchor's own
+// uuid — the durable identity for this (artifact, api_portal) pairing,
+// pinned to whichever row was first published — survives the transition
+// instead of the draft's. It copies the draft's business/content columns
+// onto the anchor row (never its uuid/organization_uuid/artifact_uuid/
+// api_portal_uuid/created_by/created_at/data_version — those stay the
+// anchor's own) and sets is_draft/status/updated_by/updated_at on that same
+// row; re-parents the draft's satellite rows (api_publication_contents/
+// _doc_mappings/_plan_mappings) onto the anchor, clearing the anchor's own
+// stale satellite rows first since nothing else does that for us once the
+// anchor row itself survives (a plain DELETE of the old live row used to get
+// this for free via ON DELETE CASCADE); and deletes the now-empty draft row.
+//
+// Ordering matters here: the draft row must be deleted, and its satellites
+// re-parented, BEFORE the anchor's own is_draft is updated — api_publications
+// has UNIQUE(organization_uuid, artifact_uuid, api_portal_uuid, is_draft), so
+// flipping the anchor to the draft's is_draft value first (e.g. Unpublish's
+// merge branch, anchor 0 -> 1) would collide with the not-yet-deleted draft
+// row that already holds that value. Re-parenting the satellites before
+// deleting the draft row (rather than after) is equally load-bearing the
+// other way: the FK from each satellite table to api_publications is ON
+// DELETE CASCADE, so deleting the draft row first would cascade-delete its
+// satellite rows before they could be moved onto the anchor.
+//
+// Callers (PromoteDraftToPublication, UnpublishPublication) run this inside
+// their own transaction; anchorUUID and draftUUID must both already be known
+// to exist for orgUUID.
+func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID, orgUUID string, isDraft int, status interface{}, actor string, now time.Time) error {
+	var displayName, version, agentVisibility string
+	var description, prodURL, sandboxURL sql.NullString
+	var businessOwner, businessOwnerEmail, technicalOwner, technicalOwnerEmail sql.NullString
+	var tagsBytes, labelsBytes []byte
+	row := tx.QueryRow(r.db.Rebind(`
+		SELECT display_name, version, description, tags, labels, agent_visibility,
+			production_url, sandbox_url, business_owner, business_owner_email,
+			technical_owner, technical_owner_email
+		FROM api_publications WHERE uuid = ? AND organization_uuid = ?
+	`), draftUUID, orgUUID)
+	if err := row.Scan(
+		&displayName, &version, &description, &tagsBytes, &labelsBytes, &agentVisibility,
+		&prodURL, &sandboxURL, &businessOwner, &businessOwnerEmail, &technicalOwner, &technicalOwnerEmail,
+	); err != nil {
+		return fmt.Errorf("failed to read draft publication to merge: %w", err)
+	}
+
+	if _, err := tx.Exec(r.db.Rebind(`
+		DELETE FROM api_publication_contents WHERE publication_uuid = ? AND organization_uuid = ?
+	`), anchorUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to clear anchor's content before merge: %w", err)
+	}
+	if _, err := tx.Exec(r.db.Rebind(`
+		UPDATE api_publication_contents SET publication_uuid = ? WHERE publication_uuid = ? AND organization_uuid = ?
+	`), anchorUUID, draftUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to reparent draft's content onto anchor: %w", err)
+	}
+
+	if _, err := tx.Exec(r.db.Rebind(`
+		DELETE FROM api_publication_doc_mappings WHERE publication_uuid = ? AND organization_uuid = ?
+	`), anchorUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to clear anchor's document mappings before merge: %w", err)
+	}
+	if _, err := tx.Exec(r.db.Rebind(`
+		UPDATE api_publication_doc_mappings SET publication_uuid = ? WHERE publication_uuid = ? AND organization_uuid = ?
+	`), anchorUUID, draftUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to reparent draft's document mappings onto anchor: %w", err)
+	}
+
+	if _, err := tx.Exec(r.db.Rebind(`
+		DELETE FROM api_publication_plan_mappings WHERE publication_uuid = ? AND organization_uuid = ?
+	`), anchorUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to clear anchor's plan mappings before merge: %w", err)
+	}
+	if _, err := tx.Exec(r.db.Rebind(`
+		UPDATE api_publication_plan_mappings SET publication_uuid = ? WHERE publication_uuid = ? AND organization_uuid = ?
+	`), anchorUUID, draftUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to reparent draft's plan mappings onto anchor: %w", err)
+	}
+
+	if _, err := tx.Exec(r.db.Rebind(`
+		DELETE FROM api_publications WHERE uuid = ? AND organization_uuid = ?
+	`), draftUUID, orgUUID); err != nil {
+		return fmt.Errorf("failed to delete merged draft publication: %w", err)
+	}
+
+	if _, err := tx.Exec(r.db.Rebind(`
+		UPDATE api_publications SET
+			display_name = ?, version = ?, description = ?, tags = ?, labels = ?, agent_visibility = ?,
+			production_url = ?, sandbox_url = ?, business_owner = ?, business_owner_email = ?,
+			technical_owner = ?, technical_owner_email = ?, is_draft = ?, status = ?, updated_by = ?, updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ?
+	`),
+		displayName, version, description, tagsBytes, labelsBytes, agentVisibility,
+		prodURL, sandboxURL, businessOwner, businessOwnerEmail, technicalOwner, technicalOwnerEmail,
+		isDraft, status, actor, now,
+		anchorUUID, orgUUID,
+	); err != nil {
+		return fmt.Errorf("failed to merge draft into anchor publication: %w", err)
+	}
+	return nil
+}
+
+// PromoteDraftToPublication makes the draft row for (artifactUUID,
+// apiPortalUUID, orgUUID) live. The anchor for this pairing — the row whose
+// uuid is the durable identity of "this API's publication on this portal" —
+// is whichever row was first published:
+//   - First publish: no anchor exists yet, so the draft row becomes it,
+//     flipped in place (is_draft=0, status='PUBLISHED'), same uuid, no copy.
+//   - Republish: an anchor already exists as the live row. The draft's
+//     content is merged into that anchor row in place (mergeDraftIntoAnchor)
+//     and the draft row is discarded — the anchor's uuid never changes
+//     across a republish (Implementation_Plan.md Slice 5's "Behavior — uuid
+//     identity" note).
+//
+// One transaction either way. Returns (nil, false, nil) if no draft exists
+// to promote — the caller (PublicationService.Publish) treats this as a
+// defensive DRAFT_NOT_FOUND, not a normal outcome, since the client always
+// saves the draft immediately before calling publish. replaced reports
+// whether an existing live row was found (republish) versus this being the
 // first publish (create) — the handler uses it to choose 200 vs 201.
 func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error) {
 	now := time.Now().UTC()
@@ -414,38 +520,46 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	defer tx.Rollback()
 
 	var draftUUID string
-	lookupErr := tx.QueryRow(r.db.Rebind(`
+	draftLookupErr := tx.QueryRow(r.db.Rebind(`
 		SELECT uuid FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
 	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
-	if errors.Is(lookupErr, sql.ErrNoRows) {
+	if errors.Is(draftLookupErr, sql.ErrNoRows) {
 		return nil, false, nil
 	}
-	if lookupErr != nil {
-		return nil, false, fmt.Errorf("failed to look up publication draft to promote: %w", lookupErr)
+	if draftLookupErr != nil {
+		return nil, false, fmt.Errorf("failed to look up publication draft to promote: %w", draftLookupErr)
 	}
 
-	res, err := tx.Exec(r.db.Rebind(`
-		DELETE FROM api_publications
+	var liveUUID string
+	liveLookupErr := tx.QueryRow(r.db.Rebind(`
+		SELECT uuid FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0
-	`), orgUUID, artifactUUID, apiPortalUUID)
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to delete existing live publication: %w", err)
-	}
-	if rowsDeleted, err := res.RowsAffected(); err == nil && rowsDeleted > 0 {
-		replaced = true
-	}
+	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
 
-	if _, err := tx.Exec(r.db.Rebind(`
-		UPDATE api_publications
-		SET is_draft = 0, status = 'PUBLISHED', updated_by = ?, updated_at = ?
-		WHERE uuid = ? AND organization_uuid = ?
-	`), actor, now, draftUUID, orgUUID); err != nil {
-		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
+	var anchorUUID string
+	switch {
+	case liveLookupErr == nil:
+		if err := r.mergeDraftIntoAnchor(tx, liveUUID, draftUUID, orgUUID, 0, "PUBLISHED", actor, now); err != nil {
+			return nil, false, err
+		}
+		anchorUUID = liveUUID
+		replaced = true
+	case errors.Is(liveLookupErr, sql.ErrNoRows):
+		if _, err := tx.Exec(r.db.Rebind(`
+			UPDATE api_publications
+			SET is_draft = 0, status = 'PUBLISHED', updated_by = ?, updated_at = ?
+			WHERE uuid = ? AND organization_uuid = ?
+		`), actor, now, draftUUID, orgUUID); err != nil {
+			return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
+		}
+		anchorUUID = draftUUID
+	default:
+		return nil, false, fmt.Errorf("failed to look up existing live publication: %w", liveLookupErr)
 	}
 
 	row := tx.QueryRow(r.db.Rebind(`SELECT `+publicationDetailColumns+`
-		FROM api_publications WHERE uuid = ? AND organization_uuid = ?`), draftUUID, orgUUID)
+		FROM api_publications WHERE uuid = ? AND organization_uuid = ?`), anchorUUID, orgUUID)
 	promoted := &model.Publication{
 		OrganizationUUID: orgUUID,
 		ArtifactUUID:     artifactUUID,
@@ -471,18 +585,24 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 
 // UnpublishPublication is PromoteDraftToPublication's mirror for Slice 6
 // (Unpublish), called only after PortalPublisher.Unpublish has already
-// succeeded. One transaction: if a draft already exists for (artifactUUID,
-// apiPortalUUID, orgUUID), the live row is deleted outright (cascades its own
-// content/mapping rows) and the draft is left untouched — protects
-// in-progress draft edits from being clobbered by the demoted content. If no
-// draft exists, the live row is demoted into the draft in place — is_draft=1
-// and status cleared to NULL (schema.sqlite.sql: "status ... set only when
-// is_draft = 0"), same row, same uuid, no content copy, so its content/
-// mapping rows stay correctly attached automatically. Either way a draft
-// survives the operation. Returns found=false if no live row exists to
-// unpublish — the same defensive re-check PromoteDraftToPublication does for
-// its own precondition, since the caller (PublicationService.Unpublish)
-// already checked this before calling the portal.
+// succeeded. One transaction:
+//   - No draft exists: the live row (the anchor) is demoted into the draft
+//     in place — is_draft=1, status cleared to NULL (schema.sqlite.sql:
+//     "status ... set only when is_draft = 0"), same row, same uuid, no
+//     content copy.
+//   - A draft already exists as its own row: that draft is merged into the
+//     anchor (mergeDraftIntoAnchor) instead of deleting the anchor and
+//     leaving the draft's own row as the survivor — the anchor's uuid
+//     survives the unpublish too, inverted-but-symmetric with Publish's
+//     republish branch (Implementation_Plan.md Slice 6's "Behavior — uuid
+//     identity" note). Same discard-old-keep-new content semantics as
+//     before, just implemented as an in-place merge instead of a row swap.
+//
+// Either way a draft survives the operation. Returns found=false if no live
+// row exists to unpublish — the same defensive re-check
+// PromoteDraftToPublication does for its own precondition, since the caller
+// (PublicationService.Unpublish) already checked this before calling the
+// portal.
 func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error) {
 	now := time.Now().UTC()
 
@@ -512,10 +632,8 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 
 	switch {
 	case draftErr == nil:
-		if _, err := tx.Exec(r.db.Rebind(`
-			DELETE FROM api_publications WHERE uuid = ? AND organization_uuid = ?
-		`), liveUUID, orgUUID); err != nil {
-			return false, fmt.Errorf("failed to delete unpublished publication: %w", err)
+		if err := r.mergeDraftIntoAnchor(tx, liveUUID, draftUUID, orgUUID, 1, nil, actor, now); err != nil {
+			return false, err
 		}
 	case errors.Is(draftErr, sql.ErrNoRows):
 		if _, err := tx.Exec(r.db.Rebind(`

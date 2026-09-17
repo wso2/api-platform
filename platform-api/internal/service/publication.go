@@ -173,6 +173,17 @@ func (s *PublicationService) resolveHandles(pub *model.Publication, planUUIDs, d
 // mapValuesInOrder looks up each id in m, preserving ids's order and skipping
 // any id absent from m. Always returns a non-nil slice so it serializes as
 // "[]" rather than "null" when empty.
+// conflictReasonOrDefault returns conflict.Reason, or
+// defaultPortalConflictReason if a PortalPublisher implementation left it
+// unset (e.g. a test mock built before Reason existed) — the %s slot in
+// apperror.APIPublicationPortalConflict's message must never be empty.
+func conflictReasonOrDefault(conflict *PortalConflictError) string {
+	if conflict.Reason == "" {
+		return defaultPortalConflictReason
+	}
+	return conflict.Reason
+}
+
 func mapValuesInOrder(ids []string, m map[string]string) []string {
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -513,11 +524,12 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 //
 // The portal is pushed first (§8): nothing local changes unless that
 // succeeds. On success, one transaction (PublicationRepository.
-// PromoteDraftToPublication): delete the existing live row if one exists,
-// then flip the draft row in place — same row, same uuid, so its
-// content/mapping rows stay correctly attached with no copy. A repeat
-// publish with no intervening edit goes through the same path and is a
-// normal no-op refresh, not an error.
+// PromoteDraftToPublication): on a first publish, flip the draft row in
+// place — same row, same uuid; on a republish, merge the draft's content
+// into the existing live row (the anchor) instead, so the anchor's uuid — the
+// durable identity for this (API, portal) pairing — never changes across a
+// republish. A repeat publish with no intervening edit goes through the same
+// path and is a normal no-op refresh, not an error.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (pub *model.Publication, replaced bool, err error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
@@ -548,7 +560,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {
 		var conflict *PortalConflictError
 		if errors.As(err, &conflict) {
-			return nil, false, apperror.APIPublicationPortalConflict.New()
+			return nil, false, apperror.APIPublicationPortalConflict.New(conflictReasonOrDefault(conflict))
 		}
 		return nil, false, apperror.APIPublicationPortalUnavailable.Wrap(err)
 	}
@@ -565,8 +577,9 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 
 	published.APIPortalHandle = portal.Handle
 	published.APIPortalName = portal.DisplayName
-	// The mapping rows belong to the same row/uuid the draft did — nothing
-	// changed by the promotion, so the already-resolved handles still apply.
+	// The plan/doc selections themselves didn't change during promotion —
+	// only which row they're attached to may have (a republish reparents
+	// them onto the anchor) — so the already-resolved handles still apply.
 	published.SubscriptionPlanIds = draft.SubscriptionPlanIds
 	published.DocIds = draft.DocIds
 	return published, wasReplace, nil
@@ -574,10 +587,12 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 
 // Unpublish removes the live listing from portal, then writes locally —
 // REST_Design.md §7 "Unpublishing". Valid only when currently published or
-// deprecated (409 PUBLICATION_NOT_LIVE otherwise). On success: if a draft
-// already exists, the live row is deleted and the draft is kept untouched;
-// otherwise the live row is demoted into the draft in place. Either way a
-// draft survives.
+// deprecated (409 PUBLICATION_NOT_LIVE otherwise). On success: if no draft
+// exists, the live row (the anchor) is demoted into the draft in place;
+// otherwise an existing draft's content is merged into the anchor instead of
+// leaving the draft's own row as the survivor — the anchor's uuid is the
+// durable identity for this pairing and doesn't change either way. Either way
+// a draft survives.
 func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) error {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
@@ -599,7 +614,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 	if err := s.portalPublisher.Unpublish(ctx, portal, apiId); err != nil {
 		var conflict *PortalConflictError
 		if errors.As(err, &conflict) {
-			return apperror.APIPublicationPortalConflict.New()
+			return apperror.APIPublicationPortalConflict.New(conflictReasonOrDefault(conflict))
 		}
 		return apperror.APIPublicationPortalUnavailable.Wrap(err)
 	}

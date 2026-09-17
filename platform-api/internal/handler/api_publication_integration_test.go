@@ -111,6 +111,30 @@ func doPublicationRequest(r http.Handler, method, path, contentType string, body
 	return w
 }
 
+// livePublicationUUID reads the live (is_draft=0) row's uuid straight from
+// the DB for the fixture (artifact_uuid, api_portal_uuid) pairing every test
+// in this package uses — the wire response never carries it (api.Publication
+// has no id field), so tests asserting the anchor's uuid stays stable across
+// a republish/unpublish read it here instead.
+func livePublicationUUID(t *testing.T, db *database.DB) string {
+	t.Helper()
+	var id string
+	if err := db.QueryRow(`SELECT uuid FROM api_publications WHERE artifact_uuid = 'api-artifact-1' AND api_portal_uuid = 'portal-1' AND is_draft = 0`).Scan(&id); err != nil {
+		t.Fatalf("query live publication uuid: %v", err)
+	}
+	return id
+}
+
+// draftPublicationUUID is livePublicationUUID's is_draft=1 counterpart.
+func draftPublicationUUID(t *testing.T, db *database.DB) string {
+	t.Helper()
+	var id string
+	if err := db.QueryRow(`SELECT uuid FROM api_publications WHERE artifact_uuid = 'api-artifact-1' AND api_portal_uuid = 'portal-1' AND is_draft = 1`).Scan(&id); err != nil {
+		t.Fatalf("query draft publication uuid: %v", err)
+	}
+	return id
+}
+
 // TestPublicationHandler_GetDraft_404BeforeAnySave verifies the draft-not-found
 // path returns the DRAFT_NOT_FOUND code through the real HTTP stack.
 func TestPublicationHandler_GetDraft_404BeforeAnySave(t *testing.T) {

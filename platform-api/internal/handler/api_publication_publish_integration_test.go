@@ -107,10 +107,10 @@ func TestPublicationHandler_Publish_CreatesFromDraft(t *testing.T) {
 }
 
 // TestPublicationHandler_Publish_RepublishReplacesOldRow verifies the
-// merged-table promotion for a republish: edit + publish again must delete
-// the previous live row and promote the new draft in place — never leaving
-// two live rows, and returning 200 (not 201) since an existing listing was
-// replaced rather than created.
+// merged-table promotion for a republish: edit + publish again must merge
+// the new draft's content into the existing live row (the anchor) in place —
+// never leaving two live rows, never changing the anchor's id, and returning
+// 200 (not 201) since an existing listing was updated rather than created.
 func TestPublicationHandler_Publish_RepublishReplacesOldRow(t *testing.T) {
 	r, db, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
@@ -125,6 +125,10 @@ func TestPublicationHandler_Publish_RepublishReplacesOldRow(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("POST publish #1: want 201, got %d: %s", w.Code, w.Body.String())
 	}
+	// The publication uuid is internal bookkeeping, never returned over the
+	// wire (api.Publication carries no id field) — read the anchor's uuid
+	// straight from the DB, the same way liveCount below does.
+	anchorID := livePublicationUUID(t, db)
 
 	// Edit, then republish.
 	w = doPublicationRequest(r, http.MethodPut, draftPath, "application/json",
@@ -140,6 +144,9 @@ func TestPublicationHandler_Publish_RepublishReplacesOldRow(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &published)
 	if published["displayName"] != "Version Two" {
 		t.Fatalf("POST publish #2: want the updated content, got %v", published)
+	}
+	if got := livePublicationUUID(t, db); got != anchorID {
+		t.Fatalf("POST publish #2: want the anchor uuid to stay stable across a republish, first=%s republish=%s", anchorID, got)
 	}
 
 	w = doPublicationRequest(r, http.MethodGet, publicationPath, "", nil)

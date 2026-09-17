@@ -321,8 +321,9 @@ func TestPublicationPublish_DraftNotFound(t *testing.T) {
 // TestPublicationPublish_CreateRepublishNoOp drives Slice 5's full lifecycle
 // through the real service+repository stack — the "Done when" from
 // Implementation_Plan.md: save draft, publish (create), GET publication
-// shows it, edit + publish again (republish, replaces the old row in place,
-// never leaving two live rows), then publish again with no changes (no-op
+// shows it, edit + publish again (republish, merges into the existing live
+// row — the anchor — in place, never leaving two live rows and never
+// changing the anchor's uuid), then publish again with no changes (no-op
 // refresh).
 func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 	it := openITDB(t)
@@ -365,7 +366,8 @@ func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 		t.Fatalf("[%s] want exactly one row for the promoted uuid", it.driver)
 	}
 
-	// Edit, then republish: the old live row must be replaced, not duplicated.
+	// Edit, then republish: the draft must be merged into the existing
+	// (anchor) row, not duplicated, and the anchor's uuid must not change.
 	draft2 := &model.Publication{DisplayName: "Version Two", Version: "2.0", AgentVisibility: "VISIBLE"}
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft2, nil, nil); err != nil {
 		t.Fatalf("[%s] second SaveDraftDetails failed: %v", it.driver, err)
@@ -379,6 +381,9 @@ func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 	}
 	if republished.DisplayName != "Version Two" {
 		t.Fatalf("[%s] want the republished content, got %+v", it.driver, republished)
+	}
+	if republished.UUID != published.UUID {
+		t.Fatalf("[%s] want the anchor uuid stable across a republish, got first=%s republish=%s", it.driver, published.UUID, republished.UUID)
 	}
 	liveRows, err := svc.ListPublicationSummary(apiType, apiHandle, g.org, "", "", "")
 	if err != nil {
@@ -404,6 +409,9 @@ func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 	}
 	if noOp.DisplayName != "Version Two" {
 		t.Fatalf("[%s] no-op refresh: unexpected content: %+v", it.driver, noOp)
+	}
+	if noOp.UUID != published.UUID {
+		t.Fatalf("[%s] want the anchor uuid stable across a no-op refresh, got first=%s noop=%s", it.driver, published.UUID, noOp.UUID)
 	}
 }
 
@@ -468,9 +476,13 @@ func TestPublicationUnpublish_DemotesWhenNoDraft(t *testing.T) {
 	}
 }
 
-// TestPublicationUnpublish_DeletesWhenDraftExists covers the other branch: an
-// in-progress draft must survive untouched, and the (now-superseded) live row
-// must be deleted rather than clobbering it.
+// TestPublicationUnpublish_DeletesWhenDraftExists covers the other branch:
+// when an in-progress draft already exists as its own row, unpublish merges
+// that draft's content into the anchor (the live row being unpublished)
+// instead of leaving the draft's own row as the survivor — the anchor's uuid
+// is the durable identity for this (artifact, portal) pairing and must not
+// change across an unpublish, any more than across a republish
+// (Implementation_Plan.md Slice 6's "Behavior — uuid identity" note).
 func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()
@@ -487,12 +499,14 @@ func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 		t.Fatalf("[%s] Publish failed: %v", it.driver, err)
 	}
 
-	// Start a fresh in-progress edit — this draft must survive unpublish
-	// untouched, not be overwritten by the demoted publication content.
+	// Start a fresh in-progress edit — its own, separate row/uuid until merged.
 	inProgress := &model.Publication{DisplayName: "In-Progress Edit", Version: "2.0", AgentVisibility: "VISIBLE"}
 	savedDraft, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", inProgress, nil, nil)
 	if err != nil {
 		t.Fatalf("[%s] SaveDraftDetails (in-progress) failed: %v", it.driver, err)
+	}
+	if savedDraft.UUID == published.UUID {
+		t.Fatalf("[%s] want the in-progress draft to be its own row before unpublish", it.driver)
 	}
 
 	if err := svc.Unpublish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); err != nil {
@@ -506,15 +520,21 @@ func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("[%s] GetDraft after unpublish failed: %v", it.driver, err)
 	}
-	if stillDraft.UUID != savedDraft.UUID || stillDraft.DisplayName != "In-Progress Edit" {
-		t.Fatalf("[%s] want the pre-existing draft left untouched, got %+v", it.driver, stillDraft)
+	// The in-progress draft's content survives, merged into the anchor — but
+	// it's the anchor's own uuid that survives, not the in-progress draft's.
+	if stillDraft.UUID != published.UUID {
+		t.Fatalf("[%s] want the anchor uuid to survive unpublish, got anchor=%s draft=%s", it.driver, published.UUID, stillDraft.UUID)
 	}
-	// The superseded live row must be gone, not left behind as a second row.
-	if it.count(t, "api_publications", "uuid", published.UUID) != 0 {
-		t.Fatalf("[%s] want the unpublished live row deleted", it.driver)
+	if stillDraft.DisplayName != "In-Progress Edit" {
+		t.Fatalf("[%s] want the in-progress draft's content merged in, got %+v", it.driver, stillDraft)
 	}
-	if it.count(t, "api_publications", "uuid", savedDraft.UUID) != 1 {
-		t.Fatalf("[%s] want exactly one row for the surviving draft", it.driver)
+	// Exactly one row survives — the anchor, holding the merged content. The
+	// in-progress draft's own row is gone, not left behind as a second row.
+	if it.count(t, "api_publications", "uuid", published.UUID) != 1 {
+		t.Fatalf("[%s] want the anchor row to survive (merged in place)", it.driver)
+	}
+	if it.count(t, "api_publications", "uuid", savedDraft.UUID) != 0 {
+		t.Fatalf("[%s] want the in-progress draft's own row discarded after merge", it.driver)
 	}
 }
 
@@ -562,7 +582,66 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 	if !apperror.APIPublicationPortalConflict.Is(err) {
 		t.Fatalf("[%s] want APIPublicationPortalConflict, got %v", it.driver, err)
 	}
+	// This mock leaves PortalConflictError.Reason unset (a plain Message, as
+	// a PortalPublisher implementation predating Reason would) — the service
+	// must fall back to the generic reason rather than substituting an empty
+	// string into the message's %s slot.
+	if !strings.Contains(err.Error(), "the conflict is resolved") {
+		t.Fatalf("[%s] want the generic fallback reason for a conflict with no Reason set, got %v", it.driver, err)
+	}
 	if it.count(t, "api_publications", "uuid", published.UUID) != 1 {
 		t.Fatalf("[%s] want the live row untouched after a rejected unpublish", it.driver)
+	}
+}
+
+// unpublishSubscriptionConflictPublisher rejects Unpublish with a
+// *service.PortalConflictError carrying the curated ERR_SUB_EXIST reason,
+// simulating what HTTPPortalPublisher.Unpublish itself now produces when the
+// portal's response names that known error code.
+type unpublishSubscriptionConflictPublisher struct{}
+
+func (unpublishSubscriptionConflictPublisher) Publish(_ context.Context, _ *model.PublicationAPIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+	return nil
+}
+
+func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *model.PublicationAPIPortal, _ string) error {
+	return &service.PortalConflictError{
+		Message: "the API Portal rejected removal of this listing (status 409)",
+		Reason:  "active subscriptions are removed",
+	}
+}
+
+// TestPublicationUnpublish_PortalConflictReasonSurfaced verifies a curated
+// conflict reason (not just the generic fallback) reaches the client-facing
+// apperror message end to end through the service layer.
+func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	svc := service.NewPublicationService(
+		repository.NewArtifactRepo(it.db),
+		repository.NewApiPortalRepo(it.db),
+		repository.NewApiDocumentRepo(it.db),
+		repository.NewSubscriptionPlanRepo(it.db),
+		repository.NewPublicationRepo(it.db),
+		unpublishSubscriptionConflictPublisher{},
+		nil,
+	)
+
+	apiType, apiHandle, portalHandle := "rest-api", apiHandleFor(g), portalHandleFor(g)
+	draft := &model.Publication{DisplayName: "Listing", Version: "1.0", AgentVisibility: "VISIBLE"}
+	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft, nil, nil); err != nil {
+		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
+	}
+	if _, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); err != nil {
+		t.Fatalf("[%s] Publish failed: %v", it.driver, err)
+	}
+
+	err := svc.Unpublish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
+	if !apperror.APIPublicationPortalConflict.Is(err) {
+		t.Fatalf("[%s] want APIPublicationPortalConflict, got %v", it.driver, err)
+	}
+	if !strings.Contains(err.Error(), "active subscriptions are removed") {
+		t.Fatalf("[%s] want the curated ERR_SUB_EXIST reason in the message, got %v", it.driver, err)
 	}
 }
