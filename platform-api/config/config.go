@@ -111,6 +111,17 @@ type Server struct {
 	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
 	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
 	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
+	// PublicationPortalSharedKeyPath, if set, is a filesystem path to the raw
+	// shared-key value platform-api sends to API Portal's shared-key S2S auth
+	// (Authorization: sharedkey <raw>) when pushing a publication (Slice 5's
+	// real portal push, replacing the stand-in). Read directly with
+	// os.ReadFile and trimmed of surrounding whitespace at startup — not
+	// routed through the {{ file }} config-interpolation helper, since that
+	// helper's allowlist/whitespace handling is tuned for PEM keys, not an
+	// exact-byte-compared secret. Left empty, the real HTTP push is disabled
+	// and PublicationService falls back to the stand-in publisher — not
+	// every deployment has a portal wired up yet.
+	PublicationPortalSharedKeyPath string `koanf:"publication_portal_shared_key_path"`
 
 	Database    Database         `koanf:"database"`
 	Auth        Auth             `koanf:"auth"`
