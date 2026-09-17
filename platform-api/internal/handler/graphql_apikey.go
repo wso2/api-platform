@@ -98,8 +98,9 @@ func (h *GraphQLAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reque
 			WithLogMessage(fmt.Sprintf("invalid API key creation request for user %s", userId))
 	}
 
-	if req.ApiKey == "" {
-		return apperror.ValidationFailed.New("API key value is required")
+	if req.DisplayName == "" {
+		return apperror.ValidationFailed.New("Display name is required").
+			WithLogMessage(fmt.Sprintf("missing display name in API key creation request for user %s", userId))
 	}
 
 	var name string
@@ -114,7 +115,8 @@ func (h *GraphQLAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reque
 		req.Id = &name
 	}
 
-	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.GraphQLApi, orgId, userId, &req); err != nil {
+	resp, err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.GraphQLApi, orgId, userId, &req)
+	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
@@ -130,11 +132,7 @@ func (h *GraphQLAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reque
 	h.slogger.Info("Successfully created GraphQL API key", "userId", userId, "apiHandle", apiHandle, "orgId", orgId, "keyName", keyName)
 
 	setLocation(w, "graphql-apis", apiHandle, "api-keys", name)
-	httputil.WriteJSON(w, http.StatusCreated, api.CreateAPIKeyResponse{
-		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Id,
-		Message: "API key created and broadcasted to gateways successfully",
-	})
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }
 
