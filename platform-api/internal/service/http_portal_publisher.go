@@ -20,7 +20,9 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -63,6 +65,60 @@ func (p *HTTPPortalPublisher) authHeader() string {
 	return "sharedkey " + p.sharedKey
 }
 
+// portalErrorBodyMaxBytes bounds how much of a 4xx response body is read
+// when looking for a known conflict reason — this is always a small JSON
+// error envelope (portalErrorEnvelope below), never user-facing configurable
+// content, so a small fixed cap (rather than a config field) is appropriate.
+const portalErrorBodyMaxBytes = 8 << 10 // 8 KiB
+
+// portalErrorEnvelope is the shape of api-portal's own error responses
+// (its util.js sendError/handleError helpers): {"code","message","errors":
+// [{"message"}]}. The outer "message" field is the portal's own
+// MACHINE-READABLE error code (e.g. "ERR_SUB_EXIST"), not free text —
+// confirmed by reading apiMetadataService.js's CustomError call sites
+// directly (new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST,
+// "API has subscriptions.") — the human sentence is the third argument,
+// nested under errors[0].message, which this deliberately never reads).
+type portalErrorEnvelope struct {
+	Message string `json:"message"`
+}
+
+// knownPortalConflictReasons maps a portal error CODE (never its raw
+// message/errors[] text) to a short, pre-approved phrase this service owns
+// and controls. error-handling.md forbids exposing raw downstream error
+// text to the client — and api-portal's own code shows that's not
+// paranoia: its duplicate-key conflict path deliberately keeps its message
+// generic for the same reason ("raw driver messages can echo internal
+// constraint/table names"). This allowlist preserves that guarantee: only
+// codes individually verified against apiMetadataService.js's CustomError
+// call sites get a specific reason; anything else falls back to
+// defaultPortalConflictReason. Extend this map only after confirming a new
+// code the same way, never by forwarding errors[].message directly.
+var knownPortalConflictReasons = map[string]string{
+	"ERR_SUB_EXIST": "active subscriptions are removed",
+	"ERR_KEY_EXIST": "active API keys are removed",
+}
+
+// defaultPortalConflictReason is also this package's original, fixed wording
+// for APIPublicationPortalConflict, kept as the fallback for any portal
+// response that isn't one of the known codes above.
+const defaultPortalConflictReason = "the conflict is resolved"
+
+// portalConflictReason inspects a 4xx response body for one of the known
+// portal error codes above, returning a curated, safe reason phrase — never
+// the portal's own raw error text — or the generic fallback if the body is
+// unparseable or names an unrecognized code.
+func portalConflictReason(body []byte) string {
+	var envelope portalErrorEnvelope
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return defaultPortalConflictReason
+	}
+	if reason, ok := knownPortalConflictReasons[envelope.Message]; ok {
+		return reason
+	}
+	return defaultPortalConflictReason
+}
+
 // Publish implements PortalPublisher.
 func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
 	base := strings.TrimRight(portal.URL, "/")
@@ -100,10 +156,21 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.Publica
 	defer resp.Body.Close()
 
 	switch {
-	case resp.StatusCode == http.StatusConflict:
-		return &PortalConflictError{Message: "the API Portal rejected this listing (conflicting handle or display name)"}
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return nil
+	case resp.StatusCode >= 400 && resp.StatusCode < 500:
+		// Any 4xx means the portal understood and rejected the request as-is —
+		// a conflicting handle/display name (409), an unresolvable reference
+		// like a subscription plan the portal doesn't recognize (404), or any
+		// other validation failure. All of these are "will keep rejecting"
+		// (REST_Design.md §7 "Retrying"), not "unreachable" — retrying without
+		// changing the draft can't help, same as the literal-409 case this used
+		// to special-case alone.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
+		return &PortalConflictError{
+			Message: fmt.Sprintf("the API Portal rejected this listing (status %d)", resp.StatusCode),
+			Reason:  portalConflictReason(body),
+		}
 	default:
 		return fmt.Errorf("portal metadata push failed: unexpected status %d", resp.StatusCode)
 	}
@@ -115,12 +182,11 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.Publica
 // apiMetadataService.js's deleteAPIMetadata. A 200 means removed; a 404 is
 // treated as already-removed (success), which is what makes a retry after an
 // already-successful removal converge rather than error (REST_Design.md §7
-// "Retrying"). A 409 means the portal still has active subscriptions/API
-// keys attached to the listing — the force-delete-with-listing capability
-// REST_Design.md §7/§13 expects isn't implemented on the portal yet
-// (deleteAPIMetadata still rejects rather than force-removing consumers), so
-// this surfaces as the same PortalConflictError Publish uses for a rejection
-// the portal will keep making.
+// "Retrying"). Any other 4xx — most commonly 409, when the portal still has
+// active subscriptions/API keys attached to the listing (the
+// force-delete-with-listing capability REST_Design.md §7/§13 expects isn't
+// implemented on the portal yet) — surfaces as the same PortalConflictError
+// Publish uses for a rejection the portal will keep making.
 func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string) error {
 	base := strings.TrimRight(portal.URL, "/")
 	escapedHandle := url.PathEscape(apiHandle)
@@ -143,10 +209,18 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.Publi
 	switch {
 	case resp.StatusCode == http.StatusNotFound:
 		return nil
-	case resp.StatusCode == http.StatusConflict:
-		return &PortalConflictError{Message: "the API Portal rejected removal of this listing (active subscriptions or API keys still exist)"}
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return nil
+	case resp.StatusCode >= 400 && resp.StatusCode < 500:
+		// Same 4xx-is-non-retryable reasoning as Publish: a 409 (active
+		// subscriptions/API keys) is the documented case, but any other 4xx
+		// the portal returns here means it understood and rejected the
+		// removal, not that it's unreachable — won't clear on its own retry.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
+		return &PortalConflictError{
+			Message: fmt.Sprintf("the API Portal rejected removal of this listing (status %d)", resp.StatusCode),
+			Reason:  portalConflictReason(body),
+		}
 	default:
 		return fmt.Errorf("portal unpublish failed: unexpected status %d", resp.StatusCode)
 	}
@@ -170,11 +244,19 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, base, escapedHand
 	}
 	defer resp.Body.Close()
 
-	switch resp.StatusCode {
-	case http.StatusOK:
+	switch {
+	case resp.StatusCode == http.StatusOK:
 		return true, nil
-	case http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound:
 		return false, nil
+	case resp.StatusCode >= 400 && resp.StatusCode < 500:
+		// Same 4xx-is-non-retryable reasoning as Publish/Unpublish — e.g. an
+		// auth misconfiguration (401/403) won't clear on its own retry either.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
+		return false, &PortalConflictError{
+			Message: fmt.Sprintf("the API Portal rejected the existence check (status %d)", resp.StatusCode),
+			Reason:  portalConflictReason(body),
+		}
 	default:
 		return false, fmt.Errorf("portal existence check failed: unexpected status %d", resp.StatusCode)
 	}
@@ -207,7 +289,20 @@ type portalMetadataSpecBody struct {
 	ReferenceID         string                     `yaml:"referenceId"`
 	Endpoints           portalMetadataEndpoints    `yaml:"endpoints"`
 	BusinessInformation portalMetadataBusinessInfo `yaml:"businessInformation"`
-	SubscriptionPlans   []portalMetadataPlanRef    `yaml:"subscriptionPlans"`
+	// SubscriptionPlans is a plain string array of plan handles in this YAML
+	// envelope — NOT the {id: <handle>} object-array shape. Per the portal's
+	// own OpenAPI spec (api-portal-openapi-spec-v0.9.yaml, the requestBody
+	// description on ApiMetadataMultipartBody): "subscriptionPlans links
+	// existing org-level plans to this API by name... In YAML it is a string
+	// array (["Gold", "Silver"]). In the JSON metadata field it is an object
+	// array where only id is used" — the object-array shape is for a
+	// different upload path (a plain JSON metadata field, not this YAML
+	// file part) and is never valid here. Sending {id: ...} objects in this
+	// field silently breaks: the portal's YAML parser JS-stringifies each
+	// entry (`String({id:"Gold"})` -> "[object Object]") before looking it
+	// up, so every plan reference 404s as "Subscription plan not found"
+	// regardless of whether the handle is otherwise correct.
+	SubscriptionPlans []string `yaml:"subscriptionPlans"`
 }
 
 // portalMetadataEndpoints always sends both keys, even when empty — the
@@ -222,10 +317,6 @@ type portalMetadataBusinessInfo struct {
 	BusinessOwnerEmail  string `yaml:"businessOwnerEmail,omitempty"`
 	TechnicalOwner      string `yaml:"technicalOwner,omitempty"`
 	TechnicalOwnerEmail string `yaml:"technicalOwnerEmail,omitempty"`
-}
-
-type portalMetadataPlanRef struct {
-	ID string `yaml:"id"`
 }
 
 // buildPortalMetadataMultipart builds the two-part multipart body
@@ -257,7 +348,7 @@ func buildPortalMetadataMultipart(apiHandle string, pub *model.Publication, defi
 				TechnicalOwner:      pub.TechnicalOwner,
 				TechnicalOwnerEmail: pub.TechnicalOwnerEmail,
 			},
-			SubscriptionPlans: portalPlanRefs(pub.SubscriptionPlanIds),
+			SubscriptionPlans: nonNilStringsForYAML(pub.SubscriptionPlanIds),
 		},
 	}
 
@@ -305,14 +396,4 @@ func nonNilStringsForYAML(s []string) []string {
 		return []string{}
 	}
 	return s
-}
-
-// portalPlanRefs converts subscription plan handles into the portal's
-// {id: <handle>} shape.
-func portalPlanRefs(handles []string) []portalMetadataPlanRef {
-	refs := make([]portalMetadataPlanRef, 0, len(handles))
-	for _, h := range handles {
-		refs = append(refs, portalMetadataPlanRef{ID: h})
-	}
-	return refs
 }

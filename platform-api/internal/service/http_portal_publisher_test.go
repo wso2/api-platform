@@ -31,6 +31,8 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+
+	"gopkg.in/yaml.v3"
 )
 
 // This package's TestMain (main_test.go) already initializes the shared
@@ -163,6 +165,88 @@ func TestHTTPPortalPublisher_ConflictMapped(t *testing.T) {
 	}
 }
 
+// TestHTTPPortalPublisher_NonConflictClientErrorMapped verifies a 4xx other
+// than 409 from the metadata push — e.g. api-portal's 404 "subscription plan
+// not found" when a draft references a plan the portal doesn't recognize —
+// is also treated as non-retryable (*PortalConflictError), not bucketed into
+// the generic 503-unavailable branch alongside a genuinely unreachable
+// portal. Regression test: this case used to fall through to the default
+// branch and surface as 503 PUBLICATION_PORTAL_UNAVAILABLE, even though
+// retrying without fixing the draft's data could never succeed.
+func TestHTTPPortalPublisher_NonConflictClientErrorMapped(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound) // existence check: doesn't exist yet
+			return
+		}
+		w.WriteHeader(http.StatusNotFound) // the create push itself rejected, e.g. unresolvable plan reference
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
+
+	err := p.Publish(context.Background(), portal, "my-api", pub, nil)
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *PortalConflictError for a non-409 4xx, got %v", err)
+	}
+}
+
+// TestHTTPPortalPublisher_Unpublish_ConflictReasonFromKnownCode verifies a
+// portal response naming a known error code (ERR_SUB_EXIST, the real-world
+// case: an API with active subscriptions can't be removed) resolves to its
+// pre-approved reason phrase — never the portal's own raw error text.
+func TestHTTPPortalPublisher_Unpublish_ConflictReasonFromKnownCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"status":"error","code":"CONFLICT","message":"ERR_SUB_EXIST","errors":[{"message":"API has subscriptions."}]}`))
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+
+	err := p.Unpublish(context.Background(), portal, "my-api")
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *PortalConflictError, got %v", err)
+	}
+	if conflict.Reason != "active subscriptions are removed" {
+		t.Fatalf("want the curated ERR_SUB_EXIST reason, got %q", conflict.Reason)
+	}
+}
+
+// TestHTTPPortalPublisher_ConflictReasonFallsBackForUnknownCode verifies a
+// portal response naming an error code outside the known allowlist — or one
+// that doesn't parse as the expected envelope at all — falls back to the
+// generic reason rather than surfacing anything portal-specific.
+func TestHTTPPortalPublisher_ConflictReasonFallsBackForUnknownCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`not even json`))
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
+
+	err := p.Publish(context.Background(), portal, "my-api", pub, nil)
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *PortalConflictError, got %v", err)
+	}
+	if conflict.Reason != defaultPortalConflictReason {
+		t.Fatalf("want the default fallback reason for an unparseable body, got %q", conflict.Reason)
+	}
+}
+
 // TestHTTPPortalPublisher_UnavailableOnServerError verifies a persistent 5xx
 // from the metadata push surfaces as a plain error (mapped by the service
 // layer to 503, not 409) — never a *PortalConflictError.
@@ -241,6 +325,73 @@ func TestHTTPPortalPublisher_SendsDefinitionContent(t *testing.T) {
 	}
 	if string(gotDefinitionBytes) != "openapi: 3.0.0" {
 		t.Fatalf("want definition content to round-trip, got %q", gotDefinitionBytes)
+	}
+}
+
+// TestHTTPPortalPublisher_SubscriptionPlansAsPlainStringArray verifies the
+// metadata YAML sends subscriptionPlans as a plain string array of plan
+// handles (["Gold"]), never the {id: <handle>} object-array shape — the
+// portal's own OpenAPI spec documents that object-array shape as valid only
+// for a plain JSON metadata field, a different upload path from this YAML
+// file part. Regression test for a real bug: sending {id: ...} objects here
+// used to make the portal's YAML parser JS-stringify each entry
+// (`String({id:"Gold"})` -> "[object Object]") before looking it up, so
+// every plan reference 404'd as "Subscription plan not found" regardless of
+// whether the handle itself was correct.
+func TestHTTPPortalPublisher_SubscriptionPlansAsPlainStringArray(t *testing.T) {
+	var gotYAML []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil {
+			t.Fatalf("ParseMediaType: %v", err)
+		}
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatalf("NextPart: %v", err)
+			}
+			if part.FormName() == "metadata" {
+				gotYAML, _ = io.ReadAll(part)
+			}
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	pub := &model.Publication{
+		DisplayName:         "X",
+		Version:             "1.0",
+		AgentVisibility:     "VISIBLE",
+		SubscriptionPlanIds: []string{"Gold", "Silver"},
+	}
+
+	if err := p.Publish(context.Background(), portal, "my-api", pub, nil); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	var envelope struct {
+		Spec struct {
+			SubscriptionPlans []string `yaml:"subscriptionPlans"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(gotYAML, &envelope); err != nil {
+		t.Fatalf("unmarshal sent YAML: %v\n%s", err, gotYAML)
+	}
+	want := []string{"Gold", "Silver"}
+	got := envelope.Spec.SubscriptionPlans
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("want subscriptionPlans %v as a plain string array, got %v\nraw YAML:\n%s", want, got, gotYAML)
 	}
 }
 

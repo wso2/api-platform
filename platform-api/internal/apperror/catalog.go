@@ -229,10 +229,16 @@ var (
 	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.
 	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
 	// APIPublicationPortalConflict is a rejection the portal will keep making
-	// (a conflicting handle/display name) — never retried (REST_Design.md §7
+	// (a conflicting handle/display name, active subscriptions/API keys, or
+	// any other portal-side rejection) — never retried (REST_Design.md §7
 	// "Retrying"), distinct from the transient APIPublicationPortalUnavailable.
+	// %s carries a short, pre-approved reason phrase — e.g. "active
+	// subscriptions are removed" — resolved from a closed allowlist of known
+	// portal error codes (HTTPPortalPublisher.portalConflictReason), never
+	// the portal's own raw error text; falls back to "the conflict is
+	// resolved" (this entry's original, fixed wording) for anything else.
 	APIPublicationPortalConflict = def(CodeAPIPublicationPortalConflict, http.StatusConflict,
-		"The API Portal rejected this request and will keep rejecting it until the conflict is resolved.")
+		"The API Portal rejected this request and will keep rejecting it until %s.")
 	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
 		"The API Portal could not be reached. Please try again.")
 	// APIPublicationNotLive is Slice 6 (Unpublish)'s precondition failure:

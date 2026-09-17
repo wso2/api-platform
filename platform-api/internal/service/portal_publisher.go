@@ -62,6 +62,13 @@ type PortalPublisher interface {
 // distinct from a transient failure. See PortalPublisher.Publish.
 type PortalConflictError struct {
 	Message string
+	// Reason is a short, pre-approved phrase describing why, resolved from a
+	// closed allowlist of known portal error codes — never the portal's own
+	// raw error text (error-handling.md: never expose raw downstream errors
+	// to the client). Empty when the portal's response doesn't match a known
+	// code; callers fall back to a generic reason in that case. Passed as
+	// the %s in apperror.APIPublicationPortalConflict's message.
+	Reason string
 }
 
 func (e *PortalConflictError) Error() string { return e.Message }
