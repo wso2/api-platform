@@ -37,7 +37,6 @@ type Document struct {
 	FileName         string
 	ContentType      string
 	Content          []byte
-	DataVersion      int
 	CreatedBy        string
 	UpdatedBy        string
 }

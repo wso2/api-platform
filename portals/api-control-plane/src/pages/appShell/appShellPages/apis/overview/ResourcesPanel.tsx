@@ -71,8 +71,7 @@ function parseSpecContent(content: string): Record<string, unknown> | null {
 /**
  * Left panel of the Overview tab: the full API definition loaded from
  * GET /openapi, rendered by the shared spec viewer in a scrollable bordered
- * box. Schemas (components/definitions) from the stored spec are visible at
- * depth 1. When no spec has been uploaded yet the placeholder is shown instead.
+ * box. When no spec has been uploaded yet the placeholder is shown instead.
  */
 export function ResourcesPanel({ api }: { api: RestApi }) {
   const intl = useIntl();
@@ -117,7 +116,6 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
         <Divider />
         <Box sx={{ maxHeight: { md: 720, xs: 420 }, overflowY: 'auto', px: 2, py: 1 }}>
           <SwaggerSpecViewer
-            defaultModelsExpandDepth={1}
             disableTryOutBtn
             displayRequestDuration={false}
             enableResourceSearch

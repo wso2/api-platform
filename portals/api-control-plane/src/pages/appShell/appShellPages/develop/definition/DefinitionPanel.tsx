@@ -28,17 +28,13 @@ import {
   DialogTitle,
   Divider,
   FormControl,
-  FormControlLabel,
   FormLabel,
-  IconButton,
   MenuItem,
   Select,
   Stack,
-  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
-  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Download, Pencil, Plus, Upload } from '@wso2/oxygen-ui-icons-react';
@@ -53,10 +49,10 @@ import {
   type OpenAPIContent,
   type Operation,
 } from '@/api/resources/restApis';
-import { SwaggerOperationsView } from '@/components/SwaggerOperationsView';
 import { MonitorIllustration } from '@/components/illustrations/MonitorIllustration';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { OperationsList } from './OperationsList';
 
 const messages = defineMessages({
   loading: {
@@ -86,14 +82,6 @@ const messages = defineMessages({
   updateOpenApi: {
     id: 'develop.definition.DefinitionPanel.updateOpenApi',
     defaultMessage: 'Import Definition',
-  },
-  editorHeading: {
-    id: 'develop.definition.DefinitionPanel.editorHeading',
-    defaultMessage: 'API Definition',
-  },
-  operationsHeading: {
-    id: 'develop.definition.DefinitionPanel.operationsHeading',
-    defaultMessage: 'API Resources',
   },
   edit: {
     id: 'develop.definition.DefinitionPanel.edit',
@@ -148,13 +136,9 @@ const messages = defineMessages({
     defaultMessage: 'Source format',
     description: 'Accessible name for the YAML / JSON toggle buttons.',
   },
-  operationsParseError: {
-    id: 'develop.definition.DefinitionPanel.operationsParseError',
-    defaultMessage: 'The current spec cannot be parsed. Fix any syntax errors to preview operations.',
-  },
   saveSpecInvalid: {
     id: 'develop.definition.DefinitionPanel.saveSpecInvalid',
-    defaultMessage: 'Fix the following issues before saving:',
+    defaultMessage: 'Failed to save the specification. Fix the following issues:',
     description: 'Heading above spec validation errors shown when Save is clicked.',
   },
   saveValidationUnavailable: {
@@ -170,6 +154,10 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.fileTooLarge',
     defaultMessage: 'The specification exceeds the maximum allowed size (5 MB).',
   },
+  fileReadError: {
+    id: 'develop.definition.DefinitionPanel.fileReadError',
+    defaultMessage: 'Failed to read the selected file.',
+  },
   orDivider: {
     id: 'develop.definition.DefinitionPanel.orDivider',
     defaultMessage: 'Or',
@@ -180,14 +168,13 @@ const messages = defineMessages({
     defaultMessage: 'Loading editor…',
     description: 'Placeholder shown while Monaco editor initialises.',
   },
-  source: {
-    id: 'develop.definition.DefinitionPanel.source',
-    defaultMessage: 'Source',
-    description: 'Toggle that switches between the raw spec editor and the operations list.',
-  },
   addResource: {
     id: 'develop.definition.DefinitionPanel.addResource',
     defaultMessage: 'Add resource',
+  },
+  addResourceTitle: {
+    id: 'develop.definition.DefinitionPanel.addResourceTitle',
+    defaultMessage: 'Add Resource',
   },
   addResourceConfirm: {
     id: 'develop.definition.DefinitionPanel.addResourceConfirm',
@@ -303,8 +290,8 @@ export function DefinitionPanel() {
   // true = Monaco editor (Source), false = operations list.
   const [showSource, setShowSource] = useState(true);
 
-  // Add-resource form state
-  const [showAddForm, setShowAddForm] = useState(false);
+  // Add-resource modal state
+  const [showAddModal, setShowAddModal] = useState(false);
   const [newMethod, setNewMethod] = useState<HttpMethod>('GET');
   const [newPath, setNewPath] = useState('');
   const [newDescription, setNewDescription] = useState('');
@@ -316,9 +303,18 @@ export function DefinitionPanel() {
 
   useEffect(() => {
     const content = openApiData?.content ?? '';
-    setEditorText(content);
+    const fmt = detectFormat(content);
+    if (fmt === 'json' && content.trim()) {
+      try {
+        setEditorText(JSON.stringify(JSON.parse(content) as unknown, null, 2));
+      } catch {
+        setEditorText(content);
+      }
+    } else {
+      setEditorText(content);
+    }
     setPendingFileName(null);
-    setFormat(detectFormat(content));
+    setFormat(fmt);
   }, [openApiData?.content]);
 
   useEffect(() => {
@@ -385,13 +381,23 @@ export function DefinitionPanel() {
     setFetchError(null);
   };
 
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setNewPath('');
+    setNewMethod('GET');
+    setNewDescription('');
+  };
+
   const applyFileContent = (file: File) => {
     void file.text().then((text) => {
-      const parsedSpecContent = parseSpec(text);
-      setEditorText(parsedSpecContent ? yaml.dump(parsedSpecContent) : text);
+      const parsedSpec = parseSpec(text);
+      setEditorText(parsedSpec ? yaml.dump(parsedSpec) : text);
       setPendingFileName(file.name.replace(/\.json$/i, '.yaml'));
       setFormat('yaml');
       setIsEditing(true);
+    })
+    .catch(() => {
+      setFetchError(intl.formatMessage(messages.fileReadError));
     });
   };
 
@@ -536,10 +542,7 @@ export function DefinitionPanel() {
     const newText = format === 'json' ? JSON.stringify(spec, null, 2) : yaml.dump(spec);
     setEditorText(newText);
     setIsEditing(true);
-    setShowAddForm(false);
-    setNewPath('');
-    setNewMethod('GET');
-    setNewDescription('');
+    closeAddModal();
   };
 
   /** Removes an operation by its index in extractedOperations and enters edit mode. */
@@ -638,6 +641,61 @@ export function DefinitionPanel() {
         </DialogActions>
       </Dialog>
 
+      {/* Add Resource modal */}
+      <Dialog fullWidth maxWidth="sm" onClose={closeAddModal} open={showAddModal}>
+        <DialogTitle>{intl.formatMessage(messages.addResourceTitle)}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 2 }}>
+            <FormControl fullWidth>
+              <FormLabel>{intl.formatMessage(messages.methodLabel)}</FormLabel>
+              <Select
+                onChange={(e) => setNewMethod(e.target.value as HttpMethod)}
+                size="small"
+                value={newMethod}
+              >
+                {HTTP_METHODS.map((m) => (
+                  <MenuItem key={m} value={m}>
+                    {m}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              autoFocus
+              fullWidth
+              label="Path"
+              onChange={(e) => {
+                const val = e.target.value;
+                setNewPath(val && !val.startsWith('/') ? `/${val}` : val);
+              }}
+              placeholder={intl.formatMessage(messages.addResourcePathPlaceholder)}
+              value={newPath}
+            />
+            <TextField
+              fullWidth
+              label="Description"
+              multiline
+              onChange={(e) => setNewDescription(e.target.value)}
+              placeholder={intl.formatMessage(messages.addResourceDescriptionPlaceholder)}
+              rows={2}
+              value={newDescription}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button color="secondary" onClick={closeAddModal} variant="outlined">
+            {intl.formatMessage(messages.addResourceCancel)}
+          </Button>
+          <Button
+            disabled={!newPath.trim()}
+            onClick={handleAddOperation}
+            variant="contained"
+          >
+            {intl.formatMessage(messages.addResourceConfirm)}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {hasSpec || editorText ? (
         <Stack spacing={2}>
           {/* Action bar */}
@@ -670,11 +728,12 @@ export function DefinitionPanel() {
               borderRadius: 1,
               display: 'flex',
               flexDirection: 'column',
-              height: 'clamp(560px, calc(100vh - 300px), 960px)',
+              height: 'clamp(480px, calc(100vh - 280px), 800px)',
               overflow: 'hidden',
             }}
           >
-            {/* Panel header: Edit + JSON/YAML (left) | Source switch (right) */}
+
+            {/* Panel header: View toggle (left) | YAML/JSON toggle + Edit or Add Resource (right) */}
             <Box
               sx={{
                 alignItems: 'center',
@@ -687,8 +746,34 @@ export function DefinitionPanel() {
                 py: 1,
               }}
             >
+              {/* Left: View Resources / View Definition toggle button */}
+              <Button
+                onClick={() => setShowSource(!showSource)}
+                size="small"
+                variant="outlined"
+                sx={{ textTransform: 'none' }}
+              >
+                {showSource ? 'View Resources' : 'View Definition'}
+              </Button>
+
+              {/* Right: YAML/JSON toggle + Edit button (source view) OR Add Resource button (operations view) */}
               {showSource ? (
                 <Stack alignItems="center" direction="row" spacing={1}>
+                  <ToggleButtonGroup
+                    aria-label={intl.formatMessage(messages.formatLabel)}
+                    color="primary"
+                    disabled={isSaving}
+                    exclusive
+                    onChange={(_event, next: 'yaml' | 'json' | null) => {
+                      if (next !== null) handleFormatToggle(next);
+                    }}
+                    size="small"
+                    sx={{ '& .MuiToggleButton-sizeSmall': { py: '3px' } }}
+                    value={format}
+                  >
+                    <ToggleButton value="yaml">YAML</ToggleButton>
+                    <ToggleButton value="json">JSON</ToggleButton>
+                  </ToggleButtonGroup>
                   {hasSpec && !isEditing && (
                     <Button
                       onClick={() => setIsEditing(true)}
@@ -699,39 +784,19 @@ export function DefinitionPanel() {
                       <FormattedMessage {...messages.edit} />
                     </Button>
                   )}
-                  <ToggleButtonGroup
-                    aria-label={intl.formatMessage(messages.formatLabel)}
-                    color="primary"
-                    disabled={isSaving}
-                    exclusive
-                    onChange={(_event, next: 'yaml' | 'json' | null) => {
-                      if (next !== null) handleFormatToggle(next);
-                    }}
-                    size="small"
-                    value={format}
-                  >
-                    <ToggleButton value="yaml">YAML</ToggleButton>
-                    <ToggleButton value="json">JSON</ToggleButton>
-                  </ToggleButtonGroup>
                 </Stack>
               ) : (
-                <Box />
+                <Button
+                  onClick={() => setShowAddModal(true)}
+                  size="small"
+                  startIcon={<Plus size={16} />}
+                  variant="outlined"
+                >
+                  {intl.formatMessage(messages.addResource)}
+                </Button>
               )}
-
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showSource}
-                    onChange={(e) => setShowSource(e.target.checked)}
-                    size="small"
-                    slotProps={{ input: { 'aria-label': intl.formatMessage(messages.source) } }}
-                  />
-                }
-                label={<FormattedMessage {...messages.source} />}
-                labelPlacement="start"
-                sx={{ m: 0 }}
-              />
             </Box>
+
 
             {/* Panel content */}
             <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
@@ -764,96 +829,12 @@ export function DefinitionPanel() {
                 </Box>
               ) : (
                 /* Operations list */
-                <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 2 }}>
-                  {/* Add resource area */}
-                  <Box sx={{ mb: 2 }}>
-                    {showAddForm ? (
-                      <Stack spacing={1}>
-                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                          <Select
-                            aria-label={intl.formatMessage(messages.methodLabel)}
-                            onChange={(e) => setNewMethod(e.target.value as HttpMethod)}
-                            size="small"
-                            sx={{ flexShrink: 0, minWidth: 110 }}
-                            value={newMethod}
-                          >
-                            {HTTP_METHODS.map((m) => (
-                              <MenuItem key={m} value={m}>
-                                {m}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          <TextField
-                            autoFocus
-                            fullWidth
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setNewPath(val && !val.startsWith('/') ? `/${val}` : val);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleAddOperation();
-                            }}
-                            placeholder={intl.formatMessage(messages.addResourcePathPlaceholder)}
-                            size="small"
-                            value={newPath}
-                          />
-                          <TextField
-                            fullWidth
-                            onChange={(e) => setNewDescription(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleAddOperation();
-                            }}
-                            placeholder={intl.formatMessage(messages.addResourceDescriptionPlaceholder)}
-                            size="small"
-                            value={newDescription}
-                          />
-                          <Button
-                            onClick={handleAddOperation}
-                            size="small"
-                            sx={{ flexShrink: 0 }}
-                            variant="contained"
-                          >
-                            {intl.formatMessage(messages.addResourceConfirm)}
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setShowAddForm(false);
-                              setNewPath('');
-                              setNewMethod('GET');
-                              setNewDescription('');
-                            }}
-                            size="small"
-                            sx={{ flexShrink: 0 }}
-                            variant="outlined"
-                          >
-                            {intl.formatMessage(messages.addResourceCancel)}
-                          </Button>
-                        </Stack>
-                      </Stack>
-                    ) : (
-                      <Button
-                        onClick={() => setShowAddForm(true)}
-                        size="small"
-                        startIcon={<Plus size={16} />}
-                        variant="outlined"
-                      >
-                        {intl.formatMessage(messages.addResource)}
-                      </Button>
-                    )}
-                  </Box>
-
-                  {parsedSpec ? (
-                    <SwaggerOperationsView
-                      onDelete={handleDeleteOperation}
-                      operations={extractedOperations}
-                      showDelete
-                    />
-                  ) : (
-                    <Typography color="text.secondary" variant="body2">
-                      {intl.formatMessage(messages.operationsParseError)}
-                    </Typography>
-                  )}
-                </Box>
+                <OperationsList
+                  canParse={parsedSpec !== null}
+                  onDelete={handleDeleteOperation}
+                  operations={extractedOperations}
+                  showDelete
+                />
               )}
             </Box>
 
@@ -894,7 +875,6 @@ export function DefinitionPanel() {
                       }
                       setPendingFileName(null);
                       setSaveValidationErrors(null);
-                      setShowAddForm(false);
                     }}
                     size="small"
                     variant="outlined"

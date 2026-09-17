@@ -94,10 +94,6 @@ const readTransports = (serverUrl: string | undefined): ('http' | 'https')[] | u
 
 /**
  * Every operation the definition declares, flattened into `ApiOperation` entries.
- *
- * `TRACE` is the only method silently skipped — the backend wire type does not
- * accept it. All other standard HTTP methods including `HEAD` and `OPTIONS` are
- * extracted as-is.
  */
 export const extractOperations = (spec: Record<string, unknown> | undefined): ApiOperation[] => {
   const paths = asRecord(spec?.paths);

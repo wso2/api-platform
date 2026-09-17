@@ -19,6 +19,7 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -62,17 +63,17 @@ func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	query := r.db.Rebind(`
 		INSERT INTO api_documents
-			(uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content_type, content, data_version, created_by, created_at, updated_by, updated_at)
+			(uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content_type, content, created_by, created_at, updated_by, updated_at)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	_, err := r.db.Exec(query,
 		doc.ID, doc.ArtifactUUID, doc.OrganizationUUID, doc.Type,
 		doc.Handle, doc.DisplayName, doc.FileName, doc.ContentType, doc.Content,
-		doc.DataVersion, doc.CreatedBy, now, doc.CreatedBy, now,
+		doc.CreatedBy, now, doc.CreatedBy, now,
 	)
 	if err != nil {
-		return fmt.Errorf("create document: %w", err)
+		return fmt.Errorf("failed to create document: %w", err)
 	}
 	return nil
 }
@@ -81,7 +82,7 @@ func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
 func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error) {
 	query := r.db.Rebind(`
 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
-		       COALESCE(file_name, ''), COALESCE(content_type, ''), content, data_version,
+		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
 		       COALESCE(created_by, ''), COALESCE(updated_by, '')
 		FROM api_documents
 		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
@@ -91,12 +92,12 @@ func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgU
 	if err := row.Scan(
 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-		&doc.DataVersion, &doc.CreatedBy, &doc.UpdatedBy,
+		&doc.CreatedBy, &doc.UpdatedBy,
 	); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get document by artifact and handle: %w", err)
+		return nil, fmt.Errorf("failed to get document by artifact and handle: %w", err)
 	}
 	return doc, nil
 }
@@ -106,7 +107,7 @@ func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgU
 func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error) {
 	query := r.db.Rebind(`
 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
-		       COALESCE(file_name, ''), COALESCE(content_type, ''), content, data_version,
+		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
 		       COALESCE(created_by, ''), COALESCE(updated_by, '')
 		FROM api_documents
 		WHERE artifact_uuid = ? AND type = ? AND organization_uuid = ?
@@ -116,12 +117,12 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 	if err := row.Scan(
 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-		&doc.DataVersion, &doc.CreatedBy, &doc.UpdatedBy,
+		&doc.CreatedBy, &doc.UpdatedBy,
 	); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get document by artifact and type: %w", err)
+		return nil, fmt.Errorf("failed to get document by artifact and type: %w", err)
 	}
 	return doc, nil
 }
@@ -135,7 +136,7 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	updateQuery := r.db.Rebind(`
 		UPDATE api_documents
-		SET file_name = ?, content_type = ?, content = ?, data_version = data_version + 1, updated_by = ?, updated_at = ?
+		SET file_name = ?, content_type = ?, content = ?, updated_by = ?, updated_at = ?
 		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
 	`)
 	result, err := r.db.Exec(updateQuery,
@@ -143,11 +144,11 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 		doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
 	)
 	if err != nil {
-		return fmt.Errorf("upsert document (update): %w", err)
+		return fmt.Errorf("failed to upsert document (update): %w", err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("upsert document (rows affected): %w", err)
+		return fmt.Errorf("failed to upsert document (rows affected): %w", err)
 	}
 	if rows > 0 {
 		return nil
@@ -162,11 +163,11 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 				doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
 			)
 			if err != nil {
-				return fmt.Errorf("upsert document (retry update): %w", err)
+				return fmt.Errorf("failed to upsert document (retry update): %w", err)
 			}
 			return nil
 		}
-		return err
+		return fmt.Errorf("failed to upsert document (insert): %w", err)
 	}
 	return nil
 }
@@ -176,7 +177,7 @@ func (r *DocumentRepo) DeleteDocument(artifactUUID, handle, orgUUID string) erro
 	query := r.db.Rebind(`DELETE FROM api_documents WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?`)
 	_, err := r.db.Exec(query, artifactUUID, handle, orgUUID)
 	if err != nil {
-		return fmt.Errorf("delete document: %w", err)
+		return fmt.Errorf("failed to delete document: %w", err)
 	}
 	return nil
 }
@@ -191,10 +192,10 @@ func (r *DocumentRepo) DocumentHandleExistsForArtifact(artifactUUID, handle stri
 	row := r.db.QueryRow(query, artifactUUID, handle)
 	var exists int
 	if err := row.Scan(&exists); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
-		return false, fmt.Errorf("check document handle exists: %w", err)
+		return false, fmt.Errorf("failed to check document handle for the artifact: %w", err)
 	}
 	return true, nil
 }

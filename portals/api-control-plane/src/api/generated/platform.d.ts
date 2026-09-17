@@ -669,6 +669,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llm-providers/{llmProviderId}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get builds for a LLM provider
+         * @description Lists the LLM provider's builds, newest first. The rendered artifact itself is not
+         *     included; a listing is for choosing which build to deploy.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetLLMProviderBuilds"];
+        put?: never;
+        /**
+         * Prepare a build of a LLM provider
+         * @description Renders the LLM provider's current definition into an immutable snapshot and stores it,
+         *     without deploying it anywhere.
+         *
+         *     Preparing and deploying are separate steps so that what reaches a gateway is a
+         *     snapshot taken at a known moment: a deploy that names a build cannot silently
+         *     pick up edits made to the API since, and the same build can be deployed to any
+         *     number of gateways, and promoted onward, without being re-rendered.
+         *
+         *     The artifact is stored at the platform's own data version; it is translated to
+         *     the target gateway's version when it is deployed.
+         *
+         *     A LLM provider keeps at most `deployments.max_builds_per_api` builds. Preparing another
+         *     first removes the oldest builds no current deployment is using; if every one is
+         *     in use, the request is refused with a `409` and a build has to be deleted to
+         *     make room.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["CreateLLMProviderBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm-providers/{llmProviderId}/builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get build by ID
+         * @description Retrieves metadata for a single build.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetLLMProviderBuild"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a build
+         * @description Deletes one of the LLM provider's builds, freeing a slot when the API is at its build
+         *     limit.
+         *
+         *     Refused with a conflict while a gateway is serving the build — that is, while
+         *     any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+         *     first.
+         *
+         *     Undeployed, failed and superseded deployments release the build. They keep the
+         *     artifact they were created with, so they can still be redeployed, but they stop
+         *     reporting a `buildId` and can no longer be promoted to a later environment.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        delete: operations["DeleteLLMProviderBuild"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm-providers/{llmProviderId}/deployments": {
         parameters: {
             query?: never;
@@ -892,6 +970,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llm-proxies/{llmProxyId}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get builds for a LLM proxy
+         * @description Lists the LLM proxy's builds, newest first. The rendered artifact itself is not
+         *     included; a listing is for choosing which build to deploy.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetLLMProxyBuilds"];
+        put?: never;
+        /**
+         * Prepare a build of a LLM proxy
+         * @description Renders the LLM proxy's current definition into an immutable snapshot and stores it,
+         *     without deploying it anywhere.
+         *
+         *     Preparing and deploying are separate steps so that what reaches a gateway is a
+         *     snapshot taken at a known moment: a deploy that names a build cannot silently
+         *     pick up edits made to the API since, and the same build can be deployed to any
+         *     number of gateways, and promoted onward, without being re-rendered.
+         *
+         *     The artifact is stored at the platform's own data version; it is translated to
+         *     the target gateway's version when it is deployed.
+         *
+         *     A LLM proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+         *     first removes the oldest builds no current deployment is using; if every one is
+         *     in use, the request is refused with a `409` and a build has to be deleted to
+         *     make room.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["CreateLLMProxyBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm-proxies/{llmProxyId}/builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get build by ID
+         * @description Retrieves metadata for a single build.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetLLMProxyBuild"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a build
+         * @description Deletes one of the LLM proxy's builds, freeing a slot when the API is at its build
+         *     limit.
+         *
+         *     Refused with a conflict while a gateway is serving the build — that is, while
+         *     any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+         *     first.
+         *
+         *     Undeployed, failed and superseded deployments release the build. They keep the
+         *     artifact they were created with, so they can still be redeployed, but they stop
+         *     reporting a `buildId` and can no longer be promoted to a later environment.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        delete: operations["DeleteLLMProxyBuild"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm-proxies/{llmProxyId}/deployments": {
         parameters: {
             query?: never;
@@ -1090,6 +1246,84 @@ export interface paths {
          * @description Remove an MCP proxy.
          */
         delete: operations["deleteMCPProxy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-proxies/{mcpProxyId}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get builds for a MCP proxy
+         * @description Lists the MCP proxy's builds, newest first. The rendered artifact itself is not
+         *     included; a listing is for choosing which build to deploy.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetMCPProxyBuilds"];
+        put?: never;
+        /**
+         * Prepare a build of a MCP proxy
+         * @description Renders the MCP proxy's current definition into an immutable snapshot and stores it,
+         *     without deploying it anywhere.
+         *
+         *     Preparing and deploying are separate steps so that what reaches a gateway is a
+         *     snapshot taken at a known moment: a deploy that names a build cannot silently
+         *     pick up edits made to the API since, and the same build can be deployed to any
+         *     number of gateways, and promoted onward, without being re-rendered.
+         *
+         *     The artifact is stored at the platform's own data version; it is translated to
+         *     the target gateway's version when it is deployed.
+         *
+         *     A MCP proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+         *     first removes the oldest builds no current deployment is using; if every one is
+         *     in use, the request is refused with a `409` and a build has to be deleted to
+         *     make room.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["CreateMCPProxyBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-proxies/{mcpProxyId}/builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get build by ID
+         * @description Retrieves metadata for a single build.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetMCPProxyBuild"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a build
+         * @description Deletes one of the MCP proxy's builds, freeing a slot when the API is at its build
+         *     limit.
+         *
+         *     Refused with a conflict while a gateway is serving the build — that is, while
+         *     any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+         *     first.
+         *
+         *     Undeployed, failed and superseded deployments release the build. They keep the
+         *     artifact they were created with, so they can still be redeployed, but they stop
+         *     reporting a `buildId` and can no longer be promoted to a later environment.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        delete: operations["DeleteMCPProxyBuild"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2831,18 +3065,7 @@ export interface components {
             isValid: boolean;
             /** @description Validation errors; empty when isValid is true */
             errors: components["schemas"]["OpenAPIValidationError"][];
-            /** @description Non-blocking issues present even when isValid is true */
-            warnings?: components["schemas"]["OpenAPIValidationWarning"][];
             info?: components["schemas"]["OpenAPISpecInfo"];
-        };
-        OpenAPIValidationWarning: {
-            /**
-             * @description Machine-readable warning code matching the frontend SpecIssueCode values
-             * @example missingTitle
-             */
-            code: string;
-            /** @description Fragment of the document that triggered the warning */
-            detail?: string;
         };
         OpenAPIValidationError: {
             /** @description Human-readable description of the validation error */
@@ -2857,7 +3080,7 @@ export interface components {
             version?: string;
         };
         OpenAPIContent: {
-            /** @description Raw spec content (always YAML) */
+            /** @description Raw spec content */
             content?: string;
         };
         /**
@@ -3237,11 +3460,13 @@ export interface components {
              *     - `current` — render the artifact from the definition as it stands now.
              *     - `build` — deploy a build prepared earlier, named by `buildId`.
              *
-             *     REST API deployments accept only these two and always run a build: `current`
-             *     stores what it renders as one, so a running deployment is always traceable to
-             *     a stored snapshot. MCP proxy, LLM and event API deployments accept a
-             *     `deploymentId` here as well, to promote that deployment by reusing its
-             *     rendered artifact.
+             *     These are the only two values, for REST APIs, MCP proxies, LLM providers and
+             *     LLM proxies alike. Every deployment runs a build: `current` stores what it
+             *     renders as one, so a running deployment is always traceable to a stored
+             *     snapshot, and promoting carries that snapshot rather than re-rendering it.
+             *
+             *     A `deploymentId` is no longer accepted here — see the note on this
+             *     operation.
              * @example current
              */
             base: string;
@@ -5406,6 +5631,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -5436,6 +5662,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -5782,6 +6009,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
         };
@@ -5844,6 +6072,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
         };
@@ -6541,6 +6770,127 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    GetLLMProviderBuilds: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM provider */
+                llmProviderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Builds retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateLLMProviderBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM provider */
+                llmProviderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Build prepared successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetLLMProviderBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM provider */
+                llmProviderId: string;
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteLLMProviderBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM provider */
+                llmProviderId: string;
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     getLLMProviderDeployments: {
         parameters: {
             query?: {
@@ -7016,6 +7366,127 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    GetLLMProxyBuilds: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM proxy */
+                llmProxyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Builds retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateLLMProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM proxy */
+                llmProxyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Build prepared successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetLLMProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM proxy */
+                llmProxyId: string;
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteLLMProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the LLM proxy */
+                llmProxyId: string;
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     getLLMProxyDeployments: {
         parameters: {
             query?: {
@@ -7455,6 +7926,127 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetMCPProxyBuilds: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description Identifier of the MCP proxy */
+                mcpProxyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Builds retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateMCPProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the MCP proxy */
+                mcpProxyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Build prepared successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetMCPProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the MCP proxy */
+                mcpProxyId: string;
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteMCPProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the MCP proxy */
+                mcpProxyId: string;
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };

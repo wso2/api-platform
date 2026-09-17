@@ -29,7 +29,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Maximize2, Minimize2, Pencil } from '@wso2/oxygen-ui-icons-react';
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
@@ -177,6 +177,7 @@ export const SpecSourceEditor = ({ onBeforeSave, onEditingChange, onSave, rawTex
   const intl = useIntl();
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const saveAttemptRef = useRef(0);
   // Initialize format to match rawText's original format when present.
   const rawTextFormat: SpecFormat = rawText?.trimStart().startsWith('{') ? 'json' : 'yaml';
   const [format, setFormat] = useState<SpecFormat>(rawText !== undefined ? rawTextFormat : 'json');
@@ -197,7 +198,9 @@ export const SpecSourceEditor = ({ onBeforeSave, onEditingChange, onSave, rawTex
   // A document replaced from outside (another contract fetched, approach
   // switched) leaves any half-finished edit describing something that is no
   // longer on screen, so the editor closes rather than saving over it.
+  // Incrementing saveAttemptRef also invalidates any onBeforeSave in flight.
   useEffect(() => {
+    saveAttemptRef.current += 1;
     setEditing(false);
     setProblem(null);
     onEditingChange?.(false);
@@ -223,6 +226,7 @@ export const SpecSourceEditor = ({ onBeforeSave, onEditingChange, onSave, rawTex
   };
 
   const cancelEditing = () => {
+    saveAttemptRef.current += 1;
     setEditing(false);
     setProblem(null);
     onEditingChange?.(false);
@@ -266,16 +270,22 @@ export const SpecSourceEditor = ({ onBeforeSave, onEditingChange, onSave, rawTex
       return;
     }
 
+    // Stamp this attempt so Cancel or a spec replacement (which both increment
+    // saveAttemptRef) can invalidate it while onBeforeSave is in flight.
+    const attemptId = ++saveAttemptRef.current;
+
     if (onBeforeSave) {
       setValidating(true);
       try {
         const errors = await onBeforeSave(serializeSpec(parsed.spec, 'yaml'));
+        if (saveAttemptRef.current !== attemptId) return;
         if (errors && errors.length > 0) {
           setProblem({ errors, kind: 'backendInvalid' });
           return;
         }
       } catch {
         // Network/auth error — don't block the save; let the backend respond at create time.
+        if (saveAttemptRef.current !== attemptId) return;
       } finally {
         setValidating(false);
       }

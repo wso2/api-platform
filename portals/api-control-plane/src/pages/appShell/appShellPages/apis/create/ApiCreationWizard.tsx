@@ -191,6 +191,7 @@ export const ApiCreationWizard = () => {
     // (or whatever the user edited). Both submit via import-openapi.
     const formData = new FormData();
     formData.append('file', values.contractImport.specFile, 'openapi.json');
+    formData.append('id', values.id.trim());
     formData.append('displayName', values.displayName.trim());
     formData.append('version', values.version.trim());
     // Normalize context to always have a leading slash.

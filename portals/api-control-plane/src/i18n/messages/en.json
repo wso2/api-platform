@@ -2591,7 +2591,7 @@
     "defaultMessage": "Save"
   },
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
-    "defaultMessage": "Fix the following issues before saving:",
+    "defaultMessage": "FFailed to save the specification. Fix the following issues:",
     "description": "Heading above spec validation errors shown when Save is clicked."
   },
   "develop.definition.DefinitionPanel.saveValidationUnavailable": {

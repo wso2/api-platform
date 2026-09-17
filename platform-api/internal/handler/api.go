@@ -364,7 +364,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return apperror.ValidationFailed.New("failed to read uploaded spec file")
 	}
 	if int64(len(data)) > importOpenAPIMaxBytes {
-		return apperror.ValidationFailed.New("spec file exceeds the maximum allowed size")
+		return apperror.PayloadTooLarge.New("spec file exceeds maximum allowed size (5 MiB)")
 	}
 	specFileName := normalizeSpecFileName(req.File.Filename())
 
@@ -581,7 +581,7 @@ func validateSpecV3(sd *specDoc) api.ValidateOpenAPIResponse {
 		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
 	}
 	result := api.ValidateOpenAPIResponse{IsValid: true, Errors: []api.OpenAPIValidationError{}}
-	if sd.v3.Model.Info != nil {
+	if sd.v3 != nil && sd.v3.Model.Info != nil {
 		title, version := sd.v3.Model.Info.Title, sd.v3.Model.Info.Version
 		result.Info = &api.OpenAPISpecInfo{Title: &title, Version: &version}
 	}
@@ -826,10 +826,18 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 	if existing != nil {
 		docHandle = existing.Handle
 	} else {
-		docHandle, err = utils.GenerateHandle("OpenAPI Definition", func(candidate string) bool {
-			exists, _ := h.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, candidate)
+		var handleErr error
+		docHandle, handleErr = utils.GenerateHandle("OpenAPI Definition", func(candidate string) bool {
+			exists, err := h.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, candidate)
+			if err != nil {
+				handleErr = err
+				return true
+			}
 			return exists
 		})
+		if handleErr != nil {
+			return serviceError(handleErr, fmt.Sprintf("failed to check document handle for API %s", restApiId))
+		}
 		if err != nil {
 			return serviceError(err, fmt.Sprintf("failed to generate document handle for API %s", restApiId))
 		}
@@ -843,10 +851,6 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
-	// Operations are written before the spec document so that a failure here
-	// leaves nothing persisted.
-	// If the spec write subsequently fails the operations are updated but the
-	// stored spec is stale; a re-PUT recovers that without data loss.
 	if syncedAPI != nil {
 		updatedAPI := *syncedAPI
 		updatedAPI.Operations = &syncedOps
@@ -868,6 +872,14 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		UpdatedBy:        updatedBy,
 	}
 	if err := h.documentRepo.UpsertDocument(doc); err != nil {
+		// Compensate: the operation update above already committed. Roll it back to
+		// the pre-update state so the stored spec and operation list stay in sync.
+		if syncedAPI != nil {
+			if _, rbErr := h.apiService.UpdateAPIByHandle(restApiId, syncedAPI, orgId, updatedBy); rbErr != nil {
+				h.slogger.Error("failed to roll back operation update after spec upsert failure",
+					"api", restApiId, "rollbackError", rbErr)
+			}
+		}
 		return serviceError(err, fmt.Sprintf("failed to upsert openapi spec for API %s", restApiId))
 	}
 
