@@ -247,20 +247,25 @@ func (s *OrganizationService) ListOrganizationsForUser(userUUID, resolvedOrgUUID
 
 // ListOrganizationsForCaller returns the organizations matching orgHandles
 // (the caller's "organizations" claim), falling back to currentOrgHandle
-// alone when orgHandles is empty.
+// alone when orgHandles is empty, and finally to the caller's DB-recorded
+// memberships in user_organization_mappings when neither claim is present
+// (e.g. a session/IDP that hasn't been upgraded to emit "organizations" yet).
 func (s *OrganizationService) ListOrganizationsForCaller(userUUID, resolvedOrgUUID string, orgHandles []string, currentOrgHandle string, limit, offset int) ([]api.Organization, int, error) {
+	handles := orgHandles
+	if len(handles) == 0 && currentOrgHandle != "" {
+		handles = []string{currentOrgHandle}
+	}
+
+	// ListOrganizationsForUser performs its own membership-heal, so delegate
+	// before healing here to avoid a redundant AddMembership call.
+	if len(handles) == 0 {
+		return s.ListOrganizationsForUser(userUUID, resolvedOrgUUID, limit, offset)
+	}
+
 	if userUUID != "" && resolvedOrgUUID != "" {
 		if err := s.userOrgMappingRepo.AddMembership(userUUID, resolvedOrgUUID); err != nil {
 			s.slogger.Warn("Failed to heal organization membership", "userUUID", userUUID, "orgUUID", resolvedOrgUUID, "error", err)
 		}
-	}
-
-	handles := orgHandles
-	if len(handles) == 0 {
-		if currentOrgHandle == "" {
-			return []api.Organization{}, 0, nil
-		}
-		handles = []string{currentOrgHandle}
 	}
 
 	total, err := s.orgRepo.CountOrganizationsByHandles(handles)
