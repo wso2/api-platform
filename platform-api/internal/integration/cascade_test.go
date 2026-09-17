@@ -119,8 +119,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 
 	// One active API Portal (Slice 0 fixture). api_publications itself stays
 	// unseeded here — no repository code writes it via this fixture path.
-	it.exec(t, `INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		g.apiPortal, g.org, "portal-"+g.apiPortal[:8], "portal", "active", "local", []byte("{}"), []byte("{}"))
+	it.exec(t, `INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		g.apiPortal, g.org, "portal-"+g.apiPortal[:8], "portal", "active", []byte("dummy-key"), []byte("{}"))
 
 	// One API document (moved up from Slice 4 into Slice 1 — see the comment
 	// above the graph struct). Real doc content owned by another team; this is
@@ -313,12 +313,12 @@ func TestCascade_APIPublicationFixtures(t *testing.T) {
 		t.Fatalf("[%s] want 1 api_portals row, got %d", it.driver, got)
 	}
 	var status string
-	q := it.db.Rebind(`SELECT workflow_status FROM api_portals WHERE uuid = ?`)
+	q := it.db.Rebind(`SELECT status FROM api_portals WHERE uuid = ?`)
 	if err := it.db.QueryRow(q, g.apiPortal).Scan(&status); err != nil {
-		t.Fatalf("[%s] querying api_portals.workflow_status: %v", it.driver, err)
+		t.Fatalf("[%s] querying api_portals.status: %v", it.driver, err)
 	}
 	if status != "active" {
-		t.Fatalf("[%s] want workflow_status 'active', got %q", it.driver, status)
+		t.Fatalf("[%s] want status 'active', got %q", it.driver, status)
 	}
 	if got := it.count(t, "api_documents", "uuid", g.apiDoc); got != 1 {
 		t.Fatalf("[%s] want 1 api_documents row, got %d", it.driver, got)

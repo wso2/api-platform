@@ -227,18 +227,6 @@ type SubscriptionPlanRepository interface {
 	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
-// ApiPortalRepository defines the interface for API Portal lookups this feature
-// needs. api_portals is a stub table (see schema.*.sql) owned by another team —
-// this is deliberately minimal, not a full CRUD interface.
-type ApiPortalRepository interface {
-	GetByHandleAndOrg(handle, orgUUID string) (*model.PublicationAPIPortal, error)
-	// ListActiveByOrg returns every api_portals row for orgUUID whose
-	// workflow_status is "active" — the GET /api-publications rollup
-	// (Slice 3) lists only these; a portal still provisioning or failed is
-	// absent entirely (REST_Design.md §5).
-	ListActiveByOrg(orgUUID string) ([]*model.PublicationAPIPortal, error)
-}
-
 // ApiDocumentRepository defines the interface for API document handle/UUID
 // resolution this feature needs. api_documents is a stub table (see
 // schema.*.sql) owned by another team — reading/serving a document's own
@@ -399,6 +387,23 @@ type LLMProxyRepository interface {
 	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
 	// not already exist and resolves the metadata to use for the deployment.
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
+// APIPortalRepository defines the interface for API Portal persistence.
+type APIPortalRepository interface {
+	Create(portal *model.APIPortal) error
+	GetByUUID(portalID, orgUUID string) (*model.APIPortal, error)
+	GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error)
+	ListPaginated(orgUUID string, opts ListOptions) ([]*model.APIPortal, error)
+	Count(orgUUID string, search string) (int, error)
+	Update(portal *model.APIPortal) error
+	Delete(portalID, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+	// ListActiveByOrg returns every api_portals row for orgUUID whose status
+	// is "active" — used by the API Publication feature's
+	// GET /api-publications rollup, which lists only these; a portal still
+	// provisioning or failed is absent entirely.
+	ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence

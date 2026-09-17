@@ -826,6 +826,33 @@ type MCPServerReadOnlyFields = 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 
  */
 export type UpdateMCPServerRequest = Partial<Omit<MCPServer, MCPServerReadOnlyFields>>;
 
+// ============================================================================
+// API Portal publication (see https://github.com/wso2/api-platform/discussions/3242)
+// ----------------------------------------------------------------------------
+// Shape is provisional — the discussion's REST/DB design is still being
+// iterated (e.g. table naming was still open as of the latest comment) — and
+// should be reconciled against the finalized OpenAPI contract once published.
+// Simplified for now: no draft, no type-agnostic rollup — see mcpProxiesApis.ts.
+// ============================================================================
+
+export type ApiPublicationStatus = 'PUBLISHED' | 'DEPRECATED';
+
+/** The live listing for one (API, portal) pairing. */
+export interface Publication {
+  id: string;
+  apiPortalId: string;
+  apiType: string;
+  apiHandle: string;
+  status: ApiPublicationStatus;
+  displayName: string;
+  version: string;
+  description?: string;
+  productionUrl?: string;
+  sandboxUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 /**
  * MCP Servers list API response
  */

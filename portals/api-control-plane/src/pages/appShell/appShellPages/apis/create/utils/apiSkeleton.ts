@@ -16,6 +16,9 @@
  * under the License.
  */
 
+/** Placeholder backend URL used to detect an untouched endpoint. */
+export const PLACEHOLDER_UPSTREAM_URL = 'https://example.com';
+
 /**
  * The definition "design from scratch" starts with a wildcard resource and
  * the four operations most APIs begin with. It is a document the
@@ -30,7 +33,7 @@ export const DEFAULT_API_SKELETON: Record<string, unknown> = {
     version: '1.0.0',
     description: 'A starting point. Edit the operations, or ask AI to refine them.',
   },
-  servers: [{ url: 'https://example.com' }],
+  servers: [{ url: PLACEHOLDER_UPSTREAM_URL }],
   paths: {
     '/*': {
       get: {

@@ -157,6 +157,12 @@ var (
 	ApplicationExists    = def(CodeApplicationExists, http.StatusConflict, "An application with this name already exists.")
 )
 
+// API Portal entries.
+var (
+	APIPortalNotFound = def(CodeAPIPortalNotFound, http.StatusNotFound, "The specified API Portal could not be found.")
+	APIPortalExists   = def(CodeAPIPortalExists, http.StatusConflict, "An API Portal with this handle already exists in the organization.")
+)
+
 // Subscription entries.
 var (
 	SubscriptionNotFound     = def(CodeSubscriptionNotFound, http.StatusNotFound, "The specified subscription could not be found.")
@@ -220,10 +226,9 @@ var (
 // API Publication entries (Slice 1: the per-portal draft; Slice 2: the live
 // publication). See REST_Design.md §11.
 var (
-	APIPublicationAPINotFound       = def(CodeAPIPublicationAPINotFound, http.StatusNotFound, "The specified API could not be found.")
-	APIPublicationAPIPortalNotFound = def(CodeAPIPublicationAPIPortalNotFound, http.StatusNotFound, "The specified API Portal could not be found.")
-	APIPublicationDraftNotFound     = def(CodeAPIPublicationDraftNotFound, http.StatusNotFound, "No draft has been saved for this API on this API Portal.")
-	APIPublicationNotFound          = def(CodeAPIPublicationNotFound, http.StatusNotFound, "This API is not published to this API Portal.")
+	APIPublicationAPINotFound   = def(CodeAPIPublicationAPINotFound, http.StatusNotFound, "The specified API could not be found.")
+	APIPublicationDraftNotFound = def(CodeAPIPublicationDraftNotFound, http.StatusNotFound, "No draft has been saved for this API on this API Portal.")
+	APIPublicationNotFound      = def(CodeAPIPublicationNotFound, http.StatusNotFound, "This API is not published to this API Portal.")
 	// APIPublicationValidationFailed's message is call-site-specific (an
 	// unresolvable plan/document handle, or content over the configured size
 	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.

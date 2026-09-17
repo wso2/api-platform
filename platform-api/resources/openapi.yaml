@@ -860,6 +860,8 @@ paths:
                 $ref: '#/components/schemas/BuildListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -897,6 +899,8 @@ paths:
                 $ref: '#/components/schemas/BuildResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -2316,6 +2320,206 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-providers/{llmProviderId}/builds:
+    post:
+      summary: Prepare a build of a LLM provider
+      description: |
+        Renders the LLM provider's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A LLM provider keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:create
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a LLM provider
+      description: |
+        Lists the LLM provider's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProviderBuilds
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:read
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{llmProviderId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:read
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the LLM provider's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:delete
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-providers/{llmProviderId}/deployments:
     post:
       summary: Create and deploy a new LLM provider deployment
@@ -2954,6 +3158,206 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-proxies/{llmProxyId}/builds:
+    post:
+      summary: Prepare a build of a LLM proxy
+      description: |
+        Renders the LLM proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A LLM proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:create
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a LLM proxy
+      description: |
+        Lists the LLM proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:read
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{llmProxyId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:read
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the LLM proxy's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:delete
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-proxies/{llmProxyId}/deployments:
     post:
       summary: Create and deploy a new LLM proxy deployment
@@ -3549,6 +3953,206 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{mcpProxyId}/builds:
+    post:
+      summary: Prepare a build of a MCP proxy
+      description: |
+        Renders the MCP proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A MCP proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:create
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a MCP proxy
+      description: |
+        Lists the MCP proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:read
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{mcpProxyId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:read
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the MCP proxy's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:delete
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5179,6 +5783,172 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api-portals:
+    post:
+      summary: Create an API Portal
+      description: |
+        Registers a new API Portal in the caller's organization against an
+        existing portal URL. The URL is required. Organization ID is extracted
+        from the JWT token.
+      operationId: CreateApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:create
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      requestBody:
+        description: API Portal registration details
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiPortalRequest'
+      responses:
+        '201':
+          description: API Portal created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List API Portals
+      description: Lists API Portals in the org resolved from the JWT token.
+      operationId: ListApiPortals
+      security:
+        - OAuth2Security:
+            - ap:api_portal:read
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: API Portals retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}:
+    get:
+      summary: Get API Portal by ID
+      description: Reads a single API Portal by its handle. Access is validated against the org in the JWT token.
+      operationId: GetApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:read
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      responses:
+        '200':
+          description: API Portal retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update API Portal
+      description: |
+        Updates mutable fields on an API Portal. The server ignores any immutable
+        field appearing in the body. Access is validated against the org in the JWT token.
+      operationId: UpdateApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:update
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      requestBody:
+        description: API Portal fields to update
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApiPortalRequest'
+      responses:
+        '200':
+          description: API Portal updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete API Portal
+      description: |
+        Deletes the API Portal registration and purges the encrypted shared key. The remote
+        portal instance is not touched; operators are responsible for its lifecycle. Access
+        is validated against the org in the JWT token.
+      operationId: DeleteApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:delete
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      responses:
+        '204':
+          description: API Portal deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /me/api-keys:
     get:
       summary: List API keys for the current user, or for all users with `ap:api_key:all:manage`
@@ -5456,14 +6226,19 @@ components:
           scopes:
             ap:api_key:all:manage: Manage API keys created by any user in the organization
             ap:api_key:read: Read API keys owned by the current user
+            ap:api_portal:create: Create an API Portal
+            ap:api_portal:delete: Delete an API Portal
             ap:api_portal:draft:manage: Read and write an API's draft for one portal
             ap:api_portal:draft:read: Read an API's draft for one portal — the private workspace prepared before publishing
             ap:api_portal:draft:update: Edit an API's draft for one portal
+            ap:api_portal:manage: Full access to API Portals
             ap:api_portal:publication:read: Read an API's live listing on one portal
+            ap:api_portal:read: Read API Portals
             ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
             ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
             ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
             ap:api_portal:rest_api:unpublish: Remove a REST API's live listing from a portal
+            ap:api_portal:update: Update an API Portal
             ap:api_publication:read: Read an API's publication status across every portal
             ap:application:api_key:create: Create an application API key
             ap:application:api_key:delete: Delete an application API key
@@ -5484,19 +6259,23 @@ components:
             ap:gateway:manage: Full access to gateways
             ap:gateway:manifest:read: Read a gateway manifest
             ap:gateway:read: Read gateways
-            ap:gateway_custom_policy:create: Create a gateway custom policy
-            ap:gateway_custom_policy:delete: Delete a gateway custom policy
-            ap:gateway_custom_policy:manage: Full access to gateway custom policies
-            ap:gateway_custom_policy:read: Read gateway custom policies
             ap:gateway:token:create: Create a gateway token
             ap:gateway:token:delete: Delete a gateway token
             ap:gateway:token:manage: Full access to gateway tokens
             ap:gateway:token:read: Read gateway tokens
             ap:gateway:update: Update a gateway
+            ap:gateway_custom_policy:create: Create a gateway custom policy
+            ap:gateway_custom_policy:delete: Delete a gateway custom policy
+            ap:gateway_custom_policy:manage: Full access to gateway custom policies
+            ap:gateway_custom_policy:read: Read gateway custom policies
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
             ap:llm_provider:api_key:read: Read LLM provider API keys
+            ap:llm_provider:build:create: Prepare a build of an LLM provider
+            ap:llm_provider:build:delete: Delete a build of an LLM provider
+            ap:llm_provider:build:manage: Full access to an LLM provider's builds
+            ap:llm_provider:build:read: Read builds of an LLM provider
             ap:llm_provider:create: Create an LLM provider
             ap:llm_provider:delete: Delete an LLM provider
             ap:llm_provider:deployment:create: Deploy an LLM provider
@@ -5512,6 +6291,10 @@ components:
             ap:llm_proxy:api_key:delete: Delete an LLM proxy API key
             ap:llm_proxy:api_key:manage: Full access to LLM proxy API keys
             ap:llm_proxy:api_key:read: Read LLM proxy API keys
+            ap:llm_proxy:build:create: Prepare a build of an LLM proxy
+            ap:llm_proxy:build:delete: Delete a build of an LLM proxy
+            ap:llm_proxy:build:manage: Full access to an LLM proxy's builds
+            ap:llm_proxy:build:read: Read builds of an LLM proxy
             ap:llm_proxy:create: Create an LLM proxy
             ap:llm_proxy:delete: Delete an LLM proxy
             ap:llm_proxy:deployment:create: Deploy an LLM proxy
@@ -5528,6 +6311,10 @@ components:
             ap:llm_template:manage: Full access to LLM provider templates
             ap:llm_template:read: Read LLM provider templates
             ap:llm_template:update: Update an LLM provider template
+            ap:mcp_proxy:build:create: Prepare a build of an MCP proxy
+            ap:mcp_proxy:build:delete: Delete a build of an MCP proxy
+            ap:mcp_proxy:build:manage: Full access to an MCP proxy's builds
+            ap:mcp_proxy:build:read: Read builds of an MCP proxy
             ap:mcp_proxy:create: Create an MCP proxy
             ap:mcp_proxy:delete: Delete an MCP proxy
             ap:mcp_proxy:deployment:create: Deploy an MCP proxy
@@ -7416,11 +8203,13 @@ components:
             - `current` — render the artifact from the definition as it stands now.
             - `build` — deploy a build prepared earlier, named by `buildId`.
 
-            REST API deployments accept only these two and always run a build: `current`
-            stores what it renders as one, so a running deployment is always traceable to
-            a stored snapshot. MCP proxy, LLM and event API deployments accept a
-            `deploymentId` here as well, to promote that deployment by reusing its
-            rendered artifact.
+            These are the only two values, for REST APIs, MCP proxies, LLM providers and
+            LLM proxies alike. Every deployment runs a build: `current` stores what it
+            renders as one, so a running deployment is always traceable to a stored
+            snapshot, and promoting carries that snapshot rather than re-rendering it.
+
+            A `deploymentId` is no longer accepted here — see the note on this
+            operation.
           example: "current"
         buildId:
           type: string
@@ -9693,6 +10482,196 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    ApiPortalMetadata:
+      title: API Portal metadata
+      type: object
+      description: >-
+        Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC
+        endpoints the portal uses for consumer login). Platform-API stores and
+        returns this as-is; it is not consumed by the outbound authentication
+        path.
+      additionalProperties: true
+
+    ApiPortalResponse:
+      title: API Portal detail
+      type: object
+      required:
+        - id
+        - name
+        - handle
+        - url
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Handle (URL-friendly slug) of the API Portal, primary identifier.
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          readOnly: true
+          example: "acme-portal"
+        name:
+          type: string
+          description: Display name.
+          minLength: 1
+          maxLength: 255
+          example: "Acme Developer Portal"
+        handle:
+          type: string
+          description: URL-friendly slug. Immutable after creation. Equal to `id`.
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          readOnly: true
+          example: "acme-portal"
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          description: Public URL of the API Portal. Operator-supplied.
+          example: "https://acme-portal.example.com"
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-13T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-13T10:30:00Z"
+
+    ApiPortalListItem:
+      title: API Portal list projection
+      description: Lightweight projection returned in collection responses (excludes the metadata blob).
+      type: object
+      required:
+        - id
+        - name
+        - handle
+        - url
+        - createdAt
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          example: "acme-portal"
+        name:
+          type: string
+          example: "Acme Developer Portal"
+        handle:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          example: "acme-portal"
+        description:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateApiPortalRequest:
+      title: Create API Portal request
+      type: object
+      required:
+        - name
+        - handle
+        - url
+        - sharedKey
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        handle:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          description: URL-friendly slug. Must be unique within the org. Immutable after creation.
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          maxLength: 500
+          description: Public HTTPS URL of the API Portal to register. Operator-supplied.
+        sharedKey:
+          type: string
+          writeOnly: true
+          pattern: '^[0-9a-fA-F]{64}$'
+          minLength: 64
+          maxLength: 64
+          description: >-
+            The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on
+            outbound publishing calls. The portal side stores only the sha256 hash of this
+            value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here;
+            never returned on any read.
+          example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+
+    UpdateApiPortalRequest:
+      title: Update API Portal request
+      description: All fields optional. Only mutable fields are accepted, see field permissions in the design doc.
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          maxLength: 500
+        sharedKey:
+          type: string
+          writeOnly: true
+          pattern: '^[0-9a-fA-F]{64}$'
+          minLength: 64
+          maxLength: 64
+          description: >-
+            Rotate the shared key. When present, replaces the stored value. Same format as on
+            Create. Write-only; never returned.
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+
+    ApiPortalListResponse:
+      title: API Portal list response
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in the current response page.
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiPortalListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -10174,10 +11153,14 @@ components:
       name: apiPortalId
       in: path
       required: true
-      description: The API Portal's handle, unique per organization.
+      description: |
+        **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal.
       schema:
         type: string
-        example: my-api-portal-handle
+        pattern: '^[a-z0-9-]+$'
+        minLength: 3
+        maxLength: 40
+        example: "acme-portal"
 
 tags:
   - name: Health
@@ -10194,10 +11177,8 @@ tags:
     description: API deployment artifact management and lifecycle operations
   - name: API Publications
     description: Publishing, unpublishing and deprecating an API on an API Portal, and the per-portal draft and live listing that feed those actions
-  - name: API Portal
-    description: API portal publishing and unpublishing operations
-  - name: DevPortals
-    description: DevPortal management operations
+  - name: API Portals
+    description: API Portal registration and management
   - name: Gateways
     description: Gateway registration and management operations
   - name: Gateway Tokens

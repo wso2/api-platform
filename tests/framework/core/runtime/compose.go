@@ -24,6 +24,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,6 +38,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
 
 // stagingDirName is the directory used for compose files and bind-mount sources.
@@ -43,6 +46,28 @@ const stagingDirName = ".wso2-apip-it-compose"
 
 // EnvComposeNetwork names the block network used by a compose stack.
 const EnvComposeNetwork = "PG_NETWORK"
+
+// EnvComposeCPULimit and EnvComposeMemoryLimitMB carry a compose component's declared
+// resource limits into the stack's substitution env, for a service's own compose file to
+// reference under its "deploy.resources.limits" (honoured by `docker compose up` without
+// swarm mode). Set only when the definition declares a limit, so a compose file that does
+// not reference them sees no behavior change.
+const (
+	EnvComposeCPULimit      = "APIP_CPU_LIMIT"
+	EnvComposeMemoryLimitMB = "APIP_MEMORY_LIMIT_MB"
+	EnvInstanceSuffix       = "INSTANCE"
+
+	defaultMaxComponentDBFileBytes int64 = 256 << 20
+)
+
+var maxComponentDBFileBytes = defaultMaxComponentDBFileBytes
+
+func instanceSuffix(ordinal, replicas int) string {
+	if replicas <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("-%d", ordinal+1)
+}
 
 // ComposeStack is a running compose-backed component.
 type ComposeStack struct {
@@ -52,6 +77,11 @@ type ComposeStack struct {
 	def      *components.Definition
 	stageDir string
 	block    string
+	suffix   string
+
+	// stopLogProducers stops each service's attached log producer, populated only when
+	// the block is capturing container output.
+	stopLogProducers []func() error
 }
 
 // LaunchCompose starts a compose-backed component and presents it as one instance.
@@ -67,9 +97,7 @@ func LaunchCompose(
 	if opts.Network == nil {
 		return nil, fmt.Errorf("runtime: %s needs a block label for its compose stack", def)
 	}
-	if opts.Replicas > 1 {
-		return nil, fmt.Errorf("runtime: compose component %s does not support replicas", def)
-	}
+	suffix := instanceSuffix(opts.Ordinal, opts.Replicas)
 	// Values substituted into the staged compose file.
 	substitutions := map[string]string{EnvComposeNetwork: opts.Network.Name()}
 	for k, v := range spec.Env {
@@ -78,6 +106,7 @@ func LaunchCompose(
 	for k, v := range opts.Env {
 		substitutions[k] = v
 	}
+	substitutions[EnvInstanceSuffix] = suffix
 
 	stageDir, err := stageComposeFiles(def, spec, opts.RepoRoot, substitutions)
 	if err != nil {
@@ -90,16 +119,23 @@ func LaunchCompose(
 		}
 	}()
 
-	composePath := filepath.Join(stageDir, spec.StagingName())
+	composePaths := make([]string, 0, 1+len(spec.ComposeOverrideFiles))
+	for _, name := range spec.StagingNames() {
+		path := filepath.Join(stageDir, name)
+		if err := applyInstanceSuffix(path, suffix); err != nil {
+			return nil, err
+		}
+		composePaths = append(composePaths, path)
+	}
 
 	// Keep stack identifiers unique per block.
-	identifier, err := uniqueStackID(opts.Network.Block(), def.Name)
+	identifier, err := uniqueStackID(opts.Network.Block(), def.Name+suffix)
 	if err != nil {
 		return nil, err
 	}
 
 	created, err := tccompose.NewDockerComposeWith(
-		tccompose.WithStackFiles(composePath),
+		tccompose.WithStackFiles(composePaths...),
 		tccompose.StackIdentifier(identifier),
 	)
 	if err != nil {
@@ -116,6 +152,16 @@ func LaunchCompose(
 	}
 	// Join the block network so the stack can reach other components.
 	env[EnvComposeNetwork] = opts.Network.Name()
+	// A compose-backed component's Limits have no effect unless its own compose file opts
+	// in by referencing these under "deploy.resources.limits" - unlike a raw container
+	// (applyLimits, container.go), there is no host-config hook this runtime can apply on
+	// the component's behalf here.
+	if def.Limits.CPUs > 0 {
+		env[EnvComposeCPULimit] = strconv.FormatFloat(def.Limits.CPUs, 'f', -1, 64)
+	}
+	if def.Limits.MemoryMB > 0 {
+		env[EnvComposeMemoryLimitMB] = strconv.FormatInt(def.Limits.MemoryMB, 10)
+	}
 	stack = stack.WithEnv(env)
 
 	// Wait for application-level readiness on the primary service.
@@ -132,17 +178,36 @@ func LaunchCompose(
 			return nil, fmt.Errorf("runtime: %s health targets service %q, which is not in %v",
 				def, target, spec.Services)
 		}
-		stack = stack.WaitForService(target, strategy)
+		stack = stack.WaitForService(target+suffix, strategy)
 	}
 
-	result := &ComposeStack{stack: stack, def: def, stageDir: stageDir, block: opts.Network.Block()}
+	result := &ComposeStack{stack: stack, def: def, stageDir: stageDir, block: opts.Network.Block(), suffix: suffix}
 
 	if err := stack.Up(ctx, tccompose.Wait(true)); err != nil {
+		// Up is the readiness wait: no producer is attached yet and Stop removes the containers.
+		logs := result.Logs(ctx)
+		if opts.LogWriter != nil {
+			opts.LogWriter.Consumer(def.Name).Accept(testcontainers.Log{Content: []byte(logs)})
+		}
 		cleanupErr := result.Stop(context.Background())
-		return nil, fmt.Errorf("runtime: bringing up %s: %w", def, errors.Join(err, cleanupErr))
+		return nil, fmt.Errorf("runtime: bringing up %s: %w\nservice logs:\n%s",
+			def, errors.Join(err, cleanupErr), logs)
 	}
 
-	inst, err := composeInstance(ctx, def, spec, stack)
+	if opts.LogWriter != nil {
+		stops, err := attachComposeLogProducers(ctx, stack, result.Services(), opts.LogWriter)
+		result.stopLogProducers = stops
+		if err != nil {
+			cleanupErr := result.Stop(context.Background())
+			return nil, fmt.Errorf("runtime: attaching log capture for %s: %w", def, errors.Join(err, cleanupErr))
+		}
+	}
+
+	replicas := opts.Replicas
+	if replicas <= 0 {
+		replicas = 1
+	}
+	inst, err := composeInstance(ctx, def, spec, stack, opts.Ordinal, replicas, suffix)
 	if err != nil {
 		cleanupErr := result.Stop(context.Background())
 		return nil, errors.Join(err, cleanupErr)
@@ -151,6 +216,60 @@ func LaunchCompose(
 	keepStageDir = false
 
 	return result, nil
+}
+
+// attachComposeLogProducers streams every service's stdout/stderr into writer, tagged
+// with its service name. Compose services have no pre-creation log-consumer hook (unlike
+// a raw container's ContainerRequest.LogConsumerCfg — see container.go's buildRequest),
+// so this uses testcontainers' older FollowOutput/StartLogProducer API, the only
+// mechanism available for a container the compose module already created. Returns the
+// stop function for every service successfully attached, even when a later service
+// fails, so the caller can still release what succeeded.
+func attachComposeLogProducers(
+	ctx context.Context, stack tccompose.ComposeStack, services []string, writer *logcapture.Writer,
+) ([]func() error, error) {
+	stops := make([]func() error, 0, len(services))
+	for _, svc := range services {
+		container, err := stack.ServiceContainer(ctx, svc)
+		if err != nil {
+			return stops, fmt.Errorf("runtime: locating service %q for log capture: %w", svc, err)
+		}
+		container.FollowOutput(writer.Consumer(svc)) //nolint:staticcheck // no LogConsumerCfg hook exists for an already-created compose service container
+		if err := container.StartLogProducer(ctx); err != nil {
+			return stops, fmt.Errorf("runtime: starting log producer for service %q: %w", svc, err)
+		}
+		stops = append(stops, container.StopLogProducer)
+	}
+	return stops, nil
+}
+
+// launchComposeWithRetry retries a failed compose boot up to attempts times. Unlike the
+// raw-container retry path (launchWithRetry), a failed launch already tears itself down
+// and stages a fresh directory and stack identifier on its own next call, so a retry
+// needs nothing beyond calling launch again.
+func launchComposeWithRetry(
+	ctx context.Context, componentName string, attempts int,
+	launch func(context.Context) (*ComposeStack, error),
+) (*ComposeStack, error) {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		stack, err := launch(ctx)
+		if err == nil {
+			return stack, nil
+		}
+		lastErr = err
+		if attempt < attempts {
+			slog.Warn("compose stack boot failed; retrying with a fresh stack",
+				"component", componentName, "attempt", attempt, "of", attempts, "error", err)
+		}
+	}
+	return nil, lastErr
 }
 
 // composeWaitStrategy builds the readiness probe for the primary service.
@@ -178,13 +297,14 @@ func composeWaitStrategy(def *components.Definition) (wait.Strategy, error) {
 // composeInstance reads the mapped ports for each published endpoint.
 func composeInstance(
 	ctx context.Context, def *components.Definition, spec *components.ComposeSpec, stack tccompose.ComposeStack,
+	ordinal, replicas int, suffix string,
 ) (*components.Instance, error) {
 	containers := map[string]*testcontainers.DockerContainer{}
 	serviceOf := func(e components.Endpoint) string {
 		if e.Service != "" {
-			return e.Service
+			return e.Service + suffix
 		}
-		return spec.PrimaryService
+		return spec.PrimaryService + suffix
 	}
 
 	getContainer := func(svc string) (*testcontainers.DockerContainer, error) {
@@ -199,7 +319,7 @@ func composeInstance(
 		return c, nil
 	}
 
-	primary, err := getContainer(spec.PrimaryService)
+	primary, err := getContainer(spec.PrimaryService + suffix)
 	if err != nil {
 		return nil, err
 	}
@@ -223,10 +343,50 @@ func composeInstance(
 		mapped[e.Port] = int(p.Num())
 	}
 
-	return components.NewInstance(def, 0, 1, host, mapped)
+	return components.NewInstance(def, ordinal, replicas, host, mapped)
+}
+
+func applyInstanceSuffix(path, suffix string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("runtime: reading staged compose file %q: %w", path, err)
+	}
+	text := replaceDefaulted(string(content), EnvInstanceSuffix, suffix)
+	text = strings.ReplaceAll(text, "+EnvInstanceSuffix+", suffix)
+	return os.WriteFile(path, []byte(text), 0o644)
 }
 
 // stageComposeFiles materializes the compose file and its bind mounts in one directory.
+func absoluteRealPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
+}
+
+// containedSource resolves src and asserts it stays inside repoRoot. Both sides are resolved
+// so a symlinked checkout compares in the same namespace as the sources it holds.
+func containedSource(repoRoot, src string) (string, error) {
+	if strings.TrimSpace(repoRoot) == "" {
+		return src, nil
+	}
+	// Absolute first: EvalSymlinks leaves a relative path relative, and "." never prefixes
+	// the cleaned path of a file beneath it.
+	root, err := absoluteRealPath(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolving the repository root %q: %w", repoRoot, err)
+	}
+	resolved, err := absoluteRealPath(src)
+	if err != nil {
+		return "", fmt.Errorf("resolving %q: %w", src, err)
+	}
+	if resolved != root && !strings.HasPrefix(resolved, filepath.Clean(root)+string(filepath.Separator)) {
+		return "", fmt.Errorf("source %q resolves outside the repository", src)
+	}
+	return resolved, nil
+}
+
 func stageComposeFiles(
 	def *components.Definition, spec *components.ComposeSpec, repoRoot string, substitutions map[string]string,
 ) (string, error) {
@@ -262,6 +422,10 @@ func stageComposeFiles(
 		if !filepath.IsAbs(src) && repoRoot != "" {
 			src = filepath.Join(repoRoot, source)
 		}
+		src, err := containedSource(repoRoot, src)
+		if err != nil {
+			return fmt.Errorf("runtime: staging %s for %s: %w", source, def, err)
+		}
 		info, err := os.Stat(src)
 		if err != nil {
 			return fmt.Errorf("runtime: staging %s for %s: %w", source, def, err)
@@ -282,6 +446,15 @@ func stageComposeFiles(
 	// Resolve framework variables before compose parses the staged file.
 	if err := interpolateStagedFile(filepath.Join(dir, spec.StagingName()), substitutions); err != nil {
 		return "", err
+	}
+	for i, source := range spec.ComposeOverrideFiles {
+		name := spec.StagingNames()[i+1]
+		if err := copyIn(name, source); err != nil {
+			return "", err
+		}
+		if err := interpolateStagedFile(filepath.Join(dir, name), substitutions); err != nil {
+			return "", err
+		}
 	}
 	for name, source := range spec.StagedFiles {
 		if err := copyIn(name, source); err != nil {
@@ -403,6 +576,10 @@ func (c *ComposeStack) Stop(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
+	for _, stop := range c.stopLogProducers {
+		_ = stop()
+	}
+	c.stopLogProducers = nil
 	var err error
 	if c.stack != nil {
 		stack := c.stack
@@ -463,6 +640,44 @@ func (c *ComposeStack) Exec(ctx context.Context, service string, cmd []string) (
 	return out, nil
 }
 
+// CopyFileFromContainer reads one file out of a service's container.
+//
+// Used to read a component's own persisted state directly - an embedded SQLite database, for
+// instance - when no product API exposes it. This is a snapshot, not a live handle: the file is
+// fully read before this call returns, so a caller holds a copy from one instant, not a
+// connection to the container's own open file.
+func (c *ComposeStack) CopyFileFromContainer(ctx context.Context, service, path string) ([]byte, error) {
+	container, err := c.serviceContainer(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	reader, err := container.CopyFileFromContainer(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("runtime: copying %q from service %q: %w", path, service, err)
+	}
+	defer func() { _ = reader.Close() }()
+	data, err := readComponentDBFile(reader)
+	if err != nil {
+		return nil, fmt.Errorf("runtime: reading %q from service %q: %w", path, service, err)
+	}
+	return data, nil
+}
+
+func readComponentDBFile(reader io.Reader) ([]byte, error) {
+	limit := maxComponentDBFileBytes
+	if limit <= 0 {
+		limit = defaultMaxComponentDBFileBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("file exceeds the %d-byte limit", limit)
+	}
+	return data, nil
+}
+
 // Logs returns each service's log output, concatenated and labelled.
 func (c *ComposeStack) Logs(ctx context.Context) string {
 	if c == nil || c.stack == nil {
@@ -505,10 +720,7 @@ func containsService(services []string, name string) bool {
 }
 
 func (c *ComposeStack) services() []string {
-	if c.def != nil && c.def.Compose != nil {
-		return c.def.Compose.Services
-	}
-	return nil
+	return c.Services()
 }
 
 // StopService stops one service while leaving the rest of the stack running.
@@ -557,6 +769,7 @@ func (c *ComposeStack) RefreshPorts(ctx context.Context) error {
 		if e.Service != "" {
 			service = e.Service
 		}
+		service += c.suffix
 		container, err := c.stack.ServiceContainer(ctx, service)
 		if err != nil {
 			return fmt.Errorf("runtime: locating service %q while refreshing ports: %w", service, err)
@@ -589,7 +802,11 @@ func (c *ComposeStack) Services() []string {
 	if c == nil || c.def == nil || c.def.Compose == nil {
 		return nil
 	}
-	return append([]string(nil), c.def.Compose.Services...)
+	out := make([]string, len(c.def.Compose.Services))
+	for i, service := range c.def.Compose.Services {
+		out[i] = service + c.suffix
+	}
+	return out
 }
 
 // PrimaryService is the service whose ports back the component's endpoints.
@@ -597,7 +814,7 @@ func (c *ComposeStack) PrimaryService() string {
 	if c == nil || c.def == nil || c.def.Compose == nil {
 		return ""
 	}
-	return c.def.Compose.PrimaryService
+	return c.def.Compose.PrimaryService + c.suffix
 }
 
 // CoverageServices lists the services whose coverage artifacts a coverage run collects.
@@ -605,7 +822,17 @@ func (c *ComposeStack) CoverageServices() []components.CoverageService {
 	if c == nil || c.def == nil || c.def.Compose == nil {
 		return nil
 	}
-	return append([]components.CoverageService(nil), c.def.Compose.CoverageServices...)
+	out := make([]components.CoverageService, len(c.def.Compose.CoverageServices))
+	for i, service := range c.def.Compose.CoverageServices {
+		outputName := service.OutputName
+		if outputName != "" {
+			outputName += c.suffix
+		}
+		out[i] = components.CoverageService{
+			Name: service.Name + c.suffix, OutputName: outputName, Types: service.Types,
+		}
+	}
+	return out
 }
 
 // ServiceContainerID resolves a running service's container ID.

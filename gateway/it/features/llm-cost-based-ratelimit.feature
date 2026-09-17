@@ -36,8 +36,20 @@ Feature: LLM Cost-Based Rate Limiting
       kind: LlmProviderTemplate
       metadata:
         name: cbl-enforce-template
+
+
+        
       spec:
         displayName: CBL Enforce Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -125,6 +137,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-multiwin-template
       spec:
         displayName: CBL Multi-Window Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -212,6 +233,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-anthropic-template
       spec:
         displayName: CBL Anthropic Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -297,6 +327,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-headers-template
       spec:
         displayName: CBL Headers Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -368,6 +407,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-prov-a-template
       spec:
         displayName: CBL Provider A Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider template:
@@ -378,6 +426,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-prov-b-template
       spec:
         displayName: CBL Provider B Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
 
@@ -514,6 +571,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-zero-template
       spec:
         displayName: CBL Zero Cost Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -610,6 +676,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-reset-template
       spec:
         displayName: CBL Reset Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -703,6 +778,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-gemini-template
       spec:
         displayName: CBL Gemini Template
+        promptTokens:
+          location: payload
+          identifier: $.usageMetadata.promptTokenCount
+        completionTokens:
+          location: payload
+          identifier: $.usageMetadata.candidatesTokenCount
+        responseModel:
+          location: payload
+          identifier: $.modelVersion
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -792,6 +876,22 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-anthropic-geo-speed-template
       spec:
         displayName: CBL Anthropic Geo Speed Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        providerFields:
+          inferenceGeo:
+            location: payload
+            identifier: $.usage.inference_geo
+          speed:
+            location: payload
+            identifier: $.speed
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -876,6 +976,22 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-anthropic-cache1hr-template
       spec:
         displayName: CBL Anthropic Cache 1hr Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        cacheWriteTokens:
+          location: payload
+          identifier: $.usage.cache_creation.ephemeral_5m_input_tokens
+        cacheWrite1hTokens:
+          location: payload
+          identifier: $.usage.cache_creation.ephemeral_1h_input_tokens
+        cacheAccounting: additive
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -959,6 +1075,19 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-anthropic-websearch-template
       spec:
         displayName: CBL Anthropic Web Search Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        providerFields:
+          webSearchRequests:
+            location: payload
+            identifier: $.usage.server_tool_use.web_search_requests
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1043,6 +1172,18 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-gemini-cached-template
       spec:
         displayName: CBL Gemini Cached Template
+        promptTokens:
+          location: payload
+          identifier: $.usageMetadata.promptTokenCount
+        completionTokens:
+          location: payload
+          identifier: $.usageMetadata.candidatesTokenCount
+        responseModel:
+          location: payload
+          identifier: $.modelVersion
+        cachedTokens:
+          location: payload
+          identifier: $.usageMetadata.cachedContentTokenCount
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1127,6 +1268,18 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-gemini-thinking-template
       spec:
         displayName: CBL Gemini Thinking Template
+        promptTokens:
+          location: payload
+          identifier: $.usageMetadata.promptTokenCount
+        completionTokens:
+          location: payload
+          identifier: $.usageMetadata.candidatesTokenCount
+        responseModel:
+          location: payload
+          identifier: $.modelVersion
+        reasoningTokens:
+          location: payload
+          identifier: $.usageMetadata.thoughtsTokenCount
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1211,6 +1364,19 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-anthropic-cache-read-template
       spec:
         displayName: CBL Anthropic Cache Read Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        cachedTokens:
+          location: payload
+          identifier: $.usage.cache_read_input_tokens
+        cacheAccounting: additive
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1295,6 +1461,18 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-openai-cached-template
       spec:
         displayName: CBL OpenAI Cached Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        cachedTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens_details.cached_tokens
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1378,6 +1556,18 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-openai-flex-template
       spec:
         displayName: CBL OpenAI Flex Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        serviceTier:
+          location: payload
+          identifier: $.service_tier
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1461,6 +1651,18 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-openai-priority-template
       spec:
         displayName: CBL OpenAI Priority Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        serviceTier:
+          location: payload
+          identifier: $.service_tier
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1544,6 +1746,18 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-openai-batch-template
       spec:
         displayName: CBL OpenAI Batch Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        serviceTier:
+          location: payload
+          identifier: $.service_tier
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1627,6 +1841,18 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-openai-reasoning-template
       spec:
         displayName: CBL OpenAI Reasoning Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        reasoningTokens:
+          location: payload
+          identifier: $.usage.completion_tokens_details.reasoning_tokens
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1710,6 +1936,19 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-openai-web-search-template
       spec:
         displayName: CBL OpenAI Web Search Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
+        providerFields:
+          choices:
+            location: payload
+            identifier: $.choices
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1792,6 +2031,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-mistral-template
       spec:
         displayName: CBL Mistral Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1873,6 +2121,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-no-model-template
       spec:
         displayName: CBL No Model Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.prompt_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.completion_tokens
+        responseModel:
+          location: payload
+          identifier: $.model
       """
     Then the response status code should be 201
     When I create this LLM provider:
@@ -1959,6 +2216,15 @@ Feature: LLM Cost-Based Rate Limiting
         name: cbl-bedrock-template
       spec:
         displayName: CBL Bedrock Template
+        promptTokens:
+          location: payload
+          identifier: $.usage.inputTokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.outputTokens
+        responseModel:
+          location: pathParam
+          identifier: model/([A-Za-z0-9.:-]+)/
       """
     Then the response status code should be 201
 

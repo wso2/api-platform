@@ -30,10 +30,23 @@ import (
 const EnvImageAPIPortal = "AP_IMAGE"
 
 const svcAPIPortal = "api-portal"
+const svcAPIPortalOtherOrg = "api-portal-other-org"
 
 // APIPortal returns the API Portal component definition.
 func APIPortal() *components.Definition {
+	return apiPortalDefinition(svcAPIPortal, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "default", "Default", "portal_id", svcAPIPortal)
+}
+
+// APIPortalOtherOrg returns an API Portal instance pinned to another organization.
+func APIPortalOtherOrg() *components.Definition {
+	return apiPortalDefinition(svcAPIPortalOtherOrg, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "other-org", "Other Org", "other_portal_id", svcAPIPortal, "tests/framework/core/catalog/apiportal/docker-compose.other-org.yaml")
+}
+
+func apiPortalDefinition(name, composeFile, organization, displayName, portalID, serviceName string, overrides ...string) *components.Definition {
 	env := map[string]string{EnvImageAPIPortal: shared.Image(EnvImageAPIPortal, shared.APIPortalImage()).Ref}
+	env["APIP_AP_ORGANIZATION_HANDLE"] = organization
+	env["APIP_AP_ORGANIZATION_DISPLAY_NAME"] = displayName
+	env["APIP_AP_ORGANIZATION_PORTAL_ID"] = portalID
 	for key, value := range portalSecurityEnv() {
 		env[key] = value
 	}
@@ -41,18 +54,22 @@ func APIPortal() *components.Definition {
 		env[key] = value
 	}
 	return &components.Definition{
-		Name:         svcAPIPortal,
-		Alias:        svcAPIPortal,
+		Name:         name,
+		Alias:        name,
 		AliasIsFixed: true,
 
 		Compose: &components.ComposeSpec{
-			ComposeFile: "tests/framework/core/catalog/apiportal/docker-compose.yaml",
+			ComposeFile:          composeFile,
+			ComposeOverrideFiles: overrides,
 
-			Env:            env,
-			PrimaryService: svcAPIPortal,
-			Services:       []string{svcAPIPortal},
+			Env: env,
+			StagedFiles: map[string]string{
+				"role-to-scope-mapping.yaml": "tests/framework/core/catalog/apiportal/resources/api-portal-auth-roles.yaml",
+			},
+			PrimaryService: serviceName,
+			Services:       []string{serviceName},
 			CoverageServices: []components.CoverageService{{
-				Name: svcAPIPortal, Types: []string{"node-v8"},
+				Name: serviceName, OutputName: name, Types: []string{"node-v8"},
 			}},
 			GeneratedFiles: portalCryptoFiles(),
 		},
@@ -83,7 +100,7 @@ func APIPortal() *components.Definition {
 
 		DependsOn: []string{"platform-api"},
 
-		Limits: components.ResourceLimits{CPUs: 1, MemoryMB: 1000},
+		Limits: components.ResourceLimits{CPUs: 1.5, MemoryMB: 2048},
 	}
 }
 

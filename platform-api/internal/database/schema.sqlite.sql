@@ -141,24 +141,28 @@ CREATE TABLE IF NOT EXISTS artifact_subscription_plans (
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
 
--- API Portals table (stub — owned by another team, not shipped yet).
--- Confirmed shape per DB_design_refined.md §3. Delete this block (all 3 dialect
--- files) once the owning team's real migration ships.
+-- API Portals table (registration of an API Portal instance for an organization).
+-- Positioned here (before api_publications) rather than further down with the
+-- other artifact-adjacent tables, because api_publications' composite FK to
+-- this table requires it to already exist — kept consistent with postgres/
+-- sqlserver even though SQLite itself tolerates forward references.
+-- UNIQUE(organization_uuid, uuid) is that composite FK's target;
+-- api_portals' own single-column PK doesn't satisfy a composite FK.
 CREATE TABLE IF NOT EXISTS api_portals (
-    uuid                VARCHAR(40)  PRIMARY KEY,
-    organization_uuid   VARCHAR(40)  NOT NULL,
-    handle              VARCHAR(40)  NOT NULL,
-    display_name        VARCHAR(255) NOT NULL,
-    description         VARCHAR(1023),
-    url                 VARCHAR(500),
-    workflow_status     VARCHAR(20)  NOT NULL DEFAULT 'pending',  -- pending | active | failed
-    auth_type           VARCHAR(20)  NOT NULL,                    -- local | oauth2
-    auth_configuration  BLOB         NOT NULL,
-    metadata            BLOB         NOT NULL,
-    created_by          VARCHAR(200),
-    created_at          DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    updated_by          VARCHAR(200),
-    updated_at          DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    handle            VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
+    description       VARCHAR(1023),
+    url               VARCHAR(500),
+    status            VARCHAR(20)  NOT NULL DEFAULT 'pending',
+    internal_auth_key BLOB         NOT NULL,
+    metadata          BLOB,
+    data_version      VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE (organization_uuid, handle),
     UNIQUE (organization_uuid, uuid)
@@ -664,6 +668,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_portals_org ON api_portals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);

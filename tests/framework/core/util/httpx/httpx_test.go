@@ -19,6 +19,7 @@
 package httpx
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"net"
@@ -230,6 +231,19 @@ func TestNegativeRetryCountsStillIssueOneRequest(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 }
 
+func TestClientRejectsOversizedResponseBodies(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte{'x'}, int(maxResponseBodyBytes)+1))
+	}))
+	defer srv.Close()
+
+	response, err := NewClient(Options{Timeout: 5 * time.Second}).Do(
+		context.Background(), Request{URL: srv.URL}, 0, 0)
+	require.Nil(t, response)
+	require.ErrorContains(t, err, "response body")
+	require.ErrorContains(t, err, "exceeds the 10485760-byte limit")
+}
+
 func TestNewFunnelClampsNegativeRetries(t *testing.T) {
 	funnel := NewFunnel(NewClient(Options{}), -1, time.Second)
 	require.Equal(t, 0, funnel.maxRetries)
@@ -253,12 +267,20 @@ func TestTLSVerificationIsSecureByDefaultAndCanBeOptedOutLocally(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.StatusCode)
 }
 
-func TestNewClientUsesExplicitTLSCurvePreferences(t *testing.T) {
+func TestNewClientUsesPQCFirstTLSCurveDefaults(t *testing.T) {
 	client := NewClient(Options{})
 	transport, ok := client.http.Transport.(*http.Transport)
 	require.True(t, ok)
 	require.Equal(t,
-		[]tls.CurveID{tls.X25519MLKEM768, tls.CurveP256, tls.CurveP384},
+		[]tls.CurveID{
+			tls.X25519MLKEM768,
+			secP256r1MLKEM768,
+			secP384r1MLKEM1024,
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+			tls.CurveP521,
+		},
 		transport.TLSClientConfig.CurvePreferences)
 	require.False(t, transport.TLSClientConfig.InsecureSkipVerify)
 
@@ -266,6 +288,32 @@ func TestNewClientUsesExplicitTLSCurvePreferences(t *testing.T) {
 	insecureTransport, ok := insecureClient.http.Transport.(*http.Transport)
 	require.True(t, ok)
 	require.True(t, insecureTransport.TLSClientConfig.InsecureSkipVerify)
+}
+
+func TestNewClientClonesAndNormalizesSuppliedTLSConfig(t *testing.T) {
+	configured := &tls.Config{
+		ServerName:       "example.test",
+		CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP256},
+	}
+	originalCurves := append([]tls.CurveID(nil), configured.CurvePreferences...)
+
+	client := NewClient(Options{TLSClientConfig: configured})
+	transport, ok := client.http.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.NotSame(t, configured, transport.TLSClientConfig)
+	require.Equal(t, "example.test", transport.TLSClientConfig.ServerName)
+	require.Equal(t,
+		[]tls.CurveID{
+			tls.X25519MLKEM768,
+			secP256r1MLKEM768,
+			secP384r1MLKEM1024,
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+			tls.CurveP521,
+		},
+		transport.TLSClientConfig.CurvePreferences)
+	require.Equal(t, originalCurves, configured.CurvePreferences)
 }
 
 func TestRedirectsAreNotFollowed(t *testing.T) {

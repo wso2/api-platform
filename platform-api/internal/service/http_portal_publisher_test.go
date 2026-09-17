@@ -94,7 +94,7 @@ func TestHTTPPortalPublisher_CreatesWhenNotFound(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 
 	if err := p.Publish(context.Background(), portal, "my-api", pub, nil); err != nil {
@@ -131,7 +131,7 @@ func TestHTTPPortalPublisher_UpdatesWhenFound(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 
 	if err := p.Publish(context.Background(), portal, "my-api", pub, nil); err != nil {
@@ -155,7 +155,7 @@ func TestHTTPPortalPublisher_ConflictMapped(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 
 	err := p.Publish(context.Background(), portal, "my-api", pub, nil)
@@ -184,7 +184,7 @@ func TestHTTPPortalPublisher_NonConflictClientErrorMapped(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 
 	err := p.Publish(context.Background(), portal, "my-api", pub, nil)
@@ -206,7 +206,7 @@ func TestHTTPPortalPublisher_Unpublish_ConflictReasonFromKnownCode(t *testing.T)
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 
 	err := p.Unpublish(context.Background(), portal, "my-api")
 	var conflict *PortalConflictError
@@ -234,7 +234,7 @@ func TestHTTPPortalPublisher_ConflictReasonFallsBackForUnknownCode(t *testing.T)
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 
 	err := p.Publish(context.Background(), portal, "my-api", pub, nil)
@@ -261,7 +261,7 @@ func TestHTTPPortalPublisher_UnavailableOnServerError(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 
 	err := p.Publish(context.Background(), portal, "my-api", pub, nil)
@@ -309,7 +309,7 @@ func TestHTTPPortalPublisher_SendsDefinitionContent(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 	definition := &model.PublicationContent{
 		FileName:    "definition.yaml",
@@ -368,7 +368,7 @@ func TestHTTPPortalPublisher_SubscriptionPlansAsPlainStringArray(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 	pub := &model.Publication{
 		DisplayName:         "X",
 		Version:             "1.0",
@@ -408,7 +408,7 @@ func TestHTTPPortalPublisher_Unpublish_DeletesListing(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 
 	if err := p.Unpublish(context.Background(), portal, "my-api"); err != nil {
 		t.Fatalf("Unpublish: %v", err)
@@ -431,7 +431,7 @@ func TestHTTPPortalPublisher_Unpublish_NotFoundIsSuccess(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 
 	if err := p.Unpublish(context.Background(), portal, "my-api"); err != nil {
 		t.Fatalf("want a 404 treated as success, got %v", err)
@@ -447,7 +447,7 @@ func TestHTTPPortalPublisher_Unpublish_ConflictMapped(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 
 	err := p.Unpublish(context.Background(), portal, "my-api")
 	var conflict *PortalConflictError
@@ -466,7 +466,7 @@ func TestHTTPPortalPublisher_Unpublish_UnavailableOnServerError(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	portal := &model.PublicationAPIPortal{URL: srv.URL}
+	portal := &model.APIPortal{URL: srv.URL}
 
 	err := p.Unpublish(context.Background(), portal, "my-api")
 	if err == nil {

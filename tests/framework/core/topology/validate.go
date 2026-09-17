@@ -67,7 +67,7 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	}
 	seenBlock := map[string]bool{}
 	partitionOwner := map[string]string{}
-	featureOwners := map[string]map[string]bool{}
+	featureOwners := map[string]map[string]featureOwner{}
 
 	for i := range r.Blocks {
 		b := &r.Blocks[i]
@@ -97,7 +97,7 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	}
 
 	for feature, owners := range featureOwners {
-		if len(owners) > 1 {
+		if len(owners) > 1 && !allowDatabaseVariantFeatureOwners(owners) {
 			names := make([]string, 0, len(owners))
 			for owner := range owners {
 				names = append(names, owner)
@@ -109,6 +109,53 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	}
 
 	return errs.err()
+}
+
+type featureOwner struct {
+	runner string
+	// Every matrix variant of the source block, not just the last one resolved.
+	databases map[components.DBType]bool
+}
+
+func platformAPIDatabase(b *ResolvedBlock) components.DBType {
+	if b == nil {
+		return ""
+	}
+	for _, component := range b.Components {
+		if component.Def != nil && component.Def.Name == "platform-api" {
+			return component.DB
+		}
+	}
+	return ""
+}
+
+// allowDatabaseVariantFeatureOwners permits a feature to be intentionally repeated by
+// same-named runners whose blocks exercise distinct platform-api database variants. Matrix
+// expansion already collapses variants within one source block; this exception covers separate
+// blocks used when two components must vary together, since a block supports only one matrix.
+func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
+	if len(owners) < 2 {
+		return false
+	}
+	var runnerName string
+	seenDB := map[components.DBType]bool{}
+	for _, owner := range owners {
+		if runnerName == "" {
+			runnerName = owner.runner
+		} else if runnerName != owner.runner {
+			return false
+		}
+		if len(owner.databases) == 0 {
+			return false
+		}
+		for db := range owner.databases {
+			if !db.Valid() || seenDB[db] {
+				return false
+			}
+			seenDB[db] = true
+		}
+	}
+	return true
 }
 
 func validateBlockComponents(b *ResolvedBlock) error {
@@ -159,16 +206,10 @@ func validateBlockComponents(b *ResolvedBlock) error {
 			}
 		}
 
-		if c.Def.IsCompose() && c.Replicas > 1 {
-			errs.addf("block %q: compose component %q cannot have %d replicas",
-				b.Name, c.Def.Name, c.Replicas)
-		}
-
 		if c.Def.IsExternal() && c.Replicas > 1 {
 			errs.addf("block %q: external component %q cannot have replicas (%d requested)",
 				b.Name, c.Def.Name, c.Replicas)
 		}
-
 		if c.Replicas > 1 && c.Def.DB != nil && !c.Def.DB.Owns() {
 			errs.addf("block %q: component %q shares another component's store and cannot be replicated",
 				b.Name, c.Def.Name)
@@ -178,7 +219,7 @@ func validateBlockComponents(b *ResolvedBlock) error {
 	return errs.err()
 }
 
-func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]bool) error {
+func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]featureOwner) error {
 	var errs errorList
 
 	if len(b.Runners) == 0 {
@@ -215,9 +256,14 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 			seenFeature[f] = true
 			owner := b.Source + "/" + run.Name
 			if featureOwners[f] == nil {
-				featureOwners[f] = map[string]bool{}
+				featureOwners[f] = map[string]featureOwner{}
 			}
-			featureOwners[f][owner] = true
+			entry, ok := featureOwners[f][owner]
+			if !ok {
+				entry = featureOwner{runner: run.Name, databases: map[components.DBType]bool{}}
+			}
+			entry.databases[platformAPIDatabase(b)] = true
+			featureOwners[f][owner] = entry
 		}
 	}
 

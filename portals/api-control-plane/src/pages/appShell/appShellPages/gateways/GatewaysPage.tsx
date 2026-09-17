@@ -31,7 +31,6 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {
-  Layers,
   LayoutGrid,
   List,
   Network,
@@ -259,7 +258,7 @@ export function GatewaysPage() {
             </Grid>
             <Grid size={{ md: 3, xs: 6 }}>
               <StatCard
-                icon={<Layers size={24} />}
+                icon={<Shrub size={24} />}
                 iconColor="info"
                 label={intl.formatMessage(messages.statEnvironments)}
                 value={environmentCount}

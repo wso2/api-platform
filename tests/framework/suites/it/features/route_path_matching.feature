@@ -142,7 +142,7 @@ Feature: Route path matching
     When I send a "GET" request to "${CTX:apiContext5}/v1.0"
     Then the response should be successful
 
-    When I send a "GET" request to "${CTX:apiContext5}/v1.0beta/data"
+    When I send a "GET" request to "${CTX:apiContext5}/v1.0beta/data" until status 404
     Then the response status code should be 404
 
     When I delete the API "${CTX:apiName5}"

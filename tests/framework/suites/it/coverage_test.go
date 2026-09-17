@@ -63,8 +63,8 @@ func loadSuite(t *testing.T) *topology.Resolved {
 // "this block deliberately runs one engine" from "someone deleted the matrix". This test can:
 // a deliberate exception goes in singleEngineBlocks below, with a reason.
 func TestEveryBlockSweepsEveryEngine(t *testing.T) {
-	// Blocks that deliberately do NOT sweep. Empty today. Add a block here only with a reason
-	// it genuinely cannot run on every engine — not to silence a failure.
+	// Blocks that deliberately do NOT sweep. Add a block here only with a reason it genuinely
+	// cannot run on every engine — not to silence a failure.
 	singleEngineBlocks := map[string]string{}
 
 	resolved := loadSuite(t)

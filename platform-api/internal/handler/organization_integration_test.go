@@ -15,15 +15,13 @@
  *
  */
 
-// Tests GET /api/v0.9/organizations: membership-filtered listing for ordinary
-// callers, list-all for callers with the ap:organization:manage scope, and
-// the lazy membership heal that makes a pre-existing organization (e.g. one
-// seeded before the caller ever registered) visible on first list.
+// Tests GET /api/v0.9/organizations: listing is always scoped to the
+// caller's user_organization_mappings rows, plus the membership heal on
+// first list.
 
 package handler
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"log/slog"
@@ -86,7 +84,7 @@ func setupOrganizationHandlerTestEnv(t *testing.T) (http.Handler, *database.DB, 
 		slog.Default(),
 	)
 
-	h := NewOrganizationHandler(orgService, identityService, middleware.ValidationModeScope, slog.Default())
+	h := NewOrganizationHandler(orgService, identityService, slog.Default())
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -104,35 +102,26 @@ type organizationListResponse struct {
 	} `json:"pagination"`
 }
 
-func TestOrganizationHandler_ListOrganizations_MembershipFiltered(t *testing.T) {
+func TestOrganizationHandler_ListOrganizations_ReturnsOnlyDBMembership(t *testing.T) {
 	r, db, cleanup := setupOrganizationHandlerTestEnv(t)
 	t.Cleanup(cleanup)
 
-	// A pre-existing org with no membership rows (mirrors the file-based
-	// seeded org, or any org created before this user ever interacted with it).
 	orgRepo := repository.NewOrganizationRepo(db)
-	if err := orgRepo.CreateOrganization(&model.Organization{ID: "org-other", Handle: "other-org", Name: "Other Org", Region: "us"}); err != nil {
-		t.Fatalf("failed to seed org-other: %v", err)
+	for _, h := range []string{"org-a", "org-b"} {
+		if err := orgRepo.CreateOrganization(&model.Organization{ID: "id-" + h, Handle: h, Name: h, Region: "us"}); err != nil {
+			t.Fatalf("failed to seed %s: %v", h, err)
+		}
 	}
 
-	// Caller registers their own org via the handler.
-	registerBody, err := json.Marshal(map[string]any{
-		"displayName": "My Org",
-		"region":      "us",
-	})
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	userUUID, err := identityService.ToInternalUUID("sub-member")
 	if err != nil {
-		t.Fatalf("failed to marshal register body: %v", err)
+		t.Fatalf("ToInternalUUID failed: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/v0.9/organizations", bytes.NewReader(registerBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Test-User", "sub-member")
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("RegisterOrganization: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	if err := repository.NewUserOrganizationMappingRepo(db).AddMembership(userUUID, "id-org-a"); err != nil {
+		t.Fatalf("failed to seed membership: %v", err)
 	}
 
-	// Listing as the same non-admin caller must show only their own org, not org-other.
 	listReq := httptest.NewRequest(http.MethodGet, "/api/v0.9/organizations", nil)
 	listReq.Header.Set("X-Test-User", "sub-member")
 	listRec := httptest.NewRecorder()
@@ -146,28 +135,25 @@ func TestOrganizationHandler_ListOrganizations_MembershipFiltered(t *testing.T) 
 		t.Fatalf("failed to decode response: %v", err)
 	}
 	if body.Count != 1 || body.Pagination.Total != 1 {
-		t.Fatalf("expected exactly 1 visible org for a non-admin member, got count=%d total=%d body=%s",
+		t.Fatalf("expected exactly 1 visible org falling back to DB membership, got count=%d total=%d body=%s",
 			body.Count, body.Pagination.Total, listRec.Body.String())
 	}
-	if len(body.List) != 1 || body.List[0].Id == "other-org" {
-		t.Fatalf("expected the caller's own org, not org-other: %+v", body.List)
+	if len(body.List) != 1 || body.List[0].Id != "org-a" {
+		t.Fatalf("expected only org-a (the caller's DB membership), got %+v", body.List)
 	}
 }
 
-func TestOrganizationHandler_ListOrganizations_ManageScopeSeesAll(t *testing.T) {
+func TestOrganizationHandler_ListOrganizations_NoMembershipYieldsEmptyList(t *testing.T) {
 	r, db, cleanup := setupOrganizationHandlerTestEnv(t)
 	t.Cleanup(cleanup)
 
 	orgRepo := repository.NewOrganizationRepo(db)
-	for _, id := range []string{"org-a", "org-b", "org-c"} {
-		if err := orgRepo.CreateOrganization(&model.Organization{ID: id, Handle: id, Name: id, Region: "us"}); err != nil {
-			t.Fatalf("failed to seed %s: %v", id, err)
-		}
+	if err := orgRepo.CreateOrganization(&model.Organization{ID: "id-org-a", Handle: "org-a", Name: "org-a", Region: "us"}); err != nil {
+		t.Fatalf("failed to seed org-a: %v", err)
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/api/v0.9/organizations", nil)
-	listReq.Header.Set("X-Test-User", "sub-admin")
-	listReq.Header.Set("X-Test-Scope", "ap:organization:manage")
+	listReq.Header.Set("X-Test-User", "sub-member")
 	listRec := httptest.NewRecorder()
 	r.ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {
@@ -178,8 +164,8 @@ func TestOrganizationHandler_ListOrganizations_ManageScopeSeesAll(t *testing.T) 
 	if err := json.Unmarshal(listRec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if body.Count != 3 || body.Pagination.Total != 3 {
-		t.Fatalf("expected all 3 orgs visible to an ap:organization:manage caller, got count=%d total=%d body=%s",
+	if body.Count != 0 || body.Pagination.Total != 0 {
+		t.Fatalf("expected zero visible orgs with no DB membership present, got count=%d total=%d body=%s",
 			body.Count, body.Pagination.Total, listRec.Body.String())
 	}
 }
@@ -193,11 +179,10 @@ func TestOrganizationHandler_ListOrganizations_HealsMembershipForResolvedOrg(t *
 		t.Fatalf("failed to seed org-seeded: %v", err)
 	}
 
-	// Simulate OrganizationResolverMiddleware having resolved the caller's
-	// token org claim to this pre-existing org's platform UUID.
 	listReq := httptest.NewRequest(http.MethodGet, "/api/v0.9/organizations", nil)
 	listReq.Header.Set("X-Test-User", "sub-seeded-caller")
 	listReq.Header.Set("X-Test-Org", "org-seeded")
+	listReq.Header.Set("X-Test-Org-Handle", "seeded-org")
 	listRec := httptest.NewRecorder()
 	r.ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {

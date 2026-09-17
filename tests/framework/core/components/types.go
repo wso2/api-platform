@@ -21,6 +21,7 @@ package components
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -332,7 +333,7 @@ type Definition struct {
 
 	// Provisions returns environment values for dependent components after this component
 	// becomes ready.
-	Provisions func(ctx context.Context, inst *Instance) (map[string]string, error)
+	Provisions func(ctx context.Context, inst *Instance, dependent string) (map[string]string, error)
 
 	// DependsOn lists components that must be ready before this one starts.
 	DependsOn []string
@@ -366,6 +367,34 @@ func (d *Definition) WithImageVersion(version string) *Definition {
 		out.Compose = &compose
 	}
 	return &out
+}
+
+// WithStagedFiles returns a copy with block-scoped sources for declared staged files.
+func (d *Definition) WithStagedFiles(overrides map[string]string) (*Definition, error) {
+	if d == nil || d.Compose == nil {
+		return d, fmt.Errorf("component has no compose resources")
+	}
+	compose := *d.Compose
+	compose.StagedFiles = make(map[string]string, len(d.Compose.StagedFiles))
+	for target, source := range d.Compose.StagedFiles {
+		compose.StagedFiles[target] = source
+	}
+	for target, source := range overrides {
+		if _, ok := compose.StagedFiles[target]; !ok {
+			return nil, fmt.Errorf("staged file %q is not declared by the component", target)
+		}
+		if strings.TrimSpace(source) == "" || filepath.IsAbs(source) {
+			return nil, fmt.Errorf("staged file %q source must be a non-empty repository-relative path", target)
+		}
+		clean := filepath.Clean(source)
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("staged file %q source escapes the repository", target)
+		}
+		compose.StagedFiles[target] = source
+	}
+	out := *d
+	out.Compose = &compose
+	return &out, nil
 }
 
 // Endpoint returns the named endpoint.

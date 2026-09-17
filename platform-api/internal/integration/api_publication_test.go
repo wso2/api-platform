@@ -39,7 +39,7 @@ import (
 func newPublicationTestService(it *itDB) *service.PublicationService {
 	return service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
-		repository.NewApiPortalRepo(it.db),
+		repository.NewAPIPortalRepo(it.db),
 		repository.NewApiDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
@@ -206,8 +206,8 @@ func TestPublicationDraft_NotFoundCases(t *testing.T) {
 	g := seedOrgGraph(t, it)
 	svc := newPublicationTestService(it)
 
-	if _, err := svc.GetDraft("rest-api", apiHandleFor(g), "no-such-portal", g.org); !apperror.APIPublicationAPIPortalNotFound.Is(err) {
-		t.Fatalf("[%s] want APIPublicationAPIPortalNotFound for an unknown portal handle, got %v", it.driver, err)
+	if _, err := svc.GetDraft("rest-api", apiHandleFor(g), "no-such-portal", g.org); !apperror.APIPortalNotFound.Is(err) {
+		t.Fatalf("[%s] want APIPortalNotFound for an unknown portal handle, got %v", it.driver, err)
 	}
 	if _, err := svc.GetDraft("rest-api", "no-such-api", portalHandleFor(g), g.org); !apperror.APIPublicationAPINotFound.Is(err) {
 		t.Fatalf("[%s] want APIPublicationAPINotFound for an unknown API handle, got %v", it.driver, err)
@@ -543,11 +543,11 @@ func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 // subscriptions/API keys attached to the listing.
 type unpublishConflictPublisher struct{}
 
-func (unpublishConflictPublisher) Publish(_ context.Context, _ *model.PublicationAPIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (unpublishConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
 }
 
-func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.PublicationAPIPortal, _ string) error {
+func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
 	return &service.PortalConflictError{Message: "active consumers still attached"}
 }
 
@@ -560,7 +560,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 	g := seedOrgGraph(t, it)
 	svc := service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
-		repository.NewApiPortalRepo(it.db),
+		repository.NewAPIPortalRepo(it.db),
 		repository.NewApiDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
@@ -600,11 +600,11 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 // portal's response names that known error code.
 type unpublishSubscriptionConflictPublisher struct{}
 
-func (unpublishSubscriptionConflictPublisher) Publish(_ context.Context, _ *model.PublicationAPIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (unpublishSubscriptionConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
 }
 
-func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *model.PublicationAPIPortal, _ string) error {
+func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
 	return &service.PortalConflictError{
 		Message: "the API Portal rejected removal of this listing (status 409)",
 		Reason:  "active subscriptions are removed",
@@ -620,7 +620,7 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 	g := seedOrgGraph(t, it)
 	svc := service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
-		repository.NewApiPortalRepo(it.db),
+		repository.NewAPIPortalRepo(it.db),
 		repository.NewApiDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),

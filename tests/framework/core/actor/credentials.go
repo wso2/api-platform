@@ -38,3 +38,13 @@ func Consumer() Credentials {
 func Developer() Credentials {
 	return Credentials{Username: "developer", Password: "developer"}
 }
+
+// Publisher returns the suite publisher's credentials.
+func Publisher() Credentials {
+	return Credentials{Username: "publisher", Password: "publisher"}
+}
+
+// Narrow returns the deliberately read-only actor used to distinguish scope and role authorization.
+func Narrow() Credentials {
+	return Credentials{Username: "narrow", Password: "narrow"}
+}

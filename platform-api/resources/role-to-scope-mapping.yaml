@@ -80,6 +80,7 @@ roles:
       # Administrative access to every user's API keys, not just the caller's.
       - ap:api_key:all:manage
       - ap:api_portal:draft:manage
+      - ap:api_portal:manage
       - ap:api_portal:publication:read
       - ap:api_portal:rest_api:manage
       - ap:api_publication:read
@@ -133,6 +134,7 @@ roles:
       - ap:subscription:read
       - ap:secret:read
       - ap:api_key:read
+      - ap:api_portal:manage
       - ap:api_portal:publication:read
       - ap:api_publication:read
       # - ap:websub_api:read   # event-gateway build only
@@ -184,6 +186,7 @@ roles:
       - ap:api_key:read
       - ap:api_portal:draft:manage
       - ap:api_portal:publication:read
+      - ap:api_portal:read
       - ap:api_portal:rest_api:manage
       - ap:api_publication:read
       # - ap:websub_api:manage   # event-gateway build only
@@ -268,6 +271,7 @@ roles:
       - ap:api_key:read
       - ap:api_portal:draft:read
       - ap:api_portal:publication:read
+      - ap:api_portal:read
       - ap:api_publication:read
       # - ap:websub_api:read   # event-gateway build only
       # - ap:websub_api:deployment:read   # event-gateway build only

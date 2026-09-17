@@ -1,0 +1,2 @@
+azurecontentsafety_endpoint = "http://testbench:3005"
+azurecontentsafety_key = "test-subscription-key"

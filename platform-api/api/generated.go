@@ -395,6 +395,18 @@ const (
 	SortOrderQDesc SortOrderQ = "desc"
 )
 
+// Defines values for ListApiPortalsParamsSortBy.
+const (
+	ListApiPortalsParamsSortByCreatedAt ListApiPortalsParamsSortBy = "createdAt"
+	ListApiPortalsParamsSortByName      ListApiPortalsParamsSortBy = "name"
+)
+
+// Defines values for ListApiPortalsParamsSortOrder.
+const (
+	ListApiPortalsParamsSortOrderAsc  ListApiPortalsParamsSortOrder = "asc"
+	ListApiPortalsParamsSortOrderDesc ListApiPortalsParamsSortOrder = "desc"
+)
+
 // Defines values for ListApiPublicationsParamsSortBy.
 const (
 	ListApiPublicationsParamsSortByCreatedAt ListApiPublicationsParamsSortBy = "createdAt"
@@ -482,14 +494,14 @@ const (
 
 // Defines values for ListRESTAPIsParamsSortBy.
 const (
-	ListRESTAPIsParamsSortByCreatedAt ListRESTAPIsParamsSortBy = "createdAt"
-	ListRESTAPIsParamsSortByName      ListRESTAPIsParamsSortBy = "name"
+	CreatedAt ListRESTAPIsParamsSortBy = "createdAt"
+	Name      ListRESTAPIsParamsSortBy = "name"
 )
 
 // Defines values for ListRESTAPIsParamsSortOrder.
 const (
-	ListRESTAPIsParamsSortOrderAsc  ListRESTAPIsParamsSortOrder = "asc"
-	ListRESTAPIsParamsSortOrderDesc ListRESTAPIsParamsSortOrder = "desc"
+	Asc  ListRESTAPIsParamsSortOrder = "asc"
+	Desc ListRESTAPIsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
@@ -593,6 +605,49 @@ type AddApplicationAssociationsRequest struct {
 type AddGatewayToRESTAPIRequest struct {
 	// GatewayId Handle (URL-friendly slug) of the gateway to associate with the REST API
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// ApiPortalListItem Lightweight projection returned in collection responses (excludes the metadata blob).
+type ApiPortalListItem struct {
+	CreatedAt   time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+	Description *string   `json:"description" yaml:"description"`
+	Handle      string    `binding:"required" json:"handle" yaml:"handle"`
+	Id          string    `binding:"required" json:"id" yaml:"id"`
+	Name        string    `binding:"required" json:"name" yaml:"name"`
+	Url         string    `binding:"required" json:"url" yaml:"url"`
+}
+
+// ApiPortalListResponse defines model for ApiPortalListResponse.
+type ApiPortalListResponse struct {
+	// Count Number of items in the current response page.
+	Count      int                 `binding:"required" json:"count" yaml:"count"`
+	List       []ApiPortalListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination          `json:"pagination" yaml:"pagination"`
+}
+
+// ApiPortalMetadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+type ApiPortalMetadata map[string]interface{}
+
+// ApiPortalResponse defines model for ApiPortalResponse.
+type ApiPortalResponse struct {
+	CreatedAt   *time.Time `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Description *string    `json:"description" yaml:"description"`
+
+	// Handle URL-friendly slug. Immutable after creation. Equal to `id`.
+	Handle *string `binding:"required" json:"handle,omitempty" yaml:"handle,omitempty"`
+
+	// Id Handle (URL-friendly slug) of the API Portal, primary identifier.
+	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+
+	// Name Display name.
+	Name      string     `binding:"required" json:"name" yaml:"name"`
+	UpdatedAt *time.Time `binding:"required" json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Url Public URL of the API Portal. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
 }
 
 // Application defines model for Application.
@@ -819,6 +874,24 @@ type CreateAPIKeyResponse struct {
 
 // CreateAPIKeyResponseStatus Status of the operation
 type CreateAPIKeyResponseStatus string
+
+// CreateApiPortalRequest defines model for CreateApiPortalRequest.
+type CreateApiPortalRequest struct {
+	Description *string `json:"description" yaml:"description"`
+
+	// Handle URL-friendly slug. Must be unique within the org. Immutable after creation.
+	Handle string `binding:"required" json:"handle" yaml:"handle"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     string             `binding:"required" json:"name" yaml:"name"`
+
+	// SharedKey The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on outbound publishing calls. The portal side stores only the sha256 hash of this value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here; never returned on any read.
+	SharedKey *string `binding:"required" json:"sharedKey,omitempty" yaml:"sharedKey,omitempty"`
+
+	// Url Public HTTPS URL of the API Portal to register. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
+}
 
 // CreateApplicationRequest Request body for creating an application.
 type CreateApplicationRequest struct {
@@ -1127,11 +1200,13 @@ type DeployRequest struct {
 	// - `current` — render the artifact from the definition as it stands now.
 	// - `build` — deploy a build prepared earlier, named by `buildId`.
 	//
-	// REST API deployments accept only these two and always run a build: `current`
-	// stores what it renders as one, so a running deployment is always traceable to
-	// a stored snapshot. MCP proxy, LLM and event API deployments accept a
-	// `deploymentId` here as well, to promote that deployment by reusing its
-	// rendered artifact.
+	// These are the only two values, for REST APIs, MCP proxies, LLM providers and
+	// LLM proxies alike. Every deployment runs a build: `current` stores what it
+	// renders as one, so a running deployment is always traceable to a stored
+	// snapshot, and promoting carries that snapshot rather than re-rendering it.
+	//
+	// A `deploymentId` is no longer accepted here — see the note on this
+	// operation.
 	Base string `binding:"required" json:"base" yaml:"base"`
 
 	// BuildId The build to deploy, such as `2026-01-31-2`. Required when `base` is `build`,
@@ -2885,6 +2960,19 @@ type UpdateAPIKeyResponse struct {
 // UpdateAPIKeyResponseStatus Status of the operation
 type UpdateAPIKeyResponseStatus string
 
+// UpdateApiPortalRequest All fields optional. Only mutable fields are accepted, see field permissions in the design doc.
+type UpdateApiPortalRequest struct {
+	Description *string `json:"description" yaml:"description"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     *string            `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// SharedKey Rotate the shared key. When present, replaces the stored value. Same format as on Create. Write-only; never returned.
+	SharedKey *string `json:"sharedKey,omitempty" yaml:"sharedKey,omitempty"`
+	Url       *string `json:"url,omitempty" yaml:"url,omitempty"`
+}
+
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {
 	// Main Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
@@ -3094,6 +3182,30 @@ type ServiceUnavailable = Error
 // Unauthorized The single error shape returned by every failed request across the API.
 type Unauthorized = Error
 
+// ListApiPortalsParams defines parameters for ListApiPortals.
+type ListApiPortalsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListApiPortalsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListApiPortalsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListApiPortalsParamsSortBy defines parameters for ListApiPortals.
+type ListApiPortalsParamsSortBy string
+
+// ListApiPortalsParamsSortOrder defines parameters for ListApiPortals.
+type ListApiPortalsParamsSortOrder string
+
 // SaveApiPublicationDraftDefinitionJSONBody defines parameters for SaveApiPublicationDraftDefinition.
 type SaveApiPublicationDraftDefinitionJSONBody = openapi_types.File
 
@@ -3294,6 +3406,12 @@ type ListLLMProviderAPIKeysParams struct {
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
+// GetLLMProviderBuildsParams defines parameters for GetLLMProviderBuilds.
+type GetLLMProviderBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -3354,6 +3472,12 @@ type ListLLMProxyAPIKeysParams struct {
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
+// GetLLMProxyBuildsParams defines parameters for GetLLMProxyBuilds.
+type GetLLMProxyBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -3394,6 +3518,12 @@ type ListMCPProxiesParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// GetMCPProxyBuildsParams defines parameters for GetMCPProxyBuilds.
+type GetMCPProxyBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 }
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
@@ -3607,6 +3737,12 @@ type UpdateSubscriptionParams struct {
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
 
+// CreateApiPortalJSONRequestBody defines body for CreateApiPortal for application/json ContentType.
+type CreateApiPortalJSONRequestBody = CreateApiPortalRequest
+
+// UpdateApiPortalJSONRequestBody defines body for UpdateApiPortal for application/json ContentType.
+type UpdateApiPortalJSONRequestBody = UpdateApiPortalRequest
+
 // SaveApiPublicationDraftJSONRequestBody defines body for SaveApiPublicationDraft for application/json ContentType.
 type SaveApiPublicationDraftJSONRequestBody = PublicationDraftDetailsInput
 
@@ -3655,6 +3791,9 @@ type UpdateLLMProviderJSONRequestBody = LLMProvider
 // CreateLLMProviderAPIKeyJSONRequestBody defines body for CreateLLMProviderAPIKey for application/json ContentType.
 type CreateLLMProviderAPIKeyJSONRequestBody = CreateLLMProviderAPIKeyRequest
 
+// CreateLLMProviderBuildJSONRequestBody defines body for CreateLLMProviderBuild for application/json ContentType.
+type CreateLLMProviderBuildJSONRequestBody = BuildRequest
+
 // DeployLLMProviderJSONRequestBody defines body for DeployLLMProvider for application/json ContentType.
 type DeployLLMProviderJSONRequestBody = DeployRequest
 
@@ -3667,6 +3806,9 @@ type UpdateLLMProxyJSONRequestBody = LLMProxy
 // CreateLLMProxyAPIKeyJSONRequestBody defines body for CreateLLMProxyAPIKey for application/json ContentType.
 type CreateLLMProxyAPIKeyJSONRequestBody = CreateLLMProxyAPIKeyRequest
 
+// CreateLLMProxyBuildJSONRequestBody defines body for CreateLLMProxyBuild for application/json ContentType.
+type CreateLLMProxyBuildJSONRequestBody = BuildRequest
+
 // DeployLLMProxyJSONRequestBody defines body for DeployLLMProxy for application/json ContentType.
 type DeployLLMProxyJSONRequestBody = DeployRequest
 
@@ -3678,6 +3820,9 @@ type FetchMCPProxyServerInfoJSONRequestBody = MCPServerInfoFetchRequest
 
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
 type UpdateMCPProxyJSONRequestBody = MCPProxy
+
+// CreateMCPProxyBuildJSONRequestBody defines body for CreateMCPProxyBuild for application/json ContentType.
+type CreateMCPProxyBuildJSONRequestBody = BuildRequest
 
 // DeployMCPProxyJSONRequestBody defines body for DeployMCPProxy for application/json ContentType.
 type DeployMCPProxyJSONRequestBody = DeployRequest

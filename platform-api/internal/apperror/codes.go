@@ -136,6 +136,12 @@ const (
 	CodeApplicationExists   = "APPLICATION_EXISTS"
 )
 
+// API Portal domain codes.
+const (
+	CodeAPIPortalNotFound = "API_PORTAL_NOT_FOUND"
+	CodeAPIPortalExists   = "API_PORTAL_EXISTS"
+)
+
 // Subscription domain codes.
 const (
 	CodeSubscriptionNotFound     = "SUBSCRIPTION_NOT_FOUND"
@@ -214,7 +220,6 @@ const (
 // as part of its client-facing contract.
 const (
 	CodeAPIPublicationAPINotFound       = "API_NOT_FOUND"
-	CodeAPIPublicationAPIPortalNotFound = "API_PORTAL_NOT_FOUND"
 	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
 	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"

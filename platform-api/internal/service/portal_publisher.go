@@ -42,7 +42,7 @@ type PortalPublisher interface {
 	// rejecting it (mapped to 409 PUBLICATION_PORTAL_CONFLICT, never
 	// retried); any other error is treated as transient/unavailable (503
 	// PUBLICATION_PORTAL_UNAVAILABLE).
-	Publish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error
+	Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error
 
 	// Unpublish removes apiHandle's listing from portal (REST_Design.md §7
 	// "Unpublishing"). A nil error means the portal no longer carries the
@@ -54,7 +54,7 @@ type PortalPublisher interface {
 	// — mapped to 409 PUBLICATION_PORTAL_CONFLICT, never retried); any other
 	// error is treated as transient/unavailable (503
 	// PUBLICATION_PORTAL_UNAVAILABLE).
-	Unpublish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string) error
+	Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error
 }
 
 // PortalConflictError signals that the API Portal rejected a publish and
@@ -85,10 +85,10 @@ func NewStandInPortalPublisher() PortalPublisher {
 	return &standInPortalPublisher{}
 }
 
-func (*standInPortalPublisher) Publish(_ context.Context, _ *model.PublicationAPIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (*standInPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
 }
 
-func (*standInPortalPublisher) Unpublish(_ context.Context, _ *model.PublicationAPIPortal, _ string) error {
+func (*standInPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
 	return nil
 }

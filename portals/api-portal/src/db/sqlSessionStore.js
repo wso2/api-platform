@@ -20,13 +20,19 @@
 const session = require('express-session');
 const db = require('./driver');
 const logger = require('../config/logger');
+const { getPortalId } = require('../utils/orgContext');
 
 const SESSIONS_TABLE = 'sessions';
 const DEFAULT_TTL_MS = 60 * 60 * 1000; // 1 hour — matches the app's own cookie maxAge (src/app.js)
 
 // Built once at module load — buildUpsert only depends on the (fixed) dialect and
 // column list, not on any per-call data.
-const UPSERT_SESSION_SQL = db.buildUpsert(SESSIONS_TABLE, ['sid', 'sess', 'expire'], ['sid'], ['sess', 'expire']);
+const UPSERT_SESSION_SQL = db.buildUpsert(
+    SESSIONS_TABLE,
+    ['portal_id', 'sid', 'sess', 'expire'],
+    ['portal_id', 'sid'],
+    ['sess', 'expire']
+);
 
 function resolveExpiry(sessionData) {
     const expires = sessionData?.cookie?.expires;
@@ -34,16 +40,18 @@ function resolveExpiry(sessionData) {
 }
 
 /**
- * Single express-session Store backing every dialect (sqlite/postgres/mssql),
- * replacing the previous per-dialect connect-session-sequelize / connect-pg-simple
- * split now that Sequelize is gone. Reads/writes the same `sessions` table
- * (sid/sess/expire) defined in every database/schema.*.sql file.
+ * Single express-session Store backing every dialect (sqlite/postgres/mssql).
+ * Reads and writes the `sessions` table (portal_id/sid/sess/expire) defined in
+ * every database/schema.*.sql file; every query is scoped by portal_id so a
+ * process can never observe another portal's session rows.
  */
 class SqlSessionStore extends session.Store {
     constructor(options = {}) {
         super(options);
         const pruneIntervalMs = (options.pruneSessionInterval || 3600) * 1000;
         this._pruneTimer = setInterval(() => {
+            // Pruning expired rows is safe to run unscoped: an expired row is dead
+            // for every portal, and DELETE by expire only touches expired rows.
             db.execute(`DELETE FROM ${SESSIONS_TABLE} WHERE expire < ?`, [new Date()])
                 .catch((err) => logger.warn('Session prune failed', { error: err.message }));
         }, pruneIntervalMs);
@@ -54,7 +62,10 @@ class SqlSessionStore extends session.Store {
 
     async get(sid, callback) {
         try {
-            const row = await db.queryOne(`SELECT sess, expire FROM ${SESSIONS_TABLE} WHERE sid = ?`, [sid]);
+            const row = await db.queryOne(
+                `SELECT sess, expire FROM ${SESSIONS_TABLE} WHERE portal_id = ? AND sid = ?`,
+                [getPortalId(), sid]
+            );
             if (!row) return callback(null, null);
             if (new Date(row.expire).getTime() <= Date.now()) {
                 await this.destroy(sid, () => { /* best-effort cleanup of the expired row */ });
@@ -70,7 +81,7 @@ class SqlSessionStore extends session.Store {
     async set(sid, sessionData, callback) {
         try {
             const expire = resolveExpiry(sessionData);
-            await db.execute(UPSERT_SESSION_SQL, [sid, JSON.stringify(sessionData), expire]);
+            await db.execute(UPSERT_SESSION_SQL, [getPortalId(), sid, JSON.stringify(sessionData), expire]);
             if (callback) callback(null);
         } catch (err) {
             if (callback) callback(err);
@@ -79,7 +90,10 @@ class SqlSessionStore extends session.Store {
 
     async destroy(sid, callback) {
         try {
-            await db.execute(`DELETE FROM ${SESSIONS_TABLE} WHERE sid = ?`, [sid]);
+            await db.execute(
+                `DELETE FROM ${SESSIONS_TABLE} WHERE portal_id = ? AND sid = ?`,
+                [getPortalId(), sid]
+            );
             if (callback) callback(null);
         } catch (err) {
             if (callback) callback(err);
@@ -89,7 +103,10 @@ class SqlSessionStore extends session.Store {
     async touch(sid, sessionData, callback) {
         try {
             const expire = resolveExpiry(sessionData);
-            await db.execute(`UPDATE ${SESSIONS_TABLE} SET expire = ? WHERE sid = ?`, [expire, sid]);
+            await db.execute(
+                `UPDATE ${SESSIONS_TABLE} SET expire = ? WHERE portal_id = ? AND sid = ?`,
+                [expire, getPortalId(), sid]
+            );
             if (callback) callback(null);
         } catch (err) {
             if (callback) callback(err);

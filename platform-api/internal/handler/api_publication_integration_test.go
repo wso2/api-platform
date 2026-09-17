@@ -68,7 +68,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		`INSERT INTO projects (uuid, handle, display_name, organization_uuid) VALUES ('proj-1', 'proj', 'Project', 'org-1')`,
 		`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('api-artifact-1', 'RestApi', 'org-1')`,
 		`INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, project_uuid, lifecycle_status, configuration) VALUES ('api-artifact-1', 'org-1', 'my-api', 'My API', 'v1', 'proj-1', 'CREATED', '{}')`,
-		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata) VALUES ('portal-1', 'org-1', 'my-portal', 'My Portal', 'active', 'local', '{}', '{}')`,
+		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata) VALUES ('portal-1', 'org-1', 'my-portal', 'My Portal', 'active', 'dummy-key', '{}')`,
 		`INSERT INTO subscription_plans (uuid, handle, display_name, organization_uuid) VALUES ('plan-1', 'gold', 'Gold', 'org-1')`,
 		`INSERT INTO api_documents (uuid, artifact_uuid, organization_uuid, type, handle, display_name, content) VALUES ('doc-1', 'api-artifact-1', 'org-1', 'MARKDOWN', 'quickstart', 'Quickstart', 'content')`,
 	}
@@ -81,7 +81,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	publicationService := service.NewPublicationService(
 		repository.NewArtifactRepo(db),
-		repository.NewApiPortalRepo(db),
+		repository.NewAPIPortalRepo(db),
 		repository.NewApiDocumentRepo(db),
 		repository.NewSubscriptionPlanRepo(db),
 		repository.NewPublicationRepo(db),
@@ -417,10 +417,10 @@ func TestPublicationHandler_ListPublications_MixedStatuses(t *testing.T) {
 	defer cleanup()
 
 	seed := []string{
-		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata)
-			VALUES ('portal-2', 'org-1', 'partner-portal', 'Partner Portal', 'active', 'local', '{}', '{}')`,
-		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata)
-			VALUES ('portal-3', 'org-1', 'staging-portal', 'Staging Portal', 'pending', 'local', '{}', '{}')`,
+		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata)
+			VALUES ('portal-2', 'org-1', 'partner-portal', 'Partner Portal', 'active', 'dummy-key', '{}')`,
+		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata)
+			VALUES ('portal-3', 'org-1', 'staging-portal', 'Staging Portal', 'pending', 'dummy-key', '{}')`,
 		// my-portal (portal-1): a draft only -> still NOT_PUBLISHED, but draftUpdatedAt is set.
 		`INSERT INTO api_publications (uuid, organization_uuid, artifact_uuid, api_portal_uuid, is_draft, display_name, version, created_by, updated_by)
 			VALUES ('draft-1', 'org-1', 'api-artifact-1', 'portal-1', 1, 'My Listing', '1.0.0', 'alice', 'alice')`,
@@ -494,8 +494,8 @@ func TestPublicationHandler_ListPublications_QueryFilter(t *testing.T) {
 	r, db, cleanup := setupPublicationTestEnv(t)
 	defer cleanup()
 
-	if _, err := db.Exec(`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, workflow_status, auth_type, auth_configuration, metadata)
-		VALUES ('portal-2', 'org-1', 'partner-portal', 'Partner Portal', 'active', 'local', '{}', '{}')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata)
+		VALUES ('portal-2', 'org-1', 'partner-portal', 'Partner Portal', 'active', 'dummy-key', '{}')`); err != nil {
 		t.Fatalf("seed failed: %v", err)
 	}
 

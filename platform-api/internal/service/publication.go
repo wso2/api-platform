@@ -47,7 +47,7 @@ var definitionFileNamesByContentType = map[string]string{
 // later slices, the live publication/rollup/lifecycle operations.
 type PublicationService struct {
 	artifactRepo         repository.ArtifactRepository
-	apiPortalRepo        repository.ApiPortalRepository
+	apiPortalRepo        repository.APIPortalRepository
 	apiDocumentRepo      repository.ApiDocumentRepository
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	publicationRepo      repository.PublicationRepository
@@ -58,7 +58,7 @@ type PublicationService struct {
 // NewPublicationService creates a new API Publication service.
 func NewPublicationService(
 	artifactRepo repository.ArtifactRepository,
-	apiPortalRepo repository.ApiPortalRepository,
+	apiPortalRepo repository.APIPortalRepository,
 	apiDocumentRepo repository.ApiDocumentRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	publicationRepo repository.PublicationRepository,
@@ -103,22 +103,22 @@ func (s *PublicationService) resolvePortal(apiPortalId, orgUUID string) (string,
 	if err != nil {
 		return "", err
 	}
-	return portal.UUID, nil
+	return portal.ID, nil
 }
 
 // resolvePortalRow is resolvePortal's counterpart for callers that also need
 // the portal's own handle/display name (the live publication read, for its
 // apiPortalId/apiPortalName response fields).
-func (s *PublicationService) resolvePortalRow(apiPortalId, orgUUID string) (*model.PublicationAPIPortal, error) {
+func (s *PublicationService) resolvePortalRow(apiPortalId, orgUUID string) (*model.APIPortal, error) {
 	if apiPortalId == "" {
-		return nil, apperror.APIPublicationAPIPortalNotFound.New()
+		return nil, apperror.APIPortalNotFound.New()
 	}
-	portal, err := s.apiPortalRepo.GetByHandleAndOrg(apiPortalId, orgUUID)
+	portal, err := s.apiPortalRepo.GetByHandleAndOrgID(apiPortalId, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve API Portal by handle: %w", err)
 	}
 	if portal == nil {
-		return nil, apperror.APIPublicationAPIPortalNotFound.New()
+		return nil, apperror.APIPortalNotFound.New()
 	}
 	return portal, nil
 }
@@ -456,7 +456,7 @@ func (s *PublicationService) getPublicationRow(apiType, apiId, apiPortalId, orgU
 		return nil, err
 	}
 
-	pub, planUUIDs, docUUIDs, err := s.publicationRepo.GetPublication(artifactUUID, portal.UUID, orgUUID)
+	pub, planUUIDs, docUUIDs, err := s.publicationRepo.GetPublication(artifactUUID, portal.ID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get publication: %w", err)
 	}
@@ -467,7 +467,7 @@ func (s *PublicationService) getPublicationRow(apiType, apiId, apiPortalId, orgU
 		return nil, err
 	}
 	pub.APIPortalHandle = portal.Handle
-	pub.APIPortalName = portal.DisplayName
+	pub.APIPortalName = portal.Name
 	return pub, nil
 }
 
@@ -540,7 +540,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
-	draft, planUUIDs, docUUIDs, err := s.publicationRepo.GetDraft(artifactUUID, portal.UUID, orgUUID)
+	draft, planUUIDs, docUUIDs, err := s.publicationRepo.GetDraft(artifactUUID, portal.ID, orgUUID)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get publication draft: %w", err)
 	}
@@ -565,7 +565,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, apperror.APIPublicationPortalUnavailable.Wrap(err)
 	}
 
-	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.UUID, orgUUID, actor)
+	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
 	}
@@ -576,7 +576,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	}
 
 	published.APIPortalHandle = portal.Handle
-	published.APIPortalName = portal.DisplayName
+	published.APIPortalName = portal.Name
 	// The plan/doc selections themselves didn't change during promotion —
 	// only which row they're attached to may have (a republish reparents
 	// them onto the anchor) — so the already-resolved handles still apply.
@@ -603,7 +603,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 		return err
 	}
 
-	live, _, _, err := s.publicationRepo.GetPublication(artifactUUID, portal.UUID, orgUUID)
+	live, _, _, err := s.publicationRepo.GetPublication(artifactUUID, portal.ID, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to get publication: %w", err)
 	}
@@ -619,7 +619,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 		return apperror.APIPublicationPortalUnavailable.Wrap(err)
 	}
 
-	found, err := s.publicationRepo.UnpublishPublication(artifactUUID, portal.UUID, orgUUID, actor)
+	found, err := s.publicationRepo.UnpublishPublication(artifactUUID, portal.ID, orgUUID, actor)
 	if err != nil {
 		return fmt.Errorf("failed to unpublish publication: %w", err)
 	}
@@ -676,27 +676,27 @@ func (s *PublicationService) ListPublicationSummary(apiType, apiId, orgUUID, sor
 	summaries := make([]*model.PublicationSummary, 0, len(portals))
 	for _, portal := range portals {
 		if search != "" &&
-			!strings.Contains(strings.ToLower(portal.DisplayName), search) &&
+			!strings.Contains(strings.ToLower(portal.Name), search) &&
 			!strings.Contains(strings.ToLower(portal.Handle), search) {
 			continue
 		}
 
 		status := publicationStatusNotPublished
-		if st, ok := liveStatus[portal.UUID]; ok {
+		if st, ok := liveStatus[portal.ID]; ok {
 			status = st
 		}
 		summary := &model.PublicationSummary{
 			APIPortalHandle:      portal.Handle,
-			APIPortalName:        portal.DisplayName,
+			APIPortalName:        portal.Name,
 			APIPortalDescription: portal.Description,
 			APIPortalURL:         portal.URL,
 			Status:               status,
 			APIPortalCreatedAt:   portal.CreatedAt,
 		}
-		if t, ok := draftUpdatedAt[portal.UUID]; ok {
+		if t, ok := draftUpdatedAt[portal.ID]; ok {
 			summary.DraftUpdatedAt = &t
 		}
-		if t, ok := liveUpdatedAt[portal.UUID]; ok {
+		if t, ok := liveUpdatedAt[portal.ID]; ok {
 			summary.PublicationUpdatedAt = &t
 		}
 		summaries = append(summaries, summary)

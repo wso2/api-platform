@@ -12,6 +12,7 @@ import { BarChart3, Layers, ScrollText, Workflow } from '@wso2/oxygen-ui-icons-r
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
 import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
 import { LogsFeature } from '@wso2-enterprise/apip-cloud-ui-logs';
 import {
@@ -27,6 +28,13 @@ import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
+
+/**
+ * The kinds of gateway this host manages. Module scope, not a literal at the
+ * use site: the gateways feature asks the server for exactly these kinds, and a
+ * fresh array on every render would make that request repeat.
+ */
+const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
 
 /**
  * Cloud features registered for the api-control-plane host. All live in this
@@ -109,7 +117,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         group: '',
         order: 45,
         routePath: 'gateways',
-        render: (port) => <GatewaysFeature gatewayTypes={['regular', 'event']} port={port} />,
+        render: (port) => <GatewaysFeature gatewayTypes={API_GATEWAY_TYPES} port={port} />,
         label: 'Gateways',
         level: 'organization',
       },

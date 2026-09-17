@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
@@ -30,6 +31,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -94,6 +97,23 @@ func TestComponentVersion(t *testing.T) {
 	}
 }
 
+func TestComposeStackCoverageServicesPreservesOutputNames(t *testing.T) {
+	stack := &ComposeStack{
+		def: &components.Definition{Compose: &components.ComposeSpec{
+			CoverageServices: []components.CoverageService{
+				{Name: "api-portal", OutputName: "api-portal", Types: []string{"node-v8"}},
+				{Name: "gateway", Types: []string{"go"}},
+			},
+		}},
+		suffix: "-2",
+	}
+
+	require.Equal(t, []components.CoverageService{
+		{Name: "api-portal-2", OutputName: "api-portal-2", Types: []string{"node-v8"}},
+		{Name: "gateway-2", Types: []string{"go"}},
+	}, stack.CoverageServices())
+}
+
 func TestBootExternalOnlyBlockWithoutDocker(t *testing.T) {
 	definition := &components.Definition{
 		Name:  "external",
@@ -115,7 +135,7 @@ func TestBootExternalOnlyBlockWithoutDocker(t *testing.T) {
 		}},
 	}
 
-	topo, err := BootBlock(context.Background(), block, "test")
+	topo, err := BootBlock(context.Background(), block, "test", nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, topo.Teardown(context.Background())) })
 	got, err := topo.URL("external", "api")
@@ -471,12 +491,12 @@ func TestBuildPlanErrors(t *testing.T) {
 }
 
 func TestRuntimeInputValidation(t *testing.T) {
-	t.Run("compose replicas are rejected before Docker access", func(t *testing.T) {
+	t.Run("compose replicas use the normal validation path before Docker access", func(t *testing.T) {
 		def := &components.Definition{Name: "stack", Compose: &components.ComposeSpec{}}
 		_, err := LaunchCompose(context.Background(), def, &components.ComposeSpec{}, Options{
 			Network: &Network{name: "test", block: "block"}, Replicas: 2,
 		})
-		require.ErrorContains(t, err, "does not support replicas")
+		require.ErrorContains(t, err, "staged path")
 	})
 
 	t.Run("staged paths cannot escape their directory", func(t *testing.T) {
@@ -636,6 +656,57 @@ func TestLaunchWithRetryStopsOnCancelledContext(t *testing.T) {
 		})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 1, calls, "a dead run must not keep booting containers")
+}
+
+func TestLaunchComposeWithRetrySucceedsAfterFailures(t *testing.T) {
+	calls := 0
+	stack, err := launchComposeWithRetry(context.Background(), "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			if calls < 3 {
+				return nil, errors.New("container exited with code 2")
+			}
+			return &ComposeStack{}, nil
+		})
+	require.NoError(t, err)
+	require.NotNil(t, stack)
+	require.Equal(t, 3, calls)
+}
+
+func TestLaunchComposeWithRetryReturnsLastErrorWhenBudgetSpent(t *testing.T) {
+	calls := 0
+	boom := errors.New("container exited with code 2")
+	_, err := launchComposeWithRetry(context.Background(), "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			return nil, boom
+		})
+	require.ErrorIs(t, err, boom)
+	require.Equal(t, 3, calls)
+}
+
+func TestLaunchComposeWithRetrySingleAttemptFailsFast(t *testing.T) {
+	calls := 0
+	_, err := launchComposeWithRetry(context.Background(), "gateway", 1,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			return nil, errors.New("boom")
+		})
+	require.Error(t, err)
+	require.Equal(t, 1, calls)
+}
+
+func TestLaunchComposeWithRetryStopsOnCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	_, err := launchComposeWithRetry(ctx, "platform-api", 3,
+		func(context.Context) (*ComposeStack, error) {
+			calls++
+			cancel()
+			return nil, errors.New("container exited with code 2")
+		})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, calls, "a dead run must not keep booting stacks")
 }
 
 func TestEngineBootAttempts(t *testing.T) {
@@ -810,10 +881,207 @@ func TestReadAllString(t *testing.T) {
 	})
 }
 
+func TestCopyFileFromContainerEnforcesFileSizeLimit(t *testing.T) {
+	oldLimit := maxComponentDBFileBytes
+	maxComponentDBFileBytes = 4
+	t.Cleanup(func() { maxComponentDBFileBytes = oldLimit })
+
+	data, err := readComponentDBFile(strings.NewReader("okay"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("okay"), data)
+
+	data, err = readComponentDBFile(strings.NewReader("too-large"))
+	require.Nil(t, data)
+	require.ErrorContains(t, err, "file exceeds the 4-byte limit")
+}
+
 func TestPhaseString(t *testing.T) {
 	require.Equal(t, "started", PhaseStarted.String())
 	require.Equal(t, "healthy", PhaseHealthy.String())
 	require.Equal(t, "schema-applied", PhaseSchemaApplied.String())
 	require.Less(t, int(PhaseStarted), int(PhaseHealthy))
 	require.Less(t, int(PhaseHealthy), int(PhaseSchemaApplied))
+}
+
+func TestPostgresDSN(t *testing.T) {
+	got := postgresDSN("127.0.0.1", 54321, Credentials{User: "apip_it", Password: "Aa1!p@ss/word"}, "apip_test")
+	require.Equal(t, "postgres://apip_it:Aa1%21p%40ss%2Fword@127.0.0.1:54321/apip_test?sslmode=disable", got)
+}
+
+// TestIsNotFoundMatchesDockerNotFoundErrors pins the upstream convention isNotFound relies
+// on: the Docker client marks a missing object with a NotFound method rather than a
+// comparable sentinel. DistributionInspect returns that error for an empty reference
+// without contacting a daemon, so this asserts the real type, not a local stand-in.
+func TestIsNotFoundMatchesDockerNotFoundErrors(t *testing.T) {
+	docker, err := client.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = docker.Close() })
+
+	_, err = docker.DistributionInspect(context.Background(), "", client.DistributionInspectOptions{})
+
+	require.Error(t, err)
+	require.True(t, isNotFound(err),
+		"the Docker client no longer marks a missing object with NotFound(); a checkpointed WAL sidecar would now fail the snapshot")
+	require.True(t, isNotFound(fmt.Errorf("copying %q: %w", "/app/data/x.db-wal", err)),
+		"isNotFound must match through the wrapping copyContainerFile applies")
+}
+
+// TestIsNotFoundRejectsCopyFailures keeps every non-absence failure fatal: treating one as an
+// absent sidecar would open a database missing the commits still held in its WAL.
+func TestIsNotFoundRejectsCopyFailures(t *testing.T) {
+	require.False(t, isNotFound(nil))
+	require.False(t, isNotFound(errors.New("runtime: copying \"/app/data/x.db-wal\": connection refused")))
+	require.False(t, isNotFound(fmt.Errorf("file exceeds the %d-byte limit", 1024)))
+	require.False(t, isNotFound(fmt.Errorf("wrapped: %w", errors.New("permission denied"))))
+}
+
+func TestContainedSourceAcceptsFilesInsideTheRepository(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "catalog", "docker-compose.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
+	require.NoError(t, os.WriteFile(file, []byte("services: {}\n"), 0o644))
+
+	resolved, err := containedSource(root, file)
+
+	require.NoError(t, err)
+	require.FileExists(t, resolved)
+}
+
+// A symlinked checkout must still stage: both sides resolve into the same namespace.
+func TestContainedSourceAcceptsASymlinkedRepositoryRoot(t *testing.T) {
+	real := t.TempDir()
+	file := filepath.Join(real, "compose.yaml")
+	require.NoError(t, os.WriteFile(file, []byte("services: {}\n"), 0o644))
+	link := filepath.Join(t.TempDir(), "checkout")
+	require.NoError(t, os.Symlink(real, link))
+
+	resolved, err := containedSource(link, filepath.Join(link, "compose.yaml"))
+
+	require.NoError(t, err)
+	require.FileExists(t, resolved)
+}
+
+func TestContainedSourceRejectsSourcesResolvingOutsideTheRepository(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "secret.yaml")
+	require.NoError(t, os.WriteFile(outside, []byte("secret\n"), 0o600))
+
+	t.Run("symlink escaping the root", func(t *testing.T) {
+		link := filepath.Join(root, "escape.yaml")
+		require.NoError(t, os.Symlink(outside, link))
+
+		_, err := containedSource(root, link)
+
+		require.ErrorContains(t, err, "resolves outside the repository")
+	})
+
+	t.Run("absolute source outside the root", func(t *testing.T) {
+		_, err := containedSource(root, outside)
+
+		require.ErrorContains(t, err, "resolves outside the repository")
+	})
+
+	t.Run("sibling directory sharing a prefix", func(t *testing.T) {
+		sibling := root + "-other"
+		require.NoError(t, os.MkdirAll(sibling, 0o755))
+		t.Cleanup(func() { _ = os.RemoveAll(sibling) })
+		file := filepath.Join(sibling, "compose.yaml")
+		require.NoError(t, os.WriteFile(file, []byte("services: {}\n"), 0o644))
+
+		_, err := containedSource(root, file)
+
+		require.ErrorContains(t, err, "resolves outside the repository")
+	})
+}
+
+func TestContainedSourceSkipsTheCheckWithoutARepositoryRoot(t *testing.T) {
+	resolved, err := containedSource("", "/anywhere/compose.yaml")
+
+	require.NoError(t, err)
+	require.Equal(t, "/anywhere/compose.yaml", resolved)
+}
+
+// Each replica must provision under its own identity; sharing one would hand every instance
+// the same credentials.
+func TestProvisionedByDistinguishesReplicas(t *testing.T) {
+	var mu sync.Mutex
+	var dependents []string
+	provider := &components.Definition{
+		Name: "platform-api",
+		Provisions: func(_ context.Context, _ *components.Instance, dependent string) (map[string]string, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			dependents = append(dependents, dependent)
+			return map[string]string{"TOKEN": "for-" + dependent}, nil
+		},
+	}
+	topo := &Topology{}
+	require.NoError(t, topo.runProvisioner(context.Background(), provider, &components.Instance{}, "platform-api"))
+
+	first, err := topo.provisionedBy(context.Background(), "platform-api", components.Label("gateway", 0, 2))
+	require.NoError(t, err)
+	second, err := topo.provisionedBy(context.Background(), "platform-api", components.Label("gateway", 1, 2))
+	require.NoError(t, err)
+
+	require.Equal(t, "for-gateway#1", first["TOKEN"])
+	require.Equal(t, "for-gateway#2", second["TOKEN"])
+	require.Equal(t, []string{"gateway#1", "gateway#2"}, dependents)
+}
+
+// A single-replica component keeps the bare name, so the change is inert at replicas == 1.
+func TestProvisionedBySingleReplicaUsesTheComponentName(t *testing.T) {
+	var dependents []string
+	provider := &components.Definition{
+		Name: "platform-api",
+		Provisions: func(_ context.Context, _ *components.Instance, dependent string) (map[string]string, error) {
+			dependents = append(dependents, dependent)
+			return map[string]string{"TOKEN": "for-" + dependent}, nil
+		},
+	}
+	topo := &Topology{}
+	require.NoError(t, topo.runProvisioner(context.Background(), provider, &components.Instance{}, "platform-api"))
+
+	values, err := topo.provisionedBy(context.Background(), "platform-api", components.Label("gateway", 0, 1))
+
+	require.NoError(t, err)
+	require.Equal(t, "for-gateway", values["TOKEN"])
+	require.Equal(t, []string{"gateway"}, dependents)
+}
+
+// A relative repository root must still accept its own files: EvalSymlinks leaves a relative
+// path relative, so "." would never prefix the cleaned path of a file beneath it.
+func TestContainedSourceAcceptsARelativeRepositoryRoot(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "catalog"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "catalog", "docker-compose.yaml"),
+		[]byte("services: {}\n"), 0o644))
+	restore, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(root))
+	t.Cleanup(func() { _ = os.Chdir(restore) })
+
+	for _, relative := range []string{".", "./"} {
+		t.Run("root "+relative, func(t *testing.T) {
+			resolved, err := containedSource(relative, filepath.Join(relative, "catalog", "docker-compose.yaml"))
+
+			require.NoError(t, err)
+			require.True(t, filepath.IsAbs(resolved))
+			require.FileExists(t, resolved)
+		})
+	}
+}
+
+// Escapes must stay rejected when the root is relative, not just when it is absolute.
+func TestContainedSourceRejectsEscapesFromARelativeRepositoryRoot(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret.yaml")
+	require.NoError(t, os.WriteFile(outside, []byte("secret\n"), 0o600))
+	root := t.TempDir()
+	restore, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(root))
+	t.Cleanup(func() { _ = os.Chdir(restore) })
+
+	_, err = containedSource(".", outside)
+
+	require.ErrorContains(t, err, "resolves outside the repository")
 }

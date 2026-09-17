@@ -120,7 +120,7 @@ func portalConflictReason(body []byte) string {
 }
 
 // Publish implements PortalPublisher.
-func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
+func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
 	base := strings.TrimRight(portal.URL, "/")
 	escapedHandle := url.PathEscape(apiHandle)
 
@@ -187,7 +187,7 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.Publica
 // force-delete-with-listing capability REST_Design.md §7/§13 expects isn't
 // implemented on the portal yet) — surfaces as the same PortalConflictError
 // Publish uses for a rejection the portal will keep making.
-func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string) error {
+func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error {
 	base := strings.TrimRight(portal.URL, "/")
 	escapedHandle := url.PathEscape(apiHandle)
 
