@@ -65,11 +65,12 @@ func TestGraphQLAPIKey_CreateAndRevoke_Success(t *testing.T) {
 
 	svc := NewAPIKeyService(apiRepo, artifactRepo, keyRepo, events, &noopAuditRepo{}, nil, newTestLogger())
 
+	plaintextKey := "test-plaintext-key"
 	createReq := &api.CreateAPIKeyRequest{
-		ApiKey:      "test-plaintext-key",
+		ApiKey:      &plaintextKey,
 		DisplayName: "My GraphQL Key",
 	}
-	if err := svc.CreateAPIKey(context.Background(), "countries-graphql-api", constants.GraphQLApi, "org-1", "creator-uuid", createReq); err != nil {
+	if _, err := svc.CreateAPIKey(context.Background(), "countries-graphql-api", constants.GraphQLApi, "org-1", "creator-uuid", createReq); err != nil {
 		t.Fatalf("CreateAPIKey for GraphQL API = %v, want success", err)
 	}
 	if keyRepo.created == nil {
@@ -98,8 +99,9 @@ func TestGraphQLAPIKey_Revoke_NotCreator_Forbidden(t *testing.T) {
 
 	svc := NewAPIKeyService(apiRepo, artifactRepo, keyRepo, events, &noopAuditRepo{}, nil, newTestLogger())
 
-	createReq := &api.CreateAPIKeyRequest{ApiKey: "test-plaintext-key", DisplayName: "My GraphQL Key"}
-	if err := svc.CreateAPIKey(context.Background(), "countries-graphql-api", constants.GraphQLApi, "org-1", "creator-uuid", createReq); err != nil {
+	plaintextKey := "test-plaintext-key"
+	createReq := &api.CreateAPIKeyRequest{ApiKey: &plaintextKey, DisplayName: "My GraphQL Key"}
+	if _, err := svc.CreateAPIKey(context.Background(), "countries-graphql-api", constants.GraphQLApi, "org-1", "creator-uuid", createReq); err != nil {
 		t.Fatalf("CreateAPIKey for GraphQL API = %v, want success", err)
 	}
 	keyName := keyRepo.created.Name
