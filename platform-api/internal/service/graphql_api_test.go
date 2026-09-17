@@ -47,6 +47,7 @@ type mockGraphQLAPIRepo struct {
 	createErr error
 
 	getByHandleFunc func(handle, orgUUID string) (*model.GraphQLAPI, error)
+	getByUUIDFunc   func(uuid, orgUUID string) (*model.GraphQLAPI, error)
 
 	updated   *model.GraphQLAPI
 	updateErr error
@@ -94,6 +95,9 @@ func (m *mockGraphQLAPIRepo) GetByHandle(handle, orgUUID string) (*model.GraphQL
 }
 
 func (m *mockGraphQLAPIRepo) GetByUUID(uuid, orgUUID string) (*model.GraphQLAPI, error) {
+	if m.getByUUIDFunc != nil {
+		return m.getByUUIDFunc(uuid, orgUUID)
+	}
 	return nil, nil
 }
 

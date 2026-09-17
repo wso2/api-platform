@@ -57,6 +57,7 @@ type GraphQLAPIDeploymentService struct {
 	orgRepo              repository.OrganizationRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
+	builds               *BuildService
 	cfg                  *config.Server
 	slogger              *slog.Logger
 }
@@ -68,7 +69,9 @@ func NewGraphQLAPIDeploymentService(
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
 	apiKeyRepo repository.APIKeyRepository,
+	artifactRepo repository.ArtifactRepository,
 	gatewayEventsService *GatewayEventsService,
+	definitions ArtifactDefinitions,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *GraphQLAPIDeploymentService {
@@ -79,6 +82,7 @@ func NewGraphQLAPIDeploymentService(
 		orgRepo:              orgRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
@@ -158,8 +162,9 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 	if req == nil {
 		return nil, apperror.GraphQLAPIDeploymentValidationFailed.New("A request body is required.")
 	}
-	if req.Base == "" {
-		return nil, apperror.GraphQLAPIDeploymentValidationFailed.New("Base is required (use 'current' or a deploymentId).")
+	base, requestedBuild, err := ValidateDeployBase(req.Base, req.BuildId, apperror.GraphQLAPIDeploymentValidationFailed)
+	if err != nil {
+		return nil, err
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
@@ -210,34 +215,25 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 		return nil, err
 	}
 
-	var baseDeploymentID *string
-	var contentBytes []byte
-
-	if req.Base == "current" {
-		apiDeployment, err := generateGraphQLAPIDeploymentYAML(apiModel)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate GraphQL API deployment YAML: %w", err)
-		}
-		sourceDataVersion := gatewaytranslator.PlatformDataVersion(apiModel.DataVersion)
-		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-		if err := gatewaytranslator.Translate(constants.GraphQLApi, sourceDataVersion, targetDataVersion, &apiDeployment); err != nil {
-			return nil, fmt.Errorf("failed to transform GraphQL API deployment for gateway %s: %w", gateway.Version, err)
-		}
-		yamlBytes, marshalErr := yaml.Marshal(apiDeployment)
-		if marshalErr != nil {
-			return nil, fmt.Errorf("failed to marshal GraphQL API deployment YAML: %w", marshalErr)
-		}
-		contentBytes = yamlBytes
-	} else {
-		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, apiModel.ID, orgUUID)
-		if err != nil {
-			if apperror.DeploymentNotFound.Is(err) {
-				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
-			}
-			return nil, fmt.Errorf("failed to get base deployment: %w", err)
-		}
-		contentBytes = baseDeployment.Content
-		baseDeploymentID = &req.Base
+	// What this deploy ships: a build prepared earlier, or a snapshot of the
+	// API as it stands now. A snapshot comes back unstored so it commits with
+	// the deployment below.
+	source, err := s.builds.SourceForDeploy(apiModel.ID, orgUUID, constants.GraphQLApi, createdBy, base, requestedBuild)
+	if err != nil {
+		return nil, err
+	}
+	apiDeployment, ok := source.Definition.(*dto.GraphQLAPIDeploymentYAML)
+	if !ok {
+		return nil, fmt.Errorf("artifact %s did not render as a GraphQL API definition", apiModel.ID)
+	}
+	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
+	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+	if err := gatewaytranslator.Translate(constants.GraphQLApi, sourceDataVersion, targetDataVersion, apiDeployment); err != nil {
+		return nil, fmt.Errorf("failed to transform GraphQL API deployment for gateway %s: %w", gateway.Version, err)
+	}
+	contentBytes, err := yaml.Marshal(apiDeployment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal GraphQL API deployment YAML: %w", err)
 	}
 
 	deploymentID, err := utils.GenerateUUID()
@@ -247,22 +243,33 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 	deployed := model.DeploymentStatusDeployed
 
 	deployment := &model.Deployment{
-		DeploymentID:     deploymentID,
-		Name:             req.Name,
-		ArtifactID:       apiModel.ID,
-		OrganizationID:   orgUUID,
-		GatewayID:        gatewayID,
-		BaseDeploymentID: baseDeploymentID,
-		Content:          contentBytes,
-		Metadata:         metadata,
-		Status:           &deployed,
+		DeploymentID:   deploymentID,
+		Name:           req.Name,
+		ArtifactID:     apiModel.ID,
+		OrganizationID: orgUUID,
+		GatewayID:      gatewayID,
+		BuildUUID:      source.BuildUUID,
+		BuildID:        source.BuildID,
+		Content:        contentBytes,
+		Metadata:       metadata,
+		Status:         &deployed,
 	}
 
 	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
 		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
 	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
-	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+	// A build rendered for this deploy is stored with the deployment, in one
+	// transaction, so a recorded deployment always has the build it runs.
+	if source.NewBuild != nil {
+		err = s.deploymentRepo.CreateWithBuild(deployment, source.NewBuild, s.cfg.Deployments.MaxBuildsPerAPI, hardLimit)
+	} else {
+		err = s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit)
+	}
+	if err != nil {
+		if limitErr := s.builds.LimitError(err); limitErr != err {
+			return nil, limitErr
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 

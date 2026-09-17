@@ -468,12 +468,26 @@ func (s *APIUtilsService) FetchSubscriptionPlans() ([]models.SubscriptionPlan, e
 	return plans, nil
 }
 
+// maxZipEntries caps how many entries an inbound API definition archive may
+// contain, before any entry is opened — a bound independent of the
+// decompressed-size guard below, since a zip bomb can also be built from many
+// tiny entries rather than one large one.
+const maxZipEntries = 1000
+
+// maxZipDecompressionRatio bounds how much larger a single entry's
+// decompressed content may be than its compressed size, so a small malicious
+// archive can't expand into an unbounded read (file-access.md directive 7).
+const maxZipDecompressionRatio = 100
+
 // ExtractYAMLFromZip extracts the API definition YAML from the zip file
 func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 	// Create a reader from the zip data
 	zipReader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create zip reader: %w", err)
+	}
+	if len(zipReader.File) > maxZipEntries {
+		return nil, fmt.Errorf("archive contains too many entries")
 	}
 
 	// Look for YAML files in the zip
@@ -491,10 +505,21 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 			}
 			defer rc.Close()
 
-			// Read the content
-			yamlData, err := io.ReadAll(rc)
+			// Bound the decompressed read by both the shared response-size ceiling
+			// and a ratio guard on this entry's own compressed size, so neither a
+			// single huge entry nor a small, highly-compressed one can force an
+			// unbounded read into memory.
+			maxDecompressed := s.config.MaxResponseBytes
+			if ratioCap := int64(file.CompressedSize64) * maxZipDecompressionRatio; ratioCap > 0 && ratioCap < maxDecompressed {
+				maxDecompressed = ratioCap
+			}
+
+			yamlData, err := io.ReadAll(io.LimitReader(rc, maxDecompressed+1))
 			if err != nil {
 				return nil, fmt.Errorf("failed to read file %s: %w", file.Name, err)
+			}
+			if int64(len(yamlData)) > maxDecompressed {
+				return nil, fmt.Errorf("archive entry exceeds the maximum allowed size")
 			}
 
 			return yamlData, nil
