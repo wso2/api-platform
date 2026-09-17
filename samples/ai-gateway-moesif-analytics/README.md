@@ -11,10 +11,9 @@ The integration is one environment variable: the distribution ships with analyti
 enabled and Moesif as the publisher, and reads your Application ID from the
 environment.
 
-> For request rate, latency and traces on a self-hosted stack, see
-> [`ai-gateway-observability`](../ai-gateway-observability). Metrics report how fast
-> and how often; analytics report who used what, and at what cost. Token usage
-> appears only in analytics.
+> If you are looking for request rate, latency and traces instead, see
+> [`ai-gateway-observability`](../ai-gateway-observability), which runs a self-hosted
+> Prometheus and Grafana stack.
 
 ## Prerequisites
 
@@ -27,8 +26,12 @@ enabled.
 
 ## Configure your Application ID
 
-1. Sign in at <https://www.moesif.com>.
-2. Copy the **Application ID** from **Settings → Installation**.
+1. Sign up or sign in at [Moesif](https://www.moesif.com/).
+2. Get your **Collector Application ID**:
+   - On a new account, the onboarding wizard shows it while you set up your first
+     application. Copy it then.
+   - On an existing account, select the account icon, then **Installation** or
+     **API Keys**, and copy the **Collector Application ID** field.
 3. Provide it to the sample:
 
    ```bash
@@ -38,8 +41,9 @@ enabled.
 
    Or export it: `export MOESIF_APPLICATION_ID='<your-application-id>'`
 
-The Application ID is a write-only collector key. It is not a management API key,
-and this sample does not require one. `.env` is git-ignored.
+This is the only Moesif credential the sample needs. `.env` is git-ignored, so the
+ID you paste in is not committed. For other configuration options, see the
+[Moesif documentation](https://www.moesif.com/docs).
 
 ## Run
 
@@ -54,55 +58,62 @@ and this sample does not require one. `.env` is git-ignored.
    Application ID.
 5. Registers the provider, two proxies, and an inbound API key on each.
 
+It finishes by printing the two proxies it registered:
+
+| Proxy | Endpoint | Model | API key |
+|-------|----------|-------|---------|
+| Assistant | `/assistant/chat/completions` | `gpt-4o-mini` | `demo-assistant-key` |
+| Support | `/support/chat/completions` | `gpt-4.1` | `demo-support-key` |
+
+Both share one provider, `mock-openai-provider`, pointing at the WireMock backend.
+`gpt-4.1` costs roughly fifteen times more per token than `gpt-4o-mini`, which is
+what makes the cost comparison worth looking at.
+
 ```bash
 ./load.sh
 ```
 
-Sends a request every 0.25 seconds for 60 seconds: `gpt-4o-mini` through
-`/assistant`, `gpt-4.1` through `/support`, with a fixed proportion of upstream
-failures and rejected keys. Pass a duration to change the run length:
-`./load.sh 120`. The token totals it prints are what Moesif should report.
+Repeats a fixed ten-request cycle for 60 seconds, so the ratios are identical on
+every run:
 
-Then open <https://www.moesif.com>.
+| Requests | Proxy | Outcome |
+|----------|-------|---------|
+| 4 | Assistant | 200 |
+| 4 | Support | 200 |
+| 1 | Assistant | 500, returned by the mock backend |
+| 1 | Assistant | 401, invalid API key rejected at the gateway |
+
+Pass a duration in seconds to change the run length: `./load.sh <seconds>`.
+
+It prints the token totals per model when it finishes. Moesif should report the
+same numbers. Open <https://www.moesif.com> to compare.
 
 ## What to look for in Moesif
 
-Moesif groups analytics into four dashboards, listed in the left sidebar:
+Moesif groups analytics into four dashboards in the left sidebar: Overview, APIs,
+LLM and MCP. This sample publishes LLM proxy traffic, so open **LLM**.
 
-| Dashboard | Covers |
-|-----------|--------|
-| Overview | all traffic across the platform |
-| APIs | REST API proxies |
-| LLM | LLM proxies |
-| MCP | MCP proxies |
+The page is prebuilt, so there is nothing to configure. What each panel holds after
+a run:
 
-This sample sends LLM traffic, so **LLM** is the dashboard to open.
+| Panel | What this sample puts in it |
+|-------|-----------------------------|
+| Token Usage, Estimated Cost | the run totals, which should match what `./load.sh` printed |
+| AI API Details | token usage and request count, per proxy |
+| Traffic Share by Provider and Model | how requests divide between `gpt-4o-mini` and `gpt-4.1` |
+| Cost Trend per Provider | spend accumulating across runs |
+| Latency Trend | P95 latency per model |
+| Average Error Rate, Error Type Breakdown | the 500s and 401s from the cycle above |
 
-A default 60-second `./load.sh` produces around 240 requests and 48k tokens, which the
-tiles report alongside the estimated cost. Each event behind those totals carries:
+In **AI API Details** you can observe the split the sample is built to show: the
+support proxy receives fewer requests than the assistant proxy, yet reports around
+four times the tokens and far more of the cost. `gpt-4.1` returns longer responses
+and costs about fifteen times more per token, so it accounts for roughly 80% of the
+tokens and 98% of the spend while serving the smaller share of traffic.
 
-| Field | Contents |
-|-------|----------|
-| `metadata.aiMetadata.model` | the model that served the request |
-| `metadata.aiMetadata.vendorName` | the provider |
-| `metadata.aiMetadata.llmCost` | the cost of that request |
-| `metadata.aiTokenUsage.promptTokens` | tokens in |
-| `metadata.aiTokenUsage.completionTokens` | tokens out |
-| `metadata.aiTokenUsage.totalTokens` | the total |
-| `metadata.apiName` | the proxy that served it |
-
-Build two charts to see the point of the sample:
-
-- **Total tokens, grouped by `metadata.aiMetadata.model`.** Both models serve the same
-  number of successful requests, but `gpt-4.1` returns longer responses, so it accounts
-  for about 80% of the tokens.
-- **The same chart on `metadata.aiMetadata.llmCost`.** `gpt-4.1` costs roughly thirteen
-  times more per token, so it accounts for about 98% of the spend. Half the requests,
-  almost all of the bill.
-
-Usage is attributed per proxy and per model. Splitting it per consuming application
-requires subscriptions, which this sample does not set up: an inbound API key is a
-credential, not an identity, so `applicationName` is absent from the events.
+Compare that against **Traffic Share by Provider and Model**, where the two models
+sit much closer together. Request counts and spend tell different stories, and
+per-proxy, per-model attribution is what lets you see the difference.
 
 ## Verify locally
 
@@ -118,8 +129,8 @@ Checks that:
 3. Responses through both proxies carry token usage on the expected model.
 4. Requests without an API key are rejected before reaching the model.
 
-Delivery to Moesif itself is confirmed in the Moesif UI; verifying it from a script
-would require a management API key that the sample otherwise does not need.
+This covers everything up to the point where events leave the gateway. Open the LLM
+dashboard in Moesif to confirm they arrived.
 
 ## Troubleshooting
 
@@ -148,6 +159,14 @@ first place to look if cost or token fields are missing from the events.
                        ▼
                     Moesif
 ```
+
+No real model provider is involved. The backend is
+[WireMock](https://wiremock.org), an HTTP server that returns canned responses
+matched against the incoming request. The mappings in `wiremock/mappings/` match on
+the `model` field and reply with an OpenAI-shaped chat completion carrying fixed
+token counts, so every run produces the same numbers and the sample costs nothing to
+run. One mapping returns a 500 when the prompt contains `FAIL`, which is where the
+upstream failures in the cycle come from.
 
 Three parts produce the token and cost fields:
 
@@ -187,6 +206,29 @@ Use `gpt-4.1` to see a different cost on the event. The support proxy is at
 
 Ports, credentials, API keys and traffic duration are environment variables declared
 at the top of `setup.sh` and `load.sh`.
+
+## Try other policies
+
+Both proxies carry `api-key-auth` and `llm-cost`. Adding another one is an edit to
+the proxy definition plus a redeploy:
+
+1. Add it under `policies` in `llm-proxy-assistant.yaml`.
+2. Apply the change:
+
+   ```bash
+   curl -X PUT http://localhost:9090/api/management/v1/llm-proxies/assistant-proxy \
+     -u admin:admin \
+     -H "Content-Type: application/yaml" \
+     --data-binary @llm-proxy-assistant.yaml
+   ```
+
+3. Run `./load.sh` again and compare the events in Moesif.
+
+`build.yaml` in the extracted distribution lists every policy this gateway ships
+with, including guardrails such as `content-length-guardrail`, `word-count-guardrail`
+and `regex-guardrail`, and rate limits such as `token-based-ratelimit` and
+`llm-cost-based-ratelimit`. For worked guardrail examples, see
+[`request-path-guardrails`](../request-path-guardrails).
 
 ## Using a real model provider
 
