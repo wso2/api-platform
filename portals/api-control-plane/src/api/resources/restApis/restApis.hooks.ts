@@ -355,3 +355,24 @@ export const useRestApiOptions = (filters: RestApiListFilters = {}) => {
       })),
   });
 };
+
+/**
+ * Retrieves an API's OpenAPI definition.
+ *
+ * `restApiId` is explicit because the inspected API may differ from the
+ * route-scoped API, such as when previewing an item from a list.
+ *
+ * The query is enabled only when both the scope and ID are available. Callers
+ * should use `isPending`, not `isLoading`, while the route scope resolves.
+ */
+export const useRestApiDefinition = (
+  restApiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...restApiQueries.definition(org!, restApiId!),
+    enabled: Boolean(org && restApiId),
+  });
+};

@@ -36,6 +36,12 @@ export type {
   UpstreamDefinition,
 } from './restApis.endpoints';
 
+export type {
+  DefinitionSource,
+  OpenApiDocument,
+  RestApiDefinition,
+} from './restApis.utils';
+
 export type { RestApiListFilters } from './restApis.hooks';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
@@ -46,6 +52,7 @@ export {
   useDeleteRestApi,
   useRestApi,
   useRestApiCounts,
+  useRestApiDefinition,
   useRestApiIdAvailability,
   useRestApiOptions,
   useRestApis,

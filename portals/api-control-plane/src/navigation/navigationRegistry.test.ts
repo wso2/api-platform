@@ -184,15 +184,6 @@ describe('submenu parents', () => {
       ],
     ],
     [
-      'test',
-      'test',
-      [
-        ['test-console', 'console'],
-        ['test-curl', 'curl'],
-        ['test-chat', 'chat'],
-      ],
-    ],
-    [
       'observability',
       'observability',
       [

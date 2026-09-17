@@ -114,7 +114,7 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
       label: intl.formatMessage(messages.stepTest),
       Icon: FlaskConical,
       complete: testComplete,
-      onClick: () => navigate(routes.apiTestConsole(orgHandle, projectHandler, apiHandler)),
+      onClick: () => navigate(routes.apiTest(orgHandle, projectHandler, apiHandler)),
     },
     {
       key: 'publish',

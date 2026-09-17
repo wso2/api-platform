@@ -81,7 +81,7 @@ const itemFor = (scope: ConsoleScope, route: string, id: string) => {
  * Oxygen treat the row as a link instead of a disclosure.
  */
 describe('submenu children follow API scope', () => {
-  it.each(['develop', 'test', 'insights', 'observability'])(
+  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
     '%s offers its children once an API is in scope',
     (id) => {
       const item = itemFor(atApi(), routes.api(ORG, PROJECT, API), id);
@@ -94,7 +94,8 @@ describe('submenu children follow API scope', () => {
     },
   );
 
-  it.each(['develop', 'test', 'insights', 'observability'])(
+
+  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
     '%s withholds them outside API scope, and links to the first instead',
     (id) => {
       const item = itemFor(atOrg(), routes.organizationHome(ORG), id);

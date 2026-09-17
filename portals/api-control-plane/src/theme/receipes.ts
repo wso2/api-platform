@@ -31,7 +31,7 @@
 // Everything here resolves through theme tokens. No colour, radius, blur or
 // border literals belong in this file or in any call site.
 
-import { alpha, type Theme } from '@wso2/oxygen-ui';
+import { alpha, toggleButtonGroupClasses, type Theme } from '@wso2/oxygen-ui';
 
 /**
  * The `border` shorthand for a one-pixel rule, from `theme.border` rather than
@@ -170,3 +170,60 @@ export const stickyBottomBarSx = (theme: Theme) =>
     position: 'sticky',
     zIndex: theme.zIndex.appBar,
   }) as const;
+
+/**
+ * Fully-rounded ends. No radius token goes this far — `theme.shape` tops out at
+ * a card's corner — so the pill shape is defined once, here.
+ */
+const PILL_RADIUS = '999px';
+
+/**
+ * Subtle light-mode elevation for the selected segment. The flat theme does
+ * not provide a suitable elevation token, so the value is defined here once;
+ * dark mode disables it.
+ */
+const SEGMENT_SHADOW = '0 1px 2px rgba(0, 0, 0, 0.12)';
+
+/**
+ * Styles a pill-shaped segmented switch for mutually exclusive views.
+ * Uses `theme.vars` tokens so track, active-segment, and text colours follow
+ * the active colour scheme. Grouped-button borders are removed to preserve
+ * the pill shape.
+ */
+export const segmentedSwitchSx = (theme: Theme) => {
+  const palette = theme.vars?.palette ?? theme.palette;
+
+  return {
+    backgroundColor: palette.action.hover,
+    borderRadius: PILL_RADIUS,
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(0.5),
+    [`& .${toggleButtonGroupClasses.grouped}`]: {
+      border: 0,
+      borderRadius: PILL_RADIUS,
+      color: palette.text.secondary,
+      fontWeight: theme.typography.fontWeightMedium,
+      marginInline: 0,
+      paddingInline: theme.spacing(2),
+      textTransform: 'none',
+      // Stronger than the track, or hovering an inactive segment lands on the
+      // colour the track already is and reads as dead.
+      '&:hover': {
+        backgroundColor: palette.action.selected,
+      },
+      '&.Mui-selected': {
+        backgroundColor: palette.background.paper,
+        borderRadius: PILL_RADIUS,
+        boxShadow: SEGMENT_SHADOW,
+        color: palette.primary.main,
+        fontWeight: theme.typography.fontWeightBold,
+        ...theme.applyStyles('dark', { boxShadow: 'none' }),
+        // Without this the active pill loses its fill on hover and the control
+        // flickers as the cursor crosses it.
+        '&:hover': {
+          backgroundColor: palette.background.paper,
+        },
+      },
+    },
+  } as const;
+};

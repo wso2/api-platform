@@ -26,8 +26,8 @@ import { SpecSourceEditor } from './SpecSourceEditor';
 // accessible name and the same value/onChange contract. What these tests are
 // about; reading text back, checking it, and what Save does with the result —
 // lives entirely on this side of that boundary.
-vi.mock('./SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
+vi.mock('@/components/CodeEditor/CodeEditor', () => ({
+  CodeEditor: ({
     onChange,
     readOnly,
     value,

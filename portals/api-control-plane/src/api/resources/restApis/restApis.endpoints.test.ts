@@ -35,9 +35,17 @@ import {
   createRestApi,
   deleteRestApi,
   getRestApi,
+  getRestApiDefinition,
+  getSampleRestApiDefinition,
   listRestApis,
   updateRestApi,
 } from './restApis.endpoints';
+import {
+  NO_SAMPLE_DEFINITION,
+  SAMPLE_DEFINITION_CHOICES,
+  SAMPLE_DEFINITION_IDS,
+  sampleDefinitionIdFor,
+} from './mocks';
 
 /**
  * Contract tests for the `/rest-apis` transport functions.
@@ -265,5 +273,122 @@ describe('failures', () => {
     server.use(failure('delete', '/rest-apis/pizza-shack', 409, 'CONFLICT'));
 
     await expect(deleteRestApi('pizza-shack')).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+/**
+ * The definition half of this module is mock-backed while the endpoint is in
+ * development. What the returned bytes *mean* is covered in
+ * `restApis.utils.test.ts`; what is left here is the transport behaviour.
+ */
+
+describe('sampleDefinitionIdFor', () => {
+  it('always picks one of the offered outcomes', () => {
+    const choices = Array.from({ length: 200 }, (_unused, index) =>
+      sampleDefinitionIdFor(`api-${index}`),
+    );
+
+    expect(choices.every((choice) => SAMPLE_DEFINITION_CHOICES.includes(choice))).toBe(true);
+  });
+
+  it('gives some APIs no definition at all', () => {
+    // Absence is one of the outcomes, so the page's empty state is reached by
+    // opening an API rather than by editing a fixture.
+    const choices = Array.from({ length: 200 }, (_unused, index) =>
+      sampleDefinitionIdFor(`api-${index}`),
+    );
+
+    expect(choices).toContain(NO_SAMPLE_DEFINITION);
+  });
+
+  it('is stable for one API, so re-opening it shows the same contract', () => {
+    expect(sampleDefinitionIdFor('pizza-shack')).toBe(sampleDefinitionIdFor('pizza-shack'));
+  });
+
+  it('spreads across the whole catalog rather than collapsing onto one sample', () => {
+    // A single fixed sample would let a "works for one spec" bug hide until the
+    // real definitions land.
+    const seen = new Set(
+      Array.from({ length: 200 }, (_unused, index) => sampleDefinitionIdFor(`api-${index}`)),
+    );
+
+    expect(seen.size).toBe(SAMPLE_DEFINITION_CHOICES.length);
+  });
+
+  it('handles an empty id without throwing or producing a negative index', () => {
+    expect(SAMPLE_DEFINITION_CHOICES).toContain(sampleDefinitionIdFor(''));
+  });
+});
+
+describe('bundled sample documents', () => {
+  it.each(SAMPLE_DEFINITION_IDS)(
+    '%s survives the YAML round-trip into an OpenAPI 3 document',
+    async (sampleId) => {
+      const definition = await getSampleRestApiDefinition(sampleId);
+
+      expect(definition.source).toBe('sample');
+      expect(definition.specVersion).toMatch(/^3\./);
+      // The console executes against this URL, so an absolute one is the point
+      // of using these samples rather than hand-written fixtures.
+      expect(definition.serverUrl).toMatch(/^https:\/\//);
+      expect(Object.keys(definition.spec.paths as object).length).toBeGreaterThan(0);
+    },
+  );
+
+  it('keeps the reading list sample pointed at its published deployment', () => {
+    // Pinned because the try-out target is the whole reason this sample was
+    // chosen: a rewritten server url would silently make the console untestable.
+    return expect(getSampleRestApiDefinition('readingList')).resolves.toMatchObject({
+      serverUrl: 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0',
+    });
+  });
+});
+
+describe('getRestApiDefinition — while the endpoint is mocked', () => {
+  it('runs the sample through the same parse the endpoint will use', async () => {
+    const definition = await getRestApiDefinition('pizza-shack');
+
+    // The sample answers as `{ content }` YAML, exactly as the endpoint will,
+    // so reaching a parsed document proves the real parse path runs today.
+    expect(definition.source).toBe('sample');
+    expect(definition.spec.paths).toBeTypeOf('object');
+    expect(definition.specVersion).toMatch(/^3\./);
+  });
+
+  it('issues no HTTP request', async () => {
+    // The MSW server fails unhandled requests, so a call to
+    // /rest-apis/pizza-shack/openapi would reject this rather than pass.
+    await expect(getRestApiDefinition('pizza-shack')).resolves.toBeTruthy();
+  });
+});
+
+describe('getRestApiDefinition — an API the catalog has nothing for', () => {
+  /**
+   * Found by asking the selection rather than hardcoded: which APIs have no
+   * definition follows from the hash, so a pinned handle would quietly stop
+   * testing this the next time the catalog gained an entry.
+   */
+  const withoutDefinition = Array.from({ length: 200 }, (_unused, index) => `api-${index}`).find(
+    (id) => sampleDefinitionIdFor(id) === NO_SAMPLE_DEFINITION,
+  ) as string;
+
+  it('rejects with the same 404 the real endpoint answers', async () => {
+    // Shaped as an ApiError with status 404 because that is what the page
+    // branches on to tell "nothing uploaded" from "the load failed".
+    await expect(getRestApiDefinition(withoutDefinition)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+    });
+  });
+
+  it('reports it as not-found rather than as a generic failure', async () => {
+    const error = await getRestApiDefinition(withoutDefinition).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).isNotFound).toBe(true);
+  });
+
+  it('still resolves for an API the catalog does have', async () => {
+    await expect(getRestApiDefinition('pizza-shack')).resolves.toMatchObject({ source: 'sample' });
   });
 });

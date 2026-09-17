@@ -17,7 +17,7 @@
  */
 
 import { http, type RequestOptions } from '../../../core/http';
-import type { BodyOf, PathOf, QueryOf, ResponseOf } from '../../../core/spec';
+import type { BodyOf, ItemOf, PathOf, QueryOf, ResponseOf } from '../../../core/spec';
 
 /**
  * Transport layer for `/rest-apis/{restApiId}/gateways` — which gateways an API
@@ -30,16 +30,20 @@ import type { BodyOf, PathOf, QueryOf, ResponseOf } from '../../../core/spec';
  */
 
 export type RestApiGatewayListResponse = ResponseOf<'GetRESTAPIGateways'>;
+/**
+ * A gateway and its association with this API (`associatedAt`, `isDeployed`,
+ * and `deployment`), distinct from the standalone gateway entity.
+ */
+export type RestApiGateway = ItemOf<'GetRESTAPIGateways'>;
 export type ListRestApiGatewaysQuery = QueryOf<'GetRESTAPIGateways'>;
 export type AddGatewaysToApiBody = BodyOf<'AddGatewaysToAPI'>;
 
-const collectionPath = (
-  restApiId: PathOf<'GetRESTAPIGateways'>['restApiId']
-): string => `/rest-apis/${encodeURIComponent(restApiId)}/gateways`;
+const collectionPath = (restApiId: PathOf<'GetRESTAPIGateways'>['restApiId']): string =>
+  `/rest-apis/${encodeURIComponent(restApiId)}/gateways`;
 
 export const listRestApiGateways = async (
   restApiId: string,
-  options?: RequestOptions
+  options?: RequestOptions,
 ): Promise<RestApiGatewayListResponse> => {
   return http.get<RestApiGatewayListResponse>(collectionPath(restApiId), {
     ...options,
@@ -57,7 +61,7 @@ export const listRestApiGateways = async (
 export const addGatewaysToApi = async (
   restApiId: string,
   body: AddGatewaysToApiBody,
-  options?: RequestOptions
+  options?: RequestOptions,
 ): Promise<RestApiGatewayListResponse> => {
   return http.post<RestApiGatewayListResponse>(collectionPath(restApiId), body, {
     ...options,

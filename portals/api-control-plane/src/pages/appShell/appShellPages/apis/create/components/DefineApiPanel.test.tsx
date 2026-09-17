@@ -31,8 +31,8 @@ vi.mock('swagger-ui-react', () => ({ default: () => null }));
 // Monaco needs a canvas and real font metrics, neither of which jsdom has.
 // These tests are about what the step does with an edited definition, not
 // about how the text got typed, so the editor is a plain text area here.
-vi.mock('./SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
+vi.mock('@/components/CodeEditor/CodeEditor', () => ({
+  CodeEditor: ({
     onChange,
     readOnly,
     value,
