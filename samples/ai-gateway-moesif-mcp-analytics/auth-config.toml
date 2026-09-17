@@ -1,0 +1,16 @@
+# Appended to the distribution's configs/config.toml by setup.sh, with
+# __PUBLIC_KEY__ replaced by the public half of the key pair in keys/.
+#
+# This is the list of signatures the gateway trusts on incoming access tokens.
+# A real deployment points a key manager at an identity provider's JWKS
+# endpoint. The sample signs its own tokens with a local key pair instead, so
+# it needs no extra service to run.
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "sample-key-manager"
+issuer = "https://mcp-analytics-sample.local"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.local]
+inline = '''
+__PUBLIC_KEY__
+'''

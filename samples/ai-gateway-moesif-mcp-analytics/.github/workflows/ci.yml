@@ -1,0 +1,131 @@
+name: AI Gateway Moesif MCP Analytics Sample PR Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'samples/ai-gateway-moesif-mcp-analytics/**'
+
+permissions:
+  contents: read
+
+jobs:
+  pr-check:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: samples/ai-gateway-moesif-mcp-analytics
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq python3-yaml
+
+      - name: Shell syntax check
+        run: bash -n setup.sh load.sh test.sh teardown.sh
+
+      - name: Validate resource definitions
+        run: |
+          python3 - <<'PY'
+          import glob, sys, yaml
+
+          errors = []
+          docs = {f: yaml.safe_load(open(f)) for f in glob.glob('mcp-proxy-*.yaml')}
+          if not docs:
+              errors.append('no mcp-proxy-*.yaml files found')
+
+          contexts, names = set(), set()
+          for f, d in docs.items():
+              if not str(d.get('apiVersion', '')).startswith('gateway.api-platform.wso2.com/'):
+                  errors.append(f"{f}: unexpected apiVersion {d.get('apiVersion')!r}")
+              if d.get('kind') != 'Mcp':
+                  errors.append(f"{f}: expected kind Mcp, got {d.get('kind')!r}")
+
+              meta = d.get('metadata') or {}
+              spec = d.get('spec') or {}
+              if not meta.get('name'):
+                  errors.append(f'{f}: metadata.name is missing')
+              elif meta['name'] in names:
+                  errors.append(f"{f}: duplicate metadata.name {meta['name']!r}")
+              else:
+                  names.add(meta['name'])
+
+              ctx = spec.get('context')
+              if not ctx:
+                  errors.append(f'{f}: spec.context is missing')
+              elif ctx in contexts:
+                  errors.append(f'{f}: duplicate context {ctx!r}')
+              else:
+                  contexts.add(ctx)
+
+              # The MCP endpoint path is part of the upstream URL, not appended
+              # by the gateway. A host-and-port-only URL returns 404.
+              url = ((spec.get('upstream') or {}).get('url')) or ''
+              if not url:
+                  errors.append(f'{f}: spec.upstream.url is missing')
+              elif url.rstrip('/').count('/') < 3:
+                  errors.append(f'{f}: upstream url {url!r} has no endpoint path')
+
+              policies = [p.get('name') for p in (spec.get('policies') or [])]
+              for required in ('mcp-auth', 'mcp-acl-list'):
+                  if required not in policies:
+                      errors.append(f'{f}: expected a {required} policy, got {policies}')
+
+          if errors:
+              print('\n'.join(errors))
+              sys.exit(1)
+          print(f'{len(docs)} MCP proxy definitions are consistent.')
+          PY
+
+      - name: Check the MCP server image builds
+        run: docker build -t mcp-everything:sample ./mcp-server
+
+      # The steps below need a Moesif account, so they run only where the
+      # secret is configured. Forks still get the checks above.
+      - name: Check for a Moesif Application ID
+        id: moesif
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: |
+          if [ -n "${MOESIF_APPLICATION_ID}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::MOESIF_APPLICATION_ID is not configured; live gateway checks were skipped."
+          fi
+
+      - name: Start the gateway
+        if: steps.moesif.outputs.available == 'true'
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: ./setup.sh
+
+      - name: Generate traffic
+        if: steps.moesif.outputs.available == 'true'
+        run: ./load.sh 45
+
+      - name: Verify the analytics pipeline
+        if: steps.moesif.outputs.available == 'true'
+        run: ./test.sh
+
+      - name: Dump container logs on failure
+        if: failure() && steps.moesif.outputs.available == 'true'
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: |
+          docker ps -a
+          docker logs mcp-everything --tail 100 || true
+          (cd wso2apip-ai-gateway-1.2.0 && docker compose logs --tail 200) || true
+
+      - name: Teardown
+        if: always() && steps.moesif.outputs.available == 'true'
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: ./teardown.sh --clean

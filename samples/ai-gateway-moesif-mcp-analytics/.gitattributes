@@ -1,0 +1,5 @@
+# Keep scripts LF-only so they run under WSL2 on Windows checkouts.
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
