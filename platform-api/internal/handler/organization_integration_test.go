@@ -136,7 +136,7 @@ func TestOrganizationHandler_ListOrganizations_ClaimFilteredByOrganizationsClaim
 	}
 }
 
-func TestOrganizationHandler_ListOrganizations_FallsBackToOrganizationClaimWhenOrganizationsClaimAbsent(t *testing.T) {
+func TestOrganizationHandler_ListOrganizations_FallsBackToDBMembershipWhenOrganizationsClaimAbsent(t *testing.T) {
 	r, db, cleanup := setupOrganizationHandlerTestEnv(t)
 	t.Cleanup(cleanup)
 
@@ -147,9 +147,17 @@ func TestOrganizationHandler_ListOrganizations_FallsBackToOrganizationClaimWhenO
 		}
 	}
 
+	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	userUUID, err := identityService.ToInternalUUID("sub-member")
+	if err != nil {
+		t.Fatalf("ToInternalUUID failed: %v", err)
+	}
+	if err := repository.NewUserOrganizationMappingRepo(db).AddMembership(userUUID, "id-org-a"); err != nil {
+		t.Fatalf("failed to seed membership: %v", err)
+	}
+
 	listReq := httptest.NewRequest(http.MethodGet, "/api/v0.9/organizations", nil)
 	listReq.Header.Set("X-Test-User", "sub-member")
-	listReq.Header.Set("X-Test-Org-Handle", "org-a")
 	listRec := httptest.NewRecorder()
 	r.ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {
@@ -161,11 +169,11 @@ func TestOrganizationHandler_ListOrganizations_FallsBackToOrganizationClaimWhenO
 		t.Fatalf("failed to decode response: %v", err)
 	}
 	if body.Count != 1 || body.Pagination.Total != 1 {
-		t.Fatalf("expected exactly 1 visible org falling back to the organization claim, got count=%d total=%d body=%s",
+		t.Fatalf("expected exactly 1 visible org falling back to DB membership, got count=%d total=%d body=%s",
 			body.Count, body.Pagination.Total, listRec.Body.String())
 	}
 	if len(body.List) != 1 || body.List[0].Id != "org-a" {
-		t.Fatalf("expected only org-a (the current-org claim), got %+v", body.List)
+		t.Fatalf("expected only org-a (the caller's DB membership), got %+v", body.List)
 	}
 }
 
@@ -210,7 +218,7 @@ func TestOrganizationHandler_ListOrganizations_ManageScopeStillClaimFiltered(t *
 	listReq := httptest.NewRequest(http.MethodGet, "/api/v0.9/organizations", nil)
 	listReq.Header.Set("X-Test-User", "sub-admin")
 	listReq.Header.Set("X-Test-Scope", "ap:organization:manage")
-	listReq.Header.Set("X-Test-Org-Handle", "org-a")
+	listReq.Header.Set("X-Test-Organizations", "org-a")
 	listRec := httptest.NewRecorder()
 	r.ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {
