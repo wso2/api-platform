@@ -37,9 +37,11 @@ go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-polic
 
 # Coverage-enabled server and browser run (images are built from the checkout):
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=2 -coverage
-# The test prints the generated coverage run directory, for example:
+# The test prints the generated coverage run directory. COVERAGE_OUT accepts either that
+# directory or the parent coverage-out, which reports on the most recent run inside it:
 #   COVERAGE_OUT=/path/to/suites/it/coverage-out/.run-... make coverage-report
-# Open that run directory's index.html to navigate to each component report.
+# Reports are written under whichever directory you pass; open its index.html to navigate
+# to each component report. A run's counters are never merged with another run's.
 
 # The UI suite (browser-driven AI Workspace journeys against the real gateway):
 go test ./suites/ui -count=1 -timeout=25m

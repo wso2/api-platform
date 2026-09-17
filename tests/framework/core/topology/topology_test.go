@@ -1424,3 +1424,79 @@ func TestUncombinedRunnerTagsStillExclude(t *testing.T) {
 	require.True(t, matchesGodogTags(filter, []string{"@basic-ratelimit"}))
 	require.False(t, matchesGodogTags(filter, []string{"@needs-settle-primitive"}))
 }
+
+func TestAllowDatabaseVariantFeatureOwners(t *testing.T) {
+	owner := func(runner string, dbs ...components.DBType) featureOwner {
+		set := make(map[components.DBType]bool, len(dbs))
+		for _, db := range dbs {
+			set[db] = true
+		}
+		return featureOwner{runner: runner, databases: set}
+	}
+
+	cases := []struct {
+		name   string
+		owners map[string]featureOwner
+		want   bool
+	}{
+		{
+			name: "distinct databases across sources",
+			owners: map[string]featureOwner{
+				"a/r": owner("r", components.SQLite),
+				"b/r": owner("r", components.Postgres),
+			},
+			want: true,
+		},
+		{
+			name: "matrices overlapping on one database",
+			owners: map[string]featureOwner{
+				"a/r": owner("r", components.SQLite, components.Postgres),
+				"b/r": owner("r", components.Postgres, components.SQLServer),
+			},
+			want: false,
+		},
+		{
+			name: "disjoint matrices",
+			owners: map[string]featureOwner{
+				"a/r": owner("r", components.SQLite, components.Postgres),
+				"b/r": owner("r", components.SQLServer),
+			},
+			want: true,
+		},
+		{
+			name: "different runner names",
+			owners: map[string]featureOwner{
+				"a/one": owner("one", components.SQLite),
+				"b/two": owner("two", components.Postgres),
+			},
+			want: false,
+		},
+		{
+			name:   "a single owner",
+			owners: map[string]featureOwner{"a/r": owner("r", components.SQLite)},
+			want:   false,
+		},
+		{
+			name: "an owner with no database",
+			owners: map[string]featureOwner{
+				"a/r": owner("r"),
+				"b/r": owner("r", components.Postgres),
+			},
+			want: false,
+		},
+		{
+			name: "an unusable database",
+			owners: map[string]featureOwner{
+				"a/r": owner("r", components.DBType("")),
+				"b/r": owner("r", components.Postgres),
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, allowDatabaseVariantFeatureOwners(tc.owners))
+		})
+	}
+}

@@ -87,10 +87,21 @@ func (s *Service) PartitionKey() string { return testbench.PartitionByBlock }
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /oauth2/token", s.token)
-	mux.HandleFunc("GET /debug/stats", s.stats)
-	mux.HandleFunc("POST /debug/reset", s.reset)
+	mux.Handle("GET /debug/stats", debugAuth(http.HandlerFunc(s.stats)))
+	mux.Handle("POST /debug/reset", debugAuth(http.HandlerFunc(s.reset)))
 	mux.HandleFunc("GET /healthz", health)
 	return testbench.NormalizeMethod(testbench.PartitionRouter(mux))
+}
+
+func debugAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, secret, ok := r.BasicAuth()
+		if !ok || id != clientID || secret != clientSecret {
+			writeUnauthorized(w)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Service) scoped(r *http.Request) (*partition, bool) {

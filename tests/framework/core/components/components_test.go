@@ -1315,3 +1315,42 @@ func TestComposeRejectsInvalidCoverageServiceMetadata(t *testing.T) {
 	}
 	require.ErrorContains(t, definition.Validate(), "unsupported type")
 }
+
+func TestComposeRejectsDuplicateStagedNames(t *testing.T) {
+	base := func() Definition {
+		return Definition{
+			Name:      "stack",
+			Alias:     "stack",
+			Endpoints: []Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+			Compose: &ComposeSpec{
+				ComposeFile: "catalog/stack/docker-compose.yaml", PrimaryService: "api",
+				Services: []string{"api"},
+			},
+		}
+	}
+
+	t.Run("override sharing the base file name", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"catalog/overlays/docker-compose.yaml"}
+		require.ErrorContains(t, definition.Validate(), `compose file "docker-compose.yaml" is staged more than once`)
+	})
+
+	t.Run("two overrides sharing a name", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"a/extra.yaml", "b/extra.yaml"}
+		require.ErrorContains(t, definition.Validate(), `compose file "extra.yaml" is staged more than once`)
+	})
+
+	t.Run("staged file colliding with a compose file", func(t *testing.T) {
+		definition := base()
+		definition.Compose.StagedFiles = map[string]string{"docker-compose.yaml": "catalog/stack/other.yaml"}
+		require.ErrorContains(t, definition.Validate(), `staged file "docker-compose.yaml" collides`)
+	})
+
+	t.Run("distinct names are accepted", func(t *testing.T) {
+		definition := base()
+		definition.Compose.ComposeOverrideFiles = []string{"catalog/stack/docker-compose.other-org.yaml"}
+		definition.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": "resources/roles.yaml"}
+		require.NoError(t, definition.Validate())
+	})
+}
