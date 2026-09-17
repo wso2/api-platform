@@ -203,8 +203,10 @@ func TestBuildSourceWithPoliciesStagesCompletePolicyTree(t *testing.T) {
 	require.Contains(t, images.Runtime, "local/apip-gateway-runtime:framework-1.2.0-snapshot-policies-")
 	require.Len(t, runner.commands, 4)
 	require.Contains(t, strings.Join(runner.commands[0].Args, " "), "--build-context")
+	require.Contains(t, strings.Join(runner.commands[0].Args, " "), "gateway-common="+filepath.Join(root, "gateway", "common"))
 	require.Contains(t, strings.Join(runner.commands[0].Args, " "), "dev-policies=")
 	require.Contains(t, strings.Join(runner.commands[0].Args, " "), images.Runtime)
+	require.Contains(t, strings.Join(runner.commands[3].Args, " "), "gateway-common="+filepath.Join(root, "gateway", "common"))
 	require.Contains(t, strings.Join(runner.commands[3].Args, " "), images.Controller)
 	require.Equal(t, root, runner.commands[0].Directory)
 }
