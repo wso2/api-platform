@@ -131,7 +131,7 @@ func (h *GraphQLAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reque
 	}
 	h.slogger.Info("Successfully created GraphQL API key", "userId", userId, "apiHandle", apiHandle, "orgId", orgId, "keyName", keyName)
 
-	setLocation(w, "graphql-apis", apiHandle, "api-keys", keyName)
+	setLocation(w, "graphql-apis", apiHandle, "api-keys", name)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }
