@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -53,7 +53,7 @@ func fillCyidTextarea(page playwright.Page, id, value string) error {
 
 // mockLLMURL is the upstream every provider in this suite points at: the testbench's
 // openai-dialect service, resolved on the block's network.
-func (u *UI) mockLLMURL() (string, error) {
+func (u *Steps) mockLLMURL() (string, error) {
 	inst, err := u.topo.Component("testbench")
 	if err != nil {
 		return "", err
@@ -72,7 +72,7 @@ func (u *UI) mockLLMURL() (string, error) {
 const keyLatestProjectID = "uiLatestProjectID"
 
 // opensProjectsList navigates to the organization's project list.
-func (u *UI) opensProjectsList(ctx context.Context) error {
+func (u *Steps) opensProjectsList(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -83,7 +83,7 @@ func (u *UI) opensProjectsList(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) createProject(ctx context.Context, name string) error {
+func (u *Steps) createProject(ctx context.Context, name string) error {
 	if err := u.opensProjectsList(ctx); err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (u *UI) createProject(ctx context.Context, name string) error {
 
 // registerCreatedProject records the project a create response describes for cleanup, so
 // it is removed even when the scenario never deletes it explicitly.
-func (u *UI) registerCreatedProject(ctx context.Context, resp playwright.Response) error {
+func (u *Steps) registerCreatedProject(ctx context.Context, resp playwright.Response) error {
 	if resp.Status() < 200 || resp.Status() >= 300 {
 		return nil
 	}
@@ -142,7 +142,7 @@ func (u *UI) registerCreatedProject(ctx context.Context, resp playwright.Respons
 }
 
 // latestProjectID is the id the most recent create-project response returned.
-func (u *UI) latestProjectID(ctx context.Context) (string, error) {
+func (u *Steps) latestProjectID(ctx context.Context) (string, error) {
 	v, ok := tcontext.Get(ctx, keyLatestProjectID)
 	if !ok {
 		return "", fmt.Errorf("no project id in scope — no create-project step ran")
@@ -154,7 +154,7 @@ func (u *UI) latestProjectID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
-func (u *UI) seesAmongProjects(ctx context.Context, name string) error {
+func (u *Steps) seesAmongProjects(ctx context.Context, name string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -167,7 +167,7 @@ func (u *UI) seesAmongProjects(ctx context.Context, name string) error {
 // opensProviderFromTemplateCard opens the "Add New Provider" screen and picks the named
 // template's card, returning the page positioned on either the provider form or, for a
 // template with more than one version, the version-selection screen.
-func (u *UI) opensProviderFromTemplateCard(ctx context.Context, templateName string) (playwright.Locator, error) {
+func (u *Steps) opensProviderFromTemplateCard(ctx context.Context, templateName string) (playwright.Locator, error) {
 	page, err := u.page(ctx)
 	if err != nil {
 		return nil, err
@@ -205,7 +205,7 @@ func (u *UI) opensProviderFromTemplateCard(ctx context.Context, templateName str
 
 // startAddingProviderFromTemplate opens the provider form from the named template's card,
 // picking its first offered version when the template has more than one.
-func (u *UI) startAddingProviderFromTemplate(ctx context.Context, templateName string) error {
+func (u *Steps) startAddingProviderFromTemplate(ctx context.Context, templateName string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -227,7 +227,7 @@ func (u *UI) startAddingProviderFromTemplate(ctx context.Context, templateName s
 
 // startAddingProviderFromTemplateVersion opens the provider form from the named template's
 // card, picking a specific offered version.
-func (u *UI) startAddingProviderFromTemplateVersion(ctx context.Context, templateName, version string) error {
+func (u *Steps) startAddingProviderFromTemplateVersion(ctx context.Context, templateName, version string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -247,7 +247,7 @@ func (u *UI) startAddingProviderFromTemplateVersion(ctx context.Context, templat
 	return nil
 }
 
-func (u *UI) createProvider(ctx context.Context, name string) error {
+func (u *Steps) createProvider(ctx context.Context, name string) error {
 	upstream, err := u.mockLLMURL()
 	if err != nil {
 		return err
@@ -258,7 +258,7 @@ func (u *UI) createProvider(ctx context.Context, name string) error {
 // createProviderFromBuiltInEndpoint is for templates that already bake in their own
 // upstream endpoint (e.g. OpenAI's built-in points at the real api.openai.com) — the form
 // never renders an upstream URL field for them at all, unlike createProvider's template.
-func (u *UI) createProviderFromBuiltInEndpoint(ctx context.Context, name string) error {
+func (u *Steps) createProviderFromBuiltInEndpoint(ctx context.Context, name string) error {
 	return u.submitProviderForm(ctx, name, nil)
 }
 
@@ -286,7 +286,7 @@ func providerAutoContext(name string) string {
 // submitProviderForm fills the fields every provider template's form has and submits it.
 // upstreamURL is filled only when non-nil; a nil value matches a template whose form has
 // no such field to begin with (ProviderTemplateFormFields.tsx renders it conditionally).
-func (u *UI) submitProviderForm(ctx context.Context, name string, upstreamURL *string) error {
+func (u *Steps) submitProviderForm(ctx context.Context, name string, upstreamURL *string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -325,7 +325,7 @@ func (u *UI) submitProviderForm(ctx context.Context, name string, upstreamURL *s
 	})
 }
 
-func (u *UI) onProviderOverview(ctx context.Context) error {
+func (u *Steps) onProviderOverview(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -344,7 +344,7 @@ func (u *UI) onProviderOverview(ctx context.Context) error {
 
 // --- proxy ---
 
-func (u *UI) createProxyInProject(ctx context.Context, proxyName, projectName string) error {
+func (u *Steps) createProxyInProject(ctx context.Context, proxyName, projectName string) error {
 	// The value the proxy injects on its loopback hop into the provider's own context —
 	// it must be a provider key the platform minted, or the loopback is rejected with 401.
 	providerKey, err := u.latestAPIKey(ctx)
@@ -359,7 +359,7 @@ func (u *UI) createProxyInProject(ctx context.Context, proxyName, projectName st
 // the provider's own upstream credential is never a real one either in this suite. It also
 // records the /secrets and /llm-proxies requests the submission makes, for scenarios that
 // assert on how the credential was stored.
-func (u *UI) createProxyInProjectUsingAPIKey(ctx context.Context, proxyName, projectName, apiKey string) error {
+func (u *Steps) createProxyInProjectUsingAPIKey(ctx context.Context, proxyName, projectName, apiKey string) error {
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err
 	}
@@ -368,11 +368,11 @@ func (u *UI) createProxyInProjectUsingAPIKey(ctx context.Context, proxyName, pro
 
 // createProxyInProjectUsingAPIKeyPlaceholder is createProxyInProjectUsingAPIKey, with the
 // credential built as a placeholder referencing an existing secret handle.
-func (u *UI) createProxyInProjectUsingAPIKeyPlaceholder(ctx context.Context, proxyName, projectName, handle string) error {
+func (u *Steps) createProxyInProjectUsingAPIKeyPlaceholder(ctx context.Context, proxyName, projectName, handle string) error {
 	return u.createProxyInProjectUsingAPIKey(ctx, proxyName, projectName, secretPlaceholder(handle))
 }
 
-func (u *UI) submitProxyForm(ctx context.Context, proxyName, projectName, apiKey string) error {
+func (u *Steps) submitProxyForm(ctx context.Context, proxyName, projectName, apiKey string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -415,7 +415,7 @@ func (u *UI) submitProxyForm(ctx context.Context, proxyName, projectName, apiKey
 	})
 }
 
-func (u *UI) onProxyOverview(ctx context.Context) error {
+func (u *Steps) onProxyOverview(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -437,7 +437,7 @@ func (u *UI) onProxyOverview(ctx context.Context) error {
 // callers off of before they reach a step needing the id.
 var proxyOverviewURL = regexp.MustCompile(`/proxies/([^/]+)$`)
 
-func (u *UI) deletesTheProxy(ctx context.Context) error {
+func (u *Steps) deletesTheProxy(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -466,7 +466,7 @@ func (u *UI) deletesTheProxy(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) backOnProxyList(ctx context.Context) error {
+func (u *Steps) backOnProxyList(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -476,7 +476,7 @@ func (u *UI) backOnProxyList(ctx context.Context) error {
 
 // --- generic visibility ---
 
-func (u *UI) seesOnPage(ctx context.Context, text string) error {
+func (u *Steps) seesOnPage(ctx context.Context, text string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -484,7 +484,7 @@ func (u *UI) seesOnPage(ctx context.Context, text string) error {
 	return u.expect.Locator(page.GetByText(text).First()).ToBeVisible()
 }
 
-func (u *UI) noLongerSees(ctx context.Context, text string) error {
+func (u *Steps) noLongerSees(ctx context.Context, text string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -507,7 +507,7 @@ type invocation struct {
 	body   string
 }
 
-func (u *UI) deploysToGateway(ctx context.Context) error {
+func (u *Steps) deploysToGateway(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -525,7 +525,7 @@ func (u *UI) deploysToGateway(ctx context.Context) error {
 	return nil
 }
 
-func (u *UI) seesDeploymentActive(ctx context.Context) error {
+func (u *Steps) seesDeploymentActive(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -536,15 +536,15 @@ func (u *UI) seesDeploymentActive(ctx context.Context) error {
 	return u.expect.Locator(row.GetByText("Active")).ToBeVisible()
 }
 
-func (u *UI) returnsToProviderOverview(ctx context.Context) error {
+func (u *Steps) returnsToProviderOverview(ctx context.Context) error {
 	return u.clicksBack(ctx, "Back to Service Provider")
 }
 
-func (u *UI) returnsToProxyOverview(ctx context.Context) error {
+func (u *Steps) returnsToProxyOverview(ctx context.Context) error {
 	return u.clicksBack(ctx, "Back to App LLM Proxy")
 }
 
-func (u *UI) clicksBack(ctx context.Context, label string) error {
+func (u *Steps) clicksBack(ctx context.Context, label string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -574,7 +574,7 @@ func apiKeyOwnerFromURL(pageURL string) (collection, ownerID string, err error) 
 
 // generatesAPIKey drives the Generate API Key dialog and keeps the one-time key it
 // displays; later steps read it back as "that key".
-func (u *UI) generatesAPIKey(ctx context.Context, keyName string) error {
+func (u *Steps) generatesAPIKey(ctx context.Context, keyName string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -622,7 +622,7 @@ func (u *UI) generatesAPIKey(ctx context.Context, keyName string) error {
 }
 
 // latestAPIKey is the one-time key the most recent generate step displayed.
-func (u *UI) latestAPIKey(ctx context.Context) (string, error) {
+func (u *Steps) latestAPIKey(ctx context.Context) (string, error) {
 	v, ok := tcontext.Get(ctx, keyLatestAPIKey)
 	if !ok {
 		return "", fmt.Errorf("no API key in scope — no generate step ran")
@@ -637,7 +637,7 @@ func (u *UI) latestAPIKey(ctx context.Context) (string, error) {
 // invokesChatCompletions calls the endpoint exactly as the overview presents it: the
 // rendered invoke URL plus the X-API-Key header the key dialog named. The request is
 // fired from the browser's own network position via its API request context.
-func (u *UI) invokesChatCompletions(ctx context.Context) error {
+func (u *Steps) invokesChatCompletions(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -673,7 +673,7 @@ func (u *UI) invokesChatCompletions(ctx context.Context) error {
 
 // completionAnswers asserts the model's answer made it back through the whole chain —
 // the user-visible proof the proxy is live on the real gateway.
-func (u *UI) completionAnswers(ctx context.Context, text string) error {
+func (u *Steps) completionAnswers(ctx context.Context, text string) error {
 	v, ok := tcontext.Get(ctx, keyInvocation)
 	if !ok {
 		return fmt.Errorf("no invocation in scope — the invoke step did not run")

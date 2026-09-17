@@ -26,3 +26,13 @@ enabled = false
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" "admin" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
 roles         = ["ap_admin"]
+
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_DEVELOPER_USERNAME" "developer" }}'
+password_hash = '{{ env "APIP_CP_DEVELOPER_PASSWORD_HASH" }}'
+roles         = ["ap_subscriber"]
+
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_PUBLISHER_USERNAME" "publisher" }}'
+password_hash = '{{ env "APIP_CP_PUBLISHER_PASSWORD_HASH" }}'
+roles         = ["ap_publisher"]

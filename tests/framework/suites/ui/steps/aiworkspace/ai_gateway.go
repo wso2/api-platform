@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package aiworkspace
 
 import (
 	"context"
@@ -53,7 +53,7 @@ func toGatewayID(name string) string {
 }
 
 // opensAIGateways navigates to the organization's AI Gateways list.
-func (u *UI) opensAIGateways(ctx context.Context) error {
+func (u *Steps) opensAIGateways(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func (u *UI) opensAIGateways(ctx context.Context) error {
 }
 
 // createsAIGateway registers a new AI gateway with the given name and endpoint URL.
-func (u *UI) createsAIGateway(ctx context.Context, name, url string) error {
+func (u *Steps) createsAIGateway(ctx context.Context, name, url string) error {
 	if err := u.opensAIGateways(ctx); err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func (u *UI) createsAIGateway(ctx context.Context, name, url string) error {
 }
 
 // onAIGatewayOverview asserts the browser reached a real gateway's own overview page.
-func (u *UI) onAIGatewayOverview(ctx context.Context) error {
+func (u *Steps) onAIGatewayOverview(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -112,7 +112,7 @@ func (u *UI) onAIGatewayOverview(ctx context.Context) error {
 
 // deletesAIGateway opens the delete confirmation for the named gateway's row on the AI
 // Gateways list and confirms it.
-func (u *UI) deletesAIGateway(ctx context.Context, name string) error {
+func (u *Steps) deletesAIGateway(ctx context.Context, name string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

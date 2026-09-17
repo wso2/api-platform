@@ -28,6 +28,15 @@ import (
 	"sync"
 )
 
+// NormalizeMethod normalizes the request method before dispatching to a handler
+// that uses method-qualified ServeMux patterns.
+func NormalizeMethod(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Method = strings.ToUpper(r.Method)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Service is a mock service hosted by the testbench.
 type Service interface {
 	// Name identifies the service.

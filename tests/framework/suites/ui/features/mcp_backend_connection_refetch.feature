@@ -31,8 +31,8 @@ Feature: MCP proxy Backend Connection refetch behavior
     And the user opens the MCP proxy's Backend Connection tab
     And the backend connection auth value field shows the masked sentinel
     When the user refetches the server info
-    Then the refetch request used only the stored proxy
-    And the user sees "Connection verified" on the page
+    Then the user sees "Connection verified" on the page
+    And the refetch request used only the stored proxy
 
   Scenario: Refetching after editing the endpoint, header, and value sends the live values directly
     Given the user is signed in
@@ -46,8 +46,8 @@ Feature: MCP proxy Backend Connection refetch behavior
     And the user edits the backend connection auth header to "X-Api-Key"
     And the user edits the backend connection auth value to "super-secret-live-value"
     When the user refetches the server info
-    Then the refetch request sent the live credential for "https://updated.mcp.example.com/mcp" with header "X-Api-Key" and value "super-secret-live-value"
-    And the user sees "Connection verified" on the page
+    Then the user sees "Connection verified" on the page
+    And the refetch request sent the live credential for "https://updated.mcp.example.com/mcp" with header "X-Api-Key" and value "super-secret-live-value"
 
   Scenario: Saving edited connection details rotates the secret, and a later refetch goes back to using the stored proxy
     Given the user is signed in
@@ -93,5 +93,5 @@ Feature: MCP proxy Backend Connection refetch behavior
     And the backend connection auth value field shows the masked sentinel
     And the user edits the backend connection URL to "https://sample.mcp.example.com/v2/mcp"
     When the user refetches the server info
-    Then the refetch request used the edited URL "https://sample.mcp.example.com/v2/mcp" alongside the stored proxy
-    And the user sees "Connection verified" on the page
+    Then the user sees "Connection verified" on the page
+    And the refetch request used the edited URL "https://sample.mcp.example.com/v2/mcp" alongside the stored proxy
