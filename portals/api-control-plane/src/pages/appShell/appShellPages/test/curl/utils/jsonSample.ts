@@ -97,6 +97,10 @@ const flatten = (spec: Schema, schema: Schema, depth: number): Schema => {
   );
 };
 
+/** Whether a property is response-only, including through `$ref`/`allOf`. */
+const isResponseOnly = (spec: Schema, property: unknown, depth: number): boolean =>
+  isObject(property) && flatten(spec, property, depth).readOnly === true;
+
 /** A placeholder for a schema that says only what type it is. */
 const placeholderFor = (type: unknown, format: unknown): unknown => {
   switch (type) {
@@ -134,10 +138,10 @@ export const sampleFromSchema = (spec: Schema, schema: unknown, depth = 0): unkn
   if (type === 'object' || isObject(resolved.properties)) {
     const properties = isObject(resolved.properties) ? resolved.properties : {};
     return Object.fromEntries(
-      Object.entries(properties).map(([name, property]) => [
-        name,
-        sampleFromSchema(spec, property, depth + 1),
-      ]),
+      Object.entries(properties)
+        // Omit response-only properties rather than sampling `undefined`.
+        .filter(([, property]) => !isResponseOnly(spec, property, depth + 1))
+        .map(([name, property]) => [name, sampleFromSchema(spec, property, depth + 1)]),
     );
   }
 
@@ -148,6 +152,18 @@ export const sampleFromSchema = (spec: Schema, schema: unknown, depth = 0): unkn
   }
 
   return placeholderFor(type, resolved.format);
+};
+
+/** Finds the JSON content entry, allowing case and media-type parameters. */
+const jsonContentOf = (content: Schema): unknown => {
+  if (content['application/json'] !== undefined) return content['application/json'];
+
+  const key = Object.keys(content).find(
+    // Everything from the first `;` is parameters, not part of the type.
+    (mediaType) => mediaType.split(';')[0].trim().toLowerCase() === 'application/json',
+  );
+
+  return key === undefined ? undefined : content[key];
 };
 
 /**
@@ -182,7 +198,7 @@ export const requestBodySample = (
     typeof requestBody.$ref === 'string' ? resolveRef(spec, requestBody.$ref) : requestBody;
   if (!isObject(resolvedBody) || !isObject(resolvedBody.content)) return undefined;
 
-  const jsonContent = resolvedBody.content['application/json'];
+  const jsonContent = jsonContentOf(resolvedBody.content);
   if (!isObject(jsonContent)) return undefined;
 
   // A media-type level `example` is the author's own whole-body example and

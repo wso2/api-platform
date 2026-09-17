@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { parse, stringify } from 'lossless-json';
+
 import type { RawFormat } from '../../utils/types';
 
 /**
@@ -36,10 +38,15 @@ export type BodyValidation =
   | { state: 'invalid'; reason: string }
   | { state: 'unchecked' };
 
-/** Parses JSON purely to find out whether it parses. */
+/**
+ * Validates JSON using the same parser as `formatBody`.
+ *
+ * Unlike `JSON.parse`, `lossless-json` rejects duplicate keys, ensuring that
+ * valid input can also be formatted successfully.
+ */
 const validateJson = (body: string): BodyValidation => {
   try {
-    JSON.parse(body);
+    parse(body);
     return { state: 'valid' };
   } catch (error) {
     return { reason: error instanceof Error ? error.message : '', state: 'invalid' };
@@ -87,17 +94,17 @@ export const validateBody = (body: string, format: RawFormat): BodyValidation =>
 };
 
 /**
- * Re-indents a body, or returns `undefined` when it cannot be.
+ * Formats a JSON body with two-space indentation, or returns `undefined` when
+ * the body is not valid JSON or the format is not JSON.
  *
- * Only JSON is re-indentable here: `JSON.parse`/`stringify` round-trips it
- * exactly. Pretty-printing XML would mean inserting whitespace into text
- * content, which changes the bytes the server receives, and plain text has no
- * structure to indent — so both are left alone rather than mangled.
+ * `lossless-json` preserves numeric values that a native JSON round trip may
+ * alter. Integer-like object keys may be reordered by JavaScript property
+ * ordering; this does not change their values.
  */
 export const formatBody = (body: string, format: RawFormat): string | undefined => {
   if (format !== 'json') return undefined;
   try {
-    return JSON.stringify(JSON.parse(body), null, 2);
+    return stringify(parse(body), null, 2);
   } catch {
     return undefined;
   }

@@ -16,17 +16,17 @@
  * under the License.
  */
 
-import {
-  FormControl,
-  InputAdornment,
-  Stack,
-  TextField,
-} from '@wso2/oxygen-ui';
+import { FormControl, InputAdornment, Stack, TextField } from '@wso2/oxygen-ui';
 import { defineMessages, useIntl } from 'react-intl';
 
 import { CopyButton } from '../curl/components/CopyButton';
 
 const messages = defineMessages({
+  testKey: {
+    id: 'apiControlPlane.pages.test.console.SecretValue.testKey',
+    defaultMessage: 'Test key',
+    description: 'Accessible label for the field showing the test key.',
+  },
   copy: {
     id: 'apiControlPlane.pages.test.console.SecretValue.copy',
     defaultMessage: 'Copy key',
@@ -89,7 +89,7 @@ export function SecretValue({ actions, placeholder, value }: SecretValueProps) {
           size="small"
           slotProps={{
             htmlInput: {
-              'aria-label': '',
+              'aria-label': intl.formatMessage(messages.testKey),
             },
             input: {
               readOnly: true,

@@ -337,7 +337,6 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiDevelopRouting), <RoutingPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTest), <TestPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiDeploy), <DeployPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiDeploy), <ApiDeployRoute />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}

@@ -45,6 +45,15 @@ describe('validateBody — json', () => {
     expect(validateBody('42', 'json')).toEqual({ state: 'valid' });
     expect(validateBody('"text"', 'json')).toEqual({ state: 'valid' });
   });
+
+  it('rejects duplicate keys, which JSON.parse would silently collapse', () => {
+    // Reported rather than accepted so "valid" keeps meaning the Format button
+    // will work — formatting cannot represent both pairs.
+    const result = validateBody('{"a":1,"a":2}', 'json');
+
+    expect(result.state).toBe('invalid');
+    expect(result).toHaveProperty('reason', expect.stringMatching(/./));
+  });
 });
 
 describe('validateBody — xml', () => {
@@ -99,6 +108,68 @@ describe('formatBody', () => {
 
   it('returns undefined for unparseable JSON, so the caller does nothing', () => {
     expect(formatBody('{"a":', 'json')).toBeUndefined();
+  });
+
+  it('leaves empty containers on one line, as JSON.stringify does', () => {
+    expect(formatBody('{"a":{},"b":[]}', 'json')).toBe('{\n  "a": {},\n  "b": []\n}');
+  });
+
+  it('formats a bare scalar without adding structure', () => {
+    expect(formatBody('42', 'json')).toBe('42');
+    expect(formatBody('"text"', 'json')).toBe('"text"');
+  });
+
+  it('is unaffected by the whitespace already in the body', () => {
+    expect(formatBody('{ "a" :\n\t[ 1 ] }', 'json')).toBe('{\n  "a": [\n    1\n  ]\n}');
+  });
+
+  it('keeps structural characters inside strings intact', () => {
+    // The scanner has to know it is inside a string, or these would be treated
+    // as syntax and rewritten.
+    expect(formatBody('{"s":"a, b: {c} [d]"}', 'json')).toBe('{\n  "s": "a, b: {c} [d]"\n}');
+    expect(formatBody('{"s":"quote \\" backslash \\\\"}', 'json')).toBe(
+      '{\n  "s": "quote \\" backslash \\\\"\n}',
+    );
+  });
+
+  // Formatting rewrites the body that gets sent, so a re-indent that changes a
+  // value silently sends something the user never typed. `JSON.parse` +
+  // `JSON.stringify` does exactly that to each of these.
+  describe('preserves values a parse/stringify round-trip would corrupt', () => {
+    it('keeps an integer wider than a double', () => {
+      expect(formatBody('{"id":12345678901234567890}', 'json')).toBe(
+        '{\n  "id": 12345678901234567890\n}',
+      );
+    });
+
+    it('keeps negative zero', () => {
+      expect(formatBody('{"z":-0}', 'json')).toBe('{\n  "z": -0\n}');
+    });
+
+    it('keeps a literal that overflows to Infinity', () => {
+      // `JSON.stringify(JSON.parse('1e400'))` is `null` — the value disappears.
+      expect(formatBody('{"big":1e400}', 'json')).toBe('{\n  "big": 1e400\n}');
+    });
+
+    it('keeps the written form of a number rather than its parsed form', () => {
+      expect(formatBody('{"n":1.0,"e":1E+2,"f":0.10}', 'json')).toBe(
+        '{\n  "n": 1.0,\n  "e": 1E+2,\n  "f": 0.10\n}',
+      );
+    });
+
+    it('refuses to format duplicate keys rather than dropping one', () => {
+      // `JSON.parse` would silently collapse this to `{"a":2}` and write that
+      // back as the body. Declining to format leaves what the user typed.
+      expect(formatBody('{"a":1,"a":2}', 'json')).toBeUndefined();
+    });
+
+    it('reorders integer-like keys, which is accepted', () => {
+      // The one loss kept: JS object property order puts integer-like keys
+      // first, ascending, and no parser producing plain objects avoids it.
+      // Nothing about the document's *values* changes, and RFC 8259 defines an
+      // object as unordered — unlike the numeric cases above, which do.
+      expect(formatBody('{"2":"b","1":"a"}', 'json')).toBe('{\n  "1": "a",\n  "2": "b"\n}');
+    });
   });
 
   it('refuses to reformat XML', () => {

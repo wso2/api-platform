@@ -28,7 +28,6 @@ import {
   Home,
   Layers,
   List,
-  MessagesSquare,
   Network,
   PanelTop,
   Rocket,

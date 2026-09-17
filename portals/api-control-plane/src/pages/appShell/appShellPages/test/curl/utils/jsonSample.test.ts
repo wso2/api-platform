@@ -65,6 +65,99 @@ describe('sampleFromSchema', () => {
     expect(sample).toEqual({ a: 'x', b: 7 });
   });
 
+  // `readOnly` means "may come back in a response, should not be sent in a
+  // request". This sample is a request body, so those properties have no place
+  // in it — and a body-validating gateway can reject one that carries them.
+  describe('response-only properties', () => {
+    it('omits a readOnly property written inline', () => {
+      const sample = sampleFromSchema(spec, {
+        type: 'object',
+        properties: {
+          id: { type: 'string', readOnly: true, example: 'srv-generated' },
+          title: { type: 'string', example: 'The Hobbit' },
+        },
+      });
+
+      expect(sample).toEqual({ title: 'The Hobbit' });
+    });
+
+    it('omits one whose readOnly sits behind a $ref', () => {
+      const refSpec = {
+        components: { schemas: { Id: { type: 'string', readOnly: true } } },
+      };
+      const sample = sampleFromSchema(refSpec, {
+        type: 'object',
+        properties: { id: { $ref: '#/components/schemas/Id' }, title: { type: 'string' } },
+      });
+
+      expect(sample).toEqual({ title: 'string' });
+    });
+
+    it('omits one composed in through allOf', () => {
+      const sample = sampleFromSchema(spec, {
+        type: 'object',
+        properties: {
+          id: { allOf: [{ type: 'string' }, { readOnly: true }] },
+          title: { type: 'string' },
+        },
+      });
+
+      expect(sample).toEqual({ title: 'string' });
+    });
+
+    it('omits one nested inside another object', () => {
+      const sample = sampleFromSchema(spec, {
+        type: 'object',
+        properties: {
+          book: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', readOnly: true },
+              title: { type: 'string', example: 'x' },
+            },
+          },
+        },
+      });
+
+      expect(sample).toEqual({ book: { title: 'x' } });
+    });
+
+    it('omits one inside an array’s items', () => {
+      const sample = sampleFromSchema(spec, {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { id: { type: 'string', readOnly: true }, title: { type: 'string' } },
+        },
+      });
+
+      expect(sample).toEqual([{ title: 'string' }]);
+    });
+
+    it('keeps writeOnly and an explicit readOnly: false', () => {
+      // writeOnly is the opposite flag — request-only — so filtering it out
+      // would strip exactly the properties this sample exists to show.
+      const sample = sampleFromSchema(spec, {
+        type: 'object',
+        properties: {
+          password: { type: 'string', writeOnly: true, example: 'hunter2' },
+          title: { type: 'string', readOnly: false, example: 'x' },
+        },
+      });
+
+      expect(sample).toEqual({ password: 'hunter2', title: 'x' });
+    });
+
+    it('yields an empty object when every property is readOnly', () => {
+      const sample = sampleFromSchema(spec, {
+        type: 'object',
+        properties: { id: { type: 'string', readOnly: true } },
+      });
+
+      expect(sample).toEqual({});
+    });
+  });
+
   it('infers object-ness from properties alone, with no type field', () => {
     expect(sampleFromSchema(spec, { properties: { a: { type: 'boolean' } } })).toEqual({ a: true });
   });
@@ -183,6 +276,79 @@ describe('requestBodySample', () => {
     };
 
     expect(JSON.parse(requestBodySample(withExample, '/x', 'post')!)).toEqual({ whole: 'body' });
+  });
+
+  // Media types are case-insensitive and may carry parameters, and both
+  // spellings are common in real documents. Missing them shows up only as
+  // "Insert sample" quietly not being offered.
+  describe('media-type key matching', () => {
+    const bodyWith = (mediaType: string) => ({
+      paths: {
+        '/x': {
+          post: {
+            requestBody: {
+              content: {
+                [mediaType]: {
+                  schema: { type: 'object', properties: { a: { type: 'string', example: 'x' } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    it('ignores a charset parameter on the key', () => {
+      expect(
+        JSON.parse(requestBodySample(bodyWith('application/json; charset=utf-8'), '/x', 'post')!),
+      ).toEqual({ a: 'x' });
+    });
+
+    it('matches regardless of case', () => {
+      expect(JSON.parse(requestBodySample(bodyWith('Application/JSON'), '/x', 'post')!)).toEqual({
+        a: 'x',
+      });
+    });
+
+    it('tolerates whitespace around the parameter separator', () => {
+      expect(
+        JSON.parse(requestBodySample(bodyWith('application/json ;charset=utf-8'), '/x', 'post')!),
+      ).toEqual({ a: 'x' });
+    });
+
+    it('prefers the canonical spelling when a document lists both', () => {
+      const both = {
+        paths: {
+          '/x': {
+            post: {
+              requestBody: {
+                content: {
+                  'application/json; charset=utf-8': { example: { from: 'parameterised' } },
+                  'application/json': { example: { from: 'canonical' } },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      expect(JSON.parse(requestBodySample(both, '/x', 'post')!)).toEqual({ from: 'canonical' });
+    });
+
+    it('does not match a type that merely starts with the JSON one', () => {
+      // `application/jsonl` is a different format, not a parameterised spelling.
+      const jsonl = {
+        paths: {
+          '/x': {
+            post: {
+              requestBody: { content: { 'application/jsonl': { schema: { type: 'string' } } } },
+            },
+          },
+        },
+      };
+
+      expect(requestBodySample(jsonl, '/x', 'post')).toBeUndefined();
+    });
   });
 
   it('is undefined when the body is not JSON', () => {

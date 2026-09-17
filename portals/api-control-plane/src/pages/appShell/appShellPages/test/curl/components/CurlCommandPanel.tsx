@@ -96,7 +96,10 @@ export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
     [request, revealed],
   );
 
-  const hasSecret = request.headers.some((header) => header.secret && header.enabled);
+  // API keys may be in headers or query params; keep masking and reveal in sync.
+  const hasSecret = [...request.headers, ...request.queryParams].some(
+    (row) => row.secret && row.enabled,
+  );
 
   return (
     <Box sx={{ borderTop: '1px solid', borderColor: 'divider', px: 2, py: 2 }}>

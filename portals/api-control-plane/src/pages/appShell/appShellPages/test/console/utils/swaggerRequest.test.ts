@@ -101,6 +101,14 @@ describe('fromSwaggerRequest', () => {
     expect(result?.queryParams[0]).toMatchObject({ name: 'limit', value: '10', enabled: true });
   });
 
+  it('declines a verb the console does not offer', () => {
+    // Reported as GET, the cURL panel would print `-X GET` for a request
+    // swagger actually executed as TRACE.
+    expect(
+      fromSwaggerRequest({ url: `${BASE}/payments`, method: 'trace', headers: {} }, BASE),
+    ).toBeUndefined();
+  });
+
   it('works with a plain object too, not only Immutable', () => {
     const result = fromSwaggerRequest(
       { url: `${BASE}/payments`, method: 'get', headers: { Accept: 'application/json' } },

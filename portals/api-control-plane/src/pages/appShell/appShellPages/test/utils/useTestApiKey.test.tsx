@@ -202,6 +202,70 @@ describe('useTestApiKey', () => {
     expect(value()).toBe('');
   });
 
+  it('hands back no key while the API it was minted for is no longer the one asked about', async () => {
+    const OTHER = 'billing-api';
+    server.use(
+      mintHandler(),
+      http.post(apiUrl(`/rest-apis/${OTHER}/api-keys`), () =>
+        HttpResponse.json({
+          apiKey: 'other-key',
+          keyId: 'id-other',
+          message: 'ok',
+          status: 'success',
+        }),
+      ),
+    );
+
+    const { rerender } = renderProbe();
+    await waitFor(() => expect(value()).toBe('key-1'));
+
+    // Only the route's API changes, so React re-renders this component rather
+    // than remounting it, and the previous key survives in state. Returning it
+    // would inject one API's credential into a request aimed at another.
+    rerender(
+      <ApiScopeProvider orgId={ORG}>
+        <Probe enabled restApiId={OTHER} />
+      </ApiScopeProvider>,
+    );
+
+    // Asserted with no waiting on purpose: the ownership check happens during
+    // render, so the previous API's key is gone on the very first frame after
+    // the switch, before the replacement has been asked for.
+    expect(value()).toBe('');
+
+    await waitFor(() => expect(value()).toBe('other-key'));
+  });
+
+  it('takes the key off screen when a replacement fails', async () => {
+    let calls = 0;
+    server.use(
+      http.post(apiUrl(`/rest-apis/${API_ID}/api-keys`), () => {
+        calls += 1;
+        mintCalls += 1;
+        if (calls === 1) {
+          return HttpResponse.json({
+            apiKey: 'key-1',
+            keyId: 'id-1',
+            message: 'ok',
+            status: 'success',
+          });
+        }
+        return HttpResponse.json({ code: '500', message: 'nope' }, { status: 500 });
+      }),
+    );
+
+    const { user } = renderProbe();
+    await waitFor(() => expect(value()).toBe('key-1'));
+
+    await user.click(screen.getByRole('button', { name: /New key/i }));
+
+    // The old key was forgotten the moment the replacement was asked for, so
+    // showing it afterwards would present a credential the console has already
+    // abandoned as though it were current.
+    await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('error'));
+    expect(value()).toBe('');
+  });
+
   it('does not remember a failed mint, so a later attempt retries', async () => {
     let shouldFail = true;
     server.use(

@@ -73,6 +73,12 @@ const messages = defineMessages({
     defaultMessage: 'Edit',
     description: 'Opens the definition’s own text for editing.',
   },
+  editorLabel: {
+    id: 'api.create.specSourceEditor.editorLabel',
+    defaultMessage: 'API definition source',
+    description:
+      'Accessible name for the editor holding the definition\u2019s own text. A noun naming what the field contains.',
+  },
   editorLoading: {
     id: 'api.create.specSourceEditor.editorLoading',
     defaultMessage: 'Loading editor',
@@ -348,6 +354,7 @@ export const SpecSourceEditor = ({ onSave, spec }: SpecSourceEditorProps) => {
     >
       <Suspense fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}>
         <CodeEditor
+          ariaLabel={intl.formatMessage(messages.editorLabel)}
           language={format}
           minimap={expanded}
           onChange={setDraft}

@@ -35,6 +35,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { segmentedSwitchSx } from '@/theme/receipes';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { useNow } from '@/hooks/useNow';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { buildInvokeUrl } from '../apis/overview/InvokeUrlPanel';
 import { gatewayEndpoint } from '../gateways/utils/gatewayDisplay';
@@ -118,6 +119,9 @@ const messages = defineMessages({
 
 type ConsoleView = 'console' | 'curl';
 
+/** Refresh the test key countdown every 30 seconds. */
+const KEY_COUNTDOWN_TICK_MS = 30_000;
+
 /** Gateway label as "Name — Environment", matching the Invoke URL panel. */
 const gatewayOptionLabel = (gateway: Gateway): string => {
   const name = gateway.displayName || gateway.id || '';
@@ -129,10 +133,11 @@ const gatewayOptionLabel = (gateway: Gateway): string => {
 
 export function TestPage() {
   const intl = useIntl();
+  const { params } = useConsoleScope();
 
   return (
     <ScopeGate prompt={intl.formatMessage(messages.scopePrompt)} requires="api" to={routes.apiTest}>
-      <TestConsole />
+      <TestConsole key={params.apiHandler ?? ''} />
     </ScopeGate>
   );
 }
@@ -198,9 +203,12 @@ function TestConsole() {
   /** Credential sent by the console. Absent until one has been minted. */
   const testKey = testApiKey.key;
 
+  /** State-driven minute tick for the key countdown and expiry. */
+  const now = useNow(testKey ? KEY_COUNTDOWN_TICK_MS : 0);
+
   // The policy is the source of the name; page state only holds a user's edit.
   const headerName = keyHeaderName ?? apiKeyAuth?.name ?? '';
-  const keyExpired = isTestKeyExpired(testKey, Date.now());
+  const keyExpired = isTestKeyExpired(testKey, now);
 
   /** Injectable credential row, assigned exclusively to the policy-selected list. */
   const credentialRows = useMemo<KeyValueRow[]>(
@@ -222,8 +230,15 @@ function TestConsole() {
 
   /** Which list the credential goes in — the two are mutually exclusive. */
   const credentialIn = apiKeyAuth?.in ?? 'header';
-  const extraHeaders = credentialIn === 'header' ? credentialRows : [];
-  const extraQueryParams = credentialIn === 'query' ? credentialRows : [];
+  // Keep request-builder inputs stable across renders.
+  const extraHeaders = useMemo(
+    () => (credentialIn === 'header' ? credentialRows : []),
+    [credentialIn, credentialRows],
+  );
+  const extraQueryParams = useMemo(
+    () => (credentialIn === 'query' ? credentialRows : []),
+    [credentialIn, credentialRows],
+  );
 
   const spec = definitionQuery.data?.spec;
 
@@ -245,8 +260,16 @@ function TestConsole() {
     const first = firstOperationOf(spec);
     if (!first) return undefined;
 
-    return buildConsoleRequest({ baseUrl, method: first.method, path: first.path, spec });
-  }, [baseUrl, request, spec]);
+    // Prevent duplicate credential rows; `withTarget` re-applies them below.
+    return buildConsoleRequest({
+      baseUrl,
+      extraHeaders,
+      extraQueryParams,
+      method: first.method,
+      path: first.path,
+      spec,
+    });
+  }, [baseUrl, extraHeaders, extraQueryParams, request, spec]);
 
   const effectiveRequest = useMemo(
     () => withTarget(seeded ?? emptyRequest(baseUrl), baseUrl, credentialRows, credentialIn),
@@ -377,11 +400,12 @@ function TestConsole() {
           {needsApiKey && (
             <TestKeySection
               error={Boolean(testApiKey.error)}
-              headerName={headerName}
+              keyName={headerName}
               loading={testApiKey.isPending}
+              location={credentialIn}
               onRegenerate={testApiKey.regenerate}
               regenerating={testApiKey.isRegenerating}
-              remainingMs={testKeyRemainingMs(testKey, Date.now())}
+              remainingMs={testKeyRemainingMs(testKey, now)}
               value={testKey?.value}
             />
           )}

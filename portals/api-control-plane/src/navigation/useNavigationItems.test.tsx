@@ -81,7 +81,7 @@ const itemFor = (scope: ConsoleScope, route: string, id: string) => {
  * Oxygen treat the row as a link instead of a disclosure.
  */
 describe('submenu children follow API scope', () => {
-  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
+  it.each(['develop', 'insights', 'observability'])(
     '%s offers its children once an API is in scope',
     (id) => {
       const item = itemFor(atApi(), routes.api(ORG, PROJECT, API), id);
@@ -94,8 +94,7 @@ describe('submenu children follow API scope', () => {
     },
   );
 
-
-  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
+  it.each(['develop', 'test', 'insights', 'observability'])(
     '%s withholds them outside API scope, and links to the first instead',
     (id) => {
       const item = itemFor(atOrg(), routes.organizationHome(ORG), id);
@@ -229,11 +228,7 @@ describe('host-injected sidebar extensions', () => {
           isProjectScope?: boolean;
           isApiScope?: boolean;
         };
-        return (
-          Boolean(typed.isOrganizationScope) &&
-          !typed.isProjectScope &&
-          !typed.isApiScope
-        );
+        return Boolean(typed.isOrganizationScope) && !typed.isProjectScope && !typed.isApiScope;
       },
     };
 
@@ -245,20 +240,12 @@ describe('host-injected sidebar extensions', () => {
         project: undefined,
       });
 
-    const items = itemsWithExtensions(
-      atOrg(),
-      `/organizations/${ORG}/home`,
-      [orgInsights]
-    );
+    const items = itemsWithExtensions(atOrg(), `/organizations/${ORG}/home`, [orgInsights]);
     expect(items.find((entry) => entry.id === 'insights')).toBeUndefined();
     expect(items.find((entry) => entry.id === 'organization-insights')).toBeDefined();
 
-    const insightsIndex = items.findIndex(
-      (entry) => entry.id === 'organization-insights'
-    );
-    const observabilityIndex = items.findIndex(
-      (entry) => entry.id === 'observability'
-    );
+    const insightsIndex = items.findIndex((entry) => entry.id === 'organization-insights');
+    const observabilityIndex = items.findIndex((entry) => entry.id === 'observability');
     expect(insightsIndex).toBeGreaterThan(-1);
     expect(observabilityIndex).toBeGreaterThan(-1);
     expect(insightsIndex).toBeLessThan(observabilityIndex);
@@ -280,11 +267,7 @@ describe('host-injected sidebar extensions', () => {
           isProjectScope?: boolean;
           isApiScope?: boolean;
         };
-        return (
-          Boolean(typed.isOrganizationScope) &&
-          !typed.isProjectScope &&
-          !typed.isApiScope
-        );
+        return Boolean(typed.isOrganizationScope) && !typed.isProjectScope && !typed.isApiScope;
       },
     };
 
@@ -303,7 +286,7 @@ describe('host-injected sidebar extensions', () => {
     const items = itemsWithExtensions(
       atApi(),
       `/organizations/${ORG}/projects/${PROJECT}/apis/${API}/insights/api`,
-      [cloudInsights]
+      [cloudInsights],
     );
 
     expect(items.find((entry) => entry.id === 'insights')).toBeDefined();

@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
 import { Box, Button, CircularProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import { LucideKeyRound, RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import type { ApiKeyLocation } from '../utils/apiKeyAuth';
 import { SecretValue } from './SecretValue';
 
 const messages = defineMessages({
@@ -52,11 +52,17 @@ const messages = defineMessages({
     defaultMessage: 'No key yet',
     description: 'Stand-in shown where the key value would be, before one exists.',
   },
-  scopedTo: {
-    id: 'apiControlPlane.pages.test.console.TestKeySection.scopedTo',
-    defaultMessage: 'Sent as the {header} header on requests to this gateway.',
+  scopedToHeader: {
+    id: 'apiControlPlane.pages.test.console.TestKeySection.scopedToHeader',
+    defaultMessage: 'Sent as the {name} header on requests to this gateway.',
     description:
-      'Explains how the key travels. {header} is the HTTP header name, editable in the cURL view.',
+      'Explains how the key travels when the policy sends it in a header. {name} is the HTTP header name, editable in the cURL view.',
+  },
+  scopedToQuery: {
+    id: 'apiControlPlane.pages.test.console.TestKeySection.scopedToQuery',
+    defaultMessage: 'Sent as the {name} query parameter on requests to this gateway.',
+    description:
+      'Explains how the key travels when the policy sends it in the query string. {name} is the query parameter name, editable in the cURL view.',
   },
   title: {
     id: 'apiControlPlane.pages.test.console.TestKeySection.title',
@@ -65,54 +71,38 @@ const messages = defineMessages({
   },
 });
 
-/** How often the countdown re-renders. */
-const TICK_MS = 30_000;
-
 type TestKeySectionProps = {
   error?: boolean;
-  headerName: string;
+  /** Name of the header or query parameter carrying the key. */
+  keyName: string;
   loading?: boolean;
+  /** Where the policy places the credential. */
+  location: ApiKeyLocation;
   onRegenerate: () => void;
   regenerating?: boolean;
-  /** Milliseconds until the key expires; zero once it has. */
+  /**
+    * Milliseconds until the key expires; zero once expired.
+    * Counted down by the owning page.
+   */
   remainingMs: number;
   value?: string;
 };
 
 /**
- * The credential the console sends, with its countdown and a way to replace it.
- *
- * The key is minted on first render and cached for the session, so this usually
- * opens already populated — see `utils/useTestApiKey` for why
- * obtaining a key and creating one are the same operation.
- *
- * "New key" sits inside the value well, next to reveal and copy, rather than on
- * a row of its own: all three act on the value beside them, while the line
- * above the well describes the key rather than offering anything to do to it.
- *
- * That line carries the countdown too, instead of a right-aligned badge in the
- * heading. Both facts answer the same question — what this key is and how long
- * it lasts — so they read as prose together, and the heading stays a heading.
+ * Displays the session-cached test key, its expiry countdown, and replacement action.
+ * The key is minted on first render; see `utils/useTestApiKey`.
  */
 export function TestKeySection({
   error,
-  headerName,
+  keyName,
   loading,
+  location,
   onRegenerate,
   regenerating,
   remainingMs,
   value,
 }: TestKeySectionProps) {
   const intl = useIntl();
-
-  // The countdown is derived from a timestamp, so nothing re-renders it as time
-  // passes. This tick exists only to keep the displayed minutes honest; at
-  // 30 seconds it is never more than half a minute stale.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const timer = window.setInterval(() => setTick((current) => current + 1), TICK_MS);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const expired = remainingMs === 0;
   const minutes = Math.floor(remainingMs / 60_000);
@@ -122,18 +112,16 @@ export function TestKeySection({
       <Stack spacing={1.5}>
         <Stack spacing={0.5}>
           <Stack alignItems="center" direction="row" spacing={1}>
-          <Box sx={{ color: 'primary.main', display: 'flex' }}>
-            <LucideKeyRound size={18} />
-          </Box>
-          <Typography variant="subtitle2">
-            <FormattedMessage {...messages.title} />
-          </Typography>
-        </Stack>
+            <Box sx={{ color: 'primary.main', display: 'flex' }}>
+              <LucideKeyRound size={18} />
+            </Box>
+            <Typography variant="subtitle2">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+          </Stack>
 
-          {/* Two whole sentences sharing a line, never one message built from
-              fragments: the countdown is plural-inflected and swaps out
-              entirely once the key expires, so folding it into the sentence
-              beside it would make one message carry every combination. */}
+          {/* Keep the description and countdown as separate sentences for
+              clearer pluralization and expiry handling. */}
           <Typography
             color={error ? 'error' : 'text.secondary'}
             sx={{ display: 'block' }}
@@ -144,9 +132,9 @@ export function TestKeySection({
             ) : (
               <>
                 <FormattedMessage
-                  {...messages.scopedTo}
+                  {...(location === 'query' ? messages.scopedToQuery : messages.scopedToHeader)}
                   values={{
-                    header: <Box component="code">{headerName}</Box>,
+                    name: <Box component="code">{keyName}</Box>,
                   }}
                 />
                 {/* No countdown before a key exists — there is nothing yet to

@@ -132,10 +132,15 @@ export const splitAgainstBase = (
     return undefined;
   }
 
-  if (parsed.host !== parsedBase.host) return undefined;
+  if (parsed.origin !== parsedBase.origin) return undefined;
 
   const basePath = parsedBase.pathname.replace(/\/+$/, '');
-  if (basePath !== '' && !parsed.pathname.startsWith(basePath)) return undefined;
+  if (
+    basePath !== '' &&
+    parsed.pathname !== basePath &&
+    !parsed.pathname.startsWith(`${basePath}/`)
+  )
+    return undefined;
 
   const path = parsed.pathname.slice(basePath.length) || '/';
   const query: [string, string][] = [];
@@ -163,11 +168,16 @@ export const fromSwaggerRequest = (
   const split = splitAgainstBase(url, baseUrl);
   if (!split) return undefined;
 
+  // A verb the console does not offer is not a request it can describe, the
+  // same as a URL pointing somewhere other than the gateway above.
+  const method = normalizeMethod(read(raw, 'method') as string | undefined);
+  if (!method) return undefined;
+
   const headers = readHeaders(read(raw, 'headers'));
   const body = readBody(raw);
 
   return {
-    method: normalizeMethod(read(raw, 'method') as string | undefined),
+    method,
     baseUrl: baseUrl.trim().replace(/\/+$/, ''),
     path: split.path,
     queryParams: toRows(split.query, 'q', secretName),

@@ -202,7 +202,10 @@ describe('toCurl', () => {
       { revealSecrets: true },
     );
 
-    expect(command).toContain('"https://gw.example.com/default/payments-api/v1.0/payments?a=1"');
+    // Shell-quoted like every other value in the command, rather than wrapped
+    // in double quotes: single quotes protect `&`, `?` and `$` alike, and one
+    // quoting rule for the whole command is one rule to get right.
+    expect(command).toContain(`'https://gw.example.com/default/payments-api/v1.0/payments?a=1'`);
   });
 
   it('emits one -H per enabled header', () => {
@@ -271,21 +274,19 @@ describe('toCurl', () => {
       { revealSecrets: true },
     );
 
-    // Re-serialised, so the incidental spacing the user typed does not survive
-    // — the payload is semantically identical either way.
-    expect(command).toContain(`-d '{"amount":2500}'`);
+    // Byte for byte as typed. Re-serialising through `JSON.parse` would round a
+    // number too wide for a double and drop a duplicate key, so the command
+    // would stop describing the body the console sends.
+    expect(command).toContain(`-d '{"amount": 2500}'`);
   });
 
-  it('re-serialises a pretty-printed JSON body onto one line', () => {
-    const command = toCurl(
-      request({ method: 'POST', ...raw('{\n  "amount": 2500,\n  "currency": "USD"\n}') }),
-      { revealSecrets: true },
-    );
+  it('keeps a pretty-printed JSON body exactly as written', () => {
+    const body = '{\n  "amount": 2500,\n  "currency": "USD"\n}';
+    const command = toCurl(request({ method: 'POST', ...raw(body) }), { revealSecrets: true });
 
-    // Re-serialised through the parser, not regex-collapsed: exact by
-    // construction, where stripping newlines would corrupt a string value that
-    // legitimately contains whitespace.
-    expect(command).toContain(`-d '{"amount":2500,"currency":"USD"}'`);
+    // The newlines survive inside the single quotes, so the pasted command
+    // sends the same bytes the editor shows.
+    expect(command).toContain(`-d '${body}'`);
   });
 
   it('emits no -d in None mode, even with body text left over', () => {
@@ -418,7 +419,10 @@ describe('encoded bodies', () => {
       { revealSecrets: true },
     );
 
-    expect(command).toContain("-F 'title=The Hobbit'");
+    // `--form-string`, never `-F`: `-F` reads a leading `@` or `<` as a file
+    // path, so a value the user typed could make the pasted command upload a
+    // local file.
+    expect(command).toContain("--form-string 'title=The Hobbit'");
   });
 
   it('omits unchecked and unnamed fields', () => {
@@ -445,7 +449,7 @@ describe('encoded bodies', () => {
       { revealSecrets: true },
     );
 
-    expect(command).toContain(`-F 'note=it'\\''s'`);
+    expect(command).toContain(`--form-string 'note=it'\\''s'`);
   });
 
   it('keeps the last line free of a dangling continuation', () => {
@@ -555,9 +559,19 @@ describe('normalizeMethod', () => {
     expect(normalizeMethod('  patch ')).toBe('PATCH');
   });
 
-  it('falls back to GET rather than trusting an unknown verb', () => {
-    expect(normalizeMethod('TRACE')).toBe('GET');
+  it('declines a verb the console does not offer', () => {
+    // Swagger's own supportedSubmitMethods include `trace`, so this arrives in
+    // practice. Answering `GET` would have the cURL panel print `-X GET` for a
+    // request executed as something else.
+    expect(normalizeMethod('TRACE')).toBeUndefined();
+    expect(normalizeMethod('CONNECT')).toBeUndefined();
+    expect(normalizeMethod('NOTAVERB')).toBeUndefined();
+  });
+
+  it('still defaults a missing value to GET', () => {
+    // Absent is a value to fill in, not a verb to disagree with.
     expect(normalizeMethod(undefined)).toBe('GET');
     expect(normalizeMethod('')).toBe('GET');
+    expect(normalizeMethod('   ')).toBe('GET');
   });
 });

@@ -134,6 +134,18 @@ export const parameterValue = (
   text(values[`${parameter.in}.${parameter.name}`]) ?? text(values[parameter.name]);
 
 /**
+ * Encodes a path-parameter value as a single RFC 3986 path segment.
+ *
+ * This matches swagger-client's `escape: 'reserved'` serialization and
+ * additionally escapes `!'()*`, which `encodeURIComponent` leaves unchanged.
+ */
+const encodePathValue = (value: string): string =>
+  encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+/**
  * Substitutes path-parameter values, leaving unfilled placeholders unchanged.
  */
 export const fillPathParameters = (
@@ -146,7 +158,7 @@ export const fillPathParameters = (
     .reduce((filled, parameter) => {
       const value = parameterValue(values, parameter);
       if (value === undefined) return filled;
-      return filled.split(`{${parameter.name}}`).join(value);
+      return filled.split(`{${parameter.name}}`).join(encodePathValue(value));
     }, path);
 
 export type BuildConsoleRequestArgs = {
@@ -160,6 +172,8 @@ export type BuildConsoleRequestArgs = {
   bodyValue?: unknown;
   /** Headers the console adds itself, e.g. the test key. */
   extraHeaders?: KeyValueRow[];
+  /** Console-added query parameters, such as a query-string API key. */
+  extraQueryParams?: KeyValueRow[];
 };
 
 /** The body as text, whatever swagger stored. */
@@ -179,6 +193,9 @@ const bodyText = (value: unknown): string => {
  * Declared headers precede console-provided headers (`extraHeaders`), which
  * take precedence when names overlap. Content-Type is derived from the body
  * by `contentTypeFor` and emitted by `toCurl`.
+ *
+ * `undefined` when the operation's verb is one the console does not offer;
+ * see `normalizeMethod`.
  */
 export const buildConsoleRequest = ({
   spec,
@@ -188,7 +205,11 @@ export const buildConsoleRequest = ({
   parameterValues = {},
   bodyValue,
   extraHeaders = [],
-}: BuildConsoleRequestArgs): ConsoleRequest => {
+  extraQueryParams = [],
+}: BuildConsoleRequestArgs): ConsoleRequest | undefined => {
+  const normalizedMethod = normalizeMethod(method);
+  if (!normalizedMethod) return undefined;
+
   const parameters = operationParameters(spec, path, method);
   const body = bodyText(bodyValue);
   const hasBodyText = body.trim() !== '';
@@ -197,24 +218,31 @@ export const buildConsoleRequest = ({
     .filter((parameter) => parameter.in === 'header')
     .map((parameter) => row('h', parameter.name, parameterValue(parameterValues, parameter) ?? ''));
 
-  const declaredNames = new Set(declaredHeaders.map((header) => header.name.toLowerCase()));
+  const declaredQuery = parameters
+    .filter((parameter) => parameter.in === 'query')
+    .flatMap((parameter) => {
+      const value = parameterValue(parameterValues, parameter);
+      // An untouched optional query parameter is omitted rather than sent
+      // empty: `?status=` and no `status` at all mean different things to
+      // most servers.
+      return value === undefined ? [] : [row('q', parameter.name, value)];
+    });
+
+  const extraNames = new Set(extraHeaders.map((header) => header.name.toLowerCase()));
+  // Query names are case-sensitive; preserve their spelling.
+  const extraQueryNames = new Set(extraQueryParams.map((queryRow) => queryRow.name.trim()));
 
   return {
-    method: normalizeMethod(method),
+    method: normalizedMethod,
     baseUrl: baseUrl.trim().replace(/\/+$/, ''),
     path: fillPathParameters(path, parameters, parameterValues),
-    queryParams: parameters
-      .filter((parameter) => parameter.in === 'query')
-      .flatMap((parameter) => {
-        const value = parameterValue(parameterValues, parameter);
-        // An untouched optional query parameter is omitted rather than sent
-        // empty: `?status=` and no `status` at all mean different things to
-        // most servers.
-        return value === undefined ? [] : [row('q', parameter.name, value)];
-      }),
+    queryParams: [
+      ...declaredQuery.filter((queryRow) => !extraQueryNames.has(queryRow.name.trim())),
+      ...extraQueryParams,
+    ],
     headers: [
-      ...declaredHeaders,
-      ...extraHeaders.filter((header) => !declaredNames.has(header.name.toLowerCase())),
+      ...declaredHeaders.filter((header) => !extraNames.has(header.name.toLowerCase())),
+      ...extraHeaders,
     ],
     bodyMode: hasBodyText ? 'raw' : 'none',
     // swagger's try-out form composes JSON request bodies, so a body arriving

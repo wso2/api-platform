@@ -37,14 +37,19 @@ export type HttpMethod = (typeof HTTP_METHODS)[number];
 /**
  * Normalizes a method string from a spec, a URL or a swagger selector.
  *
- * OpenAPI path-item keys are lowercase while every comparison, map key and
- * matcher downstream is uppercase, so the case is settled once, here, at the
- * point of extraction. Anything unrecognised falls back to `GET` rather than
- * widening the type — an unknown verb should not become a request.
+ * OpenAPI path-item keys are lowercase, while downstream comparisons, map keys,
+ * and matchers use uppercase.
+ *
+ * Unsupported verbs return `undefined` rather than defaulting to `GET`. This
+ * prevents operations such as `trace` from being displayed or sent as `GET`,
+ * and ensures the cURL output matches the executed request.
+ *
+ * An absent or blank value defaults to `GET`.
  */
-export const normalizeMethod = (raw: string | undefined): HttpMethod => {
+export const normalizeMethod = (raw: string | undefined): HttpMethod | undefined => {
   const upper = (raw ?? '').trim().toUpperCase();
-  return (HTTP_METHODS as readonly string[]).includes(upper) ? (upper as HttpMethod) : 'GET';
+  if (upper === '') return 'GET';
+  return (HTTP_METHODS as readonly string[]).includes(upper) ? (upper as HttpMethod) : undefined;
 };
 
 /**

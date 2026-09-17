@@ -23,26 +23,13 @@ import type { ApiError } from '@/api/core/errors';
 import { isTestKeyExpired, testApiKeyBody, toTestApiKey, type TestApiKey } from './testApiKey';
 
 /**
- * Obtains the test console's key, minting one through `apiKeys` when needed.
+ * Obtains the test console's API key, creating one when necessary.
  *
- * ## Why a hook here rather than a resource module
- *
- * A test key is not its own resource: it is an ordinary API key with a short
- * expiry, so it is created through `useCreateApiKey` like any other. What the
- * console needs on top of that is *memory* — obtaining a key and creating one
- * are the same operation, because the plaintext is returned exactly once and no
- * endpoint can hand it back. Without somewhere to keep it, every remount would
- * mint another real, persisted key into the user's key list.
- *
- * That memory deliberately does not live in the query cache.
- * `apiKeys.hooks.ts` makes the point in its own words: a secret that only
- * exists once should not sit in a store other components can read. So it lives
- * here, in the one feature that needs it, in a module-scoped map that dies with
- * the tab — never `localStorage`, never anything that outlives the session.
- *
- * The practical result is one key per API per browser session: navigating away
- * and back re-uses it, and only an expiry or an explicit "New key" mints
- * another.
+ * Test keys are ordinary, short-lived API keys created through
+ * `useCreateApiKey`. Because their plaintext is returned only once, this hook
+ * retains each key in a module-scoped map rather than the query cache or
+ * persistent storage. The key is therefore reused across remounts within the
+ * browser session and replaced only after expiry or an explicit request.
  */
 
 /**
@@ -82,6 +69,9 @@ export const resetTestApiKeys = (): void => {
   pendingMints.clear();
 };
 
+/** The held key and the API it was minted against. */
+type HeldKey = { key: TestApiKey; ownerId: string };
+
 export type UseTestApiKeyResult = {
   key?: TestApiKey;
   /** True while the first key for this API is being minted. */
@@ -105,7 +95,10 @@ export const useTestApiKey = (
   enabled: boolean,
 ): UseTestApiKeyResult => {
   const createApiKey = useCreateApiKey();
-  const [key, setKey] = useState<TestApiKey | undefined>(() => liveKey(restApiId, Date.now()));
+  const [held, setHeld] = useState<HeldKey | undefined>(() => {
+    const remembered = restApiId ? liveKey(restApiId, Date.now()) : undefined;
+    return remembered && restApiId ? { key: remembered, ownerId: restApiId } : undefined;
+  });
   const [isPending, setIsPending] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<ApiError | undefined>(undefined);
@@ -148,7 +141,7 @@ export const useTestApiKey = (
 
     const remembered = liveKey(restApiId, Date.now());
     if (remembered) {
-      setKey(remembered);
+      setHeld({ key: remembered, ownerId: restApiId });
       return;
     }
 
@@ -158,10 +151,8 @@ export const useTestApiKey = (
 
     mint(restApiId)
       .then((minted) => {
-        // Guarded so a resolved mint cannot write into a component that has
-        // since unmounted or moved to another API. The key itself is already
-        // remembered above, so nothing is lost by dropping the state write.
-        if (active) setKey(minted);
+        // Ignore results after unmount or API changes; the key is already cached.
+        if (active) setHeld({ key: minted, ownerId: restApiId });
       })
       .catch((cause: ApiError) => {
         if (active) setError(cause);
@@ -178,18 +169,20 @@ export const useTestApiKey = (
   const regenerate = useCallback(() => {
     if (!restApiId) return;
 
-    // Forgotten first, so a failed replacement cannot leave the previous key on
-    // screen looking current while the request that was meant to replace it has
-    // already been abandoned.
+    // Forget both the session value and the rendered key before replacement.
     mintedKeys.delete(restApiId);
+    setHeld(undefined);
     setIsRegenerating(true);
     setError(undefined);
 
     mint(restApiId)
-      .then(setKey)
+      .then((minted) => setHeld({ key: minted, ownerId: restApiId }))
       .catch((cause: ApiError) => setError(cause))
       .finally(() => setIsRegenerating(false));
   }, [mint, restApiId]);
+
+  // Return the key only for the API it was minted against.
+  const key = held && held.ownerId === restApiId ? held.key : undefined;
 
   return {
     error,

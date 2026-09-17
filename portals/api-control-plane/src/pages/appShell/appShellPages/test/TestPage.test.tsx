@@ -26,11 +26,12 @@ import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { useLocation } from 'react-router-dom';
 
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { act, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { getSampleRestApiDefinition } from '@/api/resources/restApis/restApis.endpoints';
 import { NO_SAMPLE_DEFINITION, sampleDefinitionIdFor } from '@/api/resources/restApis/mocks';
 import { firstOperationOf } from './utils/operationRequest';
 import { resetTestApiKeys } from './utils/useTestApiKey';
+import { TEST_KEY_TTL_HOURS } from './utils/testApiKey';
 import { TestPage } from './TestPage';
 
 /**
@@ -242,6 +243,36 @@ describe('TestPage — the api-key-auth gate', () => {
     // Masked until revealed, even though it is a real credential.
     expect(curlText()).toContain('-H');
     expect(curlText()).not.toContain('live-test-credential');
+    expectNoRenderLoop();
+  });
+
+  it('stops attaching the credential once the key expires', async () => {
+    server.use(...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })));
+
+    // Installed before rendering, because the page's countdown timer is created
+    // during render: a clock swapped in afterwards would not own it.
+    // `shouldAdvanceTime` keeps msw and react-query progressing on real time.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    try {
+      const { user } = renderPage();
+
+      await screen.findByTestId('spec-viewer');
+      await user.click(screen.getByRole('button', { name: /cURL view/i }));
+      await waitFor(() => expect(curlText()).toContain('X-API-Key'));
+
+      // A test key lasts an hour. Nothing re-renders this page because time
+      // passed, so without a clock of its own the page would go on injecting a
+      // credential the gateway has already stopped honouring.
+      vi.setSystemTime(new Date(Date.now() + (TEST_KEY_TTL_HOURS * 60 + 1) * 60 * 1000));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+
+      await waitFor(() => expect(curlText()).not.toContain('X-API-Key'));
+    } finally {
+      vi.useRealTimers();
+    }
     expectNoRenderLoop();
   });
 

@@ -104,20 +104,10 @@ const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] =>
   if (!hasBody(request)) return [];
 
   if (request.bodyMode === 'raw') {
-    const raw = request.body.trim();
-    if (request.rawFormat === 'json') {
-      try {
-        return [`-d ${shellQuote(JSON.stringify(JSON.parse(raw)))}`];
-      } catch {
-        // Not valid JSON yet. The editor already says so; the command shows
-        // what was typed rather than silently dropping the body.
-        return [`-d ${shellQuote(raw)}`];
-      }
-    }
-    return [`-d ${shellQuote(raw)}`];
+    return [`-d ${shellQuote(request.body)}`];
   }
 
-  const flag = request.bodyMode === 'form-data' ? '-F' : '--data-urlencode';
+  const flag = request.bodyMode === 'form-data' ? '--form-string' : '--data-urlencode';
   return activeRows(request.formFields).map(
     (field) => `${flag} ${shellQuote(`${field.name.trim()}=${displayValue(field, options)}`)}`,
   );
@@ -131,7 +121,10 @@ const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] =>
  * command still says what it does after someone edits the URL.
  */
 export const toCurl = (request: ConsoleRequest, options: ToCurlOptions): string => {
-  const lines = [`curl -X ${request.method} \\`, `  "${buildRequestUrl(request, options)}" \\`];
+  const lines = [
+    `curl -X ${request.method} \\`,
+    `  ${shellQuote(buildRequestUrl(request, options))} \\`,
+  ];
 
   const headers = activeRows(request.headers);
   headers.forEach((row) => {

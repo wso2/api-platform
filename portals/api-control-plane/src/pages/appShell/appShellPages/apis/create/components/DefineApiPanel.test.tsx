@@ -33,16 +33,18 @@ vi.mock('swagger-ui-react', () => ({ default: () => null }));
 // about how the text got typed, so the editor is a plain text area here.
 vi.mock('@/components/CodeEditor/CodeEditor', () => ({
   CodeEditor: ({
+    ariaLabel,
     onChange,
     readOnly,
     value,
   }: {
+    ariaLabel?: string;
     onChange?: (next: string) => void;
     readOnly?: boolean;
     value: string;
   }) => (
     <textarea
-      aria-label="API definition source"
+      aria-label={ariaLabel}
       onChange={(event) => onChange?.(event.target.value)}
       readOnly={readOnly}
       value={value}

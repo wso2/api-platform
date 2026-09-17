@@ -533,6 +533,10 @@
     "defaultMessage": "Save",
     "description": "Checks the edited definition and, if it holds up, adopts it."
   },
+  "api.create.specSourceEditor.editorLabel": {
+    "defaultMessage": "API definition source",
+    "description": "Accessible name for the editor holding the definition’s own text. A noun naming what the field contains."
+  },
   "api.create.specSourceEditor.editorLoading": {
     "defaultMessage": "Loading editor",
     "description": "Shown for the moment the code editor is being fetched."
@@ -2363,6 +2367,10 @@
     "defaultMessage": "Copy",
     "description": "Default accessible label for a button that copies a value to the clipboard."
   },
+  "apiControlPlane.pages.test.console.CopyButton.failed": {
+    "defaultMessage": "Copy failed",
+    "description": "Tooltip and button label shown when the browser refused the clipboard write. A statement, not a command."
+  },
   "apiControlPlane.pages.test.console.CurlBuilder.bodyTab": {
     "defaultMessage": "Body",
     "description": "Tab holding the request body editor. A noun."
@@ -2495,6 +2503,10 @@
     "defaultMessage": "Show key",
     "description": "Accessible label for the button that reveals the masked test key."
   },
+  "apiControlPlane.pages.test.console.SecretValue.testKey": {
+    "defaultMessage": "Test key",
+    "description": "Accessible label for the field showing the test key."
+  },
   "apiControlPlane.pages.test.console.TestConsoleSpecViewer.allMethods": {
     "defaultMessage": "All methods",
     "description": "Option that leaves the resource list unfiltered by HTTP method."
@@ -2529,9 +2541,13 @@
     "defaultMessage": "No key yet",
     "description": "Stand-in shown where the key value would be, before one exists."
   },
-  "apiControlPlane.pages.test.console.TestKeySection.scopedTo": {
-    "defaultMessage": "Sent as the {header} header on requests to this gateway.",
-    "description": "Explains how the key travels. {header} is the HTTP header name, editable in the cURL view."
+  "apiControlPlane.pages.test.console.TestKeySection.scopedToHeader": {
+    "defaultMessage": "Sent as the {name} header on requests to this gateway.",
+    "description": "Explains how the key travels when the policy sends it in a header. {name} is the HTTP header name, editable in the cURL view."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.scopedToQuery": {
+    "defaultMessage": "Sent as the {name} query parameter on requests to this gateway.",
+    "description": "Explains how the key travels when the policy sends it in the query string. {name} is the query parameter name, editable in the cURL view."
   },
   "apiControlPlane.pages.test.console.TestKeySection.title": {
     "defaultMessage": "Test key",
@@ -2735,6 +2751,10 @@
   },
   "appShell.header.title": {
     "defaultMessage": "API Platform"
+  },
+  "appShell.insightsPage.feature": {
+    "defaultMessage": "API insights",
+    "description": "Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud."
   },
   "appShell.lifeCyclePage.feature": {
     "defaultMessage": "Lifecycle management for this API"

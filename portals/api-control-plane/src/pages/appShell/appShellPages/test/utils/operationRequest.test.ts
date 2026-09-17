@@ -25,8 +25,22 @@ import {
   parameterValue,
 } from './operationRequest';
 import { buildRequestUrl } from '../curl/utils/toCurl';
+import type { ConsoleRequest } from './types';
 
 const BASE = 'https://gw.example.com/default/payments-api/v1.0';
+
+/**
+ * `buildConsoleRequest` for an operation the console offers.
+ *
+ * It declines a verb outside `HTTP_METHODS` by returning `undefined`; every
+ * case below passes a supported one, so failing loudly here keeps the
+ * assertions free of narrowing that would hide a genuine decline.
+ */
+const build = (args: Parameters<typeof buildConsoleRequest>[0]): ConsoleRequest => {
+  const request = buildConsoleRequest(args);
+  if (!request) throw new Error(`expected a request for method ${String(args.method)}`);
+  return request;
+};
 
 const spec = {
   openapi: '3.0.1',
@@ -160,6 +174,43 @@ describe('fillPathParameters', () => {
     ).toBe('/a/x/b/x');
   });
 
+  // A path parameter is one segment's worth of value, and `allowReserved` is a
+  // query-parameter option only. swagger-client escapes these the same way when
+  // it executes the request, so leaving them raw would make the generated
+  // command disagree with what was actually sent.
+  describe('encoding a value into the path', () => {
+    const idParam = [{ name: 'id', in: 'path' }];
+    const fill = (value: string) =>
+      fillPathParameters('/books/{id}', idParam, { 'path.id': value });
+
+    it('escapes a slash so the value stays one segment', () => {
+      expect(fill('a/b')).toBe('/books/a%2Fb');
+    });
+
+    it('escapes characters that would start a query or fragment', () => {
+      expect(fill('a?b')).toBe('/books/a%3Fb');
+      expect(fill('a#b')).toBe('/books/a%23b');
+    });
+
+    it('escapes a space', () => {
+      expect(fill('the hobbit')).toBe('/books/the%20hobbit');
+    });
+
+    it('leaves RFC 3986 unreserved characters as written', () => {
+      expect(fill('v1.0~beta_2-x')).toBe('/books/v1.0~beta_2-x');
+    });
+
+    it('escapes the sub-delimiters encodeURIComponent would keep', () => {
+      // `!'()*` are reserved per RFC 3986 even though encodeURIComponent
+      // passes them through; swagger escapes them, so this must too.
+      expect(fill("o'brien(1)!*")).toBe('/books/o%27brien%281%29%21%2A');
+    });
+
+    it('encodes non-ASCII as UTF-8 bytes', () => {
+      expect(fill('café')).toBe('/books/caf%C3%A9');
+    });
+  });
+
   it('ignores non-path parameters', () => {
     expect(
       fillPathParameters('/payments/{paymentId}', [{ name: 'paymentId', in: 'query' }], {
@@ -171,7 +222,7 @@ describe('fillPathParameters', () => {
 
 describe('buildConsoleRequest', () => {
   it('maps filled query parameters onto rows', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'get',
@@ -185,8 +236,16 @@ describe('buildConsoleRequest', () => {
     ]);
   });
 
+  it('declines an operation whose verb the console does not offer', () => {
+    // Built as GET, this would render `curl -X GET` for a TRACE operation —
+    // a command that does not describe the request the console would send.
+    expect(
+      buildConsoleRequest({ baseUrl: BASE, method: 'trace', path: '/payments', spec }),
+    ).toBeUndefined();
+  });
+
   it('omits an untouched optional query parameter rather than sending it empty', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'get',
@@ -199,7 +258,7 @@ describe('buildConsoleRequest', () => {
   });
 
   it('keeps a declared header even when empty, so the user can see it exists', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'get',
@@ -210,19 +269,17 @@ describe('buildConsoleRequest', () => {
   });
 
   it('uppercases the method', () => {
-    expect(
-      buildConsoleRequest({ spec, path: '/payments', method: 'post', baseUrl: BASE }).method,
-    ).toBe('POST');
+    expect(build({ spec, path: '/payments', method: 'post', baseUrl: BASE }).method).toBe('POST');
   });
 
   it('strips a trailing slash from the base url', () => {
-    expect(
-      buildConsoleRequest({ spec, path: '/payments', method: 'get', baseUrl: `${BASE}/` }).baseUrl,
-    ).toBe(BASE);
+    expect(build({ spec, path: '/payments', method: 'get', baseUrl: `${BASE}/` }).baseUrl).toBe(
+      BASE,
+    );
   });
 
   it('appends the console’s own headers after the operation’s', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'get',
@@ -236,12 +293,55 @@ describe('buildConsoleRequest', () => {
     expect(request.headers[1]).toMatchObject({ secret: true, auto: true });
   });
 
-  it('does not inject a header the operation already declares', () => {
+  it('does not inject a query parameter the operation already declares', () => {
+    const withKeyQuery = {
+      paths: { '/x': { get: { parameters: [{ name: 'apiKey', in: 'query' }] } } },
+    };
+
+    const request = build({
+      spec: withKeyQuery,
+      path: '/x',
+      method: 'get',
+      baseUrl: BASE,
+      parameterValues: { 'query.apiKey': 'user-typed' },
+      extraQueryParams: [
+        { id: 'k', name: 'apiKey', value: 'injected', enabled: true, secret: true },
+      ],
+    });
+
+    // Two rows of the same name put `?apiKey=user-typed&apiKey=injected` in the
+    // generated command, while the interceptor's `searchParams.set` sends only
+    // one — the command would stop describing the request.
+    expect(request.queryParams).toHaveLength(1);
+  });
+
+  it('keeps a declared query parameter whose name differs only by case', () => {
+    // Query parameter names are case-sensitive, so this is a second parameter
+    // rather than the same one spelled differently.
+    const withBothCases = {
+      paths: { '/x': { get: { parameters: [{ name: 'apikey', in: 'query' }] } } },
+    };
+
+    const request = build({
+      spec: withBothCases,
+      path: '/x',
+      method: 'get',
+      baseUrl: BASE,
+      parameterValues: { 'query.apikey': 'user-typed' },
+      extraQueryParams: [
+        { id: 'k', name: 'apiKey', value: 'injected', enabled: true, secret: true },
+      ],
+    });
+
+    expect(request.queryParams.map((r) => r.name)).toEqual(['apikey', 'apiKey']);
+  });
+
+  it('lets the injected header win over one the operation declares', () => {
     const withKeyHeader = {
       paths: { '/x': { get: { parameters: [{ name: 'Test-Key', in: 'header' }] } } },
     };
 
-    const request = buildConsoleRequest({
+    const request = build({
       spec: withKeyHeader,
       path: '/x',
       method: 'get',
@@ -250,14 +350,15 @@ describe('buildConsoleRequest', () => {
       extraHeaders: [{ id: 'k', name: 'test-key', value: 'injected', enabled: true, secret: true }],
     });
 
-    // Shadowing the user's own value with an injected one, with no way to tell
-    // which was sent, is worse than not injecting.
+    // One row, not two: the same header sent twice is ambiguous, and the
+    // console's own credential is the one that actually authenticates. Query
+    // parameters resolve a name collision the same way.
     expect(request.headers).toHaveLength(1);
-    expect(request.headers[0].value).toBe('user-typed');
+    expect(request.headers[0].value).toBe('injected');
   });
 
   it('reports a JSON body as raw JSON', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'post',
@@ -270,7 +371,7 @@ describe('buildConsoleRequest', () => {
   });
 
   it('adds no Content-Type header, because the body implies it', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'post',
@@ -288,7 +389,7 @@ describe('buildConsoleRequest', () => {
       paths: { '/x': { post: { parameters: [{ name: 'Content-Type', in: 'header' }] } } },
     };
 
-    const request = buildConsoleRequest({
+    const request = build({
       spec: withContentType,
       path: '/x',
       method: 'post',
@@ -302,7 +403,7 @@ describe('buildConsoleRequest', () => {
   });
 
   it('reports no body when the body is blank', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'post',
@@ -314,7 +415,7 @@ describe('buildConsoleRequest', () => {
   });
 
   it('serializes a structured body', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'post',
@@ -327,7 +428,7 @@ describe('buildConsoleRequest', () => {
 
   it('produces a request whose url round-trips through the curl builder', () => {
     // The point of the shared model: what is built here is what gets printed.
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments/{paymentId}',
       method: 'get',
@@ -339,7 +440,7 @@ describe('buildConsoleRequest', () => {
   });
 
   it('gives every row a distinct id', () => {
-    const request = buildConsoleRequest({
+    const request = build({
       spec,
       path: '/payments',
       method: 'get',

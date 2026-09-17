@@ -138,11 +138,13 @@ export function CurlBuilder({
   // Counts what a body actually contributes: one for a raw payload, or the
   // number of fields that would be sent for an encoded one.
   const bodyCount =
-    request.bodyMode === 'raw'
-      ? request.body.trim() === ''
-        ? 0
-        : 1
-      : activeRows(request.formFields).length;
+    request.bodyMode === 'none'
+      ? 0
+      : request.bodyMode === 'raw'
+        ? request.body.trim() === ''
+          ? 0
+          : 1
+        : activeRows(request.formFields).length;
 
   /** A count badge, or nothing — a "0" badge is noise. */
   const withBadge = (label: React.ReactNode, count: number) =>

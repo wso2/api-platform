@@ -28,16 +28,18 @@ import { SpecSourceEditor } from './SpecSourceEditor';
 // lives entirely on this side of that boundary.
 vi.mock('@/components/CodeEditor/CodeEditor', () => ({
   CodeEditor: ({
+    ariaLabel,
     onChange,
     readOnly,
     value,
   }: {
+    ariaLabel?: string;
     onChange?: (next: string) => void;
     readOnly?: boolean;
     value: string;
   }) => (
     <textarea
-      aria-label="API definition source"
+      aria-label={ariaLabel}
       onChange={(event) => onChange?.(event.target.value)}
       readOnly={readOnly}
       value={value}

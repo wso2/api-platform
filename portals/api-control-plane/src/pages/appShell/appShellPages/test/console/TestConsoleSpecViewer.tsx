@@ -266,17 +266,19 @@ export default function TestConsoleSpecViewer({
           shown.method,
         );
 
-        publish(
-          buildConsoleRequest({
-            baseUrl: current.baseUrl,
-            bodyValue,
-            extraHeaders: current.extraHeaders,
-            method: shown.method,
-            parameterValues,
-            path: shown.path,
-            spec: specJson,
-          }),
-        );
+        const built = buildConsoleRequest({
+          baseUrl: current.baseUrl,
+          bodyValue,
+          extraHeaders: current.extraHeaders,
+          extraQueryParams: current.extraQueryParams,
+          method: shown.method,
+          parameterValues,
+          path: shown.path,
+          spec: specJson,
+        });
+        // An operation the console cannot represent keeps the previous command
+        // rather than replacing it with one built from a substituted verb.
+        if (built) publish(built);
       } catch {
         // Keep the previous command if Swagger's unpublished store shape changes.
       }

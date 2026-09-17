@@ -18,7 +18,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Button, IconButton, Tooltip } from '@wso2/oxygen-ui';
-import { Check, Copy } from '@wso2/oxygen-ui-icons-react';
+import { Check, Copy, TriangleAlert } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
 const messages = defineMessages({
@@ -32,10 +32,19 @@ const messages = defineMessages({
     defaultMessage: 'Copy',
     description: 'Default accessible label for a button that copies a value to the clipboard.',
   },
+  failed: {
+    id: 'apiControlPlane.pages.test.console.CopyButton.failed',
+    defaultMessage: 'Copy failed',
+    description:
+      'Tooltip and button label shown when the browser refused the clipboard write. A statement, not a command.',
+  },
 });
 
 /** How long the button stays in its confirmed state after a copy. */
 const COPIED_FEEDBACK_MS = 1500;
+
+/** Resting, just-copied, or refused by the browser. */
+type CopyStatus = 'idle' | 'copied' | 'failed';
 
 type CopyButtonProps = {
   /** Produces the text to copy, which may differ from the displayed value. */
@@ -47,14 +56,14 @@ type CopyButtonProps = {
 };
 
 /**
- * Copies a value to the clipboard, confirming in place.
+ * Copies a value to the clipboard and reports the result inline.
  *
- * Confirmation is inline rather than a toast: the console has several of these
- * within a screen of each other, and a toast would not say which one fired.
+ * Success clears itself; failure remains visible, which is important when the
+ * displayed value is masked and cannot be selected as a fallback.
  */
 export function CopyButton({ getValue, label, variant = 'icon' }: CopyButtonProps) {
   const intl = useIntl();
-  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<CopyStatus>('idle');
 
   // Held in a ref so a copy landing just before unmount (a view toggle, a tab
   // change) does not leave a timer setting state on a gone component.
@@ -63,25 +72,40 @@ export function CopyButton({ getValue, label, variant = 'icon' }: CopyButtonProp
   useEffect(() => () => window.clearTimeout(resetTimer.current), []);
 
   const accessibleLabel = label ?? intl.formatMessage(messages.copy);
-  const title = copied ? intl.formatMessage(messages.copied) : accessibleLabel;
+  const failed = status === 'failed';
+
+  const title = {
+    copied: intl.formatMessage(messages.copied),
+    failed: intl.formatMessage(messages.failed),
+    idle: accessibleLabel,
+  }[status];
+
+  const icon = {
+    copied: <Check size={16} />,
+    failed: <TriangleAlert size={16} />,
+    idle: <Copy size={16} />,
+  }[status];
 
   const copy = async () => {
+    // A retry starts from the resting state, so the previous outcome never
+    // outlives the attempt that produced it.
+    window.clearTimeout(resetTimer.current);
     try {
       await navigator.clipboard.writeText(getValue());
-      setCopied(true);
-      window.clearTimeout(resetTimer.current);
-      resetTimer.current = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+      setStatus('copied');
+      resetTimer.current = window.setTimeout(() => setStatus('idle'), COPIED_FEEDBACK_MS);
     } catch {
-      // Clipboard unavailable; the value remains visible and selectable.
+      setStatus('failed');
     }
   };
 
   if (variant === 'button') {
     return (
       <Button
+        color={failed ? 'error' : 'primary'}
         onClick={copy}
         size="small"
-        startIcon={copied ? <Check size={16} /> : <Copy size={16} />}
+        startIcon={icon}
         variant="contained"
       >
         {title}
@@ -91,8 +115,13 @@ export function CopyButton({ getValue, label, variant = 'icon' }: CopyButtonProp
 
   return (
     <Tooltip title={title}>
-      <IconButton aria-label={accessibleLabel} onClick={copy} size="small">
-        {copied ? <Check size={16} /> : <Copy size={16} />}
+      <IconButton
+        aria-label={title}
+        color={failed ? 'error' : undefined}
+        onClick={copy}
+        size="small"
+      >
+        {icon}
       </IconButton>
     </Tooltip>
   );
