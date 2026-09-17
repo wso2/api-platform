@@ -231,12 +231,12 @@ type SubscriptionPlanRepository interface {
 // needs. api_portals is a stub table (see schema.*.sql) owned by another team —
 // this is deliberately minimal, not a full CRUD interface.
 type ApiPortalRepository interface {
-	GetByHandleAndOrg(handle, orgUUID string) (*model.APIPortal, error)
+	GetByHandleAndOrg(handle, orgUUID string) (*model.PublicationAPIPortal, error)
 	// ListActiveByOrg returns every api_portals row for orgUUID whose
 	// workflow_status is "active" — the GET /api-publications rollup
 	// (Slice 3) lists only these; a portal still provisioning or failed is
 	// absent entirely (REST_Design.md §5).
-	ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error)
+	ListActiveByOrg(orgUUID string) ([]*model.PublicationAPIPortal, error)
 }
 
 // ApiDocumentRepository defines the interface for API document handle/UUID
@@ -274,6 +274,13 @@ type PublicationRepository interface {
 	// docUUIDs — already resolved from handles by the caller). Returns the
 	// saved row with its resolved UUID and audit timestamps.
 	SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error)
+	// PromoteDraftToPublication flips the draft row for (artifactUUID,
+	// apiPortalUUID, orgUUID) into the live publication in place — deleting
+	// any existing live row first, then flipping is_draft/status on the draft
+	// row itself (same uuid, no content copy). Returns (nil, false, nil) if
+	// no draft exists to promote. replaced reports whether an existing live
+	// row was deleted (republish) versus this being the first publish.
+	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error)
 	// GetContent returns one content row (definition/landing page/thumbnail)
 	// for a publication row, or nil if none is stored.
 	GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error)

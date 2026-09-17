@@ -391,6 +391,84 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 	return pub, nil
 }
 
+// PromoteDraftToPublication flips the draft row for (artifactUUID,
+// apiPortalUUID, orgUUID) into the live publication in place — deleting any
+// existing live row for the same pairing first, then setting is_draft = 0,
+// status = 'PUBLISHED' on the draft row itself. One transaction. No content
+// copy: it's the same row, same uuid, so its api_publication_contents/
+// _doc_mappings/_plan_mappings rows stay correctly attached automatically
+// (Implementation_Plan.md Slice 5, revised for the merged single-table
+// schema). Returns (nil, false, nil) if no draft exists to promote — the
+// caller (PublicationService.Publish) treats this as a defensive
+// DRAFT_NOT_FOUND, not a normal outcome, since the client always saves the
+// draft immediately before calling publish. replaced reports whether an
+// existing live row was found and deleted (republish) versus this being the
+// first publish (create) — the handler uses it to choose 200 vs 201.
+func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error) {
+	now := time.Now().UTC()
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var draftUUID string
+	lookupErr := tx.QueryRow(r.db.Rebind(`
+		SELECT uuid FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
+	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
+	if errors.Is(lookupErr, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if lookupErr != nil {
+		return nil, false, fmt.Errorf("failed to look up publication draft to promote: %w", lookupErr)
+	}
+
+	res, err := tx.Exec(r.db.Rebind(`
+		DELETE FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0
+	`), orgUUID, artifactUUID, apiPortalUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to delete existing live publication: %w", err)
+	}
+	if rowsDeleted, err := res.RowsAffected(); err == nil && rowsDeleted > 0 {
+		replaced = true
+	}
+
+	if _, err := tx.Exec(r.db.Rebind(`
+		UPDATE api_publications
+		SET is_draft = 0, status = 'PUBLISHED', updated_by = ?, updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ?
+	`), actor, now, draftUUID, orgUUID); err != nil {
+		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
+	}
+
+	row := tx.QueryRow(r.db.Rebind(`SELECT `+publicationDetailColumns+`
+		FROM api_publications WHERE uuid = ? AND organization_uuid = ?`), draftUUID, orgUUID)
+	promoted := &model.Publication{
+		OrganizationUUID: orgUUID,
+		ArtifactUUID:     artifactUUID,
+		APIPortalUUID:    apiPortalUUID,
+		IsDraft:          false,
+	}
+	if err := scanPublicationDetails(row, promoted); err != nil {
+		return nil, false, fmt.Errorf("failed to read promoted publication: %w", err)
+	}
+
+	hasThumbnail, hasLandingPage, err := r.contentFlags(tx, promoted.UUID, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+	promoted.HasThumbnail = hasThumbnail
+	promoted.HasLandingPage = hasLandingPage
+
+	if err := tx.Commit(); err != nil {
+		return nil, false, fmt.Errorf("failed to commit publication promotion: %w", err)
+	}
+	return promoted, replaced, nil
+}
+
 // GetContent returns one content row (definition/landing page/thumbnail) for
 // a publication row, or nil if none is stored.
 func (r *PublicationRepo) GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error) {

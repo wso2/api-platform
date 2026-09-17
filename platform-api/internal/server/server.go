@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -256,7 +257,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
-	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, apiDocumentRepo, subscriptionPlanRepo, publicationRepo, slogger)
+	portalPublisher, err := newPortalPublisher(cfg, slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
+	}
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, apiDocumentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
@@ -1041,4 +1046,34 @@ func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 	ba.Organization.UUID = uuid
 	slogger.Info("Seeded file-based organization", "uuid", org.ID, "handle", org.Handle)
 	return nil
+}
+
+// newPortalPublisher builds the real API Portal publisher when
+// cfg.PublicationPortalSharedKeyPath is configured, falling back to the
+// stand-in otherwise — not every deployment has a portal wired up yet, and
+// startup must not fail just because this optional integration isn't
+// configured (unlike a security-critical secret, this is a feature-enablement
+// switch, not an auth control to fail closed on).
+func newPortalPublisher(cfg *config.Server, slogger *slog.Logger) (service.PortalPublisher, error) {
+	path := strings.TrimSpace(cfg.PublicationPortalSharedKeyPath)
+	if path == "" {
+		slogger.Info("API Portal shared key not configured — using the stand-in publisher for API Publication")
+		return service.NewStandInPortalPublisher(), nil
+	}
+
+	keyBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read API Portal shared key from %q: %w", path, err)
+	}
+	sharedKey := strings.TrimSpace(string(keyBytes))
+	if sharedKey == "" {
+		return nil, fmt.Errorf("API Portal shared key file %q is empty", path)
+	}
+
+	retryClient, err := client.NewRetryableHTTPClient(3, 10*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
+	}
+	slogger.Info("API Portal shared key configured — using the real HTTP publisher for API Publication")
+	return service.NewHTTPPortalPublisher(sharedKey, retryClient), nil
 }

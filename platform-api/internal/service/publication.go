@@ -18,6 +18,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -49,6 +51,7 @@ type PublicationService struct {
 	apiDocumentRepo      repository.ApiDocumentRepository
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	publicationRepo      repository.PublicationRepository
+	portalPublisher      PortalPublisher
 	slogger              *slog.Logger
 }
 
@@ -59,6 +62,7 @@ func NewPublicationService(
 	apiDocumentRepo repository.ApiDocumentRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	publicationRepo repository.PublicationRepository,
+	portalPublisher PortalPublisher,
 	slogger *slog.Logger,
 ) *PublicationService {
 	if slogger == nil {
@@ -70,6 +74,7 @@ func NewPublicationService(
 		apiDocumentRepo:      apiDocumentRepo,
 		subscriptionPlanRepo: subscriptionPlanRepo,
 		publicationRepo:      publicationRepo,
+		portalPublisher:      portalPublisher,
 		slogger:              slogger,
 	}
 }
@@ -104,7 +109,7 @@ func (s *PublicationService) resolvePortal(apiPortalId, orgUUID string) (string,
 // resolvePortalRow is resolvePortal's counterpart for callers that also need
 // the portal's own handle/display name (the live publication read, for its
 // apiPortalId/apiPortalName response fields).
-func (s *PublicationService) resolvePortalRow(apiPortalId, orgUUID string) (*model.APIPortal, error) {
+func (s *PublicationService) resolvePortalRow(apiPortalId, orgUUID string) (*model.PublicationAPIPortal, error) {
 	if apiPortalId == "" {
 		return nil, apperror.APIPublicationAPIPortalNotFound.New()
 	}
@@ -496,6 +501,75 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 		return nil, apperror.NotFound.New()
 	}
 	return content, nil
+}
+
+// Publish publishes the current draft to the API Portal (REST_Design.md §7
+// "Publishing"). In the UI's own flow, the client always saves the draft
+// (draft PUT) immediately before calling this bodyless action, so a draft is
+// guaranteed to exist and already validated by the time this runs —
+// APIPublicationDraftNotFound here is a defensive, fail-closed check for a
+// client bug or a failed prior save proceeding anyway, not a normal
+// user-facing gate. Publish itself validates nothing further.
+//
+// The portal is pushed first (§8): nothing local changes unless that
+// succeeds. On success, one transaction (PublicationRepository.
+// PromoteDraftToPublication): delete the existing live row if one exists,
+// then flip the draft row in place — same row, same uuid, so its
+// content/mapping rows stay correctly attached with no copy. A repeat
+// publish with no intervening edit goes through the same path and is a
+// normal no-op refresh, not an error.
+func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (pub *model.Publication, replaced bool, err error) {
+	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+	portal, err := s.resolvePortalRow(apiPortalId, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	draft, planUUIDs, docUUIDs, err := s.publicationRepo.GetDraft(artifactUUID, portal.UUID, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft: %w", err)
+	}
+	if draft == nil {
+		// Defensive only — see doc comment above.
+		return nil, false, apperror.APIPublicationDraftNotFound.New()
+	}
+	if err := s.resolveHandles(draft, planUUIDs, docUUIDs, orgUUID); err != nil {
+		return nil, false, err
+	}
+
+	definition, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeDefinition, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft definition: %w", err)
+	}
+
+	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {
+		var conflict *PortalConflictError
+		if errors.As(err, &conflict) {
+			return nil, false, apperror.APIPublicationPortalConflict.New()
+		}
+		return nil, false, apperror.APIPublicationPortalUnavailable.Wrap(err)
+	}
+
+	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.UUID, orgUUID, actor)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
+	}
+	if published == nil {
+		// The draft existed moments ago (checked above) but is gone now —
+		// same defensive DRAFT_NOT_FOUND, not a normal outcome.
+		return nil, false, apperror.APIPublicationDraftNotFound.New()
+	}
+
+	published.APIPortalHandle = portal.Handle
+	published.APIPortalName = portal.DisplayName
+	// The mapping rows belong to the same row/uuid the draft did — nothing
+	// changed by the promotion, so the already-resolved handles still apply.
+	published.SubscriptionPlanIds = draft.SubscriptionPlanIds
+	published.DocIds = draft.DocIds
+	return published, wasReplace, nil
 }
 
 // publicationStatusNotPublished is the rollup's own label (REST_Design.md

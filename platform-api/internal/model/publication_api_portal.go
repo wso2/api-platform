@@ -26,11 +26,19 @@ import "time"
 // only needs the portal to exist, per REST_Design.md.
 const APIPortalWorkflowStatusActive = "active"
 
-// APIPortal is the minimal projection of api_portals this feature reads.
-// api_portals is a stub table (see schema.*.sql) owned by another team —
-// auth_type/auth_configuration/metadata are registration details this
-// feature never touches and so are not modelled here.
-type APIPortal struct {
+// PublicationAPIPortal is this feature's own deliberately minimal projection
+// of api_portals — not a temporary stand-in, but a permanent data-minimization
+// boundary: registration/auth details (auth_type, auth_configuration,
+// metadata) are never modelled here, so they can never leak into a read this
+// feature serves (e.g. the GET /api-publications rollup, Slice 3), regardless
+// of how much the real api_portals row eventually carries. Named after this
+// feature (the same convention as Publication/PublicationContent/
+// PublicationSummary in publication.go), not "APIPortal", so it also can't
+// collide with that team's own model once their real implementation lands in
+// this same package (see Implementation_Plan.md's "When the real dependencies
+// land" — api_portals is currently a stub table there, but this struct's
+// narrowness is independent of that and survives it).
+type PublicationAPIPortal struct {
 	UUID             string
 	OrganizationUUID string
 	Handle           string

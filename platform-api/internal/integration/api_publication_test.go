@@ -21,6 +21,7 @@
 package integration
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -42,6 +43,7 @@ func newPublicationTestService(it *itDB) *service.PublicationService {
 		repository.NewApiDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
+		service.NewStandInPortalPublisher(),
 		nil,
 	)
 }
@@ -298,5 +300,109 @@ func TestPublicationDraft_ContentRoundTrip(t *testing.T) {
 	}
 	if !got.HasThumbnail || !got.HasLandingPage {
 		t.Fatalf("[%s] want hasThumbnail=true hasLandingPage=true after saving content, got %v / %v", it.driver, got.HasThumbnail, got.HasLandingPage)
+	}
+}
+
+// TestPublicationPublish_DraftNotFound verifies Publish's defensive
+// precondition — with no draft ever saved, DRAFT_NOT_FOUND is returned
+// rather than publishing nothing.
+func TestPublicationPublish_DraftNotFound(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	svc := newPublicationTestService(it)
+
+	_, _, err := svc.Publish(context.Background(), "rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "actor")
+	if !apperror.APIPublicationDraftNotFound.Is(err) {
+		t.Fatalf("[%s] want APIPublicationDraftNotFound, got %v", it.driver, err)
+	}
+}
+
+// TestPublicationPublish_CreateRepublishNoOp drives Slice 5's full lifecycle
+// through the real service+repository stack — the "Done when" from
+// Implementation_Plan.md: save draft, publish (create), GET publication
+// shows it, edit + publish again (republish, replaces the old row in place,
+// never leaving two live rows), then publish again with no changes (no-op
+// refresh).
+func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	svc := newPublicationTestService(it)
+
+	apiType, apiHandle, portalHandle := "rest-api", apiHandleFor(g), portalHandleFor(g)
+
+	draft := &model.Publication{DisplayName: "Version One", Version: "1.0", AgentVisibility: "VISIBLE"}
+	savedDraft, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft, nil, nil)
+	if err != nil {
+		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
+	}
+
+	published, replaced, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
+	if err != nil {
+		t.Fatalf("[%s] Publish (create) failed: %v", it.driver, err)
+	}
+	if replaced {
+		t.Fatalf("[%s] want replaced=false on a first publish", it.driver)
+	}
+	if published.UUID != savedDraft.UUID {
+		t.Fatalf("[%s] want the draft row promoted in place (same uuid), got draft=%s published=%s", it.driver, savedDraft.UUID, published.UUID)
+	}
+	if published.Status != "PUBLISHED" || published.DisplayName != "Version One" {
+		t.Fatalf("[%s] unexpected published row: %+v", it.driver, published)
+	}
+	if _, err := svc.GetDraft(apiType, apiHandle, portalHandle, g.org); !apperror.APIPublicationDraftNotFound.Is(err) {
+		t.Fatalf("[%s] want the draft consumed by promotion (DRAFT_NOT_FOUND), got %v", it.driver, err)
+	}
+	got, err := svc.GetPublication(apiType, apiHandle, portalHandle, g.org)
+	if err != nil {
+		t.Fatalf("[%s] GetPublication failed: %v", it.driver, err)
+	}
+	if got.DisplayName != "Version One" {
+		t.Fatalf("[%s] GetPublication did not reflect the publish: %+v", it.driver, got)
+	}
+	if it.count(t, "api_publications", "uuid", published.UUID) != 1 {
+		t.Fatalf("[%s] want exactly one row for the promoted uuid", it.driver)
+	}
+
+	// Edit, then republish: the old live row must be replaced, not duplicated.
+	draft2 := &model.Publication{DisplayName: "Version Two", Version: "2.0", AgentVisibility: "VISIBLE"}
+	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft2, nil, nil); err != nil {
+		t.Fatalf("[%s] second SaveDraftDetails failed: %v", it.driver, err)
+	}
+	republished, replaced, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
+	if err != nil {
+		t.Fatalf("[%s] Publish (republish) failed: %v", it.driver, err)
+	}
+	if !replaced {
+		t.Fatalf("[%s] want replaced=true on a republish", it.driver)
+	}
+	if republished.DisplayName != "Version Two" {
+		t.Fatalf("[%s] want the republished content, got %+v", it.driver, republished)
+	}
+	liveRows, err := svc.ListPublicationSummary(apiType, apiHandle, g.org, "", "", "")
+	if err != nil {
+		t.Fatalf("[%s] ListPublicationSummary failed: %v", it.driver, err)
+	}
+	publishedCount := 0
+	for _, row := range liveRows {
+		if row.Status == "PUBLISHED" {
+			publishedCount++
+		}
+	}
+	if publishedCount != 1 {
+		t.Fatalf("[%s] want exactly one PUBLISHED portal row after republish, got %d", it.driver, publishedCount)
+	}
+
+	// Publish again with no intervening edit — a normal no-op refresh, not an error.
+	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft2, nil, nil); err != nil {
+		t.Fatalf("[%s] no-op resave failed: %v", it.driver, err)
+	}
+	noOp, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
+	if err != nil {
+		t.Fatalf("[%s] Publish (no-op refresh) failed: %v", it.driver, err)
+	}
+	if noOp.DisplayName != "Version Two" {
+		t.Fatalf("[%s] no-op refresh: unexpected content: %+v", it.driver, noOp)
 	}
 }

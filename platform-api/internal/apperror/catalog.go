@@ -228,4 +228,11 @@ var (
 	// unresolvable plan/document handle, or content over the configured size
 	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.
 	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
+	// APIPublicationPortalConflict is a rejection the portal will keep making
+	// (a conflicting handle/display name) — never retried (REST_Design.md §7
+	// "Retrying"), distinct from the transient APIPublicationPortalUnavailable.
+	APIPublicationPortalConflict = def(CodeAPIPublicationPortalConflict, http.StatusConflict,
+		"The API Portal rejected this request and will keep rejecting it until the conflict is resolved.")
+	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
+		"The API Portal could not be reached. Please try again.")
 )

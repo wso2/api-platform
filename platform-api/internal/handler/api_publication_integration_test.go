@@ -85,6 +85,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewApiDocumentRepo(db),
 		repository.NewSubscriptionPlanRepo(db),
 		repository.NewPublicationRepo(db),
+		service.NewStandInPortalPublisher(),
 		slog.Default(),
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())

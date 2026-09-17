@@ -38,6 +38,12 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// restAPITypeValue is REST_Design.md §2's type-agnostic path value for
+// RestApi. The publish/unpublish/deprecate routes are pinned to this one
+// literal per type (§4) — unlike the shared read/draft routes, apiType is not
+// a path variable here.
+const restAPITypeValue = "rest-api"
+
 // defaultPublicationContentMaxBytes/defaultPublicationThumbnailMaxBytes apply
 // when the corresponding config field is <= 0 — same zero-means-default
 // convention as OpenAPISpecMaxFetchBytes/MCPResponseMaxBytes (config/config.go).
@@ -89,6 +95,7 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/publication/landing-page", middleware.MapErrors(h.slogger, h.GetPublicationLandingPage))
 	mux.HandleFunc("GET "+base+"/publication/thumbnail", middleware.MapErrors(h.slogger, h.GetPublicationThumbnail))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/api-publications", middleware.MapErrors(h.slogger, h.ListPublications))
+	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish", middleware.MapErrors(h.slogger, h.Publish))
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -388,6 +395,36 @@ func (h *PublicationHandler) ListPublications(w http.ResponseWriter, r *http.Req
 		},
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+// Publish handles POST .../rest-api/{apiId}/publish — REST_Design.md §7
+// "Publishing". Bodyless: the client always saves the draft (PUT) immediately
+// before calling this action, so DRAFT_NOT_FOUND here is a defensive check,
+// not a normal user-facing gate.
+func (h *PublicationHandler) Publish(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
+
+	actor, err := resolveActorErr(r, h.identity, "publish API")
+	if err != nil {
+		return err
+	}
+
+	pub, replaced, err := h.service.Publish(r.Context(), restAPITypeValue, apiId, apiPortalId, orgId, actor)
+	if err != nil {
+		return serviceError(err, "failed to publish API")
+	}
+
+	if replaced {
+		httputil.WriteJSON(w, http.StatusOK, publicationModelToResponse(pub))
+		return nil
+	}
+	w.Header().Set("Location", constants.APIBasePath+"/api-portals/"+apiPortalId+"/apis/"+restAPITypeValue+"/"+apiId+"/publication")
+	httputil.WriteJSON(w, http.StatusCreated, publicationModelToResponse(pub))
 	return nil
 }
 

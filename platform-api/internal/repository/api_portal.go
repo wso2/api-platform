@@ -41,13 +41,13 @@ func NewApiPortalRepo(db *database.DB) ApiPortalRepository {
 // regardless of workflow_status — only the GET /api-publications rollup
 // (Slice 3) filters to "active"; draft/publication operations here just need
 // the portal to exist. Returns (nil, nil) when no such portal exists.
-func (r *ApiPortalRepo) GetByHandleAndOrg(handle, orgUUID string) (*model.APIPortal, error) {
+func (r *ApiPortalRepo) GetByHandleAndOrg(handle, orgUUID string) (*model.PublicationAPIPortal, error) {
 	query := `
 		SELECT uuid, organization_uuid, handle, display_name, description, url, workflow_status
 		FROM api_portals
 		WHERE handle = ? AND organization_uuid = ?
 	`
-	portal := &model.APIPortal{}
+	portal := &model.PublicationAPIPortal{}
 	var description, url sql.NullString
 	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(
 		&portal.UUID, &portal.OrganizationUUID, &portal.Handle, &portal.DisplayName,
@@ -67,7 +67,7 @@ func (r *ApiPortalRepo) GetByHandleAndOrg(handle, orgUUID string) (*model.APIPor
 // ListActiveByOrg returns every api_portals row for orgUUID whose
 // workflow_status is "active", ordered by registration time for a
 // deterministic default order.
-func (r *ApiPortalRepo) ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error) {
+func (r *ApiPortalRepo) ListActiveByOrg(orgUUID string) ([]*model.PublicationAPIPortal, error) {
 	query := `
 		SELECT uuid, organization_uuid, handle, display_name, description, url, workflow_status, created_at
 		FROM api_portals
@@ -80,9 +80,9 @@ func (r *ApiPortalRepo) ListActiveByOrg(orgUUID string) ([]*model.APIPortal, err
 	}
 	defer rows.Close()
 
-	var portals []*model.APIPortal
+	var portals []*model.PublicationAPIPortal
 	for rows.Next() {
-		portal := &model.APIPortal{}
+		portal := &model.PublicationAPIPortal{}
 		var description, url sql.NullString
 		if err := rows.Scan(
 			&portal.UUID, &portal.OrganizationUUID, &portal.Handle, &portal.DisplayName,

@@ -218,4 +218,6 @@ const (
 	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
 	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
+	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
+	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
 )
