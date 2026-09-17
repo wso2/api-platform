@@ -220,4 +220,11 @@ const (
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
 	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
 	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
+	// CodeAPIPublicationNotLive covers Slice 6 (Unpublish)'s precondition:
+	// valid only when the API is currently published or deprecated to this
+	// portal. Distinct from CodeAPIPublicationNotFound (404, used by the
+	// live-listing reads) — REST_Design.md §7 calls for a 409 here, since
+	// this is a state-precondition failure on an action, not a missing-
+	// resource read.
+	CodeAPIPublicationNotLive = "PUBLICATION_NOT_LIVE"
 )

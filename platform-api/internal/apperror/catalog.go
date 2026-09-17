@@ -235,4 +235,8 @@ var (
 		"The API Portal rejected this request and will keep rejecting it until the conflict is resolved.")
 	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
 		"The API Portal could not be reached. Please try again.")
+	// APIPublicationNotLive is Slice 6 (Unpublish)'s precondition failure:
+	// the API isn't currently published or deprecated to this portal.
+	APIPublicationNotLive = def(CodeAPIPublicationNotLive, http.StatusConflict,
+		"This API is not currently published or deprecated to this API Portal, so it cannot be unpublished.")
 )

@@ -281,6 +281,16 @@ type PublicationRepository interface {
 	// no draft exists to promote. replaced reports whether an existing live
 	// row was deleted (republish) versus this being the first publish.
 	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error)
+	// UnpublishPublication is PromoteDraftToPublication's mirror for Slice 6
+	// (Unpublish), called after the portal removal succeeds: if a draft
+	// already exists for (artifactUUID, apiPortalUUID, orgUUID), the live
+	// row is deleted outright and the draft kept untouched; otherwise the
+	// live row is demoted into the draft in place (is_draft=1, status
+	// cleared) — same row, same uuid, no content copy. found reports
+	// whether a live row existed to unpublish; false is the same defensive
+	// precondition failure the caller already checked before calling the
+	// portal.
+	UnpublishPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error)
 	// GetContent returns one content row (definition/landing page/thumbnail)
 	// for a publication row, or nil if none is stored.
 	GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error)

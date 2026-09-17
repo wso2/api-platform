@@ -469,6 +469,72 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	return promoted, replaced, nil
 }
 
+// UnpublishPublication is PromoteDraftToPublication's mirror for Slice 6
+// (Unpublish), called only after PortalPublisher.Unpublish has already
+// succeeded. One transaction: if a draft already exists for (artifactUUID,
+// apiPortalUUID, orgUUID), the live row is deleted outright (cascades its own
+// content/mapping rows) and the draft is left untouched — protects
+// in-progress draft edits from being clobbered by the demoted content. If no
+// draft exists, the live row is demoted into the draft in place — is_draft=1
+// and status cleared to NULL (schema.sqlite.sql: "status ... set only when
+// is_draft = 0"), same row, same uuid, no content copy, so its content/
+// mapping rows stay correctly attached automatically. Either way a draft
+// survives the operation. Returns found=false if no live row exists to
+// unpublish — the same defensive re-check PromoteDraftToPublication does for
+// its own precondition, since the caller (PublicationService.Unpublish)
+// already checked this before calling the portal.
+func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error) {
+	now := time.Now().UTC()
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var liveUUID string
+	lookupErr := tx.QueryRow(r.db.Rebind(`
+		SELECT uuid FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0
+	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
+	if errors.Is(lookupErr, sql.ErrNoRows) {
+		return false, nil
+	}
+	if lookupErr != nil {
+		return false, fmt.Errorf("failed to look up live publication to unpublish: %w", lookupErr)
+	}
+
+	var draftUUID string
+	draftErr := tx.QueryRow(r.db.Rebind(`
+		SELECT uuid FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
+	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
+
+	switch {
+	case draftErr == nil:
+		if _, err := tx.Exec(r.db.Rebind(`
+			DELETE FROM api_publications WHERE uuid = ? AND organization_uuid = ?
+		`), liveUUID, orgUUID); err != nil {
+			return false, fmt.Errorf("failed to delete unpublished publication: %w", err)
+		}
+	case errors.Is(draftErr, sql.ErrNoRows):
+		if _, err := tx.Exec(r.db.Rebind(`
+			UPDATE api_publications
+			SET is_draft = 1, status = NULL, updated_by = ?, updated_at = ?
+			WHERE uuid = ? AND organization_uuid = ?
+		`), actor, now, liveUUID, orgUUID); err != nil {
+			return false, fmt.Errorf("failed to demote publication to draft: %w", err)
+		}
+	default:
+		return false, fmt.Errorf("failed to look up publication draft: %w", draftErr)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("failed to commit unpublish: %w", err)
+	}
+	return true, nil
+}
+
 // GetContent returns one content row (definition/landing page/thumbnail) for
 // a publication row, or nil if none is stored.
 func (r *PublicationRepo) GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error) {

@@ -96,6 +96,7 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/publication/thumbnail", middleware.MapErrors(h.slogger, h.GetPublicationThumbnail))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/api-publications", middleware.MapErrors(h.slogger, h.ListPublications))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish", middleware.MapErrors(h.slogger, h.Publish))
+	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/unpublish", middleware.MapErrors(h.slogger, h.Unpublish))
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -425,6 +426,28 @@ func (h *PublicationHandler) Publish(w http.ResponseWriter, r *http.Request) err
 	}
 	w.Header().Set("Location", constants.APIBasePath+"/api-portals/"+apiPortalId+"/apis/"+restAPITypeValue+"/"+apiId+"/publication")
 	httputil.WriteJSON(w, http.StatusCreated, publicationModelToResponse(pub))
+	return nil
+}
+
+// Unpublish handles POST .../rest-api/{apiId}/unpublish — REST_Design.md §7
+// "Unpublishing". Valid only when currently published or deprecated.
+func (h *PublicationHandler) Unpublish(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
+
+	actor, err := resolveActorErr(r, h.identity, "unpublish API")
+	if err != nil {
+		return err
+	}
+
+	if err := h.service.Unpublish(r.Context(), restAPITypeValue, apiId, apiPortalId, orgId, actor); err != nil {
+		return serviceError(err, "failed to unpublish API")
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 

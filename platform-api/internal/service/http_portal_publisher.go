@@ -109,6 +109,49 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.Publica
 	}
 }
 
+// Unpublish implements PortalPublisher: DELETE /apis/{handle} on the portal
+// — verified against the portal's own OpenAPI spec
+// (portals/api-portal/docs/api-portal-openapi-spec-v0.9.yaml) and
+// apiMetadataService.js's deleteAPIMetadata. A 200 means removed; a 404 is
+// treated as already-removed (success), which is what makes a retry after an
+// already-successful removal converge rather than error (REST_Design.md §7
+// "Retrying"). A 409 means the portal still has active subscriptions/API
+// keys attached to the listing — the force-delete-with-listing capability
+// REST_Design.md §7/§13 expects isn't implemented on the portal yet
+// (deleteAPIMetadata still rejects rather than force-removing consumers), so
+// this surfaces as the same PortalConflictError Publish uses for a rejection
+// the portal will keep making.
+func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string) error {
+	base := strings.TrimRight(portal.URL, "/")
+	escapedHandle := url.PathEscape(apiHandle)
+
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, base+"/apis/"+escapedHandle, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build portal unpublish request: %w", err)
+	}
+	req.Header.Set("Authorization", p.authHeader())
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("portal unpublish failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil
+	case resp.StatusCode == http.StatusConflict:
+		return &PortalConflictError{Message: "the API Portal rejected removal of this listing (active subscriptions or API keys still exist)"}
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return nil
+	default:
+		return fmt.Errorf("portal unpublish failed: unexpected status %d", resp.StatusCode)
+	}
+}
+
 // checkExists is REST_Design.md §8 step 1: GET /apis/{handle} on the portal.
 // 200 means it exists (update); 404 means it doesn't (create).
 func (p *HTTPPortalPublisher) checkExists(ctx context.Context, base, escapedHandle string) (bool, error) {

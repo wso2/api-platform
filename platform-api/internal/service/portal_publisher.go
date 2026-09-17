@@ -43,6 +43,18 @@ type PortalPublisher interface {
 	// retried); any other error is treated as transient/unavailable (503
 	// PUBLICATION_PORTAL_UNAVAILABLE).
 	Publish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error
+
+	// Unpublish removes apiHandle's listing from portal (REST_Design.md §7
+	// "Unpublishing"). A nil error means the portal no longer carries the
+	// listing — including the case where it was already gone, which the
+	// implementation must treat as success so a retry after an
+	// already-successful removal doesn't surface as an error. A
+	// *PortalConflictError means the portal rejected removal and will keep
+	// rejecting it as-is (e.g. active subscriptions/API keys still attached
+	// — mapped to 409 PUBLICATION_PORTAL_CONFLICT, never retried); any other
+	// error is treated as transient/unavailable (503
+	// PUBLICATION_PORTAL_UNAVAILABLE).
+	Unpublish(ctx context.Context, portal *model.PublicationAPIPortal, apiHandle string) error
 }
 
 // PortalConflictError signals that the API Portal rejected a publish and
@@ -54,18 +66,22 @@ type PortalConflictError struct {
 
 func (e *PortalConflictError) Error() string { return e.Message }
 
-// standInPortalPublisher is the one mock Slice 5's minimal demo needs — its
-// Publish always succeeds, standing in for the real portal push until that
-// integration is built (see "When the real dependencies land" in
-// Implementation_Plan.md).
+// standInPortalPublisher is the mock used where no portal integration is
+// configured — every method always succeeds, standing in for the real portal
+// push/removal until that integration is built (see "When the real
+// dependencies land" in Implementation_Plan.md).
 type standInPortalPublisher struct{}
 
-// NewStandInPortalPublisher returns a PortalPublisher whose Publish always
-// succeeds.
+// NewStandInPortalPublisher returns a PortalPublisher whose methods always
+// succeed.
 func NewStandInPortalPublisher() PortalPublisher {
 	return &standInPortalPublisher{}
 }
 
 func (*standInPortalPublisher) Publish(_ context.Context, _ *model.PublicationAPIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+	return nil
+}
+
+func (*standInPortalPublisher) Unpublish(_ context.Context, _ *model.PublicationAPIPortal, _ string) error {
 	return nil
 }

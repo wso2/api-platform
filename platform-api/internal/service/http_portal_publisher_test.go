@@ -243,3 +243,86 @@ func TestHTTPPortalPublisher_SendsDefinitionContent(t *testing.T) {
 		t.Fatalf("want definition content to round-trip, got %q", gotDefinitionBytes)
 	}
 }
+
+// TestHTTPPortalPublisher_Unpublish_DeletesListing verifies the DELETE
+// /apis/{handle} call and the shared-key auth header.
+func TestHTTPPortalPublisher_Unpublish_DeletesListing(t *testing.T) {
+	var gotMethod, gotPath, gotAuth string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+
+	if err := p.Unpublish(context.Background(), portal, "my-api"); err != nil {
+		t.Fatalf("Unpublish: %v", err)
+	}
+	if gotMethod != http.MethodDelete || gotPath != "/apis/my-api" {
+		t.Fatalf("want DELETE /apis/my-api, got %s %s", gotMethod, gotPath)
+	}
+	if gotAuth != "sharedkey test-shared-key" {
+		t.Fatalf("want Authorization 'sharedkey test-shared-key', got %q", gotAuth)
+	}
+}
+
+// TestHTTPPortalPublisher_Unpublish_NotFoundIsSuccess verifies a 404 (already
+// removed) is treated as success — the idempotency REST_Design.md §7
+// "Retrying" promises for a retry after an already-successful removal.
+func TestHTTPPortalPublisher_Unpublish_NotFoundIsSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+
+	if err := p.Unpublish(context.Background(), portal, "my-api"); err != nil {
+		t.Fatalf("want a 404 treated as success, got %v", err)
+	}
+}
+
+// TestHTTPPortalPublisher_Unpublish_ConflictMapped verifies a 409 (active
+// consumers still attached) maps to *PortalConflictError, not a generic error.
+func TestHTTPPortalPublisher_Unpublish_ConflictMapped(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+
+	err := p.Unpublish(context.Background(), portal, "my-api")
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *PortalConflictError, got %v", err)
+	}
+}
+
+// TestHTTPPortalPublisher_Unpublish_UnavailableOnServerError verifies a
+// persistent 5xx surfaces as a plain error (mapped by the service layer to
+// 503, not 409) — never a *PortalConflictError.
+func TestHTTPPortalPublisher_Unpublish_UnavailableOnServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.PublicationAPIPortal{URL: srv.URL}
+
+	err := p.Unpublish(context.Background(), portal, "my-api")
+	if err == nil {
+		t.Fatal("want an error for a persistent 500")
+	}
+	var conflict *PortalConflictError
+	if errors.As(err, &conflict) {
+		t.Fatalf("want a plain error, not *PortalConflictError, for a 500")
+	}
+}

@@ -572,6 +572,50 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	return published, wasReplace, nil
 }
 
+// Unpublish removes the live listing from portal, then writes locally —
+// REST_Design.md §7 "Unpublishing". Valid only when currently published or
+// deprecated (409 PUBLICATION_NOT_LIVE otherwise). On success: if a draft
+// already exists, the live row is deleted and the draft is kept untouched;
+// otherwise the live row is demoted into the draft in place. Either way a
+// draft survives.
+func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) error {
+	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
+	if err != nil {
+		return err
+	}
+	portal, err := s.resolvePortalRow(apiPortalId, orgUUID)
+	if err != nil {
+		return err
+	}
+
+	live, _, _, err := s.publicationRepo.GetPublication(artifactUUID, portal.UUID, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get publication: %w", err)
+	}
+	if live == nil || (live.Status != "PUBLISHED" && live.Status != "DEPRECATED") {
+		return apperror.APIPublicationNotLive.New()
+	}
+
+	if err := s.portalPublisher.Unpublish(ctx, portal, apiId); err != nil {
+		var conflict *PortalConflictError
+		if errors.As(err, &conflict) {
+			return apperror.APIPublicationPortalConflict.New()
+		}
+		return apperror.APIPublicationPortalUnavailable.Wrap(err)
+	}
+
+	found, err := s.publicationRepo.UnpublishPublication(artifactUUID, portal.UUID, orgUUID, actor)
+	if err != nil {
+		return fmt.Errorf("failed to unpublish publication: %w", err)
+	}
+	if !found {
+		// The live row existed moments ago (checked above) but is gone now —
+		// same defensive precondition failure, not a normal outcome.
+		return apperror.APIPublicationNotLive.New()
+	}
+	return nil
+}
+
 // publicationStatusNotPublished is the rollup's own label (REST_Design.md
 // §7) for "no live row exists" — never a value api_publications itself
 // stores.
