@@ -2148,6 +2148,10 @@
     "defaultMessage": "Deploy API",
     "description": "Button in the not-deployed banner that opens the Deploy page. A command."
   },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.deploymentUnavailable": {
+    "defaultMessage": "This API’s deployments could not be loaded.",
+    "description": "Shown when fetching the gateways or deployments failed — distinct from the API genuinely not being deployed anywhere."
+  },
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading": {
     "defaultMessage": "Loading test console",
     "description": "Shown while the API and its definition are being fetched."

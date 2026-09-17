@@ -196,6 +196,45 @@ describe('sampleFromSchema', () => {
     expect(sample).toEqual({ a: 'x', b: 'y' });
   });
 
+  // An `allOf` chain that composes a scalar carries no properties, and saying
+  // so matters: an empty `properties` object still reads as "this is an object"
+  // to the branch below, which would answer `{}` for a schema whose whole point
+  // is a formatted string.
+  describe('an allOf chain that composes a scalar', () => {
+    it('keeps the format the chain contributes', () => {
+      const sample = sampleFromSchema(spec, {
+        allOf: [{ type: 'string' }, { format: 'date' }],
+      });
+
+      expect(sample).toBe('1970-01-01');
+    });
+
+    it('keeps a date-time the same way', () => {
+      const sample = sampleFromSchema(spec, {
+        allOf: [{ type: 'string' }, { format: 'date-time' }],
+      });
+
+      expect(sample).toBe(new Date(0).toISOString());
+    });
+
+    it('keeps a non-string scalar', () => {
+      // The member adding a constraint contributes no properties either.
+      expect(sampleFromSchema(spec, { allOf: [{ type: 'integer' }, { minimum: 1 }] })).toBe(0);
+    });
+
+    it('still merges properties when the chain composes an object', () => {
+      // The empty-properties case must not cost the case this reducer is for.
+      const sample = sampleFromSchema(spec, {
+        allOf: [
+          { type: 'object', properties: { a: { type: 'string', example: 'x' } } },
+          { type: 'object', properties: { b: { type: 'integer', example: 7 } } },
+        ],
+      });
+
+      expect(sample).toEqual({ a: 'x', b: 7 });
+    });
+  });
+
   it('takes the first branch of a oneOf rather than emitting nothing', () => {
     const sample = sampleFromSchema(spec, {
       oneOf: [{ type: 'string', example: 'first' }, { type: 'integer' }],

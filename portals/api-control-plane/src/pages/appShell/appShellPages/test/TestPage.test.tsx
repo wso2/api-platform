@@ -407,6 +407,82 @@ describe('TestPage', () => {
     expectNoRenderLoop();
   });
 
+  // Both lookups fall back to an empty list, so a failed request is
+  // indistinguishable from an undeployed API by gateway count alone. Telling
+  // someone to deploy an API that is already deployed sends them to redo work
+  // and hides the real fault.
+  describe('when a deployment lookup fails', () => {
+    const failing = (endpoint: 'gateways' | 'deployments') => [
+      ...undeployed().filter((handler) => !handler.info.path.toString().endsWith(endpoint)),
+      http.get(apiUrl(`/rest-apis/payments-api/${endpoint}`), () =>
+        HttpResponse.json({ code: '500', message: 'nope' }, { status: 500 }),
+      ),
+    ];
+
+    it.each(['gateways', 'deployments'] as const)(
+      'reports the failure rather than the deploy prompt when %s fails',
+      async (endpoint) => {
+        server.use(...failing(endpoint));
+
+        renderPage();
+
+        expect(await screen.findByText(/deployments could not be loaded/i)).toBeInTheDocument();
+        expect(
+          screen.queryByText(/You must deploy the API to start testing/i),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Deploy API/i })).not.toBeInTheDocument();
+        expectNoRenderLoop();
+      },
+    );
+  });
+
+  // A test key is an ordinary, persisted API key: minting one for a page that
+  // renders the deploy prompt instead of a console spends a real credential and
+  // leaves an entry in the user's key list for a console they never reached.
+  it('mints no key for a secured API that is deployed nowhere', async () => {
+    server.use(
+      http.get(apiUrl('/rest-apis/payments-api'), () => HttpResponse.json(securedApi())),
+      http.get(apiUrl('/rest-apis/payments-api/gateways'), () =>
+        HttpResponse.json(listEnvelope([])),
+      ),
+      http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
+        HttpResponse.json(listEnvelope([])),
+      ),
+      http.post(apiUrl('/rest-apis/payments-api/api-keys'), () => {
+        mintCalls += 1;
+        return HttpResponse.json({ apiKey: 'k', keyId: 'k1', message: 'ok', status: 'success' });
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByText(/You must deploy the API to start testing/i);
+    expect(mintCalls).toBe(0);
+    expectNoRenderLoop();
+  });
+
+  it('mints no key when the deployment lookup fails', async () => {
+    server.use(
+      http.get(apiUrl('/rest-apis/payments-api'), () => HttpResponse.json(securedApi())),
+      http.get(apiUrl('/rest-apis/payments-api/gateways'), () =>
+        HttpResponse.json({ code: '500', message: 'nope' }, { status: 500 }),
+      ),
+      http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
+        HttpResponse.json(listEnvelope([])),
+      ),
+      http.post(apiUrl('/rest-apis/payments-api/api-keys'), () => {
+        mintCalls += 1;
+        return HttpResponse.json({ apiKey: 'k', keyId: 'k1', message: 'ok', status: 'success' });
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByText(/deployments could not be loaded/i);
+    expect(mintCalls).toBe(0);
+    expectNoRenderLoop();
+  });
+
   it('offers one way out of the empty state, to the Deploy page', async () => {
     server.use(...undeployed());
 

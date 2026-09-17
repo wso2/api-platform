@@ -30,7 +30,16 @@ import type { ApiKeyLocation } from './apiKeyAuth';
  */
 
 /** Methods the console offers. Ordered as the method picker lists them. */
-export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+export const HTTP_METHODS = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+  'TRACE',
+] as const;
 
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 
@@ -41,8 +50,8 @@ export type HttpMethod = (typeof HTTP_METHODS)[number];
  * and matchers use uppercase.
  *
  * Unsupported verbs return `undefined` rather than defaulting to `GET`. This
- * prevents operations such as `trace` from being displayed or sent as `GET`,
- * and ensures the cURL output matches the executed request.
+ * prevents unsupported operations, such as `connect`, from being displayed or
+ * sent as `GET` and keeps the cURL output consistent with the executed request.
  *
  * An absent or blank value defaults to `GET`.
  */
@@ -151,6 +160,16 @@ const RAW_CONTENT_TYPES: Record<RawFormat, string> = {
   json: 'application/json',
   text: 'text/plain',
   xml: 'application/xml',
+};
+
+/** Maps a Content-Type to a known raw format, defaulting to `json`. */
+export const rawFormatFor = (mediaType: string | undefined): RawFormat => {
+  const base = (mediaType ?? '').split(';')[0].trim().toLowerCase();
+  if (base === '') return 'json';
+  if (base === 'application/xml' || base === 'text/xml' || base.endsWith('+xml')) return 'xml';
+  if (base === 'application/json' || base.endsWith('+json')) return 'json';
+  if (base.startsWith('text/')) return 'text';
+  return 'json';
 };
 
 /**

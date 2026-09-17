@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { normalizeMethod, type ConsoleRequest, type KeyValueRow } from './types';
+import { normalizeMethod, rawFormatFor, type ConsoleRequest, type KeyValueRow } from './types';
 
 /**
  * Builds a `ConsoleRequest` from an operation's OpenAPI definition and the
@@ -72,6 +72,30 @@ const text = (value: unknown): string | undefined => {
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return undefined;
+};
+
+/** Returns the first declared request-body media type, or `undefined` if unavailable. */
+const declaredRequestMediaType = (
+  spec: Record<string, unknown>,
+  path: string,
+  method: string,
+): string | undefined => {
+  const paths = spec.paths;
+  if (typeof paths !== 'object' || paths === null) return undefined;
+
+  const pathItem = (paths as Record<string, unknown>)[path];
+  if (typeof pathItem !== 'object' || pathItem === null) return undefined;
+
+  const operation = (pathItem as Record<string, unknown>)[method.toLowerCase()];
+  if (typeof operation !== 'object' || operation === null) return undefined;
+
+  const requestBody = (operation as Record<string, unknown>).requestBody;
+  if (typeof requestBody !== 'object' || requestBody === null) return undefined;
+
+  const content = (requestBody as Record<string, unknown>).content;
+  if (typeof content !== 'object' || content === null) return undefined;
+
+  return Object.keys(content as Record<string, unknown>)[0];
 };
 
 /**
@@ -174,6 +198,8 @@ export type BuildConsoleRequestArgs = {
   extraHeaders?: KeyValueRow[];
   /** Console-added query parameters, such as a query-string API key. */
   extraQueryParams?: KeyValueRow[];
+  /** Media type of the body being composed, as chosen in the editor. Falls back to the operation's first declared request media type. */
+  contentType?: string;
 };
 
 /** The body as text, whatever swagger stored. */
@@ -206,6 +232,7 @@ export const buildConsoleRequest = ({
   bodyValue,
   extraHeaders = [],
   extraQueryParams = [],
+  contentType,
 }: BuildConsoleRequestArgs): ConsoleRequest | undefined => {
   const normalizedMethod = normalizeMethod(method);
   if (!normalizedMethod) return undefined;
@@ -245,10 +272,8 @@ export const buildConsoleRequest = ({
       ...extraHeaders,
     ],
     bodyMode: hasBodyText ? 'raw' : 'none',
-    // swagger's try-out form composes JSON request bodies, so a body arriving
-    // from there is JSON. A user who wants another encoding picks it in the
-    // cURL view, which owns that choice.
-    rawFormat: 'json',
+    // Format determined by actual Content-Type
+    rawFormat: rawFormatFor(contentType ?? declaredRequestMediaType(spec, path, method)),
     body,
     formFields: [],
   };
@@ -264,7 +289,7 @@ export const firstOperationOf = (
   for (const [path, pathItem] of Object.entries(paths as Record<string, unknown>)) {
     if (typeof pathItem !== 'object' || pathItem === null) continue;
     const item = pathItem as Record<string, unknown>;
-    const method = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].find(
+    const method = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'].find(
       (candidate) => typeof item[candidate] === 'object' && item[candidate] !== null,
     );
     if (method) return { method: method.toUpperCase(), path };

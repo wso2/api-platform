@@ -16,7 +16,12 @@
  * under the License.
  */
 
-import { normalizeMethod, type ConsoleRequest, type KeyValueRow } from '../../utils/types';
+import {
+  normalizeMethod,
+  rawFormatFor,
+  type ConsoleRequest,
+  type KeyValueRow,
+} from '../../utils/types';
 
 /**
  * Converts a Swagger UI request object into the console's `ConsoleRequest`
@@ -67,6 +72,10 @@ const readHeaders = (source: unknown): Record<string, string> => {
   });
   return headers;
 };
+
+/** Gets a header value by name, case-insensitively. */
+const headerValue = (headers: Record<string, string>, name: string): string | undefined =>
+  Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
 
 /** The body as text, whatever swagger happened to store it as. */
 const readBody = (source: unknown): string => {
@@ -183,9 +192,8 @@ export const fromSwaggerRequest = (
     queryParams: toRows(split.query, 'q', secretName),
     headers: toRows(Object.entries(headers), 'h', secretName),
     bodyMode: body.trim() === '' ? 'none' : 'raw',
-    // An executed swagger request carries a JSON body; the cURL view is where
-    // another encoding can be chosen.
-    rawFormat: 'json',
+    // Use the sent Content-Type, not the operation's declared format.
+    rawFormat: rawFormatFor(headerValue(headers, 'content-type')),
     body,
     formFields: [],
   };

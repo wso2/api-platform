@@ -101,11 +101,50 @@ describe('fromSwaggerRequest', () => {
     expect(result?.queryParams[0]).toMatchObject({ name: 'limit', value: '10', enabled: true });
   });
 
+  it('takes the body’s format from the Content-Type actually sent', () => {
+    const result = fromSwaggerRequest(
+      {
+        url: `${BASE}/orders`,
+        method: 'post',
+        headers: { 'Content-Type': 'application/xml' },
+        body: '<order/>',
+      },
+      BASE,
+    );
+
+    // Reported as JSON, a well-formed XML body is flagged malformed and the
+    // generated command claims a Content-Type the request never carried.
+    expect(result?.rawFormat).toBe('xml');
+  });
+
+  it('matches the Content-Type header however it is cased, and ignores charset', () => {
+    const result = fromSwaggerRequest(
+      {
+        url: `${BASE}/orders`,
+        method: 'post',
+        headers: { 'content-type': 'TEXT/plain; charset=utf-8' },
+        body: 'hello',
+      },
+      BASE,
+    );
+
+    expect(result?.rawFormat).toBe('text');
+  });
+
+  it('stays json when the request carries no Content-Type', () => {
+    const result = fromSwaggerRequest(
+      { url: `${BASE}/orders`, method: 'post', headers: {}, body: '{}' },
+      BASE,
+    );
+
+    expect(result?.rawFormat).toBe('json');
+  });
+
   it('declines a verb the console does not offer', () => {
     // Reported as GET, the cURL panel would print `-X GET` for a request
-    // swagger actually executed as TRACE.
+    // swagger actually executed as something else.
     expect(
-      fromSwaggerRequest({ url: `${BASE}/payments`, method: 'trace', headers: {} }, BASE),
+      fromSwaggerRequest({ url: `${BASE}/payments`, method: 'connect', headers: {} }, BASE),
     ).toBeUndefined();
   });
 

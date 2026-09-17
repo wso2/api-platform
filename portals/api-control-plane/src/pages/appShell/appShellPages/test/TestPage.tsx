@@ -81,6 +81,12 @@ const messages = defineMessages({
     description:
       'Heading of the empty state shown when the API has no stored OpenAPI definition, so there are no resources to test.',
   },
+  deploymentUnavailable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.deploymentUnavailable',
+    defaultMessage: 'This API’s deployments could not be loaded.',
+    description:
+      'Shown when fetching the gateways or deployments failed — distinct from the API genuinely not being deployed anywhere.',
+  },
   definitionUnavailable: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.definitionUnavailable',
     defaultMessage: 'This API’s definition could not be loaded.',
@@ -157,11 +163,22 @@ function TestConsole() {
   const apiKeyAuth = useMemo(() => apiKeyAuthOf(apiQuery.data), [apiQuery.data]);
   const needsApiKey = apiKeyAuth !== undefined;
 
-  /**
-   * Minting is enabled only when the API requires an API key.
-   * Passing `undefined` disables the query and prevents unnecessary keys.
-   */
-  const testApiKey = useTestApiKey(restApiId, needsApiKey);
+  const gateways = useMemo(
+    () => deployedGatewaysOf(gatewaysQuery.data?.list ?? [], deploymentsQuery.data?.list ?? []),
+    [deploymentsQuery.data, gatewaysQuery.data],
+  );
+
+  /** True while we still do not know whether the API is deployed. */
+  const deploymentUnknown = gatewaysQuery.isPending || deploymentsQuery.isPending;
+
+  /** True when either deployment lookup failed. */
+  const deploymentFailed = Boolean(gatewaysQuery.error || deploymentsQuery.error);
+
+  /** True when a request can be sent. */
+  const deploymentReady = !deploymentUnknown && !deploymentFailed && gateways.length > 0;
+
+  /** Mint only when a required key has a gateway to use. */
+  const testApiKey = useTestApiKey(restApiId, needsApiKey && deploymentReady);
 
   const [view, setView] = useState<ConsoleView>('console');
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
@@ -173,11 +190,6 @@ function TestConsole() {
    */
   const [keyHeaderName, setKeyHeaderName] = useState<string | undefined>(undefined);
 
-  const gateways = useMemo(
-    () => deployedGatewaysOf(gatewaysQuery.data?.list ?? [], deploymentsQuery.data?.list ?? []),
-    [deploymentsQuery.data, gatewaysQuery.data],
-  );
-
   const selectedGateway =
     gateways.find((gateway) => gateway.id === selectedGatewayId) ?? gateways[0];
 
@@ -187,11 +199,8 @@ function TestConsole() {
 
   const baseUrl = resolvedBaseUrl;
 
-  /** True while we still do not know whether the API is deployed. */
-  const deploymentUnknown = gatewaysQuery.isPending || deploymentsQuery.isPending;
-
   /** True when both deployment queries have settled and no gateway exists. */
-  const notDeployed = !deploymentUnknown && gateways.length === 0;
+  const notDeployed = !deploymentUnknown && !deploymentFailed && gateways.length === 0;
 
   /** Destination for the banner, using the Overview page's deployment route. */
   const deployPath = routes.apiDeploy(
@@ -312,6 +321,15 @@ function TestConsole() {
       </Stack>
     </PageTitle.Header>
   );
+
+  if (deploymentFailed) {
+    return (
+      <>
+        <PageTitle>{heading}</PageTitle>
+        <ErrorState title={intl.formatMessage(messages.deploymentUnavailable)} />
+      </>
+    );
+  }
 
   /** Render the deployment-required empty state when no gateway exists. */
   if (notDeployed) {

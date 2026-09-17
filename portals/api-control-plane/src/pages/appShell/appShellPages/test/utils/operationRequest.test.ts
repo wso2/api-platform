@@ -236,11 +236,66 @@ describe('buildConsoleRequest', () => {
     ]);
   });
 
+  describe('the body’s media type', () => {
+    const xmlOp = {
+      paths: {
+        '/x': { post: { requestBody: { content: { 'application/xml': { schema: {} } } } } },
+      },
+    };
+
+    it('follows the operation’s declared request media type', () => {
+      // Called JSON, an XML body is labelled with the wrong Content-Type and
+      // reported as malformed the moment the editor validates it.
+      const request = build({
+        spec: xmlOp,
+        path: '/x',
+        method: 'post',
+        baseUrl: BASE,
+        bodyValue: '<order/>',
+      });
+
+      expect(request.rawFormat).toBe('xml');
+    });
+
+    it('prefers the type the caller says is being composed', () => {
+      const bothOp = {
+        paths: {
+          '/x': {
+            post: {
+              requestBody: {
+                content: { 'application/json': { schema: {} }, 'application/xml': { schema: {} } },
+              },
+            },
+          },
+        },
+      };
+
+      // The document lists JSON first and means neither; the editor's own
+      // selection is what the user is actually typing into.
+      const request = build({
+        spec: bothOp,
+        path: '/x',
+        method: 'post',
+        baseUrl: BASE,
+        bodyValue: '<order/>',
+        contentType: 'application/xml',
+      });
+
+      expect(request.rawFormat).toBe('xml');
+    });
+
+    it('stays json when the operation declares no request body', () => {
+      const request = build({ spec, path: '/payments', method: 'get', baseUrl: BASE });
+
+      expect(request.rawFormat).toBe('json');
+    });
+  });
+
   it('declines an operation whose verb the console does not offer', () => {
-    // Built as GET, this would render `curl -X GET` for a TRACE operation —
+    // Built as GET, this would render `curl -X GET` for a CONNECT operation —
     // a command that does not describe the request the console would send.
     expect(
-      buildConsoleRequest({ baseUrl: BASE, method: 'trace', path: '/payments', spec }),
+      buildConsoleRequest({ baseUrl: BASE, method: 'connect', path: '/payments', spec }),
     ).toBeUndefined();
   });
 

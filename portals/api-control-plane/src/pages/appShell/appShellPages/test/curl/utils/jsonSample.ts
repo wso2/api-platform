@@ -84,13 +84,14 @@ const flatten = (spec: Schema, schema: Schema, depth: number): Schema => {
     (merged, member) => {
       if (!isObject(member)) return merged;
       const resolved = flatten(spec, member, depth + 1);
+      const properties = {
+        ...(isObject(merged.properties) ? merged.properties : {}),
+        ...(isObject(resolved.properties) ? resolved.properties : {}),
+      };
       return {
         ...merged,
         ...resolved,
-        properties: {
-          ...(isObject(merged.properties) ? merged.properties : {}),
-          ...(isObject(resolved.properties) ? resolved.properties : {}),
-        },
+        ...(Object.keys(properties).length > 0 ? { properties } : {}),
       };
     },
     { ...schema, allOf: undefined },

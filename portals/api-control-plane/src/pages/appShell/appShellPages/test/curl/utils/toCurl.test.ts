@@ -27,7 +27,13 @@ import {
   toCurl,
   toCurlScript,
 } from './toCurl';
-import { normalizeMethod, type ConsoleRequest, type KeyValueRow } from '../../utils/types';
+import {
+  HTTP_METHODS,
+  normalizeMethod,
+  rawFormatFor,
+  type ConsoleRequest,
+  type KeyValueRow,
+} from '../../utils/types';
 
 const row = (overrides: Partial<KeyValueRow> = {}): KeyValueRow => ({
   id: 'r1',
@@ -156,9 +162,7 @@ describe('buildRequestUrl', () => {
   });
 
   it('encodes query values, so an & cannot split one parameter into two', () => {
-    const url = buildRequestUrl(
-      request({ queryParams: [row({ name: 'q', value: 'a&b=c' })] }),
-    );
+    const url = buildRequestUrl(request({ queryParams: [row({ name: 'q', value: 'a&b=c' })] }));
 
     expect(url).toContain('?q=a%26b%3Dc');
   });
@@ -185,9 +189,9 @@ describe('buildRequestUrl', () => {
   it('omits the blank trailing row the table always renders', () => {
     // The editor keeps an empty row at the bottom to type into; it must never
     // reach the URL as `=`.
-    expect(buildRequestUrl(request({ queryParams: [row({ name: '  ', value: '' })] }))).not.toContain(
-      '?',
-    );
+    expect(
+      buildRequestUrl(request({ queryParams: [row({ name: '  ', value: '' })] })),
+    ).not.toContain('?');
   });
 });
 
@@ -197,10 +201,9 @@ describe('toCurl', () => {
   });
 
   it('quotes the URL so a query string cannot be split by the shell', () => {
-    const command = toCurl(
-      request({ queryParams: [row({ name: 'a', value: '1' })] }),
-      { revealSecrets: true },
-    );
+    const command = toCurl(request({ queryParams: [row({ name: 'a', value: '1' })] }), {
+      revealSecrets: true,
+    });
 
     // Shell-quoted like every other value in the command, rather than wrapped
     // in double quotes: single quotes protect `&`, `?` and `$` alike, and one
@@ -260,19 +263,17 @@ describe('toCurl', () => {
   });
 
   it('never masks a non-secret header', () => {
-    const command = toCurl(
-      request({ headers: [row({ name: 'X-Trace', value: 'plain' })] }),
-      { revealSecrets: false },
-    );
+    const command = toCurl(request({ headers: [row({ name: 'X-Trace', value: 'plain' })] }), {
+      revealSecrets: false,
+    });
 
     expect(command).toContain("-H 'X-Trace: plain'");
   });
 
   it('emits -d for a JSON body', () => {
-    const command = toCurl(
-      request({ method: 'POST', ...raw('{"amount": 2500}') }),
-      { revealSecrets: true },
-    );
+    const command = toCurl(request({ method: 'POST', ...raw('{"amount": 2500}') }), {
+      revealSecrets: true,
+    });
 
     // Byte for byte as typed. Re-serialising through `JSON.parse` would round a
     // number too wide for a double and drop a duplicate key, so the command
@@ -291,28 +292,23 @@ describe('toCurl', () => {
 
   it('emits no -d in None mode, even with body text left over', () => {
     // Switching to None must not send a body the user thought they had removed.
-    const command = toCurl(
-      request({ method: 'POST', body: '{"stale": true}', bodyMode: 'none' }),
-      { revealSecrets: true },
-    );
+    const command = toCurl(request({ method: 'POST', body: '{"stale": true}', bodyMode: 'none' }), {
+      revealSecrets: true,
+    });
 
     expect(command).not.toContain('-d');
   });
 
   it('emits no -d for an empty JSON body, rather than -d with nothing in it', () => {
-    const command = toCurl(
-      request({ method: 'POST', ...raw('   ') }),
-      { revealSecrets: true },
-    );
+    const command = toCurl(request({ method: 'POST', ...raw('   ') }), { revealSecrets: true });
 
     expect(command).not.toContain('-d');
   });
 
   it('quotes a body containing single quotes so the command still parses', () => {
-    const command = toCurl(
-      request({ method: 'POST', ...raw(`{"note":"it's fine"}`) }),
-      { revealSecrets: true },
-    );
+    const command = toCurl(request({ method: 'POST', ...raw(`{"note":"it's fine"}`) }), {
+      revealSecrets: true,
+    });
 
     expect(command).toContain(`-d '{"note":"it'\\''s fine"}'`);
   });
@@ -321,12 +317,10 @@ describe('toCurl', () => {
     // A trailing backslash makes the shell wait for more input, so pasting the
     // command appears to hang.
     expect(toCurl(request(), { revealSecrets: true })).not.toMatch(/\\$/);
-    expect(
-      toCurl(request({ headers: [row()] }), { revealSecrets: true }),
-    ).not.toMatch(/\\$/);
-    expect(
-      toCurl(request({ method: 'POST', ...raw('{}') }), { revealSecrets: true }),
-    ).not.toMatch(/\\$/);
+    expect(toCurl(request({ headers: [row()] }), { revealSecrets: true })).not.toMatch(/\\$/);
+    expect(toCurl(request({ method: 'POST', ...raw('{}') }), { revealSecrets: true })).not.toMatch(
+      /\\$/,
+    );
   });
 
   it('continues every line except the last', () => {
@@ -553,6 +547,33 @@ describe('toCurlScript', () => {
   });
 });
 
+describe('rawFormatFor', () => {
+  it('maps the media types the console can validate', () => {
+    expect(rawFormatFor('application/json')).toBe('json');
+    expect(rawFormatFor('application/xml')).toBe('xml');
+    expect(rawFormatFor('text/xml')).toBe('xml');
+    expect(rawFormatFor('text/plain')).toBe('text');
+  });
+
+  it('ignores parameters and case, as a real Content-Type carries both', () => {
+    expect(rawFormatFor('Application/JSON; charset=utf-8')).toBe('json');
+    expect(rawFormatFor('TEXT/Plain; charset=utf-8')).toBe('text');
+  });
+
+  it('reads a structured-syntax suffix', () => {
+    // `application/problem+json` is JSON; `image/svg+xml` is XML.
+    expect(rawFormatFor('application/problem+json')).toBe('json');
+    expect(rawFormatFor('image/svg+xml')).toBe('xml');
+  });
+
+  it('falls back to json for anything unrecognised or absent', () => {
+    // What every caller assumed unconditionally before this existed.
+    expect(rawFormatFor(undefined)).toBe('json');
+    expect(rawFormatFor('')).toBe('json');
+    expect(rawFormatFor('application/octet-stream')).toBe('json');
+  });
+});
+
 describe('normalizeMethod', () => {
   it('uppercases a lowercase OpenAPI path-item key', () => {
     expect(normalizeMethod('get')).toBe('GET');
@@ -560,12 +581,18 @@ describe('normalizeMethod', () => {
   });
 
   it('declines a verb the console does not offer', () => {
-    // Swagger's own supportedSubmitMethods include `trace`, so this arrives in
-    // practice. Answering `GET` would have the cURL panel print `-X GET` for a
-    // request executed as something else.
-    expect(normalizeMethod('TRACE')).toBeUndefined();
+    // Answering `GET` would have the cURL panel print `-X GET` for a request
+    // executed as something else.
     expect(normalizeMethod('CONNECT')).toBeUndefined();
     expect(normalizeMethod('NOTAVERB')).toBeUndefined();
+  });
+
+  it('recognises every verb the console offers, trace included', () => {
+    // Swagger's own supportedSubmitMethods include `trace`, so a spec that
+    // declares one is executable here rather than something to refuse.
+    for (const method of HTTP_METHODS) {
+      expect(normalizeMethod(method.toLowerCase())).toBe(method);
+    }
   });
 
   it('still defaults a missing value to GET', () => {

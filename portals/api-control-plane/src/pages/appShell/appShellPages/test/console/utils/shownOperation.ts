@@ -45,6 +45,10 @@ export type SwaggerSystemLike = {
     requestBodyValue?: (path: string, method: string) => unknown;
     specJson?: () => { toJS?: () => unknown } | undefined;
   };
+  oas3Selectors?: {
+    /** The media type selected in the try-out form's request-body picker. */
+    requestContentType?: (path: string, method: string) => unknown;
+  };
 };
 
 type ImmutableLike = {
@@ -142,12 +146,19 @@ export const formValuesOf = (
   system: SwaggerSystemLike,
   path: string,
   method: string,
-): { parameterValues: Record<string, unknown>; bodyValue?: string } => {
+): {
+  parameterValues: Record<string, unknown>;
+  bodyValue?: string;
+  contentType?: string;
+} => {
   const values = system.specSelectors?.parameterValues?.(path, method)?.toJS?.();
   const bodyValue = system.specSelectors?.requestBodyValue?.(path, method);
+  // The content type selected by the user in the form.
+  const contentType = system.oas3Selectors?.requestContentType?.(path, method);
 
   return {
     bodyValue: typeof bodyValue === 'string' ? bodyValue : undefined,
+    contentType: typeof contentType === 'string' ? contentType : undefined,
     parameterValues:
       typeof values === 'object' && values !== null ? (values as Record<string, unknown>) : {},
   };

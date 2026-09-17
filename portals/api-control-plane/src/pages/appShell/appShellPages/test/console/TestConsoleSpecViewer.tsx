@@ -260,7 +260,7 @@ export default function TestConsoleSpecViewer({
         const specJson = specJsonOf(system.current);
         if (!specJson) return;
 
-        const { bodyValue, parameterValues } = formValuesOf(
+        const { bodyValue, contentType, parameterValues } = formValuesOf(
           system.current,
           shown.path,
           shown.method,
@@ -269,6 +269,7 @@ export default function TestConsoleSpecViewer({
         const built = buildConsoleRequest({
           baseUrl: current.baseUrl,
           bodyValue,
+          contentType,
           extraHeaders: current.extraHeaders,
           extraQueryParams: current.extraQueryParams,
           method: shown.method,
@@ -304,7 +305,13 @@ export default function TestConsoleSpecViewer({
       current.extraHeaders
         .filter((header) => header.enabled && header.name.trim() !== '')
         .forEach((header) => {
-          headers[header.name.trim()] = header.value;
+          const name = header.name.trim();
+          Object.keys(headers).forEach((existingName) => {
+            if (existingName.toLowerCase() === name.toLowerCase()) {
+              delete headers[existingName];
+            }
+          });
+          headers[name] = header.value;
         });
 
       const next: Record<string, unknown> = {
@@ -330,10 +337,7 @@ export default function TestConsoleSpecViewer({
 
   return (
     <Box
-      // `swagger-spec-viewer` opts into the shared stylesheet; the modifiers are
-      // that sheet's own switches for the chrome this page does not want (the
-      // document's info header and the server picker — the console selects the
-      // gateway itself).
+      // Hide info header and server picker; console manages gateway selection
       className="swagger-spec-viewer hide-info-section hide-servers test-console-spec-viewer"
       style={themeVariables}
     >
@@ -355,10 +359,7 @@ export default function TestConsoleSpecViewer({
             }}
             value={search}
           />
-          {/* A hidden FormLabel plus `labelId`, matching GatewaySection. A
-              bare Select points `aria-labelledby` at itself, so its only
-              accessible name would be the option currently showing — "All
-              methods" tells a screen-reader user the value, not the control. */}
+          {/* Hidden label for accessibility; Select's aria-labelledby points here */}
           <FormControl sx={{ flexShrink: 0, width: 180 }}>
             <FormLabel id="test-console-method-label" sx={{ display: 'none' }}>
               <FormattedMessage {...messages.methodLabel} />
@@ -381,10 +382,7 @@ export default function TestConsoleSpecViewer({
           </FormControl>
         </Stack>
 
-        {/* The viewer stays mounted when nothing matches, only hidden.
-            Unmounting it would tear down swagger's store, so clearing the
-            search would lose every expanded operation and every try-out value
-            the user had already entered. */}
+        {/* Keep viewer mounted to preserve swagger state when hidden */}
         <Box hidden={!hasMatches}>
           <SwaggerUIComponent
             defaultModelsExpandDepth={1}
