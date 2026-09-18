@@ -189,7 +189,7 @@ func TestObservabilityEmitsAnAccessLinePerRequest(t *testing.T) {
 	h := observability("oauth2", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})))
-	out, rec := captureLogs(t, h, httptest.NewRequest(http.MethodPost, "/debug/reset", strings.NewReader("{}")))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/debug/reset", strings.NewReader("{}")))
 
 	require.Contains(t, out, `"msg":"testbench request served"`)
 	for _, field := range []string{`"service":"oauth2"`, `"method":"POST"`, `"path":"/debug/reset"`,
@@ -204,7 +204,7 @@ func TestObservabilityEmitsAnAccessLinePerRequest(t *testing.T) {
 // suite step name the exact request it is asserting about.
 func TestObservabilityHonoursAnInboundRequestID(t *testing.T) {
 	h := observability("echo", limitBody(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil)
 	req.Header.Set(RequestIDHeader, "suite-step-42")
 
 	out, rec := captureLogs(t, h, req)
@@ -218,7 +218,7 @@ func TestObservabilityRecordsTheRejectionReason(t *testing.T) {
 	h := observability("analytics", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "analytics collector: malformed batch payload", http.StatusBadRequest)
 	})))
-	out, _ := captureLogs(t, h, httptest.NewRequest(http.MethodPost, "/block/v1/events", nil))
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/block/v1/events", nil))
 
 	require.Contains(t, out, `"msg":"testbench request rejected"`)
 	require.Contains(t, out, "malformed batch payload")
@@ -231,7 +231,7 @@ func TestObservabilityLogsServerErrorsAtErrorLevel(t *testing.T) {
 	h := observability("backend", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "forced upstream failure", http.StatusBadGateway)
 	})))
-	out, _ := captureLogs(t, h, httptest.NewRequest(http.MethodGet, "/fail", nil))
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/fail", nil))
 	require.Contains(t, out, `"level":"ERROR"`)
 	require.Contains(t, out, `"msg":"testbench request failed"`)
 }
@@ -242,7 +242,7 @@ func TestObservabilityRecoversAndReportsAPanic(t *testing.T) {
 	h := observability("mcp", limitBody(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("boom in a mock")
 	})))
-	out, rec := captureLogs(t, h, httptest.NewRequest(http.MethodGet, "/x", nil))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil))
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 	require.Contains(t, out, `"msg":"testbench handler panicked"`)
@@ -257,7 +257,7 @@ func TestObservabilityReportsThePartitionOnce(t *testing.T) {
 		WriteJSON(w, r, http.StatusOK, map[string]string{"path": r.URL.Path})
 	})
 	h := observability("capture", limitBody(NormalizeMethod(PartitionRouter(inner))))
-	out, rec := captureLogs(t, h, httptest.NewRequest("get", "/myblock/test/captured", nil))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), "get", "/myblock/test/captured", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, out, `"msg":"testbench request served"`)
@@ -274,7 +274,7 @@ func TestObservabilityReportsThePartitionOnce(t *testing.T) {
 // place the cause is visible.
 func TestPartitionRouterLogsARejectedPath(t *testing.T) {
 	h := observability("capture", limitBody(PartitionRouter(http.NotFoundHandler())))
-	out, rec := captureLogs(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, out, `"msg":"testbench rejected a partition path"`)
@@ -287,7 +287,7 @@ func TestFailLogsStructuredDetailAlongsideTheResponse(t *testing.T) {
 		Fail(w, r, http.StatusUnauthorized, "invalid client credentials",
 			"client_id", "test-client", "auth_style", "basic")
 	})))
-	out, rec := captureLogs(t, h, httptest.NewRequest(http.MethodPost, "/oauth2/token", nil))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/oauth2/token", nil))
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 	require.Contains(t, out, `"client_id":"test-client"`)
