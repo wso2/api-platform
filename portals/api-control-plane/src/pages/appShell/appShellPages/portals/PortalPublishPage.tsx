@@ -18,6 +18,7 @@
 
 import { useEffect, useState } from 'react';
 import { Box, PageTitle, Tab, Tabs } from '@wso2/oxygen-ui';
+import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useParams } from 'react-router-dom';
 
@@ -32,14 +33,13 @@ import {
   useUnpublishRestApiFromApiPortal,
   type DraftDefinitionDocument,
 } from '@/api/resources/apiPublications';
-import { useRestApi } from '@/api/resources/restApis';
+import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { isApiError } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { restApiToOpenApiSpec } from '../apis/utils/operationsToSpec';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { SpecificationTab } from './components/SpecificationTab';
@@ -135,6 +135,24 @@ type Tab = 'details' | 'specification';
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing';
 
 /**
+ * `GET /rest-apis/{id}/openapi` (`useRestApiOpenApi`) returns the raw spec as
+ * YAML text — parsed the same way `ResourcesPanel`'s `parseSpecContent` does.
+ * `js-yaml` reads JSON too (JSON is a YAML subset), so this covers either
+ * serialization the stored spec happens to be in.
+ */
+const parseOpenApiContent = (content: string): DraftDefinitionDocument | undefined => {
+  try {
+    const parsed = yaml.load(content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as DraftDefinitionDocument;
+    }
+  } catch {
+    // Not valid YAML/JSON — treated the same as "nothing to pre-fill from".
+  }
+  return undefined;
+};
+
+/**
  * The publish/unpublish flow for one API on one API Portal.
  *
  * Alpha scope, per the design this implements: only "API Details" and
@@ -166,10 +184,38 @@ export function PortalPublishPage() {
   const portalName = (location.state as { portalName?: string } | null)?.portalName ?? apiPortalId;
 
   const apiQuery = useRestApi(apiHandler);
+  // `draft` and `publication` fetch in parallel, not as a fallback chain —
+  // `publication` isn't only a pre-fill fallback here, it's also what decides
+  // whether Unpublish is enabled, which is needed regardless of whether a
+  // draft exists (a portal can be live *and* have an in-progress draft edit
+  // at once). Deferring it behind "no draft" would silently disable Unpublish
+  // on exactly that combination.
   const draftQuery = useApiPublicationDraft(apiPortalId, API_TYPE, apiHandler);
   const publicationQuery = useApiPublication(apiPortalId, API_TYPE, apiHandler);
+
+  // The Specification tab's three definition tiers, by contrast, exist only
+  // to pre-fill that one tab — nothing else reads them — so each one is
+  // fetched only once the tier before it is confirmed absent, rather than all
+  // three firing in parallel on every visit. Passing `undefined` for the API
+  // handle is what keeps a not-yet-relevant tier's query disabled (every hook
+  // here gates on its id argument being defined).
   const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, API_TYPE, apiHandler);
-  const publicationDefinitionQuery = useApiPublicationDefinition(apiPortalId, API_TYPE, apiHandler);
+  const draftDefinitionAbsent = isApiError(draftDefinitionQuery.error) && draftDefinitionQuery.error.isNotFound;
+
+  const publicationDefinitionQuery = useApiPublicationDefinition(
+    apiPortalId,
+    API_TYPE,
+    draftDefinitionAbsent ? apiHandler : undefined,
+  );
+  const publicationDefinitionAbsent =
+    draftDefinitionAbsent &&
+    isApiError(publicationDefinitionQuery.error) &&
+    publicationDefinitionQuery.error.isNotFound;
+
+  // Last fallback tier: the API's own real stored definition
+  // (`GET /rest-apis/{id}/openapi`) — not a reconstruction. 404s when nothing
+  // has ever been uploaded for this API.
+  const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition();
@@ -185,12 +231,19 @@ export function PortalPublishPage() {
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
+  // A disabled query's own `isPending` is permanently `true` — it never runs,
+  // so it never resolves to success/error (see `useApiPublicationDraft`'s own
+  // note on `isPending` vs `isLoading`). A tier that isn't enabled yet must
+  // only block the page while it's actually still a candidate to run: once
+  // its predecessor is confirmed absent it's genuinely in flight and worth
+  // waiting on; before that, it would just hold the spinner up forever.
   const initialLoadPending =
     apiQuery.isPending ||
     draftQuery.isPending ||
     publicationQuery.isPending ||
     draftDefinitionQuery.isPending ||
-    publicationDefinitionQuery.isPending;
+    (draftDefinitionAbsent && publicationDefinitionQuery.isPending) ||
+    (publicationDefinitionAbsent && apiOpenApiQuery.isPending);
 
   // Seeds the form from REST_Design.md §6's read chain exactly once, the
   // moment every tier has settled (success or the expected 404) — never
@@ -204,7 +257,7 @@ export function PortalPublishPage() {
     const definitionDocument: DraftDefinitionDocument | undefined =
       draftDefinitionQuery.data ??
       publicationDefinitionQuery.data ??
-      (apiQuery.data ? restApiToOpenApiSpec(apiQuery.data) : undefined);
+      (apiOpenApiQuery.data ? parseOpenApiContent(apiOpenApiQuery.data.content) : undefined);
     setDefinitionText(definitionDocument ? JSON.stringify(definitionDocument, null, 2) : '');
 
     setInitialized(true);
@@ -216,16 +269,21 @@ export function PortalPublishPage() {
     publicationQuery.data,
     draftDefinitionQuery.data,
     publicationDefinitionQuery.data,
+    apiOpenApiQuery.data,
   ]);
 
-  // A 404 on the draft/publication/definition tiers is an expected "nothing
-  // saved here yet", not a failure — only a genuinely unexpected error (or the
-  // API itself not resolving) is worth an error screen.
+  // A 404 on the draft/publication/definition/openapi tiers is an expected
+  // "nothing saved here yet", not a failure — only a genuinely unexpected
+  // error (or the API itself not resolving) is worth an error screen.
   const unexpectedError =
     apiQuery.error ??
-    [draftQuery, publicationQuery, draftDefinitionQuery, publicationDefinitionQuery].find(
-      (query) => isApiError(query.error) && !query.error.isNotFound,
-    )?.error;
+    [
+      draftQuery,
+      publicationQuery,
+      draftDefinitionQuery,
+      publicationDefinitionQuery,
+      apiOpenApiQuery,
+    ].find((query) => isApiError(query.error) && !query.error.isNotFound)?.error;
 
   if (initialLoadPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;

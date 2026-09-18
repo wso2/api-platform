@@ -81,26 +81,47 @@ const PUBLICATION_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publicatio
 const PUBLICATION_DEFINITION_PATH = `${PUBLICATION_PATH}/definition`;
 const PUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publish`;
 const UNPUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/unpublish`;
+const API_OPENAPI_PATH = `/rest-apis/${API}/openapi`;
 
-/** The four reads the page makes before it can render the form. */
+/** The definition chain's three tiers, each with its own call recorder. */
+function definitionTierRecorders() {
+  return {
+    draftDefinition: recorder(),
+    publicationDefinition: recorder(),
+    openApi: recorder(),
+  };
+}
+
+/** The five reads the page makes before it can render the form. */
 function servePublicationState({
   draft,
   publication,
+  definitionRecorders = definitionTierRecorders(),
 }: {
   draft?: PublicationDraftDetailsFixture;
   publication?: PublicationFixture;
+  definitionRecorders?: ReturnType<typeof definitionTierRecorders>;
 } = {}) {
   server.use(
     resource('/rest-apis/:restApiId', api),
     draft
       ? resource(DRAFT_PATH, draft)
       : failure('get', DRAFT_PATH, 404, 'DRAFT_NOT_FOUND'),
-    failure('get', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND'),
+    failure('get', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND', {
+      record: definitionRecorders.draftDefinition,
+    }),
     publication
       ? resource(PUBLICATION_PATH, publication)
       : failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'),
-    failure('get', PUBLICATION_DEFINITION_PATH, 404, 'PUBLICATION_NOT_FOUND'),
+    failure('get', PUBLICATION_DEFINITION_PATH, 404, 'PUBLICATION_NOT_FOUND', {
+      record: definitionRecorders.publicationDefinition,
+    }),
+    // The third definition fallback tier — no spec uploaded for this API.
+    failure('get', API_OPENAPI_PATH, 404, 'REST_API_SPEC_NOT_FOUND', {
+      record: definitionRecorders.openApi,
+    }),
   );
+  return definitionRecorders;
 }
 
 beforeEach(() => {
@@ -162,6 +183,47 @@ describe('PortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
       displayName: 'Loan Management Service',
       version: '1.0.0',
+    });
+  });
+
+  it('does not query publication/definition or the API’s own spec once a draft definition is found', async () => {
+    const definitionRecorders = servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(
+      resource(DRAFT_DEFINITION_PATH, { openapi: '3.0.3', paths: {} }, {
+        record: definitionRecorders.draftDefinition,
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await waitFor(() => expect(definitionRecorders.draftDefinition.count()).toBe(1));
+    expect(definitionRecorders.publicationDefinition.count()).toBe(0);
+    expect(definitionRecorders.openApi.count()).toBe(0);
+  });
+
+  it('falls all the way through to the API’s own real stored spec when no draft/publication definition exists', async () => {
+    servePublicationState();
+    server.use(
+      resource(API_OPENAPI_PATH, {
+        content: 'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n',
+      }),
+    );
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? '{}')).toMatchObject({
+      openapi: '3.0.3',
+      info: { title: 'Loan Management Service', version: '1.0.0' },
     });
   });
 
