@@ -1,4 +1,5 @@
 {{- $gc := .Values.gateway.config.controller -}}
+{{- $controller := .Values.gateway.controller -}}
 {{- $router := .Values.gateway.config.router -}}
 {{- $pe := .Values.gateway.config.policy_engine -}}
 {{- $pg := $gc.storage.postgres -}}
@@ -75,6 +76,20 @@ data:
     {{- if eq $gc.storage.type "postgres" }}
     [controller.storage.postgres]
     {{- if $pg.dsn }}
+    {{- /*
+      A full DSN is used verbatim by the controller (buildPostgresDSN returns it
+      as-is when set) — the password from gateway.controller.postgres.passwordSecretRef
+      is NOT merged into it. Setting both, unless the DSN itself references the
+      injected password env token, means the secret is silently ignored and the
+      controller connects with no password. Fail loudly instead. The secure way to
+      combine a DSN with the secret is to embed the token in the DSN. Match the full
+      `{{ env "VAR" }}` interpolation token (tolerating the {{- trim marker, spacing,
+      and the "" default arg), not just the bare variable name, so a DSN that merely
+      mentions the name elsewhere (e.g. in the dbname) still fails the guard.
+    */ -}}
+    {{- if and $controller.postgres.passwordSecretRef.name (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD"` $pg.dsn)) }}
+    {{- fail "gateway.config.controller.storage.postgres.dsn is set together with gateway.controller.postgres.passwordSecretRef, but the DSN does not reference the injected password. A full DSN is used verbatim; the separately-injected password is ignored. Either embed the token in the DSN, e.g. dsn: 'postgres://user:{{ env \"APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD\" }}@host:5432/db?sslmode=require', or unset gateway.controller.postgres.passwordSecretRef and put the password directly in the DSN." }}
+    {{- end }}
     dsn = {{ $pg.dsn | quote }}
     {{- else }}
     host = {{ required "gateway.config.controller.storage.postgres.host is required when storage.type is \"postgres\" and dsn is unset" $pg.host | quote }}
@@ -96,6 +111,19 @@ data:
     [controller.storage.database]
     driver = {{ default "sqlserver" $db.driver | quote }}
     {{- if $db.dsn }}
+    {{- /*
+      A full DSN is used verbatim by the controller (buildSQLServerDSN returns it
+      as-is when set) — the password from gateway.controller.sqlserver.passwordSecretRef
+      is NOT merged into it. Setting both, unless the DSN itself references the
+      injected password env token, means the secret is silently ignored. Fail loudly
+      instead; embed the token in the DSN to combine a DSN with the secret. Match the
+      full `{{ env "VAR" }}` interpolation token (tolerating the {{- trim marker,
+      spacing, and the "" default arg), not just the bare variable name, so a DSN that
+      merely mentions the name elsewhere (e.g. in the dbname) still fails the guard.
+    */ -}}
+    {{- if and $controller.sqlserver.passwordSecretRef.name (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD"` $db.dsn)) }}
+    {{- fail "gateway.config.controller.storage.database.dsn is set together with gateway.controller.sqlserver.passwordSecretRef, but the DSN does not reference the injected password. A full DSN is used verbatim; the separately-injected password is ignored. Either embed the token in the DSN, e.g. dsn: 'sqlserver://user:{{ env \"APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD\" }}@host:1433?database=gateway', or unset gateway.controller.sqlserver.passwordSecretRef and put the password directly in the DSN." }}
+    {{- end }}
     dsn = {{ $db.dsn | quote }}
     {{- else }}
     host = {{ required "gateway.config.controller.storage.database.host is required when storage.type is \"sqlserver\" and dsn is unset" $db.host | quote }}
