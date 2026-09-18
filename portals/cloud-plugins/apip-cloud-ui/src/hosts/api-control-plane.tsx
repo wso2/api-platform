@@ -176,6 +176,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
       },
     ],
   }),
+  defineCloudPlugin({
     id: 'managed-api-portals',
     version: '0.1.0',
     extensions: [
