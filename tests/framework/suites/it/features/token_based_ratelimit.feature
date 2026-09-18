@@ -52,7 +52,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":10,"duration":"1m"}],"totalTokenLimits":[{"count":20,"duration":"1m"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":10,"duration":"1m"}],"totalTokenLimits":[{"count":20,"duration":"1m"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -103,7 +103,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":5,"duration":"1m"}],"completionTokenLimits":[{"count":10,"duration":"1m"}],"totalTokenLimits":[{"count":15,"duration":"1m"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":5,"duration":"1m"}],"completionTokenLimits":[{"count":10,"duration":"1m"}],"totalTokenLimits":[{"count":15,"duration":"1m"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -148,7 +148,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"request-rewrite","version":"v1","paths":[{"path":"/chat/completions","methods":["POST","GET"],"params":{"pathRewrite":{"type":"ReplaceFullPath","replaceFullPath":"/gzip"}}}]},{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":2,"duration":"1m"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"request-rewrite","version":"v1","paths":[{"path":"/chat/completions","methods":["POST","GET"],"params":{"pathRewrite":{"type":"ReplaceFullPath","replaceFullPath":"/gzip"}}}]},{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":2,"duration":"1m"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -203,7 +203,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":100,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":100,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -255,7 +255,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContextA}           |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContextA}/chat/completions" until status 200
 
@@ -268,7 +268,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContextB}           |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContextB}/chat/completions" until status 200
 
@@ -327,7 +327,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":10,"duration":"1m"}],"completionTokenLimits":[{"count":20,"duration":"1m"}],"totalTokenLimits":[{"count":25,"duration":"1m"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":10,"duration":"1m"}],"completionTokenLimits":[{"count":20,"duration":"1m"}],"totalTokenLimits":[{"count":25,"duration":"1m"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -379,7 +379,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"10s"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"10s"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -428,7 +428,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":10,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":10,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -485,7 +485,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":10,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":10,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -533,7 +533,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -562,7 +562,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":10,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":10,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
     # A deleted provider's own quota state is not guaranteed to invalidate synchronously with the
@@ -611,7 +611,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContextAlpha}       |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContextAlpha}/chat/completions" until status 200
 
@@ -624,7 +624,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContextBeta}        |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"totalTokenLimits":[{"count":5,"duration":"1h"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContextBeta}/chat/completions" until status 200
 
@@ -679,7 +679,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[],"completionTokenLimits":[],"totalTokenLimits":[{"count":5,"duration":"1m"}],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[],"completionTokenLimits":[],"totalTokenLimits":[{"count":5,"duration":"1m"}]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -723,7 +723,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":5,"duration":"1m"}],"completionTokenLimits":[],"totalTokenLimits":[],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[{"count":5,"duration":"1m"}],"completionTokenLimits":[],"totalTokenLimits":[]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
@@ -767,7 +767,7 @@ Feature: Token-based rate limiting for LLM providers
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3002             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[],"completionTokenLimits":[{"count":5,"duration":"1m"}],"totalTokenLimits":[],"algorithm":"fixed-window","backend":"memory"}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"promptTokenLimits":[],"completionTokenLimits":[{"count":5,"duration":"1m"}],"totalTokenLimits":[]}}]}] |
     Then the response status code should be 201
     And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 200
 
