@@ -292,10 +292,13 @@ describe('buildConsoleRequest', () => {
   });
 
   it('declines an operation whose verb the console does not offer', () => {
-    // Built as GET, this would render `curl -X GET` for a CONNECT operation —
-    // a command that does not describe the request the console would send.
+    // Built as GET, this would render `curl -X GET` for an operation the relay
+    // will not send at all — a command describing a request that cannot happen.
     expect(
       buildConsoleRequest({ baseUrl: BASE, method: 'connect', path: '/payments', spec }),
+    ).toBeUndefined();
+    expect(
+      buildConsoleRequest({ baseUrl: BASE, method: 'trace', path: '/payments', spec }),
     ).toBeUndefined();
   });
 

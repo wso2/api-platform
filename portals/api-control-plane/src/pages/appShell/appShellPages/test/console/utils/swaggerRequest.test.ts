@@ -146,6 +146,9 @@ describe('fromSwaggerRequest', () => {
     expect(
       fromSwaggerRequest({ url: `${BASE}/payments`, method: 'connect', headers: {} }, BASE),
     ).toBeUndefined();
+    expect(
+      fromSwaggerRequest({ url: `${BASE}/payments`, method: 'trace', headers: {} }, BASE),
+    ).toBeUndefined();
   });
 
   it('works with a plain object too, not only Immutable', () => {

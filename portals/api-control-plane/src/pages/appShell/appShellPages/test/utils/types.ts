@@ -29,17 +29,10 @@ import type { ApiKeyLocation } from './apiKeyAuth';
  * the request executed by the console.
  */
 
-/** Methods the console offers. Ordered as the method picker lists them. */
-export const HTTP_METHODS = [
-  'GET',
-  'POST',
-  'PUT',
-  'PATCH',
-  'DELETE',
-  'HEAD',
-  'OPTIONS',
-  'TRACE',
-] as const;
+/**
+ * Methods the console offers. Ordered as the method picker lists them.
+ * */
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 

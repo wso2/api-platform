@@ -289,7 +289,8 @@ export const firstOperationOf = (
   for (const [path, pathItem] of Object.entries(paths as Record<string, unknown>)) {
     if (typeof pathItem !== 'object' || pathItem === null) continue;
     const item = pathItem as Record<string, unknown>;
-    const method = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'].find(
+    // The lowercase mirror of `HTTP_METHODS`
+    const method = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].find(
       (candidate) => typeof item[candidate] === 'object' && item[candidate] !== null,
     );
     if (method) return { method: method.toUpperCase(), path };

@@ -587,9 +587,18 @@ describe('normalizeMethod', () => {
     expect(normalizeMethod('NOTAVERB')).toBeUndefined();
   });
 
-  it('recognises every verb the console offers, trace included', () => {
-    // Swagger's own supportedSubmitMethods include `trace`, so a spec that
-    // declares one is executable here rather than something to refuse.
+  it('declines TRACE and CONNECT, which the relay refuses', () => {
+    // The BFF relay keeps the same closed set in `allowedMethods`
+    // (bff/internal/testproxy/sanitize.go) and answers `ErrInvalidMethod` to
+    // anything outside it, so offering either here would put a verb in the
+    // picker that can never be sent.
+    expect(HTTP_METHODS).not.toContain('TRACE');
+    expect(HTTP_METHODS).not.toContain('CONNECT');
+    expect(normalizeMethod('trace')).toBeUndefined();
+    expect(normalizeMethod('connect')).toBeUndefined();
+  });
+
+  it('recognises every verb the console offers', () => {
     for (const method of HTTP_METHODS) {
       expect(normalizeMethod(method.toLowerCase())).toBe(method);
     }
