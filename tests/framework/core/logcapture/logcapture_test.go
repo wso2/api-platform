@@ -274,3 +274,50 @@ func TestWriterSummarizesDroppedLinesOnClose(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), "dropped 3 line(s)")
 }
+
+func TestSharedFileForRejectsAnUninitializedSink(t *testing.T) {
+	var s *Sink
+	_, err := s.SharedFileFor("testbench")
+	require.Error(t, err)
+
+	empty := &Sink{}
+	_, err = empty.SharedFileFor("testbench")
+	require.Error(t, err)
+}
+
+func TestSharedFileForRejectsAnEmptyComponentName(t *testing.T) {
+	sink, err := NewSink(t.TempDir())
+	require.NoError(t, err)
+
+	_, err = sink.SharedFileFor("  ")
+	require.Error(t, err)
+}
+
+func TestSharedFileForRejectsATraversalSegment(t *testing.T) {
+	sink, err := NewSink(t.TempDir())
+	require.NoError(t, err)
+
+	_, err = sink.SharedFileFor("../../etc/passwd")
+	require.Error(t, err)
+}
+
+// A shared component outlives every block, so its log must not land among the per-block
+// files where it would be mistaken for one block's output.
+func TestSharedFileForIsSeparateFromBlockLogs(t *testing.T) {
+	root := t.TempDir()
+	sink, err := NewSink(root)
+	require.NoError(t, err)
+
+	shared, err := sink.SharedFileFor("testbench")
+	require.NoError(t, err)
+	block, err := sink.FileFor("testbench")
+	require.NoError(t, err)
+
+	require.NotEqual(t, block, shared)
+	require.Equal(t, sharedDir, filepath.Base(filepath.Dir(shared)))
+	require.Equal(t, blocksDir, filepath.Base(filepath.Dir(block)))
+
+	info, err := os.Stat(filepath.Dir(shared))
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}

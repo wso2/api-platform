@@ -128,9 +128,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-coverage-reports
-          path: |
-            tests/framework/suites/ui/coverage-out/**/*.html
-            tests/framework/suites/ui/coverage-out/**/*.txt
+          # The whole report tree: splitting by extension dropped the LCOV files Codecov
+          # actually consumes and the CSS/JS/images the HTML reports need to render. The
+          # raw per-run inputs live under a dot-prefixed .run-* directory, which
+          # upload-artifact excludes while include-hidden-files stays unset.
+          path: tests/framework/suites/ui/coverage-out/**
           if-no-files-found: warn
 
       - name: Upload UI container log captures
@@ -151,6 +153,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: gateway/gateway-controller/unit-test-coverage.txt
           flags: gateway-controller-unit
 
@@ -160,6 +163,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
           flags: policy-engine-unit
 
@@ -169,6 +173,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: platform-api/unit-test-coverage.txt
           flags: platform-api-unit
 
@@ -178,6 +183,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: portals/ai-workspace/bff/unit-test-coverage.txt
           flags: ai-workspace-bff-unit
 
@@ -187,6 +193,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/ai-workspace/bff/coverage.txt
           flags: ai-workspace-bff-integration
 
@@ -196,6 +203,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/ai-workspace/ui/lcov.info
           flags: ai-workspace-ui-integration
 
@@ -205,6 +213,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/api-portal/server/lcov.info
           flags: api-portal-server-integration
 
@@ -214,6 +223,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/api-portal/ui/lcov.info
           flags: api-portal-ui-integration
 
@@ -223,6 +233,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/platform-gateway/controller/coverage.txt
           flags: gateway-controller-integration
 
@@ -232,6 +243,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/platform-gateway/runtime/coverage.txt
           flags: policy-engine-integration
 
@@ -241,5 +253,6 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
           files: tests/framework/suites/ui/coverage-out/platform-api/coverage.txt
           flags: platform-api-integration

@@ -22,10 +22,6 @@ import { defineMessages, FormattedMessage, type MessageDescriptor } from 'react-
 import type { SpecIssue, SpecIssueCode } from '../utils/specValidation';
 
 const messages = defineMessages({
-  badPathKeys: {
-    id: 'api.create.specIssue.badPathKeys',
-    defaultMessage: 'Some entries under paths are not paths and were skipped: {detail}',
-  },
   externalRefs: {
     id: 'api.create.specIssue.externalRefs',
     defaultMessage: 'This definition references files outside itself, which are not read: {detail}',
@@ -38,40 +34,17 @@ const messages = defineMessages({
     id: 'api.create.specIssue.missingVersion',
     defaultMessage: 'No version in this definition — set one on the next step.',
   },
-  noOperations: {
-    id: 'api.create.specIssue.noOperations',
-    defaultMessage: 'This definition declares no GET, POST, PUT, PATCH or DELETE operation.',
-  },
-  noPaths: {
-    id: 'api.create.specIssue.noPaths',
-    defaultMessage: 'This definition has no paths section.',
-  },
   noServers: {
     id: 'api.create.specIssue.noServers',
     defaultMessage: 'No server URL in this definition — set the backend on the next step.',
   },
-  notASpec: {
-    id: 'api.create.specIssue.notASpec',
-    defaultMessage:
-      'That file is not an OpenAPI definition: it names neither an openapi nor a swagger version.',
-  },
-  unsupportedDialect: {
-    id: 'api.create.specIssue.unsupportedDialect',
-    defaultMessage:
-      'OpenAPI {detail} is not supported. Import a Swagger 2.0 or OpenAPI 3 definition.',
-  },
 });
 
 const MESSAGE_FOR: Record<SpecIssueCode, MessageDescriptor> = {
-  badPathKeys: messages.badPathKeys,
   externalRefs: messages.externalRefs,
   missingTitle: messages.missingTitle,
   missingVersion: messages.missingVersion,
-  noOperations: messages.noOperations,
-  noPaths: messages.noPaths,
   noServers: messages.noServers,
-  notASpec: messages.notASpec,
-  unsupportedDialect: messages.unsupportedDialect,
 };
 
 export type SpecIssueListProps = {

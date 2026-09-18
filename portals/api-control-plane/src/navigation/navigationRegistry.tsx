@@ -19,6 +19,7 @@
 import type { ReactNode } from 'react';
 import {
   Activity,
+  Braces,
   ChartColumn,
   ChartLine,
   Code,
@@ -291,10 +292,10 @@ export const navigationRegistry: NavigationDefinition[] = [
         to: routes.apiDevelopPolicies,
       },
       {
-        icon: <List />,
-        id: 'develop-routing',
-        label: 'Resources',
-        to: routes.apiDevelopRouting,
+        icon: <Braces />,
+        id: 'develop-definition',
+        label: 'Definition',
+        to: routes.apiDevelopDefinition,
       },
       {
         icon: <FileText />,

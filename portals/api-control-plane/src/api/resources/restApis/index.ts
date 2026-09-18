@@ -27,13 +27,16 @@
 export type {
   CreateRestApiBody,
   ListRestApisQuery,
+  OpenAPIValidationError,
   Operation,
   Policy,
   RestApi,
   RestApiListResponse,
+  OpenAPIContent,
   UpdateRestApiBody,
   Upstream,
   UpstreamDefinition,
+  ValidateOpenAPIResponse,
 } from './restApis.endpoints';
 
 export type {
@@ -50,11 +53,15 @@ export {
   useAllRestApis,
   useCreateRestApi,
   useDeleteRestApi,
+  useImportOpenApi,
+  usePutRestApiOpenApi,
   useRestApi,
   useRestApiCounts,
   useRestApiDefinition,
   useRestApiIdAvailability,
   useRestApiOptions,
   useRestApis,
+  useRestApiOpenApi,
   useUpdateRestApi,
+  useValidateOpenApiSpec,
 } from './restApis.hooks';

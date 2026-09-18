@@ -32,6 +32,7 @@ const (
 	CodeCommonInternalError       = "INTERNAL_ERROR"
 	CodeCommonServiceUnavailable  = "SERVICE_UNAVAILABLE"
 	CodeCommonTooManyRequests     = "TOO_MANY_REQUESTS"
+	CodeCommonPayloadTooLarge     = "PAYLOAD_TOO_LARGE"
 )
 
 // LLM provider/proxy domain codes, matching the examples documented in

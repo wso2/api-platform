@@ -37,8 +37,6 @@ type OrganizationRepository interface {
 	CountOrganizations() (int, error)
 	ListOrganizationsForUser(userUUID string, limit, offset int) ([]*model.Organization, error)
 	CountOrganizationsForUser(userUUID string) (int, error)
-	ListOrganizationsByHandles(handles []string, limit, offset int) ([]*model.Organization, error)
-	CountOrganizationsByHandles(handles []string) (int, error)
 }
 
 // ProjectRepository defines the interface for project data access
@@ -401,6 +399,16 @@ type CustomPolicyRepository interface {
 	GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]string, error)
 	InsertCustomPolicyUsage(policyUUID, apiUUID string) error
 	DeleteCustomPolicyUsage(policyUUID, apiUUID string) error
+}
+
+// DocumentRepository defines the interface for document persistence.
+type DocumentRepository interface {
+	CreateDocument(doc *model.Document) error
+	GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error)
+	GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error)
+	UpsertDocument(doc *model.Document) error
+	DeleteDocument(artifactUUID, handle, orgUUID string) error
+	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
 }
 
 // AuditRepository defines the interface for audit record writes.

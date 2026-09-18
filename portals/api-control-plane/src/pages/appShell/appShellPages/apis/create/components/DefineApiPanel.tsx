@@ -17,294 +17,381 @@
  */
 
 import {
-  alpha,
   Box,
-  Card,
+  Button,
   Divider,
+  FormControlLabel,
+  Radio,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
+  TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { FileCode2, Pencil } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
+import { ArrowRight, ChevronLeft, ChevronRight, FileCode2, Pencil } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useMemo, useState } from 'react';
+import { defineMessages, FormattedMessage } from 'react-intl';
 
-import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
-import type { ApiCreationWizardDraftState, ApiType } from '../types';
+import { DEFAULT_API_SKELETON, PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
+import type { ApiCreationWizardDraftState } from '../types';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
-import { DesignWithAiPanel } from './DesignWithAiPanel';
 import { extractApiDetails } from '../utils/specDetails';
-import type { SpecDocument } from '../utils/specText';
-import type { SpecIssue } from '../utils/specValidation';
 
 /** The two ways this step can produce a definition. */
 type ApproachKey = 'contract' | 'scratch';
 
-/**
- * A definition after it has been edited in the preview pane, with what its
- * re-check said about it. Held separately from what was imported so that
- * re-fetching a contract restores the fetched document rather than the edit,
- * and so the import's own warnings can stop being reported once they describe
- * a document that has since been changed.
- */
-type EditedSpec = {
-  spec: SpecDocument;
-  warnings: SpecIssue[];
-};
+/** Whether the user wants to enter an endpoint URL now or skip it. */
+type EndpointOption = 'none' | 'custom';
+
+/** The two views rendered by this panel. */
+type View = 'cards' | 'contract';
 
 const messages = defineMessages({
-  approachLabel: {
-    id: 'api.create.defineApi.approach.label',
-    defaultMessage: 'How do you want to define this API?',
-    description: 'Accessible name for the pair of approach tabs at the top of the step.',
+  changeSource: {
+    id: 'api.create.defineApi.changeSource',
+    defaultMessage: 'Change source',
+    description: 'Back button label in the contract import view.',
+  },
+  continue: {
+    id: 'api.create.defineApi.continue',
+    defaultMessage: 'Continue',
+    description: 'Button that advances the wizard from the contract view to the next step.',
   },
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
-    defaultMessage: 'Import from a URL or a file.',
+    defaultMessage: 'Import an API contract from a URL or a file.',
+  },
+  contractHeading: {
+    id: 'api.create.defineApi.contract.heading',
+    defaultMessage: 'Point us at your contract',
+  },
+  contractSubheading: {
+    id: 'api.create.defineApi.contract.subheading',
+    defaultMessage: 'Import OpenAPI or Swagger definition',
   },
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
-    defaultMessage: 'Start with a contract',
+    defaultMessage: 'Start with a Contract',
   },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
-    defaultMessage: 'Start blank and chat with AI to build it.',
+    defaultMessage: 'Begin with a blank API and fill in the details.',
+  },
+  scratchHasEndpoint: {
+    id: 'api.create.defineApi.scratch.hasEndpoint',
+    defaultMessage: 'I have an endpoint URL',
   },
   scratchTitle: {
     id: 'api.create.defineApi.scratch.title',
-    defaultMessage: 'Design from scratch',
+    defaultMessage: 'Start from Scratch',
   },
 });
 
-type Approach = {
-  description: MessageDescriptor;
-  icon: ReactNode;
-  key: ApproachKey;
-  title: MessageDescriptor;
-};
-
-const APPROACHES: Approach[] = [
-  {
-    description: messages.contractDescription,
-    icon: <FileCode2 size={18} />,
-    key: 'contract',
-    title: messages.contractTitle,
-  },
-  {
-    description: messages.scratchDescription,
-    icon: <Pencil size={18} />,
-    key: 'scratch',
-    title: messages.scratchTitle,
-  },
-];
-
 export type DefineApiPanelProps = {
-  /** Types offered to the contract form. */
-  apiTypes?: ApiType[];
   /** Type the step works with. Owned by the wizard's earlier step. */
   initialApiTypeKey?: string;
-  /** Starts the GitHub OAuth flow. The button renders either way, inert until wired. */
-  onAuthorizeGitHub?: () => void;
   /** Keeps the wizard footer supplied with the definition currently on screen. */
   onDraftChange: (data: ApiCreationWizardDraftState | null) => void;
-  /** Re-fetches the SwaggerHub organizations. Inert until the import is wired. */
-  onRefreshSwaggerHubOrganizations?: () => void;
+  /**
+   * Fired when the user's chosen approach changes.
+   */
+  onApproachChange?: (approach: ApproachKey) => void;
+  /**
+   * Fired when the user explicitly clicks Continue. The wizard should advance to
+   * the next step when this is called.
+   */
+  onContinue?: () => void;
 };
 
-/**
- * The wizard's "how do you want to define this API?" step.
- *
- * Two approaches sit across the top and share one preview pane: importing a
- * contract fills it with what was fetched, designing from scratch fills it with
- * a skeleton to edit. Back and Next belong to the panel rather than to either
- * approach, so switching between them doesn't move the buttons.
- */
 export const DefineApiPanel = ({
-  apiTypes,
   initialApiTypeKey,
-  onAuthorizeGitHub,
   onDraftChange,
-  onRefreshSwaggerHubOrganizations,
+  onApproachChange,
+  onContinue,
 }: DefineApiPanelProps) => {
-  const intl = useIntl();
-  const [approach, setApproach] = useState<ApproachKey>('contract');
+  const [view, setView] = useState<View>('cards');
+
+  // Scratch card selection and endpoint sub-choice
+  const [scratchSelected, setScratchSelected] = useState(false);
+  const [endpointOption, setEndpointOption] = useState<EndpointOption>('none');
+  const [endpointUrl, setEndpointUrl] = useState('');
+
+  // Contract state
   const [contract, setContract] = useState<FetchedContract | null>(null);
-  // One edit per approach, so switching tabs to look at the other one and back
-  // doesn't throw away what was typed.
-  const [contractEdit, setContractEdit] = useState<EditedSpec | null>(null);
-  const [scratchEdit, setScratchEdit] = useState<EditedSpec | null>(null);
 
   /**
-   * A different contract underneath - fetched, or cleared because the form's
-   * inputs moved on from it; retires the edit built on the previous one.
-   *
-   * Stable identity matters: the form reports the current contract from an
-   * effect keyed on this callback, so a fresh function each render would fire
-   * that effect every render and wipe the edit as fast as it was made.
+   * The draft for the scratch approach. The upstream URL is either the user's
+   * custom entry or the placeholder — the configure step distinguishes them.
    */
-  const handleContractChange = useCallback((next: FetchedContract | null) => {
-    setContract(next);
-    setContractEdit(null);
-  }, []);
+  const scratchDraft = useMemo((): ApiCreationWizardDraftState => {
+    const base = extractApiDetails(DEFAULT_API_SKELETON);
+    const specBlob = new Blob([JSON.stringify(DEFAULT_API_SKELETON, null, 2)], {
+      type: 'application/json',
+    });
+    const customUrl = endpointOption === 'custom' ? endpointUrl.trim() : '';
+    const upstreamUrl = customUrl || PLACEHOLDER_UPSTREAM_URL;
+    return {
+      ...base,
+      upstream: { main: { url: upstreamUrl } },
+      contractImport: {
+        specFile: new File([specBlob], 'openapi.json', { type: 'application/json' }),
+      },
+    };
+  }, [endpointOption, endpointUrl]);
 
-  const handleSpecChange = (next: SpecDocument, warnings: SpecIssue[]) => {
-    const edit: EditedSpec = { spec: next, warnings };
-    if (approach === 'scratch') {
-      setScratchEdit(edit);
-      return;
+  const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
+    if (contract?.spec === undefined) return null;
+    const base = extractApiDetails(contract.spec);
+    const rawText = contract.rawText;
+    if (rawText !== undefined) {
+      const isJson = rawText.trimStart().startsWith('{');
+      const contentType = isJson ? 'application/json' : 'application/yaml';
+      const fileName = isJson ? 'openapi.json' : 'openapi.yaml';
+      const rawBlob = new Blob([rawText], { type: contentType });
+      return {
+        ...base,
+        contractImport: {
+          specFile: new File([rawBlob], fileName, { type: contentType }),
+        },
+      };
     }
-    setContractEdit(edit);
-  };
-
-  // Scratch always has something to show and carry forward; a contract has to
-  // be fetched first. Either way an edit made here supersedes what it started
-  // from.
-  const edit = approach === 'scratch' ? scratchEdit : contractEdit;
-  const spec = edit?.spec ?? (approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec);
-
-  const draft = useMemo(() => (spec === undefined ? null : extractApiDetails(spec)), [spec]);
+    return null;
+  }, [contract]);
 
   useEffect(() => {
-    onDraftChange(draft);
+    if (view === 'cards') {
+      onDraftChange(scratchSelected ? scratchDraft : null);
+    } else {
+      onDraftChange(contractDraft);
+    }
     return () => onDraftChange(null);
-  }, [draft, onDraftChange]);
+  }, [contractDraft, onDraftChange, scratchDraft, scratchSelected, view]);
 
-  return (
-    <Stack spacing={3}>
-      {/* One surface for the whole step: the two approaches sit flush on top of
-          the panels they open, like tabs on their own body, rather than
-          floating above as separate cards. */}
-      <Card sx={{ border: 0, overflow: 'visible' }} variant="outlined">
-        <ToggleButtonGroup
-          aria-label={intl.formatMessage(messages.approachLabel)}
-          exclusive
-          fullWidth
-          onChange={(_event, next: ApproachKey | null) => {
-            // `exclusive` reports null when the active button is clicked
-            // again; keep the current approach rather than clearing it.
-            if (next !== null) {
-              setApproach(next);
-            }
-          }}
-          sx={(theme) => ({
-            p: 0,
-            '& .MuiToggleButtonGroup-grouped': {
-              border: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
-              borderBottom: 0,
-              borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
+  const handleBackToCards = () => {
+    setView('cards');
+    setScratchSelected(false);
+    onApproachChange?.('scratch');
+  };
+
+  if (view === 'cards') {
+    return (
+      <Stack spacing={2}>
+        <Stack direction={{ sm: 'row', xs: 'column' }} spacing={2} sx={{ alignItems: 'stretch' }}>
+
+          {/* Scratch card — expands on click to show endpoint radio options */}
+          <Box
+            onClick={() => {
+              if (!scratchSelected) {
+                setScratchSelected(true);
+                onApproachChange?.('scratch');
+              }
+            }}
+            role={scratchSelected ? undefined : 'button'}
+            sx={(theme) => ({
+              border: '1px solid',
+              borderColor: scratchSelected ? 'primary.main' : 'divider',
+              borderRadius: 1,
+              cursor: scratchSelected ? 'default' : 'pointer',
               flex: 1,
-              justifyContent: 'flex-start',
-              p: 2,
-              textTransform: 'none',
-              '&:not(:first-of-type)': {
-                borderLeft: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
-                marginLeft: 0,
-              },
-              '&.Mui-selected, &.Mui-selected:hover': {
-                bgcolor: 'action.selected',
-                border: `1px solid ${theme.palette.primary.main}`,
-                borderBottom: 0,
-                borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
-              },
-            },
-          })}
-          value={approach}
-        >
-          {APPROACHES.map((candidate) => {
-            const selected = candidate.key === approach;
+              p: 3,
+              ...(scratchSelected
+                ? { boxShadow: `0 0 0 1px ${theme.palette.primary.main}` }
+                : {
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
+                    },
+                  }),
+            })}
+            tabIndex={scratchSelected ? -1 : 0}
+            onKeyDown={(e) => {
+              if (!scratchSelected && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                setScratchSelected(true);
+                onApproachChange?.('scratch');
+              }
+            }}
+          >
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+              <Box
+                sx={{
+                  alignItems: 'center',
+                  bgcolor: 'action.hover',
+                  borderRadius: 1,
+                  display: 'flex',
+                  flexShrink: 0,
+                  justifyContent: 'center',
+                  p: 1.25,
+                }}
+              >
+                <Pencil size={18} />
+              </Box>
+              <Stack spacing={0.25} sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700 }} variant="body1">
+                  <FormattedMessage {...messages.scratchTitle} />
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  <FormattedMessage {...messages.scratchDescription} />
+                </Typography>
+              </Stack>
+            </Stack>
 
-            return (
-              <ToggleButton key={candidate.key} value={candidate.key}>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', width: '100%' }}>
-                  <Box
-                    sx={{
-                      alignItems: 'center',
-                      bgcolor: selected ? 'primary.main' : 'action.hover',
-                      borderRadius: 1,
-                      color: selected ? 'primary.contrastText' : 'text.secondary',
-                      display: 'flex',
-                      flexShrink: 0,
-                      height: 34,
-                      justifyContent: 'center',
-                      width: 34,
+            {/* Endpoint radio — always visible */}
+            <Box onClick={(e) => e.stopPropagation()} sx={{ mt: 2 }}>
+              <FormControlLabel
+                control={
+                  <Radio
+                    checked={endpointOption === 'custom'}
+                    onClick={() => {
+                      setScratchSelected(true);
+                      setEndpointOption((prev) => (prev === 'custom' ? 'none' : 'custom'));
+                      onApproachChange?.('scratch');
                     }}
-                  >
-                    {candidate.icon}
-                  </Box>
-                  <Stack spacing={0.25} sx={{ minWidth: 0, textAlign: 'left' }}>
-                    <Typography color="text.primary" sx={{ fontWeight: 700 }} variant="body1">
-                      <FormattedMessage {...candidate.title} />
-                    </Typography>
-                    <Typography color="text.secondary" variant="body2">
-                      <FormattedMessage {...candidate.description} />
-                    </Typography>
-                  </Stack>
-                </Stack>
-              </ToggleButton>
-            );
-          })}
-        </ToggleButtonGroup>
-
-        <Stack
-          direction={{ lg: 'row', xs: 'column' }}
-          divider={
-            <Divider
-              flexItem
-              orientation="vertical"
-              // One rule that reads correctly both ways: a vertical line
-              // between the halves side by side, a horizontal one once the
-              // layout stacks them.
-              sx={{
-                borderBottomWidth: { lg: 0, xs: 'thin' },
-                borderRightWidth: { lg: 'thin', xs: 0 },
-              }}
-            />
-          }
-          sx={(theme) => ({
-            border: 1,
-            borderColor: 'primary.main',
-            borderRadius: `0 0 ${theme.shape.borderRadius}px ${theme.shape.borderRadius}px`,
-            borderTop: 0,
-            position: 'relative',
-            '&::before': {
-              bgcolor: 'primary.main',
-              content: '""',
-              height: '1px',
-              left: approach === 'contract' ? '50%' : 0,
-              position: 'absolute',
-              top: 0,
-              width: '50%',
-            },
-          })}
-        >
-          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-            {approach === 'contract' ? (
-              <ContractSourceForm
-                apiTypes={apiTypes}
-                // Fetched warnings describe the import; after edits they no
-                // longer match and the pane shows new warnings.
-                definitionEdited={contractEdit !== null}
-                initialApiTypeKey={initialApiTypeKey}
-                onAuthorizeGitHub={onAuthorizeGitHub}
-                onContractChange={handleContractChange}
-                onRefreshSwaggerHubOrganizations={onRefreshSwaggerHubOrganizations}
+                    size="small"
+                  />
+                }
+                label={<FormattedMessage {...messages.scratchHasEndpoint} />}
               />
-            ) : (
-              <DesignWithAiPanel />
-            )}
+              {endpointOption === 'custom' && (
+                <Box sx={{ mt: 1, pl: 3.5 }}>
+                  <TextField
+                    autoFocus
+                    fullWidth
+                    onChange={(e) => setEndpointUrl(e.target.value)}
+                    placeholder={PLACEHOLDER_UPSTREAM_URL}
+                    size="small"
+                    value={endpointUrl}
+                  />
+                </Box>
+              )}
+            </Box>
           </Box>
 
-          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-            <ApiResourcesPreview
-              onSpecChange={handleSpecChange}
-              spec={spec}
-              warnings={edit?.warnings}
-            />
+          {/* Contract card */}
+          <Box
+            onClick={() => {
+              setScratchSelected(false);
+              setView('contract');
+              onApproachChange?.('contract');
+            }}
+            role="button"
+            sx={(theme) => ({
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+              cursor: 'pointer',
+              flex: 1,
+              p: 3,
+              '&:hover': {
+                borderColor: 'primary.main',
+                boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
+              },
+            })}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setScratchSelected(false);
+                setView('contract');
+                onApproachChange?.('contract');
+              }
+            }}
+          >
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+              <Box
+                sx={{
+                  alignItems: 'center',
+                  bgcolor: 'action.hover',
+                  borderRadius: 1,
+                  display: 'flex',
+                  flexShrink: 0,
+                  justifyContent: 'center',
+                  p: 1.25,
+                }}
+              >
+                <FileCode2 size={18} />
+              </Box>
+              <Stack spacing={0.25} sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700 }} variant="body1">
+                  <FormattedMessage {...messages.contractTitle} />
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  <FormattedMessage {...messages.contractDescription} />
+                </Typography>
+              </Stack>
+              <ChevronRight size={18} />
+            </Stack>
           </Box>
         </Stack>
-      </Card>
+      </Stack>
+    );
+  }
+
+  // Contract view
+  return (
+    <Stack spacing={2}>
+      <Button
+        onClick={handleBackToCards}
+        startIcon={<ChevronLeft size={18} />}
+        sx={{ alignSelf: 'flex-start' }}
+        variant="text"
+      >
+        <FormattedMessage {...messages.changeSource} />
+      </Button>
+
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }} variant="h2">
+          <FormattedMessage {...messages.contractHeading} />
+        </Typography>
+        <Typography color="text.secondary" variant="body1">
+          <FormattedMessage {...messages.contractSubheading} />
+        </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 1,
+          display: 'flex',
+          flexDirection: { lg: 'row', xs: 'column' },
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+          <ContractSourceForm
+            initialApiTypeKey={initialApiTypeKey}
+            onContractChange={setContract}
+          />
+        </Box>
+
+        <Divider
+          flexItem
+          orientation="vertical"
+          sx={{
+            borderBottomWidth: { lg: 0, xs: 'thin' },
+            borderRightWidth: { lg: 'thin', xs: 0 },
+          }}
+        />
+
+        <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+          <ApiResourcesPreview
+            rawText={contract?.rawText}
+            spec={contract?.spec}
+          />
+        </Box>
+      </Box>
+
+      {onContinue !== undefined ? (
+        <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+          <Button
+            endIcon={<ArrowRight size={18} />}
+            onClick={() => onContinue()}
+            variant="contained"
+          >
+            <FormattedMessage {...messages.continue} />
+          </Button>
+        </Stack>
+      ) : null}
     </Stack>
   );
 };

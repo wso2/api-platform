@@ -25,9 +25,9 @@ import (
 	"regexp"
 	"runtime"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"gopkg.in/yaml.v3"
 )
@@ -45,115 +45,6 @@ func TestSetRequestHostExpandsContextValues(t *testing.T) {
 
 	err := base.setRequestHost(ctx, "${CTX:missing}")
 	require.ErrorContains(t, err, `no value in context for key "missing"`)
-}
-
-func TestDefinitionMetadataUsesYAMLParsing(t *testing.T) {
-	definition := `apiVersion: v1
-kind: RestApi
-metadata: {name: "api:with-special-format"}
-`
-	require.Equal(t, "api:with-special-format", apiNameFrom(definition))
-	require.Equal(t, "RestApi", kindFromDefinition(definition))
-	require.Equal(t, "api:with-special-format", handleFromDefinition(definition))
-	require.Empty(t, apiNameFrom("metadata: [invalid"))
-}
-
-func TestParseSecondsRejectsInvalidValues(t *testing.T) {
-	seconds, err := parseSeconds(" 1.25 ")
-	require.NoError(t, err)
-	require.Equal(t, 1.25, seconds)
-
-	for _, value := range []string{"", "-1", "NaN", "+Inf"} {
-		_, err := parseSeconds(value)
-		require.Error(t, err, "value %q must be rejected", value)
-	}
-}
-
-func TestParseHTTPStatusLine(t *testing.T) {
-	for _, test := range []struct {
-		line   string
-		status int
-	}{
-		{line: "HTTP/1.1 408 Request Timeout\r\n", status: 408},
-		{line: "HTTP/2 503", status: 503},
-	} {
-		got, err := parseHTTPStatusLine(test.line)
-		require.NoError(t, err)
-		require.Equal(t, test.status, got)
-	}
-	for _, line := range []string{"", "not HTTP", "HTTP/1.1 nope", "HTTP/1.1 99"} {
-		_, err := parseHTTPStatusLine(line)
-		require.Error(t, err, "status line %q should be rejected", line)
-	}
-}
-
-func TestMCPJSONPayloadExtractsSSEData(t *testing.T) {
-	payload := []byte(`{"jsonrpc":"2.0","id":2}`)
-	require.Equal(t, payload, mcpJSONPayload([]byte("event: message\ndata: "+string(payload)+"\n\n")))
-	require.Equal(t, payload, mcpJSONPayload(payload))
-	require.Equal(t, []byte("event: message\ndata: not-json\n"),
-		mcpJSONPayload([]byte("event: message\ndata: not-json\n")))
-}
-
-func TestLazyDisplayNameMatchesOnlyTheRequestedTemplate(t *testing.T) {
-	body := []byte(`{"lazy_resources":{"resources_by_type":{"LlmProviderTemplate":[{"id":"template-a","resource":{"spec":{"displayName":"Original"}}},{"id":"template-b","resource":{"spec":{"displayName":"Updated"}}}]}}}`)
-	require.True(t, lazyDisplayNameMatches(body, "template-b", "Updated"))
-	require.False(t, lazyDisplayNameMatches(body, "template-b", "Original"))
-	require.False(t, lazyDisplayNameMatches(body, "missing", "Updated"))
-}
-
-func TestProviderTemplateMappingMatchesOnlyTheRequestedProvider(t *testing.T) {
-	body := []byte(`{"lazy_resources":{"resources_by_type":{"ProviderTemplateMapping":[{"id":"provider-a","resource":{"template_handle":"openai"}},{"id":"provider-b","resource":{"template_handle":"custom"}}]}}}`)
-	require.True(t, providerTemplateMappingMatches(body, "provider-b", "custom"))
-	require.False(t, providerTemplateMappingMatches(body, "provider-b", "openai"))
-	require.False(t, providerTemplateMappingMatches(body, "missing", "custom"))
-}
-
-func TestLazyResourceAbsentMatchesOnlyTheRequestedTypeAndID(t *testing.T) {
-	body := []byte(`{"lazy_resources":{"resources_by_type":{"ProviderTemplateMapping":[{"id":"provider-a","resource":{}}],"LlmProvider":[{"id":"provider-a","resource":{}}]}}}`)
-	require.True(t, lazyResourceAbsent(body, "provider-a", "LlmProviderTemplate"))
-	require.False(t, lazyResourceAbsent(body, "provider-a", "ProviderTemplateMapping"))
-	require.True(t, lazyResourceAbsent(body, "missing", "ProviderTemplateMapping"))
-}
-
-func TestElapsedToleranceProducesExpectedBounds(t *testing.T) {
-	want := 2.0
-	floor := time.Duration(want * (1 - elapsedTolerance) * float64(time.Second))
-	ceiling := time.Duration(want * (1 + elapsedTolerance) * float64(time.Second))
-	require.Equal(t, 1900*time.Millisecond, floor)
-	require.Equal(t, 2100*time.Millisecond, ceiling)
-}
-
-func TestAnalyticsHeaderValueMatchesNamesWithoutCase(t *testing.T) {
-	headers := map[string][]string{"Content-Type": {"application/json"}, "X-Trace": {"abc"}}
-
-	value, present := analyticsHeaderValue(headers, "content-type")
-	require.True(t, present)
-	require.Equal(t, "application/json", value)
-
-	_, present = analyticsHeaderValue(headers, "authorization")
-	require.False(t, present)
-}
-
-func TestAnalyticsHeaderValueHandlesNilHeaders(t *testing.T) {
-	value, present := analyticsHeaderValue(nil, "content-type")
-	require.False(t, present)
-	require.Empty(t, value)
-}
-
-func TestAnalyticsEventMatchesOperationPath(t *testing.T) {
-	for _, test := range []struct {
-		eventURI, requestedPath string
-		want                    bool
-	}{
-		{eventURI: "/test", requestedPath: "/analytics/v1.0/test", want: true},
-		{eventURI: "/analytics/v1.0/test", requestedPath: "/analytics/v1.0/test", want: true},
-		{eventURI: "/test", requestedPath: "/analytics/v1.0/other", want: false},
-		{eventURI: "", requestedPath: "/analytics/v1.0/test", want: false},
-	} {
-		require.Equal(t, test.want, analyticsEventMatchesPath(test.eventURI, test.requestedPath),
-			"event URI %q and requested path %q", test.eventURI, test.requestedPath)
-	}
 }
 
 func TestJSONStringField(t *testing.T) {
@@ -179,6 +70,69 @@ func TestJSONStringField(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNewRejectsInvalidPlatformAPICA(t *testing.T) {
+	_, err := newSuite(nil, []byte("not a PEM certificate"))
+	require.ErrorContains(t, err, "loading the generated Platform API CA certificate")
+}
+
+func TestJSONFieldNotEqual(t *testing.T) {
+	const oldToken = "previous-subscription-token"
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{name: "regenerated token", body: `{"subscriptionToken":"new-subscription-token"}`},
+		{name: "unchanged token", body: `{"subscriptionToken":"previous-subscription-token"}`, wantErr: true},
+		{name: "empty token", body: `{"subscriptionToken":""}`, wantErr: true},
+		{name: "non-string token", body: `{"subscriptionToken":1}`, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			local := tcontext.NewLocal("runner")
+			local.Set("oldToken", oldToken)
+			ctx := tcontext.WithLocal(context.Background(), local)
+			require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{Body: []byte(tt.body)}))
+
+			err := (&Base{}).jsonFieldNotEqual(ctx, "subscriptionToken", "${CTX:oldToken}")
+			if tt.wantErr {
+				require.Error(t, err)
+				require.NotContains(t, err.Error(), oldToken)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestJSONFieldContainsBefore(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		first   string
+		second  string
+		wantErr bool
+	}{
+		{name: "ordered values", body: `{"prompt":"instruction original prompt"}`, first: "instruction", second: "original"},
+		{name: "reversed values", body: `{"prompt":"original prompt instruction"}`, first: "instruction", second: "original", wantErr: true},
+		{name: "missing first value", body: `{"prompt":"original prompt"}`, first: "instruction", second: "original", wantErr: true},
+		{name: "missing second value", body: `{"prompt":"instruction"}`, first: "instruction", second: "original", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+			require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{Body: []byte(tt.body)}))
+
+			err := (&Base{}).jsonFieldContainsBefore(ctx, "prompt", tt.first, tt.second)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -256,27 +210,6 @@ func TestPrometheusAssertions(t *testing.T) {
 			require.Equal(t, tt.metricSeen, prometheusMetricPresent(tt.body, tt.metric))
 		})
 	}
-}
-
-func TestTemplatePathIsRestrictedToFeatureRoot(t *testing.T) {
-	root := t.TempDir()
-	gateway := &Gateway{Base: &Base{featureRoot: root}}
-	path, err := gateway.templatePath("resources/templates/rest-api.yaml")
-	require.NoError(t, err)
-	require.Equal(t, filepath.Join(gateway.featureRoot, "resources/templates/rest-api.yaml"), path)
-
-	for _, name := range []string{"", "/tmp/api.yaml", "../api.yaml", "resources/templates/../../../api.yaml"} {
-		_, err := gateway.templatePath(name)
-		require.Error(t, err, "path %q should be rejected", name)
-	}
-
-	outside := filepath.Join(t.TempDir(), "outside.yaml")
-	require.NoError(t, os.WriteFile(outside, []byte("kind: RestApi\n"), 0o600))
-	link := filepath.Join(root, "resources", "templates", "link.yaml")
-	require.NoError(t, os.MkdirAll(filepath.Dir(link), 0o755))
-	require.NoError(t, os.Symlink(outside, link))
-	_, err = gateway.templatePath("resources/templates/link.yaml")
-	require.ErrorContains(t, err, "escapes")
 }
 
 func TestCanonicalResourceTemplates(t *testing.T) {

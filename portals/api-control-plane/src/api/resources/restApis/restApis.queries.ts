@@ -18,11 +18,11 @@
 
 import { queryOptions } from '@tanstack/react-query';
 
-import { staleTimes } from '../../core/queryClient';
+import { shouldRetry, staleTimes } from '../../core/queryClient';
 import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
 import {
   getRestApi,
-  getRestApiDefinition,
+  getRestApiOpenApi,
   listRestApis,
   type ListRestApisQuery,
 } from './restApis.endpoints';
@@ -57,17 +57,11 @@ export const restApiQueries = {
       staleTime: staleTimes.standard,
     }),
 
-  /**
-   * Retrieves an API's OpenAPI definition.
-   *
-   * The definition is nested under the API detail key, allowing it to be
-   * invalidated or removed with the API. The stable stale time prevents
-   * unnecessary refetches while the definition is being viewed.
-   */
-  definition: (org: OrgScope, restApiId: string) =>
+  openApi: (org: OrgScope, restApiId: string) =>
     queryOptions({
-      queryKey: restApiKeys.child(org, restApiId, 'definition'),
-      queryFn: ({ signal }) => getRestApiDefinition(restApiId, { orgId: org, signal }),
-      staleTime: staleTimes.stable,
+      queryKey: restApiKeys.children(org, restApiId, 'openapi'),
+      queryFn: ({ signal }) => getRestApiOpenApi(restApiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+      retry: shouldRetry,
     }),
 };

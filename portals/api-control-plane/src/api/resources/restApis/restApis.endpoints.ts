@@ -132,93 +132,89 @@ export const deleteRestApi = async (restApiId: string, options?: RequestOptions)
   });
 };
 
-/* -------------------------------------------------------------------------- */
-/* Definition                                                                  */
-/* -------------------------------------------------------------------------- */
-
 /**
- * Loads an API's OpenAPI definition for the test console.
+ * Creates a REST API by importing an OpenAPI specification.
  *
- * `GET /rest-apis/{restApiId}/openapi` returns `{ content }` as YAML and may
- * return `404` when no definition exists. Set `USE_SAMPLE_DEFINITION` to
- * `false` to use the platform endpoint instead of the bundled sample.
+ * The body must be a `FormData` instance containing:
+ *   - `file` (File): the spec file
+ *   - `displayName`, `version`, `context`, `projectId`, `upstream` (string): required API metadata
+ *   - `id`, `description` (string): optional
+ *
+ * The browser sets the Content-Type header (including multipart boundary) automatically
+ * when a FormData body is supplied — do not set it manually.
  */
-/** Response of `GET /rest-apis/{restApiId}/openapi`; replace with the generated type when available. */
-export type RestApiOpenApiResponse = {
-  /** The stored spec, as YAML text. */
-  content: string;
-};
-
-/** Whether to use a bundled sample instead of the platform endpoint. */
-const USE_SAMPLE_DEFINITION: boolean = true;
-
-export type { OpenApiDocument, SampleDefinitionId };
-
-/** The real endpoint. Reached once `USE_SAMPLE_DEFINITION` is false. */
-const fetchRestApiOpenApi = async (
-  restApiId: string,
-  options?: RequestOptions,
-): Promise<RestApiOpenApiResponse> => {
-  return http.get<RestApiOpenApiResponse>(`${resourcePath(restApiId)}/openapi`, {
+export const importOpenApi = async (body: FormData, options?: RequestOptions): Promise<RestApi> => {
+  return http.post<RestApi>(`${BASE}/import-openapi`, body, {
     ...options,
-    operationName: 'GetRESTAPIOpenAPI',
+    operationName: 'ImportOpenAPI',
   });
 };
 
-/** Bundled sample in the endpoint's response shape and YAML format. */
-const sampleRestApiOpenApi = async (
-  restApiId: string,
-  options?: RequestOptions,
-): Promise<RestApiOpenApiResponse> => {
-  // Keep cancellation consistent with the real request path.
-  options?.signal?.throwIfAborted();
+/** A single error entry from `POST /rest-apis/validate-openapi`. */
+export type OpenAPIValidationError = {
+  message: string;
+  path?: string;
+};
 
-  const choice = sampleDefinitionIdFor(restApiId);
+/** `info` block extracted from the spec if validation passes. */
+export type OpenAPISpecInfo = {
+  title?: string;
+  version?: string;
+};
 
-  // Some catalog entries intentionally simulate APIs with no uploaded definition.
-  if (choice === NO_SAMPLE_DEFINITION) {
-    throw new ApiError('This API has no stored definition', {
-      code: ErrorCode.NOT_FOUND,
-      kind: 'http',
-      operation: 'GetRESTAPIOpenAPI',
-      status: 404,
-    });
-  }
-
-  const document = await loadSampleDefinition(choice);
-  return { content: serializeSpecContent(document) };
+export type ValidateOpenAPIResponse = {
+  isValid: boolean;
+  errors: OpenAPIValidationError[];
+  info?: OpenAPISpecInfo;
 };
 
 /**
- * Loads one bundled sample by id, bypassing the per-API selection.
- *
- * For tests and local exploration only — production code calls
- * `getRestApiDefinition`. Delete this along with `./mocks` at switch time.
+ * Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
+ * any resource. The spec string is wrapped as a binary file and sent as
+ * `file` in multipart form data.
  */
-export const getSampleRestApiDefinition = async (
-  sampleId: SampleDefinitionId,
-): Promise<RestApiDefinition> => {
-  const content = serializeSpecContent(await loadSampleDefinition(sampleId));
-  return toRestApiDefinition(parseSpecContent(content), 'sample');
+export const validateOpenApiSpec = async (
+  specContent: string,
+  options?: RequestOptions,
+): Promise<ValidateOpenAPIResponse> => {
+  const formData = new FormData();
+  const blob = new Blob([specContent], { type: 'application/x-yaml' });
+  formData.append('file', blob, 'openapi.yaml');
+  return http.post<ValidateOpenAPIResponse>(`${BASE}/validate-openapi`, formData, {
+    ...options,
+    operationName: 'ValidateOpenAPISpec',
+  });
+};
+
+export type OpenAPIContent = {
+  content: string;
+};
+
+/** Fetches the raw API definition spec. Throws (ApiError, status 404) when no spec exists. */
+export const getRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<OpenAPIContent> => {
+  return http.get<OpenAPIContent>(`${resourcePath(restApiId)}/openapi`, {
+    ...options,
+    operationName: 'GetRESTAPISpec',
+  });
 };
 
 /**
- * An API's OpenAPI definition.
+ * Replaces (or creates) the API definition spec.
  *
- * Rejects when the API has no stored spec — the endpoint answers `404`, which
- * the transport surfaces as an `ApiError` and the query leaves as an error
- * state rather than empty data.
+ * The body must be a `FormData` with a single `file` field holding the spec file.
+ * The browser sets the Content-Type header automatically — do not set it manually.
  */
-export const getRestApiDefinition = async (
+export const putRestApiOpenApi = async (
   restApiId: string,
+  body: FormData,
   options?: RequestOptions,
-): Promise<RestApiDefinition> => {
-  const response = USE_SAMPLE_DEFINITION
-    ? await sampleRestApiOpenApi(restApiId, options)
-    : await fetchRestApiOpenApi(restApiId, options);
-
-  return toRestApiDefinition(
-    parseSpecContent(response.content),
-    USE_SAMPLE_DEFINITION ? 'sample' : 'platform',
-  );
+): Promise<OpenAPIContent> => {
+  return http.put<OpenAPIContent>(`${resourcePath(restApiId)}/openapi`, body, {
+    ...options,
+    operationName: 'UpdateRESTAPISpec',
+  });
 };
+

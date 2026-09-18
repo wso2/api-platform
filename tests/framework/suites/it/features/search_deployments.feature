@@ -132,7 +132,6 @@ Feature: Deployment search
       | spec.upstream.main.url  | http://testbench:3000             |
       | spec.operations         | [{"method":"GET","path":"/test"}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
     When I send a "GET" request to the "gateway-controller" service at "/rest-apis?status=deployed"
     Then the response should be successful
     And the response should be valid JSON

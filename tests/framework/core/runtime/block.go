@@ -84,6 +84,10 @@ type Topology struct {
 	// logWriter, when non-nil, receives every component's stdout/stderr for the block's
 	// whole lifetime. Nil in a default run — the suite decides whether logs are captured.
 	logWriter *logcapture.Writer
+
+	// sharedLogs is the run-scoped sink for components shared across blocks. Their output
+	// outlives this block, so it must not go to logWriter.
+	sharedLogs *logcapture.Sink
 }
 
 // ServiceControl resolves a compose service or component to its controlling stack.
@@ -185,6 +189,7 @@ func (t *Topology) URLAt(component string, ordinal int, endpoint string) (string
 // lifetime, into one combined file.
 func BootBlock(
 	ctx context.Context, block *topology.ResolvedBlock, repoRoot string, logWriter *logcapture.Writer,
+	sharedLogs *logcapture.Sink,
 ) (*Topology, error) {
 	if block == nil {
 		return nil, fmt.Errorf("runtime: block is required")
@@ -192,7 +197,10 @@ func BootBlock(
 	if ctx == nil {
 		return nil, fmt.Errorf("runtime: context is required")
 	}
-	t := &Topology{Block: block, Instances: components.NewSet(), logWriter: logWriter}
+	t := &Topology{
+		Block: block, Instances: components.NewSet(),
+		logWriter: logWriter, sharedLogs: sharedLogs,
+	}
 
 	if blockNeedsNetwork(block) {
 		nw, err := NewNetwork(ctx, block.Name)
@@ -213,9 +221,10 @@ func BootBlock(
 
 	// Provision storage before starting components.
 	storage, err := Provision(ctx, DatabaseOptions{
-		Network:  t.network,
-		RepoRoot: repoRoot,
-		Requests: storageRequests(block),
+		Network:   t.network,
+		RepoRoot:  repoRoot,
+		Requests:  storageRequests(block),
+		LogWriter: t.logWriter,
 	})
 	if err != nil {
 		return fail(fmt.Errorf("runtime: block %q: %w", block.Name, err))
@@ -517,6 +526,7 @@ func (t *Topology) provisionedBy(ctx context.Context, name, dependent string) (m
 func (t *Topology) startShared(
 	ctx context.Context, def *components.Definition, opts Options,
 ) error {
+	opts.SharedLogs = t.sharedLogs
 	container, err := LaunchShared(ctx, def, opts)
 	if err != nil {
 		return fmt.Errorf("starting shared %s: %w", def.Name, err)

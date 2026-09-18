@@ -42,16 +42,19 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 )
 
-// StepRegistrar wires a suite's step definitions to a running topology.
-type StepRegistrar func(sc *godog.ScenarioContext, topo *Topology)
+// StepRegistrar wires a suite's step definitions to its current runner.
+type StepRegistrar func(sc *godog.ScenarioContext)
+
+// StepFactory constructs isolated runner step bindings for a running topology.
+type StepFactory func(topo *Topology) (StepRegistrar, error)
 
 // Deps are what the engine needs from the suite.
 type Deps struct {
 	// RepoRoot resolves repo-relative paths.
 	RepoRoot string
 
-	// Steps registers step definitions.
-	Steps StepRegistrar
+	// Steps constructs runner-isolated step definitions.
+	Steps StepFactory
 
 	// FeatureRoot resolves the feature paths in the suite file.
 	FeatureRoot string
@@ -161,7 +164,7 @@ func runBlock(
 	}
 
 	start := time.Now()
-	topo, err := BootBlock(bootCtx, block, deps.RepoRoot, logWriter)
+	topo, err := BootBlock(bootCtx, block, deps.RepoRoot, logWriter, deps.Logs)
 	if err != nil {
 		t.Fatalf("block %q failed to boot after %s: %v",
 			block.Name, time.Since(start).Round(time.Millisecond), err)
@@ -207,6 +210,10 @@ func runRunner(
 	t.Helper()
 
 	local := tcontext.NewLocal(runner.Name)
+	registrar, err := deps.Steps(topo)
+	if err != nil {
+		t.Fatalf("runner %q: constructing step bindings: %v", runner.Name, err)
+	}
 
 	nameGen, err := unique.NewGenerator()
 	if err != nil {
@@ -264,7 +271,7 @@ func runRunner(
 				return ctx, scenarioErr
 			})
 
-			deps.Steps(sc, topo)
+			registrar(sc)
 		},
 		Options: &opts,
 	}
