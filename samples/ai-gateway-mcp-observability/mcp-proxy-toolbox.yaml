@@ -1,0 +1,34 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Mcp
+metadata:
+  name: toolbox-mcp
+spec:
+  displayName: Toolbox MCP
+  version: v1.0
+  context: /toolbox
+  specVersion: "2025-06-18"
+  upstream:
+    # The path of the MCP endpoint is part of this URL.
+    url: http://mcp-everything:3001/mcp
+  policies:
+    - name: mcp-auth
+      version: v1
+      params:
+        # Trust tokens signed by the sample's own key. In a real deployment
+        # this names a key manager pointed at your identity provider.
+        issuers:
+          - sample-key-manager
+        userIdClaim: sub
+    # deny mode with exceptions is an allowlist: only these four tools can be
+    # called, and tools/list is filtered to match. Calls to anything else are
+    # refused here, and show on the dashboard as mcp-acl-list rejections.
+    - name: mcp-acl-list
+      version: v1
+      params:
+        tools:
+          mode: deny
+          exceptions:
+            - echo
+            - get-sum
+            - get-structured-content
+            - get-resource-reference
