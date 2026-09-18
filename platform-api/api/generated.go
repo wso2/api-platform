@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,6 +15,42 @@ import (
 
 const (
 	OAuth2SecurityScopes = "OAuth2Security.Scopes"
+)
+
+// Defines values for A2AAgentProxyKind.
+const (
+	A2AAgentProxyKindAgentProxy A2AAgentProxyKind = "AgentProxy"
+)
+
+// Defines values for A2AAgentProxyProtocol.
+const (
+	A2AAgentProxyProtocolA2a A2AAgentProxyProtocol = "a2a"
+)
+
+// Defines values for A2AOperationName.
+const (
+	CancelTask                       A2AOperationName = "CancelTask"
+	CreateTaskPushNotificationConfig A2AOperationName = "CreateTaskPushNotificationConfig"
+	DeleteTaskPushNotificationConfig A2AOperationName = "DeleteTaskPushNotificationConfig"
+	GetExtendedAgentCard             A2AOperationName = "GetExtendedAgentCard"
+	GetTask                          A2AOperationName = "GetTask"
+	GetTaskPushNotificationConfig    A2AOperationName = "GetTaskPushNotificationConfig"
+	ListTaskPushNotificationConfigs  A2AOperationName = "ListTaskPushNotificationConfigs"
+	ListTasks                        A2AOperationName = "ListTasks"
+	SendMessage                      A2AOperationName = "SendMessage"
+	SendStreamingMessage             A2AOperationName = "SendStreamingMessage"
+	SubscribeToTask                  A2AOperationName = "SubscribeToTask"
+)
+
+// Defines values for A2AProtocolConfigProtocolVersion.
+const (
+	N10 A2AProtocolConfigProtocolVersion = "1.0"
+)
+
+// Defines values for A2ATransportProtocolBinding.
+const (
+	HTTPJSON A2ATransportProtocolBinding = "HTTP+JSON"
+	JSONRPC  A2ATransportProtocolBinding = "JSONRPC"
 )
 
 // Defines values for APIKeyItemStatus.
@@ -27,6 +64,11 @@ const (
 const (
 	APIKeySecurityInHeader APIKeySecurityIn = "header"
 	APIKeySecurityInQuery  APIKeySecurityIn = "query"
+)
+
+// Defines values for AgentProxyListItemProtocol.
+const (
+	AgentProxyListItemProtocolA2a AgentProxyListItemProtocol = "a2a"
 )
 
 // Defines values for ApplicationAssociationSelectorKind.
@@ -158,6 +200,16 @@ const (
 	Pending  MCPProxyListItemStatus = "pending"
 )
 
+// Defines values for ManagedProtectedAgentCardMode.
+const (
+	ManagedProtectedAgentCardModeManaged ManagedProtectedAgentCardMode = "managed"
+)
+
+// Defines values for ManagedPublicAgentCardMode.
+const (
+	ManagedPublicAgentCardModeManaged ManagedPublicAgentCardMode = "managed"
+)
+
 // Defines values for OperationPolicyPathMethods.
 const (
 	OperationPolicyPathMethodsAsterisk OperationPolicyPathMethods = "*"
@@ -180,6 +232,16 @@ const (
 	OperationRequestMethodPOST    OperationRequestMethod = "POST"
 	OperationRequestMethodPUT     OperationRequestMethod = "PUT"
 	OperationRequestMethodTRACE   OperationRequestMethod = "TRACE"
+)
+
+// Defines values for PassthroughProtectedAgentCardMode.
+const (
+	PassthroughProtectedAgentCardModePassthrough PassthroughProtectedAgentCardMode = "passthrough"
+)
+
+// Defines values for PassthroughPublicAgentCardMode.
+const (
+	PassthroughPublicAgentCardModePassthrough PassthroughPublicAgentCardMode = "passthrough"
 )
 
 // Defines values for PublicationAgentVisibility.
@@ -368,6 +430,16 @@ const (
 	Revoked UserAPIKeyItemStatus = "revoked"
 )
 
+// Defines values for AgentProxyProtocolQ.
+const (
+	AgentProxyProtocolQA2a AgentProxyProtocolQ = "a2a"
+)
+
+// Defines values for CacheControlH.
+const (
+	CacheControlHNoCache CacheControlH = "no-cache"
+)
+
 // Defines values for DeploymentStatusQ.
 const (
 	DeploymentStatusQARCHIVED    DeploymentStatusQ = "ARCHIVED"
@@ -388,6 +460,38 @@ const (
 const (
 	SortOrderQAsc  SortOrderQ = "asc"
 	SortOrderQDesc SortOrderQ = "desc"
+)
+
+// Defines values for ListAgentProxiesParamsProtocol.
+const (
+	ListAgentProxiesParamsProtocolA2a ListAgentProxiesParamsProtocol = "a2a"
+)
+
+// Defines values for ListAgentProxiesParamsSortBy.
+const (
+	ListAgentProxiesParamsSortByCreatedAt ListAgentProxiesParamsSortBy = "createdAt"
+	ListAgentProxiesParamsSortByName      ListAgentProxiesParamsSortBy = "name"
+)
+
+// Defines values for ListAgentProxiesParamsSortOrder.
+const (
+	ListAgentProxiesParamsSortOrderAsc  ListAgentProxiesParamsSortOrder = "asc"
+	ListAgentProxiesParamsSortOrderDesc ListAgentProxiesParamsSortOrder = "desc"
+)
+
+// Defines values for FetchAgentCardParamsCacheControl.
+const (
+	FetchAgentCardParamsCacheControlNoCache FetchAgentCardParamsCacheControl = "no-cache"
+)
+
+// Defines values for ListAgentProxyDeploymentsParamsStatus.
+const (
+	ListAgentProxyDeploymentsParamsStatusARCHIVED    ListAgentProxyDeploymentsParamsStatus = "ARCHIVED"
+	ListAgentProxyDeploymentsParamsStatusDEPLOYED    ListAgentProxyDeploymentsParamsStatus = "DEPLOYED"
+	ListAgentProxyDeploymentsParamsStatusDEPLOYING   ListAgentProxyDeploymentsParamsStatus = "DEPLOYING"
+	ListAgentProxyDeploymentsParamsStatusFAILED      ListAgentProxyDeploymentsParamsStatus = "FAILED"
+	ListAgentProxyDeploymentsParamsStatusUNDEPLOYED  ListAgentProxyDeploymentsParamsStatus = "UNDEPLOYED"
+	ListAgentProxyDeploymentsParamsStatusUNDEPLOYING ListAgentProxyDeploymentsParamsStatus = "UNDEPLOYING"
 )
 
 // Defines values for ListApiPortalsParamsSortBy.
@@ -489,24 +593,24 @@ const (
 
 // Defines values for ListRESTAPIsParamsSortBy.
 const (
-	CreatedAt ListRESTAPIsParamsSortBy = "createdAt"
-	Name      ListRESTAPIsParamsSortBy = "name"
+	ListRESTAPIsParamsSortByCreatedAt ListRESTAPIsParamsSortBy = "createdAt"
+	ListRESTAPIsParamsSortByName      ListRESTAPIsParamsSortBy = "name"
 )
 
 // Defines values for ListRESTAPIsParamsSortOrder.
 const (
-	Asc  ListRESTAPIsParamsSortOrder = "asc"
-	Desc ListRESTAPIsParamsSortOrder = "desc"
+	ListRESTAPIsParamsSortOrderAsc  ListRESTAPIsParamsSortOrder = "asc"
+	ListRESTAPIsParamsSortOrderDesc ListRESTAPIsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
 const (
-	GetDeploymentsParamsStatusARCHIVED    GetDeploymentsParamsStatus = "ARCHIVED"
-	GetDeploymentsParamsStatusDEPLOYED    GetDeploymentsParamsStatus = "DEPLOYED"
-	GetDeploymentsParamsStatusDEPLOYING   GetDeploymentsParamsStatus = "DEPLOYING"
-	GetDeploymentsParamsStatusFAILED      GetDeploymentsParamsStatus = "FAILED"
-	GetDeploymentsParamsStatusUNDEPLOYED  GetDeploymentsParamsStatus = "UNDEPLOYED"
-	GetDeploymentsParamsStatusUNDEPLOYING GetDeploymentsParamsStatus = "UNDEPLOYING"
+	ARCHIVED    GetDeploymentsParamsStatus = "ARCHIVED"
+	DEPLOYED    GetDeploymentsParamsStatus = "DEPLOYED"
+	DEPLOYING   GetDeploymentsParamsStatus = "DEPLOYING"
+	FAILED      GetDeploymentsParamsStatus = "FAILED"
+	UNDEPLOYED  GetDeploymentsParamsStatus = "UNDEPLOYED"
+	UNDEPLOYING GetDeploymentsParamsStatus = "UNDEPLOYING"
 )
 
 // Defines values for ListSubscriptionsParamsStatus.
@@ -515,6 +619,147 @@ const (
 	ListSubscriptionsParamsStatusINACTIVE ListSubscriptionsParamsStatus = "INACTIVE"
 	ListSubscriptionsParamsStatusREVOKED  ListSubscriptionsParamsStatus = "REVOKED"
 )
+
+// A2AAgentProxy The complete Agent proxy variant for `protocol: a2a`. Shared Agent fields stay at the
+// top level; A2A protocol version, transports, operation configuration and Agent Cards
+// live inside `a2a`. Unknown properties are rejected.
+type A2AAgentProxy struct {
+	// A2a Typed A2A configuration, required when `protocol` is `a2a`. Unknown properties are
+	// rejected; free-form Agent Card content and policy parameters keep their own extension
+	// behaviour.
+	A2a A2AProtocolConfig `json:"a2a" yaml:"a2a"`
+
+	// AssociatedGateways Optional list of gateways this Agent proxy can be deployed to, along with per-gateway configuration overrides. On update, an omitted array empties the association set, subject to the existing deployment-integrity checks.
+	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
+
+	// Context Base path under which every route of this Agent proxy is served. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
+
+	// CreatedAt Timestamp when the resource was created
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User identifier of the user who created this resource
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// Description Free-text description of the Agent proxy.
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable Agent proxy name. Not required to be unique.
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Public handle, unique per organization. Optional on create — the server derives it
+	// from `displayName` when omitted — and always present on responses. On update an
+	// omitted `id` retains the path handle and is never regenerated; a conflicting one
+	// is rejected.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Kind Control-plane resource kind. The gateway's own artifact kind stays `Agent` and is mapped at the deployment boundary.
+	Kind *A2AAgentProxyKind `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// ProjectId Handle (URL-friendly slug) of the project this Agent proxy belongs to.
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// Protocol Communication protocol of this Agent proxy. Required, and immutable after creation.
+	Protocol A2AAgentProxyProtocol `binding:"required" json:"protocol" yaml:"protocol"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// Resilience Timeout settings applied to a request chain.
+	Resilience *Resilience `json:"resilience,omitempty" yaml:"resilience,omitempty"`
+
+	// UpdatedAt Timestamp when the resource was last updated
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User identifier of the user who last updated this resource
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+
+	// Version User-facing resource version label. Free text, and unrelated to
+	// `a2a.protocolVersion` — it is not part of the resource's identity, and uniqueness
+	// is on the handle alone.
+	Version string `binding:"required" json:"version" yaml:"version"`
+
+	// Vhost Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
+}
+
+// A2AAgentProxyKind Control-plane resource kind. The gateway's own artifact kind stays `Agent` and is mapped at the deployment boundary.
+type A2AAgentProxyKind string
+
+// A2AAgentProxyProtocol Communication protocol of this Agent proxy. Required, and immutable after creation.
+type A2AAgentProxyProtocol string
+
+// A2AOperation defines model for A2AOperation.
+type A2AOperation struct {
+	// Name One of the canonical A2A operations for the selected protocol version.
+	Name A2AOperationName `binding:"required" json:"name" yaml:"name"`
+
+	// Policies Policies appended after the common `policies`, by plain concatenation with no de-duplication — a policy attached in both places runs twice.
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// Resilience Timeout settings applied to a request chain.
+	Resilience *Resilience `json:"resilience,omitempty" yaml:"resilience,omitempty"`
+}
+
+// A2AOperationName One of the canonical A2A operations for the selected protocol version.
+type A2AOperationName string
+
+// A2AOperationConfigs Agent-wide and per-operation A2A configuration. Omitting the whole block means no
+// user-supplied policies and no per-operation additions.
+type A2AOperationConfigs struct {
+	// Operations Per-operation configuration. This is not an allowlist — unlisted operations still
+	// receive the common `policies`. `name` must be unique across the array, which the
+	// service enforces.
+	Operations *[]A2AOperation `json:"operations,omitempty" yaml:"operations,omitempty"`
+
+	// Policies Policies applied to every A2A operation. This is the agent-wide policy position for A2A; there is no top-level `policies` array.
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// A2AProtocolConfig Typed A2A configuration, required when `protocol` is `a2a`. Unknown properties are
+// rejected; free-form Agent Card content and policy parameters keep their own extension
+// behaviour.
+type A2AProtocolConfig struct {
+	// AgentCard A2A Agent Card serving configuration. Omitting this block, or omitting its `public`
+	// block, means public passthrough at `/.well-known/agent-card.json` with
+	// `rewriteUrls: true` and no card policies. Omitted blocks are preserved as omitted;
+	// defaults never materialize an explicit stored configuration.
+	AgentCard *AgentCardConfig `json:"agentCard,omitempty" yaml:"agentCard,omitempty"`
+
+	// OperationConfigs Agent-wide and per-operation A2A configuration. Omitting the whole block means no
+	// user-supplied policies and no per-operation additions.
+	OperationConfigs *A2AOperationConfigs `json:"operationConfigs,omitempty" yaml:"operationConfigs,omitempty"`
+
+	// ProtocolVersion A2A wire protocol version. Only registered versions are accepted — an unregistered
+	// value is rejected at authoring time because it could never deploy. This is not a
+	// supported list filter.
+	ProtocolVersion A2AProtocolConfigProtocolVersion `binding:"required" json:"protocolVersion" yaml:"protocolVersion"`
+
+	// Transports Transports this Agent proxy is served on. `protocolBinding` must be unique across
+	// the array; `uniqueItems` compares whole elements, so that uniqueness is enforced
+	// in the service rather than by the schema.
+	Transports []A2ATransport `binding:"required" json:"transports" yaml:"transports"`
+}
+
+// A2AProtocolConfigProtocolVersion A2A wire protocol version. Only registered versions are accepted — an unregistered
+// value is rejected at authoring time because it could never deploy. This is not a
+// supported list filter.
+type A2AProtocolConfigProtocolVersion string
+
+// A2ATransport defines model for A2ATransport.
+type A2ATransport struct {
+	// PathPrefix Path prefix relative to `context`. The default `/` inserts no extra segment.
+	PathPrefix *string `json:"pathPrefix,omitempty" yaml:"pathPrefix,omitempty"`
+
+	// ProtocolBinding A2A protocol binding served on this transport.
+	ProtocolBinding A2ATransportProtocolBinding `binding:"required" json:"protocolBinding" yaml:"protocolBinding"`
+}
+
+// A2ATransportProtocolBinding A2A protocol binding served on this transport.
+type A2ATransportProtocolBinding string
 
 // APIKeyItem defines model for APIKeyItem.
 type APIKeyItem struct {
@@ -600,6 +845,91 @@ type AddApplicationAssociationsRequest struct {
 type AddGatewayToRESTAPIRequest struct {
 	// GatewayId Handle (URL-friendly slug) of the gateway to associate with the REST API
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// AgentCardConfig A2A Agent Card serving configuration. Omitting this block, or omitting its `public`
+// block, means public passthrough at `/.well-known/agent-card.json` with
+// `rewriteUrls: true` and no card policies. Omitted blocks are preserved as omitted;
+// defaults never materialize an explicit stored configuration.
+type AgentCardConfig struct {
+	// Protected The protected card is an A2A operation (`GetExtendedAgentCard`) rather than a
+	// discovery route, so it carries no `path` and no `policies`. An explicit `mode` is
+	// required whenever the block is present.
+	Protected *ProtectedAgentCard `json:"protected,omitempty" yaml:"protected,omitempty"`
+
+	// Public Managed and passthrough are disjoint branches. Managed requires `content` and forbids
+	// `rewriteUrls`; passthrough forbids `content` and may omit `mode`. A card-serving
+	// `signing` option is not accepted on either branch.
+	Public *PublicAgentCard `json:"public,omitempty" yaml:"public,omitempty"`
+}
+
+// AgentCardDocument A complete A2A Agent Card, carried as supplied. Managed content is stored and served
+// byte-for-byte and is never re-serialized or normalized, because re-serialization would
+// change the bytes a future signing implementation signs. Structure is the author's to
+// write: the gateway validates what it can contradict at deployment time, and the
+// encoded size limit (1 MiB) is enforced in the service, not by this schema.
+//
+// Note that `securityRequirements` uses the A2A shape
+// `[{ "schemes": { "<name>": { "list": ["scope"] } } }]`, not the OpenAPI-style
+// `[{ "<name>": ["scope"] }]`.
+type AgentCardDocument map[string]interface{}
+
+// AgentCardPath Path the public Agent Card is served on. A custom path replaces the default route
+// rather than aliasing it.
+type AgentCardPath = string
+
+// AgentProxy An Agent proxy, as a discriminated union over its protocol. `protocol` selects the
+// variant and its matching named configuration block, and is immutable after creation.
+// `a2a` is the only protocol registered today; a further protocol adds its own
+// complete variant and named configuration block rather than widening this one.
+type AgentProxy struct {
+	union json.RawMessage
+}
+
+// AgentProxyAPIKeyListResponse defines model for AgentProxyAPIKeyListResponse.
+type AgentProxyAPIKeyListResponse struct {
+	// Count Number of API keys in current response
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// List List of API keys. Key material is never included.
+	List       []APIKeyItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination   `json:"pagination" yaml:"pagination"`
+}
+
+// AgentProxyListItem Lightweight Agent proxy projection used in collection responses. Protocol
+// configuration, operation policies and Agent Card content are omitted — read the item
+// for those, since a managed card alone may be up to 1 MiB.
+type AgentProxyListItem struct {
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName string     `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Public handle of the Agent proxy
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// ProjectId Handle (URL-friendly slug) of the project this Agent proxy belongs to
+	ProjectId string                     `binding:"required" json:"projectId" yaml:"projectId"`
+	Protocol  AgentProxyListItemProtocol `binding:"required" json:"protocol" yaml:"protocol"`
+
+	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	UpdatedBy *string    `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+	Version   string     `binding:"required" json:"version" yaml:"version"`
+	Vhost     *string    `json:"vhost,omitempty" yaml:"vhost,omitempty"`
+}
+
+// AgentProxyListItemProtocol defines model for AgentProxyListItem.Protocol.
+type AgentProxyListItemProtocol string
+
+// AgentProxyListResponse defines model for AgentProxyListResponse.
+type AgentProxyListResponse struct {
+	// Count Number of Agent proxies in current response
+	Count      int                  `binding:"required" json:"count" yaml:"count"`
+	List       []AgentProxyListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination           `json:"pagination" yaml:"pagination"`
 }
 
 // ApiPortalListItem Lightweight projection returned in collection responses (excludes the metadata blob).
@@ -1332,6 +1662,29 @@ type ExtractionIdentifier struct {
 
 // ExtractionIdentifierLocation Where to find the token information
 type ExtractionIdentifierLocation string
+
+// FetchAgentCardByAgentProxy Fetch using a saved Agent proxy's stored endpoint and stored credentials. The stored credential handle is never echoed back.
+type FetchAgentCardByAgentProxy struct {
+	// AgentProxyId Public handle of the Agent proxy whose stored endpoint and credentials should be used.
+	AgentProxyId string `binding:"required" json:"agentProxyId" yaml:"agentProxyId"`
+}
+
+// FetchAgentCardByURL Fetch from a supplied endpoint, optionally with supplied credentials. Used to preview an endpoint that has not been saved yet.
+type FetchAgentCardByURL struct {
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Url Endpoint of the agent to fetch the Agent Card from.
+	Url string `binding:"required" json:"url" yaml:"url"`
+}
+
+// FetchAgentCardRequest Two mutually exclusive forms: a direct `url` with optional `auth`, or an
+// `agentProxyId` alone, which uses that Agent proxy's stored endpoint and stored
+// credentials. Supplying `url` or `auth` alongside `agentProxyId` is rejected, including
+// when their value is null.
+type FetchAgentCardRequest struct {
+	union json.RawMessage
+}
 
 // FieldError defines model for FieldError.
 type FieldError struct {
@@ -2092,6 +2445,49 @@ type MCPServerInfoFetchResponse struct {
 	Tools             *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
 }
 
+// ManagedProtectedAgentCard defines model for ManagedProtectedAgentCard.
+type ManagedProtectedAgentCard struct {
+	// Content A complete A2A Agent Card, carried as supplied. Managed content is stored and served
+	// byte-for-byte and is never re-serialized or normalized, because re-serialization would
+	// change the bytes a future signing implementation signs. Structure is the author's to
+	// write: the gateway validates what it can contradict at deployment time, and the
+	// encoded size limit (1 MiB) is enforced in the service, not by this schema.
+	//
+	// Note that `securityRequirements` uses the A2A shape
+	// `[{ "schemes": { "<name>": { "list": ["scope"] } } }]`, not the OpenAPI-style
+	// `[{ "<name>": ["scope"] }]`.
+	Content AgentCardDocument             `json:"content" yaml:"content"`
+	Mode    ManagedProtectedAgentCardMode `binding:"required" json:"mode" yaml:"mode"`
+}
+
+// ManagedProtectedAgentCardMode defines model for ManagedProtectedAgentCard.Mode.
+type ManagedProtectedAgentCardMode string
+
+// ManagedPublicAgentCard The control plane stores the card and the gateway serves exactly those bytes.
+type ManagedPublicAgentCard struct {
+	// Content A complete A2A Agent Card, carried as supplied. Managed content is stored and served
+	// byte-for-byte and is never re-serialized or normalized, because re-serialization would
+	// change the bytes a future signing implementation signs. Structure is the author's to
+	// write: the gateway validates what it can contradict at deployment time, and the
+	// encoded size limit (1 MiB) is enforced in the service, not by this schema.
+	//
+	// Note that `securityRequirements` uses the A2A shape
+	// `[{ "schemes": { "<name>": { "list": ["scope"] } } }]`, not the OpenAPI-style
+	// `[{ "<name>": ["scope"] }]`.
+	Content AgentCardDocument          `json:"content" yaml:"content"`
+	Mode    ManagedPublicAgentCardMode `binding:"required" json:"mode" yaml:"mode"`
+
+	// Path Path the public Agent Card is served on. A custom path replaces the default route
+	// rather than aliasing it.
+	Path *AgentCardPath `json:"path,omitempty" yaml:"path,omitempty"`
+
+	// Policies Policies applied to the public-card discovery route only. Auth policies here are rejected by the gateway; the card route runs no auth.
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// ManagedPublicAgentCardMode defines model for ManagedPublicAgentCard.Mode.
+type ManagedPublicAgentCardMode string
+
 // ManifestSyncResponse defines model for ManifestSyncResponse.
 type ManifestSyncResponse struct {
 	// Policies All policies installed on the gateway. Each entry includes name, version, and isCustomPolicy.
@@ -2261,6 +2657,35 @@ type Pagination struct {
 	Total int `binding:"required" json:"total" yaml:"total"`
 }
 
+// PassthroughProtectedAgentCard defines model for PassthroughProtectedAgentCard.
+type PassthroughProtectedAgentCard struct {
+	Mode PassthroughProtectedAgentCardMode `binding:"required" json:"mode" yaml:"mode"`
+
+	// RewriteUrls Rewrite upstream-advertised URLs to the gateway's own. Independent of the public card's `rewriteUrls`.
+	RewriteUrls *bool `json:"rewriteUrls,omitempty" yaml:"rewriteUrls,omitempty"`
+}
+
+// PassthroughProtectedAgentCardMode defines model for PassthroughProtectedAgentCard.Mode.
+type PassthroughProtectedAgentCardMode string
+
+// PassthroughPublicAgentCard Nothing is stored; the gateway fetches the card from the upstream agent and optionally rewrites its URLs.
+type PassthroughPublicAgentCard struct {
+	Mode *PassthroughPublicAgentCardMode `json:"mode,omitempty" yaml:"mode,omitempty"`
+
+	// Path Path the public Agent Card is served on. A custom path replaces the default route
+	// rather than aliasing it.
+	Path *AgentCardPath `json:"path,omitempty" yaml:"path,omitempty"`
+
+	// Policies Policies applied to the public-card discovery route only. Auth policies here are rejected by the gateway; the card route runs no auth.
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// RewriteUrls Rewrite upstream-advertised URLs to the gateway's own. Passthrough only — rejected in managed mode.
+	RewriteUrls *bool `json:"rewriteUrls,omitempty" yaml:"rewriteUrls,omitempty"`
+}
+
+// PassthroughPublicAgentCardMode defines model for PassthroughPublicAgentCard.Mode.
+type PassthroughPublicAgentCardMode string
+
 // Policy Defines a request or response policy applied at runtime
 type Policy struct {
 	// ExecutionCondition Conditional expression that determines when this policy executes
@@ -2309,6 +2734,20 @@ type ProjectListResponse struct {
 	Count      int        `binding:"required" json:"count" yaml:"count"`
 	List       []Project  `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
+}
+
+// ProtectedAgentCard The protected card is an A2A operation (`GetExtendedAgentCard`) rather than a
+// discovery route, so it carries no `path` and no `policies`. An explicit `mode` is
+// required whenever the block is present.
+type ProtectedAgentCard struct {
+	union json.RawMessage
+}
+
+// PublicAgentCard Managed and passthrough are disjoint branches. Managed requires `content` and forbids
+// `rewriteUrls`; passthrough forbids `content` and may omit `mode`. A card-serving
+// `signing` option is not accepted on either branch.
+type PublicAgentCard struct {
+	union json.RawMessage
 }
 
 // Publication defines model for Publication.
@@ -2711,6 +3150,15 @@ type RequestRateLimitDimension struct {
 	// Enabled Enable request-count based limiting.
 	Enabled *bool                 `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	Reset   *RateLimitResetWindow `json:"reset,omitempty" yaml:"reset,omitempty"`
+}
+
+// Resilience Timeout settings applied to a request chain.
+type Resilience struct {
+	// IdleTimeout Idle (no-data) timeout, as a duration such as `5s`.
+	IdleTimeout *string `json:"idleTimeout,omitempty" yaml:"idleTimeout,omitempty"`
+
+	// Timeout Overall request timeout, as a duration such as `30s` or `1m`.
+	Timeout *string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 }
 
 // ResourceWiseRateLimitingConfig Resource-specific limits with a required default limit.
@@ -3161,6 +3609,15 @@ type ValidateOpenAPIResponse struct {
 	IsValid bool `binding:"required" json:"isValid" yaml:"isValid"`
 }
 
+// AgentProxyApiKeyId defines model for agentProxyApiKeyId.
+type AgentProxyApiKeyId = string
+
+// AgentProxyId defines model for agentProxyId.
+type AgentProxyId = string
+
+// AgentProxyProtocolQ defines model for agentProxyProtocol-Q.
+type AgentProxyProtocolQ string
+
 // ApiHandle defines model for apiHandle.
 type ApiHandle = string
 
@@ -3184,6 +3641,12 @@ type AppId = string
 
 // AssociationId defines model for associationId.
 type AssociationId = string
+
+// CacheControlH defines model for cacheControl-H.
+type CacheControlH string
+
+// DeploymentGatewayIdQ defines model for deploymentGatewayId-Q.
+type DeploymentGatewayIdQ = string
 
 // DeploymentId defines model for deploymentId.
 type DeploymentId = openapi_types.UUID
@@ -3226,6 +3689,9 @@ type SortOrderQ string
 
 // TokenId defines model for tokenId.
 type TokenId = openapi_types.UUID
+
+// AgentProxyUpstreamUnreachable The single error shape returned by every failed request across the API.
+type AgentProxyUpstreamUnreachable = Error
 
 // BadRequest The single error shape returned by every failed request across the API.
 type BadRequest = Error
@@ -3271,6 +3737,94 @@ type ServiceUnavailable = Error
 
 // Unauthorized The single error shape returned by every failed request across the API.
 type Unauthorized = Error
+
+// UnsupportedMediaType The single error shape returned by every failed request across the API.
+type UnsupportedMediaType = Error
+
+// ListAgentProxiesParams defines parameters for ListAgentProxies.
+type ListAgentProxiesParams struct {
+	// Protocol Filter Agent proxies by communication protocol. Omit to list every protocol variant.
+	// An empty or unsupported value is rejected with 400. The filter applies to the returned
+	// page and to `pagination.total` alike, always within the authenticated organization.
+	Protocol *ListAgentProxiesParamsProtocol `form:"protocol,omitempty" json:"protocol,omitempty" yaml:"protocol,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListAgentProxiesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListAgentProxiesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListAgentProxiesParamsProtocol defines parameters for ListAgentProxies.
+type ListAgentProxiesParamsProtocol string
+
+// ListAgentProxiesParamsSortBy defines parameters for ListAgentProxies.
+type ListAgentProxiesParamsSortBy string
+
+// ListAgentProxiesParamsSortOrder defines parameters for ListAgentProxies.
+type ListAgentProxiesParamsSortOrder string
+
+// FetchAgentCardParams defines parameters for FetchAgentCard.
+type FetchAgentCardParams struct {
+	// CacheControl Send `no-cache` to bypass the control plane's cached Agent Card result and force a live
+	// upstream fetch — the explicit "refresh" action in an authoring UI. Any other value, or
+	// omission, allows a cached result. Per RFC 9110 this affects freshness only; it never
+	// changes what is stored.
+	CacheControl *FetchAgentCardParamsCacheControl `json:"Cache-Control,omitempty" yaml:"Cache-Control,omitempty"`
+}
+
+// FetchAgentCardParamsCacheControl defines parameters for FetchAgentCard.
+type FetchAgentCardParamsCacheControl string
+
+// ListAgentProxyAPIKeysParams defines parameters for ListAgentProxyAPIKeys.
+type ListAgentProxyAPIKeysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListAgentProxyDeploymentsParams defines parameters for ListAgentProxyDeployments.
+type ListAgentProxyDeploymentsParams struct {
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
+	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
+	Status *ListAgentProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListAgentProxyDeploymentsParamsStatus defines parameters for ListAgentProxyDeployments.
+type ListAgentProxyDeploymentsParamsStatus string
+
+// RestoreAgentProxyDeploymentParams defines parameters for RestoreAgentProxyDeployment.
+type RestoreAgentProxyDeploymentParams struct {
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway
+	// bound to the deployment. Required, and validated against the deployment's bound gateway.
+	GatewayId DeploymentGatewayIdQ `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// UndeployAgentProxyDeploymentParams defines parameters for UndeployAgentProxyDeployment.
+type UndeployAgentProxyDeploymentParams struct {
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway
+	// bound to the deployment. Required, and validated against the deployment's bound gateway.
+	GatewayId DeploymentGatewayIdQ `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
 
 // ListApiPortalsParams defines parameters for ListApiPortals.
 type ListApiPortalsParams struct {
@@ -3827,6 +4381,24 @@ type UpdateSubscriptionParams struct {
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
 
+// CreateAgentProxyJSONRequestBody defines body for CreateAgentProxy for application/json ContentType.
+type CreateAgentProxyJSONRequestBody = AgentProxy
+
+// FetchAgentCardJSONRequestBody defines body for FetchAgentCard for application/json ContentType.
+type FetchAgentCardJSONRequestBody = FetchAgentCardRequest
+
+// UpdateAgentProxyJSONRequestBody defines body for UpdateAgentProxy for application/json ContentType.
+type UpdateAgentProxyJSONRequestBody = AgentProxy
+
+// CreateAgentProxyAPIKeyJSONRequestBody defines body for CreateAgentProxyAPIKey for application/json ContentType.
+type CreateAgentProxyAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// UpdateAgentProxyAPIKeyJSONRequestBody defines body for UpdateAgentProxyAPIKey for application/json ContentType.
+type UpdateAgentProxyAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateAgentProxyDeploymentJSONRequestBody defines body for CreateAgentProxyDeployment for application/json ContentType.
+type CreateAgentProxyDeploymentJSONRequestBody = DeployRequest
+
 // CreateApiPortalJSONRequestBody defines body for CreateApiPortal for application/json ContentType.
 type CreateApiPortalJSONRequestBody = CreateApiPortalRequest
 
@@ -3974,6 +4546,127 @@ type CreateSubscriptionJSONRequestBody = CreateSubscriptionRequest
 // UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
 type UpdateSubscriptionJSONRequestBody = Subscription
 
+// AsA2AAgentProxy returns the union data inside the AgentProxy as a A2AAgentProxy
+func (t AgentProxy) AsA2AAgentProxy() (A2AAgentProxy, error) {
+	var body A2AAgentProxy
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromA2AAgentProxy overwrites any union data inside the AgentProxy as the provided A2AAgentProxy
+func (t *AgentProxy) FromA2AAgentProxy(v A2AAgentProxy) error {
+	v.Protocol = "a2a"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeA2AAgentProxy performs a merge with any union data inside the AgentProxy, using the provided A2AAgentProxy
+func (t *AgentProxy) MergeA2AAgentProxy(v A2AAgentProxy) error {
+	v.Protocol = "a2a"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AgentProxy) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"protocol"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t AgentProxy) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "a2a":
+		return t.AsA2AAgentProxy()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t AgentProxy) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AgentProxy) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsFetchAgentCardByURL returns the union data inside the FetchAgentCardRequest as a FetchAgentCardByURL
+func (t FetchAgentCardRequest) AsFetchAgentCardByURL() (FetchAgentCardByURL, error) {
+	var body FetchAgentCardByURL
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFetchAgentCardByURL overwrites any union data inside the FetchAgentCardRequest as the provided FetchAgentCardByURL
+func (t *FetchAgentCardRequest) FromFetchAgentCardByURL(v FetchAgentCardByURL) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFetchAgentCardByURL performs a merge with any union data inside the FetchAgentCardRequest, using the provided FetchAgentCardByURL
+func (t *FetchAgentCardRequest) MergeFetchAgentCardByURL(v FetchAgentCardByURL) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsFetchAgentCardByAgentProxy returns the union data inside the FetchAgentCardRequest as a FetchAgentCardByAgentProxy
+func (t FetchAgentCardRequest) AsFetchAgentCardByAgentProxy() (FetchAgentCardByAgentProxy, error) {
+	var body FetchAgentCardByAgentProxy
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFetchAgentCardByAgentProxy overwrites any union data inside the FetchAgentCardRequest as the provided FetchAgentCardByAgentProxy
+func (t *FetchAgentCardRequest) FromFetchAgentCardByAgentProxy(v FetchAgentCardByAgentProxy) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFetchAgentCardByAgentProxy performs a merge with any union data inside the FetchAgentCardRequest, using the provided FetchAgentCardByAgentProxy
+func (t *FetchAgentCardRequest) MergeFetchAgentCardByAgentProxy(v FetchAgentCardByAgentProxy) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t FetchAgentCardRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *FetchAgentCardRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // AsMCPServerInfoFetchRequest0 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest0
 func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest0() (MCPServerInfoFetchRequest0, error) {
 	var body MCPServerInfoFetchRequest0
@@ -4095,6 +4788,130 @@ func (t *MCPServerInfoFetchRequest) UnmarshalJSON(b []byte) error {
 		}
 	}
 
+	return err
+}
+
+// AsManagedProtectedAgentCard returns the union data inside the ProtectedAgentCard as a ManagedProtectedAgentCard
+func (t ProtectedAgentCard) AsManagedProtectedAgentCard() (ManagedProtectedAgentCard, error) {
+	var body ManagedProtectedAgentCard
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromManagedProtectedAgentCard overwrites any union data inside the ProtectedAgentCard as the provided ManagedProtectedAgentCard
+func (t *ProtectedAgentCard) FromManagedProtectedAgentCard(v ManagedProtectedAgentCard) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeManagedProtectedAgentCard performs a merge with any union data inside the ProtectedAgentCard, using the provided ManagedProtectedAgentCard
+func (t *ProtectedAgentCard) MergeManagedProtectedAgentCard(v ManagedProtectedAgentCard) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPassthroughProtectedAgentCard returns the union data inside the ProtectedAgentCard as a PassthroughProtectedAgentCard
+func (t ProtectedAgentCard) AsPassthroughProtectedAgentCard() (PassthroughProtectedAgentCard, error) {
+	var body PassthroughProtectedAgentCard
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPassthroughProtectedAgentCard overwrites any union data inside the ProtectedAgentCard as the provided PassthroughProtectedAgentCard
+func (t *ProtectedAgentCard) FromPassthroughProtectedAgentCard(v PassthroughProtectedAgentCard) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePassthroughProtectedAgentCard performs a merge with any union data inside the ProtectedAgentCard, using the provided PassthroughProtectedAgentCard
+func (t *ProtectedAgentCard) MergePassthroughProtectedAgentCard(v PassthroughProtectedAgentCard) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ProtectedAgentCard) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ProtectedAgentCard) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsManagedPublicAgentCard returns the union data inside the PublicAgentCard as a ManagedPublicAgentCard
+func (t PublicAgentCard) AsManagedPublicAgentCard() (ManagedPublicAgentCard, error) {
+	var body ManagedPublicAgentCard
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromManagedPublicAgentCard overwrites any union data inside the PublicAgentCard as the provided ManagedPublicAgentCard
+func (t *PublicAgentCard) FromManagedPublicAgentCard(v ManagedPublicAgentCard) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeManagedPublicAgentCard performs a merge with any union data inside the PublicAgentCard, using the provided ManagedPublicAgentCard
+func (t *PublicAgentCard) MergeManagedPublicAgentCard(v ManagedPublicAgentCard) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPassthroughPublicAgentCard returns the union data inside the PublicAgentCard as a PassthroughPublicAgentCard
+func (t PublicAgentCard) AsPassthroughPublicAgentCard() (PassthroughPublicAgentCard, error) {
+	var body PassthroughPublicAgentCard
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPassthroughPublicAgentCard overwrites any union data inside the PublicAgentCard as the provided PassthroughPublicAgentCard
+func (t *PublicAgentCard) FromPassthroughPublicAgentCard(v PassthroughPublicAgentCard) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePassthroughPublicAgentCard performs a merge with any union data inside the PublicAgentCard, using the provided PassthroughPublicAgentCard
+func (t *PublicAgentCard) MergePassthroughPublicAgentCard(v PassthroughPublicAgentCard) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t PublicAgentCard) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *PublicAgentCard) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
 	return err
 }
 
