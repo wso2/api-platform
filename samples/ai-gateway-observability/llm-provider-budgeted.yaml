@@ -1,0 +1,34 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: mock-openai-provider-budgeted
+spec:
+  displayName: Mock OpenAI Provider (token budget)
+  version: v1.0
+  template: openai
+  context: /openai/budgeted
+  upstream:
+    # Same mock backend as llm-provider.yaml — the only difference is the token
+    # budget below. The support proxy points here so that, part-way through
+    # load.sh, it starts returning 429 while the assistant proxy keeps serving.
+    # That contrast is what makes the per-proxy panels worth looking at.
+    url: http://mock-llm-openai:8080/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: Bearer local-mock-key
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /chat/completions
+        methods: [POST]
+  policies:
+    - name: token-based-ratelimit
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            totalTokenLimits:
+              - count: 300
+                duration: "1m"
