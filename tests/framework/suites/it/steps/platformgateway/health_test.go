@@ -22,7 +22,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -48,6 +51,69 @@ func TestHealthyStatus(t *testing.T) {
 			require.Equal(t, tt.want, healthyStatus([]byte(tt.body)))
 		})
 	}
+}
+
+func TestGatewayMetadataAndParsingHelpers(t *testing.T) {
+	definition := "apiVersion: v1\nkind: RestApi\nmetadata: {name: api-name}\n"
+	require.Equal(t, "api-name", apiNameFrom(definition))
+	require.Equal(t, "RestApi", kindFromDefinition(definition))
+	require.Equal(t, "api-name", handleFromDefinition(definition))
+	require.Empty(t, apiNameFrom("metadata: [invalid"))
+	seconds, err := parseSeconds(" 1.25 ")
+	require.NoError(t, err)
+	require.Equal(t, 1.25, seconds)
+	for _, value := range []string{"", "-1", "NaN", "+Inf"} {
+		_, err = parseSeconds(value)
+		require.Error(t, err)
+	}
+}
+
+func TestGatewayHTTPAndMCPParsing(t *testing.T) {
+	status, err := parseHTTPStatusLine("HTTP/1.1 408 Request Timeout\r\n")
+	require.NoError(t, err)
+	require.Equal(t, 408, status)
+	_, err = parseHTTPStatusLine("HTTP/1.1 nope")
+	require.Error(t, err)
+	payload := []byte(`{"jsonrpc":"2.0","id":2}`)
+	require.Equal(t, payload, mcpJSONPayload([]byte("event: message\ndata: "+string(payload)+"\n\n")))
+	require.Equal(t, []byte("event: message\ndata: not-json\n"), mcpJSONPayload([]byte("event: message\ndata: not-json\n")))
+}
+
+func TestGatewayLazyAndAnalyticsHelpers(t *testing.T) {
+	body := []byte(`{"lazy_resources":{"resources_by_type":{"LlmProviderTemplate":[{"id":"template-b","resource":{"spec":{"displayName":"Updated"}}}],"ProviderTemplateMapping":[{"id":"provider-b","resource":{"template_handle":"custom"}}]}}}`)
+	require.True(t, lazyDisplayNameMatches(body, "template-b", "Updated"))
+	require.True(t, providerTemplateMappingMatches(body, "provider-b", "custom"))
+	require.True(t, lazyResourceAbsent(body, "missing", "ProviderTemplateMapping"))
+	require.Equal(t, "application/json", func() string {
+		value, _ := analyticsHeaderValue(map[string][]string{"Content-Type": {"application/json"}}, "content-type")
+		return value
+	}())
+	require.True(t, analyticsEventMatchesPath("/test", "/analytics/v1.0/test"))
+}
+
+func TestGatewayTemplatePathAndLiteralHelpers(t *testing.T) {
+	root := t.TempDir()
+	gateway := &Gateway{featureRoot: root}
+	path, err := gateway.templatePath("resources/templates/rest-api.yaml")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(root, "resources/templates/rest-api.yaml"), path)
+	for _, name := range []string{"", "/tmp/api.yaml", "../api.yaml", "resources/templates/../../../api.yaml"} {
+		_, err = gateway.templatePath(name)
+		require.Error(t, err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.yaml")
+	require.NoError(t, os.WriteFile(outside, []byte("kind: RestApi\n"), 0o600))
+	link := filepath.Join(root, "resources", "templates", "link.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(link), 0o755))
+	require.NoError(t, os.Symlink(outside, link))
+	_, err = gateway.templatePath("resources/templates/link.yaml")
+	require.ErrorContains(t, err, "escapes")
+	require.True(t, containsLiteralOrJSONEscaped(`Bearer {{ secret \"token\" }}`, `{{ secret "token" }}`))
+}
+
+func TestGatewayElapsedTolerance(t *testing.T) {
+	require.Equal(t, 1900*time.Millisecond, time.Duration(2*(1-elapsedTolerance)*float64(time.Second)))
+	require.Equal(t, 2100*time.Millisecond, time.Duration(2*(1+elapsedTolerance)*float64(time.Second)))
 }
 
 func TestAssertAPICreationSucceeded(t *testing.T) {

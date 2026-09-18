@@ -227,21 +227,6 @@ type SubscriptionPlanRepository interface {
 	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
-// ApiDocumentRepository defines the interface for API document handle/UUID
-// resolution this feature needs. api_documents is a stub table (see
-// schema.*.sql) owned by another team — reading/serving a document's own
-// content is that team's feature, not this one's; this interface only ever
-// resolves a handle to the internal doc_uuid api_publication_doc_mappings
-// stores, and back.
-type ApiDocumentRepository interface {
-	// GetUUIDsByHandles resolves each handle to its doc_uuid, scoped to the
-	// organization. A handle absent from the returned map does not exist.
-	GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error)
-	// GetHandlesByUUIDs is the inverse, for reconstructing a docIds response
-	// from stored api_publication_doc_mappings rows.
-	GetHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error)
-}
-
 // PublicationRepository defines the interface for api_publications and its
 // satellite tables (api_publication_contents, api_publication_doc_mappings,
 // api_publication_plan_mappings): draft rows (IsDraft true) and read-only
@@ -487,6 +472,28 @@ type CustomPolicyRepository interface {
 	GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]string, error)
 	InsertCustomPolicyUsage(policyUUID, apiUUID string) error
 	DeleteCustomPolicyUsage(policyUUID, apiUUID string) error
+}
+
+// DocumentRepository defines the interface for document persistence.
+type DocumentRepository interface {
+	CreateDocument(doc *model.Document) error
+	GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error)
+	GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error)
+	UpsertDocument(doc *model.Document) error
+	DeleteDocument(artifactUUID, handle, orgUUID string) error
+	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
+	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
+	// scoped to one artifact (api_documents' real unique index is
+	// (artifact_uuid, handle) — a handle is only guaranteed unique per
+	// artifact, not per org). A handle absent from the returned map does not
+	// exist for this artifact. Used by API Publication draft/publish save to
+	// validate and resolve docIds.
+	GetDocumentUUIDsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]string, error)
+	// GetDocumentHandlesByUUIDs is the inverse, for reconstructing a docIds
+	// response from stored api_publication_doc_mappings rows. Scoped to the
+	// organization only (not a single artifact) since a mapping row's
+	// doc_uuid already came from that same artifact's own resolved set.
+	GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
 // AuditRepository defines the interface for audit record writes.

@@ -142,7 +142,7 @@ func TestCloudSuite(t *testing.T) {
 	frameworkruntime.Run(t, narrowed, frameworkruntime.Deps{
 		RepoRoot:    root,
 		FeatureRoot: dir,
-		Steps: func(sc *godog.ScenarioContext, topo *frameworkruntime.Topology) {
+		Steps: func(topo *frameworkruntime.Topology) (frameworkruntime.StepRegistrar, error) {
 			timeout := topo.PropagationTimeout
 			if timeout <= 0 {
 				timeout = retry.PropagationCeiling
@@ -152,7 +152,10 @@ func TestCloudSuite(t *testing.T) {
 				MaxRetries: 3,
 				RetryDelay: 2 * time.Second,
 			})
-			cloudsteps.Register(sc, topo, httpx.NewFunnel(client, 3, 2*time.Second))
+			funnel := httpx.NewFunnel(client, 3, 2*time.Second)
+			return func(sc *godog.ScenarioContext) {
+				cloudsteps.Register(sc, topo, funnel)
+			}, nil
 		},
 		CleanupDeleters: func(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 			if err := cloudsteps.RegisterDeleters(reg, topo); err != nil {

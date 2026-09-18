@@ -61,6 +61,7 @@ var (
 	Internal            = def(CodeCommonInternalError, http.StatusInternalServerError, "An unexpected error occurred.")
 	ServiceUnavailable  = def(CodeCommonServiceUnavailable, http.StatusServiceUnavailable, "The service is temporarily unavailable.")
 	TooManyRequests     = def(CodeCommonTooManyRequests, http.StatusTooManyRequests, "%s")
+	PayloadTooLarge     = def(CodeCommonPayloadTooLarge, http.StatusRequestEntityTooLarge, "%s")
 )
 
 // REST API entries.

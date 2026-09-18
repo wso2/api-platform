@@ -141,6 +141,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rest-apis/validate-openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate an OpenAPI specification
+         * @description Validates an OpenAPI 3.x or Swagger 2.x specification without creating
+         *     or modifying any resource. Returns a structured result indicating whether
+         *     the spec is valid and, if not, the list of validation errors.
+         */
+        post: operations["ValidateOpenAPISpec"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rest-apis/import-openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a REST API from an OpenAPI specification
+         * @description Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
+         *     as a multipart file upload The backend extracts operations from the spec,
+         *     creates the API, and persists the raw spec as the API definition document.
+         */
+        post: operations["ImportOpenAPI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rest-apis/{restApiId}": {
         parameters: {
             query?: never;
@@ -167,6 +211,32 @@ export interface paths {
          *     in the JWT token.
          */
         delete: operations["DeleteRESTAPI"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rest-apis/{restApiId}/openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get API definition
+         * @description Returns the raw OpenAPI spec stored for this API as YAML. Returns 404 if no definition
+         *     has been uploaded yet. The `content` field carries the spec text.
+         */
+        get: operations["GetRESTAPISpec"];
+        /**
+         * Update API definition
+         * @description Replaces (or creates) the OpenAPI/Swagger spec stored for this API. Accepts a
+         *     multipart/form-data upload with a single `file` field containing the spec.
+         */
+        put: operations["UpdateRESTAPISpec"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2888,7 +2958,7 @@ export interface components {
              * @example GET
              * @enum {string}
              */
-            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | "TRACE";
             /**
              * @description Resource path for the operation
              * @example /pet/{petId}
@@ -3348,6 +3418,65 @@ export interface components {
             revokedAt?: string | null;
         };
         CreateRESTAPIRequest: components["schemas"]["RESTAPI"] & Record<string, never>;
+        ImportOpenAPIRequest: {
+            /**
+             * Format: binary
+             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             */
+            file: string;
+            /**
+             * @description Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+             * @example my-rest-api-handle
+             */
+            id?: string;
+            /**
+             * @description Human-readable name for the API
+             * @example PizzaShackAPI
+             */
+            displayName: string;
+            /** @example This is a simple API for Pizza Shack online pizza delivery store */
+            description?: string;
+            /** @example /pizza */
+            context: string;
+            /** @example 1.0.0 */
+            version: string;
+            /**
+             * @description Handle (URL-friendly slug) of the project this API belongs to
+             * @example default-project
+             */
+            projectId: string;
+            upstream: components["schemas"]["Upstream"];
+        };
+        OpenAPISpecFileRequest: {
+            /**
+             * Format: binary
+             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             */
+            file: string;
+        };
+        ValidateOpenAPIResponse: {
+            /** @description Whether the spec passed validation */
+            isValid: boolean;
+            /** @description Validation errors; empty when isValid is true */
+            errors: components["schemas"]["OpenAPIValidationError"][];
+            info?: components["schemas"]["OpenAPISpecInfo"];
+        };
+        OpenAPIValidationError: {
+            /** @description Human-readable description of the validation error */
+            message: string;
+            /** @description JSON Pointer path within the spec where the error was found */
+            path?: string;
+        };
+        OpenAPISpecInfo: {
+            /** @description Value of info.title from the spec */
+            title?: string;
+            /** @description Value of info.version from the spec */
+            version?: string;
+        };
+        OpenAPIContent: {
+            /** @description Raw spec content */
+            content?: string;
+        };
         /**
          * @description Time unit for API key expiration duration
          * @example days
@@ -5621,6 +5750,22 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Payload Too Large. The uploaded file exceeds the maximum allowed size. */
+        PayloadTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "PAYLOAD_TOO_LARGE",
+                 *       "message": "The uploaded file exceeds the maximum allowed size."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Internal Server Error. */
         InternalServerError: {
             headers: {
@@ -6160,6 +6305,66 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    ValidateOpenAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["OpenAPISpecFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Validation result (valid or invalid — both return 200) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateOpenAPIResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ImportOpenAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ImportOpenAPIRequest"];
+            };
+        };
+        responses: {
+            /** @description API created successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPI"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     GetRESTAPI: {
         parameters: {
             query?: never;
@@ -6244,6 +6449,66 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetRESTAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API definition retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAPIContent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateRESTAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["OpenAPISpecFileRequest"];
+            };
+        };
+        responses: {
+            /** @description API definition updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAPIContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
             500: components["responses"]["InternalServerError"];
         };
     };

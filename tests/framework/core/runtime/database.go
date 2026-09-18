@@ -39,6 +39,7 @@ import (
 	_ "github.com/microsoft/go-mssqldb"
 
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
 
 // Credentials are one block's database credentials.
@@ -798,6 +799,11 @@ type DatabaseOptions struct {
 
 	// Requests is each component's storage need.
 	Requests []Request
+
+	// LogWriter, when non-nil, receives each started server's output for the block that
+	// owns it. A database server belongs to exactly one block, so the block's own writer
+	// is its correct destination.
+	LogWriter *logcapture.Writer
 }
 
 // Provision starts the databases required by a block and returns their component environment.
@@ -852,8 +858,9 @@ func Provision(ctx context.Context, opts DatabaseOptions) (*Provisioned, error) 
 		container, err := launchWithRetry(ctx, string(server.Type), eng.bootAttempts(),
 			func(ctx context.Context) (*Container, error) {
 				return Launch(ctx, def, Options{
-					Network:  opts.Network,
-					RepoRoot: opts.RepoRoot,
+					Network:   opts.Network,
+					RepoRoot:  opts.RepoRoot,
+					LogWriter: opts.LogWriter,
 				})
 			})
 		if err != nil {
