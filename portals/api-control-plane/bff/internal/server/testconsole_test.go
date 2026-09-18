@@ -316,12 +316,62 @@ func TestInvokeRejectsAnOversizedEnvelope(t *testing.T) {
 	f := newInvokeFixture(t, cfg)
 
 	body := `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"POST","path":"/","body":"` +
-		strings.Repeat("a", 500) + `"}`
+		strings.Repeat("a", 128<<10) + `"}`
 	res := f.post(t, body, true)
 
 	assertStatus(t, res, http.StatusRequestEntityTooLarge)
 	if msg, _ := decodeError(t, res)["message"].(string); strings.Contains(msg, "128") {
 		t.Errorf("the rejection echoed the configured limit back: %q", msg)
+	}
+}
+
+func TestInvokeAcceptsABodyOfExactlyMaxRequestBytes(t *testing.T) {
+	// Keep the envelope ceiling above MaxRequestBytes so Relay.Do can enforce it.
+	var got int
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got = len(body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer gateway.Close()
+
+	platform := platformAPIFor(t, gateway.URL)
+	cfg := testConsoleConfig(platform.URL)
+	cfg.TestConsole.MaxRequestBytes = 4096
+	f := newInvokeFixture(t, cfg)
+
+	body := `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"POST","path":"/","body":"` +
+		strings.Repeat("a", 4096) + `"}`
+	res := f.post(t, body, true)
+
+	assertStatus(t, res, http.StatusOK)
+	if got != 4096 {
+		t.Errorf("gateway received %d bytes, want the full 4096", got)
+	}
+}
+
+func TestInvokeRejectsABodyOverMaxRequestBytes(t *testing.T) {
+	// Under the envelope ceiling but over the body ceiling, so this is
+	// Relay.Do's post-decode check refusing it — which the shared limit
+	// previously made unreachable.
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("the gateway must never be dialed for an oversized body")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer gateway.Close()
+
+	platform := platformAPIFor(t, gateway.URL)
+	cfg := testConsoleConfig(platform.URL)
+	cfg.TestConsole.MaxRequestBytes = 4096
+	f := newInvokeFixture(t, cfg)
+
+	body := `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"POST","path":"/","body":"` +
+		strings.Repeat("a", 5000) + `"}`
+	res := f.post(t, body, true)
+
+	assertStatus(t, res, http.StatusBadRequest)
+	if code := decodeError(t, res)["code"]; code != "INVALID_TEST_REQUEST" {
+		t.Errorf("code = %v, want INVALID_TEST_REQUEST", code)
 	}
 }
 

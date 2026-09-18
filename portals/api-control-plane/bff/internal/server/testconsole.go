@@ -47,22 +47,22 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, ok := s.tokenFromCookie(r)
-	if !ok {
-		writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
-		return
-	}
+	// A missing cookie and an expired token are one outcome with one response:
+	// the caller has no usable session. Branching them would let a caller tell
+	// "never signed in" from "signed in, now expired".
+	//
 	// Unlike proxyHandler, this endpoint never refreshes a near-expiry OIDC
 	// token: the token is used only to ask Platform API which gateway the
 	// caller may reach, and a refresh here would rotate the session cookie as
 	// a side effect of a try-out click. An expired token simply fails
 	// resolution, and the SPA's next Platform API call refreshes as usual.
-	if tokenExpired(token) {
+	token, ok := s.tokenFromCookie(r)
+	if !ok || tokenExpired(token) {
 		writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.TestConsole.MaxRequestBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxEnvelopeBytes())
 	var env testproxy.Envelope
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -105,15 +105,21 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 		"rest_api_id", env.RestAPIID,
 		"gateway_id", target.GatewayID,
 		"method", relayedMethod(env),
-		// The path only — a query string carries the credential whenever the
-		// API's api-key-auth policy places its key there.
-		"path", env.Path,
 		"upstream_status", relayed.Status,
 		"duration_ms", relayed.DurationMs,
 		"truncated", relayed.Truncated,
 		"req_id", requestID)
 
 	writeJSON(w, http.StatusOK, testproxy.Result{Outcome: "response", Response: relayed})
+}
+
+// envelopeStructuralBytes reserves space for envelope metadata, headers, and JSON syntax.
+const envelopeStructuralBytes = 32 << 10
+
+// maxEnvelopeBytes allows for base64 encoding, JSON escaping, and envelope
+// metadata while keeping the decoded body within MaxRequestBytes.
+func (s *Server) maxEnvelopeBytes() int64 {
+	return s.cfg.TestConsole.MaxRequestBytes/3*4 + envelopeStructuralBytes
 }
 
 // writeRelayError maps a relay failure onto a distinct client-facing code.

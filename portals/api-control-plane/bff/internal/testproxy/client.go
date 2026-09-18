@@ -73,8 +73,8 @@ type Relay struct {
 
 // NewRelay builds the relay and its guarded outbound client.
 func NewRelay(opts RelayOptions) (*Relay, error) {
-	if opts.RequestTimeout <= 0 || opts.MaxResponseBytes <= 0 || opts.MaxConcurrent <= 0 {
-		return nil, fmt.Errorf("testproxy: RequestTimeout, MaxResponseBytes and MaxConcurrent must all be positive")
+	if opts.RequestTimeout <= 0 || opts.MaxRequestBytes <= 0 || opts.MaxResponseBytes <= 0 || opts.MaxConcurrent <= 0 {
+		return nil, fmt.Errorf("testproxy: RequestTimeout, MaxRequestBytes, MaxResponseBytes and MaxConcurrent must all be positive")
 	}
 
 	policy, err := dialPolicy(opts)

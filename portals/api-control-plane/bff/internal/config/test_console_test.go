@@ -44,6 +44,10 @@ func TestTestConsoleDefaultsAreBounded(t *testing.T) {
 	if err := tc.validate(); err != nil {
 		t.Fatalf("the shipped defaults must pass their own validation: %v", err)
 	}
+	// Off by default: it would disable gateway certificate verification.
+	if tc.TLSSkipVerify {
+		t.Error("test_console.tls_skip_verify must default to false")
+	}
 }
 
 func TestTestConsoleValidateRejectsUnboundedValues(t *testing.T) {

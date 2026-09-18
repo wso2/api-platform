@@ -117,6 +117,8 @@ enabled            = '{{ env "APIP_ACP_TEST_CONSOLE_ENABLED" "true" }}'
 # One relayed call, end to end. The route's own write deadline sits just above
 # this, so a stuck gateway is caught here rather than by the outer bound.
 request_timeout    = '{{ env "APIP_ACP_TEST_CONSOLE_REQUEST_TIMEOUT" "30s" }}'
+# Bounds the decoded request body. The JSON envelope carrying it is allowed to
+# be correspondingly larger, since a binary body travels base64-encoded.
 max_request_bytes  = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_REQUEST_BYTES" "2097152" }}'   # 2 MiB
 # Hitting this truncates the response body and says so, rather than failing the
 # call — a partial response is more use to someone testing an API than an error.

@@ -206,14 +206,27 @@ const base64ToBytes = (value: string) => {
 };
 
 /**
- * Normalizes whatever swagger put in `body` into something the envelope can
- * carry.
+ * Browser-side limit for binary bodies, checked before reading any bytes.
  *
- * `FormData` is the interesting case. Swagger deliberately strips its own
- * `Content-Type` for multipart so the browser can add the boundary — but the
- * browser is no longer the one sending, so the boundary has to be produced
- * here. Round-tripping through `Request` does exactly that and hands back the
- * matching header.
+ * The BFF's `max_request_bytes` remains authoritative. This higher limit
+ * prevents large attachments from being loaded and base64-encoded in memory.
+ */
+const MAX_BINARY_BODY_BYTES = 16 * 1024 * 1024;
+
+/** Rough per-part cost of a multipart boundary and its headers. */
+const MULTIPART_PART_OVERHEAD_BYTES = 256;
+
+/** Raised before reading and localized consistently with an oversized BFF envelope. */
+const bodyTooLargeError = () =>
+  Object.assign(new Error('request body exceeds the console limit'), {
+    code: 'REQUEST_TOO_LARGE',
+  });
+
+/**
+ * Normalizes the request body for transport in the envelope.
+ *
+ * Multipart bodies require an explicit boundary because the BFF, rather than
+ * the browser, sends the request. Attachment sizes are checked before reading.
  */
 export const encodeRequestBody = async (
   body: unknown,
@@ -232,12 +245,16 @@ export const encodeRequestBody = async (
     return { ...bytesToPayload(bytes), contentType };
   }
   if (body instanceof Blob) {
+    // `size` is metadata; reading it does not pull the file into memory.
+    if (body.size > MAX_BINARY_BODY_BYTES) throw bodyTooLargeError();
     return bytesToPayload(new Uint8Array(await body.arrayBuffer()));
   }
   if (body instanceof ArrayBuffer) {
+    if (body.byteLength > MAX_BINARY_BODY_BYTES) throw bodyTooLargeError();
     return bytesToPayload(new Uint8Array(body));
   }
   if (ArrayBuffer.isView(body)) {
+    if (body.byteLength > MAX_BINARY_BODY_BYTES) throw bodyTooLargeError();
     return bytesToPayload(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
   }
   // Swagger keeps some request-body forms as plain objects; sending the JSON is
@@ -260,6 +277,15 @@ export const encodeRequestBody = async (
 const encodeMultipart = async (
   form: FormData,
 ): Promise<{ bytes: Uint8Array; contentType: string }> => {
+  // Sized before anything is read: File.size and a string's length are both
+  // metadata, so this pass touches no file contents.
+  let declared = 0;
+  for (const [, value] of form.entries()) {
+    declared += MULTIPART_PART_OVERHEAD_BYTES;
+    declared += typeof value === 'string' ? value.length : value.size;
+    if (declared > MAX_BINARY_BODY_BYTES) throw bodyTooLargeError();
+  }
+
   const boundary = `----apicpTestConsole${randomBoundaryToken()}`;
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];
@@ -377,7 +403,12 @@ export const createRelayFetch =
       throw new Error(context.intl.formatMessage(messages.invalidRequest));
     }
 
-    const encoded = await encodeRequestBody(request.body);
+    let encoded: Awaited<ReturnType<typeof encodeRequestBody>>;
+    try {
+      encoded = await encodeRequestBody(request.body);
+    } catch (error) {
+      throw new Error(localized(context.intl, (error as { code?: string }).code));
+    }
     let headers = toWirePairs(request.headers);
     if (encoded.contentType) {
       // Multipart only. Swagger strips its own Content-Type just before calling

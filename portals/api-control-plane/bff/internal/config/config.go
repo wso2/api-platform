@@ -147,7 +147,8 @@ type TestConsoleConfig struct {
 	// RequestTimeout limits the relayed call from dialing through response-body
 	// processing. It should remain below the route's write deadline.
 	RequestTimeout time.Duration `koanf:"request_timeout"`
-	// MaxRequestBytes bounds the JSON envelope the browser posts.
+	// MaxRequestBytes bounds the decoded relayed request body. The JSON envelope
+	// may be larger due to base64 encoding and JSON escaping.
 	MaxRequestBytes int64 `koanf:"max_request_bytes"`
 	// MaxResponseBytes limits the gateway response body. If exceeded, the body is
 	// truncated and flagged instead of failing the request.

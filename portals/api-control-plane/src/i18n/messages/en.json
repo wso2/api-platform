@@ -547,12 +547,13 @@
     "defaultMessage": "Save",
     "description": "Checks the edited definition and, if it holds up, adopts it."
   },
-  "api.create.specSourceEditor.editorLabel": {
-    "defaultMessage": "API definition source",
-    "description": "Accessible name for the editor holding the definition’s own text. A noun naming what the field contains."
   "api.create.specSourceEditor.backendInvalid": {
     "defaultMessage": "The specification has issues:",
     "description": "Heading above backend validation errors shown when Save is clicked."
+  },
+  "api.create.specSourceEditor.editorLabel": {
+    "defaultMessage": "API definition source",
+    "description": "Accessible name for the editor holding the definition’s own text. A noun naming what the field contains."
   },
   "api.create.specSourceEditor.editorLoading": {
     "defaultMessage": "Loading editor",

@@ -59,6 +59,15 @@ const relayed = (overrides: Record<string, unknown> = {}) => ({
   },
 });
 
+/** Blob with a declared size and observable reads. */
+const stubbedBlob = (size: number, contents = '') => {
+  const blob = new Blob([contents]);
+  const read = vi.fn(async () => new TextEncoder().encode(contents).buffer);
+  Object.defineProperty(blob, 'size', { value: size });
+  Object.defineProperty(blob, 'arrayBuffer', { value: read });
+  return { blob, read };
+};
+
 /** Captures the envelope the relay posted. */
 let sent: Record<string, unknown> | undefined;
 
@@ -240,6 +249,22 @@ describe('createRelayFetch — what comes back', () => {
   });
 });
 
+describe('createRelayFetch — oversized bodies', () => {
+  it('reports an oversized attachment as a size error, not a relay failure', async () => {
+    respondWith(relayed());
+    const { blob } = stubbedBlob(64 * 1024 * 1024);
+
+    await expect(
+      createRelayFetch(contextRef())('ignored', {
+        url: 'https://gw.example.com/pizza/v1/order',
+        method: 'POST',
+        body: blob,
+      }),
+    ).rejects.toThrow(/too large to send from the console/i);
+    expect(sent).toBeUndefined();
+  });
+});
+
 describe('toResponseLike', () => {
   it('exposes every response header, including repeats', () => {
     // A browser could not read either of these cross-origin without an explicit
@@ -324,6 +349,24 @@ describe('encodeRequestBody', () => {
 
     expect(encoded.contentType).toMatch(/^multipart\/form-data; boundary=/);
     expect(encoded.body).toContain('field');
+  });
+
+  it('refuses an oversized blob without reading it', async () => {
+    // The point of the guard: `size` is metadata, so an attachment too large to
+    // send is refused before a single byte is pulled into memory.
+    const { blob, read } = stubbedBlob(64 * 1024 * 1024);
+
+    await expect(encodeRequestBody(blob)).rejects.toMatchObject({ code: 'REQUEST_TOO_LARGE' });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('refuses an oversized multipart form before reading any part', async () => {
+    // Uses entry metadata, so refusal occurs before reading any part. A text
+    // part avoids jsdom's File lacking arrayBuffer(); the size pre-pass is shared.
+    const form = new FormData();
+    form.append('notes', 'x'.repeat(17 * 1024 * 1024));
+
+    await expect(encodeRequestBody(form)).rejects.toMatchObject({ code: 'REQUEST_TOO_LARGE' });
   });
 
   it('base64-encodes bytes that are not valid UTF-8', async () => {
