@@ -239,15 +239,19 @@ func TestObservabilityLogsServerErrorsAtErrorLevel(t *testing.T) {
 // Thirteen services share one process, so a panic in any handler must be contained and
 // reported with a stack rather than taking every concurrent block down with it.
 func TestObservabilityRecoversAndReportsAPanic(t *testing.T) {
-	h := observability("mcp", limitBody(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	h := observability("mcp", limitBody(PartitionRouter(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("boom in a mock")
-	})))
-	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil))
+	}))))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic-block/x", nil))
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 	require.Contains(t, out, `"msg":"testbench handler panicked"`)
 	require.Contains(t, out, "boom in a mock")
 	require.Contains(t, out, `"stack"`)
+	require.Contains(t, out, `"msg":"testbench request failed"`)
+	require.Contains(t, out, `"status":500`)
+	require.Contains(t, out, `"response_bytes"`)
+	require.Contains(t, out, `"partition":"panic-block"`)
 }
 
 // The partition is what ties a log line to one block out of the fifty-plus sharing this

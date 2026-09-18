@@ -198,50 +198,54 @@ func observability(service string, next http.Handler) http.Handler {
 			"proto", r.Proto,
 		)
 
+		emitAccess := func() {
+			attrs := []any{
+				"status", rec.status,
+				"duration_ms", time.Since(started).Milliseconds(),
+				"response_bytes", rec.bytes,
+				"request_bytes", info.bodyBytes,
+			}
+			if info.partition != "" {
+				attrs = append(attrs, "partition", info.partition)
+			}
+			if info.truncated {
+				attrs = append(attrs, "request_body_truncated", true)
+			}
+			if q := r.URL.RawQuery; q != "" {
+				attrs = append(attrs, "query", q)
+			}
+			if reason := excerpt(rec.failure); reason != "" {
+				attrs = append(attrs, "reason", reason)
+			}
+
+			// Severity follows the response: a mock returning 5xx is a fault worth surfacing at
+			// error level even though the mock itself is behaving as programmed.
+			switch {
+			case rec.status >= http.StatusInternalServerError:
+				log.Error("testbench request failed", attrs...)
+			case rec.status >= http.StatusBadRequest:
+				log.Warn("testbench request rejected", attrs...)
+			default:
+				log.Info("testbench request served", attrs...)
+			}
+		}
+
 		defer func() {
-			if rec := recover(); rec != nil {
+			if recovered := recover(); recovered != nil {
 				// A panic in a mock must not take the shared testbench down with it: 13
 				// services share this process, and every concurrent block depends on them.
 				log.Error("testbench handler panicked",
-					"panic", rec,
+					"panic", recovered,
 					"stack", string(debug.Stack()),
 					"duration_ms", time.Since(started).Milliseconds(),
 				)
-				http.Error(w, "testbench handler panicked", http.StatusInternalServerError)
+				http.Error(rec, "testbench handler panicked", http.StatusInternalServerError)
+				emitAccess()
 			}
 		}()
 
 		next.ServeHTTP(rec, r)
-
-		attrs := []any{
-			"status", rec.status,
-			"duration_ms", time.Since(started).Milliseconds(),
-			"response_bytes", rec.bytes,
-			"request_bytes", info.bodyBytes,
-		}
-		if info.partition != "" {
-			attrs = append(attrs, "partition", info.partition)
-		}
-		if info.truncated {
-			attrs = append(attrs, "request_body_truncated", true)
-		}
-		if q := r.URL.RawQuery; q != "" {
-			attrs = append(attrs, "query", q)
-		}
-		if reason := excerpt(rec.failure); reason != "" {
-			attrs = append(attrs, "reason", reason)
-		}
-
-		// Severity follows the response: a mock returning 5xx is a fault worth surfacing at
-		// error level even though the mock itself is behaving as programmed.
-		switch {
-		case rec.status >= http.StatusInternalServerError:
-			log.Error("testbench request failed", attrs...)
-		case rec.status >= http.StatusBadRequest:
-			log.Warn("testbench request rejected", attrs...)
-		default:
-			log.Info("testbench request served", attrs...)
-		}
+		emitAccess()
 	})
 }
 

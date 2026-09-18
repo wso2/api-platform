@@ -89,12 +89,40 @@ func TestConfigDumpContainsPolicy(t *testing.T) {
 			want:       false,
 		},
 		{
+			name:    "gateway 1.2 finds a policy on another method for the same path",
+			version: "1.2.0",
+			body: `{
+				"policy_chains":{"policy_chains":[
+					{"route_key":"GET|/orders/v1/test|localhost","policies":[{"name":"set-headers"}]},
+					{"route_key":"POST|/orders/v1/test|localhost","policies":[{"name":"prompt-compressor"}]}
+				]}
+			}`,
+			policyName: "prompt-compressor",
+			want:       true,
+		},
+		{
 			name:    "current gateway follows chain key from route metadata",
 			version: "1.3.0",
 			body: `{
 				"route_metadata":{"routes":[{"route_key":"GET|/orders/v1/test|localhost","chain_key":"chain-123"}]},
 				"policy_chains":{"policy_chains":[
 					{"chain_key":"chain-123","policies":[{"name":"prompt-compressor"}]}
+				]}
+			}`,
+			policyName: "prompt-compressor",
+			want:       true,
+		},
+		{
+			name:    "current gateway finds a policy on another method for the same path",
+			version: "1.3.0",
+			body: `{
+				"route_metadata":{"routes":[
+					{"route_key":"GET|/orders/v1/test|localhost","chain_key":"chain-get"},
+					{"route_key":"POST|/orders/v1/test|localhost","chain_key":"chain-post"}
+				]},
+				"policy_chains":{"policy_chains":[
+					{"chain_key":"chain-get","policies":[{"name":"set-headers"}]},
+					{"chain_key":"chain-post","policies":[{"name":"prompt-compressor"}]}
 				]}
 			}`,
 			policyName: "prompt-compressor",

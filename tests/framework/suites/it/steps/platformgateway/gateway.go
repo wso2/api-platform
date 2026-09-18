@@ -191,25 +191,24 @@ func (d configDump) containsPolicy(schema configDumpSchema, routePath, policyNam
 	switch schema {
 	case configDumpV12:
 		for _, chain := range d.PolicyChains.PolicyChains {
-			if routeKeyPath(chain.RouteKey) == routePath {
-				return chain.containsPolicy(policyName)
+			if routeKeyPath(chain.RouteKey) == routePath && chain.containsPolicy(policyName) {
+				return true
 			}
 		}
 		return false
 	default:
-		chainKey := ""
+		chainKeys := make(map[string]struct{})
 		for _, route := range d.RouteMetadata.Routes {
-			if routeKeyPath(route.RouteKey) == routePath {
-				chainKey = route.ChainKey
-				break
+			if routeKeyPath(route.RouteKey) == routePath && route.ChainKey != "" {
+				chainKeys[route.ChainKey] = struct{}{}
 			}
 		}
-		if chainKey == "" {
+		if len(chainKeys) == 0 {
 			return false
 		}
 		for _, chain := range d.PolicyChains.PolicyChains {
-			if chain.ChainKey == chainKey {
-				return chain.containsPolicy(policyName)
+			if _, found := chainKeys[chain.ChainKey]; found && chain.containsPolicy(policyName) {
+				return true
 			}
 		}
 		return false
