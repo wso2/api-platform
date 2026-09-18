@@ -122,6 +122,17 @@ func load(t *testing.T, src string) (*Resolved, error) {
 	return Load([]byte(src), testRegistry(t))
 }
 
+func gatewayVersionRegistry(t *testing.T) *components.Registry {
+	t.Helper()
+	registry := testRegistry(t)
+	require.NoError(t, registry.Register(&components.Definition{
+		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+	}))
+	require.NoError(t, registry.Validate())
+	return registry
+}
+
 func TestLoadMinimal(t *testing.T) {
 	r, err := load(t, minimalSuite)
 	require.NoError(t, err)
@@ -1219,6 +1230,184 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	require.Equal(t, "1.1.0", component.Version)
 	require.False(t, component.BuildFromSource,
 		"gateway-version must switch a source-build gateway to versioned mode")
+}
+
+func TestGatewayVersionRunnerTags(t *testing.T) {
+	cases := []struct {
+		name       string
+		raw        string
+		godogTags  string
+		constraint string
+	}{
+		{name: "Godog only", raw: "~@known-issue", godogTags: "~@known-issue"},
+		{name: "version only", raw: "gateway-version<=1.2.0", constraint: "gateway-version<=1.2.0"},
+		{name: "version and Godog", raw: "gateway-version>1.2.0;~@known-issue", godogTags: "~@known-issue", constraint: "gateway-version>1.2.0"},
+		{name: "version accepts v prefix", raw: "gateway-version=v1.2.0", constraint: "gateway-version=1.2.0"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			godogTags, constraint, err := parseGatewayVersionTag(tc.raw)
+			require.NoError(t, err)
+			require.Equal(t, tc.godogTags, godogTags)
+			if tc.constraint == "" {
+				require.Nil(t, constraint)
+				return
+			}
+			require.NotNil(t, constraint)
+			require.Equal(t, tc.constraint, constraint.String())
+		})
+	}
+}
+
+func TestGatewayVersionRunnerTagsRejectMalformedSelectors(t *testing.T) {
+	for _, raw := range []string{
+		"gateway-version>1.2",
+		"gateway-version~=1.2.0",
+		"gateway-version>1.2.0;",
+		"~@known-issue;gateway-version>1.2.0",
+		"gateway-version>1.2.0;@smoke;~@known-issue",
+		" gateway-version>1.2.0",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			_, _, err := parseGatewayVersionTag(raw)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestGatewayVersionSelectionFiltersRunnersAndReportsSkips(t *testing.T) {
+	platformGateway := &components.Definition{Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}}
+	legacy, err := parseGatewayVersionConstraint("gateway-version<=1.2.0")
+	require.NoError(t, err)
+	modern, err := parseGatewayVersionConstraint("gateway-version>1.2.0")
+	require.NoError(t, err)
+
+	newSuite := func(version string, source bool) *Resolved {
+		return &Resolved{Blocks: []ResolvedBlock{{
+			Name: "gateway", Source: "gateway",
+			Components: []ResolvedComponent{{Def: platformGateway, Version: version, BuildFromSource: source}},
+			Runners: []Runner{
+				{Name: "always", Features: []string{"always.feature"}},
+				{Name: "legacy", Features: []string{"legacy.feature"}, GatewayVersion: &legacy},
+				{Name: "modern", Features: []string{"modern.feature"}, GatewayVersion: &modern},
+			},
+		}}}
+	}
+
+	cases := []struct {
+		name       string
+		version    string
+		source     bool
+		wantRunner []string
+		wantSkip   string
+		wantReason string
+	}{
+		{name: "legacy release", version: "1.2.0", wantRunner: []string{"always", "legacy"}, wantSkip: "modern", wantReason: "Gateway version 1.2.0 does not satisfy gateway-version>1.2.0"},
+		{name: "newer release", version: "1.3.0", wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version 1.3.0 does not satisfy gateway-version<=1.2.0"},
+		{name: "source build", source: true, wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version current source build does not satisfy gateway-version<=1.2.0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			selected, err := Selection{}.Apply(newSuite(tc.version, tc.source))
+			require.NoError(t, err)
+			require.Len(t, selected.Blocks, 1)
+			got := make([]string, 0, len(selected.Blocks[0].Runners))
+			for _, runner := range selected.Blocks[0].Runners {
+				got = append(got, runner.Name)
+			}
+			require.Equal(t, tc.wantRunner, got)
+			require.Equal(t, []SkippedRunner{{Block: "gateway", Runner: tc.wantSkip, Reason: tc.wantReason}}, selected.SkippedRunners)
+		})
+	}
+}
+
+func TestGatewayVersionSelectionRejectsAnAllIncompatibleSelection(t *testing.T) {
+	legacy, err := parseGatewayVersionConstraint("gateway-version<=1.2.0")
+	require.NoError(t, err)
+	_, err = Selection{}.Apply(&Resolved{Blocks: []ResolvedBlock{{
+		Name: "gateway", Source: "gateway",
+		Components: []ResolvedComponent{{
+			Def: &components.Definition{Name: "platform-gateway"}, Version: "1.3.0",
+		}},
+		Runners: []Runner{{Name: "legacy", Features: []string{"legacy.feature"}, GatewayVersion: &legacy}},
+	}}})
+	require.ErrorContains(t, err, "the selection has no compatible runners")
+	require.ErrorContains(t, err, "gateway/legacy: Gateway version 1.3.0 does not satisfy gateway-version<=1.2.0")
+}
+
+func TestGatewayVersionSelectorIsNotForwardedToGodog(t *testing.T) {
+	registry := gatewayVersionRegistry(t)
+	resolved, err := Load([]byte(`
+suite: gateway-compatibility
+blocks:
+  - name: gateway
+    components: [{name: platform-gateway}]
+    runners:
+      - name: runner
+        tags: gateway-version>1.2.0;~@known-issue
+        features: [features/example.feature]
+`), registry)
+	require.NoError(t, err)
+
+	selected, err := (Selection{Tags: "@smoke"}).Apply(resolved)
+	require.NoError(t, err)
+	require.Equal(t, "~@known-issue && @smoke", selected.Blocks[0].Runners[0].Tags)
+	require.NotNil(t, selected.Blocks[0].Runners[0].GatewayVersion)
+}
+
+func TestGatewayVersionSelectorsPermitExclusiveFeatureBindings(t *testing.T) {
+	registry := gatewayVersionRegistry(t)
+	resolved, err := Load([]byte(`
+suite: gateway-compatibility
+blocks:
+  - name: legacy
+    components: [{name: platform-gateway, version: 1.2.0}]
+    runners:
+      - name: aws-bedrock-guardrail
+        tags: gateway-version<=1.2.0
+        features: [features/aws_bedrock_guardrail.feature]
+  - name: modern
+    components: [{name: platform-gateway}]
+    runners:
+      - name: aws-bedrock-guardrail
+        tags: gateway-version>1.2.0
+        features: [features/aws_bedrock_guardrail.feature]
+`), registry)
+	require.NoError(t, err)
+	require.Len(t, resolved.Blocks, 2)
+
+	_, err = Load([]byte(`
+suite: gateway-compatibility
+blocks:
+  - name: first
+    components: [{name: platform-gateway}]
+    runners:
+      - name: first
+        tags: gateway-version>=1.2.0
+        features: [features/shared.feature]
+  - name: second
+    components: [{name: platform-gateway}]
+    runners:
+      - name: second
+        tags: gateway-version<=1.2.0
+        features: [features/shared.feature]
+`), registry)
+	require.ErrorContains(t, err, `feature "features/shared.feature" is bound to 2 runners`)
+}
+
+func TestGatewayVersionSelectorRequiresPlatformGateway(t *testing.T) {
+	_, err := load(t, `
+suite: gateway-compatibility
+blocks:
+  - name: incorrect
+    components: [{name: mock-jwks}]
+    runners:
+      - name: runner
+        tags: gateway-version>1.2.0
+        features: [features/example.feature]
+`)
+	require.ErrorContains(t, err, "gateway-version requires a platform-gateway component")
 }
 
 func TestCloudEnvironmentSelectionOverride(t *testing.T) {

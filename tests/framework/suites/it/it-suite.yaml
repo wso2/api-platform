@@ -341,17 +341,20 @@ blocks:
         features:
           - features/prompt_compressor.feature
       - name: aws-bedrock-guardrail
+        tags: "gateway-version>1.2.0"
         features:
           - features/aws_bedrock_guardrail.feature
       - name: mcp-deploy
         features:
           - features/mcp_deploy.feature
       - name: oauth2-auth
+        tags: "gateway-version>1.2.0"
         features:
           - features/oauth2_auth.feature
       - name: policy-engine-admin
         features:
           - features/policy_engine_admin.feature
+        tags: "~@known-issue"
       - name: template-functions
         features:
           - features/template_functions.feature
@@ -359,6 +362,20 @@ blocks:
         # config caches missing the deletion-marker workaround applied to the sibling event
         # channel cache) - see the feature file for details.
         tags: "~@known-issue"
+
+  - name: gateway-v1-2-bedrock-guardrail
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/aws-bedrock-guardrail-v1.2.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: aws-bedrock-guardrail
+        tags: "gateway-version<=1.2.0"
+        features:
+          - features/aws_bedrock_guardrail.feature
 
   - name: config-dump
     parallel: 1

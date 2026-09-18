@@ -127,27 +127,93 @@ type configDump struct {
 	PolicyChains  policyChainsDump  `json:"policy_chains"`
 }
 
+type configDumpSchema uint8
+
+const (
+	configDumpCurrent configDumpSchema = iota
+	configDumpV12
+)
+
+// configDumpSchemaFor selects the policy-engine config-dump relationship used by a Gateway
+// release. Gateway 1.2.x stores each policy chain under its route key; later releases link
+// route metadata to a chain through chain_key.
+func configDumpSchemaFor(version string) configDumpSchema {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if strings.HasPrefix(version, "1.2.") {
+		return configDumpV12
+	}
+	return configDumpCurrent
+}
+
 type routeMetadataDump struct {
-	Routes []struct {
-		// Context is the API's resolved gateway-facing base path (e.g. "/admin-test/v1") -
-		// the policy engine has no field literally named "basePath".
-		Context string `json:"context"`
-		// RouteKey is "METHOD|fullPath|vhost" (see GenerateRouteNameWithDiscriminator).
-		RouteKey string `json:"route_key"`
-		// ChainKey names the policy_chains entry this route binds. Routes sharing an
-		// identical chain can report a chain owned by another route, so a chain must be
-		// reached through the route rather than matched on the route's own path.
-		ChainKey string `json:"chain_key"`
-	} `json:"routes"`
+	Routes []routeMetadataEntry `json:"routes"`
+}
+
+type routeMetadataEntry struct {
+	// Context is the API's resolved gateway-facing base path (e.g. "/admin-test/v1") -
+	// the policy engine has no field literally named "basePath".
+	Context string `json:"context"`
+	// RouteKey is "METHOD|fullPath|vhost" (see GenerateRouteNameWithDiscriminator).
+	RouteKey string `json:"route_key"`
+	// ChainKey names the policy_chains entry this route binds. Routes sharing an
+	// identical chain can report a chain owned by another route, so a chain must be
+	// reached through the route rather than matched on the route's own path. Gateway 1.2.x
+	// does not expose this field because its policy chains are keyed by RouteKey directly.
+	ChainKey string `json:"chain_key"`
 }
 
 type policyChainsDump struct {
-	PolicyChains []struct {
-		ChainKey string `json:"chain_key"`
-		Policies []struct {
-			Name string `json:"name"`
-		} `json:"policies"`
-	} `json:"policy_chains"`
+	PolicyChains []policyChain `json:"policy_chains"`
+}
+
+type policyChain struct {
+	// RouteKey is populated by Gateway 1.2.x, whose chains are keyed directly by route.
+	RouteKey string `json:"route_key"`
+	// ChainKey is populated by newer Gateway releases.
+	ChainKey string       `json:"chain_key"`
+	Policies []policySpec `json:"policies"`
+}
+
+type policySpec struct {
+	Name string `json:"name"`
+}
+
+func (c policyChain) containsPolicy(name string) bool {
+	for _, policy := range c.Policies {
+		if policy.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (d configDump) containsPolicy(schema configDumpSchema, routePath, policyName string) bool {
+	switch schema {
+	case configDumpV12:
+		for _, chain := range d.PolicyChains.PolicyChains {
+			if routeKeyPath(chain.RouteKey) == routePath {
+				return chain.containsPolicy(policyName)
+			}
+		}
+		return false
+	default:
+		chainKey := ""
+		for _, route := range d.RouteMetadata.Routes {
+			if routeKeyPath(route.RouteKey) == routePath {
+				chainKey = route.ChainKey
+				break
+			}
+		}
+		if chainKey == "" {
+			return false
+		}
+		for _, chain := range d.PolicyChains.PolicyChains {
+			if chain.ChainKey == chainKey {
+				return chain.containsPolicy(policyName)
+			}
+		}
+		return false
+	}
 }
 
 // routeKeyPath extracts the fullPath segment from a "METHOD|fullPath|vhost" route key.
@@ -492,6 +558,11 @@ func (g *Gateway) configDumpPolicyForRoute(ctx context.Context, policyName, rout
 	if err != nil {
 		return err
 	}
+	version, err := g.topo.ComponentVersion("platform-gateway")
+	if err != nil {
+		return err
+	}
+	schema := configDumpSchemaFor(version)
 	containsPolicy := func(resp *httpx.Response) bool {
 		if resp == nil || !resp.Succeeded() {
 			return false
@@ -500,27 +571,7 @@ func (g *Gateway) configDumpPolicyForRoute(ctx context.Context, policyName, rout
 		if err := json.Unmarshal(resp.Body, &dump); err != nil {
 			return false
 		}
-		chainKey := ""
-		for _, route := range dump.RouteMetadata.Routes {
-			if routeKeyPath(route.RouteKey) == resolvedPath {
-				chainKey = route.ChainKey
-				break
-			}
-		}
-		if chainKey == "" {
-			return false
-		}
-		for _, entry := range dump.PolicyChains.PolicyChains {
-			if entry.ChainKey != chainKey {
-				continue
-			}
-			for _, policy := range entry.Policies {
-				if policy.Name == policyName {
-					return true
-				}
-			}
-		}
-		return false
+		return dump.containsPolicy(schema, resolvedPath, policyName)
 	}
 
 	// Preserve the response from the preceding config-dump request when it already satisfies

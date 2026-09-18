@@ -50,6 +50,16 @@ type Resolved struct {
 
 	// Blocks are fully expanded matrix variants.
 	Blocks []ResolvedBlock
+
+	// SkippedRunners records runners excluded by framework compatibility selection.
+	SkippedRunners []SkippedRunner
+}
+
+// SkippedRunner records a runner excluded before its block is booted.
+type SkippedRunner struct {
+	Block  string
+	Runner string
+	Reason string
 }
 
 // ResolvedBlock is one concrete topology variant.
@@ -231,14 +241,20 @@ func resolve(suite *Suite, registry *components.Registry) (*Resolved, error) {
 	}
 
 	for i := range suite.Blocks {
-		block := &suite.Blocks[i]
-		variants, err := expandMatrix(block)
+		block := suite.Blocks[i]
+		runners, err := parseRunnerTags(block.Name, block.Runners)
+		if err != nil {
+			errs.add(err)
+			continue
+		}
+		block.Runners = runners
+		variants, err := expandMatrix(&block)
 		if err != nil {
 			errs.add(err)
 			continue
 		}
 		for _, variant := range variants {
-			rb, err := resolveBlock(block, variant, defaults, registry)
+			rb, err := resolveBlock(&block, variant, defaults, registry)
 			if err != nil {
 				errs.add(err)
 				continue

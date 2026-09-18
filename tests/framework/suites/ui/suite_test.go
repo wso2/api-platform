@@ -163,6 +163,9 @@ func TestUISuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applying the selection: %v", err)
 	}
+	for _, skipped := range narrowed.SkippedRunners {
+		t.Logf("skipped runner %s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason)
+	}
 	if err := catalog.BuildSources(context.Background(), narrowed, root, frameworkbuilder.ExecRunner{}, selection.Coverage); err != nil {
 		t.Fatalf("building source images: %v", err)
 	}
