@@ -52,6 +52,18 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
   // No loginEnvironment on create: server is authoritative on org bootstrap; Edit exposes the switch later.
   const [createOpen, setCreateOpen] = useState(false);
   const [handle, setHandle] = useState('');
+  // Handle validation is client-side only. Backend allows up to 40 chars, but the
+  // effective K8s label ceiling for openchoreo's RenderedRelease name derivation
+  // caps the practical length lower; keep the UI aligned with what actually
+  // succeeds so users don't have to submit to discover the ceiling.
+  const handleError = useMemo(() => {
+    if (handle === '') return '';
+    if (handle.length < 3) return 'Handle must be at least 3 characters.';
+    if (handle.length > 34) return 'Handle must be at most 34 characters.';
+    if (!/^[a-z0-9-]+$/.test(handle)) return 'Handle can contain only lowercase letters, digits, and hyphens.';
+    return '';
+  }, [handle]);
+  const handleValid = handle !== '' && handleError === '';
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -315,7 +327,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
         <DialogTitle>Create Portal</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <FormControl fullWidth>
+            <FormControl fullWidth error={Boolean(handleError)}>
               <FormLabel>Handle</FormLabel>
               <TextField
                 fullWidth
@@ -324,6 +336,8 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                 value={handle}
                 onChange={(event) => setHandle(event.target.value)}
                 disabled={submitting}
+                error={Boolean(handleError)}
+                helperText={handleError || 'Lowercase letters, digits, and hyphens; 3-34 characters.'}
               />
             </FormControl>
             <FormControl fullWidth>
@@ -364,7 +378,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
           </Button>
           <Button
             variant="contained"
-            disabled={submitting || !handle.trim() || !name.trim()}
+            disabled={submitting || !handleValid || !name.trim()}
             onClick={handleCreate}
           >
             Create

@@ -7,7 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -70,6 +70,18 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
       setLoginEnvironment(portal.loginEnvironment ?? '');
     }
   }, [editOpen, portal]);
+
+  // Save-button gate: enabled only when at least one field has actually changed
+  // relative to the loaded portal. Uses the same trim-normalized comparison as
+  // handleSave so what the user sees on the button matches what the server will
+  // receive - avoids the "Save appears enabled, click, nothing happens" trap.
+  const hasChanges = useMemo(() => {
+    if (!portal) return false;
+    if (name.trim() !== portal.name) return true;
+    if (description !== (portal.description ?? '')) return true;
+    if (loginEnvironment !== (portal.loginEnvironment ?? '')) return true;
+    return false;
+  }, [portal, name, description, loginEnvironment]);
 
   const handleSave = async () => {
     if (!portal) return;
@@ -263,7 +275,7 @@ export default function ManagedPortalDetail({ id, onBack }: ManagedPortalDetailP
           </Button>
           <Button
             variant="contained"
-            disabled={submitting || !name.trim()}
+            disabled={submitting || !name.trim() || !hasChanges}
             onClick={handleSave}
           >
             Save
