@@ -20,6 +20,7 @@
 package model
 
 import (
+	"sort"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -49,6 +50,19 @@ var supportedAgentProxyProtocols = map[AgentProxyProtocol]struct{}{
 func IsSupportedAgentProxyProtocol(p AgentProxyProtocol) bool {
 	_, ok := supportedAgentProxyProtocols[p]
 	return ok
+}
+
+// SupportedAgentProxyProtocols returns the registered protocol values in a
+// stable order, for error messages that have to name what is accepted. It is the
+// one place that list comes from, so a newly registered protocol cannot be
+// announced by one code path and omitted by another.
+func SupportedAgentProxyProtocols() []string {
+	out := make([]string, 0, len(supportedAgentProxyProtocols))
+	for p := range supportedAgentProxyProtocols {
+		out = append(out, string(p))
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Agent Card serving modes. Both the public and the protected card use them.

@@ -39,6 +39,7 @@ type GatewayInternalAPIService struct {
 	providerRepo         repository.LLMProviderRepository
 	proxyRepo            repository.LLMProxyRepository
 	mcpProxyRepo         repository.MCPProxyRepository
+	agentProxyRepo       repository.AgentProxyRepository
 	websubAPIRepo        repository.WebSubAPIRepository
 	webbrokerAPIRepo     repository.WebBrokerAPIRepository
 	deploymentRepo       repository.DeploymentRepository
@@ -59,6 +60,7 @@ type GatewayInternalAPIService struct {
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
+	agentProxyRepo repository.AgentProxyRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
@@ -69,6 +71,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		providerRepo:         providerRepo,
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
+		agentProxyRepo:       agentProxyRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,

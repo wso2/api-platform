@@ -22,17 +22,18 @@ package apperror
 // the fallback used by NewErrorResponse when a handler hasn't been
 // migrated to a more specific domain code via NewErrorResponseWithCode.
 const (
-	CodeCommonValidationFailed    = "VALIDATION_FAILED"
-	CodeCommonUnauthorized        = "UNAUTHORIZED"
-	CodeCommonForbidden           = "FORBIDDEN"
-	CodeCommonNotFound            = "NOT_FOUND"
-	CodeCommonConflict            = "CONFLICT"
-	CodeCommonNotAcceptable       = "NOT_ACCEPTABLE"
-	CodeCommonUnprocessableEntity = "UNPROCESSABLE_ENTITY"
-	CodeCommonInternalError       = "INTERNAL_ERROR"
-	CodeCommonServiceUnavailable  = "SERVICE_UNAVAILABLE"
-	CodeCommonTooManyRequests     = "TOO_MANY_REQUESTS"
-	CodeCommonPayloadTooLarge     = "PAYLOAD_TOO_LARGE"
+	CodeCommonValidationFailed     = "VALIDATION_FAILED"
+	CodeCommonUnauthorized         = "UNAUTHORIZED"
+	CodeCommonForbidden            = "FORBIDDEN"
+	CodeCommonNotFound             = "NOT_FOUND"
+	CodeCommonConflict             = "CONFLICT"
+	CodeCommonNotAcceptable        = "NOT_ACCEPTABLE"
+	CodeCommonUnprocessableEntity  = "UNPROCESSABLE_ENTITY"
+	CodeCommonInternalError        = "INTERNAL_ERROR"
+	CodeCommonServiceUnavailable   = "SERVICE_UNAVAILABLE"
+	CodeCommonTooManyRequests      = "TOO_MANY_REQUESTS"
+	CodeCommonPayloadTooLarge      = "PAYLOAD_TOO_LARGE"
+	CodeCommonUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
 )
 
 // LLM provider/proxy domain codes, matching the examples documented in
@@ -114,6 +115,12 @@ const (
 	CodeMCPProxyExists                     = "MCP_PROXY_EXISTS"
 	CodeMCPProxyDeploymentValidationFailed = "MCP_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 	CodeMCPProxyUpstreamUnauthorized       = "MCP_PROXY_UPSTREAM_UNAUTHORIZED"
+)
+
+// Agent proxy domain codes.
+const (
+	CodeAgentProxyNotFound = "AGENT_PROXY_NOT_FOUND"
+	CodeAgentProxyExists   = "AGENT_PROXY_EXISTS"
 )
 
 // Organization domain codes.

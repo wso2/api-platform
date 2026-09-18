@@ -62,6 +62,12 @@ var (
 	ServiceUnavailable  = def(CodeCommonServiceUnavailable, http.StatusServiceUnavailable, "The service is temporarily unavailable.")
 	TooManyRequests     = def(CodeCommonTooManyRequests, http.StatusTooManyRequests, "%s")
 	PayloadTooLarge     = def(CodeCommonPayloadTooLarge, http.StatusRequestEntityTooLarge, "%s")
+	// UnsupportedMediaType is the 415 a body-bearing operation returns when the
+	// request declares a media type it does not accept. It is distinct from
+	// NotAcceptable (406), which is about the media type the client asked to
+	// *receive*.
+	UnsupportedMediaType = def(CodeCommonUnsupportedMediaType, http.StatusUnsupportedMediaType,
+		"This operation accepts application/json only.")
 )
 
 // REST API entries.
@@ -145,6 +151,12 @@ var (
 	MCPProxyDeploymentValidationFailed = def(CodeMCPProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
 	MCPProxyUpstreamUnauthorized       = def(CodeMCPProxyUpstreamUnauthorized, http.StatusBadRequest,
 		"The MCP server rejected the supplied credentials.")
+)
+
+// Agent proxy entries.
+var (
+	AgentProxyNotFound = def(CodeAgentProxyNotFound, http.StatusNotFound, "The specified Agent proxy could not be found.")
+	AgentProxyExists   = def(CodeAgentProxyExists, http.StatusConflict, "An Agent proxy with this ID already exists.")
 )
 
 // Organization / project / application entries.

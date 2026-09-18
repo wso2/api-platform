@@ -139,6 +139,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
+	agentProxyRepo := repository.NewAgentProxyRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db, artifactTableRegistry)
@@ -249,7 +250,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, appRepo, auditRepo, identityService, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
@@ -258,7 +259,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	// One definition per artifact kind, indexed by the kind the artifact row
 	// carries. Builds and deployments are shared across kinds; rendering is the
@@ -275,6 +276,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
@@ -381,12 +383,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, identityService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
+	agentProxyHandler := handler.NewAgentProxyHandler(agentProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
 	llmProxyService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
+	agentProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
@@ -444,6 +448,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProxyDeploymentHandler.RegisterRoutes(core)
 	mcpProxyHandler.RegisterRoutes(core)
 	mcpProxyDeploymentHandler.RegisterRoutes(core)
+	agentProxyHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.
