@@ -16,10 +16,22 @@
  * under the License.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resetHttpClient } from '@/api/core/http';
+import { accepts } from '@/test/msw';
+import { server } from '@/test/server';
 import { fireEvent, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { ContractSourceForm, fetchContractForPreview } from './ContractSourceForm';
+
+// Every accepted document is sent on to `POST /rest-apis/validate-openapi`.
+// The form swallows a failure there, so leaving it unhandled would not fail a
+// test — it would just leave `onUnhandledRequest: 'error'` rejections behind
+// every run. These tests are about what reaches the form, so it always passes.
+beforeEach(() => {
+  resetHttpClient();
+  server.use(accepts('post', '/rest-apis/validate-openapi', { errors: [], isValid: true }));
+});
 
 const yamlFile = (name: string) =>
   new File(['openapi: 3.0.0'], name, { type: 'application/x-yaml' });

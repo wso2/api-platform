@@ -38,7 +38,6 @@ import {
   listRestApis,
   updateRestApi,
 } from './restApis.endpoints';
-import { NO_SAMPLE_DEFINITION, SAMPLE_DEFINITION_CHOICES, sampleDefinitionIdFor } from './mocks';
 
 /**
  * Contract tests for the `/rest-apis` transport functions.
@@ -248,49 +247,5 @@ describe('failures', () => {
     server.use(failure('delete', '/rest-apis/pizza-shack', 409, 'CONFLICT'));
 
     await expect(deleteRestApi('pizza-shack')).rejects.toBeInstanceOf(ApiError);
-  });
-});
-
-/**
- * The definition half of this module is mock-backed while the endpoint is in
- * development. What the returned bytes *mean* is covered in
- * `restApis.utils.test.ts`; what is left here is the transport behaviour.
- */
-
-describe('sampleDefinitionIdFor', () => {
-  it('always picks one of the offered outcomes', () => {
-    const choices = Array.from({ length: 200 }, (_unused, index) =>
-      sampleDefinitionIdFor(`api-${index}`),
-    );
-
-    expect(choices.every((choice) => SAMPLE_DEFINITION_CHOICES.includes(choice))).toBe(true);
-  });
-
-  it('gives some APIs no definition at all', () => {
-    // Absence is one of the outcomes, so the page's empty state is reached by
-    // opening an API rather than by editing a fixture.
-    const choices = Array.from({ length: 200 }, (_unused, index) =>
-      sampleDefinitionIdFor(`api-${index}`),
-    );
-
-    expect(choices).toContain(NO_SAMPLE_DEFINITION);
-  });
-
-  it('is stable for one API, so re-opening it shows the same contract', () => {
-    expect(sampleDefinitionIdFor('pizza-shack')).toBe(sampleDefinitionIdFor('pizza-shack'));
-  });
-
-  it('spreads across the whole catalog rather than collapsing onto one sample', () => {
-    // A single fixed sample would let a "works for one spec" bug hide until the
-    // real definitions land.
-    const seen = new Set(
-      Array.from({ length: 200 }, (_unused, index) => sampleDefinitionIdFor(`api-${index}`)),
-    );
-
-    expect(seen.size).toBe(SAMPLE_DEFINITION_CHOICES.length);
-  });
-
-  it('handles an empty id without throwing or producing a negative index', () => {
-    expect(SAMPLE_DEFINITION_CHOICES).toContain(sampleDefinitionIdFor(''));
   });
 });

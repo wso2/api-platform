@@ -28,7 +28,6 @@ import {
   Gauge,
   Home,
   Layers,
-  List,
   Network,
   PanelTop,
   Rocket,

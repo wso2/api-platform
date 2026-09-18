@@ -179,7 +179,7 @@ describe('submenu parents', () => {
       'develop',
       [
         ['develop-policies', 'policies'],
-        ['develop-routing', 'routing'],
+        ['develop-definition', 'definition'],
         ['develop-documents', 'documents'],
       ],
     ],

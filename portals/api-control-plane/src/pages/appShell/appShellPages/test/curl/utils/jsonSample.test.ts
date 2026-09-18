@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { requestBodySample, resolveRef, sampleFromSchema } from './jsonSample';
-import readingList from '@/api/resources/restApis/mocks/readingListApi.openapi.json';
+import readingList from './readingListApi.fixture.json';
 
 const spec = readingList as unknown as Record<string, unknown>;
 
