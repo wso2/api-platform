@@ -54,9 +54,9 @@ type mountedProxy struct {
 
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
-	cfg       *config.Config
-	claims    session.ClaimMapping
-	store     session.Store
+	cfg      *config.Config
+	claims   session.ClaimMapping
+	store    session.Store
 	fileBased *auth.FileBased
 	oidc      *auth.OIDC
 	proxies   []mountedProxy
