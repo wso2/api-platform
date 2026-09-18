@@ -110,7 +110,7 @@ Feature: Token-based rate limiting with built-in provider templates
       | spec.context           | ${CTX:providerContext}            |
       | spec.upstream.url      | http://testbench:3008             |
       | accessControl.mode     | allow_all                          |
-      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/*","methods":["*"],"params":{"totalTokenLimits":[{"count":1000,"duration":"1h"}],"algorithm":"fixed-window","backend":"memory","consumerBased":true}}]}] |
+      | spec.policies          | [{"name":"token-based-ratelimit","version":"v1","paths":[{"path":"/*","methods":["*"],"params":{"totalTokenLimits":[{"count":1000,"duration":"1h"}],"consumerBased":true}}]}] |
     Then the response status code should be 201
     And I send a "POST" request to "${CTX:providerContext}/anthropic/v1/messages" until status 200 with body:
       """
