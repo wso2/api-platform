@@ -123,6 +123,11 @@ func (o *OIDC) Close() {
 	o.closeOnce.Do(func() { close(o.done) })
 }
 
+// TokenEndpoint is the endpoint discovered from the issuer. Exposed so a token
+// exchange configured without an explicit endpoint override can post to the same
+// IDP the user logged in to, without repeating discovery.
+func (o *OIDC) TokenEndpoint() string { return o.disco.TokenEndpoint }
+
 func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (discoveryDoc, error) {
 	u := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
