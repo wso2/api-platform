@@ -37,7 +37,7 @@ type ArtifactRepo struct {
 
 // NewArtifactRepo creates an ArtifactRepo. When reg is provided it is used for
 // dynamic UNION queries and kind validation; when omitted the core-only default
-// registry (rest_apis, llm_providers, llm_proxies, mcp_proxies) is used.
+// registry (rest_apis, llm_providers, llm_proxies, mcp_proxies, agent_proxies) is used.
 func NewArtifactRepo(db *database.DB, reg ...*ArtifactTableRegistry) *ArtifactRepo {
 	r := NewArtifactTableRegistry()
 	if len(reg) > 0 && reg[0] != nil {
