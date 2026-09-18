@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package steps
+package platformgateway
 
 import (
 	"bufio"
@@ -36,12 +36,12 @@ import (
 
 const incompleteRequestTimeout = 20 * time.Second
 
-func (b *Base) registerRawHTTPSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I send an incomplete HTTP request to "([^"]*)"$`, b.sendIncompleteHTTP)
+func (g *Gateway) registerRawHTTPSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I send an incomplete HTTP request to "([^"]*)"$`, g.sendIncompleteHTTP)
 }
 
 // sendIncompleteHTTP leaves the header block unterminated and records the gateway response.
-func (b *Base) sendIncompleteHTTP(ctx context.Context, path string) error {
+func (g *Gateway) sendIncompleteHTTP(ctx context.Context, path string) error {
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func (b *Base) sendIncompleteHTTP(ctx context.Context, path string) error {
 	if !strings.HasPrefix(resolved, "/") {
 		resolved = "/" + resolved
 	}
-	base, err := b.topo.URL("platform-gateway", "http")
+	base, err := g.topo.URL("platform-gateway", "http")
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (b *Base) sendIncompleteHTTP(ctx context.Context, path string) error {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(incompleteRequestTimeout))
 
-	host := b.requestHost(ctx)
+	host := g.base.RequestHost(ctx)
 	if host == "" {
 		host = endpoint.Hostname()
 	}
@@ -92,7 +92,7 @@ func (b *Base) sendIncompleteHTTP(ctx context.Context, path string) error {
 		URL:        base + resolved,
 		Elapsed:    time.Since(started),
 	}
-	if err := b.funnel.Publish(ctx, response); err != nil {
+	if err := g.funnel.Publish(ctx, response); err != nil {
 		return err
 	}
 	return nil

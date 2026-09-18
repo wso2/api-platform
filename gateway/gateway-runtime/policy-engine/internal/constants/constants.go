@@ -138,6 +138,7 @@ const (
 	TerminalReasonNoPolicyChain        = "no_policy_chain"        // route resolved but no chain registered
 	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
 	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
+	TerminalReasonUnsupportedEncoding  = "unsupported_encoding"   // Content-Encoding the kernel cannot round-trip, on a body the policy chain requires
 
 	// TerminalReasonPolicyAnswered marks a request a policy answered itself with a
 	// non-denial status, rather than refusing it: the request stopped at the

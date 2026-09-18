@@ -26,27 +26,38 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"testing"
 
-	"github.com/cucumber/godog"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
+	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/platformgateway"
 )
 
 // selection is populated from flags, so one suite file can be sharded across CI jobs.
 var selection topology.Selection
 
+// logsEnabled turns on combined per-block container log capture (-logs). It is not part
+// of Selection because, unlike -coverage, it does not change which images are built or
+// how the suite is narrowed — only whether container output is collected at run time.
+var logsEnabled bool
+
 func TestMain(m *testing.M) {
 	selection.Flags(flag.CommandLine)
+	flag.BoolVar(&logsEnabled, "logs", false,
+		"capture every block's combined container output to files under IT_LOG_OUT")
 	flag.Parse()
 
 	// Set coverage mode before catalog definitions are loaded.
@@ -66,7 +77,11 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	// Shared components outlive every block and are reaped at process exit, so nothing
+	// else flushes their log files.
+	frameworkruntime.CloseSharedLogs()
+	os.Exit(code)
 }
 
 // suiteShape returns the resolved block count and largest runner concurrency.
@@ -170,12 +185,33 @@ func TestIntegrationSuite(t *testing.T) {
 		t.Logf("coverage: collecting counters into %s", sink.Root())
 	}
 
+	// One sink per run, mirroring the coverage sink above: built here because only the
+	// suite knows its own directory, and wiped on creation so a stale local run's log
+	// files are never mixed with a fresh run's.
+	var logs *logcapture.Sink
+	if logsEnabled {
+		out := os.Getenv(logcapture.EnvOut)
+		if out == "" {
+			out = filepath.Join(dir, "logs-out")
+		}
+		logs, err = logcapture.NewSink(out)
+		if err != nil {
+			t.Fatalf("preparing the log capture sink: %v", err)
+		}
+		t.Logf("logcapture: collecting container output into %s", logs.Root())
+	}
+
 	frameworkruntime.Run(t, narrowed, frameworkruntime.Deps{
 		RepoRoot:    root,
 		FeatureRoot: dir,
 		Coverage:    sink,
-		Steps: func(sc *godog.ScenarioContext, topo *frameworkruntime.Topology) {
-			steps.New(topo, dir).Register(sc)
+		Logs:        logs,
+		Steps: func(topo *frameworkruntime.Topology) (frameworkruntime.StepRegistrar, error) {
+			suite, err := steps.New(topo, dir)
+			if err != nil {
+				return nil, err
+			}
+			return suite.Register, nil
 		},
 		CleanupDeleters: func(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 			registerDeleters(reg, topo)
@@ -286,7 +322,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 
 		resp, err := client.Do(ctx, httpx.Request{
 			Method: http.MethodDelete,
-			URL:    base + steps.ManagementBasePath + "/rest-apis/" + res.ID,
+			URL:    base + platformgateway.ManagementBasePath + "/rest-apis/" + res.ID,
 			Headers: map[string]string{
 				"Authorization": basicAuthFor(topo),
 			},
@@ -304,6 +340,10 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProvider, "/llm-providers")
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProxy, "/llm-proxies")
+	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProviderTemplate, "/llm-provider-templates")
+	registerControllerDeleter(reg, topo, client, cleanup.KindMCPProxy, "/mcp-proxies")
+	registerControllerDeleter(reg, topo, client, cleanup.KindCertificate, "/certificates")
+	registerControllerDeleter(reg, topo, client, cleanup.KindSecret, "/secrets")
 }
 
 func registerControllerDeleter(
@@ -320,7 +360,7 @@ func registerControllerDeleter(
 		}
 		resp, err := client.Do(ctx, httpx.Request{
 			Method: http.MethodDelete,
-			URL:    base + steps.ManagementBasePath + collection + "/" + res.ID,
+			URL:    base + platformgateway.ManagementBasePath + collection + "/" + res.ID,
 			Headers: map[string]string{
 				"Authorization": basicAuthFor(topo),
 			},
@@ -337,6 +377,44 @@ func registerControllerDeleter(
 
 func basicAuthFor(topo *frameworkruntime.Topology) string {
 	return steps.BasicAuthHeader(topo.Admin.Username, topo.Admin.Password)
+}
+
+// TestEveryBlockSweepsEveryEngine verifies that gateway coverage includes every database engine.
+func TestEveryBlockSweepsEveryEngine(t *testing.T) {
+	resolved := loadSuiteCoverage(t)
+	variants := map[string][]components.DBType{}
+	for i := range resolved.Blocks {
+		block := &resolved.Blocks[i]
+		for _, component := range block.Components {
+			if component.Def.Name == coverageSubject {
+				variants[block.Source] = append(variants[block.Source], component.DB)
+			}
+		}
+	}
+	require.NotEmpty(t, variants)
+	for source, got := range variants {
+		if source == "devportal-webhook" || source == "multigateway" {
+			require.Len(t, got, 1, "single-engine block %q", source)
+			continue
+		}
+		sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
+		require.Equal(t, coverageEngines, got, "block %q database coverage", source)
+	}
+}
+
+const coverageSubject = "platform-gateway"
+
+var coverageEngines = []components.DBType{components.Postgres, components.SQLite, components.SQLServer}
+
+func loadSuiteCoverage(t *testing.T) *topology.Resolved {
+	t.Helper()
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+	registry, err := catalog.Registry()
+	require.NoError(t, err)
+	resolved, err := topology.LoadFile(filepath.Join(dir, "it-suite.yaml"), registry)
+	require.NoError(t, err)
+	return resolved
 }
 
 func errFromResponse(resp *httpx.Response) error {

@@ -167,30 +167,6 @@ CREATE TABLE IF NOT EXISTS api_portals (
     UNIQUE (organization_uuid, uuid)
 );
 
--- API Documents table (stub — owned by another team, not shipped yet).
--- Confirmed shape per DB_design_refined.md §3. No UNIQUE(organization_uuid, uuid)
--- and no description column on the real table — that's why doc_uuid below is a
--- single-column FK, org-checked in the service layer. Delete this block (all 3
--- dialect files) once the owning team's real migration ships.
-CREATE TABLE IF NOT EXISTS api_documents (
-    uuid              VARCHAR(40)  PRIMARY KEY,
-    artifact_uuid     VARCHAR(40)  NOT NULL,
-    organization_uuid VARCHAR(40)  NOT NULL,
-    type              VARCHAR(20)  NOT NULL,
-    handle            VARCHAR(40)  NOT NULL,
-    display_name      VARCHAR(255) NOT NULL,
-    file_name         VARCHAR(255),
-    content_type      VARCHAR(100),
-    content           BYTEA        NOT NULL,
-    data_version      INTEGER      NOT NULL DEFAULT 0,
-    created_by        VARCHAR(255),
-    created_at        TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
-    updated_by        VARCHAR(255),
-    updated_at        TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (artifact_uuid)     REFERENCES artifacts(uuid)      ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid)  ON DELETE CASCADE
-);
-
 -- =====================================================================
 -- api_publications — one (API, portal) pairing's draft and/or live row,
 -- distinguished by is_draft. At most one of each per pairing (below).
@@ -797,3 +773,26 @@ CREATE TABLE IF NOT EXISTS user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
+
+-- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
+CREATE TABLE IF NOT EXISTS api_documents (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    artifact_uuid     VARCHAR(40)  NOT NULL,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    type              VARCHAR(20)  NOT NULL,
+    handle            VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
+    file_name         VARCHAR(255),
+    content_type      VARCHAR(100),
+    content           BYTEA        NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(255),
+    created_at        TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(255),
+    updated_at        TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid)     REFERENCES artifacts(uuid)      ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid)  ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_documents_artifact ON api_documents(artifact_uuid, type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_documents(artifact_uuid, handle);

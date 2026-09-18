@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -430,4 +431,34 @@ func TestFunnelRequiresScope(t *testing.T) {
 
 	_, err := newTestFunnel(0).Get(context.Background(), srv.URL, nil)
 	require.ErrorContains(t, err, "no local scope in context")
+}
+
+// Every client must negotiate the hybrid post-quantum ordering, including one built from a
+// caller-supplied TLS config that only sets roots and a server name.
+func TestSuppliedTLSConfigStillGetsPostQuantumCurveOrdering(t *testing.T) {
+	supplied := &tls.Config{RootCAs: x509.NewCertPool(), ServerName: "platform-api"}
+	c := NewClient(Options{TLSClientConfig: supplied})
+
+	got := c.http.Transport.(*http.Transport).TLSClientConfig
+	require.Equal(t, defaultCurvePreferences(), got.CurvePreferences)
+	require.Equal(t, tls.X25519MLKEM768, got.CurvePreferences[0])
+
+	// The caller's own settings survive, and their config is not mutated.
+	require.Equal(t, "platform-api", got.ServerName)
+	require.NotNil(t, got.RootCAs)
+	require.Empty(t, supplied.CurvePreferences)
+}
+
+func TestNilTLSConfigKeepsPostQuantumCurveOrdering(t *testing.T) {
+	c := NewClient(Options{})
+	got := c.http.Transport.(*http.Transport).TLSClientConfig
+	require.Equal(t, defaultCurvePreferences(), got.CurvePreferences)
+}
+
+// An explicit extra curve is appended after the defaults, never replacing them.
+func TestExplicitCurvesAreAppendedAfterTheDefaults(t *testing.T) {
+	c := NewClient(Options{TLSClientConfig: &tls.Config{CurvePreferences: []tls.CurveID{tls.CurveP521}}})
+	got := c.http.Transport.(*http.Transport).TLSClientConfig
+	require.Equal(t, tls.X25519MLKEM768, got.CurvePreferences[0])
+	require.Subset(t, got.CurvePreferences, defaultCurvePreferences())
 }

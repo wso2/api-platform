@@ -185,6 +185,7 @@ const (
 	OperationRequestMethodPATCH   OperationRequestMethod = "PATCH"
 	OperationRequestMethodPOST    OperationRequestMethod = "POST"
 	OperationRequestMethodPUT     OperationRequestMethod = "PUT"
+	OperationRequestMethodTRACE   OperationRequestMethod = "TRACE"
 )
 
 // Defines values for PublicationAgentVisibility.
@@ -1453,6 +1454,28 @@ type GatewayTokenListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
+// ImportOpenAPIRequest defines model for ImportOpenAPIRequest.
+type ImportOpenAPIRequest struct {
+	Context     string  `binding:"required" json:"context" yaml:"context"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// ProjectId Handle (URL-friendly slug) of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `binding:"required" json:"version" yaml:"version"`
+}
+
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
 	// Exceptions Path exceptions to the access control mode
@@ -2092,6 +2115,36 @@ type MappedAPIKeyListResponse struct {
 	Count      int            `binding:"required" json:"count" yaml:"count"`
 	List       []MappedAPIKey `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination     `json:"pagination" yaml:"pagination"`
+}
+
+// OpenAPIContent defines model for OpenAPIContent.
+type OpenAPIContent struct {
+	// Content Raw spec content
+	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
+}
+
+// OpenAPISpecFileRequest defines model for OpenAPISpecFileRequest.
+type OpenAPISpecFileRequest struct {
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+}
+
+// OpenAPISpecInfo defines model for OpenAPISpecInfo.
+type OpenAPISpecInfo struct {
+	// Title Value of info.title from the spec
+	Title *string `json:"title,omitempty" yaml:"title,omitempty"`
+
+	// Version Value of info.version from the spec
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// OpenAPIValidationError defines model for OpenAPIValidationError.
+type OpenAPIValidationError struct {
+	// Message Human-readable description of the validation error
+	Message string `binding:"required" json:"message" yaml:"message"`
+
+	// Path JSON Pointer path within the spec where the error was found
+	Path *string `json:"path,omitempty" yaml:"path,omitempty"`
 }
 
 // Operation Defines a single operation (resource) within the API
@@ -3074,6 +3127,16 @@ type UserAPIKeyListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
+type ValidateOpenAPIResponse struct {
+	// Errors Validation errors; empty when isValid is true
+	Errors []OpenAPIValidationError `binding:"required" json:"errors" yaml:"errors"`
+	Info   *OpenAPISpecInfo         `json:"info,omitempty" yaml:"info,omitempty"`
+
+	// IsValid Whether the spec passed validation
+	IsValid bool `binding:"required" json:"isValid" yaml:"isValid"`
+}
+
 // ApiHandle defines model for apiHandle.
 type ApiHandle = string
 
@@ -3160,6 +3223,9 @@ type InternalServerError = Error
 
 // NotFound The single error shape returned by every failed request across the API.
 type NotFound = Error
+
+// PayloadTooLarge The single error shape returned by every failed request across the API.
+type PayloadTooLarge = Error
 
 // PortalUnavailable The single error shape returned by every failed request across the API.
 type PortalUnavailable = Error
@@ -3839,6 +3905,12 @@ type UpdateProjectJSONRequestBody = Project
 // CreateRESTAPIJSONRequestBody defines body for CreateRESTAPI for application/json ContentType.
 type CreateRESTAPIJSONRequestBody = CreateRESTAPIRequest
 
+// ImportOpenAPIMultipartRequestBody defines body for ImportOpenAPI for multipart/form-data ContentType.
+type ImportOpenAPIMultipartRequestBody = ImportOpenAPIRequest
+
+// ValidateOpenAPISpecMultipartRequestBody defines body for ValidateOpenAPISpec for multipart/form-data ContentType.
+type ValidateOpenAPISpecMultipartRequestBody = OpenAPISpecFileRequest
+
 // UpdateRESTAPIJSONRequestBody defines body for UpdateRESTAPI for application/json ContentType.
 type UpdateRESTAPIJSONRequestBody = RESTAPI
 
@@ -3856,6 +3928,9 @@ type DeployAPIJSONRequestBody = DeployRequest
 
 // AddGatewaysToAPIJSONRequestBody defines body for AddGatewaysToAPI for application/json ContentType.
 type AddGatewaysToAPIJSONRequestBody = AddGatewaysToAPIJSONBody
+
+// UpdateRESTAPISpecMultipartRequestBody defines body for UpdateRESTAPISpec for multipart/form-data ContentType.
+type UpdateRESTAPISpecMultipartRequestBody = OpenAPISpecFileRequest
 
 // CreateSecretMultipartRequestBody defines body for CreateSecret for multipart/form-data ContentType.
 type CreateSecretMultipartRequestBody = SecretCreateRequest

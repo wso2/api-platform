@@ -54,7 +54,7 @@ func newPublicationTestService(it *itDB) *service.PublicationService {
 	return service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
 		repository.NewAPIPortalRepo(it.db),
-		repository.NewApiDocumentRepo(it.db),
+		repository.NewDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		alwaysSucceedsPortalPublisher{},
@@ -573,7 +573,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 	svc := service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
 		repository.NewAPIPortalRepo(it.db),
-		repository.NewApiDocumentRepo(it.db),
+		repository.NewDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		unpublishConflictPublisher{},
@@ -633,7 +633,7 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 	svc := service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
 		repository.NewAPIPortalRepo(it.db),
-		repository.NewApiDocumentRepo(it.db),
+		repository.NewDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		unpublishSubscriptionConflictPublisher{},

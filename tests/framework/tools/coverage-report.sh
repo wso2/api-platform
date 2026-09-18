@@ -201,8 +201,10 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 		&& rg -l 'AIWorkspace|/web/src/(App|Components|pages)/' "$raw_root/blocks" >/dev/null; then
 		run_product_browser_report ai-workspace-ui portals/ai-workspace/src portals/ai-workspace/src 'portals/ai-workspace/src/**'
 	fi
+	# The two portals are served from different container roots: AI Workspace from /web,
+	# API Portal from /app. Matching the wrong one silently skips the whole report.
 	if find "$raw_root/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
-		&& rg -l '/web/src/scripts/' "$raw_root/blocks" >/dev/null; then
+		&& rg -l '/app/src/scripts/' "$raw_root/blocks" >/dev/null; then
 		run_product_browser_report api-portal-ui portals/api-portal/src/scripts portals/api-portal/src/scripts 'portals/api-portal/src/scripts/**/*.js'
 	fi
 fi

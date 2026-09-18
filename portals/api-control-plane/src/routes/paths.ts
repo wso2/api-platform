@@ -153,6 +153,11 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/documents'),
+  apiDevelopDefinition: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler',
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/definition'),
   apiDeploy: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

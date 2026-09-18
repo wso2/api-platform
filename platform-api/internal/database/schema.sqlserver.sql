@@ -180,35 +180,6 @@ CREATE TABLE dbo.api_portals (
     UNIQUE (organization_uuid, uuid)
 );
 
--- API Documents table (stub — owned by another team, not shipped yet).
--- Confirmed shape per DB_design_refined.md §3. No UNIQUE(organization_uuid, uuid)
--- and no description column on the real table — that's why doc_uuid below is a
--- single-column FK, org-checked in the service layer. Delete this block (all 3
--- dialect files) once the owning team's real migration ships.
--- NO ACTION on organization_uuid to avoid the SQL Server multiple-cascade-paths
--- restriction (error 1785), same pattern as subscriptions: cleanup still happens
--- via the artifact_uuid -> artifacts CASCADE edge, which itself cascades from
--- organizations.
-IF OBJECT_ID(N'dbo.api_documents', N'U') IS NULL
-CREATE TABLE dbo.api_documents (
-    uuid              VARCHAR(40)  PRIMARY KEY,
-    artifact_uuid     VARCHAR(40)  NOT NULL,
-    organization_uuid VARCHAR(40)  NOT NULL,
-    type              VARCHAR(20)  NOT NULL,
-    handle            VARCHAR(40)  NOT NULL,
-    display_name      VARCHAR(255) NOT NULL,
-    file_name         VARCHAR(255),
-    content_type      VARCHAR(100),
-    content           VARBINARY(MAX) NOT NULL,
-    data_version      INTEGER      NOT NULL DEFAULT 0,
-    created_by        VARCHAR(255),
-    created_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by        VARCHAR(255),
-    updated_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (artifact_uuid)     REFERENCES artifacts(uuid)      ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid)  ON DELETE NO ACTION
-);
-
 -- =====================================================================
 -- api_publications — one (API, portal) pairing's draft and/or live row,
 -- distinguished by is_draft. At most one of each per pairing (below).
@@ -940,3 +911,31 @@ CREATE TABLE dbo.user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
+
+-- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
+IF OBJECT_ID(N'dbo.api_documents', N'U') IS NULL
+CREATE TABLE dbo.api_documents (
+    uuid              VARCHAR(40)    NOT NULL,
+    artifact_uuid     VARCHAR(40)    NOT NULL,
+    organization_uuid VARCHAR(40)    NOT NULL,
+    type              VARCHAR(20)    NOT NULL,
+    handle            VARCHAR(40)    NOT NULL,
+    display_name      VARCHAR(255)   NOT NULL,
+    file_name         VARCHAR(255),
+    content_type      VARCHAR(100),
+    content           VARBINARY(MAX) NOT NULL,
+    data_version      VARCHAR(20)    NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(255),
+    created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    updated_by        VARCHAR(255),
+    updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT pk_api_documents          PRIMARY KEY (uuid),
+    CONSTRAINT fk_api_documents_artifact FOREIGN KEY (artifact_uuid)     REFERENCES dbo.artifacts(uuid)      ON DELETE CASCADE,
+    CONSTRAINT fk_api_documents_org      FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid)  ON DELETE NO ACTION
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_documents_artifact' AND object_id = OBJECT_ID(N'dbo.api_documents'))
+CREATE INDEX idx_api_documents_artifact ON dbo.api_documents(artifact_uuid, type);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_documents_artifact_handle' AND object_id = OBJECT_ID(N'dbo.api_documents'))
+CREATE UNIQUE INDEX uq_api_documents_artifact_handle ON dbo.api_documents(artifact_uuid, handle);

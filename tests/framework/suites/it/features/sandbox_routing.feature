@@ -219,15 +219,12 @@ Feature: Sandbox routing
       | name | ${CTX:apiName9} |
       | spec | {"displayName":"Env-Routing-Sandbox-Timeout-Ref-API","version":"v1.0","context":"${CTX:apiContext9}/$version","vhosts":{"main":"${CTX:mainHost9}","sandbox":"${CTX:sandboxHost9}"},"upstreamDefinitions":[{"name":"sandbox-timeout-upstream","timeout":{"connect":"6000ms"},"upstreams":[{"url":"http://192.0.2.1:80"}]}],"upstream":{"main":{"url":"http://testbench:3000"},"sandbox":{"ref":"sandbox-timeout-upstream"}},"operations":[{"method":"GET","path":"/whoami"}]} |
     Then the response should be successful
-    And I wait for policy snapshot sync
     And I set request host to "${CTX:mainHost9}"
     And I send a "GET" request to "${CTX:apiContext9}/v1.0/whoami" until status 200
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost9}"
-    And I send a "GET" request to "${CTX:apiContext9}/v1.0/whoami"
-    Then the response status code should be 503
-    And the gateway should have timed out after "6" seconds with status 503
+    And I send a "GET" request to "${CTX:apiContext9}/v1.0/whoami" until it times out after "6" seconds with status 503
 
   Scenario: Sandbox ref should work with HTTP upstream
     Given I generate a unique value from "sandbox-routing-10" and store it as "apiName10"
@@ -239,7 +236,6 @@ Feature: Sandbox routing
       | name | ${CTX:apiName10} |
       | spec | {"displayName":"Env-Routing-Sandbox-HTTPS-Ref-API","version":"v1.0","context":"${CTX:apiContext10}/$version","vhosts":{"main":"${CTX:mainHost10}","sandbox":"${CTX:sandboxHost10}"},"upstreamDefinitions":[{"name":"sandbox-http-upstream","basePath":"/openai/v1","upstreams":[{"url":"http://testbench:3008"}]}],"upstream":{"main":{"url":"http://testbench:3000"},"sandbox":{"ref":"sandbox-http-upstream"}},"operations":[{"method":"POST","path":"/chat/completions"}]} |
     Then the response should be successful
-    And I wait for policy snapshot sync
     And I set header "Content-Type" to "application/json"
     And I set request host to "${CTX:mainHost10}"
     And I send a "POST" request to "${CTX:apiContext10}/v1.0/chat/completions" until status 200 with body:
@@ -251,7 +247,10 @@ Feature: Sandbox routing
     And I set header "Content-Type" to "application/json"
     And I set header "Authorization" to "Bearer sk-test-key"
     And I set request host to "${CTX:sandboxHost10}"
-    And I send a "POST" request to "${CTX:apiContext10}/v1.0/chat/completions" with body:
+    # The main-host warmup above proves the API's own route exists, but this vhost's
+    # sandbox upstream is a separate policy-chain delivery, so poll the actual sandbox
+    # request until it succeeds rather than trusting a single shot to land after it.
+    And I send a "POST" request to "${CTX:apiContext10}/v1.0/chat/completions" until status 200 with body:
       """
       {
         "model": "gpt-4",
@@ -260,8 +259,7 @@ Feature: Sandbox routing
         ]
       }
       """
-    Then the response should be successful
-    And the response should be valid JSON
+    Then the response should be valid JSON
     And the response body should contain "chat.completion"
     And the response body should contain "choices"
     And the JSON response field "object" should be "chat.completion"
@@ -480,15 +478,13 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:mainHost21}"
-    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami"
-    Then the response should be successful
-    And the response should be valid JSON
+    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami" until status 200
+    Then the response should be valid JSON
     And the JSON response field "path" should be "/whoami"
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost21}"
-    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami"
-    Then the response status code should be 404
+    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami" until status 404
 
     Given I authenticate using basic auth as "admin"
     When I update API "${CTX:apiName21}" from "resources/templates/rest-api.yaml" with values:
@@ -501,9 +497,8 @@ Feature: Sandbox routing
 
     When I clear all headers
     And I set request host to "${CTX:sandboxHost21}"
-    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami"
-    Then the response should be successful
-    And the response should be valid JSON
+    And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami" until status 200
+    Then the response should be valid JSON
     And the JSON response field "environment" should be "sandbox"
     And the JSON response field "path" should be "/sandbox/whoami"
 

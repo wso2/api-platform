@@ -456,7 +456,7 @@ func checkDocumentation(root string) []string {
 			}
 			filePath := filepath.Join(path, entry.Name())
 			fileSet := token.NewFileSet()
-			file, parseErr := parser.ParseFile(fileSet, filePath, nil, 0)
+			file, parseErr := parser.ParseFile(fileSet, filePath, nil, parser.ParseComments)
 			if parseErr != nil {
 				issues = append(issues, fmt.Sprintf("%s: parse error: %v", filePath, parseErr))
 				continue

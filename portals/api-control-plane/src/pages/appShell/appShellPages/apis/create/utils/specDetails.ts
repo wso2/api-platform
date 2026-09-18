@@ -32,8 +32,7 @@ import type { ApiCreationWizardDraftState, ApiOperation, Operationrequest } from
  * are understood, since the step accepts either.
  */
 
-/** Methods the form's own operation type can hold. */
-const SUPPORTED_METHODS: Operationrequest['method'][] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+const SUPPORTED_METHODS: Operationrequest['method'][] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'TRACE'];
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -94,11 +93,7 @@ const readTransports = (serverUrl: string | undefined): ('http' | 'https')[] | u
 };
 
 /**
- * Every operation the definition declares, flattened for the form.
- *
- * `HEAD`, `OPTIONS` and `TRACE` are skipped rather than coerced: the form's
- * operation type has no room for them, and inventing a method would be worse
- * than leaving the row out for the user to add.
+ * Every operation the definition declares, flattened into `ApiOperation` entries.
  */
 export const extractOperations = (spec: Record<string, unknown> | undefined): ApiOperation[] => {
   const paths = asRecord(spec?.paths);

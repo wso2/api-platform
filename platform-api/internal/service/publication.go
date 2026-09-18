@@ -48,7 +48,7 @@ var definitionFileNamesByContentType = map[string]string{
 type PublicationService struct {
 	artifactRepo         repository.ArtifactRepository
 	apiPortalRepo        repository.APIPortalRepository
-	apiDocumentRepo      repository.ApiDocumentRepository
+	documentRepo         repository.DocumentRepository
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	publicationRepo      repository.PublicationRepository
 	portalPublisher      PortalPublisher
@@ -59,7 +59,7 @@ type PublicationService struct {
 func NewPublicationService(
 	artifactRepo repository.ArtifactRepository,
 	apiPortalRepo repository.APIPortalRepository,
-	apiDocumentRepo repository.ApiDocumentRepository,
+	documentRepo repository.DocumentRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	publicationRepo repository.PublicationRepository,
 	portalPublisher PortalPublisher,
@@ -71,7 +71,7 @@ func NewPublicationService(
 	return &PublicationService{
 		artifactRepo:         artifactRepo,
 		apiPortalRepo:        apiPortalRepo,
-		apiDocumentRepo:      apiDocumentRepo,
+		documentRepo:         documentRepo,
 		subscriptionPlanRepo: subscriptionPlanRepo,
 		publicationRepo:      publicationRepo,
 		portalPublisher:      portalPublisher,
@@ -162,7 +162,7 @@ func (s *PublicationService) resolveHandles(pub *model.Publication, planUUIDs, d
 	}
 	pub.SubscriptionPlanIds = mapValuesInOrder(planUUIDs, planHandles)
 
-	docHandles, err := s.apiDocumentRepo.GetHandlesByUUIDs(docUUIDs, orgUUID)
+	docHandles, err := s.documentRepo.GetDocumentHandlesByUUIDs(docUUIDs, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve document handles: %w", err)
 	}
@@ -249,7 +249,7 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	if err != nil {
 		return nil, err
 	}
-	docUUIDs, err := s.resolveDocUUIDs(docHandles, orgUUID)
+	docUUIDs, err := s.resolveDocUUIDs(artifactUUID, docHandles, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -305,13 +305,15 @@ func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) 
 	return uuids, nil
 }
 
-// resolveDocUUIDs resolves each document handle to its doc_uuid, rejecting
-// any handle absent from the organization's api_documents.
-func (s *PublicationService) resolveDocUUIDs(handles []string, orgUUID string) ([]string, error) {
+// resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
+// artifactUUID (api_documents' real unique index is (artifact_uuid, handle),
+// not (organization_uuid, handle) — a handle can legitimately repeat across
+// two APIs in the same org), rejecting any handle absent for this artifact.
+func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
 	if len(handles) == 0 {
 		return nil, nil
 	}
-	resolved, err := s.apiDocumentRepo.GetUUIDsByHandles(handles, orgUUID)
+	resolved, err := s.documentRepo.GetDocumentUUIDsByHandles(artifactUUID, handles, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
 	}

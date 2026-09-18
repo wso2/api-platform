@@ -66,11 +66,18 @@ jobs:
           echo "=== Finding all coverage.txt files ==="
           find . -name "*coverage.txt" -type f
 
+      # Listed explicitly rather than by glob: `files` only ADDS to the files the action
+      # discovers on its own, so with search left on this flag also absorbed platform-api
+      # and event-gateway profiles that this job never builds. These four are exactly what
+      # `gateway/make test` and `cli/src/make test` above produce. The test steps are
+      # continue-on-error, so a failed suite leaves its profile missing; that is reported
+      # rather than silently backfilled by whatever else is lying around the workspace.
       - name: Upload unit test coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: '**/unit-test-coverage.txt'
+          disable_search: true
+          files: gateway/gateway-controller/unit-test-coverage.txt,gateway/gateway-builder/unit-test-coverage.txt,gateway/gateway-runtime/policy-engine/unit-test-coverage.txt,cli/src/unit-test-coverage.txt
           flags: unit
 
       - name: Upload Gateway integration test coverage to Codecov

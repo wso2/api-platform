@@ -55,7 +55,7 @@ type Publication struct {
 
 	// SubscriptionPlanIds and DocIds are handles (never the internal
 	// subscription_plan_uuid/doc_uuid the mapping tables store), resolved by the
-	// repository layer via SubscriptionPlanRepository/ApiDocumentRepository.
+	// repository layer via SubscriptionPlanRepository/DocumentRepository.
 	SubscriptionPlanIds []string `json:"subscriptionPlanIds"`
 	DocIds              []string `json:"docIds"`
 

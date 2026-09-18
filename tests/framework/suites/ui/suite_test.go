@@ -34,8 +34,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cucumber/godog"
-
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
@@ -85,7 +83,11 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	// Shared components outlive every block and are reaped at process exit, so nothing
+	// else flushes their log files.
+	frameworkruntime.CloseSharedLogs()
+	os.Exit(code)
 }
 
 // suiteShape returns the resolved block count and largest runner concurrency.
@@ -199,8 +201,8 @@ func TestUISuite(t *testing.T) {
 		FeatureRoot: dir,
 		Coverage:    sink,
 		Logs:        logs,
-		Steps: func(sc *godog.ScenarioContext, topo *frameworkruntime.Topology) {
-			steps.New(topo, sink).Register(sc)
+		Steps: func(topo *frameworkruntime.Topology) (frameworkruntime.StepRegistrar, error) {
+			return steps.New(topo, sink).Register, nil
 		},
 		CleanupDeleters: func(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 			registerUIDeleters(reg, topo)

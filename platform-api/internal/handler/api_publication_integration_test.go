@@ -98,7 +98,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 	publicationService := service.NewPublicationService(
 		repository.NewArtifactRepo(db),
 		repository.NewAPIPortalRepo(db),
-		repository.NewApiDocumentRepo(db),
+		repository.NewDocumentRepo(db),
 		repository.NewSubscriptionPlanRepo(db),
 		repository.NewPublicationRepo(db),
 		alwaysSucceedsPortalPublisher{},
