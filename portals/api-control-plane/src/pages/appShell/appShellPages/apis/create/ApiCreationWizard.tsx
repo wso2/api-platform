@@ -183,6 +183,7 @@ export const ApiCreationWizard = () => {
     if (!projectId || !values.contractImport?.specFile) {
       // Nothing to create against — the wizard is mounted outside a project,
       // or the spec was never produced (contract source with no loaded spec).
+      setCreationStarted(false);
       return;
     }
 

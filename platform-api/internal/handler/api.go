@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"github.com/pb33f/libopenapi"
-	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
 	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
 	openapivalidator "github.com/pb33f/libopenapi-validator"
 	"github.com/wso2/api-platform/platform-api/api"
@@ -43,7 +42,6 @@ import (
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
-
 const importOpenAPIMaxBytes = 5 << 20 // 5 MiB
 
 type APIHandler struct {
@@ -299,7 +297,8 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) erro
 
 // ImportOpenAPI handles POST /api/v0.9/rest-apis/import-openapi.
 // It accepts multipart/form-data with either a spec file upload or a URL, parses the
-// OpenAPI spec to extract operations, creates the API, and persists the raw spec.
+// OpenAPI 3.x spec to extract operations, creates the API, and persists the raw spec.
+// Swagger 2.x specs are rejected.
 func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -369,6 +368,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	specFileName := normalizeSpecFileName(req.File.Filename())
 
 	// Parse the spec once; extract operations from the parsed document.
+	// This also validates that the spec is OpenAPI 3.x (rejects Swagger 2.x).
 	sd, loadErr := loadSpecDocument(data)
 	if loadErr != nil {
 		h.slogger.Error("Failed to parse OpenAPI spec", "error", loadErr)
@@ -453,15 +453,13 @@ func normalizeSpecFileName(name string) string {
 	return filepath.Base(name)
 }
 
-// specDoc holds a libopenapi-parsed document with format metadata and a pre-built
-// typed model so callers never build the model twice.
+// specDoc holds a libopenapi-parsed OpenAPI 3.x document with format metadata
+// and a pre-built typed model.
 type specDoc struct {
 	doc    libopenapi.Document
-	raw    []byte // original input bytes, used for YAML re-encoding
+	raw    []byte // original input bytes, used for re-encoding
 	isJSON bool
-	isV3   bool
 	v3     *libopenapi.DocumentModel[v3high.Document]
-	v2     *libopenapi.DocumentModel[v2high.Swagger]
 	errs   []error // model-build / validation errors
 }
 
@@ -477,12 +475,19 @@ func isJSONBytes(data []byte) bool {
 }
 
 // loadSpecDocument parses the spec with libopenapi, builds the typed model,
-// and returns an error only for unparseable input or missing openapi/swagger key.
+// and returns an error if the spec is not OpenAPI 3.x.
+// Swagger 2.x specs are rejected with a validation error.
 // Build/validation errors are stored in sd.errs.
 func loadSpecDocument(data []byte) (*specDoc, error) {
 	doc, err := libopenapi.NewDocument(data)
 	if err != nil {
-		return nil, fmt.Errorf("spec is neither valid JSON nor YAML, or is missing 'openapi'/'swagger' key: %w", err)
+		return nil, fmt.Errorf("spec is neither valid JSON nor YAML, or is missing 'openapi' key: %w", err)
+	}
+
+	info := doc.GetSpecInfo()
+	// SpecType is "openapi" for v3, "swagger" for v2.
+	if info == nil || info.SpecType != "openapi" {
+		return nil, fmt.Errorf("only OpenAPI 3.x specifications are supported; Swagger 2.x is not allowed")
 	}
 
 	sd := &specDoc{
@@ -491,45 +496,21 @@ func loadSpecDocument(data []byte) (*specDoc, error) {
 		isJSON: isJSONBytes(data),
 	}
 
-	info := doc.GetSpecInfo()
-	// SpecType is "openapi" for v3, "swagger" for v2.
-	sd.isV3 = info != nil && info.SpecType == "openapi"
-
-	if sd.isV3 {
-		m, buildErrs := doc.BuildV3Model()
-		if buildErrs != nil {
-			sd.errs = append(sd.errs, buildErrs)
-		}
-		sd.v3 = m
-	} else {
-		m, buildErrs := doc.BuildV2Model()
-		if buildErrs != nil {
-			sd.errs = append(sd.errs, buildErrs)
-		}
-		sd.v2 = m
+	m, buildErrs := doc.BuildV3Model()
+	if buildErrs != nil {
+		sd.errs = append(sd.errs, buildErrs)
 	}
+	sd.v3 = m
 
 	return sd, nil
 }
 
-// validateSpec validates the spec and returns an api.ValidateOpenAPIResponse with
-// Info (title/version) populated when valid.
-//
-// For OpenAPI 3.x, the document is validated against the full OpenAPI JSON
+// validateSpec validates the OpenAPI 3.x spec against the full OpenAPI JSON
 // Meta-Schema via libopenapi-validator, which catches structural violations
 // (unknown path item keys, paths without a leading "/", missing required
-// fields, invalid $ref targets, etc.) that BuildV3Model errors alone miss.
-//
-// For Swagger 2.x, libopenapi-validator does not support v2, so build errors
-// from BuildV2Model are used instead.
+// fields, invalid $ref targets, etc.). Returns an api.ValidateOpenAPIResponse
+// with Info (title/version) populated when valid.
 func validateSpec(sd *specDoc) api.ValidateOpenAPIResponse {
-	if sd.isV3 {
-		return validateSpecV3(sd)
-	}
-	return validateSpecV2(sd)
-}
-
-func validateSpecV3(sd *specDoc) api.ValidateOpenAPIResponse {
 	// Surface any model-build errors first ($ref resolution failures, etc.).
 	// When present, skip the JSON Schema validator — NewValidator would also fail.
 	if len(sd.errs) > 0 {
@@ -588,23 +569,7 @@ func validateSpecV3(sd *specDoc) api.ValidateOpenAPIResponse {
 	return result
 }
 
-func validateSpecV2(sd *specDoc) api.ValidateOpenAPIResponse {
-	if len(sd.errs) > 0 {
-		errs := make([]api.OpenAPIValidationError, 0, len(sd.errs))
-		for _, e := range sd.errs {
-			errs = append(errs, api.OpenAPIValidationError{Message: e.Error()})
-		}
-		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
-	}
-	result := api.ValidateOpenAPIResponse{IsValid: true, Errors: []api.OpenAPIValidationError{}}
-	if sd.v2 != nil && sd.v2.Model.Info != nil {
-		title, version := sd.v2.Model.Info.Title, sd.v2.Model.Info.Version
-		result.Info = &api.OpenAPISpecInfo{Title: &title, Version: &version}
-	}
-	return result
-}
-
-// extractOperations builds api.Operation entries from the spec's paths.
+// extractOperations builds api.Operation entries from the OpenAPI 3.x spec's paths.
 // Returns nil when paths are absent; the service layer creates a wildcard.
 func extractOperations(sd *specDoc) []api.Operation {
 	httpMethods := map[string]api.OperationRequestMethod{
@@ -618,7 +583,7 @@ func extractOperations(sd *specDoc) []api.Operation {
 		"trace":   "TRACE",
 	}
 
-	if sd.isV3 && sd.v3 != nil && sd.v3.Model.Paths != nil && sd.v3.Model.Paths.PathItems != nil {
+	if sd.v3 != nil && sd.v3.Model.Paths != nil && sd.v3.Model.Paths.PathItems != nil {
 		var ops []api.Operation
 		for path, pathItem := range sd.v3.Model.Paths.PathItems.FromOldest() {
 			type methodOp struct {
@@ -634,53 +599,6 @@ func extractOperations(sd *specDoc) []api.Operation {
 				{"head", pathItem.Head},
 				{"options", pathItem.Options},
 				{"trace", pathItem.Trace},
-			}
-			for _, c := range candidates {
-				if c.op == nil {
-					continue
-				}
-				opMethod, supported := httpMethods[c.method]
-				if !supported {
-					continue
-				}
-				op := api.Operation{
-					Request: api.OperationRequest{
-						Method: opMethod,
-						Path:   path,
-					},
-				}
-				if c.op.OperationId != "" {
-					name := c.op.OperationId
-					op.Name = &name
-				} else if c.op.Summary != "" {
-					summary := c.op.Summary
-					op.Name = &summary
-				}
-				if c.op.Description != "" {
-					desc := c.op.Description
-					op.Description = &desc
-				}
-				ops = append(ops, op)
-			}
-		}
-		return ops
-	}
-
-	if !sd.isV3 && sd.v2 != nil && sd.v2.Model.Paths != nil && sd.v2.Model.Paths.PathItems != nil {
-		var ops []api.Operation
-		for path, pathItem := range sd.v2.Model.Paths.PathItems.FromOldest() {
-			type methodOp struct {
-				method string
-				op     *v2high.Operation
-			}
-			candidates := []methodOp{
-				{"get", pathItem.Get},
-				{"post", pathItem.Post},
-				{"put", pathItem.Put},
-				{"delete", pathItem.Delete},
-				{"patch", pathItem.Patch},
-				{"head", pathItem.Head},
-				{"options", pathItem.Options},
 			}
 			for _, c := range candidates {
 				if c.op == nil {
@@ -748,7 +666,8 @@ func (h *APIHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 }
 
 // PutOpenAPISpec handles PUT /rest-apis/{restApiId}/openapi.
-// Replaces (or creates) the API definition spec for this API.
+// Replaces (or creates) the API definition spec for this API. Only OpenAPI 3.x
+// specs are accepted; Swagger 2.x is rejected.
 func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -787,7 +706,7 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 
 	sd, loadErr := loadSpecDocument(specContent)
 	if loadErr != nil {
-		return apperror.ValidationFailed.New("uploaded file is not a valid OpenAPI/Swagger spec (must be JSON or YAML)")
+		return apperror.ValidationFailed.New("uploaded file is not a valid OpenAPI 3.x specification (Swagger 2.x is not supported)")
 	}
 
 	if result := validateSpec(sd); !result.IsValid {
@@ -921,11 +840,10 @@ func (h *APIHandler) computeSyncedOperations(restApiId, orgId string, specOps []
 	return existingAPI, synced, nil
 }
 
-
 // ValidateOpenAPI handles POST /api/v0.9/rest-apis/validate-openapi.
-// Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
-// any resource. Accepts multipart/form-data with a `file` field containing the
-// raw spec (.json, .yaml, .yml).
+// Validates an OpenAPI 3.x spec without creating or modifying any resource.
+// Swagger 2.x specs are rejected. Accepts multipart/form-data with a `file` field
+// containing the raw spec (.json, .yaml, .yml).
 func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) error {
 	r.Body = http.MaxBytesReader(w, r.Body, importOpenAPIMaxBytes)
 	if err := r.ParseMultipartForm(importOpenAPIMaxBytes); err != nil {

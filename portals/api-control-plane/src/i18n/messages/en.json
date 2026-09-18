@@ -2508,6 +2508,9 @@
     "defaultMessage": "/resource/:id",
     "description": "Placeholder for the path input in the Add resource form."
   },
+  "develop.definition.DefinitionPanel.addResourceTitle": {
+    "defaultMessage": "Add Resource"
+  },
   "develop.definition.DefinitionPanel.dialogCancel": {
     "defaultMessage": "Cancel"
   },
@@ -2544,9 +2547,6 @@
   "develop.definition.DefinitionPanel.edit": {
     "defaultMessage": "Edit"
   },
-  "develop.definition.DefinitionPanel.editorHeading": {
-    "defaultMessage": "API Definition"
-  },
   "develop.definition.DefinitionPanel.editorLoading": {
     "defaultMessage": "Loading editor…",
     "description": "Placeholder shown while Monaco editor initialises."
@@ -2556,6 +2556,9 @@
   },
   "develop.definition.DefinitionPanel.emptyTitle": {
     "defaultMessage": "No API definition"
+  },
+  "develop.definition.DefinitionPanel.fileReadError": {
+    "defaultMessage": "Failed to read the selected file."
   },
   "develop.definition.DefinitionPanel.fileTooLarge": {
     "defaultMessage": "The specification exceeds the maximum allowed size (5 MB)."
@@ -2574,12 +2577,6 @@
     "defaultMessage": "Method",
     "description": "Accessible label for the HTTP method select in the Add resource form."
   },
-  "develop.definition.DefinitionPanel.operationsHeading": {
-    "defaultMessage": "API Resources"
-  },
-  "develop.definition.DefinitionPanel.operationsParseError": {
-    "defaultMessage": "The current spec cannot be parsed. Fix any syntax errors to preview operations."
-  },
   "develop.definition.DefinitionPanel.orDivider": {
     "defaultMessage": "Or",
     "description": "Separator between the URL input and the file upload button."
@@ -2591,19 +2588,24 @@
     "defaultMessage": "Save"
   },
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
-    "defaultMessage": "FFailed to save the specification. Fix the following issues:",
+    "defaultMessage": "Failed to save the specification. Fix the following issues:",
     "description": "Heading above spec validation errors shown when Save is clicked."
   },
   "develop.definition.DefinitionPanel.saveValidationUnavailable": {
     "defaultMessage": "Spec validation is currently unavailable. Please try again.",
     "description": "Error shown when the validation service itself fails (network/auth error)."
   },
-  "develop.definition.DefinitionPanel.source": {
-    "defaultMessage": "Source",
-    "description": "Toggle that switches between the raw spec editor and the operations list."
-  },
   "develop.definition.DefinitionPanel.updateOpenApi": {
     "defaultMessage": "Import Definition"
+  },
+  "develop.definition.OperationsList.allMethods": {
+    "defaultMessage": "All methods"
+  },
+  "develop.definition.OperationsList.operationsParseError": {
+    "defaultMessage": "The current spec cannot be parsed. Fix any syntax errors to preview operations."
+  },
+  "develop.definition.OperationsList.searchResources": {
+    "defaultMessage": "Search resources"
   },
   "gatewayCard.connected": {
     "defaultMessage": "Connected",

@@ -623,7 +623,7 @@ CREATE TABLE IF NOT EXISTS api_documents (
     display_name      VARCHAR(255) NOT NULL,
     file_name         VARCHAR(255),
     content_type      VARCHAR(100),
-    content           MEDIUMBLOB   NOT NULL, -- MEDIUMBLOB (up to 16 MiB): API enforces a 5 MiB upload limit (importOpenAPIMaxBytes = 5 << 20); plain BLOB caps at 65 535 bytes
+    content           MEDIUMBLOB   NOT NULL,
     data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
     created_by        VARCHAR(255),
     created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,

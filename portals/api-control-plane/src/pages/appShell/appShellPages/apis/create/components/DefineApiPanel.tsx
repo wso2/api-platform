@@ -161,7 +161,7 @@ export const DefineApiPanel = ({
     if (view === 'cards') {
       onDraftChange(scratchSelected ? scratchDraft : null);
     } else {
-      onDraftChange(contractDraft ?? scratchDraft);
+      onDraftChange(contractDraft);
     }
     return () => onDraftChange(null);
   }, [contractDraft, onDraftChange, scratchDraft, scratchSelected, view]);
