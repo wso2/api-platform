@@ -299,14 +299,20 @@ type portalMetadataName struct {
 }
 
 type portalMetadataSpecBody struct {
-	Type                string                     `yaml:"type"`
-	DisplayName         string                     `yaml:"displayName"`
-	Version             string                     `yaml:"version"`
-	Description         string                     `yaml:"description,omitempty"`
-	Status              string                     `yaml:"status"`
-	AgentVisibility     string                     `yaml:"agentVisibility"`
-	Tags                []string                   `yaml:"tags"`
-	Labels              []string                   `yaml:"labels"`
+	Type            string   `yaml:"type"`
+	DisplayName     string   `yaml:"displayName"`
+	Version         string   `yaml:"version"`
+	Description     string   `yaml:"description,omitempty"`
+	Status          string   `yaml:"status"`
+	AgentVisibility string   `yaml:"agentVisibility"`
+	Tags            []string `yaml:"tags"`
+	// omitempty: an explicit empty list here isn't "no labels" to the portal —
+	// its apiMetadataService.js only falls back to the "default" label when
+	// the "labels" key is absent from the request entirely (`if
+	// (apiMetadata.labels) ... else labelDao.createApiMapping(..., ['default'],
+	// ...)`); sending `labels: []` is treated as an explicit "zero labels"
+	// override and the API silently never gets attached to any view.
+	Labels              []string                   `yaml:"labels,omitempty"`
 	ReferenceID         string                     `yaml:"referenceId"`
 	Endpoints           portalMetadataEndpoints    `yaml:"endpoints"`
 	BusinessInformation portalMetadataBusinessInfo `yaml:"businessInformation"`
