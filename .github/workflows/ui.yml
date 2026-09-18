@@ -121,6 +121,10 @@ jobs:
         if: always()
         env:
           COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/ui/coverage-out
+          # This step runs even if the suite above failed before writing any output; skip
+          # cleanly rather than failing a second time. The upload steps below already
+          # tolerate no files via if-no-files-found: warn.
+          COVERAGE_REPORT_OPTIONAL: "1"
         run: make -C tests/framework coverage-report
 
       - name: Upload UI coverage HTML reports

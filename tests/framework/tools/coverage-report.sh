@@ -11,7 +11,19 @@ newline='
 '
 
 die() { echo "coverage-report: $*" >&2; exit 1; }
-[ -d "$out" ] || die "no coverage output at $out — run the suite with -coverage first"
+# COVERAGE_REPORT_OPTIONAL=1 marks this invocation as a best-effort follow-up to a suite run
+# that may itself have failed before writing any output (e.g. an "if: always()" CI step) —
+# skip cleanly instead of compounding that failure with a second, confusing one. A developer
+# running this script directly, without that flag, still gets the hard failure and message
+# below telling them to run the suite with -coverage first.
+missing() {
+	if [ "${COVERAGE_REPORT_OPTIONAL:-}" = "1" ]; then
+		echo "coverage-report: $* — skipping (COVERAGE_REPORT_OPTIONAL=1)" >&2
+		exit 0
+	fi
+	die "$*"
+}
+[ -d "$out" ] || missing "no coverage output at $out — run the suite with -coverage first"
 
 # Rejected up front rather than left to fail further down: "go tool covdata -i" takes a
 # comma-separated list with no escape for a comma inside a path, and the newest-run lookup
@@ -39,7 +51,7 @@ if [ ! -d "$run_root/raw" ]; then
 	done < <(ls -td "$out"/.run-*/ 2>/dev/null)
 fi
 raw_root="$run_root/raw"
-[ -d "$raw_root" ] || die "no coverage artifacts under $out — run the suite with -coverage first"
+[ -d "$raw_root" ] || missing "no coverage artifacts under $out — run the suite with -coverage first"
 
 # Generated reports are disposable. Clear previous layouts so an index never links to
 # reports from an earlier run or an obsolete directory structure.
