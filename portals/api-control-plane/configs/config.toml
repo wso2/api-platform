@@ -92,3 +92,56 @@ scope      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_SCOPE" "scope" }}'
 organization = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORGANIZATION" "organization" }}'
 org_name   = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORG_NAME" "org_name" }}'
 org_handle = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORG_HANDLE" "org_handle" }}'
+
+
+# The Test page's Swagger console sends test requests through this BFF instead
+# of calling the gateway directly. Because the gateway has a different origin
+# in each deployment, direct calls require an API CORS policy, are blocked as
+# mixed content when the gateway uses HTTP, and fail when the gateway is not
+# reachable from the user's machine.
+#
+# The relay does not forward the session's Platform API token or cookie to the
+# gateway. It does not accept a target URL from the browser. Instead, it
+# identifies the API and gateway, and the BFF resolves the address through
+# Platform API using the caller's token. See bff/internal/testproxy.
+#
+# Each value below defines a limit that allows this feature to be enabled by
+# default. To disable the feature, set `enabled` to false rather than relaxing
+# these limits. Each default matches the built-in value in
+# bff/internal/config/default_config.go. Load unconditionally overlays the
+# parsed keys from this file, so a present but empty key replaces the built-in
+# default instead of falling back to it.
+[api_control_plane.test_console]
+
+enabled            = '{{ env "APIP_ACP_TEST_CONSOLE_ENABLED" "true" }}'
+# One relayed call, end to end. The route's own write deadline sits just above
+# this, so a stuck gateway is caught here rather than by the outer bound.
+request_timeout    = '{{ env "APIP_ACP_TEST_CONSOLE_REQUEST_TIMEOUT" "30s" }}'
+max_request_bytes  = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_REQUEST_BYTES" "2097152" }}'   # 2 MiB
+# Hitting this truncates the response body and says so, rather than failing the
+# call — a partial response is more use to someone testing an API than an error.
+max_response_bytes = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_RESPONSE_BYTES" "8388608" }}'  # 8 MiB
+# Relayed calls in flight at once, and how many may queue for a slot before new
+# ones are rejected with 503. The queue is bounded on purpose: an unbounded one
+# in front of a bounded pool is only delayed memory growth.
+max_concurrent     = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_CONCURRENT" "32" }}'
+max_pending        = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_PENDING" "64" }}'
+# How long a resolved (caller, org, api, gateway) target is reused. Also the
+# window in which a just-revoked entitlement still resolves, hence short.
+resolve_cache_ttl  = '{{ env "APIP_ACP_TEST_CONSOLE_RESOLVE_CACHE_TTL" "60s" }}'
+resolve_cache_size = '{{ env "APIP_ACP_TEST_CONSOLE_RESOLVE_CACHE_SIZE" "1024" }}'
+# PEM bundle to trust for gateway certificates, appended to the system roots.
+ca_file            = '{{ env "APIP_ACP_TEST_CONSOLE_CA_FILE" "" }}'
+# Dev/demo only, and deliberately an operator setting rather than a per-request
+# field — a browser-selectable "skip TLS verification" would be a
+# request-forgeable MITM switch. Prefer ca_file.
+tls_skip_verify    = '{{ env "APIP_ACP_TEST_CONSOLE_TLS_SKIP_VERIFY" "false" }}'
+
+# Additional address ranges the relay refuses to dial, beyond the built-in
+# refusal of link-local (where 169.254.169.254 lives), unspecified and
+# multicast addresses — e.g. the control plane's own subnet. allow_cidrs is a
+# deliberately-approved carve-out from deny_cidrs, never a way to widen policy
+# implicitly. Both are left unset here; add them in a deployment's own overlay.
+#
+# deny_cidrs  = ["10.0.0.0/8"]
+# allow_cidrs = ["10.0.7.0/24"]

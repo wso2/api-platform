@@ -9,6 +9,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
 	github.com/stretchr/testify v1.11.1
+	github.com/wso2/api-platform/httpkit v0.0.0
 )
 
 require (
@@ -22,3 +23,5 @@ require (
 	golang.org/x/sys v0.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/wso2/api-platform/httpkit => ../../../httpkit
