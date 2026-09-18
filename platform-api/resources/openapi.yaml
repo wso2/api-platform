@@ -12069,6 +12069,29 @@ components:
         Managed and passthrough are disjoint branches. Managed requires `content` and forbids
         `rewriteUrls`; passthrough forbids `content` and may omit `mode`. A card-serving
         `signing` option is not accepted on either branch.
+
+        `properties` below describes the shape common to both branches and carries each
+        property in its loosest form; `oneOf` does all the discriminating. Keeping both is
+        what lets code generators emit a usable object type while the branches still enforce
+        the mode-specific rules. A property added to a branch must be added here too, or it
+        will validate correctly but be missing from generated clients.
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - managed
+            - passthrough
+        path:
+          $ref: '#/components/schemas/AgentCardPath'
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Policy'
+        rewriteUrls:
+          type: boolean
+        content:
+          $ref: '#/components/schemas/AgentCardDocument'
       oneOf:
         - $ref: '#/components/schemas/ManagedPublicAgentCard'
         - $ref: '#/components/schemas/PassthroughPublicAgentCard'
@@ -12128,6 +12151,20 @@ components:
         The protected card is an A2A operation (`GetExtendedAgentCard`) rather than a
         discovery route, so it carries no `path` and no `policies`. An explicit `mode` is
         required whenever the block is present.
+
+        As with `PublicAgentCard`, `properties` describes the common shape in its loosest
+        form and `oneOf` does the discriminating.
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - managed
+            - passthrough
+        rewriteUrls:
+          type: boolean
+        content:
+          $ref: '#/components/schemas/AgentCardDocument'
       oneOf:
         - $ref: '#/components/schemas/ManagedProtectedAgentCard'
         - $ref: '#/components/schemas/PassthroughProtectedAgentCard'
@@ -12310,7 +12347,25 @@ components:
         Two mutually exclusive forms: a direct `url` with optional `auth`, or an
         `agentProxyId` alone, which uses that Agent proxy's stored endpoint and stored
         credentials. Supplying `url` or `auth` alongside `agentProxyId` is rejected, including
-        when their value is null.
+        when their value is null — `required` is about key presence, so an explicitly null
+        `url` is still a supplied `url`.
+
+        `properties` describes the shape common to both forms; `oneOf` does the
+        discriminating. A property added to a branch must be added here too.
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          minLength: 1
+          description: Endpoint of the agent to fetch the Agent Card from.
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+        agentProxyId:
+          type: string
+          minLength: 3
+          maxLength: 40
+          description: Public handle of the Agent proxy whose stored endpoint and credentials should be used.
       oneOf:
         - $ref: '#/components/schemas/FetchAgentCardByURL'
         - $ref: '#/components/schemas/FetchAgentCardByAgentProxy'

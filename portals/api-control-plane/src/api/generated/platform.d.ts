@@ -6126,8 +6126,21 @@ export interface components {
          * @description Managed and passthrough are disjoint branches. Managed requires `content` and forbids
          *     `rewriteUrls`; passthrough forbids `content` and may omit `mode`. A card-serving
          *     `signing` option is not accepted on either branch.
+         *
+         *     `properties` below describes the shape common to both branches and carries each
+         *     property in its loosest form; `oneOf` does all the discriminating. Keeping both is
+         *     what lets code generators emit a usable object type while the branches still enforce
+         *     the mode-specific rules. A property added to a branch must be added here too, or it
+         *     will validate correctly but be missing from generated clients.
          */
-        PublicAgentCard: components["schemas"]["ManagedPublicAgentCard"] | components["schemas"]["PassthroughPublicAgentCard"];
+        PublicAgentCard: {
+            /** @enum {string} */
+            mode?: "managed" | "passthrough";
+            path?: components["schemas"]["AgentCardPath"];
+            policies?: components["schemas"]["Policy"][];
+            rewriteUrls?: boolean;
+            content?: components["schemas"]["AgentCardDocument"];
+        } & (components["schemas"]["ManagedPublicAgentCard"] | components["schemas"]["PassthroughPublicAgentCard"]);
         /**
          * Managed public Agent Card
          * @description The control plane stores the card and the gateway serves exactly those bytes.
@@ -6169,8 +6182,16 @@ export interface components {
          * @description The protected card is an A2A operation (`GetExtendedAgentCard`) rather than a
          *     discovery route, so it carries no `path` and no `policies`. An explicit `mode` is
          *     required whenever the block is present.
+         *
+         *     As with `PublicAgentCard`, `properties` describes the common shape in its loosest
+         *     form and `oneOf` does the discriminating.
          */
-        ProtectedAgentCard: components["schemas"]["ManagedProtectedAgentCard"] | components["schemas"]["PassthroughProtectedAgentCard"];
+        ProtectedAgentCard: {
+            /** @enum {string} */
+            mode?: "managed" | "passthrough";
+            rewriteUrls?: boolean;
+            content?: components["schemas"]["AgentCardDocument"];
+        } & (components["schemas"]["ManagedProtectedAgentCard"] | components["schemas"]["PassthroughProtectedAgentCard"]);
         /** Managed protected Agent Card */
         ManagedProtectedAgentCard: {
             /**
@@ -6292,9 +6313,22 @@ export interface components {
          * @description Two mutually exclusive forms: a direct `url` with optional `auth`, or an
          *     `agentProxyId` alone, which uses that Agent proxy's stored endpoint and stored
          *     credentials. Supplying `url` or `auth` alongside `agentProxyId` is rejected, including
-         *     when their value is null.
+         *     when their value is null — `required` is about key presence, so an explicitly null
+         *     `url` is still a supplied `url`.
+         *
+         *     `properties` describes the shape common to both forms; `oneOf` does the
+         *     discriminating. A property added to a branch must be added here too.
          */
-        FetchAgentCardRequest: components["schemas"]["FetchAgentCardByURL"] | components["schemas"]["FetchAgentCardByAgentProxy"];
+        FetchAgentCardRequest: {
+            /**
+             * Format: uri
+             * @description Endpoint of the agent to fetch the Agent Card from.
+             */
+            url?: string;
+            auth?: components["schemas"]["UpstreamAuth"];
+            /** @description Public handle of the Agent proxy whose stored endpoint and credentials should be used. */
+            agentProxyId?: string;
+        } & (components["schemas"]["FetchAgentCardByURL"] | components["schemas"]["FetchAgentCardByAgentProxy"]);
         /**
          * Agent Card fetch by URL
          * @description Fetch from a supplied endpoint, optionally with supplied credentials. Used to preview an endpoint that has not been saved yet.

@@ -141,7 +141,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
-	secretRepo := repository.NewSecretRepo(db)
+	secretRepo := repository.NewSecretRepo(db, artifactTableRegistry)
 	apiPortalRepo := repository.NewAPIPortalRepo(db)
 	documentRepo := repository.NewDocumentRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
