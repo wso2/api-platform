@@ -112,7 +112,7 @@ wait_for_proxy() {
       -H "Accept: application/json, text/event-stream" \
       -H "Authorization: Bearer ${token}" \
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"setup-check","version":"1.0.0"}}}' \
-      2>/dev/null | grep -i '^mcp-session-id:' | tr -d '\r' | awk '{print $2}')
+      2>/dev/null | grep -i '^mcp-session-id:' | tr -d '\r' | awk '{print $2}') || sid=""
     [[ -n "${sid}" ]] && { success "${name} is answering."; return 0; }
     sleep 2
   done
@@ -259,7 +259,7 @@ CONTROLLER_CID=$(cd "${DIST_NAME}" && docker compose "${COMPOSE_PROFILES[@]}" ps
 [[ -n "${CONTROLLER_CID}" ]] || error "Could not find the running gateway-controller container."
 
 GATEWAY_NETWORK=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "${CONTROLLER_CID}" \
-  | grep 'gateway-network' | head -1)
+  | grep 'gateway-network' | head -1) || GATEWAY_NETWORK=""
 [[ -n "${GATEWAY_NETWORK}" ]] || error "The gateway-controller is not attached to a gateway network."
 
 if connect_error=$(docker network connect "${GATEWAY_NETWORK}" "${MCP_CONTAINER}" 2>&1); then
