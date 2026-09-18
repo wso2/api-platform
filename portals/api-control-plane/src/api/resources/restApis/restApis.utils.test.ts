@@ -159,11 +159,10 @@ describe('toRestApiDefinition', () => {
       servers: [{ url: 'https://api.example.com/v1' }],
     };
 
-    expect(toRestApiDefinition(spec, 'platform')).toEqual({
+    expect(toRestApiDefinition(spec)).toEqual({
       spec,
       specVersion: '3.0.1',
       serverUrl: 'https://api.example.com/v1',
-      source: 'platform',
     });
   });
 
@@ -172,6 +171,6 @@ describe('toRestApiDefinition', () => {
     // console render something the platform never returned.
     const spec: OpenApiDocument = { openapi: '3.0.1' };
 
-    expect(toRestApiDefinition(spec, 'sample').spec).toBe(spec);
+    expect(toRestApiDefinition(spec).spec).toBe(spec);
   });
 });

@@ -17,20 +17,6 @@
  */
 
 import { http, type RequestOptions } from '../../core/http';
-import { ApiError, ErrorCode } from '../../core/errors';
-import {
-  loadSampleDefinition,
-  NO_SAMPLE_DEFINITION,
-  sampleDefinitionIdFor,
-  type SampleDefinitionId,
-} from './mocks';
-import {
-  parseSpecContent,
-  serializeSpecContent,
-  toRestApiDefinition,
-  type OpenApiDocument,
-  type RestApiDefinition,
-} from './restApis.utils';
 import type { BodyOf, PathOf, QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
@@ -217,4 +203,3 @@ export const putRestApiOpenApi = async (
     operationName: 'UpdateRESTAPISpec',
   });
 };
-

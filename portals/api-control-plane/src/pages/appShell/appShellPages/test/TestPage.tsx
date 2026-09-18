@@ -22,7 +22,7 @@ import { LucideBookOpenCheck, Rocket, SquareTerminal } from '@wso2/oxygen-ui-ico
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
-import { useRestApi, useRestApiDefinition } from '@/api/resources/restApis';
+import { parseSpecContent, useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
 import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
 import { isTestKeyExpired, testKeyRemainingMs } from './utils/testApiKey';
@@ -155,7 +155,7 @@ function TestConsole() {
   const apiQuery = useRestApi(params.apiHandler);
   const restApiId = apiQuery.data?.id;
 
-  const definitionQuery = useRestApiDefinition(restApiId);
+  const definitionQuery = useRestApiOpenApi(restApiId);
   const gatewaysQuery = useRestApiGateways(restApiId);
   const deploymentsQuery = useDeployments(restApiId);
 
@@ -249,13 +249,21 @@ function TestConsole() {
     [credentialIn, credentialRows],
   );
 
-  const spec = definitionQuery.data?.spec;
-
   /** True when the API has no stored definition (`404`). */
   const definitionMissing =
     !definitionQuery.isPending &&
     isApiError(definitionQuery.error) &&
     definitionQuery.error.isNotFound;
+
+  const spec = useMemo(() => {
+    const content = definitionQuery.data?.content;
+    if (definitionMissing || !content) return undefined;
+    try {
+      return parseSpecContent(content);
+    } catch {
+      return undefined;
+    }
+  }, [definitionMissing, definitionQuery.data?.content]);
 
   /**
    * Derives the cURL request from the latest request, the document's first

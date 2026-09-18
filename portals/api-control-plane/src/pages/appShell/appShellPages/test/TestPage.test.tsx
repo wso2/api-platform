@@ -27,8 +27,6 @@ import { server } from '@/test/server';
 import { useLocation } from 'react-router-dom';
 
 import { act, renderWithProviders, screen, waitFor } from '@/test/utils';
-import { getSampleRestApiDefinition } from '@/api/resources/restApis/restApis.endpoints';
-import { NO_SAMPLE_DEFINITION, sampleDefinitionIdFor } from '@/api/resources/restApis/mocks';
 import { firstOperationOf } from './utils/operationRequest';
 import { resetTestApiKeys } from './utils/useTestApiKey';
 import { TEST_KEY_TTL_HOURS } from './utils/testApiKey';
@@ -58,6 +56,26 @@ vi.mock('./console/TestConsoleSpecViewer', () => ({
 
 const API = aRestApi({ context: '/payments', id: 'payments-api' });
 
+/**
+ * The definition `GET /openapi` returns. Served as a string, the way the
+ * endpoint does — the page parses it itself, so a wrapper object reaching the
+ * spec viewer instead of the document is exactly the bug this guards.
+ */
+const SPEC = {
+  info: { title: 'Payments', version: '1.0.0' },
+  openapi: '3.0.1',
+  paths: {
+    '/payments': { get: { responses: { '200': { description: 'ok' } } } },
+    '/payments/{id}': { delete: { responses: { '204': { description: 'gone' } } } },
+  },
+};
+
+/** The definition endpoint, in the shape the page consumes. */
+const openApiHandler = (spec: object = SPEC) =>
+  http.get(apiUrl('/rest-apis/payments-api/openapi'), () =>
+    HttpResponse.json({ content: JSON.stringify(spec) }),
+  );
+
 /** The same API, secured by `api-key-auth` with the given params. */
 const securedApi = (params?: Record<string, unknown>) =>
   aRestApi({
@@ -80,6 +98,7 @@ const pathFor = (api: object) => [
   http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
     HttpResponse.json(listEnvelope([aDeployment({ gatewayId: 'default-gateway' })])),
   ),
+  openApiHandler(),
   http.post(apiUrl('/rest-apis/payments-api/api-keys'), () => {
     mintCalls += 1;
     return HttpResponse.json({
@@ -107,6 +126,7 @@ const happyPath = () => [
   http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
     HttpResponse.json(listEnvelope([aDeployment({ gatewayId: 'default-gateway' })])),
   ),
+  openApiHandler(),
   http.post(apiUrl('/rest-apis/payments-api/api-keys'), () =>
     HttpResponse.json({
       apiKey: 'live-test-credential',
@@ -124,6 +144,7 @@ const undeployed = () => [
   http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
     HttpResponse.json(listEnvelope([])),
   ),
+  openApiHandler(),
   http.post(apiUrl('/rest-apis/payments-api/api-keys'), () =>
     HttpResponse.json({ apiKey: 'k', keyId: 'k1', message: 'ok', status: 'success' }),
   ),
@@ -362,19 +383,9 @@ describe('TestPage', () => {
   it('seeds the builder from the first operation of the definition', async () => {
     server.use(...happyPath());
 
-    // Derived rather than hardcoded: which bundled sample an API gets is a
-    // deterministic function of its id, so asserting a specific verb here
-    // would pin the test to that mapping instead of to the behaviour.
-    const choice = sampleDefinitionIdFor('payments-api');
-    // Some APIs are selected to have no definition at all. This test is about
-    // seeding from one that does, so an unusable fixture fails loudly here
-    // rather than through a confusing assertion further down.
-    if (choice === NO_SAMPLE_DEFINITION) {
-      throw new Error('fixture API must select a sample with a definition');
-    }
-
-    const definition = await getSampleRestApiDefinition(choice);
-    const first = firstOperationOf(definition.spec);
+    // Derived from the served document rather than hardcoded, so the test
+    // pins the seeding behaviour and not one particular fixture operation.
+    const first = firstOperationOf(SPEC);
 
     const { user } = renderPage();
 
@@ -448,6 +459,7 @@ describe('TestPage', () => {
       http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
         HttpResponse.json(listEnvelope([])),
       ),
+      openApiHandler(),
       http.post(apiUrl('/rest-apis/payments-api/api-keys'), () => {
         mintCalls += 1;
         return HttpResponse.json({ apiKey: 'k', keyId: 'k1', message: 'ok', status: 'success' });
@@ -470,6 +482,7 @@ describe('TestPage', () => {
       http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
         HttpResponse.json(listEnvelope([])),
       ),
+      openApiHandler(),
       http.post(apiUrl('/rest-apis/payments-api/api-keys'), () => {
         mintCalls += 1;
         return HttpResponse.json({ apiKey: 'k', keyId: 'k1', message: 'ok', status: 'success' });
@@ -519,6 +532,7 @@ describe('TestPage', () => {
       http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
         HttpResponse.json(listEnvelope([aDeployment({ gatewayId: 'default-gateway' })])),
       ),
+      openApiHandler(),
       http.post(apiUrl('/rest-apis/payments-api/api-keys'), () =>
         HttpResponse.json({ apiKey: 'k', keyId: 'k1', message: 'ok', status: 'success' }),
       ),
@@ -562,7 +576,7 @@ describe('TestPage', () => {
     // Secured deliberately: an unsecured API never attempts a mint, so this
     // would assert nothing about the failure path it is named for.
     server.use(
-      ...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })).slice(0, 3),
+      ...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })).slice(0, 4),
       http.post(apiUrl('/rest-apis/payments-api/api-keys'), () => {
         mintCalls += 1;
         return HttpResponse.json({ code: '500', message: 'nope' }, { status: 500 });
@@ -580,7 +594,7 @@ describe('TestPage', () => {
 
   it('reports a failed mint rather than masking it', async () => {
     server.use(
-      ...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })).slice(0, 3),
+      ...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })).slice(0, 4),
       http.post(apiUrl('/rest-apis/payments-api/api-keys'), () =>
         HttpResponse.json({ code: '500', message: 'nope' }, { status: 500 }),
       ),

@@ -28,9 +28,6 @@ import yaml from 'js-yaml';
 /** A parsed OpenAPI document. Structure is the spec's, not ours — hence `unknown`. */
 export type OpenApiDocument = Record<string, unknown>;
 
-/** Where a definition came from. `'sample'` means nothing real is behind it. */
-export type DefinitionSource = 'platform' | 'sample';
-
 /** An API definition with its version and server URL normalized for consumers. */
 export type RestApiDefinition = {
   /** The parsed document, handed to a spec viewer unmodified. */
@@ -39,7 +36,6 @@ export type RestApiDefinition = {
   specVersion: string;
   /** Base URL declared by the document, used as the default try-out target. */
   serverUrl?: string;
-  source: DefinitionSource;
 };
 
 /** A trimmed string, or `undefined` when nothing usable is left. */
@@ -125,10 +121,8 @@ export const serializeSpecContent = (spec: OpenApiDocument): string =>
  */
 export const toRestApiDefinition = (
   spec: OpenApiDocument,
-  source: DefinitionSource,
 ): RestApiDefinition => ({
   spec,
   specVersion: specVersionOf(spec),
   serverUrl: serverUrlOf(spec),
-  source,
 });

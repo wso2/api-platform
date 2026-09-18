@@ -35,17 +35,10 @@ import {
   createRestApi,
   deleteRestApi,
   getRestApi,
-  getRestApiDefinition,
-  getSampleRestApiDefinition,
   listRestApis,
   updateRestApi,
 } from './restApis.endpoints';
-import {
-  NO_SAMPLE_DEFINITION,
-  SAMPLE_DEFINITION_CHOICES,
-  SAMPLE_DEFINITION_IDS,
-  sampleDefinitionIdFor,
-} from './mocks';
+import { NO_SAMPLE_DEFINITION, SAMPLE_DEFINITION_CHOICES, sampleDefinitionIdFor } from './mocks';
 
 /**
  * Contract tests for the `/rest-apis` transport functions.
@@ -125,9 +118,7 @@ describe('listRestApis', () => {
 
 describe('getRestApi', () => {
   it('GETs one API by handle', async () => {
-    server.use(
-      resource('/rest-apis/pizza-shack', aRestApi(), { record: requests })
-    );
+    server.use(resource('/rest-apis/pizza-shack', aRestApi(), { record: requests }));
 
     await getRestApi('pizza-shack');
 
@@ -138,15 +129,11 @@ describe('getRestApi', () => {
   it('percent-encodes a handle so it cannot alter the path', async () => {
     // Handles are user-supplied. An unencoded "a/b" would address a different
     // resource entirely, and "?x=1" would inject a query parameter.
-    server.use(
-      resource('/rest-apis/:restApiId', aRestApi(), { record: requests })
-    );
+    server.use(resource('/rest-apis/:restApiId', aRestApi(), { record: requests }));
 
     await getRestApi('weird/handle?x=1');
 
-    expect(requests.last()?.url.pathname).toBe(
-      '/api/v0.9/rest-apis/weird%2Fhandle%3Fx%3D1'
-    );
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/rest-apis/weird%2Fhandle%3Fx%3D1');
     expect(requests.last()?.params.get('x')).toBeNull();
   });
 
@@ -184,9 +171,7 @@ describe('createRestApi', () => {
 
 describe('updateRestApi', () => {
   it('PUTs to the resource path with the request body', async () => {
-    server.use(
-      accepts('put', '/rest-apis/pizza-shack', aRestApi(), { record: requests })
-    );
+    server.use(accepts('put', '/rest-apis/pizza-shack', aRestApi(), { record: requests }));
 
     await updateRestApi('pizza-shack', aRestApi({ displayName: 'Renamed' }));
 
@@ -198,21 +183,17 @@ describe('updateRestApi', () => {
   });
 
   it('returns the updated API', async () => {
-    server.use(
-      accepts('put', '/rest-apis/pizza-shack', aRestApi({ displayName: 'Renamed' }))
-    );
+    server.use(accepts('put', '/rest-apis/pizza-shack', aRestApi({ displayName: 'Renamed' })));
 
-    await expect(
-      updateRestApi('pizza-shack', aRestApi())
-    ).resolves.toMatchObject({ displayName: 'Renamed' });
+    await expect(updateRestApi('pizza-shack', aRestApi())).resolves.toMatchObject({
+      displayName: 'Renamed',
+    });
   });
 });
 
 describe('deleteRestApi', () => {
   it('DELETEs the resource path', async () => {
-    server.use(
-      noContent('delete', '/rest-apis/pizza-shack', { record: requests })
-    );
+    server.use(noContent('delete', '/rest-apis/pizza-shack', { record: requests }));
 
     await deleteRestApi('pizza-shack');
 
@@ -227,9 +208,7 @@ describe('deleteRestApi', () => {
   });
 
   it('sends no request body', async () => {
-    server.use(
-      noContent('delete', '/rest-apis/pizza-shack', { record: requests })
-    );
+    server.use(noContent('delete', '/rest-apis/pizza-shack', { record: requests }));
 
     await deleteRestApi('pizza-shack');
 
@@ -241,9 +220,7 @@ describe('failures', () => {
   it('labels the failing operation so a log line identifies it', async () => {
     // `operationName` is the only thing distinguishing one endpoint's failure
     // from another's once the error reaches telemetry.
-    server.use(
-      failure('get', '/rest-apis/pizza-shack', 404, 'REST_API_NOT_FOUND')
-    );
+    server.use(failure('get', '/rest-apis/pizza-shack', 404, 'REST_API_NOT_FOUND'));
 
     const error = await getRestApi('pizza-shack').catch((e: unknown) => e);
 
@@ -255,12 +232,10 @@ describe('failures', () => {
     server.use(
       failure('get', '/rest-apis/pizza-shack', 404, 'REST_API_NOT_FOUND', {
         message: 'The requested REST API could not be found.',
-      })
+      }),
     );
 
-    const error = (await getRestApi('pizza-shack').catch(
-      (e: unknown) => e
-    )) as ApiError;
+    const error = (await getRestApi('pizza-shack').catch((e: unknown) => e)) as ApiError;
 
     expect(error.code).toBe('REST_API_NOT_FOUND');
     expect(error.status).toBe(404);
@@ -317,78 +292,5 @@ describe('sampleDefinitionIdFor', () => {
 
   it('handles an empty id without throwing or producing a negative index', () => {
     expect(SAMPLE_DEFINITION_CHOICES).toContain(sampleDefinitionIdFor(''));
-  });
-});
-
-describe('bundled sample documents', () => {
-  it.each(SAMPLE_DEFINITION_IDS)(
-    '%s survives the YAML round-trip into an OpenAPI 3 document',
-    async (sampleId) => {
-      const definition = await getSampleRestApiDefinition(sampleId);
-
-      expect(definition.source).toBe('sample');
-      expect(definition.specVersion).toMatch(/^3\./);
-      // The console executes against this URL, so an absolute one is the point
-      // of using these samples rather than hand-written fixtures.
-      expect(definition.serverUrl).toMatch(/^https:\/\//);
-      expect(Object.keys(definition.spec.paths as object).length).toBeGreaterThan(0);
-    },
-  );
-
-  it('keeps the reading list sample pointed at its published deployment', () => {
-    // Pinned because the try-out target is the whole reason this sample was
-    // chosen: a rewritten server url would silently make the console untestable.
-    return expect(getSampleRestApiDefinition('readingList')).resolves.toMatchObject({
-      serverUrl: 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0',
-    });
-  });
-});
-
-describe('getRestApiDefinition — while the endpoint is mocked', () => {
-  it('runs the sample through the same parse the endpoint will use', async () => {
-    const definition = await getRestApiDefinition('pizza-shack');
-
-    // The sample answers as `{ content }` YAML, exactly as the endpoint will,
-    // so reaching a parsed document proves the real parse path runs today.
-    expect(definition.source).toBe('sample');
-    expect(definition.spec.paths).toBeTypeOf('object');
-    expect(definition.specVersion).toMatch(/^3\./);
-  });
-
-  it('issues no HTTP request', async () => {
-    // The MSW server fails unhandled requests, so a call to
-    // /rest-apis/pizza-shack/openapi would reject this rather than pass.
-    await expect(getRestApiDefinition('pizza-shack')).resolves.toBeTruthy();
-  });
-});
-
-describe('getRestApiDefinition — an API the catalog has nothing for', () => {
-  /**
-   * Found by asking the selection rather than hardcoded: which APIs have no
-   * definition follows from the hash, so a pinned handle would quietly stop
-   * testing this the next time the catalog gained an entry.
-   */
-  const withoutDefinition = Array.from({ length: 200 }, (_unused, index) => `api-${index}`).find(
-    (id) => sampleDefinitionIdFor(id) === NO_SAMPLE_DEFINITION,
-  ) as string;
-
-  it('rejects with the same 404 the real endpoint answers', async () => {
-    // Shaped as an ApiError with status 404 because that is what the page
-    // branches on to tell "nothing uploaded" from "the load failed".
-    await expect(getRestApiDefinition(withoutDefinition)).rejects.toMatchObject({
-      name: 'ApiError',
-      status: 404,
-    });
-  });
-
-  it('reports it as not-found rather than as a generic failure', async () => {
-    const error = await getRestApiDefinition(withoutDefinition).catch((cause: unknown) => cause);
-
-    expect(error).toBeInstanceOf(ApiError);
-    expect((error as ApiError).isNotFound).toBe(true);
-  });
-
-  it('still resolves for an API the catalog does have', async () => {
-    await expect(getRestApiDefinition('pizza-shack')).resolves.toMatchObject({ source: 'sample' });
   });
 });
