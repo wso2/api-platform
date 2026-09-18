@@ -2557,6 +2557,36 @@
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
   },
+  "apiControlPlane.pages.test.console.proxyTransport.busy": {
+    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
+    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
+    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
+    "description": "Shown when the portal refused to send the request the form describes."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.noTarget": {
+    "defaultMessage": "Select a deployed gateway before sending a request."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.sessionExpired": {
+    "defaultMessage": "Your session has expired. Sign in again to continue testing."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
+    "defaultMessage": "This API cannot be tested on the selected gateway. Check that it is still deployed there."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
+    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unreachable": {
+    "defaultMessage": "The portal could not reach this gateway.",
+    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
+    "defaultMessage": "The gateway did not respond in time."
+  },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"
   },

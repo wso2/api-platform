@@ -89,6 +89,15 @@ const renderedPaths = (): string[] => {
   return Object.keys(latest?.paths ?? {});
 };
 
+/**
+ * Relay identifiers every render needs. The console does not call the gateway
+ * itself — it posts to the BFF, which resolves the target from these. They are
+ * inert in these tests (swagger is mocked, so nothing is ever sent), but the
+ * component requires them, and defaulting them here keeps each case about the
+ * behaviour it is actually asserting.
+ */
+const relayProps = { gatewayId: 'gw-prod', orgHandle: 'acme', restApiId: 'api-1' };
+
 const keyRow = (value: string): KeyValueRow[] => [
   { auto: true, enabled: true, id: 'test-key', name: 'Test-Key', secret: true, value },
 ];
@@ -101,7 +110,12 @@ beforeEach(() => {
 describe('TestConsoleSpecViewer — resource search and method filter', () => {
   const renderViewer = () =>
     renderWithProviders(
-      <TestConsoleSpecViewer baseUrl="https://gw.example.com" extraHeaders={[]} spec={richSpec} />,
+      <TestConsoleSpecViewer
+        {...relayProps}
+        baseUrl="https://gw.example.com"
+        extraHeaders={[]}
+        spec={richSpec}
+      />,
     );
 
   it('renders both controls', () => {
@@ -145,6 +159,7 @@ describe('TestConsoleSpecViewer — resource search and method filter', () => {
 
     rerender(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com"
         extraHeaders={keyRow('k')}
         spec={richSpec}
@@ -183,12 +198,13 @@ describe('TestConsoleSpecViewer — resource search and method filter', () => {
 describe('TestConsoleSpecViewer', () => {
   it('gives the request interceptor the current base url, not the mount-time one', () => {
     const { rerender } = renderWithProviders(
-      <TestConsoleSpecViewer baseUrl="" extraHeaders={[]} spec={spec} />,
+      <TestConsoleSpecViewer {...relayProps} baseUrl="" extraHeaders={[]} spec={spec} />,
     );
 
     // Mounted before any gateway resolved — the exact condition that broke it.
     rerender(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com/payments/v1"
         extraHeaders={[]}
         spec={spec}
@@ -198,6 +214,7 @@ describe('TestConsoleSpecViewer', () => {
     const onRequestChange = vi.fn();
     rerender(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com/payments/v1"
         extraHeaders={[]}
         onRequestChange={onRequestChange}
@@ -222,12 +239,18 @@ describe('TestConsoleSpecViewer', () => {
 
   it('injects the test key that arrived after mount', () => {
     const { rerender } = renderWithProviders(
-      <TestConsoleSpecViewer baseUrl="https://gw.example.com" extraHeaders={[]} spec={spec} />,
+      <TestConsoleSpecViewer
+        {...relayProps}
+        baseUrl="https://gw.example.com"
+        extraHeaders={[]}
+        spec={spec}
+      />,
     );
 
     // The key is minted asynchronously, so it is never present at mount.
     rerender(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com"
         extraHeaders={keyRow('live-credential')}
         spec={spec}
@@ -246,6 +269,7 @@ describe('TestConsoleSpecViewer', () => {
   it('injects a regenerated key rather than the one it first saw', () => {
     const { rerender } = renderWithProviders(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com"
         extraHeaders={keyRow('first-key')}
         spec={spec}
@@ -254,6 +278,7 @@ describe('TestConsoleSpecViewer', () => {
 
     rerender(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com"
         extraHeaders={keyRow('second-key')}
         spec={spec}
@@ -272,6 +297,7 @@ describe('TestConsoleSpecViewer', () => {
   it('omits an excluded auto header', () => {
     renderWithProviders(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com"
         extraHeaders={[{ ...keyRow('k')[0], enabled: false }]}
         spec={spec}
@@ -289,11 +315,17 @@ describe('TestConsoleSpecViewer', () => {
 
   it('keeps one spec reference across re-renders, so expansion state survives', () => {
     const { rerender } = renderWithProviders(
-      <TestConsoleSpecViewer baseUrl="https://gw.example.com" extraHeaders={[]} spec={spec} />,
+      <TestConsoleSpecViewer
+        {...relayProps}
+        baseUrl="https://gw.example.com"
+        extraHeaders={[]}
+        spec={spec}
+      />,
     );
 
     rerender(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com"
         extraHeaders={keyRow('k')}
         spec={spec}
@@ -301,6 +333,7 @@ describe('TestConsoleSpecViewer', () => {
     );
     rerender(
       <TestConsoleSpecViewer
+        {...relayProps}
         baseUrl="https://gw.example.com"
         extraHeaders={keyRow('k2')}
         spec={spec}
@@ -316,11 +349,21 @@ describe('TestConsoleSpecViewer', () => {
 
   it('builds a new spec reference when the gateway actually changes', () => {
     const { rerender } = renderWithProviders(
-      <TestConsoleSpecViewer baseUrl="https://gw-a.example.com" extraHeaders={[]} spec={spec} />,
+      <TestConsoleSpecViewer
+        {...relayProps}
+        baseUrl="https://gw-a.example.com"
+        extraHeaders={[]}
+        spec={spec}
+      />,
     );
 
     rerender(
-      <TestConsoleSpecViewer baseUrl="https://gw-b.example.com" extraHeaders={[]} spec={spec} />,
+      <TestConsoleSpecViewer
+        {...relayProps}
+        baseUrl="https://gw-b.example.com"
+        extraHeaders={[]}
+        spec={spec}
+      />,
     );
 
     // Re-parsing is correct here: the document's server has genuinely changed.
@@ -329,14 +372,35 @@ describe('TestConsoleSpecViewer', () => {
 
   it('wraps none of swagger’s own components', () => {
     renderWithProviders(
-      <TestConsoleSpecViewer baseUrl="https://gw.example.com" extraHeaders={[]} spec={spec} />,
+      <TestConsoleSpecViewer
+        {...relayProps}
+        baseUrl="https://gw.example.com"
+        extraHeaders={[]}
+        spec={spec}
+      />,
     );
 
     // The live sync reads swagger's store instead of wrapping its rendering.
     // An earlier version wrapped `OperationContainer` — the component that owns
     // expand/collapse — to inject a reporter beside it, which put speculative
-    // code directly on the path the user reported broken. Passing no plugins at
-    // all is the guarantee that swagger renders exactly as it ships.
-    expect(captured.plugins ?? []).toEqual([]);
+    // code directly on the path the user reported broken.
+    //
+    // The one plugin that is passed installs the relay transport, and this is
+    // what keeps it from drifting into the same mistake: it may wrap the
+    // `spec.executeRequest` *action* and nothing else. An action wrapper never
+    // participates in rendering, so swagger still renders exactly as it ships.
+    const plugins = (captured.plugins ?? []) as Array<() => Record<string, unknown>>;
+    expect(plugins).toHaveLength(1);
+
+    const built = plugins.map((plugin) => plugin());
+    built.forEach((definition) => {
+      expect(definition.wrapComponents).toBeUndefined();
+      expect(definition.components).toBeUndefined();
+      expect(Object.keys(definition)).toEqual(['statePlugins']);
+    });
+
+    const specPlugin = (built[0].statePlugins as { spec: Record<string, unknown> }).spec;
+    expect(Object.keys(specPlugin)).toEqual(['wrapActions']);
+    expect(Object.keys(specPlugin.wrapActions as object)).toEqual(['executeRequest']);
   });
 });

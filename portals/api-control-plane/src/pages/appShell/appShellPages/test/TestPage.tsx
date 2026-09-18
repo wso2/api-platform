@@ -437,7 +437,12 @@ function TestConsole() {
               baseUrl={baseUrl}
               extraHeaders={extraHeaders}
               extraQueryParams={extraQueryParams}
+              // The BFF resolves the target from these three values; see
+              // console/utils/proxyTransport.
+              gatewayId={selectedGateway?.id ?? ''}
               onRequestChange={handleConsoleRequestChange}
+              orgHandle={params.orgHandle ?? ''}
+              restApiId={restApiId ?? ''}
               secretHeaderName={headerName}
               spec={spec}
             />

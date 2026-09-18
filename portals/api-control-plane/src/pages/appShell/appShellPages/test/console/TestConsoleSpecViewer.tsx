@@ -50,6 +50,7 @@ import {
   specJsonOf,
   type SwaggerSystemLike,
 } from './utils/shownOperation';
+import { testConsoleRelayPlugin, type RelayContext } from './utils/proxyTransport';
 import { withServerUrl } from './utils/specServers';
 import { fromSwaggerRequest } from './utils/swaggerRequest';
 import type { ConsoleRequest, KeyValueRow } from '../utils/types';
@@ -61,16 +62,22 @@ import type { ConsoleRequest, KeyValueRow } from '../utils/types';
  * component is mounted by the API overview and the creation wizard, where a
  * regression is a regression in two shipped pages.
  *
- * ## Nothing here wraps a swagger component
+ * ## Nothing here wraps a swagger *component*
  *
- * No `plugins`, no `wrapComponents`. An earlier version injected a reporter
- * beside swagger's own `OperationContainer` to get a live view of the form —
- * wrapping the very component that owns expand/collapse, on the code path that
- * was reported broken, and in a way this repo cannot test (jsdom resolves
- * swagger's `node` build, which carries its own React and will not reconcile
- * against React 19; the browser resolves `swagger-ui-es-bundle-core`, which
- * uses ours). Reading the store on a short interval gets the same result
- * without touching anything that renders — see `shownOperation.ts`.
+ * No `wrapComponents`. An earlier version injected a reporter beside swagger's
+ * own `OperationContainer` to get a live view of the form — wrapping the very
+ * component that owns expand/collapse, on the code path that was reported
+ * broken, and in a way this repo cannot test (jsdom resolves swagger's `node`
+ * build, which carries its own React and will not reconcile against React 19;
+ * the browser resolves `swagger-ui-es-bundle-core`, which uses ours). Reading
+ * the store on a short interval gets the same result without touching anything
+ * that renders — see `shownOperation.ts`.
+ *
+ * There *is* one plugin: the relay transport in `proxyTransport.ts`. It wraps a
+ * state **action** (`spec.executeRequest`) rather than a component, so it never
+ * participates in rendering and the reconciliation problem above does not reach
+ * it. Its own module explains why the relay exists and why the request the user
+ * sees is still the real gateway call.
  *
  * ## Styling comes from the shared spec viewer
  *
@@ -149,6 +156,12 @@ export type TestConsoleSpecViewerProps = {
   spec: Record<string, unknown>;
   /** Invoke URL of the selected gateway. Every request is retargeted here. */
   baseUrl: string;
+  /** The API under test. Sent to the relay, which resolves the target itself. */
+  restApiId: string;
+  /** Which of the API's deployed gateways to send to. */
+  gatewayId: string;
+  /** Organization handle, so the relay's lookup is scoped the same way the page is. */
+  orgHandle: string;
   /** Headers the console adds to every request, e.g. the test key. */
   extraHeaders?: KeyValueRow[];
   /** Query parameters added to every request, including query-based credentials. */
@@ -172,7 +185,10 @@ export default function TestConsoleSpecViewer({
   baseUrl,
   extraHeaders,
   extraQueryParams,
+  gatewayId,
   onRequestChange,
+  orgHandle,
+  restApiId,
   secretHeaderName,
   spec,
 }: TestConsoleSpecViewerProps) {
@@ -194,6 +210,25 @@ export default function TestConsoleSpecViewer({
     onRequestChange,
     secretHeaderName,
   };
+
+  /**
+   * Live relay context. Separate from `live` above because it is read by the
+   * transport rather than by the form sync, and because it is the one thing a
+   * captured closure would get wrong in a way the user would notice: swagger
+   * keeps only the first `plugins` value, so a captured gateway id would stay
+   * pinned to whichever gateway was selected at mount.
+   */
+  const relay = useRef<RelayContext>({ baseUrl, gatewayId, intl, orgHandle, restApiId });
+  relay.current = { baseUrl, gatewayId, intl, orgHandle, restApiId };
+
+  /**
+   * Sends try-out requests through the BFF instead of straight at the gateway.
+   *
+   * Built once, like every other mount-time value swagger keeps. It replaces
+   * only the transport; the request swagger built, displayed and put in the
+   * curl snippet is the real gateway call, untouched. See proxyTransport.ts.
+   */
+  const plugins = useMemo(() => [testConsoleRelayPlugin(relay)], []);
 
   /** Swagger's system, handed over once it has finished initialising. */
   const system = useRef<SwaggerSystemLike | undefined>(undefined);
@@ -389,6 +424,7 @@ export default function TestConsoleSpecViewer({
             displayRequestDuration
             docExpansion="list"
             onComplete={onComplete}
+            plugins={plugins}
             requestInterceptor={requestInterceptor}
             spec={displayedSpec}
             tryItOutEnabled
