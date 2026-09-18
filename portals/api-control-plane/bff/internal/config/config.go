@@ -27,6 +27,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -51,6 +52,7 @@ type Config struct {
 	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
+	TestConsole  TestConsoleConfig  `koanf:"test_console"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
 }
@@ -136,12 +138,57 @@ type UpstreamConfig struct {
 	TLSSkipVerify bool   `koanf:"tls_skip_verify"`
 }
 
+// TestConsoleConfig configures the bounded relay for the Test page's Swagger console.
+type TestConsoleConfig struct {
+	// Enabled turns the relay on. When false the route 404s and no outbound
+	// client is built at all.
+	Enabled bool `koanf:"enabled"`
+
+	// RequestTimeout limits the relayed call from dialing through response-body
+	// processing. It should remain below the route's write deadline.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// MaxRequestBytes bounds the decoded relayed request body. The JSON envelope
+	// may be larger due to base64 encoding and JSON escaping.
+	MaxRequestBytes int64 `koanf:"max_request_bytes"`
+	// MaxResponseBytes limits the gateway response body. If exceeded, the body is
+	// truncated and flagged instead of failing the request.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
+
+	// MaxConcurrent is how many relayed calls may be in flight at once.
+	MaxConcurrent int `koanf:"max_concurrent"`
+	// MaxPending limits queued calls; excess calls are rejected with 503.
+	MaxPending int `koanf:"max_pending"`
+
+	// ResolveCacheTTL controls how long resolved invoke URLs are reused before
+	// Platform API is consulted again; keep it short to limit revoked access.
+	ResolveCacheTTL time.Duration `koanf:"resolve_cache_ttl"`
+	// ResolveCacheSize bounds the number of cached entries.
+	ResolveCacheSize int `koanf:"resolve_cache_size"`
+
+	// CAFile is a PEM bundle to trust for gateway TLS certificates, appended to
+	// the system roots. Ignored when TLSSkipVerify is true.
+	CAFile string `koanf:"ca_file"`
+	// TLSSkipVerify disables gateway certificate verification. Use only for
+	// development or demonstrations. This is an operator setting, not a
+	// per-request option, to prevent clients from bypassing TLS verification.
+	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+
+	// DenyCIDRs are additional address ranges the relay refuses to dial, on top
+	// of the built-in link-local/metadata/unspecified/multicast refusals — e.g.
+	// the control plane's own subnet.
+	DenyCIDRs []string `koanf:"deny_cidrs"`
+	// AllowCIDRs carves out a specific, deliberately-approved exception to
+	// DenyCIDRs. An explicit, off-by-default admin opt-in; never a way to widen
+	// policy implicitly.
+	AllowCIDRs []string `koanf:"allow_cidrs"`
+}
+
 // SessionConfig is [api_control_plane.session]: server-side session lifetime and
 // the cookie attributes the browser receives it under.
 type SessionConfig struct {
 	Store       string        `koanf:"store"`        // "memory" (default) | "redis" (future)
-	IdleTimeout time.Duration `koanf:"idle_timeout"`  // sliding idle window
-	AbsoluteTTL time.Duration `koanf:"absolute_ttl"`  // hard cap regardless of activity / token exp
+	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
+	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
 	Cookie      CookieConfig  `koanf:"cookie"`
 }
 
@@ -408,11 +455,64 @@ func (c *Config) validate() error {
 		}
 	}
 
+	if err := c.TestConsole.validate(); err != nil {
+		return err
+	}
+
 	if !c.Auth.OIDC.Enabled {
 		slog.Warn("basic (file-based) auth is enabled — this is the default, no-external-IdP mode. " +
 			"Configure OIDC (set [auth] mode = \"oidc\" and the [auth.oidc] client settings) for an external IdP.")
 	}
 
+	return nil
+}
+
+// validate rejects any test-console configuration that would be unbounded at
+// runtime. Each constraint is evaluated against the effective value, rather
+// than Enabled alone; an enabled relay with a zero timeout or size limit has
+// no runtime bound and is therefore invalid.
+func (t TestConsoleConfig) validate() error {
+	if !t.Enabled {
+		return nil
+	}
+	if t.RequestTimeout <= 0 {
+		return fmt.Errorf("[test_console] request_timeout must be positive when enabled = true, got %s", t.RequestTimeout)
+	}
+	if t.MaxRequestBytes <= 0 {
+		return fmt.Errorf("[test_console] max_request_bytes must be positive when enabled = true, got %d", t.MaxRequestBytes)
+	}
+	if t.MaxResponseBytes <= 0 {
+		return fmt.Errorf("[test_console] max_response_bytes must be positive when enabled = true, got %d", t.MaxResponseBytes)
+	}
+	if t.MaxConcurrent <= 0 {
+		return fmt.Errorf("[test_console] max_concurrent must be positive when enabled = true, got %d", t.MaxConcurrent)
+	}
+	if t.MaxPending < 0 {
+		return fmt.Errorf("[test_console] max_pending must not be negative, got %d", t.MaxPending)
+	}
+	if t.ResolveCacheTTL < 0 {
+		return fmt.Errorf("[test_console] resolve_cache_ttl must not be negative, got %s", t.ResolveCacheTTL)
+	}
+	if t.ResolveCacheSize < 0 {
+		return fmt.Errorf("[test_console] resolve_cache_size must not be negative, got %d", t.ResolveCacheSize)
+	}
+	if t.TLSSkipVerify && t.CAFile != "" {
+		return fmt.Errorf("[test_console] ca_file and tls_skip_verify are mutually exclusive — skipping verification ignores the bundle entirely")
+	}
+	for _, label := range []struct {
+		key   string
+		cidrs []string
+	}{{"deny_cidrs", t.DenyCIDRs}, {"allow_cidrs", t.AllowCIDRs}} {
+		for _, raw := range label.cidrs {
+			if _, _, err := net.ParseCIDR(raw); err != nil {
+				return fmt.Errorf("[test_console] %s entry %q is not a valid CIDR: %w", label.key, raw, err)
+			}
+		}
+	}
+	if t.TLSSkipVerify {
+		slog.Warn("[test_console] tls_skip_verify = true — gateway certificate verification is DISABLED for test-console requests. " +
+			"Trust the gateway certificate with ca_file instead.")
+	}
 	return nil
 }
 

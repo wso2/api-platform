@@ -18,31 +18,33 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { fireEvent, renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen } from '@/test/utils';
+import { PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
 import { DefineApiPanel } from './DefineApiPanel';
 
-// swagger-ui-react bundles its own copy of React, which react-dom refuses to
-// render inside this suite ("a React Element from an older version of React").
-// The rendered resources are not what these tests are about — the pane's other
-// half is; so the component is stubbed rather than the assertions bent around
-// it. The Source view under test renders no Swagger UI at all.
+// The contract view renders a spec preview pane. swagger-ui-react bundles its
+// own copy of React, which react-dom refuses to render inside this suite ("a
+// React Element from an older version of React"), and what that pane draws is
+// covered by its own suite — so it is stubbed rather than worked around.
 vi.mock('swagger-ui-react', () => ({ default: () => null }));
 
-// Monaco needs a canvas and real font metrics, neither of which jsdom has.
-// These tests are about what the step does with an edited definition, not
-// about how the text got typed, so the editor is a plain text area here.
-vi.mock('./SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
+// The same pane's Source view is Monaco, which needs a canvas and real font
+// metrics, neither of which jsdom has. Standing it in with a text area keeps
+// the contract view renderable; none of these tests read from it.
+vi.mock('@/components/CodeEditor/CodeEditor', () => ({
+  CodeEditor: ({
+    ariaLabel,
     onChange,
     readOnly,
     value,
   }: {
+    ariaLabel?: string;
     onChange?: (next: string) => void;
     readOnly?: boolean;
     value: string;
   }) => (
     <textarea
-      aria-label="API definition source"
+      aria-label={ariaLabel}
       onChange={(event) => onChange?.(event.target.value)}
       readOnly={readOnly}
       value={value}
@@ -51,89 +53,60 @@ vi.mock('./SpecCodeEditor', () => ({
 }));
 
 /**
- * The step is exercised through "Design from scratch": it is the approach that
- * has a definition on screen without a fetch standing between the test and the
- * editor, and the edit path under test is the same one a fetched contract takes.
+ * The step offers two approaches side by side. "Start from Scratch" resolves
+ * entirely inside this panel — a skeleton document plus an optional backend —
+ * so it is the half these tests drive; the contract half delegates to
+ * `ContractSourceForm`, which has its own suite.
  */
-const openScratchSource = async (onDraftChange = vi.fn()) => {
+const renderPanel = (onDraftChange = vi.fn()) => {
   const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
-
-  await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
-  await user.click(screen.getByRole('checkbox', { name: 'Source' }));
   return { onDraftChange, user };
 };
 
-/** The editor arrives in its own chunk, so the first look at it is awaited. */
-const editor = async (): Promise<HTMLTextAreaElement> =>
-  (await screen.findByRole('textbox', {
-    name: 'API definition source',
-  })) as HTMLTextAreaElement;
+/** The draft the panel last handed the wizard footer. */
+const lastDraft = (onDraftChange: ReturnType<typeof vi.fn>) =>
+  onDraftChange.mock.calls.at(-1)?.[0];
 
-describe('DefineApiPanel — editing the definition', () => {
-  it('carries the edited definition forward instead of the one it started from', async () => {
-    const { onDraftChange, user } = await openScratchSource();
+describe('DefineApiPanel — choosing an approach', () => {
+  it('offers nothing to continue with until an approach is picked', () => {
+    const { onDraftChange } = renderPanel();
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(await editor(), {
-      target: {
-        value: JSON.stringify({
-          openapi: '3.0.3',
-          info: { title: 'Edited by hand', version: '3.2.1' },
-          servers: [{ url: 'https://orders.example.com' }],
-          paths: { '/orders': { get: { responses: { '200': { description: 'A page.' } } } } },
-        }),
-      },
-    });
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(onDraftChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        displayName: 'Edited by hand',
-        upstream: { main: { url: 'https://orders.example.com' } },
-        version: '3.2.1',
-      }),
-    );
+    expect(lastDraft(onDraftChange)).toBeNull();
   });
 
-  it('reports what the edited definition is missing, once it is the one on screen', async () => {
-    const { user } = await openScratchSource();
+  it('hands over the skeleton and a placeholder backend for a scratch API', async () => {
+    const { onDraftChange, user } = renderPanel();
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    // Importable, but with nothing to read a backend off.
-    fireEvent.change(await editor(), {
-      target: {
-        value: JSON.stringify({
-          openapi: '3.0.3',
-          info: { title: 'No backend', version: '1.0.0' },
-          paths: { '/orders': { get: { responses: { '200': { description: 'A page.' } } } } },
-        }),
-      },
-    });
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: /Start from Scratch/ }));
 
-    expect(await screen.findByText(/No server URL in this definition/)).toBeInTheDocument();
+    const draft = lastDraft(onDraftChange);
+    expect(draft.upstream).toEqual({ main: { url: PLACEHOLDER_UPSTREAM_URL } });
+    // The skeleton travels as a file: the create step submits it to
+    // import-openapi exactly as it would an imported contract.
+    expect(draft.contractImport.specFile).toBeInstanceOf(File);
   });
 
-  it('keeps each approach’s edit while the other one is looked at', async () => {
-    const { user } = await openScratchSource();
+  it('uses the endpoint the user gave instead of the placeholder', async () => {
+    const { onDraftChange, user } = renderPanel();
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(await editor(), {
-      target: {
-        value: JSON.stringify({
-          openapi: '3.0.3',
-          info: { title: 'Scratch edit', version: '1.0.0' },
-          paths: { '/orders': { get: { responses: { '200': { description: 'A page.' } } } } },
-        }),
-      },
+    await user.click(screen.getByRole('radio', { name: 'I have an endpoint URL' }));
+    await user.type(screen.getByRole('textbox'), 'https://orders.example.com');
+
+    expect(lastDraft(onDraftChange).upstream).toEqual({
+      main: { url: 'https://orders.example.com' },
     });
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+  });
 
-    // Over to the contract approach, which has nothing fetched, and back.
-    await user.click(screen.getByRole('button', { name: /Start with a contract/ }));
-    await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
+  it('opens the contract form on the other card, and comes back from it', async () => {
+    const { onDraftChange, user } = renderPanel();
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    expect((await editor()).value).toContain('Scratch edit');
+    await user.click(screen.getByRole('button', { name: /Start with a Contract/ }));
+
+    // Nothing is fetched yet, so there is no draft to continue with.
+    expect(screen.getByText('Point us at your contract')).toBeInTheDocument();
+    expect(lastDraft(onDraftChange)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Change source' }));
+    expect(screen.getByRole('button', { name: /Start with a Contract/ })).toBeInTheDocument();
   });
 });

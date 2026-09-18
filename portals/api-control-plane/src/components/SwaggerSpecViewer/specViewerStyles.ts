@@ -16,23 +16,14 @@
  * under the License.
  */
 
-import { FormattedMessage } from 'react-intl';
+/**
+ * Shared Swagger UI styles for both lazy-loaded spec editors.
+ *
+ * Keep both editors importing this module rather than the CSS files directly.
+ * The side-effect-only module ensures Rollup includes the styles in each
+ * editor's production chunk. Add shared styles to `SwaggerSpecViewer.css`;
+ * page-specific overrides belong in a separate stylesheet imported afterward.
+ */
 
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
-
-export function ApiConsolePage() {
-  return (
-    <ScopeGate prompt="The API console runs against a single API." requires="api" to={routes.apiTestConsole}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.apiConsolePage.feature"
-            defaultMessage="An interactive API console"
-          />
-        }
-      />
-    </ScopeGate>
-  );
-}
+import 'swagger-ui-react/swagger-ui.css';
+import './SwaggerSpecViewer.css';

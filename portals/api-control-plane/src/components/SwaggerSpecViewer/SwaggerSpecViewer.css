@@ -36,9 +36,7 @@
   display: none;
 }
 
-.swagger-spec-viewer.hide-servers
-  .swagger-ui
-  .opblock-section.operation-servers {
+.swagger-spec-viewer.hide-servers .swagger-ui .opblock-section.operation-servers {
   display: none;
 }
 
@@ -65,16 +63,23 @@
   color: #fff;
 }
 
-/* The whole section, not just its tables: Swagger renders the "Responses"
-   heading in a wrapper of its own, so hiding the tables alone leaves a
-   heading standing over nothing. Covers live responses too. */
 .swagger-spec-viewer.disable-response-section
   .swagger-ui
   .opblock-body
-  .responses-wrapper {
+  .responses-wrapper
+  h4:has(+ .responses-table),
+.swagger-spec-viewer.disable-response-section
+  .swagger-ui
+  .opblock-body
+  .responses-wrapper
+  .responses-table,
+.swagger-spec-viewer.disable-response-section
+  .swagger-ui
+  .opblock-body
+  .responses-wrapper
+  .responses-table.live-responses-table {
   display: none !important;
 }
-
 
 .swagger-spec-viewer.disable-try-out-btn .swagger-ui .opblock .try-out__btn {
   display: none;
@@ -92,14 +97,10 @@
   position: relative;
 }
 
+.swagger-spec-viewer .swagger-ui .opblock:has(> .access-control-not-allowed),
 .swagger-spec-viewer
   .swagger-ui
-  .opblock:has(> .access-control-not-allowed),
-.swagger-spec-viewer
-  .swagger-ui
-  .opblock-tag-section:has(
-    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
-  )
+  .opblock-tag-section:has(> .opblock-tag[data-tag='__wso2_not_allowed_resources__'])
   .opblock {
   background: #f5f5f5 !important;
   border-color: #bdbdbd !important;
@@ -107,30 +108,20 @@
   opacity: 0.72;
 }
 
+.swagger-spec-viewer .swagger-ui .access-control-not-allowed .opblock-summary,
 .swagger-spec-viewer
   .swagger-ui
-  .access-control-not-allowed
-  .opblock-summary,
-.swagger-spec-viewer
-  .swagger-ui
-  .opblock-tag-section:has(
-    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
-  )
+  .opblock-tag-section:has(> .opblock-tag[data-tag='__wso2_not_allowed_resources__'])
   .opblock-summary {
   position: relative;
   background: #f5f5f5 !important;
   cursor: pointer;
 }
 
+.swagger-spec-viewer .swagger-ui .access-control-not-allowed .opblock-summary-method,
 .swagger-spec-viewer
   .swagger-ui
-  .access-control-not-allowed
-  .opblock-summary-method,
-.swagger-spec-viewer
-  .swagger-ui
-  .opblock-tag-section:has(
-    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
-  )
+  .opblock-tag-section:has(> .opblock-tag[data-tag='__wso2_not_allowed_resources__'])
   .opblock-summary-method {
   background: #757575 !important;
   color: #fff !important;
@@ -143,9 +134,7 @@
   :is(.opblock-summary-path, .opblock-summary-description),
 .swagger-spec-viewer
   .swagger-ui
-  .opblock-tag-section:has(
-    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
-  )
+  .opblock-tag-section:has(> .opblock-tag[data-tag='__wso2_not_allowed_resources__'])
   :is(.opblock-summary-path, .opblock-summary-description) {
   color: #757575 !important;
   text-decoration: none;
@@ -153,9 +142,7 @@
 
 .swagger-spec-viewer
   .swagger-ui
-  .opblock-tag-section:has(
-    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
-  )
+  .opblock-tag-section:has(> .opblock-tag[data-tag='__wso2_not_allowed_resources__'])
   .opblock-summary::after {
   content: 'Not allowed';
   position: absolute;
@@ -212,9 +199,7 @@
   )
   .swagger-spec-viewer
   .swagger-ui
-  .opblock-tag-section:has(
-    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
-  )
+  .opblock-tag-section:has(> .opblock-tag[data-tag='__wso2_not_allowed_resources__'])
   .opblock,
 :is(
     html[data-mui-color-scheme='dark'],
@@ -228,9 +213,7 @@
   )
   .swagger-spec-viewer
   .swagger-ui
-  .opblock-tag-section:has(
-    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
-  )
+  .opblock-tag-section:has(> .opblock-tag[data-tag='__wso2_not_allowed_resources__'])
   .opblock-summary {
   background: #2f2f2f !important;
   border-color: #616161 !important;
@@ -293,4 +276,312 @@
   fill: #fff !important;
   stroke: #fff !important;
   border-color: #fff !important;
+}
+
+/*
+ * Improve dark-theme contrast for Swagger model renderers. The rules below
+ * reproduce the relevant Swagger dark-theme palette without enabling its
+ * global `html.dark-mode .swagger-ui` theme. Surface and chrome rules are
+ * limited to `section.models`; text rules cover both OpenAPI 3.0 (`.model`)
+ * and 3.1 (`.json-schema-2020-12`) renderers.
+ */
+
+/* Section border and the divider under the "Schemas" header. */
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  :is(section.models, section.models h4) {
+  border-color: #545d61;
+}
+
+/*
+ * Per-model surface. The hover state needs restating too: swagger's own dark
+ * theme leaves `rgba(0, 0, 0, 0.07)` in place, so hovering a model in dark mode
+ * darkens it instead of lifting it.
+ */
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  .model-container {
+  background: #2a2e30;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  :is(section.models .model-container:hover, section.models h4:hover) {
+  background: #343a3d;
+}
+
+/*
+ * Model and property text — the model name, the property names, the braces,
+ * the format hints, and the description column.
+ */
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  :is(
+    .model,
+    .model-title,
+    .model-box .model,
+    .model-box .model-title,
+    .model-box-control:not(.prop),
+    .model .brace-open,
+    .model .brace-close,
+    .model .description,
+    .model .prop-format,
+    .model .property,
+    .model .property.primitive,
+    .model .property-row,
+    .model .external-docs,
+    table.model tr.description,
+    table.model tr.extension,
+    section.models h4,
+    section.models h4 span,
+    section.models h5
+  ) {
+  color: #e4e6e6;
+}
+
+/* Property types read as a distinct accent rather than as body text. */
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  .model
+  .prop-type {
+  color: #b68ae1;
+}
+
+/* The required marker. Swagger's `red` is too dark against #2a2e30. */
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  table.model
+  tr.property-row
+  .star {
+  color: #ff5f5f;
+}
+
+/*
+ * The expand/collapse chevron beside each model is a background SVG with the
+ * arrow path filled black, so it has to be re-declared with a light fill
+ * rather than recoloured.
+ */
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  .model-toggle::after {
+  background: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path fill='%23e4e6e6' d='M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'/></svg>")
+    50% no-repeat;
+  background-size: 100%;
+}
+
+/*
+ * OpenAPI 3.1 documents render this section with the JSON-Schema-2020-12
+ * component tree instead, which carries its own light-theme colours.
+ */
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  :is(.json-schema-2020-12, .json-schema-2020-12 button) {
+  background: #2a2e30;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  :is(
+    .json-schema-2020-12__title,
+    .json-schema-2020-12 button svg,
+    .json-schema-2020-12-keyword__name--primary
+  ) {
+  color: #e4e6e6;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  :is(
+    .json-schema-2020-12-expand-deep-button,
+    .json-schema-2020-12-keyword__name--secondary,
+    .json-schema-2020-12-keyword__value--secondary,
+    .json-schema-2020-12__attribute--muted,
+    .json-schema-2020-12-json-viewer__name--secondary,
+    .json-schema-2020-12-json-viewer__value--secondary
+  ) {
+  color: #b7bcbf;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  .json-schema-2020-12-body {
+  border-color: #b7bcbf;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  :is(
+    .json-schema-2020-12-property--required
+      > .json-schema-2020-12:first-of-type
+      > .json-schema-2020-12-head
+      .json-schema-2020-12__title::after,
+    .json-schema-2020-12__attribute--warning,
+    .json-schema-2020-12-keyword__value--warning
+  ) {
+  color: #ff5f5f;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  :is(
+    .json-schema-2020-12__attribute--primary,
+    .json-schema-2020-12-keyword--patternProperties .json-schema-2020-12__title::before,
+    .json-schema-2020-12-keyword--patternProperties .json-schema-2020-12__title::after
+  ) {
+  color: #9898ff;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  section.models
+  .json-schema-2020-12
+  a {
+  color: #51a8ff;
 }

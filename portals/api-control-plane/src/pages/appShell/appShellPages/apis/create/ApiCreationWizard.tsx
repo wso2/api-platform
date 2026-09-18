@@ -29,6 +29,7 @@ import { ApiCreationStepKey, ApiCreationSteps } from './components/ApiCreationSt
 import { useImportOpenApi, useValidateOpenApiSpec } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
+import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
 import {
   ApiCreationProgress,
   type ApiCreationProgressStatus,
@@ -112,6 +113,9 @@ export const ApiCreationWizard = () => {
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
 
+  /** Tracks whether the user has taken over the backend URL across form remounts. */
+  const [upstreamEdited, setUpstreamEdited] = useState(false);
+
   /**
    * The chosen type's own name, translated. `apiType` is already the entry from
    * the catalog, so its descriptor is read directly rather than looked up again.
@@ -159,11 +163,14 @@ export const ApiCreationWizard = () => {
     if (sourceDraft === null) return;
     setPrefilledData(sourceDraft);
     setSubmittedValues(null);
+    setUpstreamEdited(false); // A re-confirmed source brings back its own placeholder.
     setStep('configure');
   };
 
   const navigate = useNavigate();
-  const importOpenApiMutation = useImportOpenApi();
+  // `handlesErrors`: a rejection this screen puts back on the form must not
+  // also arrive as a snackbar that has faded by the time the user looks up.
+  const importOpenApiMutation = useImportOpenApi({ handlesErrors: true });
   // `projectId` on the request body is the project handle from the route, not
   // something the form collects.
   const { activeScope, params } = useConsoleScope();
@@ -177,6 +184,12 @@ export const ApiCreationWizard = () => {
   const [submittedValues, setSubmittedValues] = useState<GeneralApiCreationFormState | null>(null);
   /** Whether the progress screen stands in for the form. */
   const [creationStarted, setCreationStarted] = useState(false);
+  /**
+   * Why the last attempt was rejected, when the form is where it belongs.
+   * Cleared on the next submission, not on the way back — the form is what
+   * renders it, and it has to survive being returned to.
+   */
+  const [formErrors, setFormErrors] = useState<CreateApiFormErrors | null>(null);
 
   const createApi = (values: GeneralApiCreationFormState) => {
     const projectId = activeScope.projectHandler;
@@ -206,7 +219,19 @@ export const ApiCreationWizard = () => {
     if (mainUrl) {
       formData.append('upstream', JSON.stringify({ main: { url: mainUrl } }));
     }
-    importOpenApiMutation.mutate(formData);
+    setFormErrors(null);
+    // Clear the previous error before retrying.
+    importOpenApiMutation.reset();
+    importOpenApiMutation.mutate(formData, {
+      onError: (error) => {
+        // Return fixable rejections to the form with the reason attached.
+        const rejection = toCreateApiFormErrors(error);
+        if (!rejection) return; // Not the form's to fix: the progress screen keeps it.
+
+        setFormErrors(rejection);
+        setCreationStarted(false);
+      },
+    });
   };
 
   const onGeneralFormSumit = async (finalData: GeneralApiCreationFormState) => {
@@ -348,9 +373,12 @@ export const ApiCreationWizard = () => {
                   // attempt to come back from: the form remounts after the
                   // progress screen, so anything hand-typed would otherwise
                   // revert to the spec-derived draft.
+                  initialUpstreamEdited={upstreamEdited}
                   initialValues={submittedValues ?? prefilledData}
+                  onUpstreamEdited={() => setUpstreamEdited(true)}
                   onSubmit={onGeneralFormSumit}
                   onBack={() => setStep('source')}
+                  serverErrors={formErrors ?? undefined}
                 />
               </Box>
             )}
@@ -364,18 +392,23 @@ export const ApiCreationWizard = () => {
           borderColor: 'divider',
         }}
       >
-        {step === 'configure' && specValidationErrors !== null && specValidationErrors.length > 0 && (
-          <Alert severity="error" sx={{ borderRadius: 0, borderBottom: 1, borderColor: 'divider' }}>
-            {intl.formatMessage(messages.specInvalidOnCreate)}
-            <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
-              {specValidationErrors.map((msg, i) => (
-                <Typography component="li" key={i} variant="body2">
-                  {msg}
-                </Typography>
-              ))}
-            </Box>
-          </Alert>
-        )}
+        {step === 'configure' &&
+          specValidationErrors !== null &&
+          specValidationErrors.length > 0 && (
+            <Alert
+              severity="error"
+              sx={{ borderRadius: 0, borderBottom: 1, borderColor: 'divider' }}
+            >
+              {intl.formatMessage(messages.specInvalidOnCreate)}
+              <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+                {specValidationErrors.map((msg, i) => (
+                  <Typography component="li" key={i} variant="body2">
+                    {msg}
+                  </Typography>
+                ))}
+              </Box>
+            </Alert>
+          )}
         <Stack
           direction="row"
           sx={{

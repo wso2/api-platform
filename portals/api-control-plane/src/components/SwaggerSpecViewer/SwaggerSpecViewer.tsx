@@ -21,8 +21,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { InputAdornment, MenuItem, Stack, TextField, Typography } from '@wso2/oxygen-ui';
 import { Search } from '@wso2/oxygen-ui-icons-react';
 import SwaggerUI from 'swagger-ui-react';
-import 'swagger-ui-react/swagger-ui.css';
-import './SwaggerSpecViewer.css';
+import './specViewerStyles';
 import {
   AccessControl,
   buildExceptionSet,

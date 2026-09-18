@@ -163,24 +163,13 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'deploy'),
-  // Test, Observability and Manage are sidebar *parents*: in API scope they open
-  // a submenu rather than a page, so only their children have paths. There is no
-  // bare `.../test` route — nothing links to one.
-  apiTestConsole: (
+  apiTest: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
-  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/console'),
-  apiTestCurl: (
-    orgHandle = ':orgHandle',
-    projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler',
-  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/curl'),
-  apiTestChat: (
-    orgHandle = ':orgHandle',
-    projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler',
-  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/chat'),
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test'),
+  // Observability and Manage are sidebar *parents*: in API scope they open a
+  // submenu rather than a page, so only their children have paths.
   apiManageMonetize: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

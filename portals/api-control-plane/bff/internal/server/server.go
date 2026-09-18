@@ -32,6 +32,7 @@ import (
 	"api-control-plane-bff/internal/config"
 	"api-control-plane-bff/internal/proxy"
 	"api-control-plane-bff/internal/session"
+	"api-control-plane-bff/internal/testproxy"
 )
 
 // refreshLock is the single-flight coordinator for refreshing one access
@@ -54,13 +55,19 @@ type mountedProxy struct {
 
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
-	cfg      *config.Config
-	claims   session.ClaimMapping
-	store    session.Store
+	cfg       *config.Config
+	claims    session.ClaimMapping
+	store     session.Store
 	fileBased *auth.FileBased
 	oidc      *auth.OIDC
 	proxies   []mountedProxy
 	handler   http.Handler
+
+	// Test-console relay. Both are nil when [test_console] is disabled. The
+	// tenant-controlled target is resolved per request and never receives the
+	// session bearer token (see internal/testproxy).
+	testResolver *testproxy.Resolver
+	testRelay    *testproxy.Relay
 
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
@@ -159,9 +166,39 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		s.oidc = o
 	}
 
+	if cfg.TestConsole.Enabled {
+		// The resolver uses the primary client; the relay gets its own guarded
+		// client because the upstreams have different threat models.
+		s.testResolver = testproxy.NewResolver(
+			upstream,
+			cfg.ControlPlane.URL,
+			managementBasePath,
+			cfg.TestConsole.ResolveCacheTTL,
+			cfg.TestConsole.ResolveCacheSize,
+		)
+		relay, err := testproxy.NewRelay(testproxy.RelayOptions{
+			RequestTimeout:   cfg.TestConsole.RequestTimeout,
+			MaxRequestBytes:  cfg.TestConsole.MaxRequestBytes,
+			MaxResponseBytes: cfg.TestConsole.MaxResponseBytes,
+			MaxConcurrent:    cfg.TestConsole.MaxConcurrent,
+			MaxPending:       cfg.TestConsole.MaxPending,
+			CAFile:           cfg.TestConsole.CAFile,
+			TLSSkipVerify:    cfg.TestConsole.TLSSkipVerify,
+			DenyCIDRs:        cfg.TestConsole.DenyCIDRs,
+			AllowCIDRs:       cfg.TestConsole.AllowCIDRs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		s.testRelay = relay
+	}
+
 	s.handler = s.routes()
 	return s, nil
 }
+
+// managementBasePath matches the Platform API's constants.APIBasePath.
+const managementBasePath = "/api/v0.9"
 
 // Handler returns the fully-wired HTTP handler (for the listener and for tests).
 func (s *Server) Handler() http.Handler { return s.handler }
@@ -191,8 +228,16 @@ const nonStreamingWriteDeadline = 30 * time.Second
 // the per-request deadline http.ResponseController exposes — the reverse
 // proxy handler is intentionally never wrapped with this.
 func withWriteDeadline(next http.HandlerFunc) http.HandlerFunc {
+	return withWriteDeadlineOf(nonStreamingWriteDeadline, next)
+}
+
+// withWriteDeadlineOf is withWriteDeadline for a handler whose own bound is not
+// the generic one; the test-console relay, which already bounds itself by its
+// configured request timeout and needs an outer deadline sized just above that
+// rather than a fixed default that could be either far looser or far tighter.
+func withWriteDeadlineOf(d time.Duration, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(nonStreamingWriteDeadline))
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
 		next.ServeHTTP(w, r)
 	}
 }
@@ -214,6 +259,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/session", withWriteDeadline(s.handleSession))
 	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
 	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
+
+	// Test-console relay. The handler returns 404 when disabled.
+	mux.HandleFunc("POST /api/test-console/invoke",
+		withWriteDeadlineOf(s.testInvokeWriteDeadline(), s.handleTestInvoke))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
 	// named upstream. Each Rewrite hook already strips its own prefix, so the

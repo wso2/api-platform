@@ -50,7 +50,7 @@ export default ({ mode }: { mode: string }) => {
     plugins: [
       react({
         babel: {
-          plugins: [["formatjs", { ast: true }]],
+          plugins: [['formatjs', { ast: true }]],
         },
       }),
       basicSsl(),
