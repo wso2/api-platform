@@ -172,7 +172,7 @@ info "Signed a token for sample-test@example.com"
 
 # handshake <url> -> prints the session id
 handshake() {
-  local url="$1" sid
+  local url="$1" sid status
   curl -s -D "${HDR_FILE}" -o /dev/null --connect-timeout 5 --max-time 20 \
     -X POST "${url}" \
     -H "Content-Type: application/json" \
@@ -182,13 +182,14 @@ handshake() {
     2>/dev/null
   sid=$(grep -i '^mcp-session-id:' "${HDR_FILE}" | tr -d '\r' | awk '{print $2}')
   [[ -n "${sid}" ]] || return 1
-  curl -s -o /dev/null --connect-timeout 5 --max-time 20 \
+  status=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 \
     -X POST "${url}" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -H "Authorization: Bearer ${TEST_TOKEN}" \
     -H "mcp-session-id: ${sid}" \
-    -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' 2>/dev/null
+    -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' 2>/dev/null)
+  [[ "${status}" == 2* ]] || return 1
   echo "${sid}"
 }
 

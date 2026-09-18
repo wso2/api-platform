@@ -12,7 +12,6 @@ AUTH_HEADER="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_
 
 MCP_CONTAINER="mcp-everything"
 MCP_IMAGE="mcp-everything:sample"
-MCP_PORT="${MCP_PORT:-3001}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=token.sh
@@ -164,8 +163,13 @@ success "Analytics is enabled with Moesif as the publisher."
 # The MCP method and tool name are read from the JSON-RPC bodies, so the
 # collector has to be told to capture them.
 require_file "${COLLECTOR_CONFIG}"
-if grep -q '^\[collector\]' "${GATEWAY_CONFIG}"; then
-  info "Body capture already configured, skipping."
+if grep -q 'request_body[[:space:]]*=[[:space:]]*true' "${GATEWAY_CONFIG}" \
+  && grep -q 'response_body[[:space:]]*=[[:space:]]*true' "${GATEWAY_CONFIG}"; then
+  info "Body capture already enabled, skipping."
+elif grep -q '^\[collector\]' "${GATEWAY_CONFIG}"; then
+  error "${GATEWAY_CONFIG} already has a [collector] section, but request_body and
+        response_body are not both true. The MCP dashboard stays empty without them.
+        Set both to true, or remove the section and run ./setup.sh again."
 else
   info "Enabling request and response body capture ..."
   { echo ""; cat "${COLLECTOR_CONFIG}"; } >> "${GATEWAY_CONFIG}"
@@ -190,8 +194,17 @@ fi
 
 # --- Trusted signatures ----------------------------------------------------
 require_file "${AUTH_CONFIG}"
-if grep -q 'policy_configurations\.jwtauth_v1\.keymanagers' "${GATEWAY_CONFIG}"; then
-  info "Key manager already configured, skipping."
+KEY_MANAGER_NAME="sample-key-manager"
+if grep -q "${KEY_MANAGER_NAME}" "${GATEWAY_CONFIG}"; then
+  # The configured key has to be the one token.sh signs with, or every token is
+  # rejected with nothing to explain why.
+  if grep -qF "$(sed -n '2p' "${KEY_DIR}/public.pem")" "${GATEWAY_CONFIG}"; then
+    info "Key manager already configured, skipping."
+  else
+    error "${GATEWAY_CONFIG} has a ${KEY_MANAGER_NAME} entry, but its key is not the
+        one in keys/public.pem, so every token would be rejected.
+        Run ./teardown.sh --clean and then ./setup.sh."
+  fi
 else
   info "Telling the gateway which signatures to trust ..."
   {
@@ -216,7 +229,6 @@ success "Image ${MCP_IMAGE} built."
 info "Starting the MCP server ..."
 docker rm -f "${MCP_CONTAINER}" >/dev/null 2>&1 || true
 docker run -d --name "${MCP_CONTAINER}" \
-  -p "${MCP_PORT}:3001" \
   "${MCP_IMAGE}" >/dev/null
 
 for i in $(seq 1 60); do
@@ -225,7 +237,7 @@ for i in $(seq 1 60); do
 done
 docker logs "${MCP_CONTAINER}" 2>&1 | grep -q 'listening on port' \
   || error "The MCP server did not start. Check: docker logs ${MCP_CONTAINER}"
-success "MCP server running on port ${MCP_PORT}."
+success "MCP server running, reachable only from the gateway network."
 
 # --- Gateway ---------------------------------------------------------------
 [[ -x "${DIST_NAME}/scripts/setup.sh" ]] \

@@ -130,7 +130,7 @@ after a run:
 | Unique Sessions | three, one per client that ran the handshake |
 | Client Distribution | `desktop-client`, `web-console` and `batch-agent` |
 | Unique Consumers, Unique Consumers over Time | the three token subjects, two people and a service account |
-| Top Tools by Calls | only the allowed tools, since the rest never get through |
+| Top Tools by Calls | the allowed tools, plus the refused `get-env` attempts |
 | Server Distribution | the MCP server's own name, taken from its `initialize` reply |
 | MCP Application Details | one row for the calling application, with its event count and error rate |
 | Error Rate, Error Rate Trend | the refused, failed and rate limited calls together |
@@ -250,7 +250,7 @@ Two smaller details, both visible in the resource definitions:
 |-----------|------|------|
 | `gateway-controller` | control plane, where resources are registered | 9090 |
 | `gateway-runtime` | router and policy engine, where traffic flows | 8080, 9901 |
-| `mcp-everything` | the MCP server | 3001 |
+| `mcp-everything` | the MCP server | none |
 
 Analytics are stored in Moesif, so the sample runs no local database or dashboard.
 

@@ -74,7 +74,7 @@ open_session() {
 }
 
 open_session_once() {
-  local url="$1" client="$2" token="$3" sid
+  local url="$1" client="$2" token="$3" sid status
 
   curl -s -D "${HDR_FILE}" -o /dev/null --connect-timeout 5 --max-time 20 \
     -X POST "${url}" \
@@ -91,14 +91,16 @@ open_session_once() {
   sid=$(grep -i '^mcp-session-id:' "${HDR_FILE}" | tr -d '\r' | awk '{print $2}')
   [[ -n "${sid}" ]] || return 1
 
-  # The server expects this notification before it accepts other calls.
-  curl -s -o /dev/null --connect-timeout 5 --max-time 20 \
+  # The server expects this notification before it accepts other calls, so a
+  # session is only usable once it has been accepted.
+  status=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 \
     -X POST "${url}" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -H "Authorization: Bearer ${token}" \
     -H "mcp-session-id: ${sid}" \
-    -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' 2>/dev/null
+    -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' 2>/dev/null)
+  [[ "${status}" == 2* ]] || return 1
 
   echo "${sid}"
 }
