@@ -156,7 +156,7 @@ CREATE TABLE dbo.artifact_subscription_plans (
 -- Positioned here (before api_publications) rather than further down with the
 -- other artifact-adjacent tables, because api_publications' composite FK to
 -- this table requires it to already exist — SQL Server resolves FKs in
--- statement order. UNIQUE(organization_uuid, uuid) is that composite FK's
+-- statement order. UNIQUE(uuid, organization_uuid) is that composite FK's
 -- target; api_portals' own single-column PK doesn't satisfy a composite FK.
 -- Single FK edge, no SQL Server cascade-path convergence to resolve.
 IF OBJECT_ID(N'dbo.api_portals', N'U') IS NULL
@@ -177,7 +177,9 @@ CREATE TABLE dbo.api_portals (
     updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE (organization_uuid, handle),
-    UNIQUE (organization_uuid, uuid)
+    -- Column order must match api_publications' FK reference (uuid, organization_uuid) below —
+    -- SQL Server, unlike Postgres/SQLite, requires exact column-order match against a unique constraint.
+    UNIQUE (uuid, organization_uuid)
 );
 
 -- =====================================================================
@@ -220,7 +222,9 @@ CREATE TABLE dbo.api_publications (
     -- At most one live row and one draft row per pairing.
     UNIQUE (organization_uuid, artifact_uuid, api_portal_uuid, is_draft),
     -- Lets the satellite tables prove their publication_uuid is in the same org.
-    UNIQUE (organization_uuid, uuid),
+    -- Column order must match the satellite tables' FK reference (uuid, organization_uuid) —
+    -- SQL Server, unlike Postgres/SQLite, requires exact column-order match against a unique constraint.
+    UNIQUE (uuid, organization_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (artifact_uuid, organization_uuid)
         REFERENCES artifacts(uuid, organization_uuid) ON DELETE NO ACTION,
