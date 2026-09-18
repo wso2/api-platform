@@ -67,6 +67,9 @@ func TestApplyBoundResolution_ExposesTheOperationAndAttributesToPolicies(t *test
 		"request stream":  ec.requestStreamContext.SharedContext,
 	} {
 		assert.Equal(t, "SendMessage", shared.ResolvedOperation, name)
+		// The signal a policy reads to skip parsing the body itself: a boolean in Metadata,
+		// so an older engine that never writes it reads the same as "no resolver".
+		assert.Equal(t, true, shared.Metadata[metadataBodyResolved], name)
 		// Compared through the accessors, because that is all a policy has: the map
 		// is unexported precisely so a policy cannot reach it.
 		assert.Equal(t, len(attrs), shared.ResolutionAttributes.Len(), name)
@@ -148,6 +151,10 @@ func TestApplyBoundResolution_IsANoOpForADirectlyResolvedRoute(t *testing.T) {
 	assert.Equal(t, "", ec.requestHeaderCtx.ResolutionAttributes.Get("a2a.context.id"))
 	assert.Nil(t, ec.resolutionAttributes)
 	assert.Empty(t, ec.operation)
+	// Absent rather than false: absence is what an older engine produces too, so a policy
+	// treats both the same way and parses the body itself.
+	_, published := ec.requestHeaderCtx.SharedContext.Metadata[metadataBodyResolved]
+	assert.False(t, published)
 }
 
 // The deferred path binds at the request-body callback, and the chain's own header
