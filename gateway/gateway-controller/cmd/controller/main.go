@@ -364,6 +364,7 @@ func main() {
 	// Initialize SDS secret manager if custom certificates are configured
 	var sdsSecretManager *xds.SDSSecretManager
 	translator := snapshotManager.GetTranslator()
+
 	if translator != nil && translator.GetCertStore() != nil {
 		// Use the same cache and node ID as the main xDS to ensure Envoy can fetch secrets
 		sdsSecretManager = xds.NewSDSSecretManager(
@@ -393,7 +394,8 @@ func main() {
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
+	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer)
 
 	// Wire the transformer into the Envoy xDS translator so Envoy routes are built from the
 	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
@@ -414,11 +416,13 @@ func main() {
 	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
 	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
 	// own kind list instead.
-	envoyTransformers := make(map[string]models.ConfigTransformer)
-	for _, kind := range transform.EnvoyTranslatorKinds() {
-		envoyTransformers[kind] = transformerRegistry
+	if translator != nil {
+		envoyTransformers := make(map[string]models.ConfigTransformer)
+		for _, kind := range transform.EnvoyTranslatorKinds() {
+			envoyTransformers[kind] = transformerRegistry
+		}
+		translator.SetTransformers(envoyTransformers)
 	}
-	translator.SetTransformers(envoyTransformers)
 
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
@@ -983,6 +987,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /agents/{id}":    {"admin", "developer"},
 		"DELETE /agents/{id}": {"admin", "developer"},
 
+		"POST /graphql-apis":        {"admin", "developer"},
+		"GET /graphql-apis":         {"admin", "developer"},
+		"GET /graphql-apis/{id}":    {"admin", "developer"},
+		"PUT /graphql-apis/{id}":    {"admin", "developer"},
+		"DELETE /graphql-apis/{id}": {"admin", "developer"},
+
 		"POST /llm-provider-templates":        {"admin"},
 		"GET /llm-provider-templates":         {"admin"},
 		"GET /llm-provider-templates/{id}":    {"admin"},
@@ -1006,6 +1016,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /rest-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
 		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
 		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
+
+		"POST /graphql-apis/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /graphql-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /graphql-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /graphql-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /graphql-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
 		"POST /llm-providers/{id}/api-keys":                         {"admin", "consumer"},
 		"GET /llm-providers/{id}/api-keys":                          {"admin", "consumer"},

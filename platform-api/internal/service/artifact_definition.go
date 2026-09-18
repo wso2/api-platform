@@ -284,3 +284,42 @@ func (d *mcpProxyDefinition) Decode(content []byte) (any, error) {
 	}
 	return definition, nil
 }
+
+// graphqlAPIDefinition renders GraphQL APIs.
+type graphqlAPIDefinition struct {
+	graphqlRepo repository.GraphQLAPIRepository
+}
+
+// NewGraphQLAPIDefinition returns the ArtifactDefinition for GraphQL APIs.
+func NewGraphQLAPIDefinition(graphqlRepo repository.GraphQLAPIRepository) ArtifactDefinition {
+	return &graphqlAPIDefinition{graphqlRepo: graphqlRepo}
+}
+
+func (d *graphqlAPIDefinition) Kind() string { return constants.GraphQLApi }
+
+func (d *graphqlAPIDefinition) Current(artifact *model.Artifact) (*ArtifactSnapshot, error) {
+	apiModel, err := d.graphqlRepo.GetByUUID(artifact.UUID, artifact.OrganizationUUID)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil {
+		return nil, apperror.GraphQLAPINotFound.New()
+	}
+	definition, err := generateGraphQLAPIDeploymentYAML(apiModel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate GraphQL API deployment YAML: %w", err)
+	}
+	return &ArtifactSnapshot{
+		Definition:  &definition,
+		DataVersion: apiModel.DataVersion,
+		Origin:      apiModel.Origin,
+	}, nil
+}
+
+func (d *graphqlAPIDefinition) Decode(content []byte) (any, error) {
+	definition := &dto.GraphQLAPIDeploymentYAML{}
+	if err := yaml.Unmarshal(content, definition); err != nil {
+		return nil, fmt.Errorf("failed to parse stored GraphQL API deployment YAML: %w", err)
+	}
+	return definition, nil
+}

@@ -82,6 +82,7 @@ roles:
       - ap:api_portal:manage
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
+      - ap:graphql_api:manage
       # API Portal & MCP Hub
       - dp:organization:manage
       - dp:organization_content:manage
@@ -135,6 +136,8 @@ roles:
       # - ap:websub_api:deployment:read   # event-gateway build only
       # - ap:webbroker_api:read   # event-gateway build only
       # - ap:webbroker_api:deployment:read   # event-gateway build only
+      - ap:graphql_api:read
+      - ap:graphql_api:deployment:manage
       # API Portal & MCP Hub
       - dp:key_manager:manage
       - dp:key_manager:read
@@ -181,6 +184,7 @@ roles:
       - ap:api_portal:read
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
+      - ap:graphql_api:manage
       # API Portal & MCP Hub
       - dp:api:manage
       - dp:api_content:manage
@@ -212,6 +216,7 @@ roles:
       - ap:mcp_proxy:read
       - ap:llm_proxy:read
       - ap:llm_provider:read
+      - ap:graphql_api:read
       - ap:api_key:read
       # API Portal & MCP Hub
       - dp:application:manage
@@ -264,6 +269,8 @@ roles:
       # - ap:websub_api:deployment:read   # event-gateway build only
       # - ap:webbroker_api:read   # event-gateway build only
       # - ap:webbroker_api:deployment:read   # event-gateway build only
+      - ap:graphql_api:read
+      - ap:graphql_api:deployment:read
       # API Portal & MCP Hub
       - dp:organization:read
       - dp:organization_content:read
