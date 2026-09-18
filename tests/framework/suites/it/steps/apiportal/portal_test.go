@@ -32,6 +32,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestTopLevelJSONArrayLength(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		field   string
+		want    int
+		wantErr string
+	}{
+		{name: "empty array", body: `{"labels":[]}`, field: "labels", want: 0},
+		{name: "populated array", body: `{"labels":["one","two"]}`, field: "labels", want: 2},
+		{name: "missing field", body: `{}`, field: "labels", wantErr: `is absent`},
+		{name: "non array", body: `{"labels":null}`, field: "labels", wantErr: `is not an array`},
+		{name: "invalid JSON", body: `{`, field: "labels", wantErr: `not a JSON object`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := topLevelJSONArrayLength([]byte(tt.body), tt.field)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestDevportalAPIHandle(t *testing.T) {
 	tests := []struct {
 		name              string

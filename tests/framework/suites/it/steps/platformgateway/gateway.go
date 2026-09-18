@@ -135,11 +135,11 @@ const (
 )
 
 // configDumpSchemaFor selects the policy-engine config-dump relationship used by a Gateway
-// release. Gateway 1.2.x stores each policy chain under its route key; later releases link
-// route metadata to a chain through chain_key.
+// release. The released Gateway 1.2.0 stores each policy chain under its route key; the
+// checked-out 1.2.0-SNAPSHOT and later builds link route metadata to a chain through chain_key.
 func configDumpSchemaFor(version string) configDumpSchema {
 	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
-	if strings.HasPrefix(version, "1.2.") {
+	if version == "1.2.0" {
 		return configDumpV12
 	}
 	return configDumpCurrent

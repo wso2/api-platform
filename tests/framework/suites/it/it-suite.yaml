@@ -701,6 +701,7 @@ blocks:
         addPoliciesFrom: ../gateway-controllers/policies
       - name: testbench
     runners:
-      - name: policy-build-smoke
+      - name: time-based-model-routing
+        tags: "gateway-version>=1.2.0"
         features:
-          - features/gateway_controller_policies.feature
+          - features/time_based_model_routing.feature

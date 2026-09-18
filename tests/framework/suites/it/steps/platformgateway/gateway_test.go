@@ -101,6 +101,18 @@ func TestConfigDumpContainsPolicy(t *testing.T) {
 			want:       true,
 		},
 		{
+			name:    "gateway source snapshot follows chain key from route metadata",
+			version: "1.2.0-SNAPSHOT",
+			body: `{
+				"route_metadata":{"routes":[{"route_key":"GET|/orders/v1/test|localhost","chain_key":"chain-123"}]},
+				"policy_chains":{"policy_chains":[
+					{"chain_key":"chain-123","policies":[{"name":"set-headers"}]}
+				]}
+			}`,
+			policyName: "set-headers",
+			want:       true,
+		},
+		{
 			name:    "current gateway rejects an absent policy",
 			version: "1.3.0",
 			body: `{
