@@ -1698,3 +1698,111 @@ func TestResolvedRoute_ResponseDeliveryIsUnchanged(t *testing.T) {
 		})
 	}
 }
+
+// ─── End to end: the MCP resolver feeding a policy ───────────────────────────
+
+// mcpFactsPolicy is a stand-in for any of the five MCP policies after migration. It
+// reads what it needs at the request-header phase and parses nothing.
+type mcpFactsPolicy struct {
+	operation  *string
+	method     *string
+	capability *string
+	toolName   *string
+	jsonrpcID  *string
+	attrCount  *int
+}
+
+func (p *mcpFactsPolicy) Mode() policy.ProcessingMode {
+	// The point of the change: header phase only, no body buffering of its own.
+	return policy.ProcessingMode{RequestHeaderMode: policy.HeaderModeProcess}
+}
+
+func (p *mcpFactsPolicy) OnRequestHeaders(_ context.Context, ctx *policy.RequestHeaderContext, _ map[string]interface{}) policy.RequestHeaderAction {
+	*p.operation = ctx.ResolvedOperation
+	*p.method = ctx.ResolutionAttributes.Get("mcp.body.method")
+	*p.capability = ctx.ResolutionAttributes.Get("mcp.body.capability.type")
+	*p.toolName = ctx.ResolutionAttributes.Get("mcp.body.capability.name")
+	*p.jsonrpcID = ctx.ResolutionAttributes.Get("mcp.body.jsonrpc.id")
+	*p.attrCount = ctx.ResolutionAttributes.Len()
+	return nil
+}
+
+// The whole mechanism, end to end, with the real MCP resolver: a legacy MCP request
+// arrives, the resolver parses the JSON-RPC body once, and a policy that declares only
+// HeaderModeProcess — and therefore never receives a body — reads the method and tool
+// name out of SharedContext.
+//
+// This is the property that makes the design work at all. A request-header-phase policy
+// has no body of its own, so before resolvers there was no way for it to know which MCP
+// tool was being called; every policy had to declare BodyModeBuffer and unmarshal for
+// itself. Here the body is read once, by the resolver, and the header policy still sees
+// the result.
+func TestMCPResolver_BodyFactsReachAHeaderPhasePolicy(t *testing.T) {
+	f := newResolutionFixture(t, &resolver.MCPResolver{})
+	f.route("POST|/weather/mcp|example.com", resolver.RouteResolution{
+		ResolverName:   resolver.MCPResolverName,
+		ResolverConfig: json.RawMessage(`{"specVersion":"2025-06-18"}`),
+	})
+
+	var operation, method, capability, toolName, jsonrpcID string
+	var attrCount int
+	f.operationChain("mcp", &mcpFactsPolicy{
+		operation: &operation, method: &method, capability: &capability,
+		toolName: &toolName, jsonrpcID: &jsonrpcID, attrCount: &attrCount,
+	})
+
+	execCtx := f.bindPending(t, "POST|/weather/mcp|example.com")
+	require.Empty(t, method, "nothing is known before the body arrives")
+
+	_, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body: []byte(`{"jsonrpc":"2.0","id":7,"method":"tools/call",` +
+			`"params":{"name":"get_forecast","arguments":{"city":"Colombo"}}}`),
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "tools/call", method, "the policy learned the method without parsing anything")
+	assert.Equal(t, "tool", capability)
+	assert.Equal(t, "get_forecast", toolName, "and which tool the caller asked for")
+	assert.Equal(t, "7", jsonrpcID, "so an error envelope can still be correlated")
+	// method, capability.type, capability.action, capability.name, jsonrpc.id. Whether
+	// this is a notification is read off the absence of jsonrpc.id, not published.
+	assert.Equal(t, 6, attrCount)
+
+	// Enrich-only: one chain per route, so the operation is a constant. Per-operation
+	// chains are what would make this the JSON-RPC method instead.
+	assert.Equal(t, "mcp", operation)
+	assert.Equal(t, operationChainKey("mcp"), execCtx.chainKey)
+}
+
+// Seen from the kernel: every MCP route asks Envoy for the body and defers chain
+// selection to the body callback, whichever era the route declares. There is no route
+// configuration that turns this off — a route that resolved statically would be bound
+// from its stored result without Resolve ever running, and would publish no facts.
+func TestMCPResolver_EveryRouteBuffersAndDefers(t *testing.T) {
+	f := newResolutionFixture(t, &resolver.MCPResolver{})
+
+	cases := []struct {
+		name   string
+		key    string
+		config json.RawMessage
+	}{
+		{"no config, as the controller emits", "POST|/weather/mcp|example.com", nil},
+		{"a modern era does not opt out", "POST|/modern/mcp|example.com", json.RawMessage(`{"specVersion":"2026-07-28"}`)},
+		{"nor does the retired validateHeaderBody flag", "POST|/retired/mcp|example.com", json.RawMessage(`{"specVersion":"2026-07-28","validateHeaderBody":false}`)},
+		{"a legacy era", "POST|/legacy/mcp|example.com", json.RawMessage(`{"specVersion":"2025-06-18"}`)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rc := f.route(tc.key, resolver.RouteResolution{
+				ResolverName:   resolver.MCPResolverName,
+				ResolverConfig: tc.config,
+			})
+
+			require.True(t, rc.Prepared.Requirements.BuffersBody(),
+				"a route that does not buffer publishes no facts, and every MCP policy reads facts")
+			assert.False(t, rc.Prepared.IsStatic(),
+				"a static route never calls Resolve, so it would publish nothing")
+		})
+	}
+}
