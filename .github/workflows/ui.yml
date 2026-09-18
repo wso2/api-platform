@@ -1,0 +1,258 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Runs the UI suite from the test framework, plus the unit tests for the products
+# and UI services it exercises. Runtime and browser coverage are collected from
+# the instrumented images and uploaded as separate Codecov component reports.
+
+name: UI Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803b # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            portals/api-portal/package-lock.json
+            portals/ai-workspace/package-lock.json
+
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ripgrep
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # UI runners boot several services and use published container ports. Keep the
+      # host networking prerequisite from the integration workflow for stable runs.
+      - name: Raise the conntrack table limit
+        run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+
+      # Unit tests run before any image build or UI test. A unit-test failure gates the
+      # workflow while still allowing the always-run report and artifact steps to run.
+      - name: Gateway-controller unit tests
+        run: cd gateway/gateway-controller && make test
+
+      - name: Policy-engine unit tests
+        run: cd gateway/gateway-runtime && make test
+
+      - name: Platform-API unit tests
+        run: cd platform-api && make test
+
+      - name: AI Workspace BFF unit tests
+        working-directory: portals/ai-workspace/bff
+        run: GOWORK=off go test -coverprofile=unit-test-coverage.txt ./...
+
+      - name: API Portal unit tests
+        working-directory: portals/api-portal
+        run: |
+          npm ci
+          npm rebuild better-sqlite3 --ignore-scripts=false
+          mapfile -d '' -t test_files < <(find src -type f -name '*.test.js' -print0)
+          if [ "${#test_files[@]}" -eq 0 ]; then
+            echo 'No API Portal unit-test files found' >&2
+            exit 1
+          fi
+          node --test "${test_files[@]}"
+
+      - name: Build testbench image
+        run: make -C tests/framework testbench
+
+      # -coverage makes BuildSources build the source-backed product images with their
+      # coverage instrumentation. The UI suite then harvests Go, Node/V8, and Istanbul
+      # browser artifacts into the explicitly configured run directories.
+      - name: Run the UI suite with coverage
+        working-directory: tests/framework
+        env:
+          IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/ui/coverage-out
+          IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/ui/logs-out
+        run: go test -v ./suites/ui -count=1 -timeout=60m -coverage -logs
+
+      # COVERAGE_OUT is the parent directory, not the generated .run-* one: the report
+      # script resolves the run inside it and writes the reports here, which is where
+      # every upload step below reads them from.
+      - name: Generate UI coverage report
+        if: always()
+        env:
+          COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/ui/coverage-out
+        run: make -C tests/framework coverage-report
+
+      - name: Upload UI coverage HTML reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-coverage-reports
+          # The whole report tree: splitting by extension dropped the LCOV files Codecov
+          # actually consumes and the CSS/JS/images the HTML reports need to render. The
+          # raw per-run inputs live under a dot-prefixed .run-* directory, which
+          # upload-artifact excludes while include-hidden-files stays unset.
+          path: tests/framework/suites/ui/coverage-out/**
+          if-no-files-found: warn
+
+      - name: Upload UI container log captures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-container-logs
+          path: tests/framework/suites/ui/logs-out/**/*.log
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      # Unit coverage for the Go services is already produced by their make targets.
+      # Codecov uploads are best-effort, while the tests and report generation remain
+      # enforced by this workflow.
+      - name: Upload gateway-controller unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: gateway/gateway-controller/unit-test-coverage.txt
+          flags: gateway-controller-unit
+
+      - name: Upload policy-engine unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
+          flags: policy-engine-unit
+
+      - name: Upload platform-api unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: platform-api/unit-test-coverage.txt
+          flags: platform-api-unit
+
+      - name: Upload AI Workspace BFF unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/ai-workspace/bff/unit-test-coverage.txt
+          flags: ai-workspace-bff-unit
+
+      - name: Upload AI Workspace BFF integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/ai-workspace/bff/coverage.txt
+          flags: ai-workspace-bff-integration
+
+      - name: Upload AI Workspace UI integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/ai-workspace/ui/lcov.info
+          flags: ai-workspace-ui-integration
+
+      - name: Upload API Portal server integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/api-portal/server/lcov.info
+          flags: api-portal-server-integration
+
+      - name: Upload API Portal UI integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/api-portal/ui/lcov.info
+          flags: api-portal-ui-integration
+
+      - name: Upload gateway-controller integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/platform-gateway/controller/coverage.txt
+          flags: gateway-controller-integration
+
+      - name: Upload policy-engine integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/platform-gateway/runtime/coverage.txt
+          flags: policy-engine-integration
+
+      - name: Upload platform-api integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/platform-api/coverage.txt
+          flags: platform-api-integration

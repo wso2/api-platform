@@ -29,17 +29,27 @@ go test ./suites/it -count=1 -timeout=30m -blocks=gateway-core/sqlite
 
 # The full matrix (all database engines), bounded concurrency:
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
+
+# Gateway-controller policy smoke (requires ../gateway-controllers/policies)
+go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
 
 # Coverage-enabled server and browser run (images are built from the checkout):
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=2 -coverage
-# The test prints the generated coverage run directory, for example:
+# The test prints the generated coverage run directory. COVERAGE_OUT accepts either that
+# directory or the parent coverage-out, which reports on the most recent run inside it:
 #   COVERAGE_OUT=/path/to/suites/it/coverage-out/.run-... make coverage-report
-# Open that run directory's index.html to navigate to each component report.
+# Reports are written under whichever directory you pass; open its index.html to navigate
+# to each component report. A run's counters are never merged with another run's.
 
 # The UI suite (browser-driven AI Workspace journeys against the real gateway):
 go test ./suites/ui -count=1 -timeout=25m
+
+# The cloud suite (external APIP cloud; requires a workflow-provided access token):
+CLOUD_CONSOLE_ACCESS_TOKEN=<access-token> \
+go test ./suites/cloud -count=1 -timeout=15m \
+  -args -blocks=apip-cloud -cloud-env=development
 ```
 
 Prerequisite images: `make testbench` here. Coverage runs build source images through the
@@ -67,8 +77,19 @@ framework/
   core/util/        HTTP, retry, runner context, and unique-name helpers
   core/taxonomy/    capability-map lint and coverage-tree renderer
 suites/
-  it/  ui/
+  it/  cloud/  ui/
 ```
+
+The cloud suite targets externally hosted APIP services. It does not compile product code,
+pull product images, create Docker networks, or provision databases. The environment-to-domain
+mapping is maintained in the local, ignored `core/catalog/cloudconsole/environments.toml`;
+copy `core/catalog/cloudconsole/environments.example.toml` there and add or update an
+environment without changing Go code. The CI workflow is responsible for obtaining the cloud
+access token; the suite consumes it from `CLOUD_CONSOLE_ACCESS_TOKEN` and never calls the token
+provider itself. Its suite defaults match the integration suite: a 5-minute boot deadline
+and a 60-second propagation deadline. Cloud data-plane availability and eventual reads use the
+propagation deadline; the longer deployment and environment-finalizer waits remain explicit in
+their step contracts.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.

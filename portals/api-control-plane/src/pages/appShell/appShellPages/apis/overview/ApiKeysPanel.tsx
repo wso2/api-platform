@@ -26,51 +26,30 @@ import {
   DialogContent,
   DialogTitle,
   Drawer,
-  FormControl,
-  FormLabel,
   IconButton,
   Stack,
-  TextField,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft, Clock, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useCreateApiKey, useMyApiKeys, useRevokeApiKey } from '@/api/resources/apiKeys';
+import { useMyApiKeys, useRevokeApiKey } from '@/api/resources/apiKeys';
 import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
+
+import { CreateApiKeyDialog } from './CreateApiKeyDialog';
 
 const messages = defineMessages({
   add: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.add',
     defaultMessage: 'Add',
-    description: 'Commits the new API key in the add dialog.',
+    description: 'Opens the dialog for issuing a new API key.',
   },
   addButton: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addButton',
     defaultMessage: 'Add API Key',
     description: 'Opens the dialog for issuing a new API key.',
-  },
-  addDialogTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addDialogTitle',
-    defaultMessage: 'Add API Key',
-    description: 'Title of the dialog for issuing a new API key.',
-  },
-  addFailed: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addFailed',
-    defaultMessage: 'Failed to add API key',
-    description: 'Fallback toast when the server gives no reason for the failure.',
-  },
-  adding: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.adding',
-    defaultMessage: 'Adding...',
-    description: 'Label of the add button while the key is being issued.',
-  },
-  addSucceeded: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addSucceeded',
-    defaultMessage: 'API key "{name}" added.',
-    description: 'Toast confirming a new key; {name} is the name the user typed.',
   },
   cancel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.cancel',
@@ -118,26 +97,6 @@ const messages = defineMessages({
   separator: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.separator',
     defaultMessage: '·',
-  },
-  keyNameLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyNameLabel',
-    defaultMessage: 'Key Name',
-    description: 'Label of the field naming the new key.',
-  },
-  keyNamePlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyNamePlaceholder',
-    defaultMessage: 'Ex: Production Key',
-    description: 'Example name shown in the empty key-name field.',
-  },
-  keyValueHelper: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyValueHelper',
-    defaultMessage: 'Stored hashed and pushed to deployed gateways; you cannot read it back later.',
-    description: 'Warns that the key value is write-only once submitted.',
-  },
-  keyValueLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.keyValueLabel',
-    defaultMessage: 'API Key Value',
-    description: 'Label of the field holding the secret the gateways will accept.',
   },
   revoke: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revoke',
@@ -194,9 +153,10 @@ const EMPTY_VALUE = '-';
 type RevokeTarget = { id: string; displayName: string };
 
 /**
- * API Keys section of the Overview tab (ai-workspace layout). platform-api's
- * model is key injection: the caller supplies the key value once, the server
- * stores a hash and broadcasts it to the gateways the API is deployed on.
+ * API Keys section of the Overview tab (ai-workspace layout). The server mints
+ * the key, stores only a hash and broadcasts it to the gateways the API is
+ * deployed on; the plaintext exists once, in `CreateApiKeyDialog`'s second
+ * step, and is never readable again — hence the masked values listed here.
  */
 export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
   const intl = useIntl();
@@ -210,13 +170,10 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
   // With the server default page size (20), relevant keys could be omitted.
   // `API_KEY_PAGE_SIZE` is the spec max and yields the widest single request.
   const keysQuery = useMyApiKeys({ limit: API_KEY_PAGE_SIZE, type: ['RestApi'] });
-  const createMutation = useCreateApiKey();
   const revokeMutation = useRevokeApiKey();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [displayName, setDisplayName] = useState('');
-  const [keyValue, setKeyValue] = useState('');
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
 
   const keys = useMemo(
@@ -226,28 +183,6 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [keysQuery.data, restApiId],
   );
-
-  const closeDialog = () => {
-    if (createMutation.isPending) return;
-    setDialogOpen(false);
-    setDisplayName('');
-    setKeyValue('');
-  };
-
-  const submit = () => {
-    const name = displayName.trim();
-    createMutation.mutate(
-      { restApiId, body: { displayName: name, apiKey: keyValue.trim() } },
-      {
-        onSuccess: () => {
-          notify(intl.formatMessage(messages.addSucceeded, { name }), 'success');
-          closeDialog();
-        },
-        onError: (error) =>
-          notify(error.message || intl.formatMessage(messages.addFailed), 'error'),
-      },
-    );
-  };
 
   const revoke = () => {
     if (!revokeTarget) return;
@@ -267,7 +202,6 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
     );
   };
 
-  const canSubmit = Boolean(displayName.trim() && keyValue.trim()) && !createMutation.isPending;
   const recentKeys = keys.slice(0, 5);
 
   return (
@@ -434,62 +368,11 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
         </Box>
       </Drawer>
 
-      {/* Add key dialog */}
-      <Dialog fullWidth maxWidth="sm" onClose={closeDialog} open={dialogOpen}>
-        <DialogTitle>
-          <FormattedMessage {...messages.addDialogTitle} />
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <FormControl fullWidth>
-              <FormLabel>
-                <FormattedMessage {...messages.keyNameLabel} />
-              </FormLabel>
-              <TextField
-                autoFocus
-                fullWidth
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder={intl.formatMessage(messages.keyNamePlaceholder)}
-                size="small"
-                value={displayName}
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel>
-                <FormattedMessage {...messages.keyValueLabel} />
-              </FormLabel>
-              <TextField
-                fullWidth
-                helperText={intl.formatMessage(messages.keyValueHelper)}
-                onChange={(event) => setKeyValue(event.target.value)}
-                size="small"
-                value={keyValue}
-              />
-            </FormControl>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            color="secondary"
-            disabled={createMutation.isPending}
-            onClick={closeDialog}
-            size="small"
-            variant="outlined"
-          >
-            <FormattedMessage {...messages.cancel} />
-          </Button>
-          <Button disabled={!canSubmit} onClick={submit} size="small" variant="contained">
-            {createMutation.isPending ? (
-              <>
-                <CircularProgress size={16} sx={{ mr: 1 }} />
-                <FormattedMessage {...messages.adding} />
-              </>
-            ) : (
-              <FormattedMessage {...messages.add} />
-            )}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CreateApiKeyDialog
+        onClose={() => setDialogOpen(false)}
+        open={dialogOpen}
+        restApiId={restApiId}
+      />
 
       {/* Revoke confirmation */}
       <Dialog

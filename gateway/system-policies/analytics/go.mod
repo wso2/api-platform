@@ -2,4 +2,4 @@ module github.com/wso2/api-platform/gateway/system-policies/analytics
 
 go 1.26.5
 
-require github.com/wso2/api-platform/sdk/core v0.2.9
+require github.com/wso2/api-platform/sdk/core v0.4.1

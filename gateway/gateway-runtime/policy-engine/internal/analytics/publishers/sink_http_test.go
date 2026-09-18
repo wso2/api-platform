@@ -99,7 +99,7 @@ func httpSinkCfg(endpoint string) config.TrafficLogHTTPConfig {
 		BatchMaxBytes:          1 << 20,
 		FlushInterval:          25 * time.Millisecond,
 		QueueCapacity:          100,
-		OnQueueFull:            config.TrafficLogQueueDropNew,
+		OnQueueFull:            config.QueueDropNew,
 		RequestTimeout:         2 * time.Second,
 		MaxRetries:             0,
 		RetryBackoff:           time.Millisecond,

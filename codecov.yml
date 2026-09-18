@@ -1,0 +1,84 @@
+# Maps Go module import paths in coverage profiles to repository paths, so Codecov can
+# attach coverage to real files. The v2 integration suite's server-side profiles carry
+# paths like github.com/wso2/api-platform/gateway/gateway-controller/pkg/...
+fixes:
+  - "github.com/wso2/api-platform/::"
+  # c8 writes the API Portal server's LCOV relative to the report directory, so its
+  # entries arrive as ../../portals/api-portal/src/... and match neither a repository
+  # file nor an api-portal-server component path. The browser reports are already
+  # repo-root-relative and are unaffected.
+  - "../../::"
+
+# Each upload carries only its own component's report (the workflows set disable_search),
+# so a flag is absent whenever its producer did not run — the browser-UI reports are
+# generated conditionally. Carry the last known report forward instead of reading that
+# absence as lost coverage.
+flag_management:
+  default_rules:
+    carryforward: true
+
+# Monorepo: per-component coverage, grouped by path regardless of which upload carried the
+# lines, so unit and integration flags roll up into the same component view. Each component
+# gets its own project/patch status check (codecov/project/<name>, codecov/patch/<name>)
+# instead of one repo-wide check, since a monorepo's components move independently.
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+      - type: patch
+        target: auto
+  individual_components:
+    - component_id: gateway-controller
+      name: gateway-controller
+      paths:
+        - gateway/gateway-controller/**
+    - component_id: policy-engine
+      name: policy-engine
+      paths:
+        - gateway/gateway-runtime/policy-engine/**
+    - component_id: platform-api
+      name: platform-api
+      paths:
+        - platform-api/**
+    - component_id: gateway-builder
+      name: gateway-builder
+      paths:
+        - gateway/gateway-builder/**
+    - component_id: common
+      name: common
+      paths:
+        - common/**
+    - component_id: cli
+      name: cli
+      paths:
+        - cli/**
+    - component_id: ai-workspace-bff
+      name: ai-workspace-bff
+      paths:
+        - portals/ai-workspace/bff/**
+    - component_id: ai-workspace-ui
+      name: ai-workspace-ui
+      paths:
+        - portals/ai-workspace/src/**
+    - component_id: api-portal-server
+      name: api-portal-server
+      paths:
+        - portals/api-portal/src/*.js
+        - portals/api-portal/src/config/**
+        - portals/api-portal/src/controllers/**
+        - portals/api-portal/src/dao/**
+        - portals/api-portal/src/db/**
+        - portals/api-portal/src/defaultContent/**
+        - portals/api-portal/src/dto/**
+        - portals/api-portal/src/helpers/**
+        - portals/api-portal/src/middlewares/**
+        - portals/api-portal/src/pages/**
+        - portals/api-portal/src/routes/**
+        - portals/api-portal/src/services/**
+        - portals/api-portal/src/styles/**
+        - portals/api-portal/src/utils/**
+    - component_id: api-portal-ui
+      name: api-portal-ui
+      paths:
+        - portals/api-portal/src/scripts/**

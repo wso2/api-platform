@@ -19,6 +19,37 @@
 import type { ApiFetch } from './hostPort';
 import type { Build, DeploymentStatus, Environment, Gateway, GatewayHealth } from './types';
 
+/**
+ * The artifact kinds this page can deploy, named as the platform names them. A
+ * handle is unique only WITHIN a kind, so every call says which one it means.
+ */
+export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider';
+
+/**
+ * Each kind's own path on the platform API. The pipeline routes are shared, but a
+ * few calls go straight to the artifact's own resource — deleting a build, reading
+ * an API's backend URL — and those are split by kind.
+ */
+const NATIVE_PATH: Record<ArtifactKind, string> = {
+  RestApi: 'rest-apis',
+  Mcp: 'mcp-proxies',
+  LlmProxy: 'llm-proxies',
+  LlmProvider: 'llm-providers',
+};
+
+/**
+ * The kinds of gateway each artifact kind runs on. A gateway's kind decides what
+ * its runtime can serve, so this is the same mapping the server enforces the deploy
+ * against — kept here only to narrow the gateways the page asks for, never as the
+ * rule itself. A kind absent from this map asks for every gateway.
+ */
+const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
+  RestApi: ['regular'],
+  Mcp: ['ai'],
+  LlmProxy: ['ai'],
+  LlmProvider: ['ai'],
+};
+
 /** Wire shapes. These mirror the deployment endpoints field for field. */
 type GatewayDeploymentDTO = {
   gatewayId: string;
@@ -71,8 +102,29 @@ type RestApiDTO = {
  * pipeline, its environments and their gateways — so this client never assembles
  * a pipeline itself, and the rules the server enforces cannot be bypassed here.
  */
-export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, apiHandle: string) {
+export function createDeployClient(
+  apiFetch: ApiFetch,
+  projectHandle: string,
+  apiHandle: string,
+  kind: ArtifactKind = 'RestApi'
+) {
   const base = `/projects/${encodeURIComponent(projectHandle)}/apis/${encodeURIComponent(apiHandle)}`;
+  // The pipeline routes serve every artifact kind, so each call says which kind it
+  // addresses: a handle is unique only within a kind. REST APIs are the default on
+  // the server, but it is sent either way so the request is explicit.
+  const forKind = `kind=${encodeURIComponent(kind)}`;
+  // Ask the platform for only the gateways this artifact can run, rather than
+  // pulling every gateway in the organization back and dropping most of them here.
+  // Derived from the kind, not passed in by the host: the server refuses a deploy
+  // across the same mapping, and a page that asked for a different set than the
+  // server accepts would offer a target the deploy then rejects.
+  const gatewayTypes = GATEWAY_TYPES_FOR_KIND[kind] ?? [];
+  const managedGatewaysPath = gatewayTypes.length
+    ? `/managed-gateways?${gatewayTypes
+        .map((t) => `functionalityType=${encodeURIComponent(t)}`)
+        .join('&')}`
+    : '/managed-gateways';
+  const withKind = (path: string) => (path.includes('?') ? `${path}&${forKind}` : `${path}?${forKind}`);
 
   return {
     /**
@@ -83,8 +135,8 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
      */
     async listEnvironments(): Promise<Environment[]> {
       const [stages, gateways] = await Promise.all([
-        apiFetch<{ list?: StageDTO[] }>('GET', `${base}/deployments`),
-        apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', '/managed-gateways').catch(() => undefined),
+        apiFetch<{ list?: StageDTO[] }>('GET', withKind(`${base}/deployments`)),
+        apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', managedGatewaysPath).catch(() => undefined),
       ]);
 
       const known = new Map<string, ManagedGatewayDTO>();
@@ -114,7 +166,7 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
 
     /** The API's builds, newest first. */
     async listBuilds(): Promise<Build[]> {
-      const response = await apiFetch<{ list?: BuildDTO[] }>('GET', `${base}/builds`);
+      const response = await apiFetch<{ list?: BuildDTO[] }>('GET', withKind(`${base}/builds`));
       return (response?.list ?? []).map((dto) => ({
         buildId: dto.buildId,
         description: dto.description,
@@ -137,7 +189,7 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
     async deleteBuild(buildId: string): Promise<void> {
       await apiFetch(
         'DELETE',
-        `/rest-apis/${encodeURIComponent(apiHandle)}/builds/${encodeURIComponent(buildId)}`
+        `/${NATIVE_PATH[kind]}/${encodeURIComponent(apiHandle)}/builds/${encodeURIComponent(buildId)}`
       );
     },
 
@@ -147,6 +199,10 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
      * Absent when the API declares its upstream by reference rather than by URL.
      */
     async readApiEndpointUrl(): Promise<string | undefined> {
+      // Only REST APIs declare a backend URL this form can start from; the other
+      // kinds either have none or shape it differently, so the field is simply left
+      // empty for them rather than guessed at.
+      if (kind !== 'RestApi') return undefined;
       const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
       return api?.upstream?.main?.url;
     },
@@ -166,7 +222,7 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
       fromEnvironment?: string;
       buildId?: string;
     }): Promise<void> {
-      await apiFetch('POST', `${base}/deployments`, {
+      await apiFetch('POST', withKind(`${base}/deployments`), {
         environment: input.environment,
         gateways: input.gateways.map((gateway) => ({
           gatewayId: gateway.gatewayId,
@@ -182,7 +238,7 @@ export function createDeployClient(apiFetch: ApiFetch, projectHandle: string, ap
       const query = `?environment=${encodeURIComponent(environment)}&gatewayId=${encodeURIComponent(gatewayId)}`;
       await apiFetch(
         'POST',
-        `${base}/deployments/${encodeURIComponent(deploymentId)}/undeploy${query}`
+        withKind(`${base}/deployments/${encodeURIComponent(deploymentId)}/undeploy${query}`)
       );
     },
   };

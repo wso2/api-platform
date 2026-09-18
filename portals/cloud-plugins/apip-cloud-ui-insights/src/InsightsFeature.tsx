@@ -21,11 +21,14 @@ import { useEffect, useMemo, useState, type FC, type ReactNode } from 'react';
 
 import { resolveProjectScope } from './api/analyticsApi';
 import { ErrorState, LoadingState } from './components/StateViews';
+import { ENABLE_ACP_PROJECT_FILTER } from './config/acpProjectFilter';
 import type { InsightsHostPort } from './hostPort';
 import InsightsEmbed from './InsightsEmbed';
 import type { InsightsEmbedProfile, InsightsScopeLevel } from './types';
 import { resolveInsightsScopeLevel } from './utils/moesifEmbed';
 import { parseInsightsRouteParams } from './utils/routeParams';
+
+export { ENABLE_ACP_PROJECT_FILTER } from './config/acpProjectFilter';
 
 /**
  * AI Workspace pages own their PageContent (the shell does not wrap the outlet).
@@ -55,9 +58,6 @@ export type InsightsFeatureProps = {
 /**
  * Resolves project scope when needed, then renders the wrap/basic Moesif embed.
  *
- * Until Moesif reliably supports project filtering, a failed project resolve
- * falls back to the organization embed instead of blocking the page.
- *
  * Organization context for the viewer token comes from the BFF session — the
  * embed does not need `idpOrganizationRefUuid` from the platform-api org list.
  */
@@ -77,8 +77,11 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     });
 
   // AI Workspace: same iframe at org and project — skip project_id resolve.
+  // ACP: gated by ENABLE_ACP_PROJECT_FILTER until Moesif project filter works.
   const needsProjectResolve =
-    embedProfile === 'api-control-plane' && requestedScopeLevel === 'project';
+    ENABLE_ACP_PROJECT_FILTER &&
+    embedProfile === 'api-control-plane' &&
+    requestedScopeLevel === 'project';
 
   const scopeKey = useMemo(
     () =>
@@ -89,7 +92,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
   );
 
   const [embedScopeLevel, setEmbedScopeLevel] =
-    useState<InsightsScopeLevel>(requestedScopeLevel);
+    useState<InsightsScopeLevel>('organization');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [scopeLoading, setScopeLoading] = useState(needsProjectResolve);
@@ -101,9 +104,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
 
   useEffect(() => {
     if (!needsProjectResolve) {
-      setEmbedScopeLevel(
-        embedProfile === 'ai-workspace' ? 'organization' : requestedScopeLevel
-      );
+      setEmbedScopeLevel('organization');
       setScopeLoading(false);
       setProjectId(null);
       setProjectName(null);
@@ -139,6 +140,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
         setProjectName(project.projectName);
         setResolvedScopeKey(scopeKey);
       } catch {
+        // Project filter unavailable — keep Insights usable at org scope.
         if (!cancelled) {
           setEmbedScopeLevel('organization');
           setProjectId(null);
@@ -154,12 +156,10 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
       cancelled = true;
     };
   }, [
-    embedProfile,
     needsProjectResolve,
     orgHandle,
     port.apiFetch,
     projectHandle,
-    requestedScopeLevel,
     scopeKey,
   ]);
 

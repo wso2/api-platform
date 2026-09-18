@@ -28,6 +28,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wso2/api-platform/tests/framework/testbench"
 )
 
 // Port is the container port. Features address http://testbench:3000.
@@ -66,7 +68,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /delay/{seconds}", s.delay)
 	mux.HandleFunc("GET /sandbox/whoami", s.whoami)
 	mux.HandleFunc("/", s.reflect)
-	return mux
+	return testbench.NormalizeMethod(mux)
 }
 
 // reflect returns the incoming request as JSON for arbitrary upstream paths.

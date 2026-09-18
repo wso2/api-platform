@@ -40,6 +40,8 @@ export interface AppShellContextType {
   userName: string | null;
   userEmail: string | null;
   currentOrganization: Organization | null;
+  organizations: Organization[];
+  isOrganizationsLoading: boolean;
   currentProject: ProjectBase | null;
   projectsForCurrentOrganization: ProjectBase[];
   isProjectsLoading: boolean;
@@ -50,12 +52,15 @@ export interface AppShellContextType {
   error: string | null;
   setCurrentProject: (project: ProjectBase | null) => void;
   refetchProjects: () => Promise<void>;
+  switchOrganization: (organization: Organization) => Promise<void>;
 }
 
 const defaultContextValue: AppShellContextType = {
   userName: null,
   userEmail: null,
   currentOrganization: null,
+  organizations: [],
+  isOrganizationsLoading: false,
   currentProject: null,
   projectsForCurrentOrganization: [],
   isProjectsLoading: false,
@@ -66,6 +71,7 @@ const defaultContextValue: AppShellContextType = {
   error: null,
   setCurrentProject: () => {},
   refetchProjects: async () => {},
+  switchOrganization: async () => {},
 };
 
 const AppShellContext = createContext<AppShellContextType>(defaultContextValue);
@@ -93,6 +99,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const userEmail: string | null = initialUserEmail || null;
 
   const [currentOrganization, setCurrentOrganizationState] = useState<Organization | null>(null);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isOrganizationsLoading, setIsOrganizationsLoading] = useState(false);
   const [projectsForCurrentOrganization, setProjectsForCurrentOrganization] = useState<ProjectBase[]>([]);
   const [currentProject, setCurrentProjectState] = useState<ProjectBase | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
@@ -103,7 +111,13 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
   // ── Project fetching ────────────────────────────────────────────────────────
 
+  // Guards against an earlier, slower fetchProjectsForOrg call (e.g. from a
+  // superseded organization switch) overwriting state with stale results
+  // after a later call has already resolved.
+  const fetchGenerationRef = useRef(0);
+
   const fetchProjectsForOrg = useCallback(async (): Promise<ProjectBase[]> => {
+    const generation = ++fetchGenerationRef.current;
     setIsProjectsLoading(true);
     try {
       let projectList = await getProjects();
@@ -111,15 +125,21 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
         await createDefaultProject();
         projectList = await getProjects();
       }
-      setProjectsForCurrentOrganization(projectList);
-      setCurrentProjectState(null);
+      if (generation === fetchGenerationRef.current) {
+        setProjectsForCurrentOrganization(projectList);
+        setCurrentProjectState(null);
+      }
       return projectList;
     } catch (err) {
       logger.error('Failed to fetch projects:', err);
-      setProjectsForCurrentOrganization([]);
+      if (generation === fetchGenerationRef.current) {
+        setProjectsForCurrentOrganization([]);
+      }
       return [];
     } finally {
-      setIsProjectsLoading(false);
+      if (generation === fetchGenerationRef.current) {
+        setIsProjectsLoading(false);
+      }
     }
   }, []);
 
@@ -145,6 +165,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const initialize = useCallback(async () => {
     try {
       const tokenOrg = userRef.current?.org;
+
+      const orgsPromise = getOrganizations();
 
       if (tokenOrg?.handle) {
         // Primary path: fetch org by handle from the token (works for both OIDC and file-based auth).
@@ -178,19 +200,37 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           return;
         }
 
-        setCurrentOrganizationState(toOrganization(platformOrg));
+        const resolvedOrg = toOrganization(platformOrg);
+        setCurrentOrganizationState(resolvedOrg);
+
+        setIsOrganizationsLoading(true);
+        try {
+          const orgs = await orgsPromise;
+          setOrganizations(
+            orgs.some((o) => o.handle === resolvedOrg.handle) ? orgs : [...orgs, resolvedOrg]
+          );
+        } finally {
+          setIsOrganizationsLoading(false);
+        }
+
         setIsTokenExchanged(true);
         await fetchProjectsForOrg();
         return;
       }
 
-      // Fallback: no org id in token — use list endpoint.
-      const orgs = await getOrganizations();
+      setIsOrganizationsLoading(true);
+      let orgs: Organization[];
+      try {
+        orgs = await orgsPromise;
+      } finally {
+        setIsOrganizationsLoading(false);
+      }
       if (orgs.length === 0) {
         logger.warn('[AppShellContext] No organization found');
         setError('Organization not found. Please contact your administrator.');
         return;
       }
+      setOrganizations(orgs);
       setCurrentOrganizationState(orgs[0]);
       setIsTokenExchanged(true);
       await fetchProjectsForOrg();
@@ -202,6 +242,17 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       setIsLoading(false);
     }
   }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
+
+  const switchOrganization = useCallback(
+    async (organization: Organization) => {
+      if (organization.handle === currentOrganization?.handle) {
+        return;
+      }
+      setCurrentOrganizationState(organization);
+      await fetchProjectsForOrg();
+    },
+    [currentOrganization?.handle, fetchProjectsForOrg]
+  );
 
   useEffect(() => {
     if (isInitializedRef.current) return;
@@ -215,6 +266,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     userName,
     userEmail,
     currentOrganization,
+    organizations,
+    isOrganizationsLoading,
     currentProject,
     projectsForCurrentOrganization,
     isProjectsLoading,
@@ -225,6 +278,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     error,
     setCurrentProject,
     refetchProjects,
+    switchOrganization,
   };
 
   return (

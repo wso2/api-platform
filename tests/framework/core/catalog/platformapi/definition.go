@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +31,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -44,6 +46,16 @@ const EnvImagePlatformAPI = "PA_IMAGE"
 
 const svcPlatformAPI = "platform-api"
 
+const envWebhookSecret = "APIP_CP_WEBHOOK_SECRET"
+
+var webhookSecretState struct {
+	sync.Once
+	value string
+}
+
+// platformAPIBootAttempts caps retries of a failed platform-api boot
+const platformAPIBootAttempts = 3
+
 // PlatformAPI returns the Platform API component definition.
 func PlatformAPI() *components.Definition {
 	generated := shared.ControlPlaneCrypto()
@@ -51,6 +63,7 @@ func PlatformAPI() *components.Definition {
 	for key, value := range adminEnvironment() {
 		env[key] = value
 	}
+	env[envWebhookSecret] = WebhookSecret()
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
 	}
@@ -73,6 +86,7 @@ func PlatformAPI() *components.Definition {
 			CoverageServices: []components.CoverageService{{
 				Name: svcPlatformAPI, Types: []string{"go"},
 			}},
+			BootAttempts: platformAPIBootAttempts,
 		},
 
 		Endpoints: []components.Endpoint{
@@ -103,24 +117,54 @@ func PlatformAPI() *components.Definition {
 
 		Provisions: provisionGatewayRegistration,
 
-		Limits: components.ResourceLimits{CPUs: 1, MemoryMB: 1000},
+		Limits: components.ResourceLimits{CPUs: 1.5, MemoryMB: 2048},
 	}
+}
+
+// WebhookSecret returns the per-process secret shared by the platform-api receiver and API
+// Portal webhook registration steps.
+func WebhookSecret() string {
+	webhookSecretState.Do(func() {
+		key, err := shared.HexKey(32)
+		if err != nil {
+			panic("catalog: generating webhook secret: " + err.Error())
+		}
+		webhookSecretState.value = key
+	})
+	return webhookSecretState.value
 }
 
 func adminEnvironment() map[string]string {
 	admin := actor.Administrator()
-	hash := strings.TrimSpace(os.Getenv("APIP_CP_ADMIN_PASSWORD_HASH"))
-	if hash == "" {
-		generated, err := bcrypt.GenerateFromPassword([]byte(admin.Password), bcrypt.DefaultCost)
-		if err != nil {
-			panic("catalog: generating Platform API admin password hash: " + err.Error())
-		}
-		hash = string(generated)
-	}
+	adminHash := passwordHash("APIP_CP_ADMIN_PASSWORD_HASH", admin.Password, "admin")
+	developer := actor.Developer()
+	developerHash := passwordHash("APIP_CP_DEVELOPER_PASSWORD_HASH", developer.Password, "developer")
+	publisher := actor.Publisher()
+	publisherHash := passwordHash("APIP_CP_PUBLISHER_PASSWORD_HASH", publisher.Password, "publisher")
+	narrow := actor.Narrow()
+	narrowHash := passwordHash("APIP_CP_NARROW_PASSWORD_HASH", narrow.Password, "narrow")
 	return map[string]string{
-		"APIP_CP_ADMIN_USERNAME":      admin.Username,
-		"APIP_CP_ADMIN_PASSWORD_HASH": hash,
+		"APIP_CP_ADMIN_USERNAME":          admin.Username,
+		"APIP_CP_ADMIN_PASSWORD_HASH":     adminHash,
+		"APIP_CP_DEVELOPER_USERNAME":      developer.Username,
+		"APIP_CP_DEVELOPER_PASSWORD_HASH": developerHash,
+		"APIP_CP_PUBLISHER_USERNAME":      publisher.Username,
+		"APIP_CP_PUBLISHER_PASSWORD_HASH": publisherHash,
+		"APIP_CP_NARROW_USERNAME":         narrow.Username,
+		"APIP_CP_NARROW_PASSWORD_HASH":    narrowHash,
 	}
+}
+
+func passwordHash(envKey, password, description string) string {
+	hash := strings.TrimSpace(os.Getenv(envKey))
+	if hash != "" {
+		return hash
+	}
+	generated, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		panic("catalog: generating Platform API " + description + " password hash: " + err.Error())
+	}
+	return string(generated)
 }
 
 func runtimeCoverageEnvironment() map[string]string {
@@ -138,14 +182,22 @@ func runtimeCoverageEnvironment() map[string]string {
 	return env
 }
 
-// insecureClient returns an HTTP client that accepts the control plane's test certificate.
-func insecureClient() *http.Client {
+// platformAPIClient returns an HTTP client that verifies the control plane's generated certificate.
+func platformAPIClient() (*http.Client, error) {
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil || rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+	if ok := rootCAs.AppendCertsFromPEM(shared.ControlPlaneCrypto()["certs/cert.pem"]); !ok {
+		return nil, fmt.Errorf("loading the generated Platform API CA certificate")
+	}
+
 	return &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // see doc comment
+			TLSClientConfig: &tls.Config{RootCAs: rootCAs, ServerName: svcPlatformAPI},
 		},
-	}
+	}, nil
 }
 
 // platformAPIDBEnv converts a database DSN to the Platform API environment variables.
@@ -176,21 +228,32 @@ func platformAPIDBEnv(d components.DSN) map[string]string {
 
 // provisionGatewayRegistration registers the gateway and returns its control-plane credentials.
 func provisionGatewayRegistration(
-	ctx context.Context, inst *components.Instance,
+	ctx context.Context, inst *components.Instance, dependent string,
 ) (map[string]string, error) {
+	if dependent != "platform-gateway" && !strings.HasPrefix(dependent, "platform-gateway#") {
+		return nil, nil
+	}
 	base, err := inst.URL("https")
 	if err != nil {
 		return nil, err
 	}
 
-	client := insecureClient()
+	client, err := platformAPIClient()
+	if err != nil {
+		return nil, err
+	}
 
 	bearer, err := platformAPILogin(ctx, client, base, actor.Administrator())
 	if err != nil {
 		return nil, err
 	}
 
-	const gatewayHandle = "it-gateway"
+	gatewayHandle := "it-gateway"
+	gatewaySuffix := ""
+	if index := strings.LastIndex(dependent, "#"); index >= 0 {
+		gatewaySuffix = "-" + dependent[index+1:]
+	}
+	gatewayHandle += gatewaySuffix
 
 	const apiBase = "/api/v0.9"
 
@@ -202,7 +265,7 @@ func provisionGatewayRegistration(
 		map[string]any{
 			"id":                gatewayHandle,
 			"displayName":       gatewayHandle,
-			"endpoints":         []string{"http://gateway-runtime:8080"},
+			"endpoints":         []string{"http://gateway-runtime" + gatewaySuffix + ":8080"},
 			"functionalityType": shared.GatewayFunctionalityType(),
 		}, &created); err != nil {
 		return nil, fmt.Errorf("registering the gateway: %w", err)
@@ -236,7 +299,11 @@ func provisionGatewayRegistration(
 
 // ControlPlaneLogin exchanges credentials for a control-plane bearer token.
 func ControlPlaneLogin(ctx context.Context, base, username, password string) (string, error) {
-	return platformAPILogin(ctx, insecureClient(), base,
+	client, err := platformAPIClient()
+	if err != nil {
+		return "", err
+	}
+	return platformAPILogin(ctx, client, base,
 		actor.Credentials{Username: username, Password: password})
 }
 

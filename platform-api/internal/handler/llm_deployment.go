@@ -249,6 +249,16 @@ func (h *LLMProviderDeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/deployments", middleware.MapErrors(h.slogger, h.GetLLMProviderDeployments))
 	mux.HandleFunc("GET "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.GetLLMProviderDeployment))
 	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteLLMProviderDeployment))
+
+	// The same build endpoints every artifact kind has, on this kind's own path.
+	BuildRoutes{
+		Service:   h.deploymentService,
+		Segment:   "llm-providers",
+		PathParam: "llmProviderId",
+		Subject:   "LLM provider",
+		Identity:  h.identity,
+		Slogger:   h.slogger,
+	}.Register(mux)
 }
 
 // DeployLLMProxy handles POST /api/v0.9/llm-proxies/{llmProxyId}/deployments
@@ -442,4 +452,14 @@ func (h *LLMProxyDeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/deployments", middleware.MapErrors(h.slogger, h.GetLLMProxyDeployments))
 	mux.HandleFunc("GET "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.GetLLMProxyDeployment))
 	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteLLMProxyDeployment))
+
+	// The same build endpoints every artifact kind has, on this kind's own path.
+	BuildRoutes{
+		Service:   h.deploymentService,
+		Segment:   "llm-proxies",
+		PathParam: "llmProxyId",
+		Subject:   "LLM proxy",
+		Identity:  h.identity,
+		Slogger:   h.slogger,
+	}.Register(mux)
 }

@@ -26,6 +26,7 @@ const (
 	llmProviderTemplatesPath = ManagementAPIBasePath + "/llm-provider-templates"
 	llmProxiesPath           = ManagementAPIBasePath + "/llm-proxies"
 	mcpProxiesPath           = ManagementAPIBasePath + "/mcp-proxies"
+	agentsPath               = ManagementAPIBasePath + "/agents"
 	secretsPath              = ManagementAPIBasePath + "/secrets"
 	certificatesPath         = ManagementAPIBasePath + "/certificates"
 	subscriptionPlansPath    = ManagementAPIBasePath + "/subscription-plans"
@@ -67,6 +68,9 @@ func LLMProxiesPath() string { return llmProxiesPath }
 
 // MCPProxiesPath returns the configured /mcp-proxies base path.
 func MCPProxiesPath() string { return mcpProxiesPath }
+
+// AgentsPath returns the configured /agents base path.
+func AgentsPath() string { return agentsPath }
 
 // SecretsPath returns the configured /secrets base path.
 func SecretsPath() string { return secretsPath }

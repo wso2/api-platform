@@ -175,28 +175,6 @@ export const backendPathsFromOperations = (ops: EditableOperation[]): string[] =
   return [...set];
 };
 
-// --- method chip colors (legacy: distinct color per HTTP verb) ---
-
-export type ChipColor =
-  'default' | 'primary' | 'secondary' | 'success' | 'error' | 'warning' | 'info';
-
-export const methodColor = (method: string): ChipColor => {
-  switch (method.toUpperCase()) {
-    case 'GET':
-      return 'success';
-    case 'POST':
-      return 'primary';
-    case 'PUT':
-      return 'warning';
-    case 'DELETE':
-      return 'error';
-    case 'PATCH':
-      return 'secondary';
-    default:
-      return 'default';
-  }
-};
-
 // --- validation ---
 
 /** A URL is acceptable when empty (optional) or a well-formed http(s) URL. */

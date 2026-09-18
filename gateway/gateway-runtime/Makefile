@@ -26,6 +26,10 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
+# Extra ':latest' tag applied on multi-arch pushes. Set PUSH_LATEST=false to skip it,
+# so a side-branch release pipeline can publish a version tag without moving :latest.
+LATEST_TAG_ARG := $(if $(filter false,$(PUSH_LATEST)),,-t $(IMAGE_NAME):latest)
+
 # Controller policy YAMLs extracted from the policy-compiler stage.
 # EXPORT_DIR feeds the controller image build; DEV_LAUNCH_DIR feeds the local "Gateway Controller" VS Code launch.
 POLICIES_EXPORT_DIR ?= ../target/build/gateway-controller/policies
@@ -65,6 +69,7 @@ build: test ## Build Gateway Runtime Docker image using buildx
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -94,6 +99,7 @@ extract-policies: ## Extract controller policy YAMLs from the policy-compiler st
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -119,6 +125,7 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -150,6 +157,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -182,6 +190,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -193,7 +202,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		--build-arg PYTHON_SDK_SOURCE=$(PYTHON_SDK_SOURCE) \
 		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
-		-t $(IMAGE_NAME):latest \
+		$(LATEST_TAG_ARG) \
 		--push \
 		.
 	@$(MAKE) extract-policies

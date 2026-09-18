@@ -17,7 +17,7 @@
  */
 
 import type { JSX } from 'react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 // import { useAuthContext } from '@asgardeo/auth-react'; // [standalone]
 import {
@@ -57,6 +57,7 @@ type SelectableOrg = {
   id: string;
   name: string;
   description?: string;
+  handle?: string;
 };
 
 type SelectableProject = {
@@ -77,6 +78,9 @@ export default function AppLayout(): JSX.Element {
     userEmail,
 
     currentOrganization,
+    organizations,
+    isOrganizationsLoading,
+    switchOrganization,
 
     projectsForCurrentOrganization,
     currentProject,
@@ -126,6 +130,36 @@ export default function AppLayout(): JSX.Element {
   });
 
   const [tabIndex, setTabIndex] = useState(0);
+
+  const organizationOptions: SelectableOrg[] = useMemo(() => {
+    return Array.isArray(organizations)
+      ? organizations.map((org) => ({
+          id: String(org.id),
+          name: org.name,
+          handle: org.handle,
+        }))
+      : [];
+  }, [organizations]);
+
+  // Tracks the most recently requested org switch so an earlier, slower
+  // switchOrganization call can't navigate after a later selection already has.
+  const latestOrgSelectionRef = useRef<string | null>(null);
+
+  const handleOrganizationSelection = useCallback(
+    (org: SelectableOrg) => {
+      const matchedOrg = organizations.find(
+        (candidate) => String(candidate.id) === org.id
+      );
+      if (!matchedOrg) return;
+      latestOrgSelectionRef.current = matchedOrg.id;
+      void switchOrganization(matchedOrg).then(() => {
+        if (latestOrgSelectionRef.current === matchedOrg.id) {
+          navigate(buildOrgPath(matchedOrg, '/home'));
+        }
+      });
+    },
+    [organizations, switchOrganization, navigate]
+  );
 
   const projectOptions: SelectableProject[] = useMemo(() => {
     return Array.isArray(projectsForCurrentOrganization)
@@ -404,6 +438,9 @@ export default function AppLayout(): JSX.Element {
                 }
               : null
           }
+          organizationOptions={organizationOptions}
+          isOrganizationsLoading={isOrganizationsLoading}
+          onSelectOrganization={handleOrganizationSelection}
           projectOptions={projectOptions}
           currentProject={currentProjectOption}
           setCurrentProject={(p) => {

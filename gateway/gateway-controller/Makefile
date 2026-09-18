@@ -29,6 +29,10 @@ LDFLAGS := -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).FunctionalityT
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
+# Extra ':latest' tag applied on multi-arch pushes. Set PUSH_LATEST=false to skip it,
+# so a side-branch release pipeline can publish a version tag without moving :latest.
+LATEST_TAG_ARG := $(if $(filter false,$(PUSH_LATEST)),,-t $(IMAGE_NAME):latest)
+
 # Policy definitions are produced by the gateway-runtime build (policy-compiler stage)
 # and extracted via `make -C ../gateway-runtime extract-policies`.
 POLICIES_BUILD_CONTEXT ?= ../target/build/gateway-controller/policies
@@ -79,6 +83,7 @@ build: generate-server-code test ## Build Docker image using buildx
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
@@ -106,6 +111,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
@@ -115,7 +121,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
-		-t $(IMAGE_NAME):latest \
+		$(LATEST_TAG_ARG) \
 		--push \
 		.
 	@rm -rf target
@@ -127,6 +133,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
@@ -147,6 +154,7 @@ build-debug: ## Build debug image for remote debugging with dlv (VS Code attach 
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \

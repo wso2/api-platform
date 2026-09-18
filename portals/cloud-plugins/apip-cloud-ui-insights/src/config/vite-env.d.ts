@@ -14,7 +14,3 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
-interface Window {
-  config?: Record<string, string | undefined>;
-  __RUNTIME_CONFIG__?: Record<string, string | undefined>;
-}

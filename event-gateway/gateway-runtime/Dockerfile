@@ -67,6 +67,7 @@ COPY --from=httpkit go.mod /api-platform/httpkit/
 
 # Download common dependencies (cached by go.mod/go.sum changes)
 COPY --from=common go.mod go.sum /api-platform/common/
+COPY --from=gateway-common go.mod /api-platform/gateway/common/
 WORKDIR /api-platform/common
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
@@ -88,6 +89,7 @@ COPY . /api-platform/event-gateway/gateway-runtime/
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=httpkit . /api-platform/httpkit
 COPY --from=common . /api-platform/common
+COPY --from=gateway-common . /api-platform/gateway/common
 COPY --from=analytics . /api-platform/gateway/system-policies/analytics
 COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=target build.yaml /api-platform/event-gateway/build.yaml

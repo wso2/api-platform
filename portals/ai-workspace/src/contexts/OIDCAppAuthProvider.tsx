@@ -19,7 +19,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
-import { USERNAME_CLAIM, EMAIL_CLAIM, ORG_ID_CLAIM, ORG_NAME_CLAIM, ORG_HANDLE_CLAIM } from '../config.env';
+import { USERNAME_CLAIM, EMAIL_CLAIM, ORG_ID_CLAIM, ORG_NAME_CLAIM, ORG_HANDLE_CLAIM, ORG_IDS_CLAIM } from '../config.env';
 import { BASE_PATH } from '../paths';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import type { PlatformRole } from '../auth/permissions';
@@ -28,7 +28,11 @@ import { setStoredToken } from '../clients/choreoApiClient';
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
   try {
-    return JSON.parse(atob(token.split('.')[1]));
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const bytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder('utf-8').decode(bytes));
   } catch {
     return {};
   }
@@ -47,6 +51,19 @@ function extractRoleFromJwt(token: string): PlatformRole | null {
   const payload = decodeJwtPayload(token);
   const role = payload.platform_role ?? payload.role;
   return isPlatformRole(role) ? role : null;
+}
+
+// A claim naming multiple organizations may arrive as an array or a
+// space-delimited string, depending on the IDP.
+function extractStringArrayClaim(payload: Record<string, unknown>, key: string): string[] {
+  const raw = payload[key];
+  if (Array.isArray(raw)) {
+    return raw.filter((v): v is string => typeof v === 'string' && v.length > 0);
+  }
+  if (typeof raw === 'string') {
+    return raw.split(' ').filter(Boolean);
+  }
+  return [];
 }
 
 export function OIDCAppAuthProvider({ children }: { children: React.ReactNode }) {
@@ -78,6 +95,7 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     const org: AppOrg | null = (orgId || orgHandle)
       ? { id: orgId ?? '', name: orgName ?? orgHandle ?? '', handle: orgHandle ?? '' }
       : null;
+    const organizations = extractStringArrayClaim(atClaims, ORG_IDS_CLAIM);
 
     return {
       name: claim(USERNAME_CLAIM),
@@ -85,6 +103,7 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
       role,
       scopes,
       org,
+      organizations,
     };
   }, [auth.user]);
 

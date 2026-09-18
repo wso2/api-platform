@@ -141,6 +141,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db)
+	apiPortalRepo := repository.NewAPIPortalRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
 
@@ -255,7 +256,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
+	// One definition per artifact kind, indexed by the kind the artifact row
+	// carries. Builds and deployments are shared across kinds; rendering is the
+	// one thing that is not, so this is where each kind supplies its own.
+	artifactDefinitions := service.NewArtifactDefinitions(
+		service.NewRestAPIDefinition(apiRepo, apiUtil),
+		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
+		service.NewLLMProxyDefinition(llmProxyRepo),
+		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
+	)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
@@ -273,6 +283,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
@@ -286,6 +298,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
@@ -297,8 +311,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		artifactRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactDefinitions,
 		cfg,
 		slogger,
+	)
+	// One place that knows which service serves which artifact kind, so plugins and
+	// the per-kind paths reach the same code.
+	deploymentsByKind := service.NewDeploymentsByKind(
+		deploymentService,
+		mcpDeploymentService,
+		llmProxyDeploymentService,
+		llmProviderDeploymentService,
 	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,
@@ -325,15 +348,18 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
+	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
@@ -389,6 +415,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler.RegisterRoutes(core)
 	projectHandler.RegisterRoutes(core)
 	appHandler.RegisterRoutes(core)
+	apiPortalHandler.RegisterRoutes(core)
 	apiHandler.RegisterRoutes(core)
 	gatewayHandler.RegisterRoutes(core)
 	subscriptionHandler.RegisterRoutes(core)
@@ -436,10 +463,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways: gatewayService,
-		Projects: projectService,
-		Config:   cfg,
-		Logger:   slogger,
+		Gateways:   gatewayService,
+		Projects:   projectService,
+		APIPortals: apiPortalService,
+		// Kind-routed, so a plugin names the artifact kind alongside the handle and
+		// reaches the same services the platform's own per-kind paths do.
+		Deployments:   deploymentsByKind,
+		Organizations: orgService,
+		Config:        cfg,
+		Logger:        slogger,
 	}
 
 	wiring, err := initPlugins(slogger, mux, scopeRegistry, pluginDeps, pdkDeps, internalPlugins, externalPlugins)
@@ -677,7 +709,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if cfg.Auth.Mode != config.AuthModeIDP {
 		var publicKey *rsa.PublicKey
 		if cfg.Auth.InternalToken.SkipValidation {
-			slogger.Warn("Auth mode: internal_token (JWT validation DISABLED — not suitable for production)")
+			slogger.Info("Auth mode: internal_token (signature, expiry and issuer validation skipped — " +
+				"tokens are trusted as minted by a trusted platform component)")
 		} else {
 			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
 			var err error

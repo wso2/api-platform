@@ -37,15 +37,13 @@ import (
 type OrganizationHandler struct {
 	orgService *service.OrganizationService
 	identity   *service.IdentityService
-	authzMode  string
 	slogger    *slog.Logger
 }
 
-func NewOrganizationHandler(orgService *service.OrganizationService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *OrganizationHandler {
+func NewOrganizationHandler(orgService *service.OrganizationService, identity *service.IdentityService, slogger *slog.Logger) *OrganizationHandler {
 	return &OrganizationHandler{
 		orgService: orgService,
 		identity:   identity,
-		authzMode:  authzMode,
 		slogger:    slogger,
 	}
 }
@@ -174,14 +172,8 @@ func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.R
 		return err
 	}
 
-	var orgs []api.Organization
-	var total int
-	if middleware.HasEffectiveScope(r, h.authzMode, "ap:organization:manage") {
-		orgs, total, err = h.orgService.ListOrganizations(limit, offset)
-	} else {
-		resolvedOrgUUID, _ := middleware.GetOrganizationFromRequest(r)
-		orgs, total, err = h.orgService.ListOrganizationsForUser(performedBy, resolvedOrgUUID, limit, offset)
-	}
+	resolvedOrgUUID, _ := middleware.GetOrganizationFromRequest(r)
+	orgs, total, err := h.orgService.ListOrganizationsForUser(performedBy, resolvedOrgUUID, limit, offset)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to list organizations")

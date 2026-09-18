@@ -4,3 +4,6 @@ suites/*-coverage-out/
 
 # Failure evidence (screenshot + DOM) the UI suite drops per failing scenario.
 suites/ui/artifacts/
+
+# Local cloud environment-to-domain mapping.
+core/catalog/cloudconsole/environments.toml

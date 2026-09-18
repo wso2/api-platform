@@ -8,6 +8,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
+	github.com/klauspost/compress v1.19.2
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.0
 	github.com/knadh/koanf/providers/confmap v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1
@@ -16,8 +17,9 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0-20260326194347-3d85c50eae71
-	github.com/wso2/api-platform/sdk/core v0.4.0
+	github.com/wso2/api-platform/gateway/common v0.0.0
 	github.com/wso2/api-platform/httpkit v0.0.0-local
+	github.com/wso2/api-platform/sdk/core v0.4.1
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
@@ -41,7 +43,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
@@ -66,5 +67,7 @@ require (
 )
 
 replace github.com/wso2/api-platform/common => ../../../common
+
+replace github.com/wso2/api-platform/gateway/common => ../../common
 
 replace github.com/wso2/api-platform/httpkit => ../../../httpkit

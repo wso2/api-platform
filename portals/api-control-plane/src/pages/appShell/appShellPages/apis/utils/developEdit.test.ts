@@ -27,7 +27,6 @@ import {
   backendPathsFromOperations,
   getBackendPath,
   isValidUrl,
-  methodColor,
   operationsValid,
   policiesValid,
   movePolicy,
@@ -124,15 +123,6 @@ describe('developEdit policies', () => {
 });
 
 describe('developEdit helpers', () => {
-  it('maps HTTP methods to distinct chip colors', () => {
-    expect(methodColor('GET')).toBe('success');
-    expect(methodColor('post')).toBe('primary');
-    expect(methodColor('PUT')).toBe('warning');
-    expect(methodColor('DELETE')).toBe('error');
-    expect(methodColor('PATCH')).toBe('secondary');
-    expect(methodColor('HEAD')).toBe('default');
-  });
-
   it('accepts empty and well-formed http(s) URLs, rejects others', () => {
     expect(isValidUrl('')).toBe(true);
     expect(isValidUrl('https://backend.example.com/api')).toBe(true);

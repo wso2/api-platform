@@ -28,6 +28,10 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Docker configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-builder
+
+# Extra ':latest' tag applied on multi-arch pushes. Set PUSH_LATEST=false to skip it,
+# so a side-branch release pipeline can publish a version tag without moving :latest.
+LATEST_TAG_ARG := $(if $(filter false,$(PUSH_LATEST)),,-t $(IMAGE_NAME):latest)
 IMAGE_TAG := $(VERSION)
 FULL_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
 
@@ -66,6 +70,7 @@ build: ## Build Docker image using buildx
 		--build-context sdk-core=../../sdk/core \
 		--build-context sdk-python=../../sdk-python \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
@@ -95,13 +100,14 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk-core=../../sdk/core \
 		--build-context sdk-python=../../sdk-python \
 		--build-context common=../../common \
+		--build-context gateway-common=../common \
 		--build-context httpkit=../../httpkit \
 		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
-		-t $(IMAGE_NAME):latest \
+		$(LATEST_TAG_ARG) \
 		--push \
 		.
 
