@@ -256,6 +256,12 @@ describe('PortalPublishPage', () => {
     expect(unpublishItem).not.toHaveAttribute('aria-disabled', 'true');
     await user.click(unpublishItem);
 
+    // Choosing "Unpublish" from the menu arms the primary button with that
+    // action — it doesn't unpublish on its own, the armed button still has to
+    // be clicked (and confirmed) to actually do it.
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('button', { name: 'Unpublish' }));
 

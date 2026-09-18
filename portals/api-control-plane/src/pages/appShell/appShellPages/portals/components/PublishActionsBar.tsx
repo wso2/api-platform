@@ -66,6 +66,8 @@ export type PublishActionsBarProps = {
  * any problem on submit, the same way `GeneralCreateApiForm`'s Create button
  * does — a proactively-disabled button would never get the chance to.
  */
+type PrimaryAction = 'publish' | 'unpublish';
+
 export function PublishActionsBar({
   isPublished,
   onPublish,
@@ -77,7 +79,14 @@ export function PublishActionsBar({
 }: PublishActionsBarProps) {
   const intl = useIntl();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  // Which action the split button's primary side currently performs — chosen
+  // from the dropdown, mirroring the "Merge pull request"-style split button:
+  // picking an alternative from the menu re-arms the primary button with that
+  // action (and its own color) rather than firing it immediately. Falls back
+  // to 'publish' if Unpublish was armed and the API is no longer live.
+  const [primaryAction, setPrimaryAction] = useState<PrimaryAction>('publish');
   const busy = savingDraft || publishing || unpublishing;
+  const effectiveAction: PrimaryAction = primaryAction === 'unpublish' && isPublished ? 'unpublish' : 'publish';
 
   return (
     <Box
@@ -96,9 +105,9 @@ export function PublishActionsBar({
         <FormattedMessage {...messages.saveDraft} />
       </Button>
 
-      <ButtonGroup disabled={busy} variant="contained">
-        <Button onClick={onPublish}>
-          <FormattedMessage {...messages.publish} />
+      <ButtonGroup color={effectiveAction === 'unpublish' ? 'error' : 'primary'} disabled={busy} variant="contained">
+        <Button onClick={effectiveAction === 'unpublish' ? onUnpublish : onPublish}>
+          <FormattedMessage {...(effectiveAction === 'unpublish' ? messages.unpublish : messages.publish)} />
         </Button>
         <Button
           aria-label={intl.formatMessage(messages.moreActions)}
@@ -109,16 +118,34 @@ export function PublishActionsBar({
         </Button>
       </ButtonGroup>
 
-      <Menu anchorEl={menuAnchor} onClose={() => setMenuAnchor(null)} open={Boolean(menuAnchor)}>
-        <MenuItem
-          disabled={!isPublished || busy}
-          onClick={() => {
-            setMenuAnchor(null);
-            onUnpublish();
-          }}
-        >
-          <FormattedMessage {...messages.unpublish} />
-        </MenuItem>
+      <Menu
+        anchorEl={menuAnchor}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        onClose={() => setMenuAnchor(null)}
+        open={Boolean(menuAnchor)}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+      >
+
+        {effectiveAction === 'unpublish' ? (
+          <MenuItem
+            onClick={() => {
+              setMenuAnchor(null);
+              setPrimaryAction('publish');
+            }}
+          >
+            <FormattedMessage {...messages.publish} />
+          </MenuItem>
+        ) : (
+          <MenuItem
+            disabled={!isPublished || busy}
+            onClick={() => {
+              setMenuAnchor(null);
+              setPrimaryAction('unpublish');
+            }}
+          >
+            <FormattedMessage {...messages.unpublish} />
+          </MenuItem>
+        )}
       </Menu>
     </Box>
   );
