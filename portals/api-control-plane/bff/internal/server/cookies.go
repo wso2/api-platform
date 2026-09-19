@@ -22,6 +22,11 @@ import (
 	"time"
 )
 
+// defaultRefreshCookieSuffix is appended (or replaces "_session") to form the
+// companion HttpOnly cookie that carries the OIDC refresh token. With the
+// product default session name this yields _api_control_plane_refresh.
+const defaultRefreshCookieSuffix = "_refresh"
+
 func sameSite(v string) http.SameSite {
 	switch strings.ToLower(v) {
 	case "strict":
@@ -33,11 +38,22 @@ func sameSite(v string) http.SameSite {
 	}
 }
 
-// setSessionCookie writes the session cookie carrying the token itself, bounded
-// by the supplied absolute expiry. The cookie stays HttpOnly so browser JS
-// cannot read it, but the proxy reads the token straight from it — no
-// server-side lookup for the common case.
-func (s *Server) setSessionCookie(w http.ResponseWriter, token string, absExpiry time.Time) {
+// refreshCookieName is the HttpOnly cookie that carries the OIDC refresh
+// token. The access token stays in the unchanged session cookie (bare JWT);
+// splitting them avoids the 4KB single-cookie limit when both tokens are large.
+func (s *Server) refreshCookieName() string {
+	name := s.cfg.Session.Cookie.Name
+	if strings.HasSuffix(name, "_session") {
+		return strings.TrimSuffix(name, "_session") + defaultRefreshCookieSuffix
+	}
+	return name + defaultRefreshCookieSuffix
+}
+
+// setSessionCookie writes the access-token session cookie as a bare JWT
+// (unchanged from the pre-envelope design). When refresh is non-empty it also
+// writes the companion refresh cookie; when refresh is empty the refresh
+// cookie is cleared so a file-based login cannot leave a stale OIDC refresh.
+func (s *Server) setSessionCookie(w http.ResponseWriter, access, refresh string, absExpiry time.Time) {
 	maxAge := 0
 	if !absExpiry.IsZero() {
 		if d := time.Until(absExpiry); d > 0 {
@@ -46,12 +62,37 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, token string, absExpiry
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.Session.Cookie.Name,
-		Value:    token,
+		Value:    access,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
 		MaxAge:   maxAge,
+	})
+	if refresh != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     s.refreshCookieName(),
+			Value:    refresh,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   s.cfg.Session.Cookie.Secure,
+			SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
+			MaxAge:   maxAge,
+		})
+	} else {
+		s.clearRefreshCookie(w)
+	}
+}
+
+func (s *Server) clearRefreshCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.refreshCookieName(),
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   s.cfg.Session.Cookie.Secure,
+		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
+		MaxAge:   -1,
 	})
 }
 
@@ -65,6 +106,7 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
 		MaxAge:   -1,
 	})
+	s.clearRefreshCookie(w)
 }
 
 // setTxCookie writes the short-lived OIDC login-transaction cookie.
