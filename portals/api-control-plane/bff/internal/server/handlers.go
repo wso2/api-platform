@@ -49,6 +49,13 @@ const maxLoginBodyBytes = 1 << 20 // 1 MiB
 // old token and be logged out mid-refresh — see doRefresh.
 const rotationGracePeriod = 30 * time.Second
 
+// errSessionNotFound is returned by doRefresh when the in-memory store has no
+// live entry for the access token (BFF restart, other replica, or an expired
+// rotation tombstone). refreshByToken falls back to the companion refresh
+// cookie only for this case — not for provider, missing-refresh, or store
+// write failures, which must not trigger a second refresh_token grant.
+var errSessionNotFound = errors.New("session no longer exists")
+
 // ---------------------------------------------------------------------------
 // File-based login / logout / session
 // ---------------------------------------------------------------------------
@@ -108,11 +115,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The cookie carries the token itself. File-based sessions have no refresh
-	// token, so nothing is stored server-side at all. The token is never
-	// returned in the response body — the browser only ever gets the display
-	// user; every backend call is routed through the same-origin proxy, which
-	// injects the token itself.
-	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
+	// token, so nothing is stored server-side at all and no refresh cookie is
+	// written. The token is never returned in the response body — the browser
+	// only ever gets the display user; every backend call is routed through
+	// the same-origin proxy, which injects the token itself.
+	s.setSessionCookie(w, sess.AccessToken, "", sess.AbsoluteExpiry)
 	writeJSON(w, http.StatusOK, map[string]any{"user": sess.User})
 }
 
@@ -211,13 +218,16 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
 		return
 	}
-	// OIDC: the cookie carries the access token, while the refresh/id tokens are
-	// kept server-side keyed by that token so the proxy can renew it later.
+	// OIDC: access JWT stays in the session cookie (unchanged). The refresh
+	// token is written to a companion HttpOnly cookie so out-of-band tooling
+	// (e.g. monitoring browser login) can renew via the Platform IDP token
+	// endpoint. The in-memory store still holds id_token + refresh for the
+	// common proxy path.
 	if err := s.putRefreshState(r.Context(), sess); err != nil {
 		http.Redirect(w, r, "/login?error=session_failed", http.StatusFound)
 		return
 	}
-	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
+	s.setSessionCookie(w, sess.AccessToken, sess.RefreshToken, sess.AbsoluteExpiry)
 	http.Redirect(w, r, sanitizeReturn(ret), http.StatusFound)
 }
 
@@ -225,14 +235,14 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 // Reverse proxy
 // ---------------------------------------------------------------------------
 
-// proxyHandler returns a handler that takes the token straight from the
+// proxyHandler returns a handler that takes the access token straight from the
 // cookie and forwards it via rp. No server-side lookup is involved unless the
 // token is an OIDC access token that is near expiry and must be refreshed —
 // the same refresh logic runs regardless of which mounted upstream (primary
 // or named) is being called, since all of them share the one session cookie.
 func (s *Server) proxyHandler(rp *httputil.ReverseProxy) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token, ok := s.tokenFromCookie(r)
+		token, refresh, ok := s.tokensFromCookie(r)
 		if !ok {
 			writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
 			return
@@ -250,11 +260,13 @@ func (s *Server) proxyHandler(rp *httputil.ReverseProxy) http.HandlerFunc {
 
 		// Refresh near-expiry OIDC access tokens before proxying. The expiry is
 		// read from the token itself (not the store); the store is consulted
-		// only when an actual refresh is required.
+		// first, then the companion refresh cookie if the store misses. Cookie
+		// fallback runs inside refreshByToken's single-flight lock so concurrent
+		// callers share one refresh_token grant.
 		if s.oidc != nil {
 			exp := session.ExpiryFromClaims(session.DecodeJWTClaims(token))
 			if needsRefreshSoon(exp) {
-				refreshed, err := s.refreshByToken(r.Context(), token)
+				refreshed, err := s.refreshByToken(r.Context(), token, refresh)
 				if err != nil {
 					slog.Warn("token refresh failed", "err", err)
 					_ = s.store.Delete(r.Context(), token)
@@ -263,7 +275,7 @@ func (s *Server) proxyHandler(rp *httputil.ReverseProxy) http.HandlerFunc {
 					return
 				}
 				token = refreshed.AccessToken
-				s.setSessionCookie(w, token, refreshed.AbsoluteExpiry)
+				s.setSessionCookie(w, refreshed.AccessToken, refreshed.RefreshToken, refreshed.AbsoluteExpiry)
 			}
 		}
 
@@ -306,18 +318,27 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 // Session helpers
 // ---------------------------------------------------------------------------
 
-// tokenFromCookie returns the token stored directly in the session cookie.
-// Deliberately does not check the token's own expiry: an OIDC access token
-// past its exp with a still-valid refresh token must reach proxyHandler's
-// refresh logic below, not be rejected here before it gets the chance. Expiry
-// is instead checked at each of this function's two call sites, matched to
-// what each one can actually do about an expired token — see tokenExpired.
-func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
+// tokensFromCookie returns the access token from the session cookie and, when
+// present, the refresh token from the companion refresh cookie. Deliberately
+// does not check the access token's own expiry: an OIDC access token past its
+// exp with a still-valid refresh token must reach proxyHandler's refresh
+// logic, not be rejected here before it gets the chance.
+func (s *Server) tokensFromCookie(r *http.Request) (access, refresh string, ok bool) {
 	c, err := r.Cookie(s.cfg.Session.Cookie.Name)
 	if err != nil || c.Value == "" {
-		return "", false
+		return "", "", false
 	}
-	return c.Value, true
+	access = c.Value
+	if rc, err := r.Cookie(s.refreshCookieName()); err == nil {
+		refresh = rc.Value
+	}
+	return access, refresh, true
+}
+
+// tokenFromCookie returns just the access token from the session cookie.
+func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
+	access, _, ok := s.tokensFromCookie(r)
+	return access, ok
 }
 
 // tokenExpired reports whether token carries a readable exp claim that has
@@ -344,10 +365,35 @@ func (s *Server) userFromToken(ctx context.Context, token string) session.User {
 }
 
 // putRefreshState stores the OIDC refresh/id tokens keyed by the access token
-// so the proxy can renew it later. The cookie itself carries the token.
+// so the proxy can renew without reading the refresh cookie. The companion
+// refresh cookie is a copy for store-miss recovery and out-of-band capture.
 func (s *Server) putRefreshState(ctx context.Context, sess *session.Session) error {
 	sess.ID = sess.AccessToken
 	return s.store.Put(ctx, sess)
+}
+
+// refreshUsingCookie renews when the in-memory store has no entry for the
+// current access token (BFF restart, other replica) but the companion refresh
+// cookie is still present. AbsoluteTTL is applied fresh from the OIDC config
+// (SessionFromToken); the hard ceiling is not persisted in the cookie.
+func (s *Server) refreshUsingCookie(ctx context.Context, access, refresh string) (*session.Session, error) {
+	if refresh == "" {
+		return nil, errors.New("session has no refresh token")
+	}
+	tok, err := s.oidc.Refresh(ctx, refresh)
+	if err != nil {
+		return nil, err
+	}
+	prev := &session.Session{
+		AccessToken:  access,
+		RefreshToken: refresh,
+	}
+	updated := s.oidc.SessionFromToken(tok, prev)
+	updated.ID = updated.AccessToken
+	if err := s.store.Put(ctx, updated); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 // needsRefreshSoon reports whether an access token is within the renewal
@@ -364,8 +410,10 @@ func needsRefreshSoon(accessExpiry time.Time) bool {
 // refreshByToken performs a single-flight refresh keyed by the current access
 // token, rotating the stored token set and re-keying the store entry to the new
 // access token. Called by the reverse proxy handler before forwarding a
-// near-expiry OIDC session upstream.
-func (s *Server) refreshByToken(ctx context.Context, token string) (*session.Session, error) {
+// near-expiry OIDC session upstream. refresh is the companion refresh-cookie
+// value; on errSessionNotFound the cookie fallback runs under the same lock
+// and its result (success or failure) is cached for waiters.
+func (s *Server) refreshByToken(ctx context.Context, token, refresh string) (*session.Session, error) {
 	s.refreshMu.Lock()
 	mu := s.refreshLocks[token]
 	if mu == nil {
@@ -386,6 +434,9 @@ func (s *Server) refreshByToken(ctx context.Context, token string) (*session.Ses
 	}
 
 	mu.result, mu.err = s.doRefresh(ctx, token)
+	if errors.Is(mu.err, errSessionNotFound) && refresh != "" {
+		mu.result, mu.err = s.refreshUsingCookie(ctx, token, refresh)
+	}
 	mu.done = true
 
 	// The single-flight owner always drops the lock entry, on every exit path, so
@@ -404,7 +455,7 @@ func (s *Server) refreshByToken(ctx context.Context, token string) (*session.Ses
 func (s *Server) doRefresh(ctx context.Context, token string) (*session.Session, error) {
 	cur, ok, _ := s.store.Get(ctx, token)
 	if !ok {
-		return nil, errors.New("session no longer exists")
+		return nil, errSessionNotFound
 	}
 	// cur is a tombstone left by a refresh that already happened — a request
 	// still carrying the pre-rotation cookie (a parallel tab, or the SPA's own
@@ -414,7 +465,7 @@ func (s *Server) doRefresh(ctx context.Context, token string) (*session.Session,
 	if cur.RotatedTo != "" {
 		live, ok, _ := s.store.Get(ctx, cur.RotatedTo)
 		if !ok {
-			return nil, errors.New("session no longer exists")
+			return nil, errSessionNotFound
 		}
 		return live, nil
 	}
