@@ -34,6 +34,10 @@ func TestStripEmbeddedHTML(t *testing.T) {
 		"x<https://evil.com onmouseover=alert(1)>y":                "xy",
 		"x<user@example.com onclick=alert(1)>y":                    "xy",
 		"<script><https://example.com></script>ok":                 "ok",
+		"x<script/><img src=x onerror=alert(1)>y":                  "x",
+		"x<script/>a</script>y":                                    "xy",
+		"x<style/><b>z</b></style>y":                               "xy",
+		"a<br/>b <img src=x/>c":                                    "ab c",
 	}
 	for in, want := range cases {
 		if got := StripEmbeddedHTML(in); got != want {

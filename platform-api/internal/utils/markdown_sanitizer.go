@@ -66,7 +66,9 @@ func StripEmbeddedHTML(markdown string) string {
 			if skipDepth == 0 {
 				b.Write(tokenizer.Raw())
 			}
-		case html.StartTagToken:
+		case html.StartTagToken, html.SelfClosingTagToken:
+			// A self-closing <script/> still opens a raw-text block in HTML, so it
+			// starts the skip like <script> does.
 			name, _ := tokenizer.TagName()
 			tag := string(name)
 			if tag == "script" || tag == "style" {
@@ -80,8 +82,8 @@ func StripEmbeddedHTML(markdown string) string {
 			if skipDepth > 0 && string(name) == skipTag {
 				skipDepth--
 			}
-		// SelfClosingTagToken, CommentToken, DoctypeToken: the tag itself is
-		// always dropped from the output; nothing further to do for them.
+		// CommentToken, DoctypeToken: the token itself is always dropped from
+		// the output; nothing further to do for them.
 		default:
 		}
 	}
