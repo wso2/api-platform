@@ -23,51 +23,34 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-// PortalPublisher pushes a publication to its API Portal: an existence check
-// decides create vs update, both addressed by the API's own handle — no
-// portal-returned reference ID is stored locally. HTTPPortalPublisher
-// (http_portal_publisher.go) implements the existence check and the
-// metadata+definition push for real. The content ZIP (thumbnail,
-// landing-page, docs) is not yet implemented there — see that file's doc
-// comment.
+// PortalPublisher pushes a publication to its API Portal, addressing the
+// listing by the API's own handle; no portal-returned ID is stored locally.
+// HTTPPortalPublisher is the implementation.
 type PortalPublisher interface {
-	// Publish pushes pub (identified to the portal by apiHandle — this API's
-	// own handle, which is also api-portal's own handle/referenceId for the
-	// listing) to portal, together with its definition content (nil if none
-	// stored). A nil error means the portal accepted the push. A
-	// *PortalConflictError means the portal rejected it and will keep
-	// rejecting it (mapped to 409 PUBLICATION_PORTAL_CONFLICT, never
-	// retried); any other error is treated as transient/unavailable (503
-	// PUBLICATION_PORTAL_UNAVAILABLE).
+	// Publish pushes pub, identified to the portal by apiHandle, together with
+	// its definition content (nil if none stored). A nil error means the portal
+	// accepted the push. A *PortalConflictError means the portal rejected it and
+	// will keep rejecting it (409 PUBLICATION_PORTAL_CONFLICT, never retried);
+	// any other error is treated as unavailable (503 PUBLICATION_PORTAL_UNAVAILABLE).
 	Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error
 
-	// Unpublish removes apiHandle's listing from portal. A nil error means
-	// the portal no longer carries the listing — including the case where it
-	// was already gone, which the implementation must treat as success so a
-	// retry after an already-successful removal doesn't surface as an error.
-	// A *PortalConflictError means the portal rejected removal and will keep
-	// rejecting it as-is (e.g. active subscriptions/API keys still attached
-	// — mapped to 409 PUBLICATION_PORTAL_CONFLICT, never retried); any other
-	// error is treated as transient/unavailable (503
-	// PUBLICATION_PORTAL_UNAVAILABLE).
+	// Unpublish removes apiHandle's listing from portal. A nil error means the
+	// portal no longer carries the listing, including when it was already gone.
+	// Errors follow the same contract as Publish.
 	Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error
 
-	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live with
-	// only the status changed. Errors follow the same contract as Publish.
+	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live
+	// with only the status changed. Errors follow the same contract as Publish.
 	Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error
 }
 
-// PortalConflictError signals that the API Portal rejected a publish and
-// will keep rejecting it as-is — e.g. a conflicting handle or display name —
-// distinct from a transient failure. See PortalPublisher.Publish.
+// PortalConflictError signals that the API Portal rejected a request and will
+// keep rejecting it as-is, unlike a transient failure.
 type PortalConflictError struct {
 	Message string
-	// Reason is a short, pre-approved phrase describing why, resolved from a
-	// closed allowlist of known portal error codes — never the portal's own
-	// raw error text (error-handling.md: never expose raw downstream errors
-	// to the client). Empty when the portal's response doesn't match a known
-	// code; callers fall back to a generic reason in that case. Passed as
-	// the %s in apperror.APIPublicationPortalConflict's message.
+	// Reason is a short, pre-approved phrase drawn from a closed set of known
+	// portal error codes, never the portal's raw error text. Empty when the code
+	// is unknown; callers then use a generic reason.
 	Reason string
 }
 

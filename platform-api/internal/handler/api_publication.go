@@ -122,9 +122,10 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/publication/landing-page", middleware.MapErrors(h.slogger, h.GetPublicationLandingPage))
 	mux.HandleFunc("GET "+base+"/publication/thumbnail", middleware.MapErrors(h.slogger, h.GetPublicationThumbnail))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/api-publications", middleware.MapErrors(h.slogger, h.ListPublications))
-	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish", middleware.MapErrors(h.slogger, h.Publish))
-	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/unpublish", middleware.MapErrors(h.slogger, h.Unpublish))
-	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/deprecate", middleware.MapErrors(h.slogger, h.Deprecate))
+	restAPIBase := constants.APIBasePath + "/api-portals/{apiPortalId}/apis/" + restAPITypeValue + "/{apiId}"
+	mux.HandleFunc("POST "+restAPIBase+"/publish", middleware.MapErrors(h.slogger, h.Publish))
+	mux.HandleFunc("POST "+restAPIBase+"/unpublish", middleware.MapErrors(h.slogger, h.Unpublish))
+	mux.HandleFunc("POST "+restAPIBase+"/deprecate", middleware.MapErrors(h.slogger, h.Deprecate))
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -317,10 +318,7 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 
 	// Filename only in storage (file-access.md): strip any directory component
 	// from the uploader's declared name before it ever reaches the service/DB.
-	fileName := ""
-	if fileHeader != nil {
-		fileName = sanitizeUploadFileName(fileHeader.Filename)
-	}
+	fileName := sanitizeUploadFileName(fileHeader.Filename)
 
 	if err := h.service.SaveDraftThumbnail(apiType, apiId, apiPortalId, orgId, actor, fileName, data); err != nil {
 		return serviceError(err, "failed to save publication draft thumbnail")
@@ -579,17 +577,76 @@ func draftInputToModel(in *api.PublicationDraftDetailsInput) (*model.Publication
 	return pub, planHandles, docHandles
 }
 
+// endpointsResponse and ownersResponse are the generated anonymous struct types
+// shared by the draft and live response shapes.
+type endpointsResponse = struct {
+	ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
+	SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
+}
+
+type ownersResponse = struct {
+	BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
+	BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
+	TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
+	TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
+}
+
+// stringPtrIfSet returns a pointer to v, or nil when v is empty.
+func stringPtrIfSet(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
+// emailPtrIfSet returns a pointer to v as an email, or nil when v is empty.
+func emailPtrIfSet(v string) *openapi_types.Email {
+	if v == "" {
+		return nil
+	}
+	email := openapi_types.Email(v)
+	return &email
+}
+
+func endpointsToResponse(pub *model.Publication) *endpointsResponse {
+	if pub.ProductionURL == "" && pub.SandboxURL == "" {
+		return nil
+	}
+	return &endpointsResponse{
+		ProductionUrl: stringPtrIfSet(pub.ProductionURL),
+		SandboxUrl:    stringPtrIfSet(pub.SandboxURL),
+	}
+}
+
+func ownersToResponse(pub *model.Publication) *ownersResponse {
+	if pub.BusinessOwner == "" && pub.BusinessOwnerEmail == "" && pub.TechnicalOwner == "" && pub.TechnicalOwnerEmail == "" {
+		return nil
+	}
+	return &ownersResponse{
+		BusinessOwner:       stringPtrIfSet(pub.BusinessOwner),
+		BusinessOwnerEmail:  emailPtrIfSet(pub.BusinessOwnerEmail),
+		TechnicalOwner:      stringPtrIfSet(pub.TechnicalOwner),
+		TechnicalOwnerEmail: emailPtrIfSet(pub.TechnicalOwnerEmail),
+	}
+}
+
 // draftModelToResponse converts the internal model into the generated
 // response shape.
 func draftModelToResponse(pub *model.Publication) api.PublicationDraftDetails {
+	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
+	docIds := api.DocIdList(pub.DocIds)
 	resp := api.PublicationDraftDetails{
-		DisplayName:    pub.DisplayName,
-		Version:        pub.Version,
-		HasThumbnail:   &pub.HasThumbnail,
-		HasLandingPage: &pub.HasLandingPage,
-	}
-	if pub.Description != "" {
-		resp.Description = &pub.Description
+		DisplayName:         pub.DisplayName,
+		Version:             pub.Version,
+		Description:         stringPtrIfSet(pub.Description),
+		Endpoints:           endpointsToResponse(pub),
+		Owners:              ownersToResponse(pub),
+		SubscriptionPlanIds: &planIds,
+		DocIds:              &docIds,
+		HasThumbnail:        &pub.HasThumbnail,
+		HasLandingPage:      &pub.HasLandingPage,
+		CreatedBy:           stringPtrIfSet(pub.CreatedBy),
+		UpdatedBy:           stringPtrIfSet(pub.UpdatedBy),
 	}
 	if pub.AgentVisibility != "" {
 		av := api.PublicationDraftDetailsAgentVisibility(pub.AgentVisibility)
@@ -601,57 +658,11 @@ func draftModelToResponse(pub *model.Publication) api.PublicationDraftDetails {
 	if len(pub.Labels) > 0 {
 		resp.Labels = &pub.Labels
 	}
-	if pub.ProductionURL != "" || pub.SandboxURL != "" {
-		resp.Endpoints = &struct {
-			ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
-			SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
-		}{}
-		if pub.ProductionURL != "" {
-			resp.Endpoints.ProductionUrl = &pub.ProductionURL
-		}
-		if pub.SandboxURL != "" {
-			resp.Endpoints.SandboxUrl = &pub.SandboxURL
-		}
-	}
-	if pub.BusinessOwner != "" || pub.BusinessOwnerEmail != "" || pub.TechnicalOwner != "" || pub.TechnicalOwnerEmail != "" {
-		resp.Owners = &struct {
-			BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
-			BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
-			TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
-			TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
-		}{}
-		if pub.BusinessOwner != "" {
-			resp.Owners.BusinessOwner = &pub.BusinessOwner
-		}
-		if pub.BusinessOwnerEmail != "" {
-			email := openapi_types.Email(pub.BusinessOwnerEmail)
-			resp.Owners.BusinessOwnerEmail = &email
-		}
-		if pub.TechnicalOwner != "" {
-			resp.Owners.TechnicalOwner = &pub.TechnicalOwner
-		}
-		if pub.TechnicalOwnerEmail != "" {
-			email := openapi_types.Email(pub.TechnicalOwnerEmail)
-			resp.Owners.TechnicalOwnerEmail = &email
-		}
-	}
-
-	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
-	resp.SubscriptionPlanIds = &planIds
-	docIds := api.DocIdList(pub.DocIds)
-	resp.DocIds = &docIds
-
 	if !pub.CreatedAt.IsZero() {
 		resp.CreatedAt = &pub.CreatedAt
 	}
-	if pub.CreatedBy != "" {
-		resp.CreatedBy = &pub.CreatedBy
-	}
 	if !pub.UpdatedAt.IsZero() {
 		resp.UpdatedAt = &pub.UpdatedAt
-	}
-	if pub.UpdatedBy != "" {
-		resp.UpdatedBy = &pub.UpdatedBy
 	}
 	return resp
 }
@@ -665,15 +676,11 @@ func publicationSummariesToResponse(items []*model.PublicationSummary) []api.Pub
 		resp := api.PublicationSummaryItem{
 			ApiPortalId:          &item.APIPortalHandle,
 			ApiPortalName:        &item.APIPortalName,
+			ApiPortalDescription: stringPtrIfSet(item.APIPortalDescription),
+			ApiPortalUrl:         stringPtrIfSet(item.APIPortalURL),
 			DraftUpdatedAt:       item.DraftUpdatedAt,
 			PublicationUpdatedAt: item.PublicationUpdatedAt,
 			Status:               &status,
-		}
-		if item.APIPortalDescription != "" {
-			resp.ApiPortalDescription = &item.APIPortalDescription
-		}
-		if item.APIPortalURL != "" {
-			resp.ApiPortalUrl = &item.APIPortalURL
 		}
 		out = append(out, resp)
 	}
@@ -683,26 +690,28 @@ func publicationSummariesToResponse(items []*model.PublicationSummary) []api.Pub
 // publicationModelToResponse converts the internal model into the generated
 // live-publication response shape — the same fields as draftModelToResponse
 // plus apiPortalId/apiPortalName/status, which only ever apply to a live
-// listing (the Publication schema, not PublicationDraftDetails).
+// listing.
 func publicationModelToResponse(pub *model.Publication) api.Publication {
+	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
+	docIds := api.DocIdList(pub.DocIds)
 	resp := api.Publication{
-		DisplayName:    &pub.DisplayName,
-		Version:        &pub.Version,
-		HasThumbnail:   &pub.HasThumbnail,
-		HasLandingPage: &pub.HasLandingPage,
-	}
-	if pub.APIPortalHandle != "" {
-		resp.ApiPortalId = &pub.APIPortalHandle
-	}
-	if pub.APIPortalName != "" {
-		resp.ApiPortalName = &pub.APIPortalName
+		DisplayName:         &pub.DisplayName,
+		Version:             &pub.Version,
+		ApiPortalId:         stringPtrIfSet(pub.APIPortalHandle),
+		ApiPortalName:       stringPtrIfSet(pub.APIPortalName),
+		Description:         stringPtrIfSet(pub.Description),
+		Endpoints:           endpointsToResponse(pub),
+		Owners:              ownersToResponse(pub),
+		SubscriptionPlanIds: &planIds,
+		DocIds:              &docIds,
+		HasThumbnail:        &pub.HasThumbnail,
+		HasLandingPage:      &pub.HasLandingPage,
+		CreatedBy:           stringPtrIfSet(pub.CreatedBy),
+		UpdatedBy:           stringPtrIfSet(pub.UpdatedBy),
 	}
 	if pub.Status != "" {
 		status := api.PublicationStatus(pub.Status)
 		resp.Status = &status
-	}
-	if pub.Description != "" {
-		resp.Description = &pub.Description
 	}
 	if pub.AgentVisibility != "" {
 		av := api.PublicationAgentVisibility(pub.AgentVisibility)
@@ -714,57 +723,11 @@ func publicationModelToResponse(pub *model.Publication) api.Publication {
 	if len(pub.Labels) > 0 {
 		resp.Labels = &pub.Labels
 	}
-	if pub.ProductionURL != "" || pub.SandboxURL != "" {
-		resp.Endpoints = &struct {
-			ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
-			SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
-		}{}
-		if pub.ProductionURL != "" {
-			resp.Endpoints.ProductionUrl = &pub.ProductionURL
-		}
-		if pub.SandboxURL != "" {
-			resp.Endpoints.SandboxUrl = &pub.SandboxURL
-		}
-	}
-	if pub.BusinessOwner != "" || pub.BusinessOwnerEmail != "" || pub.TechnicalOwner != "" || pub.TechnicalOwnerEmail != "" {
-		resp.Owners = &struct {
-			BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
-			BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
-			TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
-			TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
-		}{}
-		if pub.BusinessOwner != "" {
-			resp.Owners.BusinessOwner = &pub.BusinessOwner
-		}
-		if pub.BusinessOwnerEmail != "" {
-			email := openapi_types.Email(pub.BusinessOwnerEmail)
-			resp.Owners.BusinessOwnerEmail = &email
-		}
-		if pub.TechnicalOwner != "" {
-			resp.Owners.TechnicalOwner = &pub.TechnicalOwner
-		}
-		if pub.TechnicalOwnerEmail != "" {
-			email := openapi_types.Email(pub.TechnicalOwnerEmail)
-			resp.Owners.TechnicalOwnerEmail = &email
-		}
-	}
-
-	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
-	resp.SubscriptionPlanIds = &planIds
-	docIds := api.DocIdList(pub.DocIds)
-	resp.DocIds = &docIds
-
 	if !pub.CreatedAt.IsZero() {
 		resp.CreatedAt = &pub.CreatedAt
 	}
-	if pub.CreatedBy != "" {
-		resp.CreatedBy = &pub.CreatedBy
-	}
 	if !pub.UpdatedAt.IsZero() {
 		resp.UpdatedAt = &pub.UpdatedAt
-	}
-	if pub.UpdatedBy != "" {
-		resp.UpdatedBy = &pub.UpdatedBy
 	}
 	return resp
 }

@@ -173,10 +173,8 @@ func (s *PublicationService) resolveHandles(pub *model.Publication, planUUIDs, d
 	return nil
 }
 
-// conflictReasonOrDefault returns conflict.Reason, or
-// defaultPortalConflictReason if a PortalPublisher implementation left it
-// unset (e.g. a test mock built before Reason existed) — the %s slot in
-// apperror.APIPublicationPortalConflict's message must never be empty.
+// conflictReasonOrDefault returns conflict.Reason, or defaultPortalConflictReason
+// when a PortalPublisher left it unset, so the conflict message is never blank.
 func conflictReasonOrDefault(conflict *PortalConflictError) string {
 	if conflict.Reason == "" {
 		return defaultPortalConflictReason
@@ -292,26 +290,12 @@ func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve subscription plan handles: %w", err)
 	}
-	uuids := make([]string, 0, len(handles))
-	var unresolved []string
-	for _, h := range handles {
-		if id, ok := resolved[h]; ok {
-			uuids = append(uuids, id)
-		} else {
-			unresolved = append(unresolved, h)
-		}
-	}
-	if len(unresolved) > 0 {
-		return nil, apperror.APIPublicationValidationFailed.New(
-			fmt.Sprintf("subscriptionPlanIds not found in the organization's catalog: %s", strings.Join(unresolved, ", ")))
-	}
-	return uuids, nil
+	return uuidsForHandles(handles, resolved, "subscriptionPlanIds not found in the organization's catalog")
 }
 
 // resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
-// artifactUUID (api_documents' real unique index is (artifact_uuid, handle),
-// not (organization_uuid, handle) — a handle can legitimately repeat across
-// two APIs in the same org), rejecting any handle absent for this artifact.
+// artifactUUID (a handle can legitimately repeat across two APIs in the same
+// org), rejecting any handle absent for this artifact.
 func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
 	if len(handles) == 0 {
 		return nil, nil
@@ -320,6 +304,12 @@ func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
 	}
+	return uuidsForHandles(handles, resolved, "docIds not found in the organization's documents")
+}
+
+// uuidsForHandles returns the UUID of every handle in order, or a validation
+// error listing the handles that have none.
+func uuidsForHandles(handles []string, resolved map[string]string, notFoundMessage string) ([]string, error) {
 	uuids := make([]string, 0, len(handles))
 	var unresolved []string
 	for _, h := range handles {
@@ -331,7 +321,7 @@ func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []stri
 	}
 	if len(unresolved) > 0 {
 		return nil, apperror.APIPublicationValidationFailed.New(
-			fmt.Sprintf("docIds not found in the organization's documents: %s", strings.Join(unresolved, ", ")))
+			fmt.Sprintf("%s: %s", notFoundMessage, strings.Join(unresolved, ", ")))
 	}
 	return uuids, nil
 }
@@ -534,7 +524,7 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // (API, portal) pairing — never changes across a republish. A repeat publish
 // with no intervening edit goes through the same path and is a normal
 // no-op refresh, not an error.
-func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (pub *model.Publication, replaced bool, err error) {
+func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
 		return nil, false, err
