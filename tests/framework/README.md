@@ -136,6 +136,7 @@ go test -timeout 30m                                    # everything
 go test -blocks gateway-restart                         # one block
 go test -feature-tags "@request-rewrite"                # one feature, any block
 go test -blocks gateway-core -feature-tags "@metrics,@cors"          # ',' is OR
+go test -gateway-version 1.2.0 -blocks gateway-core/sqlite # one Gateway release
 ```
 
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
@@ -148,6 +149,13 @@ consumes any flag it recognises and forwards only the rest:
 
 `-blocks`, `-skip-blocks` and `-runner-parallel` have no builtin of that name and are forwarded
 to the binary as normal.
+
+Runner `tags` may begin with a framework Gateway-release selector, followed by `;` and an
+ordinary Godog expression: `gateway-version>1.2.0;~@known-issue`. The selector accepts only
+`>`, `>=`, `<`, `<=`, `=`, or `==` with a release `major.minor.patch` version. It is evaluated
+before Godog and is removed from the expression Godog receives; incompatible runners are logged
+as skipped. Use this only for a genuine Gateway release compatibility boundary. Keep versioned
+configuration in a dedicated block rather than changing a shared block's overlay.
 
 ### Docker environment
 

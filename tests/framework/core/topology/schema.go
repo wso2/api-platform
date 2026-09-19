@@ -141,8 +141,13 @@ type Runner struct {
 	// Features lists feature files in execution order.
 	Features []string `yaml:"features"`
 
-	// Tags filters which scenarios in these features run, using Gherkin tag expressions.
+	// Tags optionally begins with a framework gateway-version selector followed by ';', then
+	// filters which scenarios in these features run using a Gherkin tag expression.
 	Tags string `yaml:"tags"`
+
+	// GatewayVersion is parsed from the optional framework selector in Tags. It is not a
+	// suite-file field and must never be passed to Godog as a Gherkin tag expression.
+	GatewayVersion *gatewayVersionConstraint `yaml:"-"`
 
 	// Hook names an optional registered runner hook.
 	Hook string `yaml:"hook"`

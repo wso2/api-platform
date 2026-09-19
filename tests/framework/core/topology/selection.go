@@ -173,6 +173,16 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			continue
 		}
 
+		runners, skipped, err := selectGatewayVersionRunners(&block)
+		if err != nil {
+			return nil, err
+		}
+		out.SkippedRunners = append(out.SkippedRunners, skipped...)
+		if len(block.Runners) > 0 && len(runners) == 0 {
+			continue
+		}
+		block.Runners = runners
+
 		skipExternalBlock := false
 		for j := range block.Components {
 			component := &block.Components[j]
@@ -250,6 +260,14 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	}
 
 	if len(out.Blocks) == 0 {
+		if len(out.SkippedRunners) > 0 {
+			reasons := make([]string, 0, len(out.SkippedRunners))
+			for _, skipped := range out.SkippedRunners {
+				reasons = append(reasons, fmt.Sprintf("%s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason))
+			}
+			sort.Strings(reasons)
+			return nil, fmt.Errorf("topology: the selection has no compatible runners (%s)", strings.Join(reasons, "; "))
+		}
 		return nil, fmt.Errorf("topology: the selection matched no blocks, so the run would test nothing")
 	}
 
@@ -284,6 +302,10 @@ func cloneBlock(block ResolvedBlock) ResolvedBlock {
 	for i, runner := range block.Runners {
 		out.Runners[i] = runner
 		out.Runners[i].Features = append([]string(nil), runner.Features...)
+		if runner.GatewayVersion != nil {
+			constraint := *runner.GatewayVersion
+			out.Runners[i].GatewayVersion = &constraint
+		}
 	}
 	return out
 }

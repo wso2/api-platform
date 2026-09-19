@@ -97,7 +97,7 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	}
 
 	for feature, owners := range featureOwners {
-		if len(owners) > 1 && !allowDatabaseVariantFeatureOwners(owners) {
+		if len(owners) > 1 && !allowDatabaseVariantFeatureOwners(owners) && !allowGatewayVersionSeparatedFeatureOwners(owners) {
 			names := make([]string, 0, len(owners))
 			for owner := range owners {
 				names = append(names, owner)
@@ -112,9 +112,34 @@ func Validate(r *Resolved, registry *components.Registry) error {
 }
 
 type featureOwner struct {
-	runner string
+	runner     string
+	constraint *gatewayVersionConstraint
 	// Every matrix variant of the source block, not just the last one resolved.
 	databases map[components.DBType]bool
+}
+
+// allowGatewayVersionSeparatedFeatureOwners permits the same feature to be bound to
+// mutually exclusive Gateway release ranges. The selection layer runs at most one
+// owner for a concrete Gateway version.
+func allowGatewayVersionSeparatedFeatureOwners(owners map[string]featureOwner) bool {
+	if len(owners) < 2 {
+		return false
+	}
+	entries := make([]featureOwner, 0, len(owners))
+	for _, owner := range owners {
+		if owner.constraint == nil {
+			return false
+		}
+		entries = append(entries, owner)
+	}
+	for i := range entries {
+		for j := i + 1; j < len(entries); j++ {
+			if constraintsOverlap(*entries[i].constraint, *entries[j].constraint) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func platformAPIDatabase(b *ResolvedBlock) components.DBType {
@@ -227,6 +252,13 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 	}
 
 	seenRunner := map[string]bool{}
+	hasPlatformGateway := false
+	for _, component := range b.Components {
+		if component.Def != nil && component.Def.Name == "platform-gateway" {
+			hasPlatformGateway = true
+			break
+		}
+	}
 	for i := range b.Runners {
 		run := &b.Runners[i]
 
@@ -241,6 +273,10 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 
 		if len(run.Features) == 0 {
 			errs.addf("block %q runner %q: declares no features", b.Name, run.Name)
+		}
+		if run.GatewayVersion != nil && !hasPlatformGateway {
+			errs.addf("block %q runner %q: %s requires a platform-gateway component",
+				b.Name, run.Name, gatewayVersionPrefix)
 		}
 
 		seenFeature := map[string]bool{}
@@ -261,6 +297,10 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 			entry, ok := featureOwners[f][owner]
 			if !ok {
 				entry = featureOwner{runner: run.Name, databases: map[components.DBType]bool{}}
+				if run.GatewayVersion != nil {
+					constraint := *run.GatewayVersion
+					entry.constraint = &constraint
+				}
 			}
 			entry.databases[platformAPIDatabase(b)] = true
 			featureOwners[f][owner] = entry
