@@ -79,7 +79,7 @@ func publishWithAuth(c *RetryableHTTPClient) (*http.Response, error) {
 	return c.Do(req)
 }
 
-// flakyPortal answers 503 until failures attempts have been made, then 200, recording each body.
+// flakyPortal answers 503 to the first failures requests and 200 after that, recording each request body.
 type flakyPortal struct {
 	failures int
 	bodies   []string
