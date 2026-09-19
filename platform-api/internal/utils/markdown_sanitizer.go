@@ -49,7 +49,7 @@ func StripEmbeddedHTML(markdown string) string {
 			return b.String()
 		case html.TextToken:
 			if skipDepth == 0 {
-				b.Write(tokenizer.Text())
+				b.Write(tokenizer.Raw())
 			}
 		case html.StartTagToken:
 			name, _ := tokenizer.TagName()
