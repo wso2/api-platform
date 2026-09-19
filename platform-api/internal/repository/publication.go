@@ -533,10 +533,9 @@ func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID
 // whether an existing live row was found (republish) versus this being the
 // first publish (create) — the handler uses it to choose 200 vs 201.
 //
-// draftUpdatedAt is the draft's updated_at as the caller read it before
-// pushing to the portal. If the draft has been saved since — any details or
-// content save bumps it — nothing is promoted and APIPublicationDraftChanged
-// is returned, so the live row never holds edits the portal was not sent.
+// draftUpdatedAt is the draft's updated_at when the caller read it. If any
+// details or content save has bumped it since, nothing is promoted and
+// APIPublicationDraftChanged is returned.
 func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time) (pub *model.Publication, replaced bool, err error) {
 	now := time.Now().UTC()
 
@@ -546,9 +545,8 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	}
 	defer tx.Rollback()
 
-	// A no-op update, as the first statement, takes the draft row's write lock
-	// on every dialect: a concurrent draft save waits until this transaction
-	// ends, so the timestamp read next cannot go stale before the commit.
+	// The no-op update takes the draft row's write lock on every dialect, so a
+	// concurrent save waits and the timestamp read next stays current until commit.
 	lockQuery := `
 		UPDATE api_publications SET updated_by = updated_by
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1

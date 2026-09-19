@@ -525,12 +525,8 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // with no intervening edit goes through the same path and is a normal
 // no-op refresh, not an error.
 //
-// If the draft is saved while the portal push is in flight, the promote is
-// refused with APIPublicationDraftChanged: the portal already holds the copy
-// read above, so promoting the newer draft would leave the two disagreeing.
-// The portal push is not undone, so until the caller publishes again the
-// portal may differ from the local listing; the draft is kept and publishing
-// again sends the newer copy and promotes it.
+// A draft saved during the portal push is not promoted (APIPublicationDraftChanged).
+// The push is not undone, so the portal may differ until the caller publishes again.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
