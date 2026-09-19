@@ -39,12 +39,12 @@ const messages = defineMessages({
 
 /**
  * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
- * the fields REST_Design.md's own "API Details" scope covers for this release
+ * the API Details fields this release covers
  * (`displayName`, `version`, `description`, the two endpoint URLs). Everything
  * else `PublicationDetailsCore` carries (tags, labels, agentVisibility, owners,
  * subscriptionPlanIds, docIds) belongs to a tab this alpha doesn't show, so a
- * save never sends it — see REST_Design.md §7: "every field currently shown",
- * not every field the schema could hold.
+ * save never sends it — a save sends every field currently shown, not every
+ * field the schema could hold.
  */
 export type DraftFormValues = {
   displayName: string;
@@ -63,7 +63,7 @@ export const emptyDraftFormValues: DraftFormValues = {
 };
 
 /**
- * REST_Design.md §6's read chain, only for pre-filling the form: draft, then
+ * The read chain, only for pre-filling the form: draft, then
  * publication, then the API's own — starting from the most recent edit,
  * published or not. No endpoint resolves this chain server-side, so it's
  * composed here from three independently-fetched tiers, each `undefined` when
@@ -105,8 +105,8 @@ export const resolveDraftFormValues = (
 };
 
 /**
- * The PUT body for `.../draft` — every field the alpha form shows, per
- * REST_Design.md §7's "no incremental per-field save" rule. Empty strings are
+ * The PUT body for `.../draft` — every field the alpha form shows, saved
+ * together rather than field by field. Empty strings are
  * sent as `undefined` rather than `''`, so a field the user never touched
  * reads back as unset instead of an empty value.
  */
@@ -123,8 +123,8 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     displayName: values.displayName.trim(),
     version: values.version.trim(),
     description: trimmedOrUndefined(values.description),
-    // The portal requires the endpoints key even when both URLs are empty
-    // (REST_Design.md §8), so this is sent whenever either is set.
+    // The portal requires the endpoints key even when both URLs are empty,
+    // so this is sent whenever either is set.
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),

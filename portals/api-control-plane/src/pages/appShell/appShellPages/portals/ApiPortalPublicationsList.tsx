@@ -79,9 +79,9 @@ const messages = defineMessages({
  * API's own publication status — the rollup from `GET /api-publications`.
  *
  * `apiType` is hardcoded to `rest-api`: it is the only API family the publish
- * flow (and this console's `restApis` resource) supports end to end today. See
- * `Implementation_Plan.md` Slice 5/6 — `websub-api`/`webbroker-api` are declared
- * in the spec's enum but have no publish/unpublish path wired up yet.
+ * flow (and this console's `restApis` resource) supports end to end today.
+ * `websub-api`/`webbroker-api` are declared in the spec's enum but have no
+ * publish/unpublish path wired up yet.
  */
 const API_TYPE = 'rest-api';
 

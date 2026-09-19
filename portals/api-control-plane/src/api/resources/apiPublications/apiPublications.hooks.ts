@@ -206,6 +206,8 @@ export const useDeprecateRestApiOnApiPortal = (overrides: { orgId?: string } = {
   return useMutation<Publication, ApiError, { apiPortalId: string; apiId: string }>({
     mutationFn: ({ apiPortalId, apiId }) =>
       deprecateRestApiOnApiPortal(apiPortalId, apiId, { orgId }),
+    // Settled, not success-only, for the same reason as unpublish: a 409
+    // PUBLICATION_STATE_CONFLICT must re-read the real status.
     onSettled: () => invalidate(),
   });
 };

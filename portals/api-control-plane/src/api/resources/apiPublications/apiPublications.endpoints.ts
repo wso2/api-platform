@@ -58,7 +58,7 @@ const portalApiPath = (apiPortalId: string, apiType: string, apiId: string, suff
 
 /**
  * The release actions' own path shape: `apiType` is pinned to the literal
- * `rest-api` segment rather than left open (see REST_Design.md §4) — the only
+ * `rest-api` segment rather than left open — the only
  * type this build publishes end to end today (see `ApiPortalPublicationsList`).
  */
 const restApiPortalActionPath = (apiPortalId: string, apiId: string, action: string): string =>
@@ -143,7 +143,7 @@ export const getApiPublication = async (
     operationName: 'getApiPublication',
   });
 
-/** Publishes (or republishes) the current draft. No request body — see REST_Design.md §7. */
+/** Publishes (or republishes) the current draft. The request has no body; the server publishes what the draft already holds. */
 export const publishRestApiToApiPortal = async (
   apiPortalId: string,
   apiId: string,

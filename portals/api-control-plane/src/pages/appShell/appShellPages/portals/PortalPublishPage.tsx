@@ -188,9 +188,9 @@ const parseOpenApiContent = (content: string): DraftDefinitionDocument | undefin
  * they're still on the roadmap, just not this release (contrast the
  * thumbnail/icon control, which is dropped entirely — see `ApiDetailsTab`).
  * Save Draft writes `.../draft` and `.../draft/definition`; Publish writes
- * both of those and then calls `.../publish` in the same click, matching
- * REST_Design.md §7's "client-side sequencing" — the server never accepts a
- * publish with no request body other than what the draft already holds.
+ * both of those and then calls `.../publish` in the same click — the client
+ * sequences the calls because the server's publish takes no request body and
+ * only ever publishes what the draft already holds.
  *
  * No `ScopeGate`: like `ApiEditPage`, this page is only reachable from the
  * Portals listing's own card, which is already fully API-scoped.
@@ -274,7 +274,7 @@ export function PortalPublishPage() {
     (draftDefinitionAbsent && publicationDefinitionQuery.isPending) ||
     (publicationDefinitionAbsent && apiOpenApiQuery.isPending);
 
-  // Seeds the form from REST_Design.md §6's read chain exactly once, the
+  // Seeds the form from the draft, publication and API tiers exactly once, the
   // moment every tier has settled (success or the expected 404) — never
   // again, so a background refetch (or the invalidation a save triggers)
   // can't clobber edits already in progress.
@@ -353,7 +353,7 @@ export function PortalPublishPage() {
     }
   };
 
-  /** Details, then definition — a content PUT 404s if the draft doesn't exist yet (REST_Design.md §7). */
+  /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
   const saveDraft = async (): Promise<boolean> => {
     if (formInvalid) {
       touchAllFields();
@@ -394,8 +394,8 @@ export function PortalPublishPage() {
   const handlePublish = async () => {
     setPendingAction('publishing');
     try {
-      // Client-side sequencing per REST_Design.md §7: the draft PUT(s) go
-      // first — same as Save Draft — then the bodyless publish call.
+      // The draft PUT(s) go first — same as Save Draft — then the bodyless
+      // publish call.
       if (!(await saveDraft())) return;
       await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.published, { portalName }), 'success');

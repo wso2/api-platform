@@ -59,9 +59,8 @@ export type ApiDetailsTabProps = {
 /**
  * "API Details" — the one form this alpha shows: name, version, description
  * and the two author-entered endpoint URLs, in a single card like the edit-API form. The icon/thumbnail
- * control from the design is left out entirely rather than shown disabled —
- * thumbnails are an out-of-scope feature this release, same treatment the
- * doc-attachment picker got (see `Implementation_Plan.md` Slice 7).
+ * control is left out entirely rather than shown disabled — thumbnails are out
+ * of scope for this release, as is the doc-attachment picker.
  */
 export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values }: ApiDetailsTabProps) {
   const intl = useIntl();

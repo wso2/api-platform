@@ -64,8 +64,8 @@ export type PublishActionsBarProps = {
  * The page's action row, right-aligned under the form like the edit-API form's
  * buttons: Save Draft, and a split button whose primary side
  * is Publish, with Unpublish and Deprecate as its alternatives. Publish is
- * always available — REST_Design.md's lifecycle table allows publishing
- * (republishing) from every state a draft can exist in. Unpublish needs a live
+ * always available — publishing (republishing) is valid from every state a
+ * draft can exist in. Unpublish needs a live
  * listing (published or deprecated) and Deprecate needs a published one, so
  * each is disabled rather than hidden the rest of the time.
  *

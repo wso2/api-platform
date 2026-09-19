@@ -56,8 +56,7 @@ export type SpecificationTabProps = {
  * "Specification" — the draft's OpenAPI definition (`.../draft/definition`),
  * as raw JSON text. Alpha scope only supports JSON, not YAML/GraphQL/XML: this
  * console only publishes REST APIs today (see `ApiPortalPublicationsList`),
- * and REST_Design.md's own definition format table lists JSON/YAML as the
- * pair — narrowing to one keeps this tab a plain editor instead of needing
+ * and a REST definition is either JSON or YAML — narrowing to JSON keeps this tab a plain editor instead of needing
  * `SpecSourceEditor`'s full format-switch/validate-against-creation-rules
  * machinery, which is built for a different job (importing a *new* API).
  */
