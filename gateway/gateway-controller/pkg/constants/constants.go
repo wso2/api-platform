@@ -124,6 +124,7 @@ const (
 	MCP_PRM_RESOURCE_PATH      = "/.well-known/oauth-protected-resource"
 	SPEC_VERSION_2025_JUNE     = "2025-06-18"
 	SPEC_VERSION_2025_NOVEMBER = "2025-11-25"
+	SPEC_VERSION_2026_JULY     = "2026-07-28"
 
 	// Router constants
 	BASE_PATH = "/"

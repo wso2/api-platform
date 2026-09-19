@@ -280,6 +280,120 @@ func TestMCPValidator_ValidateVersion(t *testing.T) {
 	}
 }
 
+func TestMCPValidator_UnsupportedSpecVersionMessage(t *testing.T) {
+	v := NewMCPValidator()
+	supported := strings.Join(v.supportedSpecVersions, ", ")
+
+	tests := []struct {
+		name     string
+		versions []string
+		wantMsg  string
+	}{
+		{
+			name:     "one unsupported version is named",
+			versions: []string{constants.SPEC_VERSION_2025_JUNE, "2025-03-18"},
+			wantMsg:  `Unsupported MCP spec version "2025-03-18" (supported versions: ` + supported + `)`,
+		},
+		{
+			name:     "two unsupported versions share one error",
+			versions: []string{"2025-03-18", constants.SPEC_VERSION_2026_JULY, "2099-01-01"},
+			wantMsg:  `Unsupported MCP spec versions "2025-03-18", "2099-01-01" (supported versions: ` + supported + `)`,
+		},
+		{
+			name:     "an empty version is named as empty",
+			versions: []string{""},
+			wantMsg:  `Unsupported MCP spec version "" (supported versions: ` + supported + `)`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := v.validateSupportedSpecVersions("spec.specVersions", tt.versions)
+			if len(got) != 1 {
+				t.Fatalf("expected exactly one error, got %d", len(got))
+			}
+			if got[0].Message != tt.wantMsg {
+				t.Errorf("message = %q, want %q", got[0].Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestMCPValidator_ValidateSpecVersions(t *testing.T) {
+	v := NewMCPValidator()
+
+	tests := []struct {
+		name         string
+		specVersion  *string
+		specVersions *[]string
+		wantField    string
+	}{
+		{
+			name:         "Every listed version supported",
+			specVersions: &[]string{constants.SPEC_VERSION_2025_JUNE, constants.SPEC_VERSION_2026_JULY},
+		},
+		{
+			name:         "One listed version unsupported",
+			specVersions: &[]string{constants.SPEC_VERSION_2025_JUNE, "2025-03-26"},
+			wantField:    "spec.specVersions",
+		},
+		{
+			name:         "Empty list",
+			specVersions: &[]string{},
+			wantField:    "spec.specVersions",
+		},
+		{
+			name:         "Both forms declared",
+			specVersion:  stringPtr(constants.SPEC_VERSION_2025_JUNE),
+			specVersions: &[]string{constants.SPEC_VERSION_2026_JULY},
+			wantField:    "spec.specVersions",
+		},
+		{
+			name:        "Deprecated form alone still accepted",
+			specVersion: stringPtr(constants.SPEC_VERSION_2025_NOVEMBER),
+		},
+		{
+			name: "Neither form declared",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "http://backend:8080"
+			config := &api.MCPProxyConfiguration{
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+				Kind:       "Mcp",
+				Metadata:   api.Metadata{Name: "test"},
+				Spec: api.MCPProxyConfigData{
+					DisplayName:  "Test",
+					Version:      "v1.0",
+					Context:      stringPtr("/test"),
+					SpecVersion:  tt.specVersion,
+					SpecVersions: tt.specVersions,
+					Upstream:     api.MCPProxyConfigData_Upstream{Url: &url},
+				},
+			}
+
+			var gotFields []string
+			for _, e := range v.Validate(config) {
+				if e.Field == "spec.specVersion" || e.Field == "spec.specVersions" {
+					gotFields = append(gotFields, e.Field)
+				}
+			}
+
+			if tt.wantField == "" {
+				if len(gotFields) > 0 {
+					t.Errorf("unexpected spec version errors on %v", gotFields)
+				}
+				return
+			}
+			if len(gotFields) != 1 || gotFields[0] != tt.wantField {
+				t.Errorf("expected one error on %s, got %v", tt.wantField, gotFields)
+			}
+		})
+	}
+}
+
 func TestMCPValidator_ValidateSpecVersion(t *testing.T) {
 	v := NewMCPValidator()
 
@@ -290,8 +404,10 @@ func TestMCPValidator_ValidateSpecVersion(t *testing.T) {
 	}{
 		{name: "Valid June 2025", specVersion: stringPtr(constants.SPEC_VERSION_2025_JUNE), wantError: false},
 		{name: "Valid November 2025", specVersion: stringPtr(constants.SPEC_VERSION_2025_NOVEMBER), wantError: false},
+		{name: "Valid July 2026", specVersion: stringPtr(constants.SPEC_VERSION_2026_JULY), wantError: false},
 		{name: "Nil spec version", specVersion: nil, wantError: false},
 		{name: "Invalid spec version", specVersion: stringPtr("invalid-version"), wantError: true},
+		{name: "Empty spec version", specVersion: stringPtr(""), wantError: true},
 	}
 
 	for _, tt := range tests {
