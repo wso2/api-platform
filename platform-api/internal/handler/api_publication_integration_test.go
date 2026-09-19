@@ -529,3 +529,45 @@ func TestPublicationHandler_ListPublications_QueryFilter(t *testing.T) {
 		t.Fatalf("want partner-portal, got %v", item)
 	}
 }
+
+// TestPublicationHandler_OversizedBody_Returns413 verifies every body-reading
+// draft endpoint answers 413 (not 400) once its size cap is exceeded, while a
+// malformed body under the cap stays a 400.
+func TestPublicationHandler_OversizedBody_Returns413(t *testing.T) {
+	r, _, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	over := int(defaultPublicationContentMaxBytes) + 1
+	bigJSON := append([]byte(`{"displayName":"`), bytes.Repeat([]byte("a"), over)...)
+	bigJSON = append(bigJSON, []byte(`"}`)...)
+	bigRaw := bytes.Repeat([]byte("a"), over)
+
+	var thumb bytes.Buffer
+	mw := multipart.NewWriter(&thumb)
+	part, _ := mw.CreateFormFile("file", "t.png")
+	_, _ = part.Write(bytes.Repeat([]byte("a"), int(defaultPublicationThumbnailMaxBytes)+1))
+	_ = mw.Close()
+
+	cases := []struct {
+		name, path, contentType string
+		body                    []byte
+	}{
+		{"draft json", draftPath, "application/json", bigJSON},
+		{"definition", draftPath + "/definition", "application/json", bigRaw},
+		{"landing page", draftPath + "/landing-page", "text/markdown", bigRaw},
+		{"thumbnail", draftPath + "/thumbnail", mw.FormDataContentType(), thumb.Bytes()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := doPublicationRequest(r, http.MethodPut, tc.path, tc.contentType, tc.body)
+			if w.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("want 413, got %d: %.200s", w.Code, w.Body.String())
+			}
+		})
+	}
+
+	w := doPublicationRequest(r, http.MethodPut, draftPath, "application/json", []byte(`{not json`))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed JSON: want 400, got %d", w.Code)
+	}
+}
