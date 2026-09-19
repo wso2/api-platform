@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -153,6 +154,33 @@ func (r *APIPortalRepo) GetByHandleAndOrgID(handle, orgUUID string) (*model.APIP
 	return portal, nil
 }
 
+// ListActiveByOrg returns every api_portals row for orgUUID whose status is
+// "active" — the API Publication feature's GET /api-publications rollup
+// lists only these; a portal still provisioning or failed is absent
+// entirely. Ordered by registration time for a deterministic default order.
+func (r *APIPortalRepo) ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error) {
+	query := fmt.Sprintf(`
+		SELECT %s FROM api_portals
+		WHERE organization_uuid = ? AND status = ?
+		ORDER BY created_at, uuid
+	`, apiPortalSelectColumns)
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.APIPortalStatusActive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active API Portals: %w", err)
+	}
+	defer rows.Close()
+
+	var portals []*model.APIPortal
+	for rows.Next() {
+		portal, err := scanAPIPortalRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		portals = append(portals, portal)
+	}
+	return portals, rows.Err()
+}
+
 // ListPaginated returns a page of API Portals scoped to the organization.
 func (r *APIPortalRepo) ListPaginated(orgUUID string, opts ListOptions) ([]*model.APIPortal, error) {
 	var args []interface{}
@@ -242,8 +270,20 @@ func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 
 // Delete removes an API Portal row, scoped to orgUUID.
 func (r *APIPortalRepo) Delete(portalID, orgUUID string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// SQL Server's foreign key from api_publications is NO ACTION, so the
+	// portal's drafts and listings must be removed before the portal itself.
+	deletePublicationsQuery := `DELETE FROM api_publications WHERE api_portal_uuid = ? AND organization_uuid = ?`
+	if _, err := tx.Exec(r.db.Rebind(deletePublicationsQuery), portalID, orgUUID); err != nil {
+		return err
+	}
 	query := `DELETE FROM api_portals WHERE uuid = ? AND organization_uuid = ?`
-	result, err := r.db.Exec(r.db.Rebind(query), portalID, orgUUID)
+	result, err := tx.Exec(r.db.Rebind(query), portalID, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -254,7 +294,7 @@ func (r *APIPortalRepo) Delete(portalID, orgUUID string) error {
 	if rows == 0 {
 		return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Exists reports whether an API Portal with the given handle exists in the organization.

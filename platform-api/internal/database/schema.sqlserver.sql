@@ -152,6 +152,213 @@ CREATE TABLE dbo.artifact_subscription_plans (
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
 
+-- API Portals table (registration of an API Portal instance for an organization).
+-- Positioned here (before api_publications) rather than further down with the
+-- other artifact-adjacent tables, because api_publications' composite FK to
+-- this table requires it to already exist — SQL Server resolves FKs in
+-- statement order. UNIQUE(uuid, organization_uuid) is that composite FK's
+-- target; api_portals' own single-column PK doesn't satisfy a composite FK.
+-- Single FK edge, no SQL Server cascade-path convergence to resolve.
+IF OBJECT_ID(N'dbo.api_portals', N'U') IS NULL
+CREATE TABLE dbo.api_portals (
+    uuid              VARCHAR(40)    PRIMARY KEY,
+    organization_uuid VARCHAR(40)   NOT NULL,
+    handle            VARCHAR(40)   NOT NULL,
+    display_name      VARCHAR(255)  NOT NULL,
+    description       VARCHAR(1023),
+    url               VARCHAR(500),
+    status            VARCHAR(20)    NOT NULL DEFAULT 'pending',
+    internal_auth_key VARBINARY(MAX) NOT NULL,
+    metadata          VARBINARY(MAX),
+    data_version      VARCHAR(20)    NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE (organization_uuid, handle)
+);
+
+-- A guarded index, not an inline UNIQUE: api_portals already exists on upgraded databases.
+-- Column order must match api_publications' FK reference (uuid, organization_uuid).
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_portals_uuid_org' AND object_id = OBJECT_ID(N'dbo.api_portals'))
+CREATE UNIQUE INDEX uq_api_portals_uuid_org ON dbo.api_portals(uuid, organization_uuid);
+
+-- =====================================================================
+-- api_publications: one API's publication state on one API Portal. Each
+-- (API, portal) pair has at most one live row (is_draft = 0) and one draft row
+-- (is_draft = 1). status is set only on live rows.
+--
+-- The artifact and portal foreign keys use NO ACTION (SQL Server error 1785,
+-- multiple cascade paths): delete an API's or portal's publications before the
+-- API or portal itself. Deleting an organization still cascades.
+-- =====================================================================
+IF OBJECT_ID(N'dbo.api_publications', N'U') IS NULL
+CREATE TABLE dbo.api_publications (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    artifact_uuid     VARCHAR(40)  NOT NULL,
+    api_portal_uuid   VARCHAR(40)  NOT NULL,
+    is_draft          SMALLINT     NOT NULL DEFAULT 0,  -- 0 = live row, 1 = draft row
+    status            VARCHAR(20),                       -- PUBLISHED | DEPRECATED; set only when is_draft = 0
+    display_name      VARCHAR(255) NOT NULL,
+    version           VARCHAR(30)  NOT NULL,
+    description       VARCHAR(1023),
+    tags              VARBINARY(MAX),               -- serialized string array; no tag catalog exists
+    labels            VARBINARY(MAX),               -- serialized array of API Portal label handles
+    agent_visibility  VARCHAR(20)  NOT NULL DEFAULT 'VISIBLE',    -- VISIBLE | HIDDEN
+    production_url    VARCHAR(255),
+    sandbox_url       VARCHAR(255),
+    -- Author-entered, like the two URLs above: Platform API stores no owner of
+    -- its own, and omitting them from a push would null the portal's columns.
+    business_owner        VARCHAR(255),
+    business_owner_email  VARCHAR(255),
+    technical_owner        VARCHAR(255),
+    technical_owner_email  VARCHAR(255),
+    data_version      VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200) NOT NULL,
+    created_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_by        VARCHAR(200) NOT NULL,
+    updated_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    -- At most one live row and one draft row per pairing.
+    UNIQUE (organization_uuid, artifact_uuid, api_portal_uuid, is_draft),
+    -- Lets the satellite tables prove their publication_uuid is in the same org.
+    -- Column order must match the satellite tables' FK reference (uuid, organization_uuid) —
+    -- SQL Server, unlike Postgres/SQLite, requires exact column-order match against a unique constraint.
+    UNIQUE (uuid, organization_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (artifact_uuid, organization_uuid)
+        REFERENCES artifacts(uuid, organization_uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (api_portal_uuid, organization_uuid)
+        REFERENCES api_portals(uuid, organization_uuid) ON DELETE NO ACTION
+);
+
+-- =====================================================================
+-- api_publication_contents: the definition, landing page and thumbnail of a
+-- publication row; one row per type (API_DEFINITION, MARKETING, IMAGE).
+--
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via api_publications.
+-- =====================================================================
+IF OBJECT_ID(N'dbo.api_publication_contents', N'U') IS NULL
+CREATE TABLE dbo.api_publication_contents (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
+    type              VARCHAR(20)  NOT NULL,        -- IMAGE | API_DEFINITION | MARKETING
+    file_name         VARCHAR(255),                 -- API_DEFINITION: canonical name recording the serialization.
+                                                      -- IMAGE: the uploader's own file name. Null for MARKETING.
+    content_type      VARCHAR(100),                 -- sniffed at upload, not the client's declared type. Null for MARKETING.
+    content           VARBINARY(MAX) NOT NULL,
+    data_version      VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    UNIQUE (organization_uuid, publication_uuid, type),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (publication_uuid, organization_uuid)
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
+);
+
+-- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
+-- Positioned here, ahead of its original location further down this file, so
+-- api_publication_doc_mappings below (which references it) doesn't create
+-- before its FK target exists — SQL Server validates that at CREATE TABLE time.
+IF OBJECT_ID(N'dbo.api_documents', N'U') IS NULL
+CREATE TABLE dbo.api_documents (
+    uuid              VARCHAR(40)    NOT NULL,
+    artifact_uuid     VARCHAR(40)    NOT NULL,
+    organization_uuid VARCHAR(40)    NOT NULL,
+    type              VARCHAR(20)    NOT NULL,
+    handle            VARCHAR(40)    NOT NULL,
+    display_name      VARCHAR(255)   NOT NULL,
+    file_name         VARCHAR(255),
+    content_type      VARCHAR(100),
+    content           VARBINARY(MAX) NOT NULL,
+    data_version      VARCHAR(20)    NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(255),
+    created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    updated_by        VARCHAR(255),
+    updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT pk_api_documents          PRIMARY KEY (uuid),
+    CONSTRAINT fk_api_documents_artifact FOREIGN KEY (artifact_uuid)     REFERENCES dbo.artifacts(uuid)      ON DELETE CASCADE,
+    CONSTRAINT fk_api_documents_org      FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid)  ON DELETE NO ACTION
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_documents_artifact' AND object_id = OBJECT_ID(N'dbo.api_documents'))
+CREATE INDEX idx_api_documents_artifact ON dbo.api_documents(artifact_uuid, type);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_documents_artifact_handle' AND object_id = OBJECT_ID(N'dbo.api_documents'))
+CREATE UNIQUE INDEX uq_api_documents_artifact_handle ON dbo.api_documents(artifact_uuid, handle);
+
+-- =====================================================================
+-- api_publication_doc_mappings: the documents selected for a publication row.
+--
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via api_publications.
+-- =====================================================================
+IF OBJECT_ID(N'dbo.api_publication_doc_mappings', N'U') IS NULL
+CREATE TABLE dbo.api_publication_doc_mappings (
+    organization_uuid VARCHAR(40)  NOT NULL,
+    publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
+    doc_uuid          VARCHAR(40)  NOT NULL,
+    created_by        VARCHAR(200) NOT NULL,
+    created_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (organization_uuid, publication_uuid, doc_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (publication_uuid, organization_uuid)
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
+    -- api_documents has no UNIQUE(organization_uuid, uuid) — single-column FK,
+    -- org match checked in the service layer, same exception as subscription_plans.
+    -- CASCADE: documents are authored outside this feature. Deleting one there
+    -- withdraws it from the selection here rather than blocking the deletion.
+    FOREIGN KEY (doc_uuid) REFERENCES api_documents(uuid) ON DELETE CASCADE
+);
+
+-- =====================================================================
+-- api_publication_plan_mappings: the subscription plans selected for a
+-- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
+-- so the plan reference is single-column and the organization match is checked
+-- in the service layer.
+--
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via api_publications.
+-- =====================================================================
+IF OBJECT_ID(N'dbo.api_publication_plan_mappings', N'U') IS NULL
+CREATE TABLE dbo.api_publication_plan_mappings (
+    organization_uuid      VARCHAR(40)  NOT NULL,
+    publication_uuid       VARCHAR(40)  NOT NULL,   -- the api_publications row this belongs to, draft or live
+    subscription_plan_uuid VARCHAR(40)  NOT NULL,
+    created_by             VARCHAR(200) NOT NULL,
+    created_at             DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (organization_uuid, publication_uuid, subscription_plan_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (publication_uuid, organization_uuid)
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_plan_uuid)
+        REFERENCES subscription_plans(uuid) ON DELETE NO ACTION
+);
+
+-- API Publication indexes
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_publications_artifact' AND object_id = OBJECT_ID(N'dbo.api_publications'))
+CREATE INDEX idx_api_publications_artifact ON dbo.api_publications(artifact_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_publications_portal' AND object_id = OBJECT_ID(N'dbo.api_publications'))
+CREATE INDEX idx_api_publications_portal ON dbo.api_publications(api_portal_uuid);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_publication_contents_publication' AND object_id = OBJECT_ID(N'dbo.api_publication_contents'))
+CREATE INDEX idx_api_publication_contents_publication ON dbo.api_publication_contents(publication_uuid);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_publication_doc_mappings_publication' AND object_id = OBJECT_ID(N'dbo.api_publication_doc_mappings'))
+CREATE INDEX idx_api_publication_doc_mappings_publication ON dbo.api_publication_doc_mappings(publication_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_publication_doc_mappings_doc' AND object_id = OBJECT_ID(N'dbo.api_publication_doc_mappings'))
+CREATE INDEX idx_api_publication_doc_mappings_doc ON dbo.api_publication_doc_mappings(doc_uuid);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_publication_plan_mappings_publication' AND object_id = OBJECT_ID(N'dbo.api_publication_plan_mappings'))
+CREATE INDEX idx_api_publication_plan_mappings_publication ON dbo.api_publication_plan_mappings(publication_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_publication_plan_mappings_plan' AND object_id = OBJECT_ID(N'dbo.api_publication_plan_mappings'))
+CREATE INDEX idx_api_publication_plan_mappings_plan ON dbo.api_publication_plan_mappings(subscription_plan_uuid);
+
 -- Subscriptions table (application-level subscriptions for any artifact type)
 -- subscription_token: encrypted value (AES-256-GCM) for retrieval (legacy rows have hash)
 -- subscription_token_hash: SHA-256 hash for uniqueness and gateway sync
@@ -476,27 +683,6 @@ CREATE TABLE dbo.mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
--- API Portals table (registration of an API Portal instance for an organization)
-IF OBJECT_ID(N'dbo.api_portals', N'U') IS NULL
-CREATE TABLE dbo.api_portals (
-    uuid              VARCHAR(40)   PRIMARY KEY,
-    organization_uuid VARCHAR(40)   NOT NULL,
-    handle            VARCHAR(40)   NOT NULL,
-    display_name      VARCHAR(255)  NOT NULL,
-    description       VARCHAR(1023),
-    url               VARCHAR(500),
-    status               VARCHAR(20)    NOT NULL DEFAULT 'pending',
-    internal_auth_key VARBINARY(MAX) NOT NULL,
-    metadata             VARBINARY(MAX),
-    data_version         VARCHAR(20)    NOT NULL DEFAULT '1.0',
-    created_by           VARCHAR(200),
-    created_at           DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
-    updated_by           VARCHAR(200),
-    updated_at           DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE (organization_uuid, handle)
-);
-
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -763,31 +949,3 @@ CREATE TABLE dbo.user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
-
--- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
-IF OBJECT_ID(N'dbo.api_documents', N'U') IS NULL
-CREATE TABLE dbo.api_documents (
-    uuid              VARCHAR(40)    NOT NULL,
-    artifact_uuid     VARCHAR(40)    NOT NULL,
-    organization_uuid VARCHAR(40)    NOT NULL,
-    type              VARCHAR(20)    NOT NULL,
-    handle            VARCHAR(40)    NOT NULL,
-    display_name      VARCHAR(255)   NOT NULL,
-    file_name         VARCHAR(255),
-    content_type      VARCHAR(100),
-    content           VARBINARY(MAX) NOT NULL,
-    data_version      VARCHAR(20)    NOT NULL DEFAULT '1.0',
-    created_by        VARCHAR(255),
-    created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
-    updated_by        VARCHAR(255),
-    updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT pk_api_documents          PRIMARY KEY (uuid),
-    CONSTRAINT fk_api_documents_artifact FOREIGN KEY (artifact_uuid)     REFERENCES dbo.artifacts(uuid)      ON DELETE CASCADE,
-    CONSTRAINT fk_api_documents_org      FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid)  ON DELETE NO ACTION
-);
-
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_documents_artifact' AND object_id = OBJECT_ID(N'dbo.api_documents'))
-CREATE INDEX idx_api_documents_artifact ON dbo.api_documents(artifact_uuid, type);
-
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_documents_artifact_handle' AND object_id = OBJECT_ID(N'dbo.api_documents'))
-CREATE UNIQUE INDEX uq_api_documents_artifact_handle ON dbo.api_documents(artifact_uuid, handle);

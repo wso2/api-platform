@@ -212,3 +212,22 @@ const (
 	CodeHmacSecretInvalidValue  = "HMAC_SECRET_INVALID_VALUE"
 	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
 )
+
+// API Publication domain codes. CodeAPIPublicationAPINotFound covers an
+// unknown (apiType, apiId) pair or an apiType this build doesn't serve —
+// distinct from CodeArtifactNotFound (used elsewhere in the codebase for the
+// same resolution mechanism) because this feature documents API_NOT_FOUND as
+// part of its own client-facing contract.
+const (
+	CodeAPIPublicationAPINotFound       = "API_NOT_FOUND"
+	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
+	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
+	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
+	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
+	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
+	// CodeAPIPublicationStateConflict: the action (unpublish, deprecate) is not
+	// valid for the listing's current status. Distinct from
+	// CodeAPIPublicationNotFound (404, used by the live-listing reads) — this is
+	// a 409 on an action, not a missing-resource read.
+	CodeAPIPublicationStateConflict = "PUBLICATION_STATE_CONFLICT"
+)

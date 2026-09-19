@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -198,4 +199,77 @@ func (r *DocumentRepo) DocumentHandleExistsForArtifact(artifactUUID, handle stri
 		return false, fmt.Errorf("failed to check document handle for the artifact: %w", err)
 	}
 	return true, nil
+}
+
+// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
+// scoped to one artifact — api_documents' real unique index is
+// (artifact_uuid, handle), so a handle is only guaranteed unique per
+// artifact, not per org. Returns an empty map for empty input.
+func (r *DocumentRepo) GetDocumentUUIDsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]string, error) {
+	if len(handles) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(handles))
+	args := make([]interface{}, 0, len(handles)+2)
+	for i, h := range handles {
+		placeholders[i] = "?"
+		args = append(args, h)
+	}
+	args = append(args, artifactUUID, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT handle, uuid
+		FROM api_documents
+		WHERE handle IN (%s) AND artifact_uuid = ? AND organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var handle, id string
+		if err := rows.Scan(&handle, &id); err != nil {
+			return nil, err
+		}
+		m[handle] = id
+	}
+	return m, rows.Err()
+}
+
+// GetDocumentHandlesByUUIDs is the inverse of GetDocumentUUIDsByHandles, for
+// reconstructing a docIds response from stored api_publication_doc_mappings
+// rows. Scoped to the organization only — a mapping row's doc_uuid already
+// came from that same artifact's own resolved set. Returns an empty map for
+// empty input.
+func (r *DocumentRepo) GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error) {
+	if len(docUUIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(docUUIDs))
+	args := make([]interface{}, 0, len(docUUIDs)+1)
+	for i, id := range docUUIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT uuid, handle
+		FROM api_documents
+		WHERE uuid IN (%s) AND organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve document uuids: %w", err)
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var id, handle string
+		if err := rows.Scan(&id, &handle); err != nil {
+			return nil, err
+		}
+		m[id] = handle
+	}
+	return m, rows.Err()
 }
