@@ -337,13 +337,25 @@ func seedPublications(t *testing.T, it *itDB, g graph) {
 			AgentVisibility:  "VISIBLE",
 		}
 	}
-	if _, err := repo.SaveDraftDetails(draft("1.0.0"), nil, nil, "actor"); err != nil {
+	first, err := repo.SaveDraftDetails(draft("1.0.0"), []string{g.plan}, []string{g.apiDoc}, "actor")
+	if err != nil {
 		t.Fatalf("[%s] saving first draft: %v", it.driver, err)
+	}
+	content := &model.PublicationContent{
+		OrganizationUUID: g.org,
+		PublicationUUID:  first.UUID,
+		Type:             model.PublicationContentTypeDefinition,
+		FileName:         "openapi.json",
+		ContentType:      "application/json",
+		Content:          []byte(`{"openapi":"3.0.0"}`),
+	}
+	if err := repo.SaveContent(content, "actor"); err != nil {
+		t.Fatalf("[%s] saving definition content: %v", it.driver, err)
 	}
 	if _, _, err := repo.PromoteDraftToPublication(g.apiArtifact, g.apiPortal, g.org, "actor"); err != nil {
 		t.Fatalf("[%s] promoting draft: %v", it.driver, err)
 	}
-	if _, err := repo.SaveDraftDetails(draft("1.0.1"), nil, nil, "actor"); err != nil {
+	if _, err := repo.SaveDraftDetails(draft("1.0.1"), []string{g.plan}, []string{g.apiDoc}, "actor"); err != nil {
 		t.Fatalf("[%s] saving second draft: %v", it.driver, err)
 	}
 	if got := it.count(t, "api_publications", "artifact_uuid", g.apiArtifact); got != 2 {
