@@ -114,6 +114,74 @@ func TestRetryableClientResendsBodyOnRetry(t *testing.T) {
 	}
 }
 
+type failingTransport struct{ calls int }
+
+func (f *failingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	f.calls++
+	return nil, errors.New("connection reset")
+}
+
+func TestRetryableClientDoesNotRetryUnrewindableBody(t *testing.T) {
+	newReq := func(t *testing.T, body io.Reader) *http.Request {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, "https://portal.example/apis", io.NopCloser(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return req
+	}
+
+	t.Run("5xx response", func(t *testing.T) {
+		c := newClientOverFakePortal(t, &fakePortal{})
+		c.maxRetries = 2
+		portal := &flakyPortal{failures: 5}
+		c.client.Transport = portal
+
+		resp, err := c.Do(newReq(t, strings.NewReader("x")))
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable || len(portal.bodies) != 1 {
+			t.Fatalf("want the first 503 returned after one attempt, got %d after %d attempts", resp.StatusCode, len(portal.bodies))
+		}
+	})
+
+	t.Run("transport error", func(t *testing.T) {
+		c := newClientOverFakePortal(t, &fakePortal{})
+		c.maxRetries = 2
+		portal := &failingTransport{}
+		c.client.Transport = portal
+
+		if _, err := c.Do(newReq(t, strings.NewReader("x"))); err == nil {
+			t.Fatal("want the transport error")
+		}
+		if portal.calls != 1 {
+			t.Fatalf("want one attempt, got %d", portal.calls)
+		}
+	})
+
+	t.Run("bodyless request still retries", func(t *testing.T) {
+		c := newClientOverFakePortal(t, &fakePortal{})
+		c.maxRetries = 2
+		portal := &flakyPortal{failures: 1}
+		c.client.Transport = portal
+
+		req, err := http.NewRequest(http.MethodGet, "https://portal.example/apis", http.NoBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || len(portal.bodies) != 2 {
+			t.Fatalf("want 200 on the second attempt, got %d after %d attempts", resp.StatusCode, len(portal.bodies))
+		}
+	})
+}
+
 func TestRetryableClientTotalTimeoutCoversAllAttempts(t *testing.T) {
 	c := &RetryableHTTPClient{maxRetries: 3, timeout: 10 * time.Second}
 	if got, want := c.TotalTimeout(), 43*time.Second; got != want {

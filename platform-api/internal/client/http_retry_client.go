@@ -101,7 +101,8 @@ func (r *RetryableHTTPClient) TotalTimeout() time.Duration {
 //   - Retries on network errors or 5xx server errors
 //   - Does NOT retry on 4xx client errors (non-retryable)
 //   - Waits retryBackoff between retries, or stops early if the request context ends
-//   - Resends the full request body on every retry (via req.GetBody)
+//   - Resends the full request body on every retry (via req.GetBody); a request whose body
+//     cannot be rewound is not retried
 //   - Maximum attempts = maxRetries + 1 (initial attempt + retries)
 //
 // Parameters:
@@ -129,6 +130,11 @@ func (r *RetryableHTTPClient) Do(req *http.Request) (*http.Response, error) {
 		// Success: no error and status code < 500
 		if err == nil && resp.StatusCode < 500 {
 			return resp, nil
+		}
+
+		// A body that cannot be rewound would be resent empty, so return this failure instead.
+		if attempt < r.maxRetries && req.Body != nil && req.Body != http.NoBody && req.GetBody == nil {
+			return resp, err
 		}
 
 		// Log retry attempt
