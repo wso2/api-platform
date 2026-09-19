@@ -30,6 +30,7 @@ import {
   IconButton,
   MenuItem,
   Select,
+  Stack,
   TextField,
   Tooltip,
   Typography,
@@ -295,53 +296,59 @@ const ProviderDeployDrawer: FC<ProviderDeployDrawerProps> = ({
                     </Tooltip>
                     <StatusPill tone={gatewayStatusTone(gateway.status)} />
                   </Box>
-                  {/* The same order the provider's own connection settings use:
-                      where it routes, then how it authenticates. The endpoint is offered
-                      whatever the auth type, since every provider has one. */}
+                  {/* Labelled the way the provider's own connection settings are: the
+                      label above the field rather than floating in its border, so a
+                      filled field and an empty one read the same. Same order, too. */}
                   {isSelected ? (
-                    <TextField
-                      fullWidth
-                      size="small"
-                      sx={{ mt: 1 }}
-                      label="Provider endpoint"
-                      placeholder="https://api.openai.com/v1"
-                      value={endpointFor(gateway.id)}
-                      onChange={(event) =>
-                        setEndpointDrafts({ ...endpointDrafts, [gateway.id]: event.target.value })
-                      }
-                      helperText="Backend this gateway routes to."
-                    />
-                  ) : null}
-                  {isSelected && takesCredential ? (
-                    <TextField
-                      fullWidth
-                      size="small"
-                      sx={{ mt: 1 }}
-                      label="Authentication header"
-                      placeholder="Authorization"
-                      value={headerFor(gateway.id)}
-                      onChange={(event) =>
-                        setHeaderDrafts({ ...headerDrafts, [gateway.id]: event.target.value })
-                      }
-                      helperText="Header the key below is sent in."
-                    />
-                  ) : null}
-                  {/* The credential starts empty because it is never read back, so an
-                      empty field keeps whatever the gateway is already using. */}
-                  {isSelected && takesCredential ? (
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="password"
-                      autoComplete="off"
-                      sx={{ mt: 1 }}
-                      label="Credentials"
-                      value={keyDrafts[gateway.id] ?? ''}
-                      onChange={(event) =>
-                        setKeyDrafts({ ...keyDrafts, [gateway.id]: event.target.value })
-                      }
-                      helperText="Leave empty to keep the current key."
-                    />
+                    <Stack spacing={1.5} sx={{ mt: 1.5 }}>
+                      <FormControl fullWidth>
+                        <FormLabel>Provider Endpoint</FormLabel>
+                        <TextField
+                          size="small"
+                          placeholder="https://api.openai.com/v1"
+                          value={endpointFor(gateway.id)}
+                          onChange={(event) =>
+                            setEndpointDrafts({
+                              ...endpointDrafts,
+                              [gateway.id]: event.target.value,
+                            })
+                          }
+                        />
+                      </FormControl>
+
+                      {takesCredential ? (
+                        <FormControl fullWidth>
+                          <FormLabel>Authentication Header</FormLabel>
+                          <TextField
+                            size="small"
+                            placeholder="Authorization"
+                            value={headerFor(gateway.id)}
+                            onChange={(event) =>
+                              setHeaderDrafts({
+                                ...headerDrafts,
+                                [gateway.id]: event.target.value,
+                              })
+                            }
+                          />
+                        </FormControl>
+                      ) : null}
+
+                      {takesCredential ? (
+                        <FormControl fullWidth>
+                          <FormLabel>Credentials</FormLabel>
+                          <TextField
+                            size="small"
+                            type="password"
+                            autoComplete="off"
+                            placeholder="Leave empty to keep the current key"
+                            value={keyDrafts[gateway.id] ?? ''}
+                            onChange={(event) =>
+                              setKeyDrafts({ ...keyDrafts, [gateway.id]: event.target.value })
+                            }
+                          />
+                        </FormControl>
+                      ) : null}
+                    </Stack>
                   ) : null}
                 </Box>
               );
