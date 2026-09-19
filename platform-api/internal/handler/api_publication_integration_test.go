@@ -277,6 +277,9 @@ func TestPublicationHandler_ContentEndpoints(t *testing.T) {
 	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
 		t.Fatalf("GET definition: want Content-Type application/json, got %q", ct)
 	}
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("GET definition: want X-Content-Type-Options nosniff, got %q", got)
+	}
 
 	// Landing page — embedded HTML must be stripped.
 	w = doPublicationRequest(r, http.MethodPut, draftPath+"/landing-page", "text/markdown", []byte("# Hi\n<script>alert(1)</script>"))
