@@ -20,6 +20,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -37,8 +38,11 @@ func TestPublicationHandler_Unpublish_NotLive(t *testing.T) {
 	}
 	var body map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &body)
-	if body["code"] != "PUBLICATION_NOT_LIVE" {
-		t.Fatalf("want code PUBLICATION_NOT_LIVE, got %v", body)
+	if body["code"] != "PUBLICATION_STATE_CONFLICT" {
+		t.Fatalf("want code PUBLICATION_STATE_CONFLICT, got %v", body)
+	}
+	if msg, _ := body["message"].(string); !strings.Contains(msg, "unpublished") {
+		t.Fatalf("want a message naming the refused action, got %q", msg)
 	}
 }
 

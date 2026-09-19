@@ -446,8 +446,8 @@ func TestPublicationUnpublish_NotLive(t *testing.T) {
 	svc := newPublicationTestService(it)
 
 	err := svc.Unpublish(context.Background(), "rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "actor")
-	if !apperror.APIPublicationNotLive.Is(err) {
-		t.Fatalf("[%s] want APIPublicationNotLive, got %v", it.driver, err)
+	if !apperror.APIPublicationStateConflict.Is(err) {
+		t.Fatalf("[%s] want APIPublicationStateConflict, got %v", it.driver, err)
 	}
 }
 

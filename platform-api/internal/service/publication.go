@@ -587,7 +587,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 
 // Unpublish removes the live listing from portal, then writes locally.
 // Valid only when currently published or deprecated (409
-// PUBLICATION_NOT_LIVE otherwise). On success: if no draft
+// PUBLICATION_STATE_CONFLICT otherwise). On success: if no draft
 // exists, the live row (the anchor) is demoted into the draft in place;
 // otherwise an existing draft's content is merged into the anchor instead of
 // leaving the draft's own row as the survivor — the anchor's uuid is the
@@ -608,7 +608,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 		return fmt.Errorf("failed to get publication: %w", err)
 	}
 	if live == nil || (live.Status != model.PublicationStatusPublished && live.Status != model.PublicationStatusDeprecated) {
-		return apperror.APIPublicationNotLive.New()
+		return apperror.APIPublicationStateConflict.New("unpublished")
 	}
 
 	if err := s.portalPublisher.Unpublish(ctx, portal, apiId); err != nil {
@@ -622,13 +622,13 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 	if !found {
 		// The live row existed moments ago (checked above) but is gone now —
 		// same defensive precondition failure, not a normal outcome.
-		return apperror.APIPublicationNotLive.New()
+		return apperror.APIPublicationStateConflict.New("unpublished")
 	}
 	return nil
 }
 
 // Deprecate marks the live listing as deprecated on the portal, then locally. It
-// requires the listing to be PUBLISHED (409 PUBLICATION_NOT_PUBLISHED otherwise).
+// requires the listing to be PUBLISHED (409 PUBLICATION_STATE_CONFLICT otherwise).
 // The draft is neither read nor modified.
 func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
@@ -645,7 +645,7 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 		return nil, fmt.Errorf("failed to get publication: %w", err)
 	}
 	if live == nil || live.Status != model.PublicationStatusPublished {
-		return nil, apperror.APIPublicationNotPublished.New()
+		return nil, apperror.APIPublicationStateConflict.New("deprecated")
 	}
 	if err := s.resolveHandles(live, planUUIDs, docUUIDs, orgUUID); err != nil {
 		return nil, err
@@ -661,7 +661,7 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	}
 	if !found {
 		// The row changed since the check above (for example, a concurrent unpublish).
-		return nil, apperror.APIPublicationNotPublished.New()
+		return nil, apperror.APIPublicationStateConflict.New("deprecated")
 	}
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }

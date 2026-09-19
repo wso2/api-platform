@@ -20,6 +20,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -43,8 +44,12 @@ func TestPublicationHandler_Deprecate_NotPublished(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("want 409, got %d: %s", w.Code, w.Body.String())
 	}
-	if body := decodeBody(t, w.Body.Bytes()); body["code"] != "PUBLICATION_NOT_PUBLISHED" {
-		t.Fatalf("want code PUBLICATION_NOT_PUBLISHED, got %v", body)
+	body := decodeBody(t, w.Body.Bytes())
+	if body["code"] != "PUBLICATION_STATE_CONFLICT" {
+		t.Fatalf("want code PUBLICATION_STATE_CONFLICT, got %v", body)
+	}
+	if msg, _ := body["message"].(string); !strings.Contains(msg, "deprecated") {
+		t.Fatalf("want a message naming the refused action, got %q", msg)
 	}
 }
 

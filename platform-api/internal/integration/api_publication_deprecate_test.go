@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -218,16 +219,16 @@ func TestPublicationDeprecate_OnlyWhenPublished(t *testing.T) {
 	svc := newPublicationTestServiceWith(it, portal)
 	apiType, apiHandle, portalHandle := "rest-api", apiHandleFor(g), portalHandleFor(g)
 
-	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationNotPublished.Is(err) {
-		t.Fatalf("[%s] want APIPublicationNotPublished for a never-published API, got %v", it.driver, err)
+	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationStateConflict.Is(err) || !strings.Contains(err.Error(), "deprecated") {
+		t.Fatalf("[%s] want APIPublicationStateConflict naming the deprecate action for a never-published API, got %v", it.driver, err)
 	}
 
 	publishedListing(t, it, svc, g)
 	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); err != nil {
 		t.Fatalf("[%s] first Deprecate failed: %v", it.driver, err)
 	}
-	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationNotPublished.Is(err) {
-		t.Fatalf("[%s] want APIPublicationNotPublished for an already-deprecated API, got %v", it.driver, err)
+	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationStateConflict.Is(err) {
+		t.Fatalf("[%s] want APIPublicationStateConflict for an already-deprecated API, got %v", it.driver, err)
 	}
 	if len(portal.pushed) != 1 {
 		t.Fatalf("[%s] want the portal contacted only for the one valid deprecate, got %d calls", it.driver, len(portal.pushed))
@@ -278,8 +279,8 @@ func TestPublicationDeprecate_ConcurrentUnpublish(t *testing.T) {
 			t.Fatalf("[%s] concurrent Unpublish failed: %v", it.driver, err)
 		}
 	}
-	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationNotPublished.Is(err) {
-		t.Fatalf("[%s] want APIPublicationNotPublished after a concurrent unpublish, got %v", it.driver, err)
+	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationStateConflict.Is(err) {
+		t.Fatalf("[%s] want APIPublicationStateConflict after a concurrent unpublish, got %v", it.driver, err)
 	}
 	if _, err := svc.GetPublication(apiType, apiHandle, portalHandle, g.org); !apperror.APIPublicationNotFound.Is(err) {
 		t.Fatalf("[%s] want the unpublish to stand (no live listing), got %v", it.driver, err)
@@ -302,8 +303,8 @@ func TestPublicationDeprecate_ConcurrentDeprecate(t *testing.T) {
 			t.Fatalf("[%s] concurrent Deprecate failed: %v", it.driver, err)
 		}
 	}
-	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "second"); !apperror.APIPublicationNotPublished.Is(err) {
-		t.Fatalf("[%s] want APIPublicationNotPublished for the deprecate that lost the race, got %v", it.driver, err)
+	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "second"); !apperror.APIPublicationStateConflict.Is(err) {
+		t.Fatalf("[%s] want APIPublicationStateConflict for the deprecate that lost the race, got %v", it.driver, err)
 	}
 	live, err := svc.GetPublication(apiType, apiHandle, portalHandle, g.org)
 	if err != nil {
@@ -359,8 +360,8 @@ func TestPublicationLifecycle_Cycle(t *testing.T) {
 		t.Fatalf("[%s] after deprecate want DEPRECATED, got %s", it.driver, got)
 	}
 	unpublish()
-	if _, err := svc.Deprecate(ctx, apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationNotPublished.Is(err) {
-		t.Fatalf("[%s] deprecate after unpublish want APIPublicationNotPublished, got %v", it.driver, err)
+	if _, err := svc.Deprecate(ctx, apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationStateConflict.Is(err) {
+		t.Fatalf("[%s] deprecate after unpublish want APIPublicationStateConflict, got %v", it.driver, err)
 	}
 
 	// Publishing a deprecated listing returns it to PUBLISHED.
