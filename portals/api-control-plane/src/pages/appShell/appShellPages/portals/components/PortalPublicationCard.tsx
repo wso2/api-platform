@@ -61,11 +61,8 @@ function PortalAvatar() {
 const displayUrl = (url: string): string => url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
 
 /**
- * One API Portal, annotated with this API's own publication status —
- * `listApiPublications`'s `PublicationSummaryItem`. The card itself isn't
- * clickable — "Go To Publish" is the only way in, so it's the only element
- * that looks and behaves like one. A whole-card click target alongside it
- * would be a second, redundant trigger for the same action.
+ * One API Portal, annotated with this API's own publication status. Only the
+ * "Go To Publish" button opens it; the card itself is not clickable.
  */
 export function PortalPublicationCard({ publication, onOpen }: PortalPublicationCardProps) {
   const intl = useIntl();
@@ -147,7 +144,8 @@ export function PortalPublicationCard({ publication, onOpen }: PortalPublication
         <Button
           aria-describedby={nameId}
           endIcon={<ChevronRight size={16} />}
-          onClick={open} size="small"
+          onClick={open}
+          size="small"
           variant="outlined"
         >
           <FormattedMessage {...messages.goToPublish} />

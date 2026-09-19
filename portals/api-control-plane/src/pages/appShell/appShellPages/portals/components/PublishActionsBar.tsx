@@ -21,7 +21,6 @@ import { Button, ButtonGroup, Menu, MenuItem, Stack } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-
 const messages = defineMessages({
   saveDraft: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.saveDraft',
@@ -60,23 +59,19 @@ export type PublishActionsBarProps = {
   unpublishing: boolean;
 };
 
-/**
- * The page's action row, right-aligned under the form like the edit-API form's
- * buttons: Save Draft, and a split button whose primary side
- * is Publish, with Deprecate and Unpublish as its alternatives. Publish is
- * always available — publishing (republishing) is valid from every state a
- * draft can exist in. Unpublish needs a live
- * listing (published or deprecated) and Deprecate needs a published one, so
- * each is disabled rather than hidden the rest of the time.
- *
- * Field validation isn't gated here: every action stays clickable and reveals
- * any problem on submit, the same way `GeneralCreateApiForm`'s Create button
- * does — a proactively-disabled button would never get the chance to.
- */
 type PrimaryAction = 'publish' | 'unpublish' | 'deprecate';
 
 const ACTION_COLOR = { publish: 'primary', unpublish: 'error', deprecate: 'warning' } as const;
 
+/**
+ * The page's action row: Save Draft, and a split button whose primary side is
+ * Publish, with Deprecate and Unpublish as its alternatives. Publish is always
+ * available; Unpublish needs a live listing (published or deprecated) and
+ * Deprecate a published one, so each is disabled rather than hidden otherwise.
+ *
+ * Field validation isn't gated here: every action stays clickable and reveals
+ * any problem on submit.
+ */
 export function PublishActionsBar({
   canDeprecate,
   deprecating,
@@ -91,13 +86,9 @@ export function PublishActionsBar({
 }: PublishActionsBarProps) {
   const intl = useIntl();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  // Which action the split button's primary side currently performs — chosen
-  // from the dropdown, mirroring the "Merge pull request"-style split button:
-  // picking an alternative from the menu re-arms the primary button with that
-  // action (and its own color) rather than firing it immediately. The choice is
-  // cleared whenever the server-reported live state changes (unpublished,
-  // deprecated, republished), never by a click alone — cancelling a confirm
-  // dialog keeps it armed.
+  // The action the primary button performs. Picking one from the menu arms it
+  // rather than firing it; it resets when the live state changes, so cancelling
+  // a confirm dialog keeps it armed.
   const liveState = `${isPublished}:${canDeprecate}`;
   const [seenLiveState, setSeenLiveState] = useState(liveState);
   const [armedAction, setArmedAction] = useState<PrimaryAction>('publish');

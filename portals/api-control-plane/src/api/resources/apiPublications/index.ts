@@ -40,6 +40,8 @@ export type {
 
 export type { ApiPublicationListFilters } from './apiPublications.hooks';
 
+export { REST_API_TYPE } from './apiPublications.endpoints';
+
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {

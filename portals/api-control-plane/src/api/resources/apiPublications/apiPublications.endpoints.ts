@@ -61,13 +61,11 @@ const PUBLICATIONS_BASE = '/api-publications';
 const portalApiPath = (apiPortalId: string, apiType: string, apiId: string, suffix = ''): string =>
   `/api-portals/${encodeURIComponent(apiPortalId)}/apis/${encodeURIComponent(apiType)}/${encodeURIComponent(apiId)}${suffix}`;
 
-/**
- * The release actions' own path shape: `apiType` is pinned to the literal
- * `rest-api` segment rather than left open — the only
- * type this build publishes end to end today (see `ApiPortalPublicationsList`).
- */
+/** The only API type the publish, unpublish and deprecate actions support today. */
+export const REST_API_TYPE = 'rest-api';
+
 const restApiPortalActionPath = (apiPortalId: string, apiId: string, action: string): string =>
-  `/api-portals/${encodeURIComponent(apiPortalId)}/apis/rest-api/${encodeURIComponent(apiId)}/${action}`;
+  portalApiPath(apiPortalId, REST_API_TYPE, apiId, `/${action}`);
 
 export const listApiPublications = async (
   query: ListApiPublicationsQuery,

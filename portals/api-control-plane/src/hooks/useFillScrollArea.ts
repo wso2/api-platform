@@ -62,9 +62,11 @@ export function useFillScrollArea<T extends HTMLElement>(minHeight = 0) {
       const top = element.getBoundingClientRect().top - areaTop + scrolled;
 
       let below = 0;
-      for (let node = element.parentElement; node && node !== scrollArea && node !== document.body; node = node.parentElement) {
+      let node = element.parentElement;
+      while (node && node !== scrollArea && node !== document.body) {
         const style = getComputedStyle(node);
         below += px(style.paddingBottom) + px(style.marginBottom) + px(style.borderBottomWidth);
+        node = node.parentElement;
       }
       const footer = document.getElementById(APP_FOOTER_ID);
       if (footer && (!scrollArea || scrollArea.contains(footer))) below += footer.offsetHeight;

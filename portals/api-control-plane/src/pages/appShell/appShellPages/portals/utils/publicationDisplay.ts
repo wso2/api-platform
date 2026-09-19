@@ -38,12 +38,6 @@ const messages = defineMessages({
   },
 });
 
-/**
- * Display helpers for the spec's `PublicationSummaryItem` shape — the
- * presentation half of `api/resources/apiPublications`, kept out of the
- * resource layer so that layer stays transport + cache only.
- */
-
 export type ChipColor = 'default' | 'error' | 'info' | 'secondary' | 'success' | 'warning';
 
 /**

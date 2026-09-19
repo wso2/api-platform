@@ -22,6 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useParams } from 'react-router-dom';
 
 import {
+  REST_API_TYPE,
   useApiPublication,
   useApiPublicationDefinition,
   useApiPublicationDraft,
@@ -41,9 +42,9 @@ import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { parseSpecText, serializeSpec, type SpecFormat } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { PublishActionsBar } from './components/PublishActionsBar';
-import { parseSpecText, serializeSpec, type SpecFormat } from '../apis/create/utils/specText';
 import { SpecificationTab } from './components/SpecificationTab';
 import {
   draftFormValuesToInput,
@@ -159,13 +160,6 @@ const rethrowUnreported = (error: unknown): void => {
   if (!isApiError(error)) throw error;
 };
 
-/**
- * `apiType` is hardcoded to `rest-api`, same reasoning as
- * `ApiPortalPublicationsList`: the only API family this build publishes end to
- * end today.
- */
-const API_TYPE = 'rest-api';
-
 type PublishTab = 'details' | 'specification';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
@@ -202,18 +196,13 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
 /**
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
- * Alpha scope, per the design this implements: only "API Details" and
- * "Specification" are editable — Subscription Plans, Documentation and
- * Landing Page render as disabled tabs rather than being left out, since
- * they're still on the roadmap, just not this release (contrast the
- * thumbnail/icon control, which is dropped entirely — see `ApiDetailsTab`).
- * Save Draft writes `.../draft` and `.../draft/definition`; Publish writes
- * both of those and then calls `.../publish` in the same click — the client
- * sequences the calls because the server's publish takes no request body and
- * only ever publishes what the draft already holds.
+ * Only "API Details" and "Specification" are editable; the other tabs render
+ * disabled. Save Draft writes `.../draft` and `.../draft/definition`; Publish
+ * writes both and then calls `.../publish`, because the server's publish takes
+ * no body and only publishes what the draft already holds.
  *
- * No `ScopeGate`: like `ApiEditPage`, this page is only reachable from the
- * Portals listing's own card, which is already fully API-scoped.
+ * No `ScopeGate`: this page is only reachable from the Portals listing's card,
+ * which is already fully API-scoped.
  */
 export function PortalPublishPage() {
   const { apiPortalId = '' } = useParams();
@@ -228,33 +217,26 @@ export function PortalPublishPage() {
   const projectHandler = params.projectHandler ?? '';
   const apiHandler = params.apiHandler ?? '';
 
-  // Handed down from the portal card that linked here, so the heading doesn't
-  // need its own fetch just to name the portal. Falls back to the handle for a
-  // direct link/refresh, where no navigation state exists.
+  // Passed by the portal card that linked here; falls back to the handle on a
+  // direct link or refresh, where there is no navigation state.
   const portalName = (location.state as { portalName?: string } | null)?.portalName ?? apiPortalId;
 
   const apiQuery = useRestApi(apiHandler);
-  // `draft` and `publication` fetch in parallel, not as a fallback chain —
-  // `publication` isn't only a pre-fill fallback here, it's also what decides
-  // whether Unpublish is enabled, which is needed regardless of whether a
-  // draft exists (a portal can be live *and* have an in-progress draft edit
-  // at once). Deferring it behind "no draft" would silently disable Unpublish
-  // on exactly that combination.
-  const draftQuery = useApiPublicationDraft(apiPortalId, API_TYPE, apiHandler);
-  const publicationQuery = useApiPublication(apiPortalId, API_TYPE, apiHandler);
+  // The draft and the publication load in parallel: a portal can be live and
+  // have a draft edit in progress, and the publication decides whether
+  // Unpublish is enabled either way.
+  const draftQuery = useApiPublicationDraft(apiPortalId, REST_API_TYPE, apiHandler);
+  const publicationQuery = useApiPublication(apiPortalId, REST_API_TYPE, apiHandler);
 
-  // The Specification tab's three definition tiers, by contrast, exist only
-  // to pre-fill that one tab — nothing else reads them — so each one is
-  // fetched only once the tier before it is confirmed absent, rather than all
-  // three firing in parallel on every visit. Passing `undefined` for the API
-  // handle is what keeps a not-yet-relevant tier's query disabled (every hook
-  // here gates on its id argument being defined).
-  const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, API_TYPE, apiHandler);
+  // The Specification tab's three definition tiers only pre-fill that tab, so
+  // each is fetched once the tier before it is confirmed absent. Passing
+  // `undefined` for the API handle keeps a tier's query disabled.
+  const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, REST_API_TYPE, apiHandler);
   const draftDefinitionAbsent = isApiError(draftDefinitionQuery.error) && draftDefinitionQuery.error.isNotFound;
 
   const publicationDefinitionQuery = useApiPublicationDefinition(
     apiPortalId,
-    API_TYPE,
+    REST_API_TYPE,
     draftDefinitionAbsent ? apiHandler : undefined,
   );
   const publicationDefinitionAbsent =
@@ -262,9 +244,8 @@ export function PortalPublishPage() {
     isApiError(publicationDefinitionQuery.error) &&
     publicationDefinitionQuery.error.isNotFound;
 
-  // Last fallback tier: the API's own real stored definition
-  // (`GET /rest-apis/{id}/openapi`) — not a reconstruction. 404s when nothing
-  // has ever been uploaded for this API.
+  // Last fallback tier: the API's own stored definition, which 404s when none
+  // has ever been uploaded.
   const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
 
   const saveDraftMutation = useSaveApiPublicationDraft();
@@ -284,12 +265,8 @@ export function PortalPublishPage() {
   const [confirmingDeprecate, setConfirmingDeprecate] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
-  // A disabled query's own `isPending` is permanently `true` — it never runs,
-  // so it never resolves to success/error (see `useApiPublicationDraft`'s own
-  // note on `isPending` vs `isLoading`). A tier that isn't enabled yet must
-  // only block the page while it's actually still a candidate to run: once
-  // its predecessor is confirmed absent it's genuinely in flight and worth
-  // waiting on; before that, it would just hold the spinner up forever.
+  // A disabled query stays `isPending` forever, so a definition tier only blocks
+  // the page once its predecessor is confirmed absent and it is actually running.
   const initialLoadPending =
     apiQuery.isPending ||
     draftQuery.isPending ||
@@ -298,10 +275,8 @@ export function PortalPublishPage() {
     (draftDefinitionAbsent && publicationDefinitionQuery.isPending) ||
     (publicationDefinitionAbsent && apiOpenApiQuery.isPending);
 
-  // Seeds the form from the draft, publication and API tiers exactly once, the
-  // moment every tier has settled (success or the expected 404) — never
-  // again, so a background refetch (or the invalidation a save triggers)
-  // can't clobber edits already in progress.
+  // Seeds the form once, when every tier has settled (success or the expected
+  // 404), so a later refetch can't overwrite edits in progress.
   useEffect(() => {
     if (initialized || initialLoadPending) return;
 
@@ -328,9 +303,8 @@ export function PortalPublishPage() {
     apiOpenApiQuery.data,
   ]);
 
-  // A 404 on the draft/publication/definition/openapi tiers is an expected
-  // "nothing saved here yet", not a failure — only a genuinely unexpected
-  // error (or the API itself not resolving) is worth an error screen.
+  // A 404 on these tiers just means nothing is saved yet; only another error,
+  // or the API itself not resolving, is worth an error screen.
   const unexpectedError =
     apiQuery.error ??
     [
@@ -349,10 +323,9 @@ export function PortalPublishPage() {
   }
 
   const api = apiQuery.data;
-  // A refetch that 404s (PUBLICATION_NOT_FOUND after an unpublish) keeps the
-  // previous successful `data` alongside the error, so the 404 itself decides
-  // that the listing is gone. Any other failure (5xx, network) says nothing about
-  // the listing, so the last known state is kept.
+  // A refetch that 404s (after an unpublish) keeps the previous `data` beside
+  // the error, so the 404 itself marks the listing as gone. Any other failure
+  // says nothing about the listing, so the last known state is kept.
   const publicationGone = isApiError(publicationQuery.error) && publicationQuery.error.isNotFound;
   const livePublication = publicationGone ? undefined : publicationQuery.data;
   const isPublished = Boolean(livePublication);
@@ -397,71 +370,59 @@ export function PortalPublishPage() {
 
     await saveDraftMutation.mutateAsync({
       apiPortalId,
-      apiType: API_TYPE,
+      apiType: REST_API_TYPE,
       apiId: apiHandler,
       body: draftFormValuesToInput(values),
     });
     await saveDefinitionMutation.mutateAsync({
       apiPortalId,
-      apiType: API_TYPE,
+      apiType: REST_API_TYPE,
       apiId: apiHandler,
       body: definitionDocument,
     });
     return true;
   };
 
-  const handleSaveDraft = async () => {
-    setPendingAction('saving');
+  /** Runs one action with its button shown busy; API failures are already reported globally. */
+  const runAction = async (action: PendingAction, perform: () => Promise<void>) => {
+    setPendingAction(action);
     try {
+      await perform();
+    } catch (error) {
+      rethrowUnreported(error);
+    } finally {
+      setPendingAction('idle');
+    }
+  };
+
+  const handleSaveDraft = () =>
+    runAction('saving', async () => {
       if (await saveDraft()) {
         notify(intl.formatMessage(messages.draftSaved), 'success');
       }
-    } catch (error) {
-      rethrowUnreported(error);
-    } finally {
-      setPendingAction('idle');
-    }
-  };
+    });
 
-  const handlePublish = async () => {
-    setPendingAction('publishing');
-    try {
-      // The draft PUT(s) go first — same as Save Draft — then the bodyless
-      // publish call.
+  const handlePublish = () =>
+    runAction('publishing', async () => {
       if (!(await saveDraft())) return;
       await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
-    } catch (error) {
-      rethrowUnreported(error);
-    } finally {
-      setPendingAction('idle');
-    }
-  };
+    });
 
-  const confirmUnpublish = async () => {
+  const confirmUnpublish = () => {
     setConfirmingUnpublish(false);
-    setPendingAction('unpublishing');
-    try {
+    return runAction('unpublishing', async () => {
       await unpublishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.unpublished, { portalName }), 'success');
-    } catch (error) {
-      rethrowUnreported(error);
-    } finally {
-      setPendingAction('idle');
-    }
+    });
   };
 
-  const confirmDeprecate = async () => {
+  const confirmDeprecate = () => {
     setConfirmingDeprecate(false);
-    setPendingAction('deprecating');
-    try {
+    return runAction('deprecating', async () => {
       await deprecateMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.deprecated, { portalName }), 'success');
-    } catch (error) {
-      rethrowUnreported(error);
-    } finally {
-      setPendingAction('idle');
-    }
+    });
   };
 
   return (
@@ -490,7 +451,6 @@ export function PortalPublishPage() {
               <Tabs onChange={(_event, next: PublishTab) => setTab(next)} value={tab}>
                 <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
                 <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-                {/* Disabled, not omitted — still on the roadmap, just not this release. */}
                 <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
                 <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
                 <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />

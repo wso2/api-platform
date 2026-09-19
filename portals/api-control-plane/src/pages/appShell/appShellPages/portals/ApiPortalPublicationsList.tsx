@@ -21,7 +21,7 @@ import { Box, PageTitle, SearchBar, Stack } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
-import { useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
+import { REST_API_TYPE, useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -73,14 +73,8 @@ const messages = defineMessages({
 /**
  * Every API Portal registered in the organization, each annotated with this
  * API's own publication status — the rollup from `GET /api-publications`.
- *
- * `apiType` is hardcoded to `rest-api`: it is the only API family the publish
- * flow (and this console's `restApis` resource) supports end to end today.
- * `websub-api`/`webbroker-api` are declared in the spec's enum but have no
- * publish/unpublish path wired up yet.
+ * Only REST APIs are published end to end today, so the API type is fixed.
  */
-const API_TYPE = 'rest-api';
-
 /** Portals are an org-wide, rarely-changing collection — one page is enough. */
 const LIST_LIMIT = 100;
 
@@ -93,22 +87,19 @@ export function ApiPortalPublicationsList() {
   const apiHandler = params.apiHandler ?? '';
 
   const [search, setSearch] = useState('');
-  const publicationsQuery = useApiPublications(API_TYPE, apiHandler, { limit: LIST_LIMIT });
+  const publicationsQuery = useApiPublications(REST_API_TYPE, apiHandler, { limit: LIST_LIMIT });
 
   const openPublication = (publication: PublicationSummaryItem) => {
     if (!publication.apiPortalId) return;
     navigate(
       routes.apiPortalPublish(orgHandle, projectHandler, apiHandler, publication.apiPortalId),
-      // Hands the portal's display name down so PortalPublishPage can title
-      // itself without a second fetch just to look up a name it was already
-      // shown here.
+      // Hands the portal name to the publish page so it can title itself without a fetch.
       { state: { portalName: publication.apiPortalName } },
     );
   };
 
-  // `isPending`, not `isLoading`: the query is gated on the org and API handle
-  // resolving, and a disabled query reports `isLoading: false` with no data —
-  // which would flash the empty state while scope is still resolving.
+  // `isPending`, not `isLoading`: a disabled query reports `isLoading: false`
+  // with no data, which would flash the empty state while scope resolves.
   if (publicationsQuery.isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
@@ -122,7 +113,7 @@ export function ApiPortalPublicationsList() {
     ? publications.filter((publication) =>
         [publication.apiPortalName, publication.apiPortalDescription, publication.apiPortalUrl]
           .filter(Boolean)
-          .some((text) => text!.toLowerCase().includes(term)),
+          .some((text) => text?.toLowerCase().includes(term)),
       )
     : publications;
 
