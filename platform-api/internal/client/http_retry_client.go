@@ -42,7 +42,7 @@ type RetryableHTTPClient struct {
 // NewRetryableHTTPClient creates a new HTTP client with retry capabilities.
 //
 // This client is built around the single shared, SSRF-guarded *http.Client the process
-// constructs once at startup (see internal/utils.InitSharedHTTPClient and cmd/main.go) —
+// constructs once at startup (see internal/utils.InitSharedHTTPClient) —
 // it does not build its own httpclient.New config. It inherits the shared
 // client's SSRF policy (netguard.PermitPrivateBlockMetadata() by default, operator-configurable
 // via platform_api.http_client in config.toml), and additionally refuses any redirect to a
