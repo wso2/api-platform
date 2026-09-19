@@ -88,22 +88,30 @@ func redactLLMProviderCredentials(cfg *api.LLMProviderConfiguration) {
 }
 
 // redactLLMProxyCredentials clears the upstream credentials from an LLM proxy
-// configuration bound for a response body — both the primary provider's auth
-// and every additionalProviders[] entry's auth.
+// configuration bound for a response body — the primary provider's auth, every
+// additionalProviders[] entry's auth, and every providers[] entry's auth in the
+// canonical shape. A credential must not survive a read in either shape.
 func redactLLMProxyCredentials(cfg *api.LLMProxyConfiguration) {
 	if cfg == nil {
 		return
 	}
-	if cfg.Spec.Provider.Auth != nil {
+	if cfg.Spec.Provider != nil && cfg.Spec.Provider.Auth != nil {
 		cfg.Spec.Provider.Auth.Value = nil
 	}
-	if cfg.Spec.AdditionalProviders == nil {
-		return
+	if cfg.Spec.AdditionalProviders != nil {
+		additional := *cfg.Spec.AdditionalProviders
+		for i := range additional {
+			if additional[i].Auth != nil {
+				additional[i].Auth.Value = nil
+			}
+		}
 	}
-	additional := *cfg.Spec.AdditionalProviders
-	for i := range additional {
-		if additional[i].Auth != nil {
-			additional[i].Auth.Value = nil
+	if cfg.Spec.Providers != nil {
+		entries := *cfg.Spec.Providers
+		for i := range entries {
+			if entries[i].Auth != nil {
+				entries[i].Auth.Value = nil
+			}
 		}
 	}
 }

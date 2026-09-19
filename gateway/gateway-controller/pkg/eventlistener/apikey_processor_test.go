@@ -188,7 +188,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS_ForLLMProxy(t *testing.T) {
 			Spec: api.LLMProxyConfigData{
 				DisplayName: "Test LLM Proxy",
 				Version:     "v1.0.0",
-				Provider: api.LLMProxyProvider{
+				Provider: &api.LLMProxyProvider{
 					Id: "provider-a",
 				},
 			},

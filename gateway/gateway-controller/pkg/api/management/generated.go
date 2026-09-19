@@ -1344,13 +1344,19 @@ type LLMProxyConfigData struct {
 	// GlobalPolicies Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	GlobalPolicies *[]Policy `json:"globalPolicies,omitempty" yaml:"globalPolicies,omitempty"`
 
+	// InboundTemplate Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.
+	InboundTemplate *string `json:"inboundTemplate,omitempty" yaml:"inboundTemplate,omitempty"`
+
 	// OperationPolicies Operation-level policies scoped to specific paths/methods, evaluated after global policies.
 	OperationPolicies *[]OperationPolicy `json:"operationPolicies,omitempty" yaml:"operationPolicies,omitempty"`
 
 	// Policies DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Policies *[]LLMPolicy     `json:"policies,omitempty" yaml:"policies,omitempty"`
-	Provider LLMProxyProvider `json:"provider" yaml:"provider"`
+	Policies *[]LLMPolicy      `json:"policies,omitempty" yaml:"policies,omitempty"`
+	Provider *LLMProxyProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
+
+	// Providers Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`. Mutually exclusive with the legacy `provider` plus `additionalProviders` pair - supplying both is rejected. The legacy shape remains supported indefinitely.
+	Providers *[]LLMProxyProviderEntry `json:"providers,omitempty" yaml:"providers,omitempty"`
 
 	// Resilience Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.
 	Resilience *Resilience `json:"resilience,omitempty" yaml:"resilience,omitempty"`
@@ -1404,10 +1410,31 @@ type LLMProxyConfigurationRequestKind string
 
 // LLMProxyProvider defines model for LLMProxyProvider.
 type LLMProxyProvider struct {
+	// As Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted.
+	As   *string          `json:"as,omitempty" yaml:"as,omitempty"`
 	Auth *LLMUpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `json:"id" yaml:"id"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
+}
+
+// LLMProxyProviderEntry One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported.
+type LLMProxyProviderEntry struct {
+	// Alias Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.
+	Alias *string          `json:"alias,omitempty" yaml:"alias,omitempty"`
+	Auth  *LLMUpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `json:"id" yaml:"id"`
+
+	// IsPrimary Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true.
+	IsPrimary bool `json:"isPrimary" yaml:"isPrimary"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
 }
 
 // LLMProxyTransformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
