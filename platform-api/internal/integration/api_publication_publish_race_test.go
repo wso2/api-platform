@@ -42,25 +42,34 @@ func (p *publishRecorder) Publish(_ context.Context, _ *model.APIPortal, _ strin
 	return nil
 }
 
+// saveListingDraft saves the draft for the seeded API and portal with the given description.
+func saveListingDraft(t *testing.T, it *itDB, svc *service.PublicationService, g graph, description string) {
+	t.Helper()
+	draft := &model.Publication{DisplayName: "Live Listing", Version: "1.0", Description: description, AgentVisibility: "VISIBLE"}
+	if _, err := svc.SaveDraftDetails("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "racer", draft, []string{planHandleFor(g)}, []string{docHandleFor(g)}); err != nil {
+		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
+	}
+}
+
 // A draft saved while its publish is in flight — details or content — is not promoted:
 // the publish returns 409 and the live listing, or its absence, stays as it was.
 func TestPublicationPublish_DraftEditedDuringPush(t *testing.T) {
-	edits := map[string]func(t *testing.T, it *itDB, svc *service.PublicationService, g graph){
-		"details": func(t *testing.T, it *itDB, svc *service.PublicationService, g graph) {
-			draft := &model.Publication{DisplayName: "Live Listing", Version: "1.0", Description: "edited during push", AgentVisibility: "VISIBLE"}
-			if _, err := svc.SaveDraftDetails("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "racer", draft, []string{planHandleFor(g)}, []string{docHandleFor(g)}); err != nil {
-				t.Fatalf("[%s] concurrent SaveDraftDetails failed: %v", it.driver, err)
-			}
-		},
-		"content": func(t *testing.T, it *itDB, svc *service.PublicationService, g graph) {
+	edits := []struct {
+		name string
+		edit func(t *testing.T, it *itDB, svc *service.PublicationService, g graph)
+	}{
+		{"details", func(t *testing.T, it *itDB, svc *service.PublicationService, g graph) {
+			saveListingDraft(t, it, svc, g, "edited during push")
+		}},
+		{"content", func(t *testing.T, it *itDB, svc *service.PublicationService, g graph) {
 			if err := svc.SaveDraftLandingPage("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "racer", []byte("# edited during push")); err != nil {
 				t.Fatalf("[%s] concurrent SaveDraftLandingPage failed: %v", it.driver, err)
 			}
-		},
+		}},
 	}
 
-	for name, edit := range edits {
-		t.Run("first publish/"+name, func(t *testing.T) {
+	for _, tc := range edits {
+		t.Run("first publish/"+tc.name, func(t *testing.T) {
 			it := openITDB(t)
 			defer it.db.Close()
 			g := seedOrgGraph(t, it)
@@ -68,11 +77,8 @@ func TestPublicationPublish_DraftEditedDuringPush(t *testing.T) {
 			svc := newPublicationTestServiceWith(it, portal)
 			apiType, apiHandle, portalHandle := "rest-api", apiHandleFor(g), portalHandleFor(g)
 
-			draft := &model.Publication{DisplayName: "Live Listing", Version: "1.0", Description: "original", AgentVisibility: "VISIBLE"}
-			if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "publisher", draft, []string{planHandleFor(g)}, []string{docHandleFor(g)}); err != nil {
-				t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
-			}
-			portal.onPublish = func() { edit(t, it, svc, g) }
+			saveListingDraft(t, it, svc, g, "original")
+			portal.onPublish = func() { tc.edit(t, it, svc, g) }
 
 			if _, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "publisher"); !apperror.APIPublicationDraftChanged.Is(err) {
 				t.Fatalf("[%s] want APIPublicationDraftChanged, got %v", it.driver, err)
@@ -90,18 +96,15 @@ func TestPublicationPublish_DraftEditedDuringPush(t *testing.T) {
 			}
 		})
 
-		t.Run("republish/"+name, func(t *testing.T) {
+		t.Run("republish/"+tc.name, func(t *testing.T) {
 			it := openITDB(t)
 			defer it.db.Close()
 			g := seedOrgGraph(t, it)
 			portal := &publishRecorder{}
 			svc := newPublicationTestServiceWith(it, portal)
 			apiType, apiHandle, portalHandle := publishedListing(t, it, svc, g)
-			next := &model.Publication{DisplayName: "Live Listing", Version: "1.0", Description: "next", AgentVisibility: "VISIBLE"}
-			if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "publisher", next, []string{planHandleFor(g)}, []string{docHandleFor(g)}); err != nil {
-				t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
-			}
-			portal.onPublish = func() { edit(t, it, svc, g) }
+			saveListingDraft(t, it, svc, g, "next")
+			portal.onPublish = func() { tc.edit(t, it, svc, g) }
 
 			if _, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "publisher"); !apperror.APIPublicationDraftChanged.Is(err) {
 				t.Fatalf("[%s] want APIPublicationDraftChanged, got %v", it.driver, err)
