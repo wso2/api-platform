@@ -126,6 +126,19 @@ func portalConflictReason(body []byte) string {
 	return defaultPortalConflictReason
 }
 
+// isPortalAuthFailure reports whether the portal refused our credential
+// (401/403). That is a platform-side setup problem, not a conflict the caller
+// can resolve by changing the listing.
+func isPortalAuthFailure(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
+}
+
+// portalAuthError is deliberately not a *PortalConflictError, so the service
+// layer surfaces it as PUBLICATION_PORTAL_UNAVAILABLE rather than a conflict.
+func portalAuthError(status int) error {
+	return fmt.Errorf("the API Portal rejected the configured credential (status %d)", status)
+}
+
 // Publish implements PortalPublisher.
 func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
 	base := strings.TrimRight(portal.URL, "/")
@@ -170,6 +183,8 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return nil
+	case isPortalAuthFailure(resp.StatusCode):
+		return portalAuthError(resp.StatusCode)
 	case resp.StatusCode >= 400 && resp.StatusCode < 500:
 		// Any 4xx means the portal understood and rejected the request as-is —
 		// a conflicting handle/display name (409), an unresolvable reference
@@ -227,6 +242,8 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 		return nil
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return nil
+	case isPortalAuthFailure(resp.StatusCode):
+		return portalAuthError(resp.StatusCode)
 	case resp.StatusCode >= 400 && resp.StatusCode < 500:
 		// Same 4xx-is-non-retryable reasoning as Publish: a 409 (active
 		// subscriptions/API keys) is the documented case, but any other 4xx
@@ -270,9 +287,10 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.API
 		return true, nil
 	case resp.StatusCode == http.StatusNotFound:
 		return false, nil
+	case isPortalAuthFailure(resp.StatusCode):
+		return false, portalAuthError(resp.StatusCode)
 	case resp.StatusCode >= 400 && resp.StatusCode < 500:
-		// Same 4xx-is-non-retryable reasoning as Publish/Unpublish — e.g. an
-		// auth misconfiguration (401/403) won't clear on its own retry either.
+		// Same 4xx-is-non-retryable reasoning as Publish/Unpublish.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
 		return false, &PortalConflictError{
 			Message: fmt.Sprintf("the API Portal rejected the existence check (status %d)", resp.StatusCode),

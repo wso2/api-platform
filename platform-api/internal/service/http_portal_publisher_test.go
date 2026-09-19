@@ -492,3 +492,66 @@ func TestHTTPPortalPublisher_Unpublish_UnavailableOnServerError(t *testing.T) {
 		t.Fatalf("want a plain error, not *PortalConflictError, for a 500")
 	}
 }
+
+// TestHTTPPortalPublisher_AuthFailureIsNotConflict verifies a 401/403 from the
+// portal (bad or unauthorized SharedKey) surfaces as a plain error — mapped
+// by the service layer to 503 — never a *PortalConflictError (409), on every
+// call that talks to the portal.
+func TestHTTPPortalPublisher_AuthFailureIsNotConflict(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+
+			p := newTestHTTPPortalPublisher(t, "test-shared-key")
+			portal := &model.APIPortal{URL: srv.URL}
+			pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
+
+			calls := map[string]error{
+				"publish (existence check)": p.Publish(context.Background(), portal, "my-api", pub, nil),
+				"unpublish":                 p.Unpublish(context.Background(), portal, "my-api"),
+			}
+			for name, err := range calls {
+				if err == nil {
+					t.Fatalf("%s: want an error for %d", name, status)
+				}
+				var conflict *PortalConflictError
+				if errors.As(err, &conflict) {
+					t.Fatalf("%s: want a plain error, not *PortalConflictError, for %d", name, status)
+				}
+			}
+		})
+	}
+}
+
+// TestHTTPPortalPublisher_PushAuthFailureIsNotConflict covers the metadata
+// push itself (existence check passes, the push is refused with 401/403).
+func TestHTTPPortalPublisher_PushAuthFailureIsNotConflict(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+
+			p := newTestHTTPPortalPublisher(t, "test-shared-key")
+			portal := &model.APIPortal{URL: srv.URL}
+			pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
+
+			err := p.Publish(context.Background(), portal, "my-api", pub, nil)
+			if err == nil {
+				t.Fatalf("want an error for %d", status)
+			}
+			var conflict *PortalConflictError
+			if errors.As(err, &conflict) {
+				t.Fatalf("want a plain error, not *PortalConflictError, for %d", status)
+			}
+		})
+	}
+}
