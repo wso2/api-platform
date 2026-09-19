@@ -18,10 +18,17 @@
 package utils
 
 import (
+	"regexp"
 	"strings"
 
 	"golang.org/x/net/html"
 )
+
+// markdownAutolink matches the Markdown autolink forms <https://…>, <http://…>,
+// <mailto:…> and <user@example.com>. Other schemes (javascript:, data:, …) are
+// deliberately not matched, so they are stripped like any other tag.
+var markdownAutolink = regexp.MustCompile(
+	`(?i)^<(?:(?:https?://|mailto:)[^\s<>]+|[a-z0-9.!#$%&'*+/=?^_{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)>$`)
 
 // StripEmbeddedHTML removes HTML markup embedded in Markdown text before
 // storage — stricter than the portal's own handling for landing pages. This
@@ -33,7 +40,8 @@ import (
 // sequences, so plain text is never mistaken for markup. <script>/<style>
 // element content is dropped entirely, not just the tags, so no
 // still-executable-looking payload text survives; every other tag is simply
-// removed, keeping its inner text.
+// removed, keeping its inner text. Markdown autolinks (see markdownAutolink)
+// are kept.
 func StripEmbeddedHTML(markdown string) string {
 	if !strings.ContainsAny(markdown, "<>") {
 		return markdown // fast path: nothing tag-like present at all
@@ -44,7 +52,14 @@ func StripEmbeddedHTML(markdown string) string {
 	skipDepth := 0
 	skipTag := ""
 	for {
-		switch tokenizer.Next() {
+		tokenType := tokenizer.Next()
+		if (tokenType == html.StartTagToken || tokenType == html.SelfClosingTagToken) && skipDepth == 0 {
+			if raw := string(tokenizer.Raw()); markdownAutolink.MatchString(raw) {
+				b.WriteString(raw)
+				continue
+			}
+		}
+		switch tokenType {
 		case html.ErrorToken:
 			return b.String()
 		case html.TextToken:

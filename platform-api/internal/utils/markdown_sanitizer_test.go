@@ -26,6 +26,14 @@ func TestStripEmbeddedHTML(t *testing.T) {
 		"x<script>alert(1)</script>y":                              "xy",
 		"x<style>p{}</style>y":                                     "xy",
 		"encoded &lt;script&gt;alert(1)&lt;/script&gt; stays text": "encoded &lt;script&gt;alert(1)&lt;/script&gt; stays text",
+		"see <https://example.com> now":                            "see <https://example.com> now",
+		"see <HTTP://Example.com/a?x=1&y=2#f> now":                 "see <HTTP://Example.com/a?x=1&y=2#f> now",
+		"mail <user@example.com> now":                              "mail <user@example.com> now",
+		"mail <mailto:user@example.com> now":                       "mail <mailto:user@example.com> now",
+		"x<javascript:alert(1)>y":                                  "xy",
+		"x<https://evil.com onmouseover=alert(1)>y":                "xy",
+		"x<user@example.com onclick=alert(1)>y":                    "xy",
+		"<script><https://example.com></script>ok":                 "ok",
 	}
 	for in, want := range cases {
 		if got := StripEmbeddedHTML(in); got != want {
