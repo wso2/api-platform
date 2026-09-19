@@ -270,8 +270,20 @@ func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 
 // Delete removes an API Portal row, scoped to orgUUID.
 func (r *APIPortalRepo) Delete(portalID, orgUUID string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// SQL Server's foreign key from api_publications is NO ACTION, so the
+	// portal's drafts and listings must be removed before the portal itself.
+	deletePublicationsQuery := `DELETE FROM api_publications WHERE api_portal_uuid = ? AND organization_uuid = ?`
+	if _, err := tx.Exec(r.db.Rebind(deletePublicationsQuery), portalID, orgUUID); err != nil {
+		return err
+	}
 	query := `DELETE FROM api_portals WHERE uuid = ? AND organization_uuid = ?`
-	result, err := r.db.Exec(r.db.Rebind(query), portalID, orgUUID)
+	result, err := tx.Exec(r.db.Rebind(query), portalID, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -282,7 +294,7 @@ func (r *APIPortalRepo) Delete(portalID, orgUUID string) error {
 	if rows == 0 {
 		return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Exists reports whether an API Portal with the given handle exists in the organization.
