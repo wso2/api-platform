@@ -7968,8 +7968,9 @@ components:
           additionalProperties: true
           description: >-
             Optional metadata for the deployment. Supported keys are `endpointUrl`,
-            `vhostMain` and `vhostSandbox` for REST APIs, and `upstreamAuthValue` for
-            LLM providers — the credential that deployment authenticates to the
+            `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes
+            `endpointUrl` too, which replaces the backend it routes to, and
+            `upstreamAuthValue` — the credential that deployment authenticates to the
             provider's upstream with, so one provider can run on several gateways
             against different accounts with the same vendor. It must be given as a
             `{{ secret "handle" }}` reference naming a secret of this organization,

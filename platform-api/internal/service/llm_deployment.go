@@ -335,7 +335,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	// endpoint and vhosts are: the build is a snapshot of the provider's definition,
 	// and what a single gateway authenticates with is a property of the deployment
 	// rather than of that snapshot.
-	if err := s.applyUpstreamAuthOverride(providerDeployment, metadata, orgUUID); err != nil {
+	if err := s.applyUpstreamOverrides(providerDeployment, metadata, orgUUID); err != nil {
 		return nil, err
 	}
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
@@ -811,6 +811,48 @@ func namingBuild(resp *api.DeploymentResponse, err error, buildID *string) (*api
 	}
 	resp.BuildId = buildID
 	return resp, nil
+}
+
+// applyUpstreamOverrides customizes the upstream this deployment talks to: which backend,
+// and what it authenticates with. The provider's own definition is untouched, so a build
+// stays what it was.
+func (s *LLMProviderDeploymentService) applyUpstreamOverrides(
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID string) error {
+
+	if err := applyUpstreamURLOverride(providerDeployment, metadata); err != nil {
+		return err
+	}
+	return s.applyUpstreamAuthOverride(providerDeployment, metadata, orgUUID)
+}
+
+// applyUpstreamURLOverride replaces the backend this deployment routes to, under the same
+// metadata key a REST API's endpoint uses, so one gateway can be pointed at a regional or
+// proxied endpoint without changing the provider.
+//
+// It clears any `ref`: the platform requires exactly one of url and ref, and a deployment
+// that names a URL has chosen the url form.
+func applyUpstreamURLOverride(
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}) error {
+
+	raw, given := metadata[constants.MetadataKeyEndpointUrl]
+	if !given {
+		return nil
+	}
+	endpoint, ok := raw.(string)
+	if !ok {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a string, got %T.", constants.MetadataKeyEndpointUrl, raw))
+	}
+	if endpoint = strings.TrimSpace(endpoint); endpoint == "" {
+		return nil
+	}
+	if err := validateEndpointURL(endpoint); err != nil {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q is not a valid endpoint URL: %s.", constants.MetadataKeyEndpointUrl, err))
+	}
+	providerDeployment.Spec.Upstream.URL = endpoint
+	providerDeployment.Spec.Upstream.Ref = ""
+	return nil
 }
 
 // applyUpstreamAuthOverride replaces the credential this deployment authenticates to

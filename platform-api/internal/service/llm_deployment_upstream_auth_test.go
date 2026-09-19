@@ -64,7 +64,7 @@ func TestUpstreamAuthOverride_ReplacesTheProvidersOwnCredential(t *testing.T) {
 	svc := &LLMProviderDeploymentService{}
 	rendered := providerWithUpstreamAuth("api-key", `{{ secret "shared-key" }}`)
 
-	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 		constants.MetadataKeyUpstreamAuthValue: `{{ secret "eu-key" }}`,
 	}, "org-1")
 	if err != nil {
@@ -87,7 +87,7 @@ func TestUpstreamAuthOverride_KeepsTheProvidersCredentialWhenNoneIsGiven(t *test
 	} {
 		t.Run(name, func(t *testing.T) {
 			rendered := providerWithUpstreamAuth("api-key", `{{ secret "shared-key" }}`)
-			if err := svc.applyUpstreamAuthOverride(rendered, metadata, "org-1"); err != nil {
+			if err := svc.applyUpstreamOverrides(rendered, metadata, "org-1"); err != nil {
 				t.Fatalf("applying the override: %v", err)
 			}
 			if got := upstreamValue(rendered); got != `{{ secret "shared-key" }}` {
@@ -103,7 +103,7 @@ func TestUpstreamAuthOverride_RefusesACredentialGivenLiterally(t *testing.T) {
 	svc := &LLMProviderDeploymentService{}
 	rendered := providerWithUpstreamAuth("api-key", `{{ secret "shared-key" }}`)
 
-	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 		constants.MetadataKeyUpstreamAuthValue: "sk-live-abc123",
 	}, "org-1")
 
@@ -128,7 +128,7 @@ func TestUpstreamAuthOverride_RefusesAValueThatOnlyContainsAReference(t *testing
 		`{{ secret "eu-key" }} sk-live-abc`,
 	} {
 		rendered := providerWithUpstreamAuth("api-key", "")
-		err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+		err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 			constants.MetadataKeyUpstreamAuthValue: value,
 		}, "org-1")
 		if err == nil {
@@ -145,7 +145,7 @@ func TestUpstreamAuthOverride_RefusesAnUpstreamThatTakesNoCredential(t *testing.
 
 	for _, authType := range []string{"none", "other", ""} {
 		rendered := providerWithUpstreamAuth(authType, "")
-		err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+		err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 			constants.MetadataKeyUpstreamAuthValue: `{{ secret "eu-key" }}`,
 		}, "org-1")
 		if err == nil {
@@ -158,7 +158,7 @@ func TestUpstreamAuthOverride_RefusesAValueThatIsNotAString(t *testing.T) {
 	svc := &LLMProviderDeploymentService{}
 	rendered := providerWithUpstreamAuth("api-key", "")
 
-	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 		constants.MetadataKeyUpstreamAuthValue: 42,
 	}, "org-1")
 	if err == nil {
@@ -172,7 +172,7 @@ func TestUpstreamAuthOverride_RefusesAReferenceToASecretTheOrganizationDoesNotHa
 	svc := &LLMProviderDeploymentService{secretService: NewSecretService(newMockRepo(), nil, nil)}
 	rendered := providerWithUpstreamAuth("api-key", "")
 
-	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 		constants.MetadataKeyUpstreamAuthValue: `{{ secret "missing-key" }}`,
 	}, "org-1")
 
@@ -195,7 +195,7 @@ func TestUpstreamAuthOverride_AcceptsAReferenceToASecretTheOrganizationHas(t *te
 	svc := &LLMProviderDeploymentService{secretService: NewSecretService(repo, nil, nil)}
 	rendered := providerWithUpstreamAuth("api-key", "")
 
-	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 		constants.MetadataKeyUpstreamAuthValue: `{{ secret "eu-key" }}`,
 	}, "org-1")
 	if err != nil {
@@ -212,7 +212,7 @@ func TestUpstreamAuthOverride_AppliesToEveryUpstreamThatCarriesACredential(t *te
 
 	for _, authType := range []string{"api-key", "bearer", "basic"} {
 		rendered := providerWithUpstreamAuth(authType, "")
-		err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+		err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 			constants.MetadataKeyUpstreamAuthValue: `{{ secret "eu-key" }}`,
 		}, "org-1")
 		if err != nil {
@@ -334,7 +334,7 @@ func TestUpstreamAuthHeaderOverride_ReplacesTheHeaderForAnApiKeyUpstream(t *test
 	svc := &LLMProviderDeploymentService{}
 	rendered := providerWithUpstreamAuth("api-key", "")
 
-	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 		constants.MetadataKeyUpstreamAuthValue:  `{{ secret "eu-key" }}`,
 		constants.MetadataKeyUpstreamAuthHeader: "x-api-key",
 	}, "org-1")
@@ -354,7 +354,7 @@ func TestUpstreamAuthHeaderOverride_RefusesAnUpstreamThatIsNotApiKey(t *testing.
 
 	for _, authType := range []string{"bearer", "basic"} {
 		rendered := providerWithUpstreamAuth(authType, "")
-		err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+		err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 			constants.MetadataKeyUpstreamAuthValue:  `{{ secret "eu-key" }}`,
 			constants.MetadataKeyUpstreamAuthHeader: "x-api-key",
 		}, "org-1")
@@ -371,7 +371,7 @@ func TestUpstreamAuthHeaderOverride_RefusesAHeaderThatIsNotAFieldName(t *testing
 
 	for _, header := range []string{"x api key", "x-api-key\r\nX-Injected: 1", "x:key"} {
 		rendered := providerWithUpstreamAuth("api-key", "")
-		err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+		err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 			constants.MetadataKeyUpstreamAuthValue:  `{{ secret "eu-key" }}`,
 			constants.MetadataKeyUpstreamAuthHeader: header,
 		}, "org-1")
@@ -388,7 +388,7 @@ func TestUpstreamAuthHeaderOverride_IgnoredWithoutACredential(t *testing.T) {
 	rendered := providerWithUpstreamAuth("api-key", "")
 	rendered.Spec.Upstream.Auth.Header = nil
 
-	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
 		constants.MetadataKeyUpstreamAuthHeader: "x-api-key",
 	}, "org-1")
 	if err != nil {
@@ -396,5 +396,72 @@ func TestUpstreamAuthHeaderOverride_IgnoredWithoutACredential(t *testing.T) {
 	}
 	if rendered.Spec.Upstream.Auth.Header != nil {
 		t.Error("a header without a credential should not be applied")
+	}
+}
+
+// A deployment can route to its own backend, so one gateway can use a regional or proxied
+// endpoint without the provider changing.
+func TestUpstreamURLOverride_ReplacesTheProvidersBackend(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+	rendered := providerWithUpstreamAuth("api-key", "")
+	rendered.Spec.Upstream.URL = "https://api.openai.com"
+
+	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
+		constants.MetadataKeyEndpointUrl: "https://eu.api.openai.com/v1",
+	}, "org-1")
+	if err != nil {
+		t.Fatalf("applying the override: %v", err)
+	}
+	if rendered.Spec.Upstream.URL != "https://eu.api.openai.com/v1" {
+		t.Errorf("backend is %q, want the deployment's own", rendered.Spec.Upstream.URL)
+	}
+}
+
+// The platform requires exactly one of url and ref, so naming a URL drops the ref.
+func TestUpstreamURLOverride_ClearsAReferenceItReplaces(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+	rendered := providerWithUpstreamAuth("api-key", "")
+	rendered.Spec.Upstream.URL = ""
+	rendered.Spec.Upstream.Ref = "shared-openai"
+
+	if err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
+		constants.MetadataKeyEndpointUrl: "https://eu.api.openai.com/v1",
+	}, "org-1"); err != nil {
+		t.Fatalf("applying the override: %v", err)
+	}
+	if rendered.Spec.Upstream.Ref != "" {
+		t.Errorf("ref is %q, want it cleared", rendered.Spec.Upstream.Ref)
+	}
+}
+
+func TestUpstreamURLOverride_RefusesSomethingThatIsNotAnHTTPURL(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+
+	for _, value := range []string{"not-a-url", "ftp://example.com", "javascript:alert(1)"} {
+		rendered := providerWithUpstreamAuth("api-key", "")
+		rendered.Spec.Upstream.URL = "https://api.openai.com"
+		err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
+			constants.MetadataKeyEndpointUrl: value,
+		}, "org-1")
+		if err == nil {
+			t.Errorf("value %q should be refused", value)
+		}
+		if rendered.Spec.Upstream.URL != "https://api.openai.com" {
+			t.Errorf("a refused override must leave the backend alone, got %q", rendered.Spec.Upstream.URL)
+		}
+	}
+}
+
+// Nothing given leaves the provider's own backend in place.
+func TestUpstreamURLOverride_KeepsTheProvidersBackendWhenNoneIsGiven(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+	rendered := providerWithUpstreamAuth("api-key", "")
+	rendered.Spec.Upstream.URL = "https://api.openai.com"
+
+	if err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{}, "org-1"); err != nil {
+		t.Fatalf("applying the override: %v", err)
+	}
+	if rendered.Spec.Upstream.URL != "https://api.openai.com" {
+		t.Errorf("backend is %q, want the provider's own", rendered.Spec.Upstream.URL)
 	}
 }
