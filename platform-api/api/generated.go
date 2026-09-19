@@ -153,8 +153,16 @@ const (
 
 // Defines values for MCPProxyMcpSpecVersion.
 const (
-	N20250618 MCPProxyMcpSpecVersion = "2025-06-18"
-	N20251125 MCPProxyMcpSpecVersion = "2025-11-25"
+	MCPProxyMcpSpecVersionN20250618 MCPProxyMcpSpecVersion = "2025-06-18"
+	MCPProxyMcpSpecVersionN20251125 MCPProxyMcpSpecVersion = "2025-11-25"
+	MCPProxyMcpSpecVersionN20260728 MCPProxyMcpSpecVersion = "2026-07-28"
+)
+
+// Defines values for MCPProxyMcpSpecVersions.
+const (
+	MCPProxyMcpSpecVersionsN20250618 MCPProxyMcpSpecVersions = "2025-06-18"
+	MCPProxyMcpSpecVersionsN20251125 MCPProxyMcpSpecVersions = "2025-11-25"
+	MCPProxyMcpSpecVersionsN20260728 MCPProxyMcpSpecVersions = "2026-07-28"
 )
 
 // Defines values for MCPProxyListItemStatus.
@@ -1916,8 +1924,12 @@ type MCPProxy struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// McpSpecVersion MCP specification version supported by this proxy
+	// McpSpecVersion DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	McpSpecVersion *MCPProxyMcpSpecVersion `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+
+	// McpSpecVersions MCP specification versions supported by this proxy
+	McpSpecVersions *[]MCPProxyMcpSpecVersions `json:"mcpSpecVersions,omitempty" yaml:"mcpSpecVersions,omitempty"`
 
 	// Policies List of policies to be applied
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -1937,6 +1949,13 @@ type MCPProxy struct {
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
+	// UpstreamMcpSpecVersions MCP specification versions reported as supported by the upstream MCP server.
+	// This field is informational and may include versions that are not supported
+	// by this platform. It does not determine the MCP specification versions
+	// supported by the proxy and may not represent every version accepted by the
+	// upstream server.
+	UpstreamMcpSpecVersions *[]string `json:"upstreamMcpSpecVersions,omitempty" yaml:"upstreamMcpSpecVersions,omitempty"`
+
 	// Version Semantic version of the MCP proxy
 	Version string `binding:"required" json:"version" yaml:"version"`
 
@@ -1944,8 +1963,11 @@ type MCPProxy struct {
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
-// MCPProxyMcpSpecVersion MCP specification version supported by this proxy
+// MCPProxyMcpSpecVersion DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
 type MCPProxyMcpSpecVersion string
+
+// MCPProxyMcpSpecVersions defines model for MCPProxy.McpSpecVersions.
+type MCPProxyMcpSpecVersions string
 
 // MCPProxyCapabilities defines model for MCPProxyCapabilities.
 type MCPProxyCapabilities struct {
@@ -1970,9 +1992,13 @@ type MCPProxyListItem struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the MCP proxy
-	DisplayName    string  `binding:"required" json:"displayName" yaml:"displayName"`
-	Id             *string `json:"id,omitempty" yaml:"id,omitempty"`
-	McpSpecVersion *string `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
+	Id          *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// McpSpecVersion DEPRECATED - use mcpSpecVersions.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	McpSpecVersion  *string   `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+	McpSpecVersions *[]string `json:"mcpSpecVersions,omitempty" yaml:"mcpSpecVersions,omitempty"`
 
 	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
@@ -2024,7 +2050,12 @@ type MCPServerInfoFetchResponse struct {
 	Prompts    *[]map[string]interface{} `json:"prompts,omitempty" yaml:"prompts,omitempty"`
 	Resources  *[]map[string]interface{} `json:"resources,omitempty" yaml:"resources,omitempty"`
 	ServerInfo *map[string]interface{}   `json:"serverInfo,omitempty" yaml:"serverInfo,omitempty"`
-	Tools      *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
+
+	// SupportedVersions MCP protocol versions the server reported. A modern server answers server/discover
+	// with the full set; a legacy one yields the single version its initialize handshake
+	// negotiated. Absent when neither could be determined.
+	SupportedVersions *[]string                 `json:"supportedVersions,omitempty" yaml:"supportedVersions,omitempty"`
+	Tools             *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
 }
 
 // ManifestSyncResponse defines model for ManifestSyncResponse.

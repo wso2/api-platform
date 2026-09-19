@@ -38,9 +38,14 @@ type SimpleTagInputProps = {
   error?: boolean;
   helperText?: string;
   testId?: string;
+  /**
+   * Vets an entry before it becomes a chip. Return null to accept, or the reason to reject.
+   * A rejected entry stays in the field so the user can correct it rather than retype it.
+   */
+  validate?: (candidate: string) => string | null;
 };
 
-const SimpleTagInput: React.FC<SimpleTagInputProps> = ({
+export const SimpleTagInput: React.FC<SimpleTagInputProps> = ({
   value,
   onChange,
   placeholder,
@@ -48,31 +53,43 @@ const SimpleTagInput: React.FC<SimpleTagInputProps> = ({
   error,
   helperText,
   testId,
+  validate,
 }) => {
   const classes = useStyles();
   const [inputValue, setInputValue] = useState('');
+  const [rejection, setRejection] = useState<string | null>(null);
 
   const normalizedValues = useMemo(
     () => value.map((item) => item.trim()).filter(Boolean),
     [value]
   );
 
-  const addTag = (raw: string) => {
+  // Returns whether the caller should clear the field. Only a validate rejection keeps the text,
+  // since an empty or duplicate entry needs no correction.
+  const addTag = (raw: string): boolean => {
     const trimmed = raw.trim();
     if (!trimmed) {
-      return;
+      return true;
     }
     if (normalizedValues.includes(trimmed)) {
-      return;
+      return true;
     }
+    const reason = validate ? validate(trimmed) : null;
+    if (reason) {
+      setRejection(reason);
+      return false;
+    }
+    setRejection(null);
     onChange([...normalizedValues, trimmed]);
+    return true;
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter' || event.key === ',') {
       event.preventDefault();
-      addTag(inputValue);
-      setInputValue('');
+      if (addTag(inputValue)) {
+        setInputValue('');
+      }
       return;
     }
 
@@ -87,36 +104,57 @@ const SimpleTagInput: React.FC<SimpleTagInputProps> = ({
 
   return (
     <Box sx={classes.tagInputContainer} data-testid={testId}>
-      {normalizedValues.length > 0 && (
-        <Box sx={classes.tagInputChips}>
-          {normalizedValues.map((tag) => (
-            <Chip
-              key={tag}
-              label={tag}
-              size="small"
-              onDelete={
-                disabled ? undefined : () => handleDelete(tag)
-              }
-            />
-          ))}
-        </Box>
-      )}
       <TextField
         value={inputValue}
-        onChange={(event) => setInputValue(event.target.value)}
+        onChange={(event) => {
+          setInputValue(event.target.value);
+          setRejection(null);
+        }}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder={placeholder}
+        placeholder={normalizedValues.length > 0 ? undefined : placeholder}
         size="small"
-        error={!!error}
-        sx={classes.tagInputField}
-        inputProps={{
-          'data-testid': testId ? `${testId}-input` : undefined,
+        error={!!error || Boolean(rejection)}
+        sx={[
+          classes.tagInputField,
+          // The chips are an adornment inside the field, so the root has to wrap and grow.
+          {
+            '& .MuiInputBase-root': {
+              flexWrap: 'wrap',
+              gap: 0.5,
+              paddingTop: 0.5,
+              paddingBottom: 0.5,
+            },
+            '& .MuiInputBase-input': { minWidth: 120, flex: 1 },
+          },
+        ]}
+        slotProps={{
+          input: {
+            startAdornment:
+              normalizedValues.length > 0 ? (
+                <Box sx={classes.tagInputChips}>
+                  {normalizedValues.map((tag) => (
+                    <Chip
+                      key={tag}
+                      label={tag}
+                      size="small"
+                      onDelete={disabled ? undefined : () => handleDelete(tag)}
+                    />
+                  ))}
+                </Box>
+              ) : undefined,
+          },
+          htmlInput: {
+            'data-testid': testId ? `${testId}-input` : undefined,
+          },
         }}
       />
-      {helperText && (
-        <FormHelperText error={!!error} sx={classes.tagInputHelperText}>
-          {helperText}
+      {(rejection || helperText) && (
+        <FormHelperText
+          error={!!error || Boolean(rejection)}
+          sx={classes.tagInputHelperText}
+        >
+          {rejection ?? helperText}
         </FormHelperText>
       )}
     </Box>

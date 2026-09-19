@@ -66,6 +66,7 @@ import type { MCPServerInfoFetchRequest, CreateMCPServerRequest } from '../../..
 import ExternalServersCreateForm from './ExternalServersCreateForm';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
+import { normalizeMCPSpecVersions } from './mcpSpecVersions';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 
 // Backend field names (from CreateMCPServerRequest) mapped onto this form's state keys.
@@ -149,6 +150,7 @@ export default function ExternalServersNew(): JSX.Element {
   const [serverVersion, setServerVersion] = useState('');
   const [serverDescription, setServerDescription] = useState('');
   const [serverTarget, setServerTarget] = useState('');
+  const [serverSpecVersions, setServerSpecVersions] = useState<string[]>([]);
   const [serverContextOverride, setServerContextOverride] = useState<string | null>(null);
   const [lastValidatedUrl, setLastValidatedUrl] = useState('');
   const listPath = buildProjectPath(
@@ -190,6 +192,8 @@ export default function ExternalServersNew(): JSX.Element {
           name: response.serverInfo?.name ?? '',
           version: response.serverInfo?.version ?? '',
         },
+        // [] not undefined: lets the details view tell "found none" from "never probed".
+        supportedVersions: response.supportedVersions ?? [],
         tools: (response.tools ?? []) as unknown as EndpointValidationResponse['tools'],
         resources: (response.resources ?? []) as unknown as EndpointValidationResponse['resources'],
         prompts: (response.prompts ?? []) as unknown as EndpointValidationResponse['prompts'],
@@ -223,6 +227,9 @@ export default function ExternalServersNew(): JSX.Element {
       (prev) => prev || normalizeVersion(validationResult.serverInfo.version || 'v1.0')
     );
     setServerTarget((prev) => prev || endpointUrl.trim());
+    setServerSpecVersions((prev) =>
+      prev.length > 0 ? prev : (validationResult.supportedVersions ?? [])
+    );
     setIsCreateStep(true);
   };
 
@@ -255,6 +262,8 @@ export default function ExternalServersNew(): JSX.Element {
       }
     }
 
+    const normalizedSpecVersions = normalizeMCPSpecVersions(serverSpecVersions);
+
     const payload: CreateMCPServerRequest = {
       id: generateServerId(serverName),
       displayName: serverName.trim(),
@@ -280,7 +289,9 @@ export default function ExternalServersNew(): JSX.Element {
             : {}),
         },
       },
-      mcpSpecVersion: '2025-06-18',
+      // Omitted when empty: platform-api rejects a request that sets both spec version fields.
+      ...(normalizedSpecVersions ? { mcpSpecVersions: normalizedSpecVersions } : {}),
+      upstreamMcpSpecVersions: validationResult?.supportedVersions,
       kind: 'Mcp',
       policies: [],
       capabilities: {
@@ -417,14 +428,17 @@ export default function ExternalServersNew(): JSX.Element {
           serverContext={serverContext}
           serverDescription={serverDescription}
           serverName={serverName}
+          serverSpecVersions={serverSpecVersions}
           serverTarget={serverTarget}
           serverVersion={serverVersion}
+          suggestedSpecVersions={validationResult?.supportedVersions}
           fieldErrors={formFieldErrors}
           onCancel={handleCancelCreate}
           onCreate={handleCreate}
           onContextChange={setServerContextOverride}
           onDescriptionChange={setServerDescription}
           onNameChange={setServerName}
+          onSpecVersionsChange={setServerSpecVersions}
           onTargetChange={setServerTarget}
           onVersionChange={setServerVersion}
         />

@@ -148,6 +148,9 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	if err := validatePolicyVersions(req.Policies); err != nil {
 		return nil, err
 	}
+	if err := validateMCPSpecVersions(req); err != nil {
+		return nil, err
+	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, apperror.ValidationFailed.New("The upstream main url field is required.")
@@ -227,14 +230,15 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		Configuration: model.MCPProxyConfiguration{
-			Name:         req.DisplayName,
-			Version:      req.Version,
-			Context:      req.Context,
-			Vhost:        req.Vhost,
-			SpecVersion:  mcpSpecVersionToString(req.McpSpecVersion),
-			Upstream:     *mapUpstreamAPIToModel(req.Upstream),
-			Policies:     mapMCPPoliciesAPIToModel(req.Policies),
-			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
+			Name:                 req.DisplayName,
+			Version:              req.Version,
+			Context:              req.Context,
+			Vhost:                req.Vhost,
+			SpecVersions:         mcpSpecVersionsFromRequest(req),
+			UpstreamSpecVersions: upstreamSpecVersionsFromRequest(req),
+			Upstream:             *mapUpstreamAPIToModel(req.Upstream),
+			Policies:             mapMCPPoliciesAPIToModel(req.Policies),
+			Capabilities:         mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		},
 		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
@@ -384,6 +388,9 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if err := validatePolicyVersions(req.Policies); err != nil {
 		return nil, err
 	}
+	if err := validateMCPSpecVersions(req); err != nil {
+		return nil, err
+	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, apperror.ValidationFailed.New("The upstream main url field is required.")
@@ -427,14 +434,15 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	existing.UpdatedBy = updatedBy
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
-		Name:         req.DisplayName,
-		Version:      req.Version,
-		Context:      req.Context,
-		Vhost:        req.Vhost,
-		SpecVersion:  mcpSpecVersionToString(req.McpSpecVersion),
-		Upstream:     *mapUpstreamAPIToModel(req.Upstream),
-		Policies:     mapMCPPoliciesAPIToModel(req.Policies),
-		Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
+		Name:                 req.DisplayName,
+		Version:              req.Version,
+		Context:              req.Context,
+		Vhost:                req.Vhost,
+		SpecVersions:         mcpSpecVersionsFromRequest(req),
+		UpstreamSpecVersions: upstreamSpecVersionsFromRequest(req),
+		Upstream:             *mapUpstreamAPIToModel(req.Upstream),
+		Policies:             mapMCPPoliciesAPIToModel(req.Policies),
+		Capabilities:         mapMcpCapabilitiesAPIToModel(req.Capabilities),
 	}
 
 	// Preserve existing upstream auth credential if not provided in update request
@@ -649,11 +657,55 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 
 // Helper functions
 
-func mcpSpecVersionToString(v *api.MCPProxyMcpSpecVersion) string {
-	if v == nil {
-		return ""
+// validateMCPSpecVersions rejects a request that declares both forms. They carry the same
+// meaning, so honouring both would need a precedence rule the configuration can simply state.
+func validateMCPSpecVersions(req *api.MCPProxy) error {
+	if req.McpSpecVersion != nil && req.McpSpecVersions != nil {
+		return apperror.ValidationFailed.New("The deprecated 'mcpSpecVersion' field cannot be used " +
+			"together with 'mcpSpecVersions'. Use either the deprecated 'mcpSpecVersion' or the " +
+			"'mcpSpecVersions' list, not both.")
 	}
-	return string(*v)
+	return nil
+}
+
+// mcpSpecVersionsFromRequest folds whichever form the request declared into the canonical list.
+func mcpSpecVersionsFromRequest(req *api.MCPProxy) []string {
+	var versions []string
+	if req.McpSpecVersions != nil {
+		versions = make([]string, 0, len(*req.McpSpecVersions))
+		for _, v := range *req.McpSpecVersions {
+			versions = append(versions, string(v))
+		}
+	}
+	var deprecated string
+	if req.McpSpecVersion != nil {
+		deprecated = string(*req.McpSpecVersion)
+	}
+	return model.FoldSpecVersions(versions, deprecated)
+}
+
+// upstreamSpecVersionsFromRequest takes what the caller recorded of the last probe. It is not
+// validated: the values are the upstream server's answer, so a version this platform does not
+// support is a fact worth keeping rather than an error.
+func upstreamSpecVersionsFromRequest(req *api.MCPProxy) []string {
+	if req.UpstreamMcpSpecVersions == nil {
+		return nil
+	}
+	return *req.UpstreamMcpSpecVersions
+}
+
+// mcpSpecVersionsToAPI converts the stored list into the generated enum type, reading a
+// pre-change row's deprecated scalar when the list is absent. Returns nil when neither is set.
+func mcpSpecVersionsToAPI(cfg model.MCPProxyConfiguration) *[]api.MCPProxyMcpSpecVersions {
+	versions := cfg.EffectiveSpecVersions()
+	if len(versions) == 0 {
+		return nil
+	}
+	out := make([]api.MCPProxyMcpSpecVersions, 0, len(versions))
+	for _, v := range versions {
+		out = append(out, api.MCPProxyMcpSpecVersions(v))
+	}
+	return &out
 }
 
 func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
@@ -664,29 +716,27 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 	desc := m.Description
 	createdBy := m.CreatedBy
 
-	var specVersion *api.MCPProxyMcpSpecVersion
-	if m.Configuration.SpecVersion != "" {
-		sv := api.MCPProxyMcpSpecVersion(m.Configuration.SpecVersion)
-		specVersion = &sv
-	}
-
 	out := &api.MCPProxy{
-		Id:             &m.Handle,
-		DisplayName:    m.Name,
-		Description:    &desc,
-		CreatedBy:      &createdBy,
-		Version:        m.Version,
-		ProjectId:      m.ProjectUUID,
-		Context:        m.Configuration.Context,
-		Vhost:          m.Configuration.Vhost,
-		McpSpecVersion: specVersion,
-		Upstream:       mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
-		Policies:       mapMCPPoliciesModelToAPI(m.Configuration.Policies),
-		Capabilities:   mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
-		ReadOnly:       utils.BoolPtr(m.Origin == constants.OriginDP),
-		CreatedAt:      utils.TimePtr(m.CreatedAt),
-		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
-		UpdatedBy:      utils.StringPtrIfNotEmpty(m.UpdatedBy),
+		Id:          &m.Handle,
+		DisplayName: m.Name,
+		Description: &desc,
+		CreatedBy:   &createdBy,
+		Version:     m.Version,
+		ProjectId:   m.ProjectUUID,
+		Context:     m.Configuration.Context,
+		Vhost:       m.Configuration.Vhost,
+		// The deprecated field is never returned; a pre-change row's scalar surfaces inside
+		// the list instead, converted on read and never written back.
+		McpSpecVersion:          nil,
+		McpSpecVersions:         mcpSpecVersionsToAPI(m.Configuration),
+		UpstreamMcpSpecVersions: utils.StringSlicePtr(m.Configuration.UpstreamSpecVersions),
+		Upstream:                mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
+		Policies:                mapMCPPoliciesModelToAPI(m.Configuration.Policies),
+		Capabilities:            mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
+		ReadOnly:                utils.BoolPtr(m.Origin == constants.OriginDP),
+		CreatedAt:               utils.TimePtr(m.CreatedAt),
+		UpdatedAt:               utils.TimePtr(m.UpdatedAt),
+		UpdatedBy:               utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
 	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
 		out.AssociatedGateways = associated
@@ -700,17 +750,18 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 	}
 
 	return &api.MCPProxyListItem{
-		Id:             utils.StringPtrIfNotEmpty(m.Handle),
-		DisplayName:    m.Name,
-		Description:    utils.StringPtrIfNotEmpty(m.Description),
-		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
-		Version:        utils.StringPtrIfNotEmpty(m.Version),
-		ProjectId:      m.ProjectUUID,
-		Context:        m.Configuration.Context,
-		McpSpecVersion: utils.StringPtrIfNotEmpty(m.Configuration.SpecVersion),
-		ReadOnly:       utils.BoolPtr(m.Origin == constants.OriginDP),
-		CreatedAt:      utils.TimePtr(m.CreatedAt),
-		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
+		Id:              utils.StringPtrIfNotEmpty(m.Handle),
+		DisplayName:     m.Name,
+		Description:     utils.StringPtrIfNotEmpty(m.Description),
+		CreatedBy:       utils.StringPtrIfNotEmpty(m.CreatedBy),
+		Version:         utils.StringPtrIfNotEmpty(m.Version),
+		ProjectId:       m.ProjectUUID,
+		Context:         m.Configuration.Context,
+		McpSpecVersion:  nil,
+		McpSpecVersions: utils.StringSlicePtr(m.Configuration.EffectiveSpecVersions()),
+		ReadOnly:        utils.BoolPtr(m.Origin == constants.OriginDP),
+		CreatedAt:       utils.TimePtr(m.CreatedAt),
+		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
 	}
 }
 

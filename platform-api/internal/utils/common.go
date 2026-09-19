@@ -307,8 +307,8 @@ func defaultStringPtr(value *string) string {
 	return *value
 }
 
-// stringSlicePtr returns a pointer to a non-empty string slice or nil for an empty slice.
-func stringSlicePtr(values []string) *[]string {
+// StringSlicePtr returns a pointer to a non-empty string slice or nil for an empty slice.
+func StringSlicePtr(values []string) *[]string {
 	if len(values) == 0 {
 		return nil
 	}

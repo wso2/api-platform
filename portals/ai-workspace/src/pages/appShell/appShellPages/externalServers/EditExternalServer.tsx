@@ -21,6 +21,7 @@ import { useNavigate, useParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Button,
+  Chip,
   TextField,
   Typography,
   CircularProgress,
@@ -31,6 +32,12 @@ import {
   FormLabel,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
+import { SimpleTagInput } from '../../PolicyParameterEditor/FieldRenderers';
+import {
+  mcpSpecVersionWarning,
+  normalizeMCPSpecVersions,
+  validateMCPSpecVersion,
+} from './mcpSpecVersions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
   buildProjectPath,
@@ -39,7 +46,10 @@ import {
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
-import type { MCPServer } from '../../../../utils/types';
+import type {
+  MCPServer,
+  UpdateMCPServerRequest,
+} from '../../../../utils/types';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useMemo } from 'react';
 
@@ -92,9 +102,14 @@ export default function EditExternalServer() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [context, setContext] = useState('');
+  const [specVersions, setSpecVersions] = useState<string[]>([]);
+  const [upstreamVersions, setUpstreamVersions] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const isReadOnlyServer = Boolean(server?.readOnly);
+  const unusedUpstreamVersions = upstreamVersions.filter(
+    (version) => !specVersions.includes(version)
+  );
 
   useEffect(() => {
     if (!serverId || !organizationId) return;
@@ -111,6 +126,8 @@ export default function EditExternalServer() {
           setName(response.displayName || '');
           setDescription(response.description || '');
           setContext(response.context || '');
+          setSpecVersions(response.mcpSpecVersions || []);
+          setUpstreamVersions(response.upstreamMcpSpecVersions || []);
         }
       } catch {
         // handled by loading state
@@ -145,16 +162,22 @@ export default function EditExternalServer() {
     setIsSubmitting(true);
     setFieldErrors({});
     try {
-      const fullPayload = {
-        ...server,
+      // mcpSpecVersion is stripped with the read-only fields: platform-api rejects it beside
+      // mcpSpecVersions. Unreachable today, but guards a row from a different platform-api.
+      const {
+        createdAt,
+        updatedAt,
+        mcpSpecVersion,
+        ...rest
+      } = server as MCPServer & { mcpSpecVersion?: string };
+      const fullPayload: UpdateMCPServerRequest = {
+        ...rest,
         displayName: name,
         description: description || undefined,
         version: server.version,
         context: context || undefined,
+        mcpSpecVersions: normalizeMCPSpecVersions(specVersions),
       };
-      // Remove read-only fields before sending
-      delete (fullPayload as any).createdAt;
-      delete (fullPayload as any).updatedAt;
 
       await mcpProxiesApis.updateMCPServer(
         serverId,
@@ -332,6 +355,50 @@ export default function EditExternalServer() {
                     : '')
                 }
               />
+            </FormControl>
+
+            <FormControl fullWidth>
+              <FormLabel>MCP Versions</FormLabel>
+              <SimpleTagInput
+                testId="mcp-spec-versions"
+                placeholder="Enter MCP spec versions"
+                value={specVersions}
+                onChange={setSpecVersions}
+                validate={validateMCPSpecVersion}
+                disabled={isReadOnlyServer}
+              />
+              {mcpSpecVersionWarning(specVersions) && (
+                <Typography variant="body2" color="warning.main" sx={{ mt: 0.5 }}>
+                  {mcpSpecVersionWarning(specVersions)}
+                </Typography>
+              )}
+              {unusedUpstreamVersions.length > 0 && (
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                  sx={{ mt: 1 }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    Reported by the upstream server
+                  </Typography>
+                  {unusedUpstreamVersions.map((version) => (
+                    <Chip
+                      key={version}
+                      label={version}
+                      size="small"
+                      variant="outlined"
+                      onClick={
+                        isReadOnlyServer
+                          ? undefined
+                          : () => setSpecVersions([...specVersions, version])
+                      }
+                    />
+                  ))}
+                </Stack>
+              )}
             </FormControl>
           </Stack>
         </Box>

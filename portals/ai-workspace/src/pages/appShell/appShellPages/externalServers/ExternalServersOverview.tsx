@@ -299,6 +299,10 @@ export default function ExternalServersOverview(): JSX.Element {
     useState<MCPServerCapabilities | null>(null);
   const [isCapabilitiesDrawerOpen, setIsCapabilitiesDrawerOpen] =
     useState(false);
+  // Undefined means the probe determined nothing, which must not overwrite an earlier set.
+  const [refetchedUpstreamVersions, setRefetchedUpstreamVersions] = useState<
+    string[] | undefined
+  >(undefined);
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
@@ -590,6 +594,7 @@ export default function ExternalServersOverview(): JSX.Element {
     setIsCredentialMasked(hasExistingAuth);
     setHasCredentialChanged(false);
     setRefetchedCapabilities(null);
+    setRefetchedUpstreamVersions(undefined);
   }, [server]);
 
   const hasPolicyChanges = useMemo(() => {
@@ -631,8 +636,21 @@ export default function ExternalServersOverview(): JSX.Element {
     );
   }, [refetchedCapabilities, server]);
 
+  // A refetch can report new versions while the capabilities are unchanged, so this is a
+  // separate term of hasUnsavedChanges rather than part of hasCapabilitiesChanges.
+  const hasUpstreamVersionsChanges = useMemo(() => {
+    if (!refetchedUpstreamVersions) return false;
+    return (
+      JSON.stringify(refetchedUpstreamVersions) !==
+      JSON.stringify(server?.upstreamMcpSpecVersions ?? [])
+    );
+  }, [refetchedUpstreamVersions, server]);
+
   const hasUnsavedChanges =
-    hasPolicyChanges || hasBackendConnectionChanges || hasCapabilitiesChanges;
+    hasPolicyChanges ||
+    hasBackendConnectionChanges ||
+    hasCapabilitiesChanges ||
+    hasUpstreamVersionsChanges;
 
   const handleCancelChanges = () => {
     if (isReadOnlyServer) return;
@@ -646,6 +664,7 @@ export default function ExternalServersOverview(): JSX.Element {
       setHasCredentialChanged(false);
     }
     setRefetchedCapabilities(null);
+    setRefetchedUpstreamVersions(undefined);
   };
 
   const handleSaveChanges = async () => {
@@ -665,7 +684,16 @@ export default function ExternalServersOverview(): JSX.Element {
       };
     });
 
-    const { createdAt, createdBy, updatedAt, updatedBy, ...updatePayload } = server;
+    // The update is a full replace, so dropping mcpSpecVersions here would clear the stored
+    // list. mcpSpecVersion is stripped because platform-api rejects the two together.
+    const {
+      createdAt,
+      createdBy,
+      updatedAt,
+      updatedBy,
+      mcpSpecVersion,
+      ...updatePayload
+    } = server as typeof server & { mcpSpecVersion?: string };
 
     // Rotating the credential (only when it was actually unmasked and edited): create a
     // new secret up front so the update payload never carries plaintext, then best-effort
@@ -735,6 +763,9 @@ export default function ExternalServersOverview(): JSX.Element {
       ? (refetchedCapabilities ?? undefined)
       : updatePayload.capabilities;
 
+    const upstreamVersionsPayload =
+      refetchedUpstreamVersions ?? updatePayload.upstreamMcpSpecVersions;
+
     try {
       setIsSavingChanges(true);
       const updated = await mcpProxiesApis.updateMCPServer(
@@ -744,6 +775,7 @@ export default function ExternalServersOverview(): JSX.Element {
           policies: policiesPayload,
           upstream: upstreamPayload,
           capabilities: capabilitiesPayload,
+          upstreamMcpSpecVersions: upstreamVersionsPayload,
         },
         apimBaseUrl
       );
@@ -847,16 +879,32 @@ export default function ExternalServersOverview(): JSX.Element {
         prompts: response.prompts ?? [],
       };
       setRefetchedCapabilities(discoveredCapabilities);
+      setRefetchedUpstreamVersions(response.supportedVersions);
       // Only prompt to Save when the refetch actually found something different —
       // hasCapabilitiesChanges won't reflect the state just set above until the next
-      // render, so this mirrors that same comparison directly against the response.
+      // render, so these mirror those same comparisons directly against the response.
       const capabilitiesChanged =
         JSON.stringify(discoveredCapabilities) !==
         JSON.stringify(normalizeCapabilities(server.capabilities));
+      const versionsChanged =
+        !!response.supportedVersions &&
+        JSON.stringify(response.supportedVersions) !==
+          JSON.stringify(server.upstreamMcpSpecVersions ?? []);
+      const counted = (n: number, noun: string) =>
+        `${n} ${n === 1 ? noun : `${noun}s`}`;
+      const found = [
+        counted(discoveredCapabilities.tools.length, 'tool'),
+        counted(discoveredCapabilities.resources.length, 'resource'),
+        counted(discoveredCapabilities.prompts.length, 'prompt'),
+      ];
+      // Omitted rather than reported as zero when the probe could not determine any
+      if (response.supportedVersions) {
+        found.push(counted(response.supportedVersions.length, 'MCP version'));
+      }
       showSnackbar(
-        `Connection verified — ${discoveredCapabilities.tools.length} tools, ${discoveredCapabilities.resources.length} resources, ${discoveredCapabilities.prompts.length} prompts found.` +
-          (capabilitiesChanged
-            ? " Click Save to update the proxy's stored capabilities."
+        `Connection verified — ${found.join(', ')} found.` +
+          (capabilitiesChanged || versionsChanged
+            ? ' Click Save to update the proxy.'
             : ''),
         'success'
       );
@@ -1077,6 +1125,7 @@ export default function ExternalServersOverview(): JSX.Element {
         []) as unknown as EndpointValidationResponse['resources'],
       prompts: (server.capabilities.prompts ??
         []) as unknown as EndpointValidationResponse['prompts'],
+      supportedVersions: server.upstreamMcpSpecVersions,
     };
   }, [server]);
 
