@@ -54,7 +54,7 @@ func bodyReadError(err error, fallback error) error {
 // maxBytes. Trailing non-whitespace data is rejected, and it is read through the size cap so an
 // oversized body still yields 413 rather than being silently ignored.
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any) error {
-	invalid := apperror.ValidationFailed.New("Request body is not valid JSON")
+	invalid := apperror.APIPublicationValidationFailed.New("Request body is not valid JSON")
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
 	if err := dec.Decode(dst); err != nil {
 		return bodyReadError(err, invalid)
@@ -128,9 +128,9 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 }
 
 // draftPathParams extracts the three identity segments every route under
-// base carries.
-func draftPathParams(r *http.Request) (apiPortalId, apiType, apiId string) {
-	return r.PathValue("apiPortalId"), r.PathValue("apiType"), r.PathValue("apiId")
+// base carries, in the order the service methods take them.
+func draftPathParams(r *http.Request) (apiType, apiId, apiPortalId string) {
+	return r.PathValue("apiType"), r.PathValue("apiId"), r.PathValue("apiPortalId")
 }
 
 // GetDraft handles GET .../draft
@@ -139,7 +139,7 @@ func (h *PublicationHandler) GetDraft(w http.ResponseWriter, r *http.Request) er
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	pub, err := h.service.GetDraft(apiType, apiId, apiPortalId, orgId)
 	if err != nil {
@@ -156,7 +156,7 @@ func (h *PublicationHandler) SaveDraft(w http.ResponseWriter, r *http.Request) e
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	actor, err := resolveActorErr(r, h.identity, "save publication draft")
 	if err != nil {
@@ -184,7 +184,7 @@ func (h *PublicationHandler) GetDraftDefinition(w http.ResponseWriter, r *http.R
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	content, err := h.service.GetDraftDefinition(apiType, apiId, apiPortalId, orgId)
 	if err != nil {
@@ -200,7 +200,7 @@ func (h *PublicationHandler) SaveDraftDefinition(w http.ResponseWriter, r *http.
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	actor, err := resolveActorErr(r, h.identity, "save publication draft definition")
 	if err != nil {
@@ -231,7 +231,7 @@ func (h *PublicationHandler) GetDraftLandingPage(w http.ResponseWriter, r *http.
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	content, err := h.service.GetDraftLandingPage(apiType, apiId, apiPortalId, orgId)
 	if err != nil {
@@ -247,7 +247,7 @@ func (h *PublicationHandler) SaveDraftLandingPage(w http.ResponseWriter, r *http
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	actor, err := resolveActorErr(r, h.identity, "save publication draft landing page")
 	if err != nil {
@@ -272,7 +272,7 @@ func (h *PublicationHandler) GetDraftThumbnail(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	content, err := h.service.GetDraftThumbnail(apiType, apiId, apiPortalId, orgId)
 	if err != nil {
@@ -290,7 +290,7 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	actor, err := resolveActorErr(r, h.identity, "save publication draft thumbnail")
 	if err != nil {
@@ -303,7 +303,7 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 	}
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
-		return apperror.ValidationFailed.New("file is required")
+		return apperror.APIPublicationValidationFailed.New("file is required")
 	}
 	defer file.Close()
 
@@ -349,7 +349,7 @@ func (h *PublicationHandler) GetPublication(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	pub, err := h.service.GetPublication(apiType, apiId, apiPortalId, orgId)
 	if err != nil {
@@ -366,7 +366,7 @@ func (h *PublicationHandler) GetPublicationDefinition(w http.ResponseWriter, r *
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	content, err := h.service.GetPublicationDefinition(apiType, apiId, apiPortalId, orgId)
 	if err != nil {
@@ -382,7 +382,7 @@ func (h *PublicationHandler) GetPublicationLandingPage(w http.ResponseWriter, r 
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	content, err := h.service.GetPublicationLandingPage(apiType, apiId, apiPortalId, orgId)
 	if err != nil {
@@ -398,7 +398,7 @@ func (h *PublicationHandler) GetPublicationThumbnail(w http.ResponseWriter, r *h
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	apiPortalId, apiType, apiId := draftPathParams(r)
+	apiType, apiId, apiPortalId := draftPathParams(r)
 
 	content, err := h.service.GetPublicationThumbnail(apiType, apiId, apiPortalId, orgId)
 	if err != nil {

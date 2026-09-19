@@ -120,9 +120,10 @@ func nullIfEmpty(s string) interface{} {
 // contentFlags reports whether a thumbnail (IMAGE) and/or landing page
 // (MARKETING) content row exists for publicationUUID.
 func (r *PublicationRepo) contentFlags(exec sqlExecutor, publicationUUID, orgUUID string) (hasThumbnail, hasLandingPage bool, err error) {
-	rows, err := exec.Query(r.db.Rebind(`
+	query := `
 		SELECT type FROM api_publication_contents WHERE publication_uuid = ? AND organization_uuid = ?
-	`), publicationUUID, orgUUID)
+	`
+	rows, err := exec.Query(r.db.Rebind(query), publicationUUID, orgUUID)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to load publication content flags: %w", err)
 	}
@@ -130,7 +131,7 @@ func (r *PublicationRepo) contentFlags(exec sqlExecutor, publicationUUID, orgUUI
 	for rows.Next() {
 		var t string
 		if err := rows.Scan(&t); err != nil {
-			return false, false, err
+			return false, false, fmt.Errorf("failed to scan publication content type: %w", err)
 		}
 		switch model.PublicationContentType(t) {
 		case model.PublicationContentTypeImage:
@@ -145,11 +146,12 @@ func (r *PublicationRepo) contentFlags(exec sqlExecutor, publicationUUID, orgUUI
 // planUUIDsForPublication returns the subscription_plan_uuid values mapped to
 // publicationUUID, ordered for deterministic responses.
 func (r *PublicationRepo) planUUIDsForPublication(exec sqlExecutor, publicationUUID, orgUUID string) ([]string, error) {
-	rows, err := exec.Query(r.db.Rebind(`
+	query := `
 		SELECT subscription_plan_uuid FROM api_publication_plan_mappings
 		WHERE publication_uuid = ? AND organization_uuid = ?
 		ORDER BY subscription_plan_uuid
-	`), publicationUUID, orgUUID)
+	`
+	rows, err := exec.Query(r.db.Rebind(query), publicationUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load publication plan mappings: %w", err)
 	}
@@ -158,7 +160,7 @@ func (r *PublicationRepo) planUUIDsForPublication(exec sqlExecutor, publicationU
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan publication plan mapping: %w", err)
 		}
 		ids = append(ids, id)
 	}
@@ -168,11 +170,12 @@ func (r *PublicationRepo) planUUIDsForPublication(exec sqlExecutor, publicationU
 // docUUIDsForPublication returns the doc_uuid values mapped to publicationUUID,
 // ordered for deterministic responses.
 func (r *PublicationRepo) docUUIDsForPublication(exec sqlExecutor, publicationUUID, orgUUID string) ([]string, error) {
-	rows, err := exec.Query(r.db.Rebind(`
+	query := `
 		SELECT doc_uuid FROM api_publication_doc_mappings
 		WHERE publication_uuid = ? AND organization_uuid = ?
 		ORDER BY doc_uuid
-	`), publicationUUID, orgUUID)
+	`
+	rows, err := exec.Query(r.db.Rebind(query), publicationUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load publication document mappings: %w", err)
 	}
@@ -181,7 +184,7 @@ func (r *PublicationRepo) docUUIDsForPublication(exec sqlExecutor, publicationUU
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan publication document mapping: %w", err)
 		}
 		ids = append(ids, id)
 	}
@@ -246,11 +249,12 @@ func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID
 // live) for artifactUUID, reduced to the portal UUID, tier, status and
 // updated_at the GET /api-publications rollup needs.
 func (r *PublicationRepo) ListStatusByArtifact(artifactUUID, orgUUID string) ([]*model.PublicationStatusRow, error) {
-	rows, err := r.db.Query(r.db.Rebind(`
+	query := `
 		SELECT api_portal_uuid, is_draft, status, updated_at
 		FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ?
-	`), orgUUID, artifactUUID)
+	`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, artifactUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list publication status rows: %w", err)
 	}
@@ -294,10 +298,11 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 	var existingUUID string
 	var createdBy string
 	var createdAt time.Time
-	lookupErr := tx.QueryRow(r.db.Rebind(`
+	lookupQuery := `
 		SELECT uuid, created_by, created_at FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
-	`), pub.OrganizationUUID, pub.ArtifactUUID, pub.APIPortalUUID).Scan(&existingUUID, &createdBy, &createdAt)
+	`
+	lookupErr := tx.QueryRow(r.db.Rebind(lookupQuery), pub.OrganizationUUID, pub.ArtifactUUID, pub.APIPortalUUID).Scan(&existingUUID, &createdBy, &createdAt)
 
 	switch {
 	case errors.Is(lookupErr, sql.ErrNoRows):
@@ -307,7 +312,7 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 		pub.UpdatedBy = actor
 		pub.UpdatedAt = now
 		pub.DataVersion = "1.0"
-		_, err = tx.Exec(r.db.Rebind(`
+		insertQuery := `
 			INSERT INTO api_publications (
 				uuid, organization_uuid, artifact_uuid, api_portal_uuid, is_draft,
 				display_name, version, description, tags, labels, agent_visibility,
@@ -315,7 +320,8 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 				technical_owner, technical_owner_email, data_version,
 				created_by, created_at, updated_by, updated_at
 			) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`),
+		`
+		_, err = tx.Exec(r.db.Rebind(insertQuery),
 			pub.UUID, pub.OrganizationUUID, pub.ArtifactUUID, pub.APIPortalUUID,
 			pub.DisplayName, pub.Version, nullIfEmpty(pub.Description), tagsBytes, labelsBytes, pub.AgentVisibility,
 			nullIfEmpty(pub.ProductionURL), nullIfEmpty(pub.SandboxURL), nullIfEmpty(pub.BusinessOwner), nullIfEmpty(pub.BusinessOwnerEmail),
@@ -333,13 +339,14 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 		pub.CreatedAt = createdAt
 		pub.UpdatedBy = actor
 		pub.UpdatedAt = now
-		_, err = tx.Exec(r.db.Rebind(`
+		updateQuery := `
 			UPDATE api_publications SET
 				display_name = ?, version = ?, description = ?, tags = ?, labels = ?, agent_visibility = ?,
 				production_url = ?, sandbox_url = ?, business_owner = ?, business_owner_email = ?,
 				technical_owner = ?, technical_owner_email = ?, updated_by = ?, updated_at = ?
 			WHERE uuid = ? AND organization_uuid = ?
-		`),
+		`
+		_, err = tx.Exec(r.db.Rebind(updateQuery),
 			pub.DisplayName, pub.Version, nullIfEmpty(pub.Description), tagsBytes, labelsBytes, pub.AgentVisibility,
 			nullIfEmpty(pub.ProductionURL), nullIfEmpty(pub.SandboxURL), nullIfEmpty(pub.BusinessOwner), nullIfEmpty(pub.BusinessOwnerEmail),
 			nullIfEmpty(pub.TechnicalOwner), nullIfEmpty(pub.TechnicalOwnerEmail), pub.UpdatedBy, pub.UpdatedAt,
@@ -350,30 +357,34 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 		}
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	deletePlanMappingsQuery := `
 		DELETE FROM api_publication_plan_mappings WHERE organization_uuid = ? AND publication_uuid = ?
-	`), pub.OrganizationUUID, pub.UUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(deletePlanMappingsQuery), pub.OrganizationUUID, pub.UUID); err != nil {
 		return nil, fmt.Errorf("failed to clear publication plan mappings: %w", err)
 	}
 	for _, planUUID := range planUUIDs {
-		if _, err := tx.Exec(r.db.Rebind(`
+		insertPlanMappingQuery := `
 			INSERT INTO api_publication_plan_mappings (organization_uuid, publication_uuid, subscription_plan_uuid, created_by, created_at)
 			VALUES (?, ?, ?, ?, ?)
-		`), pub.OrganizationUUID, pub.UUID, planUUID, actor, now); err != nil {
+		`
+		if _, err := tx.Exec(r.db.Rebind(insertPlanMappingQuery), pub.OrganizationUUID, pub.UUID, planUUID, actor, now); err != nil {
 			return nil, fmt.Errorf("failed to insert publication plan mapping: %w", err)
 		}
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	deleteDocMappingsQuery := `
 		DELETE FROM api_publication_doc_mappings WHERE organization_uuid = ? AND publication_uuid = ?
-	`), pub.OrganizationUUID, pub.UUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(deleteDocMappingsQuery), pub.OrganizationUUID, pub.UUID); err != nil {
 		return nil, fmt.Errorf("failed to clear publication document mappings: %w", err)
 	}
 	for _, docUUID := range docUUIDs {
-		if _, err := tx.Exec(r.db.Rebind(`
+		insertDocMappingQuery := `
 			INSERT INTO api_publication_doc_mappings (organization_uuid, publication_uuid, doc_uuid, created_by, created_at)
 			VALUES (?, ?, ?, ?, ?)
-		`), pub.OrganizationUUID, pub.UUID, docUUID, actor, now); err != nil {
+		`
+		if _, err := tx.Exec(r.db.Rebind(insertDocMappingQuery), pub.OrganizationUUID, pub.UUID, docUUID, actor, now); err != nil {
 			return nil, fmt.Errorf("failed to insert publication document mapping: %w", err)
 		}
 	}
@@ -400,9 +411,8 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 // anchor's own) and sets is_draft/status/updated_by/updated_at on that same
 // row; re-parents the draft's satellite rows (api_publication_contents/
 // _doc_mappings/_plan_mappings) onto the anchor, clearing the anchor's own
-// stale satellite rows first since nothing else does that for us once the
-// anchor row itself survives (a plain DELETE of the old live row used to get
-// this for free via ON DELETE CASCADE); and deletes the now-empty draft row.
+// stale satellite rows first, since the anchor row itself survives and so
+// nothing cascades them away; and deletes the now-empty draft row.
 //
 // Ordering matters here: the draft row must be deleted, and its satellites
 // re-parented, BEFORE the anchor's own is_draft is updated — api_publications
@@ -423,12 +433,13 @@ func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID
 	var description, prodURL, sandboxURL sql.NullString
 	var businessOwner, businessOwnerEmail, technicalOwner, technicalOwnerEmail sql.NullString
 	var tagsBytes, labelsBytes []byte
-	row := tx.QueryRow(r.db.Rebind(`
+	draftQuery := `
 		SELECT display_name, version, description, tags, labels, agent_visibility,
 			production_url, sandbox_url, business_owner, business_owner_email,
 			technical_owner, technical_owner_email
 		FROM api_publications WHERE uuid = ? AND organization_uuid = ?
-	`), draftUUID, orgUUID)
+	`
+	row := tx.QueryRow(r.db.Rebind(draftQuery), draftUUID, orgUUID)
 	if err := row.Scan(
 		&displayName, &version, &description, &tagsBytes, &labelsBytes, &agentVisibility,
 		&prodURL, &sandboxURL, &businessOwner, &businessOwnerEmail, &technicalOwner, &technicalOwnerEmail,
@@ -436,52 +447,60 @@ func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID
 		return fmt.Errorf("failed to read draft publication to merge: %w", err)
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	deleteContentsQuery := `
 		DELETE FROM api_publication_contents WHERE publication_uuid = ? AND organization_uuid = ?
-	`), anchorUUID, orgUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(deleteContentsQuery), anchorUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to clear anchor's content before merge: %w", err)
 	}
-	if _, err := tx.Exec(r.db.Rebind(`
+	reparentContentsQuery := `
 		UPDATE api_publication_contents SET publication_uuid = ? WHERE publication_uuid = ? AND organization_uuid = ?
-	`), anchorUUID, draftUUID, orgUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(reparentContentsQuery), anchorUUID, draftUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to reparent draft's content onto anchor: %w", err)
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	deleteDocMappingsQuery := `
 		DELETE FROM api_publication_doc_mappings WHERE publication_uuid = ? AND organization_uuid = ?
-	`), anchorUUID, orgUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(deleteDocMappingsQuery), anchorUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to clear anchor's document mappings before merge: %w", err)
 	}
-	if _, err := tx.Exec(r.db.Rebind(`
+	reparentDocMappingsQuery := `
 		UPDATE api_publication_doc_mappings SET publication_uuid = ? WHERE publication_uuid = ? AND organization_uuid = ?
-	`), anchorUUID, draftUUID, orgUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(reparentDocMappingsQuery), anchorUUID, draftUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to reparent draft's document mappings onto anchor: %w", err)
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	deletePlanMappingsQuery := `
 		DELETE FROM api_publication_plan_mappings WHERE publication_uuid = ? AND organization_uuid = ?
-	`), anchorUUID, orgUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(deletePlanMappingsQuery), anchorUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to clear anchor's plan mappings before merge: %w", err)
 	}
-	if _, err := tx.Exec(r.db.Rebind(`
+	reparentPlanMappingsQuery := `
 		UPDATE api_publication_plan_mappings SET publication_uuid = ? WHERE publication_uuid = ? AND organization_uuid = ?
-	`), anchorUUID, draftUUID, orgUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(reparentPlanMappingsQuery), anchorUUID, draftUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to reparent draft's plan mappings onto anchor: %w", err)
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	deleteDraftQuery := `
 		DELETE FROM api_publications WHERE uuid = ? AND organization_uuid = ?
-	`), draftUUID, orgUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(deleteDraftQuery), draftUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to delete merged draft publication: %w", err)
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	updateAnchorQuery := `
 		UPDATE api_publications SET
 			display_name = ?, version = ?, description = ?, tags = ?, labels = ?, agent_visibility = ?,
 			production_url = ?, sandbox_url = ?, business_owner = ?, business_owner_email = ?,
 			technical_owner = ?, technical_owner_email = ?, is_draft = ?, status = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
-	`),
+	`
+	if _, err := tx.Exec(r.db.Rebind(updateAnchorQuery),
 		displayName, version, description, tagsBytes, labelsBytes, agentVisibility,
 		prodURL, sandboxURL, businessOwner, businessOwnerEmail, technicalOwner, technicalOwnerEmail,
 		isDraft, status, actor, now,
@@ -519,10 +538,11 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	defer tx.Rollback()
 
 	var draftUUID string
-	draftLookupErr := tx.QueryRow(r.db.Rebind(`
+	draftLookupQuery := `
 		SELECT uuid FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
-	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
+	`
+	draftLookupErr := tx.QueryRow(r.db.Rebind(draftLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
 	if errors.Is(draftLookupErr, sql.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -531,10 +551,11 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	}
 
 	var liveUUID string
-	liveLookupErr := tx.QueryRow(r.db.Rebind(`
+	liveLookupQuery := `
 		SELECT uuid FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0
-	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
+	`
+	liveLookupErr := tx.QueryRow(r.db.Rebind(liveLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
 
 	var anchorUUID string
 	switch {
@@ -545,11 +566,12 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 		anchorUUID = liveUUID
 		replaced = true
 	case errors.Is(liveLookupErr, sql.ErrNoRows):
-		if _, err := tx.Exec(r.db.Rebind(`
+		promoteQuery := `
 			UPDATE api_publications
 			SET is_draft = 0, status = 'PUBLISHED', updated_by = ?, updated_at = ?
 			WHERE uuid = ? AND organization_uuid = ?
-		`), actor, now, draftUUID, orgUUID); err != nil {
+		`
+		if _, err := tx.Exec(r.db.Rebind(promoteQuery), actor, now, draftUUID, orgUUID); err != nil {
 			return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
 		}
 		anchorUUID = draftUUID
@@ -557,8 +579,9 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 		return nil, false, fmt.Errorf("failed to look up existing live publication: %w", liveLookupErr)
 	}
 
-	row := tx.QueryRow(r.db.Rebind(`SELECT `+publicationDetailColumns+`
-		FROM api_publications WHERE uuid = ? AND organization_uuid = ?`), anchorUUID, orgUUID)
+	promotedQuery := `SELECT ` + publicationDetailColumns + `
+		FROM api_publications WHERE uuid = ? AND organization_uuid = ?`
+	row := tx.QueryRow(r.db.Rebind(promotedQuery), anchorUUID, orgUUID)
 	promoted := &model.Publication{
 		OrganizationUUID: orgUUID,
 		ArtifactUUID:     artifactUUID,
@@ -592,8 +615,7 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 //     anchor (mergeDraftIntoAnchor) instead of deleting the anchor and
 //     leaving the draft's own row as the survivor — the anchor's uuid
 //     survives the unpublish too, inverted-but-symmetric with Publish's
-//     republish branch. Same discard-old-keep-new content semantics as
-//     before, just implemented as an in-place merge instead of a row swap.
+//     republish branch. The draft's content replaces the live content.
 //
 // Either way a draft survives the operation. Returns found=false if no live
 // row exists to unpublish — the same defensive re-check
@@ -610,10 +632,11 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 	defer tx.Rollback()
 
 	var liveUUID string
-	lookupErr := tx.QueryRow(r.db.Rebind(`
+	liveLookupQuery := `
 		SELECT uuid FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0
-	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
+	`
+	lookupErr := tx.QueryRow(r.db.Rebind(liveLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
 	if errors.Is(lookupErr, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -622,10 +645,11 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 	}
 
 	var draftUUID string
-	draftErr := tx.QueryRow(r.db.Rebind(`
+	draftLookupQuery := `
 		SELECT uuid FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
-	`), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
+	`
+	draftErr := tx.QueryRow(r.db.Rebind(draftLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
 
 	switch {
 	case draftErr == nil:
@@ -633,11 +657,12 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 			return false, err
 		}
 	case errors.Is(draftErr, sql.ErrNoRows):
-		if _, err := tx.Exec(r.db.Rebind(`
+		demoteQuery := `
 			UPDATE api_publications
 			SET is_draft = 1, status = NULL, updated_by = ?, updated_at = ?
 			WHERE uuid = ? AND organization_uuid = ?
-		`), actor, now, liveUUID, orgUUID); err != nil {
+		`
+		if _, err := tx.Exec(r.db.Rebind(demoteQuery), actor, now, liveUUID, orgUUID); err != nil {
 			return false, fmt.Errorf("failed to demote publication to draft: %w", err)
 		}
 	default:
@@ -654,11 +679,12 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 // PUBLISHED, changing only status and the audit columns. found is false when no row
 // matched.
 func (r *PublicationRepo) DeprecatePublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error) {
-	result, err := r.db.Exec(r.db.Rebind(`
+	query := `
 		UPDATE api_publications
 		SET status = ?, updated_by = ?, updated_at = ?
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0 AND status = ?
-	`), model.PublicationStatusDeprecated, actor, time.Now().UTC(),
+	`
+	result, err := r.db.Exec(r.db.Rebind(query), model.PublicationStatusDeprecated, actor, time.Now().UTC(),
 		orgUUID, artifactUUID, apiPortalUUID, model.PublicationStatusPublished)
 	if err != nil {
 		return false, fmt.Errorf("failed to deprecate publication: %w", err)
@@ -712,9 +738,10 @@ func (r *PublicationRepo) SaveContent(content *model.PublicationContent, actor s
 	defer tx.Rollback()
 
 	var existingUUID string
-	lookupErr := tx.QueryRow(r.db.Rebind(`
+	lookupQuery := `
 		SELECT uuid FROM api_publication_contents WHERE organization_uuid = ? AND publication_uuid = ? AND type = ?
-	`), content.OrganizationUUID, content.PublicationUUID, string(content.Type)).Scan(&existingUUID)
+	`
+	lookupErr := tx.QueryRow(r.db.Rebind(lookupQuery), content.OrganizationUUID, content.PublicationUUID, string(content.Type)).Scan(&existingUUID)
 
 	switch {
 	case errors.Is(lookupErr, sql.ErrNoRows):
@@ -724,12 +751,13 @@ func (r *PublicationRepo) SaveContent(content *model.PublicationContent, actor s
 		content.CreatedAt = now
 		content.UpdatedBy = actor
 		content.UpdatedAt = now
-		_, err = tx.Exec(r.db.Rebind(`
+		insertQuery := `
 			INSERT INTO api_publication_contents (
 				uuid, organization_uuid, publication_uuid, type, file_name, content_type, content,
 				data_version, created_by, created_at, updated_by, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`),
+		`
+		_, err = tx.Exec(r.db.Rebind(insertQuery),
 			content.UUID, content.OrganizationUUID, content.PublicationUUID, string(content.Type),
 			nullIfEmpty(content.FileName), nullIfEmpty(content.ContentType), content.Content,
 			content.DataVersion, content.CreatedBy, content.CreatedAt, content.UpdatedBy, content.UpdatedAt,
@@ -743,11 +771,12 @@ func (r *PublicationRepo) SaveContent(content *model.PublicationContent, actor s
 		content.UUID = existingUUID
 		content.UpdatedBy = actor
 		content.UpdatedAt = now
-		_, err = tx.Exec(r.db.Rebind(`
+		updateQuery := `
 			UPDATE api_publication_contents
 			SET file_name = ?, content_type = ?, content = ?, updated_by = ?, updated_at = ?
 			WHERE uuid = ? AND organization_uuid = ?
-		`),
+		`
+		_, err = tx.Exec(r.db.Rebind(updateQuery),
 			nullIfEmpty(content.FileName), nullIfEmpty(content.ContentType), content.Content,
 			content.UpdatedBy, content.UpdatedAt, content.UUID, content.OrganizationUUID,
 		)
@@ -756,9 +785,10 @@ func (r *PublicationRepo) SaveContent(content *model.PublicationContent, actor s
 		}
 	}
 
-	if _, err := tx.Exec(r.db.Rebind(`
+	touchPublicationQuery := `
 		UPDATE api_publications SET updated_by = ?, updated_at = ? WHERE uuid = ? AND organization_uuid = ?
-	`), actor, now, content.PublicationUUID, content.OrganizationUUID); err != nil {
+	`
+	if _, err := tx.Exec(r.db.Rebind(touchPublicationQuery), actor, now, content.PublicationUUID, content.OrganizationUUID); err != nil {
 		return fmt.Errorf("failed to bump publication updated_at: %w", err)
 	}
 
