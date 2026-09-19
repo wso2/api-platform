@@ -580,6 +580,9 @@ func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 			httpReq.Header.Set(name, value)
 		}
 	}
+	if host := h.resolveRequestHost("", ""); host != "" {
+		httpReq.Host = host
+	}
 
 	h.lastRequest = httpReq
 
