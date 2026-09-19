@@ -96,64 +96,62 @@ export function SpecificationTab({ disabled, format, onChange, onFormatChange, p
   };
 
   return (
-    <Stack spacing={1.5}>
+    <Box
+      sx={(theme) => ({
+        border: hairline(theme),
+        borderColor: 'divider',
+        borderRadius: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden',
+      })}
+    >
+      <Stack
+        alignItems="center"
+        direction="row"
+        spacing={1}
+        sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, justifyContent: 'flex-end', px: 2, py: 1 }}
+      >
+        <ToggleButtonGroup
+          aria-label={intl.formatMessage(messages.formatLabel)}
+          color="primary"
+          disabled={disabled}
+          exclusive
+          onChange={(_event, next: SpecFormat | null) => {
+            if (next !== null) switchFormat(next);
+          }}
+          size="small"
+          value={format}
+        >
+          <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
+          <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
+        </ToggleButtonGroup>
+        {!editable && (
+          <Button
+            disabled={disabled}
+            onClick={() => setIsEditing(true)}
+            size="small"
+            startIcon={<Pencil size={16} />}
+            variant="outlined"
+          >
+            <FormattedMessage {...messages.edit} />
+          </Button>
+        )}
+      </Stack>
       {parseError && (
-        <Alert severity="error">
+        <Alert severity="error" sx={{ borderRadius: 0, flexShrink: 0 }}>
           <FormattedMessage
             {...messages.malformed}
             values={{ detail: parseError, format: FORMAT_LABELS[format] }}
           />
         </Alert>
       )}
-      <Box
-        sx={(theme) => ({
-          border: hairline(theme),
-          borderColor: 'divider',
-          borderRadius: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          height: 'clamp(480px, calc(100vh - 380px), 800px)',
-          overflow: 'hidden',
-        })}
-      >
-        <Stack
-          alignItems="center"
-          direction="row"
-          spacing={1}
-          sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, justifyContent: 'flex-end', px: 2, py: 1 }}
-        >
-          <ToggleButtonGroup
-            aria-label={intl.formatMessage(messages.formatLabel)}
-            color="primary"
-            disabled={disabled}
-            exclusive
-            onChange={(_event, next: SpecFormat | null) => {
-              if (next !== null) switchFormat(next);
-            }}
-            size="small"
-            value={format}
-          >
-            <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
-            <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
-          </ToggleButtonGroup>
-          {!editable && (
-            <Button
-              disabled={disabled}
-              onClick={() => setIsEditing(true)}
-              size="small"
-              startIcon={<Pencil size={16} />}
-              variant="outlined"
-            >
-              <FormattedMessage {...messages.edit} />
-            </Button>
-          )}
-        </Stack>
-        <Box sx={{ flex: 1, minHeight: 0 }}>
-          <Suspense fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}>
-            <SpecCodeEditor format={format} onChange={onChange} readOnly={disabled || !editable} value={text} />
-          </Suspense>
-        </Box>
+      <Box sx={{ flex: 1, minHeight: 0 }}>
+        <Suspense fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}>
+          <SpecCodeEditor format={format} onChange={onChange} readOnly={disabled || !editable} value={text} />
+        </Suspense>
       </Box>
-    </Stack>
+    </Box>
   );
 }

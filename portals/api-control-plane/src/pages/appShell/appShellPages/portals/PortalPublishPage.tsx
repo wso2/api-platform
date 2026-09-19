@@ -36,6 +36,7 @@ import {
 import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { isApiError } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
@@ -52,6 +53,9 @@ import {
   type DraftFormField,
   type DraftFormValues,
 } from './utils/publicationForm';
+
+/** Below this the window is too short to fit the page without scrolling, so it scrolls instead. */
+const MIN_PAGE_HEIGHT = 420;
 
 const messages = defineMessages({
   back: {
@@ -213,6 +217,9 @@ export function PortalPublishPage() {
   const { apiPortalId = '' } = useParams();
   const location = useLocation();
   const intl = useIntl();
+  // The page fills the visible area and only its middle scrolls, so switching tabs
+  // or opening the editor never moves the header or the action buttons.
+  const fill = useFillScrollArea<HTMLDivElement>(MIN_PAGE_HEIGHT);
   const { notify } = useNotifications();
   const { params } = useConsoleScope();
   const orgHandle = params.orgHandle ?? '';
@@ -457,79 +464,81 @@ export function PortalPublishPage() {
 
   return (
     <>
-      <PageTitle>
-        <Link to={routes.apiPortals(orgHandle, projectHandler, apiHandler)}>
-          <PageTitle.BackButton>
-            <FormattedMessage {...messages.back} />
-          </PageTitle.BackButton>
-        </Link>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} values={{ portalName }} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage
-            {...messages.subtitle}
-            values={{ apiName: api.displayName, version: api.version }}
+      <Box ref={fill.ref} sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}>
+        <PageTitle>
+          <Link to={routes.apiPortals(orgHandle, projectHandler, apiHandler)}>
+            <PageTitle.BackButton>
+              <FormattedMessage {...messages.back} />
+            </PageTitle.BackButton>
+          </Link>
+          <PageTitle.Header>
+            <FormattedMessage {...messages.title} values={{ portalName }} />
+          </PageTitle.Header>
+          <PageTitle.SubHeader>
+            <FormattedMessage
+              {...messages.subtitle}
+              values={{ apiName: api.displayName, version: api.version }}
+            />
+          </PageTitle.SubHeader>
+        </PageTitle>
+
+        <Stack spacing={3} sx={{ flex: 1, minHeight: 0 }}>
+          <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+              <Tabs onChange={(_event, next: Tab) => setTab(next)} value={tab}>
+                <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
+                <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
+                {/* Disabled, not omitted — still on the roadmap, just not this release. */}
+                <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
+                <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
+                <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
+              </Tabs>
+            </Box>
+
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pt: 3 }}>
+              {tab === 'details' ? (
+                <ApiDetailsTab
+                  disabled={pendingAction !== 'idle'}
+                  errors={{
+                    displayName: errorFor('displayName'),
+                    version: errorFor('version'),
+                    productionUrl: errorFor('productionUrl'),
+                    sandboxUrl: errorFor('sandboxUrl'),
+                  }}
+                  onBlurField={markTouched}
+                  onChange={setValues}
+                  values={values}
+                />
+              ) : (
+                <SpecificationTab
+                  disabled={pendingAction !== 'idle'}
+                  format={definitionFormat}
+                  onFormatChange={setDefinitionFormat}
+                  onChange={(text) => {
+                    setDefinitionText(text);
+                    if (definitionParseError) setDefinitionParseError(undefined);
+                  }}
+                  parseError={definitionParseError}
+                  text={definitionText}
+                />
+              )}
+            </Box>
+          </Box>
+
+          <PublishActionsBar
+            canDeprecate={canDeprecate}
+            deprecating={pendingAction === 'deprecating'}
+            isPublished={isPublished}
+            onDeprecate={() => setConfirmingDeprecate(true)}
+            onPublish={handlePublish}
+            onSaveDraft={handleSaveDraft}
+            onUnpublish={() => setConfirmingUnpublish(true)}
+            publishing={pendingAction === 'publishing'}
+            savingDraft={pendingAction === 'saving'}
+            unpublishing={pendingAction === 'unpublishing'}
           />
-        </PageTitle.SubHeader>
-      </PageTitle>
-
-      <Stack spacing={3}>
-        <Box>
-          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tabs onChange={(_event, next: Tab) => setTab(next)} value={tab}>
-              <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
-              <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-              {/* Disabled, not omitted — still on the roadmap, just not this release. */}
-              <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
-              <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
-              <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
-            </Tabs>
-          </Box>
-
-          <Box sx={{ pt: 3 }}>
-            {tab === 'details' ? (
-              <ApiDetailsTab
-                disabled={pendingAction !== 'idle'}
-                errors={{
-                  displayName: errorFor('displayName'),
-                  version: errorFor('version'),
-                  productionUrl: errorFor('productionUrl'),
-                  sandboxUrl: errorFor('sandboxUrl'),
-                }}
-                onBlurField={markTouched}
-                onChange={setValues}
-                values={values}
-              />
-            ) : (
-              <SpecificationTab
-                disabled={pendingAction !== 'idle'}
-                format={definitionFormat}
-                onFormatChange={setDefinitionFormat}
-                onChange={(text) => {
-                  setDefinitionText(text);
-                  if (definitionParseError) setDefinitionParseError(undefined);
-                }}
-                parseError={definitionParseError}
-                text={definitionText}
-              />
-            )}
-          </Box>
-        </Box>
-
-        <PublishActionsBar
-          canDeprecate={canDeprecate}
-          deprecating={pendingAction === 'deprecating'}
-          isPublished={isPublished}
-          onDeprecate={() => setConfirmingDeprecate(true)}
-          onPublish={handlePublish}
-          onSaveDraft={handleSaveDraft}
-          onUnpublish={() => setConfirmingUnpublish(true)}
-          publishing={pendingAction === 'publishing'}
-          savingDraft={pendingAction === 'saving'}
-          unpublishing={pendingAction === 'unpublishing'}
-        />
-      </Stack>
+        </Stack>
+      </Box>
 
       <ConfirmDialog
         confirmLabel={intl.formatMessage(messages.unpublishConfirmAction)}
