@@ -19,6 +19,7 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -27,6 +28,9 @@ import (
 )
 
 var errInsecureRedirect = errors.New("redirect to a non-HTTPS URL refused")
+
+// retryBackoff is the fixed wait between attempts.
+const retryBackoff = time.Second
 
 // RetryableHTTPClient wraps an HTTP client with retry logic
 type RetryableHTTPClient struct {
@@ -44,15 +48,12 @@ type RetryableHTTPClient struct {
 // via platform_api.http_client in config.toml), and additionally refuses any redirect to a
 // non-HTTPS URL so a credential header is never sent in cleartext.
 //
-// timeout is accepted for call-site compatibility (and is still used as this client's own
-// Do-loop budget expectations) but no longer varies the underlying transport's construction
-// — the shared client's own Timeouts.Overall is a safety-net only; a real per-call budget
-// should be supplied via context.WithTimeout on the request passed to Do, matching every
-// other caller of the shared client (see internal/utils/mcp.go, common.go).
+// timeout is the allowance for a single attempt. It does not vary the underlying transport;
+// callers derive the request context's deadline from TotalTimeout so every attempt fits.
 //
 // Parameters:
 //   - maxRetries: Maximum number of retry attempts (e.g., 3 for spec requirement)
-//   - timeout: Retained for call-site compatibility; see doc comment above
+//   - timeout: Time allowed for each attempt
 //
 // Returns:
 //   - *RetryableHTTPClient: A configured HTTP client with retry logic
@@ -87,12 +88,20 @@ func NewRetryableHTTPClient(maxRetries int, timeout time.Duration) (*RetryableHT
 	}, nil
 }
 
+// TotalTimeout is the time all attempts and the waits between them can take, for use as
+// the deadline of the context passed to Do.
+func (r *RetryableHTTPClient) TotalTimeout() time.Duration {
+	attempts := time.Duration(r.maxRetries + 1)
+	return attempts*r.timeout + time.Duration(r.maxRetries)*retryBackoff
+}
+
 // Do executes an HTTP request with retry logic
 //
 // Retry behavior:
 //   - Retries on network errors or 5xx server errors
 //   - Does NOT retry on 4xx client errors (non-retryable)
-//   - Uses linear backoff (1 second between retries)
+//   - Waits retryBackoff between retries, or stops early if the request context ends
+//   - Resends the full request body on every retry (via req.GetBody)
 //   - Maximum attempts = maxRetries + 1 (initial attempt + retries)
 //
 // Parameters:
@@ -106,7 +115,14 @@ func (r *RetryableHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	var err error
 
 	for attempt := 0; attempt <= r.maxRetries; attempt++ {
-		// Execute the request
+		if attempt > 0 && req.GetBody != nil {
+			body, bodyErr := req.GetBody()
+			if bodyErr != nil {
+				return nil, fmt.Errorf("failed to rewind request body for retry: %w", bodyErr)
+			}
+			req.Body = body
+		}
+
 		resp, err = r.client.Do(req)
 
 		// Success: no error and status code < 500
@@ -114,16 +130,20 @@ func (r *RetryableHTTPClient) Do(req *http.Request) (*http.Response, error) {
 			return resp, nil
 		}
 
-		// Log retry attempt
 		if attempt < r.maxRetries {
 			if err != nil {
-				log.Printf("[RetryClient] Attempt %d/%d failed with error: %v. Retrying in 1 second...",
-					attempt+1, r.maxRetries+1, err)
+				log.Printf("[RetryClient] Attempt %d/%d failed with error: %v. Retrying in %s...",
+					attempt+1, r.maxRetries+1, err, retryBackoff)
 			} else {
-				log.Printf("[RetryClient] Attempt %d/%d failed with status %d. Retrying in 1 second...",
-					attempt+1, r.maxRetries+1, resp.StatusCode)
+				log.Printf("[RetryClient] Attempt %d/%d failed with status %d. Retrying in %s...",
+					attempt+1, r.maxRetries+1, resp.StatusCode, retryBackoff)
+				resp.Body.Close()
 			}
-			time.Sleep(1 * time.Second) // Linear backoff
+			select {
+			case <-time.After(retryBackoff):
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
 		}
 	}
 

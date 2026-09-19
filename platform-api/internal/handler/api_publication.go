@@ -518,6 +518,7 @@ func (h *PublicationHandler) Deprecate(w http.ResponseWriter, r *http.Request) e
 // bytes with its stored Content-Type — matching how the portal itself serves
 // this same content.
 func writeContent(w http.ResponseWriter, content *model.PublicationContent) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if content.ContentType != "" {
 		w.Header().Set("Content-Type", content.ContentType)
 	}
