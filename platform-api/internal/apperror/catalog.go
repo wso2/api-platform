@@ -250,4 +250,7 @@ var (
 	// isn't currently published or deprecated to this portal.
 	APIPublicationNotLive = def(CodeAPIPublicationNotLive, http.StatusConflict,
 		"This API is not currently published or deprecated to this API Portal, so it cannot be unpublished.")
+	// APIPublicationNotPublished: the API is not currently PUBLISHED on this portal.
+	APIPublicationNotPublished = def(CodeAPIPublicationNotPublished, http.StatusConflict,
+		"This API is not currently published to this API Portal, so it cannot be deprecated.")
 )

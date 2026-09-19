@@ -231,4 +231,6 @@ const (
 	// live-listing reads) — this is a 409 state-precondition failure on an
 	// action, not a missing-resource read.
 	CodeAPIPublicationNotLive = "PUBLICATION_NOT_LIVE"
+	// CodeAPIPublicationNotPublished: Deprecate requires a PUBLISHED listing.
+	CodeAPIPublicationNotPublished = "PUBLICATION_NOT_PUBLISHED"
 )

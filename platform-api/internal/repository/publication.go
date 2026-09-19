@@ -650,6 +650,26 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 	return true, nil
 }
 
+// DeprecatePublication sets the live row's status to DEPRECATED if it is currently
+// PUBLISHED, changing only status and the audit columns. found is false when no row
+// matched.
+func (r *PublicationRepo) DeprecatePublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error) {
+	result, err := r.db.Exec(r.db.Rebind(`
+		UPDATE api_publications
+		SET status = ?, updated_by = ?, updated_at = ?
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0 AND status = ?
+	`), model.PublicationStatusDeprecated, actor, time.Now().UTC(),
+		orgUUID, artifactUUID, apiPortalUUID, model.PublicationStatusPublished)
+	if err != nil {
+		return false, fmt.Errorf("failed to deprecate publication: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read deprecate result: %w", err)
+	}
+	return rows > 0, nil
+}
+
 // GetContent returns one content row (definition/landing page/thumbnail) for
 // a publication row, or nil if none is stored.
 func (r *PublicationRepo) GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error) {

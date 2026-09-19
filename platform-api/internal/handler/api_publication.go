@@ -124,6 +124,7 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/api-publications", middleware.MapErrors(h.slogger, h.ListPublications))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish", middleware.MapErrors(h.slogger, h.Publish))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/unpublish", middleware.MapErrors(h.slogger, h.Unpublish))
+	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/deprecate", middleware.MapErrors(h.slogger, h.Deprecate))
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -488,6 +489,28 @@ func (h *PublicationHandler) Unpublish(w http.ResponseWriter, r *http.Request) e
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// Deprecate handles POST .../rest-api/{apiId}/deprecate.
+func (h *PublicationHandler) Deprecate(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
+
+	actor, err := resolveActorErr(r, h.identity, "deprecate API")
+	if err != nil {
+		return err
+	}
+
+	pub, err := h.service.Deprecate(r.Context(), restAPITypeValue, apiId, apiPortalId, orgId, actor)
+	if err != nil {
+		return serviceError(err, "failed to deprecate API")
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, publicationModelToResponse(pub))
 	return nil
 }
 

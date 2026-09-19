@@ -512,6 +512,7 @@ func TestHTTPPortalPublisher_AuthFailureIsNotConflict(t *testing.T) {
 			calls := map[string]error{
 				"publish (existence check)": p.Publish(context.Background(), portal, "my-api", pub, nil),
 				"unpublish":                 p.Unpublish(context.Background(), portal, "my-api"),
+				"deprecate":                 p.Deprecate(context.Background(), portal, "my-api", pub),
 			}
 			for name, err := range calls {
 				if err == nil {
@@ -553,5 +554,180 @@ func TestHTTPPortalPublisher_PushAuthFailureIsNotConflict(t *testing.T) {
 				t.Fatalf("want a plain error, not *PortalConflictError, for %d", status)
 			}
 		})
+	}
+}
+
+// liveListingForDeprecate returns a live row with every portal-overwritten field populated.
+func liveListingForDeprecate() *model.Publication {
+	return &model.Publication{
+		Status:              model.PublicationStatusPublished,
+		DisplayName:         "Orders",
+		Version:             "1.0",
+		Description:         "Order management",
+		Tags:                []string{"payments"},
+		Labels:              []string{"finance"},
+		AgentVisibility:     "HIDDEN",
+		ProductionURL:       "https://prod.example.com",
+		SandboxURL:          "https://sandbox.example.com",
+		BusinessOwner:       "Bo",
+		BusinessOwnerEmail:  "bo@example.com",
+		TechnicalOwner:      "To",
+		TechnicalOwnerEmail: "to@example.com",
+		SubscriptionPlanIds: []string{"Gold"},
+	}
+}
+
+// Deprecate sends a single PUT with the full live metadata, status DEPRECATED, and no
+// definition part.
+func TestHTTPPortalPublisher_Deprecate_SendsLiveListingWithDeprecatedStatus(t *testing.T) {
+	var requests []string
+	var gotAuth string
+	var gotParts map[string]bool
+	var gotYAML []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		gotAuth = r.Header.Get("Authorization")
+
+		_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil {
+			t.Fatalf("ParseMediaType: %v", err)
+		}
+		gotParts = map[string]bool{}
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatalf("NextPart: %v", err)
+			}
+			gotParts[part.FormName()] = true
+			if part.FormName() == "metadata" {
+				gotYAML, _ = io.ReadAll(part)
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.APIPortal{URL: srv.URL}
+
+	if err := p.Deprecate(context.Background(), portal, "my-api", liveListingForDeprecate()); err != nil {
+		t.Fatalf("Deprecate: %v", err)
+	}
+	if len(requests) != 1 || requests[0] != "PUT /apis/my-api" {
+		t.Fatalf("want exactly one PUT /apis/my-api, got %v", requests)
+	}
+	if gotAuth != "SharedKey test-shared-key" {
+		t.Fatalf("want Authorization 'SharedKey test-shared-key', got %q", gotAuth)
+	}
+	if len(gotParts) != 1 || !gotParts["metadata"] {
+		t.Fatalf("want only the metadata part (no definition), got %v", gotParts)
+	}
+
+	var envelope struct {
+		Metadata struct {
+			Name string `yaml:"name"`
+		} `yaml:"metadata"`
+		Spec struct {
+			Type              string   `yaml:"type"`
+			DisplayName       string   `yaml:"displayName"`
+			Version           string   `yaml:"version"`
+			Description       string   `yaml:"description"`
+			Status            string   `yaml:"status"`
+			AgentVisibility   string   `yaml:"agentVisibility"`
+			Tags              []string `yaml:"tags"`
+			Labels            []string `yaml:"labels"`
+			ReferenceID       string   `yaml:"referenceId"`
+			SubscriptionPlans []string `yaml:"subscriptionPlans"`
+			Endpoints         struct {
+				ProductionURL string `yaml:"productionUrl"`
+				SandboxURL    string `yaml:"sandboxUrl"`
+			} `yaml:"endpoints"`
+			BusinessInformation struct {
+				BusinessOwner       string `yaml:"businessOwner"`
+				BusinessOwnerEmail  string `yaml:"businessOwnerEmail"`
+				TechnicalOwner      string `yaml:"technicalOwner"`
+				TechnicalOwnerEmail string `yaml:"technicalOwnerEmail"`
+			} `yaml:"businessInformation"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(gotYAML, &envelope); err != nil {
+		t.Fatalf("unmarshal sent YAML: %v\n%s", err, gotYAML)
+	}
+	spec := envelope.Spec
+	if spec.Status != "DEPRECATED" {
+		t.Fatalf("want status DEPRECATED, got %q", spec.Status)
+	}
+	if envelope.Metadata.Name != "my-api" || spec.ReferenceID != "my-api" || spec.Type != "REST" {
+		t.Fatalf("want identity fields resent, got name=%q referenceId=%q type=%q", envelope.Metadata.Name, spec.ReferenceID, spec.Type)
+	}
+	if spec.DisplayName != "Orders" || spec.Version != "1.0" || spec.Description != "Order management" || spec.AgentVisibility != "HIDDEN" {
+		t.Fatalf("want live core fields resent unchanged, got %+v", spec)
+	}
+	if len(spec.Tags) != 1 || spec.Tags[0] != "payments" || len(spec.Labels) != 1 || spec.Labels[0] != "finance" ||
+		len(spec.SubscriptionPlans) != 1 || spec.SubscriptionPlans[0] != "Gold" {
+		t.Fatalf("want tags, labels and plans resent (the portal replaces them), got %+v", spec)
+	}
+	if spec.Endpoints.ProductionURL != "https://prod.example.com" || spec.Endpoints.SandboxURL != "https://sandbox.example.com" {
+		t.Fatalf("want endpoints resent, got %+v", spec.Endpoints)
+	}
+	if spec.BusinessInformation.BusinessOwner != "Bo" || spec.BusinessInformation.BusinessOwnerEmail != "bo@example.com" ||
+		spec.BusinessInformation.TechnicalOwner != "To" || spec.BusinessInformation.TechnicalOwnerEmail != "to@example.com" {
+		t.Fatalf("want owner contacts resent (the portal nulls omitted ones), got %+v", spec.BusinessInformation)
+	}
+}
+
+// Deprecate maps a non-auth 4xx to *PortalConflictError and a server error to a plain
+// error. 401/403 are covered by TestHTTPPortalPublisher_AuthFailureIsNotConflict.
+func TestHTTPPortalPublisher_Deprecate_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		status       int
+		wantConflict bool
+	}{
+		{http.StatusBadRequest, true},
+		{http.StatusNotFound, true},
+		{http.StatusConflict, true},
+		{http.StatusInternalServerError, false},
+		{http.StatusBadGateway, false},
+	}
+	for _, tc := range cases {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+			}))
+			defer srv.Close()
+
+			p := newTestHTTPPortalPublisher(t, "test-shared-key")
+			err := p.Deprecate(context.Background(), &model.APIPortal{URL: srv.URL}, "my-api", liveListingForDeprecate())
+			if err == nil {
+				t.Fatalf("want an error for %d", tc.status)
+			}
+			var conflict *PortalConflictError
+			if got := errors.As(err, &conflict); got != tc.wantConflict {
+				t.Fatalf("status %d: want conflict=%v, got %v (%v)", tc.status, tc.wantConflict, got, err)
+			}
+		})
+	}
+}
+
+// Deprecate path-escapes the API handle.
+func TestHTTPPortalPublisher_Deprecate_EscapesHandleInPath(t *testing.T) {
+	var gotEscapedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotEscapedPath = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	if err := p.Deprecate(context.Background(), &model.APIPortal{URL: srv.URL}, "a/../b c", liveListingForDeprecate()); err != nil {
+		t.Fatalf("Deprecate: %v", err)
+	}
+	if want := "/apis/a%2F..%2Fb%20c"; gotEscapedPath != want {
+		t.Fatalf("want escaped path %q, got %q", want, gotEscapedPath)
 	}
 }

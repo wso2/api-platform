@@ -154,7 +154,24 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 		method, path = http.MethodPut, base+"/apis/"+escapedHandle
 	}
 
-	body, contentType, err := buildPortalMetadataMultipart(apiHandle, pub, definition)
+	// The portal itself decides whether an empty definition is acceptable.
+	if definition == nil {
+		definition = &model.PublicationContent{}
+	}
+	return p.pushMetadata(ctx, portal, method, path, apiHandle, model.PublicationStatusPublished, pub, definition)
+}
+
+// Deprecate implements PortalPublisher. The portal has no status-only call, so the
+// live metadata is re-sent unchanged apart from the status; no definition is sent.
+func (p *HTTPPortalPublisher) Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error {
+	path := strings.TrimRight(portal.URL, "/") + "/apis/" + url.PathEscape(apiHandle)
+	return p.pushMetadata(ctx, portal, http.MethodPut, path, apiHandle, model.PublicationStatusDeprecated, live, nil)
+}
+
+// pushMetadata sends the metadata (and the definition, if non-nil) to path and maps
+// the portal's response to the PortalPublisher error contract.
+func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.APIPortal, method, path, apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) error {
+	body, contentType, err := buildPortalMetadataMultipart(apiHandle, status, pub, definition)
 	if err != nil {
 		return err
 	}
@@ -190,7 +207,7 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 		// a conflicting handle/display name (409), an unresolvable reference
 		// like a subscription plan the portal doesn't recognize (404), or any
 		// other validation failure. All of these are "will keep rejecting",
-		// not "unreachable" — retrying without changing the draft can't help,
+		// not "unreachable" — retrying without changing the listing or the portal can't help,
 		// same as the literal-409 case this used to special-case alone.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
 		return &PortalConflictError{
@@ -364,11 +381,9 @@ type portalMetadataBusinessInfo struct {
 	TechnicalOwnerEmail string `yaml:"technicalOwnerEmail,omitempty"`
 }
 
-// buildPortalMetadataMultipart builds the two-part multipart body the portal
-// push sends: a "metadata" part (YAML envelope) and a "definition" part (raw
-// contract bytes, empty if the draft never stored one — the portal itself
-// decides whether that's acceptable).
-func buildPortalMetadataMultipart(apiHandle string, pub *model.Publication, definition *model.PublicationContent) (*bytes.Buffer, string, error) {
+// buildPortalMetadataMultipart builds the request body: a "metadata" part and,
+// when definition is non-nil, a "definition" part.
+func buildPortalMetadataMultipart(apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) (*bytes.Buffer, string, error) {
 	envelope := portalMetadataEnvelope{
 		APIVersion: "api-portal.api-platform.wso2.com/v1",
 		Kind:       "RestApi",
@@ -378,7 +393,7 @@ func buildPortalMetadataMultipart(apiHandle string, pub *model.Publication, defi
 			DisplayName:     pub.DisplayName,
 			Version:         pub.Version,
 			Description:     pub.Description,
-			Status:          "PUBLISHED",
+			Status:          status,
 			AgentVisibility: pub.AgentVisibility,
 			Tags:            nonNilStringsForYAML(pub.Tags),
 			Labels:          nonNilStringsForYAML(pub.Labels),
@@ -413,19 +428,18 @@ func buildPortalMetadataMultipart(apiHandle string, pub *model.Publication, defi
 		return nil, "", fmt.Errorf("failed to write metadata part: %w", err)
 	}
 
-	defFileName, defContent := "definition.json", []byte{}
 	if definition != nil {
-		defContent = definition.Content
+		defFileName := "definition.json"
 		if definition.FileName != "" {
 			defFileName = definition.FileName
 		}
-	}
-	defPart, err := mw.CreateFormFile("definition", defFileName)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create definition part: %w", err)
-	}
-	if _, err := defPart.Write(defContent); err != nil {
-		return nil, "", fmt.Errorf("failed to write definition part: %w", err)
+		defPart, err := mw.CreateFormFile("definition", defFileName)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create definition part: %w", err)
+		}
+		if _, err := defPart.Write(definition.Content); err != nil {
+			return nil, "", fmt.Errorf("failed to write definition part: %w", err)
+		}
 	}
 
 	if err := mw.Close(); err != nil {
