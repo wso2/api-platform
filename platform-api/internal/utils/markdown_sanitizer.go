@@ -82,9 +82,8 @@ func StripEmbeddedHTML(markdown string) string {
 			if skipDepth > 0 && string(name) == skipTag {
 				skipDepth--
 			}
-		// CommentToken, DoctypeToken: the token itself is always dropped from
-		// the output; nothing further to do for them.
 		default:
+			// CommentToken, DoctypeToken: dropped from the output.
 		}
 	}
 }

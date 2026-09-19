@@ -110,7 +110,7 @@ func marshalStringSlice(s []string) ([]byte, error) {
 }
 
 // nullIfEmpty maps an empty string to a driver NULL rather than storing "".
-func nullIfEmpty(s string) interface{} {
+func nullIfEmpty(s string) any {
 	if s == "" {
 		return nil
 	}
@@ -146,49 +146,52 @@ func (r *PublicationRepo) contentFlags(exec sqlExecutor, publicationUUID, orgUUI
 // planUUIDsForPublication returns the subscription_plan_uuid values mapped to
 // publicationUUID, ordered for deterministic responses.
 func (r *PublicationRepo) planUUIDsForPublication(exec sqlExecutor, publicationUUID, orgUUID string) ([]string, error) {
-	query := `
-		SELECT subscription_plan_uuid FROM api_publication_plan_mappings
-		WHERE publication_uuid = ? AND organization_uuid = ?
-		ORDER BY subscription_plan_uuid
-	`
+	return r.mappedUUIDs(exec, "api_publication_plan_mappings", "subscription_plan_uuid", publicationUUID, orgUUID)
+}
+
+// docUUIDsForPublication returns the doc_uuid values mapped to publicationUUID,
+// ordered for deterministic responses.
+func (r *PublicationRepo) docUUIDsForPublication(exec sqlExecutor, publicationUUID, orgUUID string) ([]string, error) {
+	return r.mappedUUIDs(exec, "api_publication_doc_mappings", "doc_uuid", publicationUUID, orgUUID)
+}
+
+// mappedUUIDs reads one column of a publication mapping table. table and column
+// are fixed identifiers from the two callers above, never request input.
+func (r *PublicationRepo) mappedUUIDs(exec sqlExecutor, table, column, publicationUUID, orgUUID string) ([]string, error) {
+	query := "SELECT " + column + " FROM " + table +
+		" WHERE publication_uuid = ? AND organization_uuid = ? ORDER BY " + column
 	rows, err := exec.Query(r.db.Rebind(query), publicationUUID, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load publication plan mappings: %w", err)
+		return nil, fmt.Errorf("failed to load %s: %w", table, err)
 	}
 	defer rows.Close()
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("failed to scan publication plan mapping: %w", err)
+			return nil, fmt.Errorf("failed to scan %s: %w", table, err)
 		}
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
 }
 
-// docUUIDsForPublication returns the doc_uuid values mapped to publicationUUID,
-// ordered for deterministic responses.
-func (r *PublicationRepo) docUUIDsForPublication(exec sqlExecutor, publicationUUID, orgUUID string) ([]string, error) {
+// lookupRowUUID returns the uuid of the draft (isDraft true) or live row for
+// (artifactUUID, apiPortalUUID, orgUUID), and whether such a row exists.
+func (r *PublicationRepo) lookupRowUUID(tx *sql.Tx, artifactUUID, apiPortalUUID, orgUUID string, isDraft bool) (string, bool, error) {
 	query := `
-		SELECT doc_uuid FROM api_publication_doc_mappings
-		WHERE publication_uuid = ? AND organization_uuid = ?
-		ORDER BY doc_uuid
+		SELECT uuid FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = ?
 	`
-	rows, err := exec.Query(r.db.Rebind(query), publicationUUID, orgUUID)
+	var id string
+	err := tx.QueryRow(r.db.Rebind(query), orgUUID, artifactUUID, apiPortalUUID, boolToInt(isDraft)).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to load publication document mappings: %w", err)
+		return "", false, err
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("failed to scan publication document mapping: %w", err)
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+	return id, true, nil
 }
 
 // GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
@@ -428,7 +431,7 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 // Callers (PromoteDraftToPublication, UnpublishPublication) run this inside
 // their own transaction; anchorUUID and draftUUID must both already be known
 // to exist for orgUUID.
-func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID, orgUUID string, isDraft int, status interface{}, actor string, now time.Time) error {
+func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID, orgUUID string, isDraft bool, status any, actor string, now time.Time) error {
 	var displayName, version, agentVisibility string
 	var description, prodURL, sandboxURL sql.NullString
 	var businessOwner, businessOwnerEmail, technicalOwner, technicalOwnerEmail sql.NullString
@@ -503,7 +506,7 @@ func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID
 	if _, err := tx.Exec(r.db.Rebind(updateAnchorQuery),
 		displayName, version, description, tagsBytes, labelsBytes, agentVisibility,
 		prodURL, sandboxURL, businessOwner, businessOwnerEmail, technicalOwner, technicalOwnerEmail,
-		isDraft, status, actor, now,
+		boolToInt(isDraft), status, actor, now,
 		anchorUUID, orgUUID,
 	); err != nil {
 		return fmt.Errorf("failed to merge draft into anchor publication: %w", err)
@@ -537,46 +540,35 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	}
 	defer tx.Rollback()
 
-	var draftUUID string
-	draftLookupQuery := `
-		SELECT uuid FROM api_publications
-		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
-	`
-	draftLookupErr := tx.QueryRow(r.db.Rebind(draftLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
-	if errors.Is(draftLookupErr, sql.ErrNoRows) {
+	draftUUID, draftFound, err := r.lookupRowUUID(tx, artifactUUID, apiPortalUUID, orgUUID, true)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to look up publication draft to promote: %w", err)
+	}
+	if !draftFound {
 		return nil, false, nil
 	}
-	if draftLookupErr != nil {
-		return nil, false, fmt.Errorf("failed to look up publication draft to promote: %w", draftLookupErr)
+
+	liveUUID, liveFound, err := r.lookupRowUUID(tx, artifactUUID, apiPortalUUID, orgUUID, false)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to look up existing live publication: %w", err)
 	}
 
-	var liveUUID string
-	liveLookupQuery := `
-		SELECT uuid FROM api_publications
-		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0
-	`
-	liveLookupErr := tx.QueryRow(r.db.Rebind(liveLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
-
-	var anchorUUID string
-	switch {
-	case liveLookupErr == nil:
-		if err := r.mergeDraftIntoAnchor(tx, liveUUID, draftUUID, orgUUID, 0, "PUBLISHED", actor, now); err != nil {
+	anchorUUID := draftUUID
+	if liveFound {
+		if err := r.mergeDraftIntoAnchor(tx, liveUUID, draftUUID, orgUUID, false, model.PublicationStatusPublished, actor, now); err != nil {
 			return nil, false, err
 		}
 		anchorUUID = liveUUID
 		replaced = true
-	case errors.Is(liveLookupErr, sql.ErrNoRows):
+	} else {
 		promoteQuery := `
 			UPDATE api_publications
-			SET is_draft = 0, status = 'PUBLISHED', updated_by = ?, updated_at = ?
+			SET is_draft = 0, status = ?, updated_by = ?, updated_at = ?
 			WHERE uuid = ? AND organization_uuid = ?
 		`
-		if _, err := tx.Exec(r.db.Rebind(promoteQuery), actor, now, draftUUID, orgUUID); err != nil {
+		if _, err := tx.Exec(r.db.Rebind(promoteQuery), model.PublicationStatusPublished, actor, now, draftUUID, orgUUID); err != nil {
 			return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
 		}
-		anchorUUID = draftUUID
-	default:
-		return nil, false, fmt.Errorf("failed to look up existing live publication: %w", liveLookupErr)
 	}
 
 	promotedQuery := `SELECT ` + publicationDetailColumns + `
@@ -631,32 +623,24 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 	}
 	defer tx.Rollback()
 
-	var liveUUID string
-	liveLookupQuery := `
-		SELECT uuid FROM api_publications
-		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 0
-	`
-	lookupErr := tx.QueryRow(r.db.Rebind(liveLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&liveUUID)
-	if errors.Is(lookupErr, sql.ErrNoRows) {
+	liveUUID, liveFound, err := r.lookupRowUUID(tx, artifactUUID, apiPortalUUID, orgUUID, false)
+	if err != nil {
+		return false, fmt.Errorf("failed to look up live publication to unpublish: %w", err)
+	}
+	if !liveFound {
 		return false, nil
 	}
-	if lookupErr != nil {
-		return false, fmt.Errorf("failed to look up live publication to unpublish: %w", lookupErr)
+
+	draftUUID, draftFound, err := r.lookupRowUUID(tx, artifactUUID, apiPortalUUID, orgUUID, true)
+	if err != nil {
+		return false, fmt.Errorf("failed to look up publication draft: %w", err)
 	}
 
-	var draftUUID string
-	draftLookupQuery := `
-		SELECT uuid FROM api_publications
-		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
-	`
-	draftErr := tx.QueryRow(r.db.Rebind(draftLookupQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID)
-
-	switch {
-	case draftErr == nil:
-		if err := r.mergeDraftIntoAnchor(tx, liveUUID, draftUUID, orgUUID, 1, nil, actor, now); err != nil {
+	if draftFound {
+		if err := r.mergeDraftIntoAnchor(tx, liveUUID, draftUUID, orgUUID, true, nil, actor, now); err != nil {
 			return false, err
 		}
-	case errors.Is(draftErr, sql.ErrNoRows):
+	} else {
 		demoteQuery := `
 			UPDATE api_publications
 			SET is_draft = 1, status = NULL, updated_by = ?, updated_at = ?
@@ -665,8 +649,6 @@ func (r *PublicationRepo) UnpublishPublication(artifactUUID, apiPortalUUID, orgU
 		if _, err := tx.Exec(r.db.Rebind(demoteQuery), actor, now, liveUUID, orgUUID); err != nil {
 			return false, fmt.Errorf("failed to demote publication to draft: %w", err)
 		}
-	default:
-		return false, fmt.Errorf("failed to look up publication draft: %w", draftErr)
 	}
 
 	if err := tx.Commit(); err != nil {

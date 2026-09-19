@@ -40,12 +40,8 @@ import (
 // /apis/{handle}), both addressed by the API's own handle — no
 // portal-returned reference ID is stored locally.
 //
-// The content ZIP (thumbnail, landing page, documents) is NOT implemented
-// here yet: its exact multipart/ZIP shape hasn't been verified against API
-// Portal's real asset-ingestion code, and this feature has no way to fetch a
-// document's actual content in the first place — api_documents' content
-// belongs to another team's not-yet-built feature. Add it once both are
-// confirmed rather than guess at the shape.
+// Only the metadata and definition are pushed; the content ZIP (thumbnail,
+// landing page, documents) is not implemented yet.
 type HTTPPortalPublisher struct {
 	client       *client.RetryableHTTPClient
 	authRegistry *APIPortalAuthRegistry
@@ -71,49 +67,32 @@ func (p *HTTPPortalPublisher) authHeader(ctx context.Context, portal *model.APIP
 	return provider.AuthorizationHeader(ctx)
 }
 
-// portalErrorBodyMaxBytes bounds how much of a 4xx response body is read
-// when looking for a known conflict reason — this is always a small JSON
-// error envelope (portalErrorEnvelope below), never user-facing configurable
-// content, so a small fixed cap (rather than a config field) is appropriate.
+// portalErrorBodyMaxBytes bounds how much of a 4xx response body is read when
+// looking for a known conflict reason; it is always a small JSON error envelope.
 const portalErrorBodyMaxBytes = 8 << 10 // 8 KiB
 
-// portalErrorEnvelope is the shape of api-portal's own error responses
-// (its util.js sendError/handleError helpers): {"code","message","errors":
-// [{"message"}]}. The outer "message" field is the portal's own
-// MACHINE-READABLE error code (e.g. "ERR_SUB_EXIST"), not free text —
-// confirmed by reading apiMetadataService.js's CustomError call sites
-// directly (new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST,
-// "API has subscriptions.") — the human sentence is the third argument,
-// nested under errors[0].message, which this deliberately never reads).
+// portalErrorEnvelope is the shape of the API Portal's error responses. Its
+// "message" field is a machine-readable error code (e.g. "ERR_SUB_EXIST"); the
+// human-readable text under errors[] is deliberately never read.
 type portalErrorEnvelope struct {
 	Message string `json:"message"`
 }
 
-// knownPortalConflictReasons maps a portal error CODE (never its raw
-// message/errors[] text) to a short, pre-approved phrase this service owns
-// and controls. error-handling.md forbids exposing raw downstream error
-// text to the client — and api-portal's own code shows that's not
-// paranoia: its duplicate-key conflict path deliberately keeps its message
-// generic for the same reason ("raw driver messages can echo internal
-// constraint/table names"). This allowlist preserves that guarantee: only
-// codes individually verified against apiMetadataService.js's CustomError
-// call sites get a specific reason; anything else falls back to
-// defaultPortalConflictReason. Extend this map only after confirming a new
-// code the same way, never by forwarding errors[].message directly.
+// knownPortalConflictReasons maps a portal error code to a short, pre-approved
+// phrase. Raw portal error text is never forwarded to the client
+// (error-handling.md); any other code falls back to defaultPortalConflictReason.
 var knownPortalConflictReasons = map[string]string{
 	"ERR_SUB_EXIST": "active subscriptions are removed",
 	"ERR_KEY_EXIST": "active API keys are removed",
 }
 
-// defaultPortalConflictReason is also this package's original, fixed wording
-// for APIPublicationPortalConflict, kept as the fallback for any portal
-// response that isn't one of the known codes above.
+// defaultPortalConflictReason is the fallback for any portal response that
+// isn't one of the known codes above.
 const defaultPortalConflictReason = "the conflict is resolved"
 
-// portalConflictReason inspects a 4xx response body for one of the known
-// portal error codes above, returning a curated, safe reason phrase — never
-// the portal's own raw error text — or the generic fallback if the body is
-// unparseable or names an unrecognized code.
+// portalConflictReason returns the reason phrase for the error code in a 4xx
+// response body, or the generic fallback if the body is unparseable or the code
+// is unknown.
 func portalConflictReason(body []byte) string {
 	var envelope portalErrorEnvelope
 	if err := json.Unmarshal(body, &envelope); err != nil {
@@ -138,19 +117,44 @@ func portalAuthError(status int) error {
 	return fmt.Errorf("the API Portal rejected the configured credential (status %d)", status)
 }
 
+// isPortalRejection reports whether status is a 4xx the portal will keep
+// returning for this request as-is — a conflicting handle or display name, an
+// unknown subscription plan, or any other validation failure. Retrying
+// without changing the listing can't help, so it is not a transient failure.
+func isPortalRejection(status int) bool {
+	return status >= 400 && status < 500
+}
+
+// portalRejection builds the conflict error for a rejected request, with a
+// reason drawn only from the known portal error codes.
+func portalRejection(resp *http.Response, message string) *PortalConflictError {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
+	return &PortalConflictError{
+		Message: fmt.Sprintf("%s (status %d)", message, resp.StatusCode),
+		Reason:  portalConflictReason(body),
+	}
+}
+
+// apisURL is the portal's API collection URL.
+func apisURL(portal *model.APIPortal) string {
+	return strings.TrimRight(portal.URL, "/") + "/apis"
+}
+
+// apiURL is the portal's URL for the listing with the given handle.
+func apiURL(portal *model.APIPortal, apiHandle string) string {
+	return apisURL(portal) + "/" + url.PathEscape(apiHandle)
+}
+
 // Publish implements PortalPublisher.
 func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
-	base := strings.TrimRight(portal.URL, "/")
-	escapedHandle := url.PathEscape(apiHandle)
-
-	exists, err := p.checkExists(ctx, portal, base, escapedHandle)
+	exists, err := p.checkExists(ctx, portal, apiHandle)
 	if err != nil {
 		return err
 	}
 
-	method, path := http.MethodPost, base+"/apis"
+	method, path := http.MethodPost, apisURL(portal)
 	if exists {
-		method, path = http.MethodPut, base+"/apis/"+escapedHandle
+		method, path = http.MethodPut, apiURL(portal, apiHandle)
 	}
 
 	// The portal itself decides whether an empty definition is acceptable.
@@ -163,8 +167,7 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 // Deprecate implements PortalPublisher. The portal has no status-only call, so the
 // live metadata is re-sent unchanged apart from the status; no definition is sent.
 func (p *HTTPPortalPublisher) Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error {
-	path := strings.TrimRight(portal.URL, "/") + "/apis/" + url.PathEscape(apiHandle)
-	return p.pushMetadata(ctx, portal, http.MethodPut, path, apiHandle, model.PublicationStatusDeprecated, live, nil)
+	return p.pushMetadata(ctx, portal, http.MethodPut, apiURL(portal, apiHandle), apiHandle, model.PublicationStatusDeprecated, live, nil)
 }
 
 // pushMetadata sends the metadata (and the definition, if non-nil) to path and maps
@@ -201,37 +204,18 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 		return nil
 	case isPortalAuthFailure(resp.StatusCode):
 		return portalAuthError(resp.StatusCode)
-	case resp.StatusCode >= 400 && resp.StatusCode < 500:
-		// Any 4xx means the portal understood and rejected the request as-is —
-		// a conflicting handle/display name (409), an unresolvable reference
-		// like a subscription plan the portal doesn't recognize (404), or any
-		// other validation failure. All of these are "will keep rejecting",
-		// not "unreachable" — retrying without changing the listing or the portal can't help.
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
-		return &PortalConflictError{
-			Message: fmt.Sprintf("the API Portal rejected this listing (status %d)", resp.StatusCode),
-			Reason:  portalConflictReason(body),
-		}
+	case isPortalRejection(resp.StatusCode):
+		return portalRejection(resp, "the API Portal rejected this listing")
 	default:
 		return fmt.Errorf("portal metadata push failed: unexpected status %d", resp.StatusCode)
 	}
 }
 
-// Unpublish implements PortalPublisher: DELETE /apis/{handle} on the portal
-// — verified against the portal's own OpenAPI spec
-// (portals/api-portal/docs/api-portal-openapi-spec-v0.9.yaml) and
-// apiMetadataService.js's deleteAPIMetadata. A 200 means removed; a 404 is
-// treated as already-removed (success), which is what makes a retry after an
-// already-successful removal converge rather than error. Any other 4xx —
-// most commonly 409, when the portal still has active subscriptions/API
-// keys attached to the listing (a force-delete-with-listing capability
-// isn't implemented on the portal yet) — surfaces as the same
-// PortalConflictError Publish uses for a rejection the portal will keep
-// making.
+// Unpublish implements PortalPublisher: DELETE /apis/{handle} on the portal. A
+// 404 counts as already removed, so a retry after a successful removal
+// converges. Any other 4xx (most commonly 409, when active subscriptions or API
+// keys are still attached) is returned as a PortalConflictError.
 func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error {
-	base := strings.TrimRight(portal.URL, "/")
-	escapedHandle := url.PathEscape(apiHandle)
-
 	authHeader, err := p.authHeader(ctx, portal)
 	if err != nil {
 		return err
@@ -240,7 +224,7 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, base+"/apis/"+escapedHandle, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, apiURL(portal, apiHandle), nil)
 	if err != nil {
 		return fmt.Errorf("failed to build portal unpublish request: %w", err)
 	}
@@ -253,22 +237,12 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 	defer resp.Body.Close()
 
 	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		return nil
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return nil
 	case isPortalAuthFailure(resp.StatusCode):
 		return portalAuthError(resp.StatusCode)
-	case resp.StatusCode >= 400 && resp.StatusCode < 500:
-		// Same 4xx-is-non-retryable reasoning as Publish: a 409 (active
-		// subscriptions/API keys) is the documented case, but any other 4xx
-		// the portal returns here means it understood and rejected the
-		// removal, not that it's unreachable — won't clear on its own retry.
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
-		return &PortalConflictError{
-			Message: fmt.Sprintf("the API Portal rejected removal of this listing (status %d)", resp.StatusCode),
-			Reason:  portalConflictReason(body),
-		}
+	case isPortalRejection(resp.StatusCode):
+		return portalRejection(resp, "the API Portal rejected removal of this listing")
 	default:
 		return fmt.Errorf("portal unpublish failed: unexpected status %d", resp.StatusCode)
 	}
@@ -276,7 +250,7 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 
 // checkExists issues GET /apis/{handle} on the portal. 200 means it exists
 // (update); 404 means it doesn't (create).
-func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.APIPortal, base, escapedHandle string) (bool, error) {
+func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.APIPortal, apiHandle string) (bool, error) {
 	authHeader, err := p.authHeader(ctx, portal)
 	if err != nil {
 		return false, err
@@ -285,7 +259,7 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.API
 	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, base+"/apis/"+escapedHandle, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, apiURL(portal, apiHandle), nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to build portal existence-check request: %w", err)
 	}
@@ -304,22 +278,15 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.API
 		return false, nil
 	case isPortalAuthFailure(resp.StatusCode):
 		return false, portalAuthError(resp.StatusCode)
-	case resp.StatusCode >= 400 && resp.StatusCode < 500:
-		// Same 4xx-is-non-retryable reasoning as Publish/Unpublish.
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
-		return false, &PortalConflictError{
-			Message: fmt.Sprintf("the API Portal rejected the existence check (status %d)", resp.StatusCode),
-			Reason:  portalConflictReason(body),
-		}
+	case isPortalRejection(resp.StatusCode):
+		return false, portalRejection(resp, "the API Portal rejected the existence check")
 	default:
 		return false, fmt.Errorf("portal existence check failed: unexpected status %d", resp.StatusCode)
 	}
 }
 
-// portalMetadataEnvelope is the "metadata" part of the portal push — a
-// k8s-style envelope. apiVersion/kind are sent but unread by the portal's
-// parser (verified against the portal's own apiMetadataService.js); kept for
-// shape-consistency with the portal's own sample files.
+// portalMetadataEnvelope is the "metadata" part of the portal push. The portal
+// ignores apiVersion and kind; they are sent to match its sample files.
 type portalMetadataEnvelope struct {
 	APIVersion string                 `yaml:"apiVersion"`
 	Kind       string                 `yaml:"kind"`
@@ -339,29 +306,15 @@ type portalMetadataSpecBody struct {
 	Status          string   `yaml:"status"`
 	AgentVisibility string   `yaml:"agentVisibility"`
 	Tags            []string `yaml:"tags"`
-	// omitempty: an explicit empty list here isn't "no labels" to the portal —
-	// its apiMetadataService.js only falls back to the "default" label when
-	// the "labels" key is absent from the request entirely (`if
-	// (apiMetadata.labels) ... else labelDao.createApiMapping(..., ['default'],
-	// ...)`); sending `labels: []` is treated as an explicit "zero labels"
-	// override and the API silently never gets attached to any view.
+	// omitempty: the portal applies its "default" label only when the key is
+	// absent; an explicit empty list leaves the API attached to no view.
 	Labels              []string                   `yaml:"labels,omitempty"`
 	ReferenceID         string                     `yaml:"referenceId"`
 	Endpoints           portalMetadataEndpoints    `yaml:"endpoints"`
 	BusinessInformation portalMetadataBusinessInfo `yaml:"businessInformation"`
-	// SubscriptionPlans is a plain string array of plan handles in this YAML
-	// envelope — NOT the {id: <handle>} object-array shape. Per the portal's
-	// own OpenAPI spec (api-portal-openapi-spec-v0.9.yaml, the requestBody
-	// description on ApiMetadataMultipartBody): "subscriptionPlans links
-	// existing org-level plans to this API by name... In YAML it is a string
-	// array (["Gold", "Silver"]). In the JSON metadata field it is an object
-	// array where only id is used" — the object-array shape is for a
-	// different upload path (a plain JSON metadata field, not this YAML
-	// file part) and is never valid here. Sending {id: ...} objects in this
-	// field silently breaks: the portal's YAML parser JS-stringifies each
-	// entry (`String({id:"Gold"})` -> "[object Object]") before looking it
-	// up, so every plan reference 404s as "Subscription plan not found"
-	// regardless of whether the handle is otherwise correct.
+	// SubscriptionPlans is a plain array of plan handles in this YAML envelope,
+	// not the {id: <handle>} objects the JSON metadata field takes; objects here
+	// make every plan lookup fail.
 	SubscriptionPlans []string `yaml:"subscriptionPlans"`
 }
 
