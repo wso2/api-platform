@@ -87,7 +87,7 @@ func assertMultipartParts(t *testing.T, r *http.Request) map[string]bool {
 }
 
 // TestHTTPPortalPublisher_CreatesWhenNotFound verifies the existence-check
-// (404) → create (POST /apis) path, the shared-key auth header, and that
+// (404) → create (POST {base}/apis) path, the shared-key auth header, and that
 // both the metadata and definition parts are sent.
 func TestHTTPPortalPublisher_CreatesWhenNotFound(t *testing.T) {
 	var gotMethod, gotAuth string
@@ -95,9 +95,9 @@ func TestHTTPPortalPublisher_CreatesWhenNotFound(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/apis/my-api":
+		case r.Method == http.MethodGet && r.URL.Path == portalRESTBase+"/apis/my-api":
 			w.WriteHeader(http.StatusNotFound)
-		case r.Method == http.MethodPost && r.URL.Path == "/apis":
+		case r.Method == http.MethodPost && r.URL.Path == portalRESTBase+"/apis":
 			gotMethod = r.Method
 			gotAuth = r.Header.Get("Authorization")
 			gotParts = assertMultipartParts(t, r)
@@ -127,15 +127,15 @@ func TestHTTPPortalPublisher_CreatesWhenNotFound(t *testing.T) {
 }
 
 // TestHTTPPortalPublisher_UpdatesWhenFound verifies the existence-check
-// (200) → update (PUT /apis/{handle}) path.
+// (200) → update (PUT {base}/apis/{handle}) path.
 func TestHTTPPortalPublisher_UpdatesWhenFound(t *testing.T) {
 	var gotMethod, gotPath string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/apis/my-api":
+		case r.Method == http.MethodGet && r.URL.Path == portalRESTBase+"/apis/my-api":
 			w.WriteHeader(http.StatusOK)
-		case r.Method == http.MethodPut && r.URL.Path == "/apis/my-api":
+		case r.Method == http.MethodPut && r.URL.Path == portalRESTBase+"/apis/my-api":
 			gotMethod, gotPath = r.Method, r.URL.Path
 			assertMultipartParts(t, r)
 			w.WriteHeader(http.StatusOK)
@@ -152,8 +152,8 @@ func TestHTTPPortalPublisher_UpdatesWhenFound(t *testing.T) {
 	if err := p.Publish(context.Background(), portal, "my-api", pub, nil); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
-	if gotMethod != http.MethodPut || gotPath != "/apis/my-api" {
-		t.Fatalf("want PUT /apis/my-api for update, got %s %s", gotMethod, gotPath)
+	if gotMethod != http.MethodPut || gotPath != portalRESTBase+"/apis/my-api" {
+		t.Fatalf("want PUT %s/apis/my-api for update, got %s %s", portalRESTBase, gotMethod, gotPath)
 	}
 }
 
@@ -428,8 +428,8 @@ func TestHTTPPortalPublisher_Unpublish_DeletesListing(t *testing.T) {
 	if err := p.Unpublish(context.Background(), portal, "my-api"); err != nil {
 		t.Fatalf("Unpublish: %v", err)
 	}
-	if gotMethod != http.MethodDelete || gotPath != "/apis/my-api" {
-		t.Fatalf("want DELETE /apis/my-api, got %s %s", gotMethod, gotPath)
+	if gotMethod != http.MethodDelete || gotPath != portalRESTBase+"/apis/my-api" {
+		t.Fatalf("want DELETE %s/apis/my-api, got %s %s", portalRESTBase, gotMethod, gotPath)
 	}
 	if gotAuth != "SharedKey test-shared-key" {
 		t.Fatalf("want Authorization 'SharedKey test-shared-key', got %q", gotAuth)
@@ -618,8 +618,8 @@ func TestHTTPPortalPublisher_Deprecate_SendsLiveListingWithDeprecatedStatus(t *t
 	if err := p.Deprecate(context.Background(), portal, "my-api", liveListingForDeprecate()); err != nil {
 		t.Fatalf("Deprecate: %v", err)
 	}
-	if len(requests) != 1 || requests[0] != "PUT /apis/my-api" {
-		t.Fatalf("want exactly one PUT /apis/my-api, got %v", requests)
+	if len(requests) != 1 || requests[0] != "PUT "+portalRESTBase+"/apis/my-api" {
+		t.Fatalf("want exactly one PUT %s/apis/my-api, got %v", portalRESTBase, requests)
 	}
 	if gotAuth != "SharedKey test-shared-key" {
 		t.Fatalf("want Authorization 'SharedKey test-shared-key', got %q", gotAuth)
@@ -727,7 +727,20 @@ func TestHTTPPortalPublisher_Deprecate_EscapesHandleInPath(t *testing.T) {
 	if err := p.Deprecate(context.Background(), &model.APIPortal{URL: srv.URL}, "a/../b c", liveListingForDeprecate()); err != nil {
 		t.Fatalf("Deprecate: %v", err)
 	}
-	if want := "/apis/a%2F..%2Fb%20c"; gotEscapedPath != want {
+	if want := portalRESTBase + "/apis/a%2F..%2Fb%20c"; gotEscapedPath != want {
 		t.Fatalf("want escaped path %q, got %q", want, gotEscapedPath)
+	}
+}
+
+// The portal serves its REST API under /api-portal/api/v0.9, not at its root.
+func TestPortalURLsIncludeTheRESTBase(t *testing.T) {
+	for _, root := range []string{"https://portal.example.com", "https://portal.example.com/"} {
+		portal := &model.APIPortal{URL: root}
+		if got, want := apisURL(portal), "https://portal.example.com/api-portal/api/v0.9/apis"; got != want {
+			t.Errorf("apisURL(%q) = %q, want %q", root, got, want)
+		}
+		if got, want := apiURL(portal, "my-api"), "https://portal.example.com/api-portal/api/v0.9/apis/my-api"; got != want {
+			t.Errorf("apiURL(%q) = %q, want %q", root, got, want)
+		}
 	}
 }

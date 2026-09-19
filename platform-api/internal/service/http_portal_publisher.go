@@ -135,9 +135,13 @@ func portalRejection(resp *http.Response, message string) *PortalConflictError {
 	}
 }
 
+// portalRESTBase is where the API Portal mounts its REST API. The registered portal URL is
+// the portal root, without this prefix.
+const portalRESTBase = "/api-portal/api/v0.9"
+
 // apisURL is the portal's API collection URL.
 func apisURL(portal *model.APIPortal) string {
-	return strings.TrimRight(portal.URL, "/") + "/apis"
+	return strings.TrimRight(portal.URL, "/") + portalRESTBase + "/apis"
 }
 
 // apiURL is the portal's URL for the listing with the given handle.
