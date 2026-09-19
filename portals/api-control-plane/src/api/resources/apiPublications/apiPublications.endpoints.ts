@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { http, type RequestOptions } from '../../core/http';
+import { http, type RequestOptions, type TextResponse } from '../../core/http';
 import type { QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
@@ -35,20 +35,25 @@ export type PublicationDraftDetailsInput = Schema<'PublicationDraftDetailsInput'
 export type Publication = Schema<'Publication'>;
 
 /**
- * The draft/publication definition, as this app works with it: a parsed JSON
- * document, not the generated `string` the `format: binary` field produces.
+ * The draft definition as this app writes it: a parsed JSON document, not the
+ * generated `string` the `format: binary` field produces.
  *
- * Deliberately not `BodyOf`/`ResponseOf` — same class of deviation as
- * `CreateRestApiBody` in `restApis.endpoints.ts`. The spec's request/response
- * both resolve to a bare `string` (one `format: binary` field per accepted
- * content type), which is technically accurate but useless here: `http.put`
- * always `JSON.stringify`s whatever body it's given, so passing a *parsed*
- * object is what actually puts the right bytes on the wire for the
- * `application/json` variant this app uses; passing the generated `string`
- * type would double-encode it. Axios likewise auto-parses a JSON response body
- * into an object before this layer ever sees it.
+ * Deliberately not `BodyOf`: same class of deviation as `CreateRestApiBody` in
+ * `restApis.endpoints.ts`. The spec's request body resolves to a bare `string`
+ * (one `format: binary` field per accepted content type), which is technically
+ * accurate but useless here: `http.put` always `JSON.stringify`s whatever body
+ * it's given, so passing a *parsed* object is what puts the right bytes on the
+ * wire for the `application/json` variant this app uses; passing the generated
+ * `string` type would double-encode it.
  */
 export type DraftDefinitionDocument = Record<string, unknown>;
+
+/**
+ * A stored definition as read back: the server returns it in whichever
+ * serialization it was saved in (JSON, YAML, ...), so it stays text with its
+ * content type and the caller decides how to read it.
+ */
+export type DefinitionText = TextResponse;
 
 const PUBLICATIONS_BASE = '/api-publications';
 
@@ -102,11 +107,11 @@ export const getApiPublicationDraftDefinition = async (
   apiType: string,
   apiId: string,
   options?: RequestOptions,
-): Promise<DraftDefinitionDocument> =>
-  http.get<DraftDefinitionDocument>(
-    portalApiPath(apiPortalId, apiType, apiId, '/draft/definition'),
-    { ...options, operationName: 'getApiPublicationDraftDefinition' },
-  );
+): Promise<DefinitionText> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/draft/definition'), {
+    ...options,
+    operationName: 'getApiPublicationDraftDefinition',
+  });
 
 export const saveApiPublicationDraftDefinition = async (
   apiPortalId: string,
@@ -126,8 +131,8 @@ export const getApiPublicationDefinition = async (
   apiType: string,
   apiId: string,
   options?: RequestOptions,
-): Promise<DraftDefinitionDocument> =>
-  http.get<DraftDefinitionDocument>(portalApiPath(apiPortalId, apiType, apiId, '/publication/definition'), {
+): Promise<DefinitionText> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/publication/definition'), {
     ...options,
     operationName: 'getApiPublicationDefinition',
   });

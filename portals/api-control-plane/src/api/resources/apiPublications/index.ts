@@ -27,6 +27,7 @@
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
+  DefinitionText,
   DraftDefinitionDocument,
   ListApiPublicationsQuery,
   ListApiPublicationsResponse,

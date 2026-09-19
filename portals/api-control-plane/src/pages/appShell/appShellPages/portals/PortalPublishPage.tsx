@@ -162,12 +162,13 @@ type Tab = 'details' | 'specification';
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
 
 /**
- * `GET /rest-apis/{id}/openapi` (`useRestApiOpenApi`) returns the raw spec as
- * YAML text — parsed the same way `ResourcesPanel`'s `parseSpecContent` does.
- * `js-yaml` reads JSON too (JSON is a YAML subset), so this covers either
- * serialization the stored spec happens to be in.
+ * Reads a definition delivered as text: the draft and publication definitions
+ * come back in whichever serialization they were saved in, and
+ * `GET /rest-apis/{id}/openapi` (`useRestApiOpenApi`) returns the raw spec. This
+ * is parsed the same way `ResourcesPanel`'s `parseSpecContent` does — `js-yaml`
+ * reads JSON too (JSON is a YAML subset), so it covers either serialization.
  */
-const parseOpenApiContent = (content: string): DraftDefinitionDocument | undefined => {
+const parseDefinitionText = (content: string): DraftDefinitionDocument | undefined => {
   try {
     const parsed = yaml.load(content);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -284,9 +285,9 @@ export function PortalPublishPage() {
     setValues(resolveDraftFormValues(draftQuery.data, publicationQuery.data, apiQuery.data));
 
     const definitionDocument: DraftDefinitionDocument | undefined =
-      draftDefinitionQuery.data ??
-      publicationDefinitionQuery.data ??
-      (apiOpenApiQuery.data ? parseOpenApiContent(apiOpenApiQuery.data.content) : undefined);
+      (draftDefinitionQuery.data && parseDefinitionText(draftDefinitionQuery.data.text)) ??
+      (publicationDefinitionQuery.data && parseDefinitionText(publicationDefinitionQuery.data.text)) ??
+      (apiOpenApiQuery.data ? parseDefinitionText(apiOpenApiQuery.data.content) : undefined);
     setDefinitionText(definitionDocument ? JSON.stringify(definitionDocument, null, 2) : '');
 
     setInitialized(true);

@@ -17,6 +17,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
@@ -24,6 +25,7 @@ import { resetHttpClient } from '@/api/core/http';
 import { routes } from '@/routes/paths';
 import {
   accepts,
+  apiUrl,
   aPublication,
   aPublicationDraftDetails,
   aRestApi,
@@ -125,6 +127,12 @@ function servePublicationState({
   return definitionRecorders;
 }
 
+/** A stored definition served as text in the given serialization, as the backend returns it. */
+const definitionText = (path: string, text: string, contentType: string) =>
+  mswHttp.get(apiUrl(path), () => new HttpResponse(text, { headers: { 'Content-Type': contentType } }));
+
+const YAML_DEFINITION = 'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n';
+
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
@@ -201,6 +209,49 @@ describe('PortalPublishPage', () => {
     await waitFor(() => expect(definitionRecorders.draftDefinition.count()).toBe(1));
     expect(definitionRecorders.publicationDefinition.count()).toBe(0);
     expect(definitionRecorders.openApi.count()).toBe(0);
+  });
+
+  it.each([
+    ['draft', DRAFT_DEFINITION_PATH],
+    ['published', PUBLICATION_DEFINITION_PATH],
+  ])('opens with a %s definition that was saved as YAML', async (_tier, path) => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(path, YAML_DEFINITION, 'application/yaml'));
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(screen.queryByText('portals listing')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? '{}')).toMatchObject({
+      openapi: '3.0.3',
+      info: { title: 'Loan Management Service', version: '1.0.0' },
+    });
+  });
+
+  it('still opens with a definition that was saved as JSON', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, JSON.stringify({ openapi: '3.0.3', paths: {} }), 'application/json'));
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? '{}')).toMatchObject({ openapi: '3.0.3' });
   });
 
   it('falls all the way through to the API’s own real stored spec when no draft/publication definition exists', async () => {
