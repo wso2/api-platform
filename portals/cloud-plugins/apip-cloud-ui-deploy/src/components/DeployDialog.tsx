@@ -194,11 +194,12 @@ const DeployDialog: FC<DeployDialogProps> = ({
         {actionLabel} to {environment.name}
       </DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {mode === 'deploy'
-            ? `Deploys this API as it stands now to ${environment.name}. Select the gateway to deploy to.`
-            : `Carries a build running in ${sourceEnvironment?.name ?? 'the previous environment'} forward to ${environment.name}, with the endpoint you give here.`}
-        </Typography>
+        {mode === 'promote' ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Carries the build running in{' '}
+            {sourceEnvironment?.name ?? 'the previous environment'} forward.
+          </Typography>
+        ) : null}
 
         {inactiveSelectable.length > 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -277,8 +278,8 @@ const DeployDialog: FC<DeployDialogProps> = ({
             <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateways</FormLabel>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
               {lockedIds.length > 0
-                ? 'Every gateway this API is already deployed on stays selected — an environment runs one build at a time. Undeploy a gateway to stop deploying to it.'
-                : 'Select the gateways to deploy to. They all receive the same build.'}
+                ? 'Gateways already deployed on stay selected. Undeploy one to drop it.'
+                : 'All selected gateways receive the same build.'}
             </Typography>
             <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               {environment.gateways.map((gateway, index) => {

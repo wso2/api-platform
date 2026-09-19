@@ -192,7 +192,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
               {builds.map((build) => (
                 <MenuItem key={build.buildId} value={build.buildId}>
                   {build.buildId}
-                  {build.description ? ` — ${build.description}` : ''}
+                  {build.description ? ` · ${build.description}` : ''}
                 </MenuItem>
               ))}
             </Select>
@@ -203,7 +203,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
           <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateways</FormLabel>
           {lockedIds.length > 0 ? (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Gateways already deployed on stay selected — the environment deploys together.
+              Gateways already deployed on stay selected. Stop one to drop it.
             </Typography>
           ) : null}
           <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
