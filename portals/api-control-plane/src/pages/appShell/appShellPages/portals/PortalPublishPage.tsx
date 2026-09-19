@@ -164,7 +164,7 @@ const rethrowUnreported = (error: unknown): void => {
  */
 const API_TYPE = 'rest-api';
 
-type Tab = 'details' | 'specification';
+type PublishTab = 'details' | 'specification';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
@@ -271,7 +271,7 @@ export function PortalPublishPage() {
   const unpublishMutation = useUnpublishRestApiFromApiPortal();
   const deprecateMutation = useDeprecateRestApiOnApiPortal();
 
-  const [tab, setTab] = useState<Tab>('details');
+  const [tab, setTab] = useState<PublishTab>('details');
   const [values, setValues] = useState<DraftFormValues>(emptyDraftFormValues);
   const [touched, setTouched] = useState<Partial<Record<DraftFormField, boolean>>>({});
   const [definitionText, setDefinitionText] = useState('');
@@ -485,7 +485,7 @@ export function PortalPublishPage() {
         <Stack spacing={3} sx={{ flex: 1, minHeight: 0 }}>
           <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
             <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
-              <Tabs onChange={(_event, next: Tab) => setTab(next)} value={tab}>
+              <Tabs onChange={(_event, next: PublishTab) => setTab(next)} value={tab}>
                 <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
                 <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
                 {/* Disabled, not omitted — still on the roadmap, just not this release. */}
