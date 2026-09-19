@@ -270,6 +270,9 @@ type PublicationRepository interface {
 	// same defensive precondition failure the caller already checked before
 	// calling the portal.
 	UnpublishPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error)
+	// DeprecatePublication sets the live row's status to DEPRECATED if it is PUBLISHED.
+	// found is false when no row matched.
+	DeprecatePublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error)
 	// GetContent returns one content row (definition/landing page/thumbnail)
 	// for a publication row, or nil if none is stored.
 	GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error)

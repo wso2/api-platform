@@ -225,10 +225,9 @@ const (
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
 	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
 	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
-	// CodeAPIPublicationNotLive covers Unpublish's precondition: valid only
-	// when the API is currently published or deprecated to this portal.
-	// Distinct from CodeAPIPublicationNotFound (404, used by the
-	// live-listing reads) — this is a 409 state-precondition failure on an
-	// action, not a missing-resource read.
-	CodeAPIPublicationNotLive = "PUBLICATION_NOT_LIVE"
+	// CodeAPIPublicationStateConflict: the action (unpublish, deprecate) is not
+	// valid for the listing's current status. Distinct from
+	// CodeAPIPublicationNotFound (404, used by the live-listing reads) — this is
+	// a 409 on an action, not a missing-resource read.
+	CodeAPIPublicationStateConflict = "PUBLICATION_STATE_CONFLICT"
 )

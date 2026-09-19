@@ -28,6 +28,12 @@ const (
 	PublicationContentTypeMarketing  PublicationContentType = "MARKETING"
 )
 
+// Status of a live publication row.
+const (
+	PublicationStatusPublished  = "PUBLISHED"
+	PublicationStatusDeprecated = "DEPRECATED"
+)
+
 // Publication is one row of api_publications — a draft (IsDraft true) or a live
 // listing (IsDraft false), one (artifact, api portal) pairing per row. Content
 // (definition/landing page/thumbnail) lives in PublicationContent rows;

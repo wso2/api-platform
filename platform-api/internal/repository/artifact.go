@@ -27,6 +27,9 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
+// ErrUnknownArtifactKind is returned when a kind key matches no registered artifact table.
+var ErrUnknownArtifactKind = errors.New("invalid artifact kind")
+
 type ArtifactRepo struct {
 	db  *database.DB
 	reg *ArtifactTableRegistry
@@ -133,7 +136,7 @@ func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.AP
 func (r *ArtifactRepo) GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error) {
 	entry, ok := r.reg.TableByKindKey(kind)
 	if !ok {
-		return nil, fmt.Errorf("invalid artifact kind: %q", kind)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownArtifactKind, kind)
 	}
 	query := fmt.Sprintf(
 		"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid FROM %s WHERE handle = ? AND organization_uuid = ?",

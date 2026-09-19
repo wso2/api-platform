@@ -54,6 +54,10 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+	return nil
+}
+
 // setupPublicationTestEnv creates a full PublicationHandler stack backed by an
 // in-memory SQLite DB, seeded with one org, one rest_apis artifact ("my-api"),
 // one active API Portal ("my-portal") and one subscription plan ("gold") — the
@@ -527,5 +531,78 @@ func TestPublicationHandler_ListPublications_QueryFilter(t *testing.T) {
 	item, _ := list[0].(map[string]any)
 	if item["apiPortalId"] != "partner-portal" {
 		t.Fatalf("want partner-portal, got %v", item)
+	}
+}
+
+// TestPublicationHandler_OversizedBody_Returns413 verifies every body-reading
+// draft endpoint answers 413 (not 400) once its size cap is exceeded, while a
+// malformed body under the cap stays a 400.
+func TestPublicationHandler_OversizedBody_Returns413(t *testing.T) {
+	r, _, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	over := int(defaultPublicationContentMaxBytes) + 1
+	bigJSON := append([]byte(`{"displayName":"`), bytes.Repeat([]byte("a"), over)...)
+	bigJSON = append(bigJSON, []byte(`"}`)...)
+	bigRaw := bytes.Repeat([]byte("a"), over)
+
+	var thumb bytes.Buffer
+	mw := multipart.NewWriter(&thumb)
+	part, _ := mw.CreateFormFile("file", "t.png")
+	_, _ = part.Write(bytes.Repeat([]byte("a"), int(defaultPublicationThumbnailMaxBytes)+1))
+	_ = mw.Close()
+
+	cases := []struct {
+		name, path, contentType string
+		body                    []byte
+	}{
+		{"draft json", draftPath, "application/json", bigJSON},
+		{"definition", draftPath + "/definition", "application/json", bigRaw},
+		{"landing page", draftPath + "/landing-page", "text/markdown", bigRaw},
+		{"thumbnail", draftPath + "/thumbnail", mw.FormDataContentType(), thumb.Bytes()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := doPublicationRequest(r, http.MethodPut, tc.path, tc.contentType, tc.body)
+			if w.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("want 413, got %d: %.200s", w.Code, w.Body.String())
+			}
+		})
+	}
+
+	w := doPublicationRequest(r, http.MethodPut, draftPath, "application/json", []byte(`{not json`))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed JSON: want 400, got %d", w.Code)
+	}
+}
+
+// TestPublicationHandler_ResolveAPIErrors verifies the status codes for a
+// missing or unresolvable API reference: absent list params are a 400, while
+// an unknown apiId or an unrecognised apiType is the same 404 on every route.
+func TestPublicationHandler_ResolveAPIErrors(t *testing.T) {
+	r, _, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	const list = "/api/v0.9/api-publications"
+	const portalAPIs = "/api/v0.9/api-portals/my-portal/apis"
+	cases := []struct {
+		name, path string
+		want       int
+	}{
+		{"list without params", list, http.StatusBadRequest},
+		{"list without apiId", list + "?apiType=rest-api", http.StatusBadRequest},
+		{"list unknown apiId", list + "?apiType=rest-api&apiId=nope", http.StatusNotFound},
+		{"list unknown apiType", list + "?apiType=bogus&apiId=my-api", http.StatusNotFound},
+		{"draft unknown apiId", portalAPIs + "/rest-api/nope/draft", http.StatusNotFound},
+		{"draft unknown apiType", portalAPIs + "/bogus/my-api/draft", http.StatusNotFound},
+		{"publication unknown apiType", portalAPIs + "/bogus/my-api/publication", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := doPublicationRequest(r, http.MethodGet, tc.path, "", nil)
+			if w.Code != tc.want {
+				t.Fatalf("want %d, got %d: %.200s", tc.want, w.Code, w.Body.String())
+			}
+		})
 	}
 }

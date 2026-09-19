@@ -19,11 +19,13 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -37,6 +39,31 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// bodyReadError maps a failed request-body read to 413 when the size cap was
+// exceeded, and otherwise to the given validation error.
+func bodyReadError(err error, fallback error) error {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		return apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
+	}
+	return fallback
+}
+
+// decodeJSONBody decodes exactly one JSON value from the request body into dst, capped at
+// maxBytes. Trailing non-whitespace data is rejected, and it is read through the size cap so an
+// oversized body still yields 413 rather than being silently ignored.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any) error {
+	invalid := apperror.ValidationFailed.New("Request body is not valid JSON")
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
+	if err := dec.Decode(dst); err != nil {
+		return bodyReadError(err, invalid)
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return bodyReadError(err, invalid)
+	}
+	return nil
+}
 
 // restAPITypeValue is the type-agnostic path value for RestApi. The
 // publish/unpublish/deprecate routes are pinned to this one literal per
@@ -97,6 +124,7 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/api-publications", middleware.MapErrors(h.slogger, h.ListPublications))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish", middleware.MapErrors(h.slogger, h.Publish))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/unpublish", middleware.MapErrors(h.slogger, h.Unpublish))
+	mux.HandleFunc("POST "+constants.APIBasePath+"/api-portals/{apiPortalId}/apis/rest-api/{apiId}/deprecate", middleware.MapErrors(h.slogger, h.Deprecate))
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -136,8 +164,8 @@ func (h *PublicationHandler) SaveDraft(w http.ResponseWriter, r *http.Request) e
 	}
 
 	var in api.PublicationDraftDetailsInput
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, h.contentMaxBytes)).Decode(&in); err != nil {
-		return apperror.ValidationFailed.New("Request body is not valid JSON")
+	if err := decodeJSONBody(w, r, h.contentMaxBytes, &in); err != nil {
+		return err
 	}
 
 	draft, planHandles, docHandles := draftInputToModel(&in)
@@ -187,7 +215,7 @@ func (h *PublicationHandler) SaveDraftDefinition(w http.ResponseWriter, r *http.
 
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.contentMaxBytes))
 	if err != nil {
-		return apperror.APIPublicationValidationFailed.New("definition upload is invalid or exceeds the maximum allowed size")
+		return bodyReadError(err, apperror.APIPublicationValidationFailed.New("definition upload could not be read"))
 	}
 
 	if err := h.service.SaveDraftDefinition(apiType, apiId, apiPortalId, orgId, actor, contentType, data); err != nil {
@@ -228,7 +256,7 @@ func (h *PublicationHandler) SaveDraftLandingPage(w http.ResponseWriter, r *http
 
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.contentMaxBytes))
 	if err != nil {
-		return apperror.APIPublicationValidationFailed.New("landing page upload is invalid or exceeds the maximum allowed size")
+		return bodyReadError(err, apperror.APIPublicationValidationFailed.New("landing page upload could not be read"))
 	}
 
 	if err := h.service.SaveDraftLandingPage(apiType, apiId, apiPortalId, orgId, actor, data); err != nil {
@@ -271,7 +299,7 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 
 	r.Body = http.MaxBytesReader(w, r.Body, h.thumbnailMaxBytes)
 	if err := r.ParseMultipartForm(h.thumbnailMaxBytes); err != nil {
-		return apperror.APIPublicationValidationFailed.New("thumbnail upload is invalid or exceeds the maximum allowed size")
+		return bodyReadError(err, apperror.APIPublicationValidationFailed.New("thumbnail upload is not a valid multipart form"))
 	}
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
@@ -284,17 +312,14 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 		return apperror.APIPublicationValidationFailed.New("thumbnail upload could not be read")
 	}
 	if int64(len(data)) > h.thumbnailMaxBytes {
-		return apperror.APIPublicationValidationFailed.New("thumbnail exceeds the maximum allowed size")
+		return apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
 	}
 
 	// Filename only in storage (file-access.md): strip any directory component
 	// from the uploader's declared name before it ever reaches the service/DB.
 	fileName := ""
 	if fileHeader != nil {
-		fileName = filepath.Base(fileHeader.Filename)
-		if fileName == "." || fileName == string(filepath.Separator) {
-			fileName = ""
-		}
+		fileName = sanitizeUploadFileName(fileHeader.Filename)
 	}
 
 	if err := h.service.SaveDraftThumbnail(apiType, apiId, apiPortalId, orgId, actor, fileName, data); err != nil {
@@ -302,6 +327,20 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+// sanitizeUploadFileName reduces an uploader-declared name to a bare file name,
+// returning "" for names that are not usable (dot-only, separator-only, or
+// containing a NUL byte).
+func sanitizeUploadFileName(name string) string {
+	if strings.ContainsRune(name, 0) {
+		return ""
+	}
+	base := filepath.Base(name)
+	if base == "." || base == ".." || base == string(filepath.Separator) {
+		return ""
+	}
+	return base
 }
 
 // GetPublication handles GET .../publication
@@ -380,6 +419,9 @@ func (h *PublicationHandler) ListPublications(w http.ResponseWriter, r *http.Req
 
 	apiType := r.URL.Query().Get("apiType")
 	apiId := r.URL.Query().Get("apiId")
+	if apiType == "" || apiId == "" {
+		return apperror.ValidationFailed.New("apiType and apiId query parameters are required")
+	}
 	opts := parseListOptions(r)
 
 	summaries, err := h.service.ListPublicationSummary(apiType, apiId, orgId, opts.SortBy, opts.SortOrder, opts.Search)
@@ -447,6 +489,28 @@ func (h *PublicationHandler) Unpublish(w http.ResponseWriter, r *http.Request) e
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// Deprecate handles POST .../rest-api/{apiId}/deprecate.
+func (h *PublicationHandler) Deprecate(w http.ResponseWriter, r *http.Request) error {
+	orgId, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+	apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
+
+	actor, err := resolveActorErr(r, h.identity, "deprecate API")
+	if err != nil {
+		return err
+	}
+
+	pub, err := h.service.Deprecate(r.Context(), restAPITypeValue, apiId, apiPortalId, orgId, actor)
+	if err != nil {
+		return serviceError(err, "failed to deprecate API")
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, publicationModelToResponse(pub))
 	return nil
 }
 

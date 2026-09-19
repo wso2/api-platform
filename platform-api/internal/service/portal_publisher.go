@@ -51,6 +51,10 @@ type PortalPublisher interface {
 	// error is treated as transient/unavailable (503
 	// PUBLICATION_PORTAL_UNAVAILABLE).
 	Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error
+
+	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live with
+	// only the status changed. Errors follow the same contract as Publish.
+	Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error
 }
 
 // PortalConflictError signals that the API Portal rejected a publish and

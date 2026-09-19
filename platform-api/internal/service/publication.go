@@ -88,6 +88,9 @@ func (s *PublicationService) resolveArtifact(apiType, apiId, orgUUID string) (st
 		return "", apperror.APIPublicationAPINotFound.New()
 	}
 	metadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiId, apiType, orgUUID)
+	if errors.Is(err, repository.ErrUnknownArtifactKind) {
+		return "", apperror.APIPublicationAPINotFound.New()
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve API by handle and kind: %w", err)
 	}
@@ -559,11 +562,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	}
 
 	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {
-		var conflict *PortalConflictError
-		if errors.As(err, &conflict) {
-			return nil, false, apperror.APIPublicationPortalConflict.New(conflictReasonOrDefault(conflict))
-		}
-		return nil, false, apperror.APIPublicationPortalUnavailable.Wrap(err)
+		return nil, false, portalPushError(err)
 	}
 
 	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor)
@@ -588,7 +587,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 
 // Unpublish removes the live listing from portal, then writes locally.
 // Valid only when currently published or deprecated (409
-// PUBLICATION_NOT_LIVE otherwise). On success: if no draft
+// PUBLICATION_STATE_CONFLICT otherwise). On success: if no draft
 // exists, the live row (the anchor) is demoted into the draft in place;
 // otherwise an existing draft's content is merged into the anchor instead of
 // leaving the draft's own row as the survivor — the anchor's uuid is the
@@ -608,16 +607,12 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 	if err != nil {
 		return fmt.Errorf("failed to get publication: %w", err)
 	}
-	if live == nil || (live.Status != "PUBLISHED" && live.Status != "DEPRECATED") {
-		return apperror.APIPublicationNotLive.New()
+	if live == nil || (live.Status != model.PublicationStatusPublished && live.Status != model.PublicationStatusDeprecated) {
+		return apperror.APIPublicationStateConflict.New("unpublished")
 	}
 
 	if err := s.portalPublisher.Unpublish(ctx, portal, apiId); err != nil {
-		var conflict *PortalConflictError
-		if errors.As(err, &conflict) {
-			return apperror.APIPublicationPortalConflict.New(conflictReasonOrDefault(conflict))
-		}
-		return apperror.APIPublicationPortalUnavailable.Wrap(err)
+		return portalPushError(err)
 	}
 
 	found, err := s.publicationRepo.UnpublishPublication(artifactUUID, portal.ID, orgUUID, actor)
@@ -627,9 +622,58 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 	if !found {
 		// The live row existed moments ago (checked above) but is gone now —
 		// same defensive precondition failure, not a normal outcome.
-		return apperror.APIPublicationNotLive.New()
+		return apperror.APIPublicationStateConflict.New("unpublished")
 	}
 	return nil
+}
+
+// Deprecate marks the live listing as deprecated on the portal, then locally. It
+// requires the listing to be PUBLISHED (409 PUBLICATION_STATE_CONFLICT otherwise).
+// The draft is neither read nor modified.
+func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, error) {
+	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	portal, err := s.resolvePortalRow(apiPortalId, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	live, planUUIDs, docUUIDs, err := s.publicationRepo.GetPublication(artifactUUID, portal.ID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get publication: %w", err)
+	}
+	if live == nil || live.Status != model.PublicationStatusPublished {
+		return nil, apperror.APIPublicationStateConflict.New("deprecated")
+	}
+	if err := s.resolveHandles(live, planUUIDs, docUUIDs, orgUUID); err != nil {
+		return nil, err
+	}
+
+	if err := s.portalPublisher.Deprecate(ctx, portal, apiId, live); err != nil {
+		return nil, portalPushError(err)
+	}
+
+	found, err := s.publicationRepo.DeprecatePublication(artifactUUID, portal.ID, orgUUID, actor)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deprecate publication: %w", err)
+	}
+	if !found {
+		// The row changed since the check above (for example, a concurrent unpublish).
+		return nil, apperror.APIPublicationStateConflict.New("deprecated")
+	}
+	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
+}
+
+// portalPushError maps a failed portal call to 409 when the portal rejected the
+// request, and to 503 otherwise.
+func portalPushError(err error) error {
+	var conflict *PortalConflictError
+	if errors.As(err, &conflict) {
+		return apperror.APIPublicationPortalConflict.New(conflictReasonOrDefault(conflict))
+	}
+	return apperror.APIPublicationPortalUnavailable.Wrap(err)
 }
 
 // publicationStatusNotPublished is the rollup's own label for "no live row

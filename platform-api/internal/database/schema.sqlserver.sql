@@ -176,21 +176,22 @@ CREATE TABLE dbo.api_portals (
     updated_by        VARCHAR(200),
     updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE (organization_uuid, handle),
-    -- Column order must match api_publications' FK reference (uuid, organization_uuid) below —
-    -- SQL Server, unlike Postgres/SQLite, requires exact column-order match against a unique constraint.
-    UNIQUE (uuid, organization_uuid)
+    UNIQUE (organization_uuid, handle)
 );
 
+-- A guarded index, not an inline UNIQUE: api_portals already exists on upgraded databases.
+-- Column order must match api_publications' FK reference (uuid, organization_uuid).
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_portals_uuid_org' AND object_id = OBJECT_ID(N'dbo.api_portals'))
+CREATE UNIQUE INDEX uq_api_portals_uuid_org ON dbo.api_portals(uuid, organization_uuid);
+
 -- =====================================================================
--- api_publications — one (API, portal) pairing's draft and/or live row,
--- distinguished by is_draft. At most one of each per pairing (below).
--- SQL Server: keeps CASCADE on organization_uuid; the artifacts and
--- api_portals edges are demoted to NO ACTION to avoid the multiple-cascade-
--- paths restriction (error 1785). Consequence (per DB_design_refined.md §7.3):
--- on SQL Server, deleting an artifact or portal must delete its
--- api_publications rows (draft and live alike) first; organization deletion
--- still reaches tables 2-4 transitively through this table.
+-- api_publications: one API's publication state on one API Portal. Each
+-- (API, portal) pair has at most one live row (is_draft = 0) and one draft row
+-- (is_draft = 1). status is set only on live rows.
+--
+-- The artifact and portal foreign keys use NO ACTION (SQL Server error 1785,
+-- multiple cascade paths): delete an API's or portal's publications before the
+-- API or portal itself. Deleting an organization still cascades.
 -- =====================================================================
 IF OBJECT_ID(N'dbo.api_publications', N'U') IS NULL
 CREATE TABLE dbo.api_publications (
@@ -233,12 +234,11 @@ CREATE TABLE dbo.api_publications (
 );
 
 -- =====================================================================
--- api_publication_contents — definition / landing page / thumbnail, for
--- a draft or live api_publications row. Written in the same transaction
--- as the row it belongs to.
--- SQL Server: keeps CASCADE on the parent api_publications edge; demotes
--- organization_uuid to NO ACTION (organization deletion still reaches this
--- table transitively through api_publications).
+-- api_publication_contents: the definition, landing page and thumbnail of a
+-- publication row; one row per type (API_DEFINITION, MARKETING, IMAGE).
+--
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via api_publications.
 -- =====================================================================
 IF OBJECT_ID(N'dbo.api_publication_contents', N'U') IS NULL
 CREATE TABLE dbo.api_publication_contents (
@@ -293,9 +293,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_documents_artifac
 CREATE UNIQUE INDEX uq_api_documents_artifact_handle ON dbo.api_documents(artifact_uuid, handle);
 
 -- =====================================================================
--- api_publication_doc_mappings — documents selected, for a draft or
--- live api_publications row. SQL Server: same NO ACTION/CASCADE split as
--- api_publication_contents above.
+-- api_publication_doc_mappings: the documents selected for a publication row.
+--
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via api_publications.
 -- =====================================================================
 IF OBJECT_ID(N'dbo.api_publication_doc_mappings', N'U') IS NULL
 CREATE TABLE dbo.api_publication_doc_mappings (
@@ -316,11 +317,13 @@ CREATE TABLE dbo.api_publication_doc_mappings (
 );
 
 -- =====================================================================
--- api_publication_plan_mappings — subscription plans selected, for a
--- draft or live api_publications row. subscription_plans has no
--- UNIQUE(organization_uuid, uuid), so this reference is single-column;
--- the org match is checked in the service layer. SQL Server: same
--- NO ACTION/CASCADE split as api_publication_contents above.
+-- api_publication_plan_mappings: the subscription plans selected for a
+-- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
+-- so the plan reference is single-column and the organization match is checked
+-- in the service layer.
+--
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via api_publications.
 -- =====================================================================
 IF OBJECT_ID(N'dbo.api_publication_plan_mappings', N'U') IS NULL
 CREATE TABLE dbo.api_publication_plan_mappings (

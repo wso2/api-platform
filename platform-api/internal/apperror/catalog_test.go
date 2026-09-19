@@ -51,6 +51,7 @@ var messageArity = map[string]int{
 	CodeOf(TooManyRequests):                       1,
 	CodeOf(APIPublicationValidationFailed):        1,
 	CodeOf(APIPublicationPortalConflict):          1,
+	CodeOf(APIPublicationStateConflict):           1,
 	CodeOf(PayloadTooLarge):                       1,
 }
 

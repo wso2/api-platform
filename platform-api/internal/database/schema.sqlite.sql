@@ -164,13 +164,16 @@ CREATE TABLE IF NOT EXISTS api_portals (
     updated_by        VARCHAR(200),
     updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE (organization_uuid, handle),
-    UNIQUE (organization_uuid, uuid)
+    UNIQUE (organization_uuid, handle)
 );
 
+-- A guarded index, not an inline UNIQUE: api_portals already exists on upgraded databases.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_portals_org_uuid ON api_portals(organization_uuid, uuid);
+
 -- =====================================================================
--- api_publications — one (API, portal) pairing's draft and/or live row,
--- distinguished by is_draft. At most one of each per pairing (below).
+-- api_publications: one API's publication state on one API Portal. Each
+-- (API, portal) pair has at most one live row (is_draft = 0) and one draft row
+-- (is_draft = 1). status is set only on live rows.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publications (
     uuid              VARCHAR(40)  PRIMARY KEY,
@@ -210,9 +213,8 @@ CREATE TABLE IF NOT EXISTS api_publications (
 );
 
 -- =====================================================================
--- api_publication_contents — definition / landing page / thumbnail, for
--- a draft or live api_publications row. Written in the same transaction
--- as the row it belongs to.
+-- api_publication_contents: the definition, landing page and thumbnail of a
+-- publication row; one row per type (API_DEFINITION, MARKETING, IMAGE).
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publication_contents (
     uuid              VARCHAR(40)  PRIMARY KEY,
@@ -262,8 +264,7 @@ CREATE INDEX IF NOT EXISTS idx_api_documents_artifact ON api_documents(artifact_
 CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_documents(artifact_uuid, handle);
 
 -- =====================================================================
--- api_publication_doc_mappings — documents selected, for a draft or
--- live api_publications row.
+-- api_publication_doc_mappings: the documents selected for a publication row.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publication_doc_mappings (
     organization_uuid VARCHAR(40)  NOT NULL,
@@ -283,10 +284,10 @@ CREATE TABLE IF NOT EXISTS api_publication_doc_mappings (
 );
 
 -- =====================================================================
--- api_publication_plan_mappings — subscription plans selected, for a
--- draft or live api_publications row. subscription_plans has no
--- UNIQUE(organization_uuid, uuid), so this reference is single-column;
--- the org match is checked in the service layer.
+-- api_publication_plan_mappings: the subscription plans selected for a
+-- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
+-- so the plan reference is single-column and the organization match is checked
+-- in the service layer.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publication_plan_mappings (
     organization_uuid      VARCHAR(40)  NOT NULL,

@@ -18,12 +18,15 @@
 package client
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
+
+var errInsecureRedirect = errors.New("redirect to a non-HTTPS URL refused")
 
 // RetryableHTTPClient wraps an HTTP client with retry logic
 type RetryableHTTPClient struct {
@@ -36,11 +39,10 @@ type RetryableHTTPClient struct {
 //
 // This client is built around the single shared, SSRF-guarded *http.Client the process
 // constructs once at startup (see internal/utils.InitSharedHTTPClient and cmd/main.go) —
-// it no longer builds its own independent httpclient.New config. As of this writing
-// RetryableHTTPClient has no callers in this module; whoever wires it to a concrete call
-// site inherits the shared client's SSRF policy (netguard.PermitPrivateBlockMetadata() by
-// default, operator-configurable via platform_api.http_client in config.toml) automatically,
-// rather than needing to decide on one independently.
+// it no longer builds its own independent httpclient.New config. It inherits the shared
+// client's SSRF policy (netguard.PermitPrivateBlockMetadata() by default, operator-configurable
+// via platform_api.http_client in config.toml), and additionally refuses any redirect to a
+// non-HTTPS URL so a credential header is never sent in cleartext.
 //
 // timeout is accepted for call-site compatibility (and is still used as this client's own
 // Do-loop budget expectations) but no longer varies the underlying transport's construction
@@ -57,13 +59,29 @@ type RetryableHTTPClient struct {
 //   - error: if the shared HTTP client has not yet been initialized (see
 //     utils.InitSharedHTTPClient, called once at process startup)
 func NewRetryableHTTPClient(maxRetries int, timeout time.Duration) (*RetryableHTTPClient, error) {
-	httpClient, err := utils.NewUpstreamFetchClient(0)
+	sharedClient, err := utils.NewUpstreamFetchClient(0)
 	if err != nil {
 		return nil, err
 	}
 
+	// Copy the shared client so the HTTPS-only redirect rule stays local to this client. The
+	// copy keeps the same Transport, so the SSRF dial guard still applies.
+	httpClient := *sharedClient
+	sharedCheckRedirect := sharedClient.CheckRedirect
+	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		// Requests carry a credential; never follow a redirect to cleartext, regardless of the
+		// shared client's allowed_schemes setting.
+		if req.URL.Scheme != "https" {
+			return errInsecureRedirect
+		}
+		if sharedCheckRedirect != nil {
+			return sharedCheckRedirect(req, via)
+		}
+		return nil
+	}
+
 	return &RetryableHTTPClient{
-		client:     httpClient,
+		client:     &httpClient,
 		maxRetries: maxRetries,
 		timeout:    timeout,
 	}, nil

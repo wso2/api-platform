@@ -45,19 +45,28 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+	return nil
+}
+
 // newPublicationTestService wires a real PublicationService against it.db,
 // using the same repositories production code uses. Unlike the rest of this
 // package (which drives repositories directly), these tests go through the
 // service layer: the actual validation/resolution logic (handle resolution,
 // unknown-handle rejection) lives there, not in the repository.
 func newPublicationTestService(it *itDB) *service.PublicationService {
+	return newPublicationTestServiceWith(it, alwaysSucceedsPortalPublisher{})
+}
+
+// newPublicationTestServiceWith builds the service with the given portal double.
+func newPublicationTestServiceWith(it *itDB, portalPublisher service.PortalPublisher) *service.PublicationService {
 	return service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
 		repository.NewAPIPortalRepo(it.db),
 		repository.NewDocumentRepo(it.db),
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
-		alwaysSucceedsPortalPublisher{},
+		portalPublisher,
 		nil,
 	)
 }
@@ -437,8 +446,8 @@ func TestPublicationUnpublish_NotLive(t *testing.T) {
 	svc := newPublicationTestService(it)
 
 	err := svc.Unpublish(context.Background(), "rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "actor")
-	if !apperror.APIPublicationNotLive.Is(err) {
-		t.Fatalf("[%s] want APIPublicationNotLive, got %v", it.driver, err)
+	if !apperror.APIPublicationStateConflict.Is(err) {
+		t.Fatalf("[%s] want APIPublicationStateConflict, got %v", it.driver, err)
 	}
 }
 
@@ -563,6 +572,10 @@ func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPorta
 	return &service.PortalConflictError{Message: "active consumers still attached"}
 }
 
+func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+	return nil
+}
+
 // TestPublicationUnpublish_PortalConflict verifies a portal rejection (active
 // consumers) maps to APIPublicationPortalConflict and leaves the live row
 // untouched — the local write only happens after the portal call succeeds.
@@ -621,6 +634,10 @@ func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *mo
 		Message: "the API Portal rejected removal of this listing (status 409)",
 		Reason:  "active subscriptions are removed",
 	}
+}
+
+func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+	return nil
 }
 
 // TestPublicationUnpublish_PortalConflictReasonSurfaced verifies a curated

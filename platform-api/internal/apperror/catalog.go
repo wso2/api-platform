@@ -246,8 +246,8 @@ var (
 		"The API Portal rejected this request and will keep rejecting it until %s.")
 	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
 		"The API Portal could not be reached. Please try again.")
-	// APIPublicationNotLive is Unpublish's precondition failure: the API
-	// isn't currently published or deprecated to this portal.
-	APIPublicationNotLive = def(CodeAPIPublicationNotLive, http.StatusConflict,
-		"This API is not currently published or deprecated to this API Portal, so it cannot be unpublished.")
+	// APIPublicationStateConflict: the action is not valid for the listing's
+	// current status. %s is the refused action, e.g. "unpublished".
+	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict,
+		"This API's current status on this API Portal does not allow it to be %s.")
 )
