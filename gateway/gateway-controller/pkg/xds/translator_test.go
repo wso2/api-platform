@@ -1915,11 +1915,20 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		assert.Equal(t, constants.GatewayHealthyPath, healthyRoute.GetMatch().GetPath())
 		assert.Equal(t, uint32(200), healthyRoute.GetDirectResponse().GetStatus())
 
+		assert.Equal(t, uint32(0), readyRoute.GetTracing().GetOverallSampling().GetNumerator(),
+			"gateway-ready must force tracing sampling to zero")
+		assert.Equal(t, uint32(0), healthyRoute.GetTracing().GetOverallSampling().GetNumerator(),
+			"gateway-healthy must force tracing sampling to zero")
+
 		require.NotEqual(t, -1, catchAllIdx, "virtual host %q missing no-api-found catch-all", vh.Name)
 		assert.Less(t, readyIdx, catchAllIdx,
 			"gateway-ready must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
 		assert.Less(t, healthyIdx, catchAllIdx,
 			"gateway-healthy must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
+
+		catchAllRoute := vh.Routes[catchAllIdx]
+		assert.Nil(t, catchAllRoute.GetTracing(),
+			"tracing suppression must be scoped to the health routes only, not the no-api-found catch-all")
 	}
 
 	t.Run("present on the wildcard vhost with zero deployed artifacts", func(t *testing.T) {

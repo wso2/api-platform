@@ -688,6 +688,17 @@ func buildGatewayHealthRoutes() ([]*route.Route, error) {
 			TypedPerFilterConfig: map[string]*anypb.Any{
 				constants.ExtProcFilterName: disabledAny,
 			},
+			// Health probes fire every few seconds per pod (k8s readiness/liveness). Sampling
+			// them produces pure noise in the trace backend, so force the route's effective
+			// sampling to zero — overall_sampling is the final upper bound Envoy applies after
+			// client-directed, forced and random sampling, so this also defeats a probe sent
+			// with x-envoy-force-trace / x-client-trace-id.
+			Tracing: &route.Tracing{
+				OverallSampling: &typev3.FractionalPercent{
+					Numerator:   0,
+					Denominator: typev3.FractionalPercent_HUNDRED,
+				},
+			},
 		}
 	}
 
