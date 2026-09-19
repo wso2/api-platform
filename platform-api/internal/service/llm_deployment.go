@@ -428,7 +428,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -440,6 +440,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		deployment.UpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // RestoreLLMProviderDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
@@ -520,7 +521,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
@@ -532,6 +533,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		&updatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, targetDeployment.BuildID)
 }
 
 // UndeployLLMProviderDeployment undeploys an active deployment
@@ -606,7 +608,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		}
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -618,6 +620,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		&newUpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // DeleteLLMProviderDeployment permanently deletes an undeployed deployment artifact
@@ -708,6 +711,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 		if err != nil {
 			return nil, err
 		}
+		mapped.BuildId = d.BuildID
 		items = append(items, *mapped)
 	}
 
@@ -735,7 +739,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		return nil, apperror.DeploymentNotFound.New()
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -747,6 +751,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		deployment.UpdatedAt,
 		deployment.StatusReason,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 func (s *LLMProviderDeploymentService) getTemplateHandle(templateUUID, orgUUID string) (string, error) {
@@ -792,6 +797,20 @@ func (s *LLMProviderDeploymentService) cleanupRotatedCredential(
 	}
 	current, _ := metadata[constants.MetadataKeyUpstreamAuthValue].(string)
 	s.secretService.cleanupRotatedSecret(orgUUID, previousCredential, current, actor, s.slogger)
+}
+
+// namingBuild reports the build a deployment runs alongside the rest of its response.
+//
+// An LLM provider's deployments are built like a REST API's — `base: build` runs the build
+// it names and `base: current` stores what it renders — so they can say which one they are
+// running. The shared response builder does not set it, because the kinds that have no
+// builds share that builder too.
+func namingBuild(resp *api.DeploymentResponse, err error, buildID *string) (*api.DeploymentResponse, error) {
+	if err != nil || resp == nil {
+		return resp, err
+	}
+	resp.BuildId = buildID
+	return resp, nil
 }
 
 // applyUpstreamAuthOverride replaces the credential this deployment authenticates to
@@ -846,7 +865,60 @@ func (s *LLMProviderDeploymentService) applyUpstreamAuthOverride(
 			constants.MetadataKeyUpstreamAuthValue))
 	}
 	auth.Value = &value
+
+	return s.applyUpstreamAuthHeaderOverride(auth, metadata)
+}
+
+// applyUpstreamAuthHeaderOverride replaces the header this deployment sends its upstream
+// credential in.
+//
+// It applies only to an api-key upstream, because that is the only type whose header is a
+// choice: basic and bearer both send Authorization by definition, and changing it would
+// produce a request the vendor does not recognise. It is also only read alongside a
+// credential — a header on its own would name where to put a key this deployment does not
+// have.
+func (s *LLMProviderDeploymentService) applyUpstreamAuthHeaderOverride(
+	auth *api.UpstreamAuth, metadata map[string]interface{}) error {
+
+	raw, given := metadata[constants.MetadataKeyUpstreamAuthHeader]
+	if !given {
+		return nil
+	}
+	header, ok := raw.(string)
+	if !ok {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a string, got %T.", constants.MetadataKeyUpstreamAuthHeader, raw))
+	}
+	if header = strings.TrimSpace(header); header == "" {
+		return nil
+	}
+	if normalizeUpstreamAuthType(string(*auth.Type)) != string(api.ApiKey) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q applies only to an upstream that authenticates with an api-key.",
+			constants.MetadataKeyUpstreamAuthHeader))
+	}
+	if !isHTTPHeaderName(header) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a valid HTTP header name.", constants.MetadataKeyUpstreamAuthHeader))
+	}
+	auth.Header = &header
 	return nil
+}
+
+// isHTTPHeaderName reports whether s is a valid HTTP field name (RFC 9110 token), so a
+// header override cannot inject a second header or a request line.
+func isHTTPHeaderName(s string) bool {
+	if s == "" || len(s) > 256 {
+		return false
+	}
+	for _, c := range s {
+		isAlphaNum := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		if isAlphaNum || strings.ContainsRune("!#$%&'*+-.^_`|~", c) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // isSecretReference reports whether s is exactly a {{ secret "handle" }} placeholder,

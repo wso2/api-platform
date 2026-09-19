@@ -327,3 +327,74 @@ func TestRotatedCredential_ReleasesNothingOnAFirstDeployment(t *testing.T) {
 		t.Errorf("released %q, want nothing released", released)
 	}
 }
+
+// The header the credential is sent in can differ per gateway, because two accounts with
+// the same vendor can differ in header convention.
+func TestUpstreamAuthHeaderOverride_ReplacesTheHeaderForAnApiKeyUpstream(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+	rendered := providerWithUpstreamAuth("api-key", "")
+
+	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+		constants.MetadataKeyUpstreamAuthValue:  `{{ secret "eu-key" }}`,
+		constants.MetadataKeyUpstreamAuthHeader: "x-api-key",
+	}, "org-1")
+	if err != nil {
+		t.Fatalf("applying the override: %v", err)
+	}
+
+	if got := rendered.Spec.Upstream.Auth.Header; got == nil || *got != "x-api-key" {
+		t.Errorf("header is %v, want x-api-key", got)
+	}
+}
+
+// bearer and basic send Authorization by definition, so naming a header for them would
+// produce a request the vendor does not recognise.
+func TestUpstreamAuthHeaderOverride_RefusesAnUpstreamThatIsNotApiKey(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+
+	for _, authType := range []string{"bearer", "basic"} {
+		rendered := providerWithUpstreamAuth(authType, "")
+		err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+			constants.MetadataKeyUpstreamAuthValue:  `{{ secret "eu-key" }}`,
+			constants.MetadataKeyUpstreamAuthHeader: "x-api-key",
+		}, "org-1")
+		if err == nil {
+			t.Errorf("auth type %q: expected the header override to be refused", authType)
+		}
+	}
+}
+
+// A header that is not a valid field name is refused, so an override cannot inject a
+// second header or a request line.
+func TestUpstreamAuthHeaderOverride_RefusesAHeaderThatIsNotAFieldName(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+
+	for _, header := range []string{"x api key", "x-api-key\r\nX-Injected: 1", "x:key"} {
+		rendered := providerWithUpstreamAuth("api-key", "")
+		err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+			constants.MetadataKeyUpstreamAuthValue:  `{{ secret "eu-key" }}`,
+			constants.MetadataKeyUpstreamAuthHeader: header,
+		}, "org-1")
+		if err == nil {
+			t.Errorf("header %q should be refused", header)
+		}
+	}
+}
+
+// A header given without a credential is left alone: it would name where to put a key
+// this deployment does not have.
+func TestUpstreamAuthHeaderOverride_IgnoredWithoutACredential(t *testing.T) {
+	svc := &LLMProviderDeploymentService{}
+	rendered := providerWithUpstreamAuth("api-key", "")
+	rendered.Spec.Upstream.Auth.Header = nil
+
+	err := svc.applyUpstreamAuthOverride(rendered, map[string]interface{}{
+		constants.MetadataKeyUpstreamAuthHeader: "x-api-key",
+	}, "org-1")
+	if err != nil {
+		t.Fatalf("applying the override: %v", err)
+	}
+	if rendered.Spec.Upstream.Auth.Header != nil {
+		t.Error("a header without a credential should not be applied")
+	}
+}

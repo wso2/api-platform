@@ -7978,6 +7978,11 @@ components:
             it means giving a new one rather than editing what came back. Omitting it
             leaves the provider's own credential in place.
 
+
+            `upstreamAuthHeader` names the header that credential is sent in. It is read
+            only alongside `upstreamAuthValue`, and only where the upstream authenticates
+            with an api-key — basic and bearer send `Authorization` by definition.
+
     BuildRequest:
       type: object
       description: Optional details to record with a build.
@@ -8101,15 +8106,14 @@ components:
           type: string
           nullable: true
           description: |
-            Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
-            has one: `base: build` runs the build it names, and `base: current` stores what
-            it renders as a build and runs that.
+            Build this deployment runs, such as `2026-01-31-2`. A REST API and an LLM
+            provider deployment both have one: `base: build` runs the build it names, and
+            `base: current` stores what it renders as a build and runs that.
 
-            Null for artifact kinds that have no builds — MCP proxy, LLM and event API
-            deployments — including one promoted from another deployment, which reuses that
-            deployment's rendered artifact. Also null once the build it ran has been pruned.
-            Null means only that no build can be named; the deployment keeps its own
-            rendered artifact either way.
+            Null for artifact kinds that have no builds, and for a deployment promoted from
+            another, which reuses that deployment's rendered artifact. Also null once the
+            build it ran has been pruned. Null means only that no build can be named; the
+            deployment keeps its own rendered artifact either way.
           example: "2026-01-31-2"
         metadata:
           type: object

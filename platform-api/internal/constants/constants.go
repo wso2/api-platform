@@ -273,6 +273,10 @@ const (
 	// It carries a {{ secret "handle" }} reference rather than the credential itself,
 	// because deployment metadata is returned with every read of a deployment.
 	MetadataKeyUpstreamAuthValue = "upstreamAuthValue"
+	// MetadataKeyUpstreamAuthHeader is the metadata key for the per-deployment header an
+	// LLM provider's upstream credential is sent in. It only applies where the upstream
+	// authenticates with an api-key, which is the only type whose header is a choice.
+	MetadataKeyUpstreamAuthHeader = "upstreamAuthHeader"
 	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
 	// and persist the current gateway default vhosts, ensuring deployments are immune to future
 	// gateway config changes.
