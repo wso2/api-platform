@@ -268,6 +268,11 @@ const (
 	MetadataKeyVhostMain = "vhostMain"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
 	MetadataKeyVhostSandbox = "vhostSandbox"
+	// MetadataKeyUpstreamAuthValue is the metadata key for the per-deployment upstream
+	// credential of an LLM provider — the value it authenticates to its upstream with.
+	// It carries a {{ secret "handle" }} reference rather than the credential itself,
+	// because deployment metadata is returned with every read of a deployment.
+	MetadataKeyUpstreamAuthValue = "upstreamAuthValue"
 	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
 	// and persist the current gateway default vhosts, ensuring deployments are immune to future
 	// gateway config changes.

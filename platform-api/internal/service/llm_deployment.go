@@ -61,8 +61,11 @@ type LLMProviderDeploymentService struct {
 	orgRepo              repository.OrganizationRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
-	cfg                  *config.Server
-	slogger              *slog.Logger
+	// secretService resolves the {{ secret "handle" }} reference a per-deployment
+	// upstream credential is given as. Injected after construction (SetSecretService).
+	secretService *SecretService
+	cfg           *config.Server
+	slogger       *slog.Logger
 }
 
 // LLMProxyDeploymentService handles business logic for LLM proxy deployment operations
@@ -106,6 +109,13 @@ func NewLLMProviderDeploymentService(
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
+}
+
+// SetSecretService injects the SecretService used to check that a per-deployment
+// upstream credential names a secret this organization actually has. Called after
+// both services are constructed, to avoid a circular dependency.
+func (s *LLMProviderDeploymentService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
 }
 
 // NewLLMProxyDeploymentService creates a new LLM proxy deployment service
@@ -306,6 +316,10 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, err
 	}
 
+	// The credential this gateway is running now, read before the new deployment
+	// replaces it, so a rotation can release the secret it rotated away from.
+	previousCredential := s.currentDeploymentCredential(provider.UUID, gatewayID, orgUUID)
+
 	// What this deploy ships: a build prepared earlier, or a snapshot of the
 	// provider as it stands now. A snapshot comes back unstored so it commits with
 	// the deployment below.
@@ -316,6 +330,13 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	providerDeployment, ok := source.Definition.(*dto.LLMProviderDeploymentYAML)
 	if !ok {
 		return nil, fmt.Errorf("artifact %s did not render as an LLM provider definition", provider.UUID)
+	}
+	// Customized for this deployment before it is translated, exactly as an API's
+	// endpoint and vhosts are: the build is a snapshot of the provider's definition,
+	// and what a single gateway authenticates with is a property of the deployment
+	// rather than of that snapshot.
+	if err := s.applyUpstreamAuthOverride(providerDeployment, metadata, orgUUID); err != nil {
+		return nil, err
 	}
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
 	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
@@ -381,6 +402,13 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	); err != nil {
 		return nil, fmt.Errorf("failed to set deployment status for LLM provider: %w", err)
 	}
+
+	// Best-effort: release the secret this gateway's credential was rotated away from,
+	// as an update to the provider's own credential does. It runs after the status is
+	// set above, because that is what rewrites this gateway's secret references — until
+	// it has, the old handle still looks in use by this very gateway and the delete
+	// would be refused.
+	s.cleanupRotatedCredential(orgUUID, previousCredential, metadata, createdBy)
 
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
@@ -733,6 +761,100 @@ func (s *LLMProviderDeploymentService) getTemplateHandle(templateUUID, orgUUID s
 		return "", apperror.LLMProviderTemplateNotFound.Wrap(apperror.LLMProviderDeploymentValidationFailed.New("The referenced LLM provider template could not be found."))
 	}
 	return tpl.ID, nil
+}
+
+// currentDeploymentCredential reads the per-deployment credential the gateway is
+// running now, or "" when it is running nothing, has no credential of its own, or
+// cannot be read. A failure to read it only means no secret is released, which is why
+// it is not surfaced: it must never be the reason a deploy fails.
+func (s *LLMProviderDeploymentService) currentDeploymentCredential(artifactUUID, gatewayID, orgUUID string) string {
+	current, err := s.deploymentRepo.GetCurrentByGateway(artifactUUID, gatewayID, orgUUID)
+	if err != nil || current == nil {
+		return ""
+	}
+	value, _ := current.Metadata[constants.MetadataKeyUpstreamAuthValue].(string)
+	return value
+}
+
+// cleanupRotatedCredential releases the secret a gateway's credential was rotated away
+// from, mirroring what an update to the provider's own credential does
+// (LLMProviderService.Update). Deleting is soft and is refused outright while anything
+// still references the handle, so a secret another gateway — or this provider itself —
+// is still using survives.
+//
+// Best-effort by design: the deployment is already live by the time this runs, and a
+// secret left behind is not a reason to report the deploy as failed.
+func (s *LLMProviderDeploymentService) cleanupRotatedCredential(
+	orgUUID, previousCredential string, metadata map[string]interface{}, actor string) {
+
+	if s.secretService == nil || previousCredential == "" {
+		return
+	}
+	current, _ := metadata[constants.MetadataKeyUpstreamAuthValue].(string)
+	s.secretService.cleanupRotatedSecret(orgUUID, previousCredential, current, actor, s.slogger)
+}
+
+// applyUpstreamAuthOverride replaces the credential this deployment authenticates to
+// the provider's upstream with, leaving the provider's own definition untouched. It is
+// what lets one provider be deployed to several gateways, each holding a different
+// account with the same LLM vendor.
+//
+// The value is a {{ secret "handle" }} reference, never the credential itself, and is
+// refused otherwise. Deployment metadata is returned with every read of a deployment,
+// so a literal here would be a credential readable by anyone who can list deployments —
+// whereas a reference names a secret the platform already guards. It also costs nothing
+// to carry: the rendered content's references are recorded per gateway on deploy
+// (upsertDeploymentSecretRefs), which is what syncs the secret and protects it from
+// being deleted while a gateway is serving it.
+//
+// An absent or empty value leaves the provider's own credential in place, matching how
+// the endpoint and vhost overrides treat one.
+func (s *LLMProviderDeploymentService) applyUpstreamAuthOverride(
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID string) error {
+
+	raw, given := metadata[constants.MetadataKeyUpstreamAuthValue]
+	if !given {
+		return nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a string, got %T.", constants.MetadataKeyUpstreamAuthValue, raw))
+	}
+	if value = strings.TrimSpace(value); value == "" {
+		return nil
+	}
+	if !isSecretReference(value) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a secret reference of the form {{ secret \"handle\" }}, so the credential itself is not stored on the deployment.",
+			constants.MetadataKeyUpstreamAuthValue))
+	}
+	if s.secretService != nil {
+		if err := s.secretService.ValidateSecretRefs(orgUUID, value); err != nil {
+			return err
+		}
+	}
+
+	// Only an upstream that authenticates at all can have its credential replaced.
+	// Setting one on a provider whose upstream takes none would ship an auth block the
+	// gateway has no use for, and would read as though the deployment were authenticating
+	// when it is not.
+	auth := providerDeployment.Spec.Upstream.Auth
+	if auth == nil || auth.Type == nil || isCredentialLessUpstreamAuthType(string(*auth.Type)) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"This provider's upstream takes no credential, so %q cannot be set for a deployment of it.",
+			constants.MetadataKeyUpstreamAuthValue))
+	}
+	auth.Value = &value
+	return nil
+}
+
+// isSecretReference reports whether s is exactly a {{ secret "handle" }} placeholder,
+// rather than merely containing one — a credential with a placeholder appended to it
+// must not pass as a reference.
+func isSecretReference(s string) bool {
+	loc := constants.SecretPlaceholderRe.FindStringIndex(s)
+	return loc != nil && loc[0] == 0 && loc[1] == len(s)
 }
 
 func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHandle string) (dto.LLMProviderDeploymentYAML, error) {

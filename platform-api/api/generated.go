@@ -1169,7 +1169,7 @@ type DeployRequest struct {
 	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
-	// Metadata Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
+	// Metadata Optional metadata for the deployment. Supported keys are `endpointUrl`, `vhostMain` and `vhostSandbox` for REST APIs, and `upstreamAuthValue` for LLM providers — the credential that deployment authenticates to the provider's upstream with, so one provider can run on several gateways against different accounts with the same vendor. It must be given as a `{{ secret "handle" }}` reference naming a secret of this organization, never the credential itself. Like the provider's own `auth.value` it is write-only: it is never returned by any read of a deployment, so replacing it means giving a new one rather than editing what came back. Omitting it leaves the provider's own credential in place.
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
