@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import ProviderDeployPage from './ProviderDeployPage';
-import { createProviderDeployClient } from './providerDeployApi';
+import { createProviderDeployClient, type ProviderUpstream } from './providerDeployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
 import type { Build, Environment } from './types';
@@ -56,8 +56,8 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
-  // Only an api-key upstream lets a deployment name the header its credential is sent in.
-  const [authType, setAuthType] = useState<string | undefined>(undefined);
+  // What the provider itself uses, which the deploy form starts from.
+  const [upstream, setUpstream] = useState<ProviderUpstream>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -101,7 +101,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
   // not deployment state, and failing to read it must leave the rest of the page working.
   useEffect(() => {
     if (!client) return;
-    void client.readUpstreamAuthType().then(setAuthType, () => setAuthType(undefined));
+    void client.readUpstream().then(setUpstream, () => setUpstream({}));
   }, [client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
@@ -143,7 +143,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
    */
   const handleDeploy = (
     target: Environment,
-    gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[],
+    gateways: { gatewayId: string; apiKey?: string; authHeader?: string; endpointUrl?: string }[],
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
@@ -151,7 +151,9 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
       async () => {
         const targets = await Promise.all(
           gateways.map(async (gateway) => {
-            if (!gateway.apiKey) return { gatewayId: gateway.gatewayId };
+            if (!gateway.apiKey) {
+              return { gatewayId: gateway.gatewayId, endpointUrl: gateway.endpointUrl };
+            }
             const name =
               target.gateways.find((candidate) => candidate.id === gateway.gatewayId)?.name ??
               gateway.gatewayId;
@@ -159,6 +161,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
               gatewayId: gateway.gatewayId,
               apiKey: await client.storeCredential(gateway.apiKey, `${handle} · ${target.name} · ${name}`),
               authHeader: gateway.authHeader,
+              endpointUrl: gateway.endpointUrl,
             };
           })
         );
@@ -251,7 +254,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
     <ProviderDeployPage
       environments={environments}
       builds={builds}
-      takesAuthHeader={authType === 'api-key'}
+      upstream={upstream}
       busy={busy}
       onDeleteBuild={handleDeleteBuild}
       onDeploy={handleDeploy}

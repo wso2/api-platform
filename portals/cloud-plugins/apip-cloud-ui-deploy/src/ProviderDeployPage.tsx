@@ -22,6 +22,7 @@ import ProviderEnvironmentCard from './components/ProviderEnvironmentCard';
 import ProviderDeployDialog from './components/ProviderDeployDialog';
 import ProviderBuildsCard from './components/ProviderBuildsCard';
 import { undeletableBuildReasons } from './utils/status';
+import type { ProviderUpstream } from './providerDeployApi';
 import type { Build, Environment } from './types';
 
 export type ProviderDeployPageProps = {
@@ -29,12 +30,17 @@ export type ProviderDeployPageProps = {
   environments: Environment[];
   /** The provider's builds, newest first. */
   builds: Build[];
-  /** Whether a gateway can name the header its credential is sent in (api-key upstreams). */
-  takesAuthHeader: boolean;
+  /** What the provider itself uses, which each gateway's fields start from. */
+  upstream: ProviderUpstream;
   busy: boolean;
   onDeploy: (
     target: Environment,
-    gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[],
+    gateways: {
+      gatewayId: string;
+      apiKey?: string;
+      authHeader?: string;
+      endpointUrl?: string;
+    }[],
     buildId?: string
   ) => void;
   onStopGateway: (environment: Environment, gatewayId: string) => void;
@@ -53,7 +59,7 @@ export type ProviderDeployPageProps = {
 const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
   environments,
   builds,
-  takesAuthHeader,
+  upstream,
   busy,
   onDeploy,
   onStopGateway,
@@ -124,7 +130,7 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
         open={openTarget !== null}
         environment={openTarget}
         builds={builds}
-        takesAuthHeader={takesAuthHeader}
+        upstream={upstream}
         submitting={busy}
         onClose={() => setTarget(null)}
         onConfirm={(gateways, buildId) => {

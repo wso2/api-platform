@@ -27,7 +27,18 @@ import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type Stage
  * can. The credential itself never comes back — it is write-only.
  */
 type ProviderDTO = {
-  upstream?: { main?: { auth?: { type?: string } } };
+  upstream?: { main?: { url?: string; auth?: { type?: string; header?: string } } };
+};
+
+/**
+ * How the provider talks to its upstream, which is what the deploy form starts from: the
+ * backend it routes to, how it authenticates, and the header it sends its credential in.
+ * The credential itself is never here, because it is write-only.
+ */
+export type ProviderUpstream = {
+  url?: string;
+  authType?: string;
+  authHeader?: string;
 };
 
 /** One of the provider's builds, as the platform reports it. */
@@ -74,13 +85,14 @@ export function createProviderDeployClient(apiFetch: ApiFetch, providerHandle: s
     },
 
     /**
-     * How the provider authenticates to its upstream, so the deploy form knows whether a
-     * per-gateway header can be named. Absent when it cannot be read, which leaves the
-     * header out rather than offering a field the deploy would refuse.
+     * The provider's upstream, so the deploy form opens on what the provider itself uses
+     * rather than on blanks, and knows whether a credential can be named at all. An empty
+     * result leaves those fields out rather than offering ones the deploy would refuse.
      */
-    async readUpstreamAuthType(): Promise<string | undefined> {
+    async readUpstream(): Promise<ProviderUpstream> {
       const provider = await apiFetch<ProviderDTO>('GET', nativeBase);
-      return provider?.upstream?.main?.auth?.type;
+      const main = provider?.upstream?.main;
+      return { url: main?.url, authType: main?.auth?.type, authHeader: main?.auth?.header };
     },
 
     /**
@@ -153,25 +165,26 @@ export function createProviderDeployClient(apiFetch: ApiFetch, providerHandle: s
      */
     async deploy(input: {
       environment: string;
-      gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[];
+      gateways: { gatewayId: string; apiKey?: string; authHeader?: string; endpointUrl?: string }[];
       buildId?: string;
     }): Promise<void> {
       await apiFetch('POST', base, {
         environment: input.environment,
         ...(input.buildId ? { buildId: input.buildId } : {}),
-        gateways: input.gateways.map((gateway) => ({
-          gatewayId: gateway.gatewayId,
+        gateways: input.gateways.map((gateway) => {
           // The header travels only with a key: on its own it would name where to put a
           // credential this deployment does not have, and the platform refuses it.
-          ...(gateway.apiKey
-            ? {
-                parameters: {
-                  apiKey: gateway.apiKey,
-                  ...(gateway.authHeader ? { authHeader: gateway.authHeader } : {}),
-                },
-              }
-            : {}),
-        })),
+          const parameters: Record<string, string> = {};
+          if (gateway.endpointUrl) parameters.productionEndpoint = gateway.endpointUrl;
+          if (gateway.apiKey) {
+            parameters.apiKey = gateway.apiKey;
+            if (gateway.authHeader) parameters.authHeader = gateway.authHeader;
+          }
+          return {
+            gatewayId: gateway.gatewayId,
+            ...(Object.keys(parameters).length > 0 ? { parameters } : {}),
+          };
+        }),
       });
     },
 

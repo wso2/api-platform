@@ -38,6 +38,7 @@ import {
 import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
+import type { ProviderUpstream } from '../providerDeployApi';
 import type { Build, Environment, Gateway } from '../types';
 
 export type ProviderDeployDialogProps = {
@@ -45,8 +46,8 @@ export type ProviderDeployDialogProps = {
   environment: Environment | null;
   /** The provider's builds, newest first. */
   builds: Build[];
-  /** Whether a gateway can name the header its credential is sent in (api-key upstreams). */
-  takesAuthHeader: boolean;
+  /** What the provider itself uses, which each gateway's fields start from. */
+  upstream: ProviderUpstream;
   submitting: boolean;
   onClose: () => void;
   /**
@@ -56,7 +57,12 @@ export type ProviderDeployDialogProps = {
    * provider is to be shipped as it stands.
    */
   onConfirm: (
-    gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[],
+    gateways: {
+      gatewayId: string;
+      apiKey?: string;
+      authHeader?: string;
+      endpointUrl?: string;
+    }[],
     buildId?: string
   ) => void;
 };
@@ -87,7 +93,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
   open,
   environment,
   builds,
-  takesAuthHeader,
+  upstream,
   submitting,
   onClose,
   onConfirm,
@@ -103,6 +109,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
   // rather than "clear it".
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
   const [headerDrafts, setHeaderDrafts] = useState<Record<string, string>>({});
+  const [endpointDrafts, setEndpointDrafts] = useState<Record<string, string>>({});
   // Empty means "as it stands now", which is what a deploy does when it names no
   // build: the platform snapshots the definition and deploys that snapshot.
   const [buildId, setBuildId] = useState('');
@@ -112,6 +119,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
     setSelectedIds(null);
     setKeyDrafts({});
     setHeaderDrafts({});
+    setEndpointDrafts({});
     setBuildId('');
   }, [open]);
 
@@ -143,6 +151,19 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
     (gateway) => !lockedIds.includes(gateway.id)
   );
   const canConfirm = selected.length > 0 && inactiveSelected.length === 0;
+
+  // Each field opens on what the gateway is running, falling back to what the provider
+  // itself uses. A credential is the exception: it is write-only, so it can only ever
+  // start empty and an empty field means "keep what is there".
+  const endpointFor = (gatewayId: string) =>
+    endpointDrafts[gatewayId] ??
+    environment.gateways.find((gateway) => gateway.id === gatewayId)?.endpointUrl ??
+    upstream.url ??
+    '';
+  const headerFor = (gatewayId: string) => headerDrafts[gatewayId] ?? upstream.authHeader ?? '';
+  // Only an api-key upstream has a credential this form can name: basic and bearer send
+  // Authorization by definition, and none/other carry no credential at all.
+  const takesCredential = upstream.authType === 'api-key';
 
   const toggleGateway = (id: string) => {
     if (lockedIds.includes(id)) return;
@@ -251,41 +272,52 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
                     </Tooltip>
                     <StatusPill tone={gatewayStatusTone(gateway.status)} />
                   </Box>
-                  {/* The credential is per gateway, which is the point of the field:
-                      two gateways of one environment can hold different accounts with
-                      the same vendor. Left empty, the gateway keeps whatever it is
-                      already using — the provider's own key on a first deploy. */}
+                  {/* The same order the provider's own connection settings use:
+                      where it routes, then how it authenticates. The endpoint is offered
+                      whatever the auth type, since every provider has one. */}
                   {isSelected ? (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      sx={{ mt: 1 }}
+                      label="Provider endpoint"
+                      placeholder="https://api.openai.com/v1"
+                      value={endpointFor(gateway.id)}
+                      onChange={(event) =>
+                        setEndpointDrafts({ ...endpointDrafts, [gateway.id]: event.target.value })
+                      }
+                      helperText="Backend this gateway routes to."
+                    />
+                  ) : null}
+                  {isSelected && takesCredential ? (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      sx={{ mt: 1 }}
+                      label="Authentication header"
+                      placeholder="Authorization"
+                      value={headerFor(gateway.id)}
+                      onChange={(event) =>
+                        setHeaderDrafts({ ...headerDrafts, [gateway.id]: event.target.value })
+                      }
+                      helperText="Header the key below is sent in."
+                    />
+                  ) : null}
+                  {/* The credential starts empty because it is never read back, so an
+                      empty field keeps whatever the gateway is already using. */}
+                  {isSelected && takesCredential ? (
                     <TextField
                       fullWidth
                       size="small"
                       type="password"
                       autoComplete="off"
                       sx={{ mt: 1 }}
-                      label="API key"
+                      label="Credentials"
                       value={keyDrafts[gateway.id] ?? ''}
                       onChange={(event) =>
                         setKeyDrafts({ ...keyDrafts, [gateway.id]: event.target.value })
                       }
                       helperText="Leave empty to keep the current key."
-                    />
-                  ) : null}
-                  {/* Only an api-key upstream has a header to choose: basic and bearer
-                      send Authorization by definition. Shown with the key rather than
-                      only once one is typed, so the field is discoverable; it is sent
-                      only alongside a key, which the helper text says. */}
-                  {isSelected && takesAuthHeader ? (
-                    <TextField
-                      fullWidth
-                      size="small"
-                      sx={{ mt: 1 }}
-                      label="Header"
-                      placeholder="Authorization"
-                      value={headerDrafts[gateway.id] ?? ''}
-                      onChange={(event) =>
-                        setHeaderDrafts({ ...headerDrafts, [gateway.id]: event.target.value })
-                      }
-                      helperText="Applies to the key above. Leave empty to keep the provider's header."
                     />
                   ) : null}
                 </Box>
@@ -307,6 +339,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
                 gatewayId: gateway.id,
                 apiKey: keyDrafts[gateway.id]?.trim() || undefined,
                 authHeader: headerDrafts[gateway.id]?.trim() || undefined,
+                endpointUrl: endpointFor(gateway.id).trim() || undefined,
               })),
               buildId || undefined
             )
