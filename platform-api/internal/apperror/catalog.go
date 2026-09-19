@@ -251,7 +251,8 @@ var (
 	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict,
 		"This API's current status on this API Portal does not allow it to be %s.")
 	// APIPublicationDraftChanged: the draft was saved while it was being
-	// published; nothing local was changed, so publishing again is safe.
+	// published. The portal may already hold the earlier copy while nothing
+	// local was changed; publishing again brings the two back in line.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
-		"The draft was changed while it was being published. Review the draft and publish again.")
+		"The draft was changed while it was being published, so the API Portal may hold an earlier copy. Review the draft and publish again.")
 )
