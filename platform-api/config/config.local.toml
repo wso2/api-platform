@@ -21,8 +21,6 @@
 #
 # Not used by any docker-compose quickstart; those keep using config.toml as-is.
 
-[platform_api]
-
 [platform_api.logging]
 level = '{{ env "APIP_CP_LOGGING_LEVEL" "info" }}'
 

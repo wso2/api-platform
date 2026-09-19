@@ -216,6 +216,77 @@ type SubscriptionPlanRepository interface {
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
+	// GetUUIDsByHandles resolves each handle to its subscription_plan_uuid,
+	// scoped to the organization. A handle absent from the returned map does
+	// not exist in the org's catalog. Used by API Publication draft/publish
+	// save to validate and resolve subscriptionPlanIds.
+	GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error)
+	// GetHandlesByIDs is the inverse of GetUUIDsByHandles: subscription_plan_uuid
+	// to handle, for reconstructing a subscriptionPlanIds response from stored
+	// mapping rows.
+	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
+}
+
+// PublicationRepository defines the interface for api_publications and its
+// satellite tables (api_publication_contents, api_publication_doc_mappings,
+// api_publication_plan_mappings): draft rows (IsDraft true) and read-only
+// access to live rows (IsDraft false).
+type PublicationRepository interface {
+	// GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
+	// plus the raw subscription-plan and document UUIDs its mapping tables
+	// store (not yet resolved to handles — the caller does that). Returns
+	// (nil, nil, nil, nil) when no draft has been saved.
+	GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	// GetPublication is GetDraft's counterpart for the live (IsDraft false)
+	// row. Returns (nil, nil, nil, nil) when this API is not published to
+	// this portal.
+	GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	// SaveDraftDetails creates the draft row on first save (any artifactUUID +
+	// apiPortalUUID pairing with no existing draft), or replaces an existing
+	// one in full, together with its plan/document mapping rows (planUUIDs /
+	// docUUIDs — already resolved from handles by the caller). Returns the
+	// saved row with its resolved UUID and audit timestamps.
+	SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error)
+	// PromoteDraftToPublication makes the draft row for (artifactUUID,
+	// apiPortalUUID, orgUUID) live. The uuid of whichever row was first
+	// published for this pairing is the durable "anchor" identity and never
+	// changes again: on a first publish the draft row itself becomes the
+	// anchor (flipped in place, same uuid); on a republish the draft's
+	// content is merged into the existing anchor row instead, and the draft
+	// row is discarded. Returns (nil, false, nil) if no draft exists to
+	// promote. replaced reports whether an existing live row was found
+	// (republish) versus this being the first publish.
+	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error)
+	// UnpublishPublication is PromoteDraftToPublication's mirror, called
+	// after the portal removal succeeds: if no draft
+	// exists for (artifactUUID, apiPortalUUID, orgUUID), the live row (the
+	// anchor) is demoted into the draft in place (is_draft=1, status
+	// cleared) — same row, same uuid, no content copy. If a draft already
+	// exists as its own row, that draft's content is merged into the anchor
+	// instead of deleting the anchor and leaving the draft's own row as the
+	// survivor — the anchor's uuid stays the durable identity for this
+	// pairing either way, and the draft's own row is discarded once merged.
+	// found reports whether a live row existed to unpublish; false is the
+	// same defensive precondition failure the caller already checked before
+	// calling the portal.
+	UnpublishPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error)
+	// DeprecatePublication sets the live row's status to DEPRECATED if it is PUBLISHED.
+	// found is false when no row matched.
+	DeprecatePublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (found bool, err error)
+	// GetContent returns one content row (definition/landing page/thumbnail)
+	// for a publication row, or nil if none is stored.
+	GetContent(publicationUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error)
+	// SaveContent replaces the named content row for publicationUUID and bumps
+	// the parent api_publications row's updated_at/updated_by in the same
+	// transaction — one timestamp covers all four pieces (details,
+	// definition, landing page, thumbnail).
+	SaveContent(content *model.PublicationContent, actor string) error
+	// ListStatusByArtifact returns every api_publications row (draft and/or
+	// live) for artifactUUID across all API Portals, reduced to the portal
+	// UUID, tier, status and updated_at the GET /api-publications rollup
+	// needs — one query instead of a GetDraft/GetPublication call per
+	// portal.
+	ListStatusByArtifact(artifactUUID, orgUUID string) ([]*model.PublicationStatusRow, error)
 }
 
 // SubscriptionRepository defines the interface for application-level subscription data operations
@@ -317,6 +388,11 @@ type APIPortalRepository interface {
 	Update(portal *model.APIPortal) error
 	Delete(portalID, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+	// ListActiveByOrg returns every api_portals row for orgUUID whose status
+	// is "active" — used by the API Publication feature's
+	// GET /api-publications rollup, which lists only these; a portal still
+	// provisioning or failed is absent entirely.
+	ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -409,6 +485,18 @@ type DocumentRepository interface {
 	UpsertDocument(doc *model.Document) error
 	DeleteDocument(artifactUUID, handle, orgUUID string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
+	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
+	// scoped to one artifact (api_documents' real unique index is
+	// (artifact_uuid, handle) — a handle is only guaranteed unique per
+	// artifact, not per org). A handle absent from the returned map does not
+	// exist for this artifact. Used by API Publication draft/publish save to
+	// validate and resolve docIds.
+	GetDocumentUUIDsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]string, error)
+	// GetDocumentHandlesByUUIDs is the inverse, for reconstructing a docIds
+	// response from stored api_publication_doc_mappings rows. Scoped to the
+	// organization only (not a single artifact) since a mapping row's
+	// doc_uuid already came from that same artifact's own resolved set.
+	GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
 // AuditRepository defines the interface for audit record writes.

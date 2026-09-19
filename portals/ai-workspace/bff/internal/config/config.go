@@ -282,7 +282,10 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
 	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
 	" ap:api_portal:read ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage" +
+	" ap:api_portal:draft:read ap:api_portal:draft:update ap:api_portal:draft:manage" +
+	" ap:api_portal:publication:read" +
 	" ap:api_portal:mcp_proxy:publish ap:api_portal:mcp_proxy:unpublish ap:api_portal:mcp_proxy:manage" +
+	" ap:api_publication:read" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
 
 // Load resolves configuration from one or more config.toml files. At least one path

@@ -175,6 +175,11 @@ const PortalsPage = lazy(() =>
     default: m.PortalsPage,
   })),
 );
+const PortalPublishPage = lazy(() =>
+  import('../pages/appShell/appShellPages/portals/PortalPublishPage').then((m) => ({
+    default: m.PortalPublishPage,
+  })),
+);
 const SettingsLayout = lazy(() =>
   import('../pages/appShell/appShellPages/settings/SettingsLayout').then((m) => ({
     default: m.SettingsLayout,
@@ -360,6 +365,11 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.organizationPortals()} element={<PortalsPage />} />
           <Route path={routes.projectPortals()} element={<PortalsPage />} />
           <Route path={routes.apiPortals()} element={<PortalsPage />} />
+          {/*
+            Reached only from a portal card on the page above — like `apiEdit`,
+            there is no sidebar link to it and so no scope-less alias to register.
+          */}
+          <Route path={routes.apiPortalPublish()} element={<PortalPublishPage />} />
           {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}

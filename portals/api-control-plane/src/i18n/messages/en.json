@@ -1970,8 +1970,176 @@
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.unresolvedOrganization": {
     "defaultMessage": "Unable to resolve organization context. The organization API returned no usable organizations for this session."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyDescription": {
+    "defaultMessage": "An organization admin needs to register an API portal before this API can be published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle": {
+    "defaultMessage": "No API portals available",
+    "description": "Shown when the organization has not registered any API Portal yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.errorMessage": {
+    "defaultMessage": "Unable to load API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.loading": {
+    "defaultMessage": "Loading API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesDescription": {
+    "defaultMessage": "Try a different portal name or clear the search."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle": {
+    "defaultMessage": "No matching API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder": {
+    "defaultMessage": "Search API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle": {
+    "defaultMessage": "Choose the API portal to publish this API to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
+    "defaultMessage": "Publish {apiName}",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
+    "defaultMessage": "Back to Available Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmAction": {
+    "defaultMessage": "Confirm",
+    "description": "Button on the unpublish and deprecate confirmation dialogs. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmInputLabel": {
+    "defaultMessage": "Type \"{name}\" to confirm",
+    "description": "Label for the type-to-confirm field. {name} is the API name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject": {
+    "defaultMessage": "The definition must be an object, not a list or a single value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage": {
+    "defaultMessage": "This marks the API \"{name}\" as deprecated on {portalName}. It stays visible there."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmTitle": {
+    "defaultMessage": "Deprecate this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
+    "defaultMessage": "Deprecated on {portalName}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
+    "defaultMessage": "Draft saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
+    "defaultMessage": "Unable to load this portal’s draft and publication state"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading": {
+    "defaultMessage": "Loading publish details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published": {
+    "defaultMessage": "Published to {portalName}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
+    "defaultMessage": "{apiName} · v{version}",
+    "description": "Byline under the heading. Both values are user-supplied; do not translate them."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails": {
+    "defaultMessage": "API Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDocumentations": {
+    "defaultMessage": "Documentation"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage": {
+    "defaultMessage": "Landing Page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabSpecification": {
+    "defaultMessage": "Specification"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabSubscriptionPlans": {
+    "defaultMessage": "Subscription Plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title": {
+    "defaultMessage": "Publish to {portalName}",
+    "description": "Page heading. {portalName} is the API Portal display name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmMessage": {
+    "defaultMessage": "This removes the API \"{name}\" from {portalName}. You can publish it again later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmTitle": {
+    "defaultMessage": "Unpublish this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublished": {
+    "defaultMessage": "Unpublished from {portalName}."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalsPage.feature": {
     "defaultMessage": "Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionLabel": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionPlaceholder": {
+    "defaultMessage": "What this API does, in one or two sentences."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.nameLabel": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.productionUrlLabel": {
+    "defaultMessage": "Production URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel": {
+    "defaultMessage": "Sandbox URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
+    "defaultMessage": "Version"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
+    "defaultMessage": "Go To Publish",
+    "description": "Card action opening the publish flow for this API on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
+    "defaultMessage": "Deprecate"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions": {
+    "defaultMessage": "More publish actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publish": {
+    "defaultMessage": "Publish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.saveDraft": {
+    "defaultMessage": "Save Draft"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
+    "defaultMessage": "Unpublish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
+    "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
+    "defaultMessage": "Loading editor"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
+    "defaultMessage": "This is not valid {format}: {detail}",
+    "description": "{format} is JSON or YAML; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
+    "defaultMessage": "Deprecated",
+    "description": "Status chip: this API is still listed on this portal but flagged as deprecated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.draft": {
+    "defaultMessage": "Draft",
+    "description": "Status chip: this API has unpublished changes saved as a draft on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.published": {
+    "defaultMessage": "Published",
+    "description": "Status chip: this API is live on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.displayNameRequired": {
+    "defaultMessage": "Enter a name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
+    "defaultMessage": "Enter a version."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView": {
     "defaultMessage": "Grid view",

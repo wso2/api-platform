@@ -223,3 +223,31 @@ var (
 	HmacSecretInvalidValue  = def(CodeHmacSecretInvalidValue, http.StatusBadRequest, "The secret value must be at least 32 characters.")
 	HmacSecretNotConfigured = def(CodeHmacSecretNotConfigured, http.StatusServiceUnavailable, "HMAC secret management is not configured on this server.")
 )
+
+// API Publication entries: the per-portal draft and the live publication.
+var (
+	APIPublicationAPINotFound   = def(CodeAPIPublicationAPINotFound, http.StatusNotFound, "The specified API could not be found.")
+	APIPublicationDraftNotFound = def(CodeAPIPublicationDraftNotFound, http.StatusNotFound, "No draft has been saved for this API on this API Portal.")
+	APIPublicationNotFound      = def(CodeAPIPublicationNotFound, http.StatusNotFound, "This API is not published to this API Portal.")
+	// APIPublicationValidationFailed's message is call-site-specific (an
+	// unresolvable plan/document handle, or content over the configured size
+	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.
+	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
+	// APIPublicationPortalConflict is a rejection the portal will keep making
+	// (a conflicting handle/display name, active subscriptions/API keys, or
+	// any other portal-side rejection) — never retried, distinct from the
+	// transient APIPublicationPortalUnavailable.
+	// %s carries a short, pre-approved reason phrase — e.g. "active
+	// subscriptions are removed" — resolved from a closed allowlist of known
+	// portal error codes (HTTPPortalPublisher.portalConflictReason), never
+	// the portal's own raw error text; falls back to "the conflict is
+	// resolved" (this entry's original, fixed wording) for anything else.
+	APIPublicationPortalConflict = def(CodeAPIPublicationPortalConflict, http.StatusConflict,
+		"The API Portal rejected this request and will keep rejecting it until %s.")
+	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
+		"The API Portal could not be reached. Please try again.")
+	// APIPublicationStateConflict: the action is not valid for the listing's
+	// current status. %s is the refused action, e.g. "unpublished".
+	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict,
+		"This API's current status on this API Portal does not allow it to be %s.")
+)

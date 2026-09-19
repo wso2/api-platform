@@ -27,6 +27,9 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
+// ErrUnknownArtifactKind is returned when a kind key matches no registered artifact table.
+var ErrUnknownArtifactKind = errors.New("invalid artifact kind")
+
 type ArtifactRepo struct {
 	db  *database.DB
 	reg *ArtifactTableRegistry
@@ -64,6 +67,12 @@ func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
 	// Explicit delete, not relying on the FK cascade, so the policy's "in use"
 	// lock releases regardless of FK enforcement state or SQL dialect.
 	if err := deleteCustomPolicyUsagesTx(tx, r.db, uuid); err != nil {
+		return err
+	}
+	// SQL Server's foreign key from api_publications is NO ACTION, so the drafts
+	// and listings (and, by cascade, their content and mappings) go first.
+	deletePublicationsQuery := `DELETE FROM api_publications WHERE artifact_uuid = ?`
+	if _, err := tx.Exec(r.db.Rebind(deletePublicationsQuery), uuid); err != nil {
 		return err
 	}
 	query := `DELETE FROM artifacts WHERE uuid = ?`
@@ -133,7 +142,7 @@ func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.AP
 func (r *ArtifactRepo) GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error) {
 	entry, ok := r.reg.TableByKindKey(kind)
 	if !ok {
-		return nil, fmt.Errorf("invalid artifact kind: %q", kind)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownArtifactKind, kind)
 	}
 	query := fmt.Sprintf(
 		"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid FROM %s WHERE handle = ? AND organization_uuid = ?",
