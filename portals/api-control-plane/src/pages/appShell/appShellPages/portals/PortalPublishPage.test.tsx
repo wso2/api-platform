@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 
@@ -41,6 +41,28 @@ import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { PortalPublishPage } from './PortalPublishPage';
+
+// Monaco does not run in jsdom; a textarea stands in for it.
+vi.mock('../apis/create/components/SpecCodeEditor', () => ({
+  SpecCodeEditor: ({
+    format,
+    onChange,
+    readOnly,
+    value,
+  }: {
+    format: string;
+    onChange?: (next: string) => void;
+    readOnly?: boolean;
+    value: string;
+  }) => (
+    <textarea
+      aria-label={`definition (${format})`}
+      onChange={(event) => onChange?.(event.target.value)}
+      readOnly={readOnly}
+      value={value}
+    />
+  ),
+}));
 
 const ORG = 'api-platform-demo';
 const PROJECT = 'retail-apis';
@@ -234,6 +256,73 @@ describe('PortalPublishPage', () => {
       openapi: '3.0.3',
       info: { title: 'Loan Management Service', version: '1.0.0' },
     });
+  });
+
+  it('shows a definition saved as YAML in YAML, exactly as stored', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Specification' }));
+
+    expect(await screen.findByRole('textbox', { name: 'definition (yaml)' })).toHaveValue(YAML_DEFINITION);
+    expect(screen.getByRole('button', { name: 'YAML' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows a definition saved as JSON in JSON, pretty-printed', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, '{"openapi":"3.0.3","paths":{}}', 'application/json'));
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Specification' }));
+
+    expect(await screen.findByRole('textbox', { name: 'definition (json)' })).toHaveValue(
+      '{\n  "openapi": "3.0.3",\n  "paths": {}\n}',
+    );
+  });
+
+  it('saves the definition as the format shown once it has been switched and edited', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Specification' }));
+    await user.click(await screen.findByRole('button', { name: 'JSON' }));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? '{}')).toMatchObject({
+      openapi: '3.0.3',
+      info: { title: 'Loan Management Service' },
+    });
+  });
+
+  it('sends the user back to the Specification tab, naming the format, when the definition cannot be read', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Specification' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.type(await screen.findByRole('textbox', { name: 'definition (yaml)' }), '\n  bad: [[');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(await screen.findByText(/This is not valid YAML:/)).toBeInTheDocument();
+    expect(definitionRequests.count()).toBe(0);
   });
 
   it('still opens with a definition that was saved as JSON', async () => {

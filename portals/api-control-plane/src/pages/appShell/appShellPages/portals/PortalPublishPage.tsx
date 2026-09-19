@@ -18,7 +18,6 @@
 
 import { useEffect, useState } from 'react';
 import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
-import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useParams } from 'react-router-dom';
 
@@ -43,6 +42,7 @@ import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { PublishActionsBar } from './components/PublishActionsBar';
+import { parseSpecText, serializeSpec, type SpecFormat } from '../apis/create/utils/specText';
 import { SpecificationTab } from './components/SpecificationTab';
 import {
   draftFormValuesToInput,
@@ -75,6 +75,10 @@ const messages = defineMessages({
   errorMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage',
     defaultMessage: 'Unable to load this portal’s draft and publication state',
+  },
+  definitionNotAnObject: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject',
+    defaultMessage: 'The definition must be an object, not a list or a single value.',
   },
   tabDetails: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails',
@@ -161,23 +165,32 @@ type Tab = 'details' | 'specification';
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
 
+/** A stored definition as the editor shows it. */
+type StoredDefinition = { format: SpecFormat; text: string };
+
+/**
+ * A stored definition's serialization: the content type the server labelled it
+ * with, or, where there isn't one (the API's own spec), what the text looks like.
+ */
+const formatOf = (text: string, contentType = ''): SpecFormat => {
+  if (/ya?ml/i.test(contentType)) return 'yaml';
+  if (/json/i.test(contentType)) return 'json';
+  return text.trimStart().startsWith('{') ? 'json' : 'yaml';
+};
+
 /**
  * Reads a definition delivered as text: the draft and publication definitions
  * come back in whichever serialization they were saved in, and
- * `GET /rest-apis/{id}/openapi` (`useRestApiOpenApi`) returns the raw spec. This
- * is parsed the same way `ResourcesPanel`'s `parseSpecContent` does — `js-yaml`
- * reads JSON too (JSON is a YAML subset), so it covers either serialization.
+ * `GET /rest-apis/{id}/openapi` (`useRestApiOpenApi`) returns the raw spec. It
+ * is shown in that same format — YAML as stored, JSON pretty-printed — so what
+ * the user opens is what was saved. Text that doesn't read as an object is
+ * treated as "nothing to pre-fill from".
  */
-const parseDefinitionText = (content: string): DraftDefinitionDocument | undefined => {
-  try {
-    const parsed = yaml.load(content);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as DraftDefinitionDocument;
-    }
-  } catch {
-    // Not valid YAML/JSON — treated the same as "nothing to pre-fill from".
-  }
-  return undefined;
+const readStoredDefinition = (text: string, contentType?: string): StoredDefinition | undefined => {
+  const format = formatOf(text, contentType);
+  const parsed = parseSpecText(text, format);
+  if (parsed.status !== 'parsed') return undefined;
+  return { format, text: format === 'json' ? serializeSpec(parsed.spec, 'json') : text };
 };
 
 /**
@@ -255,6 +268,7 @@ export function PortalPublishPage() {
   const [values, setValues] = useState<DraftFormValues>(emptyDraftFormValues);
   const [touched, setTouched] = useState<Partial<Record<DraftFormField, boolean>>>({});
   const [definitionText, setDefinitionText] = useState('');
+  const [definitionFormat, setDefinitionFormat] = useState<SpecFormat>('json');
   const [definitionParseError, setDefinitionParseError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
@@ -284,11 +298,14 @@ export function PortalPublishPage() {
 
     setValues(resolveDraftFormValues(draftQuery.data, publicationQuery.data, apiQuery.data));
 
-    const definitionDocument: DraftDefinitionDocument | undefined =
-      (draftDefinitionQuery.data && parseDefinitionText(draftDefinitionQuery.data.text)) ??
-      (publicationDefinitionQuery.data && parseDefinitionText(publicationDefinitionQuery.data.text)) ??
-      (apiOpenApiQuery.data ? parseDefinitionText(apiOpenApiQuery.data.content) : undefined);
-    setDefinitionText(definitionDocument ? JSON.stringify(definitionDocument, null, 2) : '');
+    const stored =
+      (draftDefinitionQuery.data &&
+        readStoredDefinition(draftDefinitionQuery.data.text, draftDefinitionQuery.data.contentType)) ??
+      (publicationDefinitionQuery.data &&
+        readStoredDefinition(publicationDefinitionQuery.data.text, publicationDefinitionQuery.data.contentType)) ??
+      (apiOpenApiQuery.data ? readStoredDefinition(apiOpenApiQuery.data.content) : undefined);
+    setDefinitionText(stored?.text ?? '');
+    setDefinitionFormat(stored?.format ?? 'json');
 
     setInitialized(true);
   }, [
@@ -343,15 +360,20 @@ export function PortalPublishPage() {
 
   /** Parses the definition buffer, surfacing a malformed one on its own tab rather than failing silently. */
   const parseDefinition = (): DraftDefinitionDocument | undefined => {
-    try {
-      const parsed: unknown = definitionText.trim() === '' ? {} : JSON.parse(definitionText);
+    if (definitionText.trim() === '') {
       setDefinitionParseError(undefined);
-      return parsed as DraftDefinitionDocument;
-    } catch (error) {
-      setDefinitionParseError(error instanceof Error ? error.message : String(error));
-      setTab('specification');
-      return undefined;
+      return {};
     }
+    const result = parseSpecText(definitionText, definitionFormat);
+    if (result.status === 'parsed') {
+      setDefinitionParseError(undefined);
+      return result.spec;
+    }
+    setDefinitionParseError(
+      result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
+    );
+    setTab('specification');
+    return undefined;
   };
 
   /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
@@ -482,6 +504,8 @@ export function PortalPublishPage() {
             ) : (
               <SpecificationTab
                 disabled={pendingAction !== 'idle'}
+                format={definitionFormat}
+                onFormatChange={setDefinitionFormat}
                 onChange={(text) => {
                   setDefinitionText(text);
                   if (definitionParseError) setDefinitionParseError(undefined);

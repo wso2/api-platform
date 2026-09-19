@@ -2005,6 +2005,9 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
     "defaultMessage": "Back to Available Portals"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject": {
+    "defaultMessage": "The definition must be an object, not a list or a single value."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmAction": {
     "defaultMessage": "Deprecate"
   },
@@ -2104,12 +2107,19 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
     "defaultMessage": "Unpublish"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
+    "defaultMessage": "Edit"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
     "defaultMessage": "Loading editor"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
-    "defaultMessage": "This is not valid JSON: {detail}",
-    "description": "{detail} is the parser’s own message naming the line."
+    "defaultMessage": "This is not valid {format}: {detail}",
+    "description": "{format} is JSON or YAML; {detail} is the parser’s own message naming the line."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
     "defaultMessage": "Deprecated",
