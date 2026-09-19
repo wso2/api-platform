@@ -27,7 +27,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -181,7 +180,7 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, method, path, body)
@@ -238,7 +237,7 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, base+"/apis/"+escapedHandle, nil)
@@ -283,7 +282,7 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.API
 		return false, err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, base+"/apis/"+escapedHandle, nil)

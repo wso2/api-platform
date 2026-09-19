@@ -79,6 +79,48 @@ func publishWithAuth(c *RetryableHTTPClient) (*http.Response, error) {
 	return c.Do(req)
 }
 
+// flakyPortal answers 503 until failures attempts have been made, then 200, recording each body.
+type flakyPortal struct {
+	failures int
+	bodies   []string
+}
+
+func (f *flakyPortal) RoundTrip(r *http.Request) (*http.Response, error) {
+	body, _ := io.ReadAll(r.Body)
+	f.bodies = append(f.bodies, string(body))
+	status := http.StatusOK
+	if len(f.bodies) <= f.failures {
+		status = http.StatusServiceUnavailable
+	}
+	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+}
+
+func TestRetryableClientResendsBodyOnRetry(t *testing.T) {
+	c := newClientOverFakePortal(t, &fakePortal{})
+	c.maxRetries = 1
+	portal := &flakyPortal{failures: 1}
+	c.client.Transport = portal
+
+	resp, err := publishWithAuth(c)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 after the retry, got %d", resp.StatusCode)
+	}
+	if len(portal.bodies) != 2 || portal.bodies[0] != "x" || portal.bodies[1] != "x" {
+		t.Fatalf("want the full body on both attempts, got %q", portal.bodies)
+	}
+}
+
+func TestRetryableClientTotalTimeoutCoversAllAttempts(t *testing.T) {
+	c := &RetryableHTTPClient{maxRetries: 3, timeout: 10 * time.Second}
+	if got, want := c.TotalTimeout(), 43*time.Second; got != want {
+		t.Fatalf("want %s, got %s", want, got)
+	}
+}
+
 func TestRetryableClientRefusesRedirectToHTTP(t *testing.T) {
 	portal := &fakePortal{location: "http://portal.example/publish"}
 	c := newClientOverFakePortal(t, portal)
