@@ -391,6 +391,9 @@ func (h *PublicationHandler) ListPublications(w http.ResponseWriter, r *http.Req
 
 	apiType := r.URL.Query().Get("apiType")
 	apiId := r.URL.Query().Get("apiId")
+	if apiType == "" || apiId == "" {
+		return apperror.ValidationFailed.New("apiType and apiId query parameters are required")
+	}
 	opts := parseListOptions(r)
 
 	summaries, err := h.service.ListPublicationSummary(apiType, apiId, orgId, opts.SortBy, opts.SortOrder, opts.Search)

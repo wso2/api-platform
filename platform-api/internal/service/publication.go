@@ -88,6 +88,9 @@ func (s *PublicationService) resolveArtifact(apiType, apiId, orgUUID string) (st
 		return "", apperror.APIPublicationAPINotFound.New()
 	}
 	metadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiId, apiType, orgUUID)
+	if errors.Is(err, repository.ErrUnknownArtifactKind) {
+		return "", apperror.APIPublicationAPINotFound.New()
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve API by handle and kind: %w", err)
 	}

@@ -571,3 +571,34 @@ func TestPublicationHandler_OversizedBody_Returns413(t *testing.T) {
 		t.Fatalf("malformed JSON: want 400, got %d", w.Code)
 	}
 }
+
+// TestPublicationHandler_ResolveAPIErrors verifies the status codes for a
+// missing or unresolvable API reference: absent list params are a 400, while
+// an unknown apiId or an unrecognised apiType is the same 404 on every route.
+func TestPublicationHandler_ResolveAPIErrors(t *testing.T) {
+	r, _, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	const list = "/api/v0.9/api-publications"
+	const portalAPIs = "/api/v0.9/api-portals/my-portal/apis"
+	cases := []struct {
+		name, path string
+		want       int
+	}{
+		{"list without params", list, http.StatusBadRequest},
+		{"list without apiId", list + "?apiType=rest-api", http.StatusBadRequest},
+		{"list unknown apiId", list + "?apiType=rest-api&apiId=nope", http.StatusNotFound},
+		{"list unknown apiType", list + "?apiType=bogus&apiId=my-api", http.StatusNotFound},
+		{"draft unknown apiId", portalAPIs + "/rest-api/nope/draft", http.StatusNotFound},
+		{"draft unknown apiType", portalAPIs + "/bogus/my-api/draft", http.StatusNotFound},
+		{"publication unknown apiType", portalAPIs + "/bogus/my-api/publication", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := doPublicationRequest(r, http.MethodGet, tc.path, "", nil)
+			if w.Code != tc.want {
+				t.Fatalf("want %d, got %d: %.200s", tc.want, w.Code, w.Body.String())
+			}
+		})
+	}
+}
