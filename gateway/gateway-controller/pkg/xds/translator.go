@@ -2631,6 +2631,10 @@ func sanitizeUpstreamDefinitionName(name string) string {
 // The two must stay decoupled: turning off the stdout log line is a log-formatting
 // choice and must not silently starve traffic logging and analytics of their only
 // data source.
+//
+// Both sinks suppress the reserved `/_gateway-health` prefix (see
+// buildReservedHealthPathAccessLogFilter), so kubernetes readiness/liveness probes
+// never reach either the operator's stdout log or the collector's analytics stream.
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var accessLogs []*accesslog.AccessLog
 
@@ -2659,7 +2663,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 }
 
 // createFileAccessLog creates the stdout access log sink based on the configured
-// format (JSON or text).
+// format (JSON or text). The sink suppresses the reserved `/_gateway-health`
+// prefix so kubernetes readiness/liveness probes never reach the operator's log.
 func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 	var fileAccessLog *fileaccesslog.FileAccessLog
 
@@ -2716,7 +2721,8 @@ func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 	}
 
 	return &accesslog.AccessLog{
-		Name: "envoy.access_loggers.file",
+		Name:   "envoy.access_loggers.file",
+		Filter: buildReservedHealthPathAccessLogFilter(), // same suppression as the ALS sink
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: fileAccessLogAny,
 		},

@@ -1610,6 +1610,7 @@ func TestTranslator_AccessLogSinks_DecoupledFromStdoutToggle(t *testing.T) {
 			gotNames := make([]string, 0, len(logs))
 			for _, l := range logs {
 				gotNames = append(gotNames, l.Name)
+				assert.NotNil(t, l.Filter, "sink %q must carry the reserved health-path suppression filter", l.Name)
 			}
 			assert.Equal(t, tt.wantSinkNames, nilIfEmpty(gotNames), "access log sinks")
 
@@ -1690,6 +1691,37 @@ func TestTranslator_CreateAccessLogConfig_JSONMissingFields(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, logs)
 	assert.Contains(t, err.Error(), "json_fields not configured")
+}
+
+// TestTranslator_CreateFileAccessLog_SuppressesHealthProbes pins the invariant
+// that the stdout access log sink suppresses the reserved /_gateway-health
+// prefix, mirroring the ALS sink's suppression (TestTranslator_CreateGRPCAccessLog),
+// so kubernetes readiness/liveness probes never reach the operator's log.
+func TestTranslator_CreateFileAccessLog_SuppressesHealthProbes(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs = config.AccessLogsConfig{
+		Enabled:    true,
+		Format:     "text",
+		TextFormat: "[%START_TIME%] %RESPONSE_CODE%",
+	}
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createFileAccessLog()
+	assert.NoError(t, err)
+	require.NotNil(t, accessLog)
+	require.NotNil(t, accessLog.Filter, "reserved health-path suppression filter is always attached")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayHealthyPath,
+	}), "gateway healthy-check path is suppressed")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "gateway ready-check path is suppressed")
+	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": "/orders",
+	}), "non-health path is still logged")
 }
 
 func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {
