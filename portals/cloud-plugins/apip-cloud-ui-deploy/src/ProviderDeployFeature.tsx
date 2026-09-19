@@ -18,23 +18,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
-import DeployPage from './DeployPage';
-import { createDeployClient, takesEndpointUrl, type ArtifactKind } from './deployApi';
+import ProviderDeployPage from './ProviderDeployPage';
+import { createProviderDeployClient, type ProviderUpstream } from './providerDeployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
 import type { Build, Environment } from './types';
 
-export type DeployFeatureProps = {
+export type ProviderDeployFeatureProps = {
   port: CloudHostPort;
   /**
-   * The artifact kind being deployed. Defaults to REST APIs, which is what the
-   * console's API Deploy page shows.
-   */
-  kind?: ArtifactKind;
-  /**
-   * The artifact's handle, for hosts whose Port does not carry one — the AI
-   * Workspace reads it off the route and passes it in. Falls back to the Port's
-   * `apiHandle`.
+   * The provider's handle. Read off the route by the host rather than carried on
+   * the Port, which is scoped to a project — and a provider has none.
    */
   artifactHandle?: string;
 };
@@ -46,36 +40,31 @@ const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
 /**
- * The extension's `render(port)` result: the API's deployment pipeline, backed by
- * the platform API through the host-injected `apiFetch`.
+ * Deploying an LLM provider across the organization's environments.
  *
- * This component owns all data and actions; `DeployPage` only lays the stages
- * out. The server owns the rules — which environments exist, in what order, which
- * gateways they have, and whether a promotion is allowed — so this never
- * assembles a pipeline itself and cannot offer a deployment the server would
- * reject.
+ * The counterpart to DeployFeature for an artifact that has no project: a provider
+ * belongs to the organization, so there is no deployment pipeline behind it, no
+ * promotion between its environments and no build to choose — a deploy ships the
+ * provider as it stands. What it shares with the pipeline page is everything that
+ * matters per gateway, because the server owns those rules: which environments
+ * exist, which of their gateways can run a provider, and which one an environment
+ * deploys to by default.
  */
-const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify } = port;
+const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactHandle }) => {
+  const { apiFetch, apiHandle, notify } = port;
   const handle = artifactHandle ?? apiHandle;
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
-  const [apiEndpointUrl, setApiEndpointUrl] = useState<string | undefined>(undefined);
-  // Whether this kind's deployments carry a backend URL at all. A REST API's does;
-  // an MCP server's and an LLM proxy's upstream belongs to the artifact, so the form
-  // neither asks for one nor sends one.
-  const takesEndpoint = takesEndpointUrl(kind);
+  // What the provider itself uses, which the deploy form starts from.
+  const [upstream, setUpstream] = useState<ProviderUpstream>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const client = useMemo(
-    () =>
-      projectHandle && handle
-        ? createDeployClient(apiFetch, projectHandle, handle, kind)
-        : null,
-    [apiFetch, projectHandle, handle, kind]
+    () => (handle ? createProviderDeployClient(apiFetch, handle) : null),
+    [apiFetch, handle]
   );
 
   // Kept in a ref so the poll can read the latest state without restarting on
@@ -96,7 +85,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         setBuilds(prepared);
         setError(null);
       } catch (loadError) {
-        setError(errorMessage(loadError, 'Unable to load the deployment pipeline.'));
+        setError(errorMessage(loadError, 'Unable to load the environments.'));
       } finally {
         if (!options.quiet) setLoading(false);
       }
@@ -108,12 +97,11 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     void load();
   }, [load]);
 
-  // Read once per API rather than on every settling poll: the API's own backend
-  // URL is not pipeline state, and it is only the deploy form's starting value,
-  // so failing to read it must leave the rest of the page working.
+  // Read once per provider rather than on every settling poll: how it authenticates is
+  // not deployment state, and failing to read it must leave the rest of the page working.
   useEffect(() => {
     if (!client) return;
-    void client.readApiEndpointUrl().then(setApiEndpointUrl, () => setApiEndpointUrl(undefined));
+    void client.readUpstream().then(setUpstream, () => setUpstream({}));
   }, [client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
@@ -144,36 +132,51 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   );
 
   /**
-   * Deploy and promote are the same call: what separates them is whether a source
-   * environment is named. Deploying to the first environment either ships a
-   * selected build or creates a new one; promoting carries the source's build
-   * forward.
+   * Any key typed in the dialog is exchanged for a stored secret first, and only the
+   * reference travels on to the deploy — the same exchange the provider's own API key
+   * goes through when it is set. A gateway given no key is deployed without one, which
+   * leaves it on whatever credential it is already using.
+   *
+   * The exchange happens per gateway before any deploy is sent, so a key that cannot be
+   * stored fails the whole action rather than deploying some gateways on their new key
+   * and the rest on their old one.
    */
   const handleDeploy = (
     target: Environment,
-    gateways: { gatewayId: string; endpointUrl?: string }[],
-    from?: Environment,
+    gateways: { gatewayId: string; apiKey?: string; authHeader?: string; endpointUrl?: string }[],
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
     void runAction(
-      () =>
-        client.deploy({
-          environment: target.name,
-          gateways,
-          fromEnvironment: from?.name,
-          buildId,
-        }),
-      `${from ? 'Promoting to' : 'Deploying to'} ${target.name}.`,
-      `Unable to ${from ? 'promote to' : 'deploy to'} ${target.name}.`
+      async () => {
+        const targets = await Promise.all(
+          gateways.map(async (gateway) => {
+            if (!gateway.apiKey) {
+              return { gatewayId: gateway.gatewayId, endpointUrl: gateway.endpointUrl };
+            }
+            const name =
+              target.gateways.find((candidate) => candidate.id === gateway.gatewayId)?.name ??
+              gateway.gatewayId;
+            return {
+              gatewayId: gateway.gatewayId,
+              apiKey: await client.storeCredential(gateway.apiKey, `${handle} · ${target.name} · ${name}`),
+              authHeader: gateway.authHeader,
+              endpointUrl: gateway.endpointUrl,
+            };
+          })
+        );
+        await client.deploy({ environment: target.name, gateways: targets, buildId });
+      },
+      `Deploying to ${target.name}.`,
+      `Unable to deploy to ${target.name}.`
     );
   };
 
   /**
-   * Deleting a build is how a slot is freed once the API is at its limit and
-   * deploying is refused for it. The platform is the authority on whether a build
-   * can go — a gateway may have claimed it since the page last loaded — so a
-   * refusal surfaces as it comes back rather than being predicted here.
+   * Deleting a build frees a slot once the provider is at its build limit and
+   * deploying is refused. The platform is the authority on whether a build can go — a
+   * gateway may have claimed it since the page last loaded — so a refusal surfaces as
+   * it comes back rather than being predicted here.
    */
   const handleDeleteBuild = (buildId: string) => {
     if (!client) return;
@@ -194,17 +197,14 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     );
   };
 
-  // `handle`, not the Port's apiHandle: the AI Workspace passes the artifact in
-  // rather than carrying it on the Port, and this guard is what decides whether the
-  // page can load at all.
-  if (!projectHandle || !handle) {
+  if (!handle) {
     return (
       <PageContent fullWidth sx={{ minWidth: 0 }}>
         <PageTitle sx={{ mb: 2 }}>
           <PageTitle.Header>Deploy</PageTitle.Header>
         </PageTitle>
         <Typography variant="body2" color="text.secondary">
-          Open an API within a project to deploy it.
+          Open a provider to deploy it.
         </Typography>
       </PageContent>
     );
@@ -251,17 +251,16 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   }
 
   return (
-    <DeployPage
+    <ProviderDeployPage
       environments={environments}
       builds={builds}
-      apiEndpointUrl={apiEndpointUrl}
-      takesEndpoint={takesEndpoint}
+      upstream={upstream}
       busy={busy}
+      onDeleteBuild={handleDeleteBuild}
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
-      onDeleteBuild={handleDeleteBuild}
     />
   );
 };
 
-export default DeployFeature;
+export default ProviderDeployFeature;
