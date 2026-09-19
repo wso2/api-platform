@@ -18,18 +18,15 @@
 
 import type { FC } from 'react';
 import { Box, Button, Card, CardContent, Chip, Divider, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { MoveRight } from '@wso2/oxygen-ui-icons-react';
+import { Rocket } from '@wso2/oxygen-ui-icons-react';
 import GatewayRow from './GatewayRow';
-import { activeGatewayCount, hasAnyDeployment } from '../utils/status';
+import { activeGatewayCount } from '../utils/status';
 import type { Environment } from '../types';
 
-export type EnvironmentCardProps = {
+export type ProviderEnvironmentCardProps = {
   environment: Environment;
-  nextEnvironment?: Environment;
   busy: boolean;
-  /** Whether this artifact's deployments carry a backend URL worth showing per gateway. */
-  takesEndpoint: boolean;
-  onPromoteClick: () => void;
+  onDeployClick: () => void;
   onStopGateway: (gatewayId: string) => void;
 };
 
@@ -41,20 +38,24 @@ const sectionLabelSx = {
   letterSpacing: '0.04em',
 };
 
-const EnvironmentCard: FC<EnvironmentCardProps> = ({
+/**
+ * One environment the provider can be deployed to, with every AI gateway in it.
+ *
+ * Each card carries its own Deploy button rather than a promote button: a provider
+ * belongs to the organization, so there is no pipeline behind it and no order in
+ * which its environments must be reached. Every environment is deployed to
+ * directly, and the card says so by offering the same action everywhere.
+ */
+const ProviderEnvironmentCard: FC<ProviderEnvironmentCardProps> = ({
   environment,
-  nextEnvironment,
   busy,
-  takesEndpoint,
-  onPromoteClick,
+  onDeployClick,
   onStopGateway,
 }) => {
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
-  const deployed = hasAnyDeployment(gateways);
-  // What the environment is running: the distinct builds across the gateways that
-  // are actually serving. A settling or stopped gateway is not part of what the
-  // environment serves, so it does not contribute a build here.
+  // What the environment is serving: the distinct builds across gateways that are
+  // actually up. A settling or stopped gateway is not part of what it serves.
   const runningBuilds = Array.from(
     new Set(
       gateways
@@ -62,42 +63,32 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
         .map((gateway) => gateway.buildId as string)
     )
   ).sort();
-
-  // A promotion carries THIS environment's build forward, so there has to be one:
-  // once every gateway here is stopped the environment is running nothing and the
-  // backend refuses the promotion. Gating it here means the button does not offer
-  // an action that can only fail.
-  const hasBuildToPromote = runningBuilds.length > 0;
-  const canPromote =
-    !!nextEnvironment && activeGatewayCount(nextEnvironment.gateways) > 0 && hasBuildToPromote;
-
-  const promoteDisabledReason = !nextEnvironment
-    ? ''
-    : !hasBuildToPromote
-      ? `Nothing is deployed in ${environment.name} to promote. Deploy here first.`
-      : activeGatewayCount(nextEnvironment.gateways) === 0
-        ? `All gateways in ${nextEnvironment.name} are inactive. Activate a gateway before promoting.`
+  // Nowhere to deploy is a state of the environment, not of the provider: an
+  // environment with no AI gateway, or none of them up, cannot receive a
+  // deployment, so the button says why instead of offering an action that fails.
+  const deployDisabledReason =
+    gateways.length === 0
+      ? `${environment.name} has no AI gateway to deploy to. Add one to deploy here.`
+      : activeCount === 0
+        ? `Every gateway in ${environment.name} is inactive. Activate one to deploy here.`
         : '';
 
   return (
-    <Card
-      sx={{
-        flex: '0 0 392px',
-        width: 392,
-        alignSelf: 'flex-start',
-      }}
-    >
+    <Card sx={{ display: 'flex', flexDirection: 'column' }}>
       <CardContent
-        sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 1.5, '&:last-child': { pb: 2.5 } }}
+        sx={{
+          p: 2.5,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1.5,
+          flex: 1,
+          '&:last-child': { pb: 2.5 },
+        }}
       >
-        {/* Name on the left, the environment's build on the right: the build is a
-            property of the ENVIRONMENT now — every gateway in it runs the same one
-            — so it sits beside the name rather than being read off the rows and
-            compared, and it uses the space the header was leaving empty.
-
-            More than one build showing means the environment is split, which the
-            deploy rules are meant to prevent, so it is called out rather than
-            quietly listing both. */}
+        {/* Name on the left, what the environment is serving on the right. The build is
+            reported per gateway, so more than one showing means this environment's
+            gateways are split across builds — worth saying rather than quietly
+            listing the first. */}
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
           <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ fontSize: 16, fontWeight: 600 }}>{environment.name}</Typography>
@@ -121,10 +112,10 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.25 }}>
                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {runningBuilds.map((buildId) => (
+                  {runningBuilds.map((id) => (
                     <Chip
-                      key={buildId}
-                      label={buildId}
+                      key={id}
+                      label={id}
                       size="small"
                       color="warning"
                       variant="outlined"
@@ -149,7 +140,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
 
         {gateways.length === 0 ? (
           <Typography variant="caption" color="text.disabled">
-            No gateway is bound to this environment yet.
+            No AI gateway is bound to this environment yet.
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -159,48 +150,33 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
                 gateway={gateway}
                 environmentName={environment.name}
                 busy={busy}
-                showEndpointUrl={takesEndpoint}
+                // A provider's upstream is the provider's, not the deployment's.
+                showEndpointUrl={false}
                 onStop={() => onStopGateway(gateway.id)}
               />
             ))}
           </Box>
         )}
 
-        <Divider />
-
-        {nextEnvironment ? (
-          deployed ? (
-            <Tooltip title={promoteDisabledReason}>
-              <span style={{ display: 'block' }}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  startIcon={<MoveRight size={16} />}
-                  disabled={!canPromote || busy}
-                  onClick={onPromoteClick}
-                >
-                  Promote to {nextEnvironment.name}
-                </Button>
-              </span>
-            </Tooltip>
-          ) : (
-            <Box
-              sx={{
-                textAlign: 'center',
-                py: 1,
-                borderRadius: 1.5,
-                bgcolor: 'action.disabledBackground',
-                color: 'text.disabled',
-                fontSize: 13,
-              }}
-            >
-              Deploy here before promoting
-            </Box>
-          )
-        ) : null}
+        <Box sx={{ mt: 'auto', pt: 0.5 }}>
+          <Divider sx={{ mb: 1.5 }} />
+          <Tooltip title={deployDisabledReason}>
+            <span style={{ display: 'block' }}>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<Rocket size={16} />}
+                disabled={busy || deployDisabledReason !== ''}
+                onClick={onDeployClick}
+              >
+                Deploy to {environment.name}
+              </Button>
+            </span>
+          </Tooltip>
+        </Box>
       </CardContent>
     </Card>
   );
 };
 
-export default EnvironmentCard;
+export default ProviderEnvironmentCard;

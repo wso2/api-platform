@@ -76,13 +76,17 @@ export const extensionApiFetch: ApiFetch = async <T = unknown>(
 ): Promise<T> => {
   const base = `${runtimeConfig.platformApiBaseUrl}/api/${runtimeConfig.platformApiVersion}`;
   const verb = method.toUpperCase();
+  // A form body is passed through as it is: multipart is the only shape some
+  // platform endpoints accept (creating a secret, for one), and the browser has to
+  // set Content-Type itself so the multipart boundary it generates is declared.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (MUTATING_METHODS.has(verb)) headers[CSRF_HEADER] = CSRF_HEADER_VALUE;
   const response = await fetch(`${base}${path}`, {
     method: verb,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
   });
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
