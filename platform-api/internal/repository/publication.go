@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
@@ -531,7 +532,12 @@ func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID
 // saves the draft immediately before calling publish. replaced reports
 // whether an existing live row was found (republish) versus this being the
 // first publish (create) — the handler uses it to choose 200 vs 201.
-func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error) {
+//
+// draftUpdatedAt is the draft's updated_at as the caller read it before
+// pushing to the portal. If the draft has been saved since — any details or
+// content save bumps it — nothing is promoted and APIPublicationDraftChanged
+// is returned, so the live row never holds edits the portal was not sent.
+func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time) (pub *model.Publication, replaced bool, err error) {
 	now := time.Now().UTC()
 
 	tx, err := r.db.Begin()
@@ -540,12 +546,36 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	}
 	defer tx.Rollback()
 
-	draftUUID, draftFound, err := r.lookupRowUUID(tx, artifactUUID, apiPortalUUID, orgUUID, true)
+	// A no-op update, as the first statement, takes the draft row's write lock
+	// on every dialect: a concurrent draft save waits until this transaction
+	// ends, so the timestamp read next cannot go stale before the commit.
+	lockQuery := `
+		UPDATE api_publications SET updated_by = updated_by
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
+	`
+	lockResult, err := tx.Exec(r.db.Rebind(lockQuery), orgUUID, artifactUUID, apiPortalUUID)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to look up publication draft to promote: %w", err)
+		return nil, false, fmt.Errorf("failed to lock publication draft to promote: %w", err)
 	}
-	if !draftFound {
+	locked, err := lockResult.RowsAffected()
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to lock publication draft to promote: %w", err)
+	}
+	if locked == 0 {
 		return nil, false, nil
+	}
+
+	var draftUUID string
+	var currentUpdatedAt time.Time
+	stateQuery := `
+		SELECT uuid, updated_at FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
+	`
+	if err := tx.QueryRow(r.db.Rebind(stateQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID, &currentUpdatedAt); err != nil {
+		return nil, false, fmt.Errorf("failed to read publication draft to promote: %w", err)
+	}
+	if !currentUpdatedAt.Equal(draftUpdatedAt) {
+		return nil, false, apperror.APIPublicationDraftChanged.New()
 	}
 
 	liveUUID, liveFound, err := r.lookupRowUUID(tx, artifactUUID, apiPortalUUID, orgUUID, false)

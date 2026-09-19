@@ -352,7 +352,11 @@ func seedPublications(t *testing.T, it *itDB, g graph) {
 	if err := repo.SaveContent(content, "actor"); err != nil {
 		t.Fatalf("[%s] saving definition content: %v", it.driver, err)
 	}
-	if _, _, err := repo.PromoteDraftToPublication(g.apiArtifact, g.apiPortal, g.org, "actor"); err != nil {
+	saved, _, _, err := repo.GetDraft(g.apiArtifact, g.apiPortal, g.org)
+	if err != nil || saved == nil {
+		t.Fatalf("[%s] reading saved draft: %v", it.driver, err)
+	}
+	if _, _, err := repo.PromoteDraftToPublication(g.apiArtifact, g.apiPortal, g.org, "actor", saved.UpdatedAt); err != nil {
 		t.Fatalf("[%s] promoting draft: %v", it.driver, err)
 	}
 	if _, err := repo.SaveDraftDetails(draft("1.0.1"), []string{g.plan}, []string{g.apiDoc}, "actor"); err != nil {
