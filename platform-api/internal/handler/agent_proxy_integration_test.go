@@ -32,6 +32,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -39,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/vault"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -87,6 +89,15 @@ func setupAgentProxyEnv(t *testing.T) (http.Handler, *database.DB) {
 
 	identity := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	registry := repository.NewArtifactTableRegistry()
+
+	// A real SecretService, so {{ secret "..." }} references in an upstream auth
+	// block are resolved against real rows rather than skipped.
+	v, err := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
+	if err != nil {
+		t.Fatalf("create vault: %v", err)
+	}
+	secretSvc := service.NewSecretService(repository.NewSecretRepo(db), v, identity)
+
 	svc := service.NewAgentProxyService(
 		repository.NewAgentProxyRepo(db),
 		repository.NewProjectRepo(db),
@@ -97,7 +108,7 @@ func setupAgentProxyEnv(t *testing.T) (http.Handler, *database.DB) {
 		noopAudit{},
 		&config.Server{},
 		identity,
-	)
+	).WithSecretService(secretSvc)
 
 	mux := http.NewServeMux()
 	NewAgentProxyHandler(svc, identity, slog.Default()).RegisterRoutes(mux)
@@ -225,7 +236,19 @@ func fullAgentProxyBody(id string) string {
 	        "mode": "managed",
 	        "path": "/.well-known/agent-card.json",
 	        "policies": [ { "name": "cors", "version": "v1" } ],
-	        "content": { "name": "Weather Agent", "version": "1.0.0", "x-vendor-custom": { "kept": true } }
+	        "content": {
+	          "name": "Weather Agent",
+	          "description": "Provides forecasts and severe-weather alerts",
+	          "version": "1.0.0",
+	          "supportedInterfaces": [
+	            { "protocolBinding": "JSONRPC", "url": "https://agents.gw.com/weather/rpc", "protocolVersion": "1.0" }
+	          ],
+	          "capabilities": { "streaming": true },
+	          "defaultInputModes": [ "text/plain" ],
+	          "defaultOutputModes": [ "text/plain" ],
+	          "skills": [ { "id": "forecast", "name": "Forecast", "description": "Multi-day forecast", "tags": [ "weather" ] } ],
+	          "x-vendor-custom": { "kept": true }
+	        }
 	      },
 	      "protected": { "mode": "passthrough", "rewriteUrls": false }
 	    }
@@ -639,12 +662,15 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			wantCode:   "VALIDATION_FAILED",
 		},
 		{
+			// A referenced resource that is not available is a 404, exactly as an
+			// addressed one is — and as a referenced gateway in this same body
+			// already was.
 			name:       "unknown project",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
 			body:       `{"displayName":"X","version":"v1.0","projectId":"no-such-project","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`,
-			wantStatus: http.StatusBadRequest,
-			wantCode:   "PROJECT_REF_NOT_FOUND",
+			wantStatus: http.StatusNotFound,
+			wantCode:   "PROJECT_NOT_FOUND",
 		},
 		{
 			name:       "missing protocol block",
@@ -712,12 +738,139 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			wantCode:   "AGENT_PROXY_NOT_FOUND",
 		},
 		{
+			// An explicit empty id is a supplied value that fails the handle
+			// contract, not a request to generate one.
+			name:       "explicitly empty id",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"id":"","displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Valid against the id length bounds, but not against the handle
+			// grammar the spec now publishes.
+			name:       "id that is not a handle",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"id":"weather.agent","displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Both keys present matches both oneOf branches, so it satisfies
+			// neither — the empty ref does not make this a url-only body.
+			name:       "upstream carrying both url and an empty ref",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x","ref":""}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rule 6: the enum is an exact match, and the stored value is the
+			// one supplied — so a padded version can never be accepted.
+			name:       "a2a protocol version with surrounding whitespace",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":" 1.0 ","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			name:       "upstream url with surrounding whitespace",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"  http://x  "}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rule 6: the version names an operation table that does not exist,
+			// so the Agent proxy could never deploy and is refused here.
+			name:       "unregistered a2a protocol version",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"9.9","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rule 7.
+			name:       "unknown A2A operation name",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}],"operationConfigs":{"operations":[{"name":"Teleport"}]}}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rule 8: uniqueItems compares whole elements, so the schema cannot
+			// catch two entries for one binding with different prefixes.
+			name:       "duplicate transport protocol binding",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC","pathPrefix":"/a"},{"protocolBinding":"JSONRPC","pathPrefix":"/b"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rules 10 and 12: mode picks the branch, and a managed card that
+			// carries no content is a rejection rather than a silent passthrough.
+			name:       "managed public card with no content",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}],"agentCard":{"public":{"mode":"managed"}}}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rule 14: unlike the public card there is no absent-block default
+			// to fall back to, so a present protected block needs a mode.
+			name:       "protected card with no mode",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}],"agentCard":{"protected":{"rewriteUrls":true}}}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rule 1: no property in the contract is nullable, and null is not
+			// the same request as an omitted key.
+			name:       "explicit null on an optional field",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"vhost":null,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rule 5: syntax only — reachability is never probed at authoring
+			// time, but a scheme the gateway cannot dial is refused.
+			name:       "upstream url with an unsupported scheme",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"file:///etc/passwd"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// Rules 1 and 2 on the replace path: a full replacement is held to
+			// the same contract as a create, not a looser one.
+			name:       "invalid context on replace",
+			method:     http.MethodPut,
+			path:       agentProxyBase + "/weather-agent",
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"context":"weather","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
 			name:       "project changed on replace",
 			method:     http.MethodPut,
 			path:       agentProxyBase + "/weather-agent",
 			body:       `{"displayName":"X","version":"v1.0","projectId":"no-such-project","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`,
-			wantStatus: http.StatusBadRequest,
-			wantCode:   "PROJECT_REF_NOT_FOUND",
+			wantStatus: http.StatusNotFound,
+			wantCode:   "PROJECT_NOT_FOUND",
 		},
 	}
 
@@ -756,4 +909,224 @@ func TestAgentProxyHandler_HandleIsUniquePerOrganization(t *testing.T) {
 	assertAgentProxyError(t,
 		callAgentProxyAs(t, h, "org-agent-it-absent", "sub-any", http.MethodGet, agentProxyBase+"/weather-agent", ""),
 		http.StatusNotFound, "AGENT_PROXY_NOT_FOUND")
+}
+
+// TestAgentProxyHandler_UnresolvableSecretNeverEchoesTheHandle covers rule 5's
+// explicit prohibition on exposing secret handles.
+//
+// The shared secret validator names every handle that did not resolve, which
+// turns a create call into a secret-existence oracle: a caller who may author an
+// Agent proxy but may not read this organization's secrets could enumerate them
+// one 400 at a time. The handle is the caller's own input, so nothing is lost by
+// refusing to repeat it.
+func TestAgentProxyHandler_UnresolvableSecretNeverEchoesTheHandle(t *testing.T) {
+	h, _ := setupAgentProxyEnv(t)
+
+	const handle = "no-such-upstream-secret"
+	body := fmt.Sprintf(`{
+	  "displayName": "Weather Agent",
+	  "version": "v1.0",
+	  "projectId": %q,
+	  "upstream": {
+	    "main": {
+	      "url": "http://weather-agent:9000",
+	      "auth": { "type": "api-key", "header": "X-API-Key", "value": "{{ secret \"%s\" }}" }
+	    }
+	  },
+	  "protocol": "a2a",
+	  "a2a": {
+	    "protocolVersion": "1.0",
+	    "transports": [ { "protocolBinding": "JSONRPC" } ]
+	  }
+	}`, agentProxyProject, handle)
+
+	rec := callAgentProxy(t, h, http.MethodPost, agentProxyBase, body)
+	assertAgentProxyError(t, rec, http.StatusBadRequest, "VALIDATION_FAILED")
+
+	if strings.Contains(rec.Body.String(), handle) {
+		t.Fatalf("the unresolved secret handle was echoed back to the caller: %s", rec.Body.String())
+	}
+	// Not even a substring of it: a partial echo is still an oracle.
+	if strings.Contains(rec.Body.String(), "upstream-secret") {
+		t.Fatalf("part of the secret handle leaked into the response: %s", rec.Body.String())
+	}
+}
+
+// TestAgentProxyHandler_ResolvableSecretIsAccepted is the other half: the
+// sanitized error must not have turned every secret reference into a rejection.
+func TestAgentProxyHandler_ResolvableSecretIsAccepted(t *testing.T) {
+	h, db := setupAgentProxyEnv(t)
+
+	if _, err := db.Exec(`INSERT INTO secrets (uuid, handle, display_name, organization_uuid, ciphertext, hash, status, created_by, updated_by, created_at, updated_at)
+		VALUES ('secret-uuid-1', 'weather-upstream', 'Weather upstream key', ?, 'ciphertext', 'hash', 'ACTIVE', ?, ?, datetime('now'), datetime('now'))`,
+		agentProxyOrg, agentProxyActor, agentProxyActor); err != nil {
+		t.Fatalf("seed secret: %v", err)
+	}
+
+	body := fmt.Sprintf(`{
+	  "displayName": "Weather Agent",
+	  "version": "v1.0",
+	  "projectId": %q,
+	  "upstream": {
+	    "main": {
+	      "url": "http://weather-agent:9000",
+	      "auth": { "type": "api-key", "header": "X-API-Key", "value": "{{ secret \"weather-upstream\" }}" }
+	    }
+	  },
+	  "protocol": "a2a",
+	  "a2a": {
+	    "protocolVersion": "1.0",
+	    "transports": [ { "protocolBinding": "JSONRPC" } ]
+	  }
+	}`, agentProxyProject)
+
+	created := decodeAgentProxyJSON(t,
+		callAgentProxy(t, h, http.MethodPost, agentProxyBase, body), http.StatusCreated)
+
+	// The stored placeholder is a credential reference, so a read redacts it
+	// exactly as it redacts a literal value.
+	auth := created["upstream"].(map[string]any)["main"].(map[string]any)["auth"].(map[string]any)
+	if _, present := auth["value"]; present {
+		t.Fatalf("secret placeholder echoed in a response: %#v", auth)
+	}
+}
+
+// TestAgentProxyHandler_StoresExactlyWhatWasValidated closes the gap the
+// whitespace cases above describe from the other side.
+//
+// Validation and persistence must read the same bytes. If validation normalized
+// a value — trimmed a protocol version, trimmed a url, trimmed a handle — the
+// stored value would be one the contract never approved, and the gateway would
+// later be handed a third thing. Nothing in this path normalizes, so what comes
+// back is what was sent.
+func TestAgentProxyHandler_StoresExactlyWhatWasValidated(t *testing.T) {
+	h, db := setupAgentProxyEnv(t)
+
+	decodeAgentProxyJSON(t,
+		callAgentProxy(t, h, http.MethodPost, agentProxyBase, minimalAgentProxyBody("weather-agent", "Weather Agent")),
+		http.StatusCreated)
+
+	fetched := decodeAgentProxyJSON(t,
+		callAgentProxy(t, h, http.MethodGet, agentProxyBase+"/weather-agent", ""), http.StatusOK)
+
+	if got := fetched["a2a"].(map[string]any)["protocolVersion"]; got != "1.0" {
+		t.Fatalf("protocolVersion = %q, want the exact validated value %q", got, "1.0")
+	}
+	if got := fetched["id"]; got != "weather-agent" {
+		t.Fatalf("id = %q, want the exact supplied handle", got)
+	}
+
+	// Read straight from the configuration document too: a response is built by
+	// the mapper, so it could agree with the request while the stored bytes did
+	// not.
+	var configuration string
+	if err := db.QueryRow(`SELECT configuration FROM agent_proxies WHERE handle = ? AND organization_uuid = ?`,
+		"weather-agent", agentProxyOrg).Scan(&configuration); err != nil {
+		t.Fatalf("read stored configuration: %v", err)
+	}
+	if !strings.Contains(configuration, `"protocolVersion":"1.0"`) {
+		t.Fatalf("stored configuration does not carry the exact protocol version: %s", configuration)
+	}
+	if !strings.Contains(configuration, `"url":"http://weather-agent:9000"`) {
+		t.Fatalf("stored configuration does not carry the exact upstream url: %s", configuration)
+	}
+}
+
+// TestAgentProxyHandler_ReferencedResourcesAgreeOnNotFound pins the rule the
+// project mapping used to break: within one request body, every referenced
+// handle that cannot be reached answers the same way.
+//
+// A project reference answering 400 while a gateway reference in the same
+// payload answered 404 left a client unable to write one branch for "you named
+// something I cannot reach". It also has to stay a 404 across the tenant
+// boundary, without ever confirming that the resource exists somewhere else.
+func TestAgentProxyHandler_ReferencedResourcesAgreeOnNotFound(t *testing.T) {
+	h, _ := setupAgentProxyEnv(t)
+
+	body := func(projectId, gatewayId string) string {
+		gateways := ""
+		if gatewayId != "" {
+			gateways = fmt.Sprintf(`"associatedGateways":[{"id":%q}],`, gatewayId)
+		}
+		return fmt.Sprintf(`{
+		  "displayName": "Weather Agent",
+		  "version": "v1.0",
+		  "projectId": %q,
+		  %s
+		  "upstream": { "main": { "url": "http://weather-agent:9000" } },
+		  "protocol": "a2a",
+		  "a2a": { "protocolVersion": "1.0", "transports": [ { "protocolBinding": "JSONRPC" } ] }
+		}`, projectId, gateways)
+	}
+
+	tests := []struct {
+		name     string
+		body     string
+		wantCode string
+	}{
+		{
+			name:     "unknown project",
+			body:     body("no-such-project", ""),
+			wantCode: "PROJECT_NOT_FOUND",
+		},
+		{
+			name:     "unknown gateway",
+			body:     body(agentProxyProject, "no-such-gateway"),
+			wantCode: "GATEWAY_NOT_FOUND",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertAgentProxyError(t,
+				callAgentProxy(t, h, http.MethodPost, agentProxyBase, tc.body),
+				http.StatusNotFound, tc.wantCode)
+		})
+	}
+
+}
+
+// TestAgentProxyHandler_ForeignProjectIsIndistinguishableFromAMissingOne pins
+// the other half of the 404: a project that exists, but in another
+// organization, must answer exactly as one that exists nowhere.
+//
+// Any difference — a different status, a different code, a different message —
+// is an existence oracle for another tenant's projects, so the two are asserted
+// to be byte-identical rather than merely both being failures.
+func TestAgentProxyHandler_ForeignProjectIsIndistinguishableFromAMissingOne(t *testing.T) {
+	h, db := setupAgentProxyEnv(t)
+
+	// A project that exists only in the other organization.
+	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, description, organization_uuid, created_at, updated_at)
+		VALUES ('project-foreign', 'foreign-project', 'Foreign Project', '', ?, datetime('now'), datetime('now'))`,
+		agentProxyOtherOrg); err != nil {
+		t.Fatalf("seed foreign project: %v", err)
+	}
+
+	body := func(projectId string) string {
+		return fmt.Sprintf(`{"displayName":"Weather Agent","version":"v1.0","projectId":%q,`+
+			`"upstream":{"main":{"url":"http://weather-agent:9000"}},"protocol":"a2a",`+
+			`"a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, projectId)
+	}
+
+	foreign := callAgentProxy(t, h, http.MethodPost, agentProxyBase, body("foreign-project"))
+	missing := callAgentProxy(t, h, http.MethodPost, agentProxyBase, body("no-such-project"))
+
+	assertAgentProxyError(t, foreign, http.StatusNotFound, "PROJECT_NOT_FOUND")
+	assertAgentProxyError(t, missing, http.StatusNotFound, "PROJECT_NOT_FOUND")
+
+	// trackingId differs per request, so compare everything else.
+	strip := func(rec *httptest.ResponseRecorder) string {
+		var body map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode error body: %v", err)
+		}
+		delete(body, "trackingId")
+		encoded, _ := json.Marshal(body)
+		return string(encoded)
+	}
+	if strip(foreign) != strip(missing) {
+		t.Fatalf("a foreign project is distinguishable from a missing one:\n  foreign: %s\n  missing: %s",
+			strip(foreign), strip(missing))
+	}
 }

@@ -1888,7 +1888,8 @@ type A2AAgentProxy struct {
 	// Id Public handle, unique per organization. Optional on create — the server derives it
 	// from `displayName` when omitted — and always present on responses. On update an
 	// omitted `id` retains the path handle and is never regenerated; a conflicting one
-	// is rejected.
+	// is rejected. Supplying it explicitly as an empty string is not the same as
+	// omitting it, and is rejected.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Kind Control-plane resource kind. The gateway's own artifact kind stays `Agent` and is mapped at the deployment boundary.

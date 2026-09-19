@@ -100,7 +100,7 @@ func (s *AgentProxyService) Create(orgUUID, createdBy string, req *api.A2AAgentP
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
-	if err := validateAgentProxyAuthoringFields(req); err != nil {
+	if err := validateAgentProxyRequest(req); err != nil {
 		return nil, err
 	}
 
@@ -221,7 +221,7 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
-	if err := validateAgentProxyAuthoringFields(req); err != nil {
+	if err := validateAgentProxyRequest(req); err != nil {
 		return nil, err
 	}
 
@@ -373,10 +373,17 @@ func (s *AgentProxyService) toAPI(orgUUID string, m *model.AgentProxy) (*api.A2A
 }
 
 // resolveProjectUUID maps the request's project handle to its UUID within the
-// caller's organization. A handle naming another organization's project is
-// indistinguishable from one that does not exist, and both are a bad reference
-// in the request body rather than a missing addressed resource — so both are the
-// same 400.
+// caller's organization.
+//
+// A referenced resource that is not available is a 404, the same as an addressed
+// one: the request body's projectId names a project the caller cannot reach, and
+// resolveAssociatedGateways already answers the very same situation — a gateway
+// referenced by the same body — with GatewayNotFound/404. Two referenced handles
+// in one payload cannot disagree about what "not available" means.
+//
+// A handle naming another organization's project is indistinguishable here from
+// one that does not exist, and deliberately so: telling them apart would confirm
+// the existence of another tenant's project.
 func (s *AgentProxyService) resolveProjectUUID(orgUUID, projectHandle string) (string, error) {
 	handle := strings.TrimSpace(projectHandle)
 	if handle == "" {
@@ -390,7 +397,7 @@ func (s *AgentProxyService) resolveProjectUUID(orgUUID, projectHandle string) (s
 		return "", fmt.Errorf("failed to validate project: %w", err)
 	}
 	if project == nil || project.OrganizationID != orgUUID {
-		return "", apperror.ProjectRefNotFound.New()
+		return "", apperror.ProjectNotFound.New()
 	}
 	return project.ID, nil
 }
@@ -424,13 +431,14 @@ func (s *AgentProxyService) resolveProjectHandle(orgUUID, projectUUID string, ca
 
 // resolveNewHandle settles the public handle of an Agent proxy being created:
 // the caller's own, or one derived from the display name. Either way it must be
-// syntactically valid, unreserved, and free within the organization.
+// unreserved and free within the organization; a supplied handle's syntax is
+// settled earlier, with the rest of the body contract.
 func (s *AgentProxyService) resolveNewHandle(orgUUID string, req *api.A2AAgentProxy) (string, error) {
-	if req.Id != nil && strings.TrimSpace(*req.Id) != "" {
-		handle := strings.TrimSpace(*req.Id)
-		if err := utils.ValidateHandle(handle); err != nil {
-			return "", err
-		}
+	// Only an absent key means "derive one". A supplied id has already been
+	// checked against the handle contract by validateAgentProxyIdentity, so an
+	// empty or malformed one never reaches generation — it was a 400.
+	if req.Id != nil {
+		handle := *req.Id
 		if err := ensureAgentProxyHandleNotReserved(handle); err != nil {
 			return "", err
 		}
@@ -471,7 +479,41 @@ func (s *AgentProxyService) validateSecretRefs(orgUUID string, configuration mod
 	if err != nil {
 		return fmt.Errorf("failed to marshal agent proxy configuration for secret validation: %w", err)
 	}
-	return s.secretService.ValidateSecretRefs(orgUUID, configJSON)
+	if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		return sanitizeAgentProxySecretRefError(err)
+	}
+	return nil
+}
+
+// sanitizeAgentProxySecretRefError restates a secret-reference failure without
+// the handles it names.
+//
+// The shared validator reports exactly which handles did not resolve, which is
+// an existence oracle: a caller who may create an Agent proxy but may not read
+// this organization's secrets can enumerate them a guess at a time, one 400 per
+// handle, and the same message would confirm a handle that exists but was
+// deprecated. The caller supplied those handles in the body they just sent, so
+// naming them back adds nothing they did not already know.
+//
+// The handles are kept out of the log line too, not only the response: an error
+// log has a far broader readership than the secret itself, and a handle names a
+// tenant resource. Only the *cause* is carried through, and only when unwrapping
+// actually yields an inner error — the repository writes its failures without
+// the handle, while the validator's own wrapper embeds it, so anything that
+// cannot be unwrapped is dropped rather than trusted.
+func sanitizeAgentProxySecretRefError(err error) error {
+	if apperror.ValidationFailed.Is(err) {
+		return apperror.ValidationFailed.New(
+			"One or more secrets referenced by this Agent proxy could not be resolved in this organization. " +
+				"Check the secret references in the upstream authentication configuration.").
+			WithLogMessage("agent proxy references one or more secret handles that do not resolve")
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		return apperror.Internal.Wrap(cause).
+			WithLogMessage("failed to validate agent proxy secret references")
+	}
+	return apperror.Internal.New().
+		WithLogMessage("failed to validate agent proxy secret references")
 }
 
 // mapRepositoryError translates the Agent proxy repository's own failures onto
@@ -484,7 +526,10 @@ func (s *AgentProxyService) mapRepositoryError(err error, logMsg string) error {
 	case errors.Is(err, repository.ErrAgentProxyProtocolImmutable):
 		return apperror.ValidationFailed.Wrap(err, "The protocol of an Agent proxy cannot be changed.")
 	case errors.Is(err, repository.ErrAgentProxyProjectOrgMismatch):
-		return apperror.ProjectRefNotFound.Wrap(err)
+		// The write-time half of the check in resolveProjectUUID, and it answers
+		// the same way: the project is not one this organization can reach, which
+		// is all the caller is told.
+		return apperror.ProjectNotFound.Wrap(err)
 	case isSQLiteUniqueConstraint(err):
 		// A handle that passed the pre-check can still lose a race to a concurrent
 		// create; the database's uniqueness is the authority, and it is a conflict
@@ -493,38 +538,6 @@ func (s *AgentProxyService) mapRepositoryError(err error, logMsg string) error {
 	default:
 		return fmt.Errorf("%s: %w", logMsg, err)
 	}
-}
-
-// validateAgentProxyAuthoringFields checks the mandatory authoring fields shared
-// by create and replace. The per-rule contract validation (card modes, transport
-// and operation names, card size) is the validation section's own work; what is
-// here is what the persisted model cannot be built without.
-func validateAgentProxyAuthoringFields(req *api.A2AAgentProxy) error {
-	if strings.TrimSpace(req.DisplayName) == "" {
-		return apperror.ValidationFailed.New("The displayName field is required.")
-	}
-	if strings.TrimSpace(req.Version) == "" {
-		return apperror.ValidationFailed.New("The version field is required.")
-	}
-	if req.Kind != nil && *req.Kind != api.A2AAgentProxyKindAgentProxy {
-		return apperror.ValidationFailed.New(
-			fmt.Sprintf("The kind field must be %q.", string(api.A2AAgentProxyKindAgentProxy)))
-	}
-	if !model.IsSupportedAgentProxyProtocol(model.AgentProxyProtocol(req.Protocol)) {
-		return apperror.ValidationFailed.New(
-			fmt.Sprintf("The protocol %q is not supported. Supported protocols: %s.",
-				string(req.Protocol), strings.Join(model.SupportedAgentProxyProtocols(), ", ")))
-	}
-	if upstreamEndpointTarget(req.Upstream.Main) == "" {
-		return apperror.ValidationFailed.New("The upstream main url or ref field is required.")
-	}
-	if strings.TrimSpace(string(req.A2a.ProtocolVersion)) == "" {
-		return apperror.ValidationFailed.New("The a2a.protocolVersion field is required.")
-	}
-	if len(req.A2a.Transports) == 0 {
-		return apperror.ValidationFailed.New("At least one a2a.transports entry is required.")
-	}
-	return nil
 }
 
 // validateEffectiveUpstreamAuth rejects an upstream auth block that names a
@@ -566,19 +579,6 @@ func validateEndpointAuthComplete(endpoint *model.UpstreamEndpoint, name string)
 				"configuration is otherwise unchanged.", name))
 	}
 	return nil
-}
-
-// upstreamEndpointTarget returns whichever of url/ref the endpoint carries, or
-// "" when it carries neither. The schema permits exactly one; rejecting both at
-// once belongs to the validation section.
-func upstreamEndpointTarget(in api.UpstreamDefinition) string {
-	if in.Url != nil && strings.TrimSpace(*in.Url) != "" {
-		return strings.TrimSpace(*in.Url)
-	}
-	if in.Ref != nil && strings.TrimSpace(*in.Ref) != "" {
-		return strings.TrimSpace(*in.Ref)
-	}
-	return ""
 }
 
 func ensureAgentProxyHandleNotReserved(handle string) error {

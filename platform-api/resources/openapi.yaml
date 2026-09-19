@@ -4707,6 +4707,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '415':
@@ -11819,7 +11821,9 @@ components:
             Public handle, unique per organization. Optional on create — the server derives it
             from `displayName` when omitted — and always present on responses. On update an
             omitted `id` retains the path handle and is never regenerated; a conflicting one
-            is rejected.
+            is rejected. Supplying it explicitly as an empty string is not the same as
+            omitting it, and is rejected.
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           minLength: 3
           maxLength: 40
           example: weather-agent
@@ -12247,6 +12251,7 @@ components:
         id:
           type: string
           description: Public handle of the Agent proxy
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           minLength: 3
           maxLength: 40
           example: weather-agent

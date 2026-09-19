@@ -174,6 +174,29 @@ func TestDecodeAgentProxyRequestRejections(t *testing.T) {
 			body:     `{"displayName":123,"version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]}}`,
 			contains: `field "displayName" has the wrong type`,
 		},
+		{
+			// No property in the contract is nullable, and null decodes to the
+			// same nil pointer an omitted key does — so a caller sending null to
+			// clear a field would silently get the field's default instead.
+			name:     "explicit null on an optional field",
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","context":null,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]}}`,
+			contains: `field "context" must not be null`,
+		},
+		{
+			name:     "explicit null on a required field",
+			body:     `{"displayName":null,"version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]}}`,
+			contains: `field "displayName" must not be null`,
+		},
+		{
+			name:     "explicit null on a nested block",
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[],"agentCard":{"public":null}}}`,
+			contains: `field "a2a.agentCard.public" must not be null`,
+		},
+		{
+			name:     "explicit null inside an array",
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"},null]}}`,
+			contains: `field "a2a.transports[1]" must not be null`,
+		},
 	}
 
 	for _, tc := range tests {
@@ -245,5 +268,49 @@ func TestAssertSingleProtocolBlock(t *testing.T) {
 				t.Fatalf("error %q does not contain %q", err.Error(), tc.contains)
 			}
 		})
+	}
+}
+
+// TestDecodeAgentProxyRequestKeepsNullsInsideFreeFormContent is the boundary of
+// the null rejection, and it runs in the same direction as the unknown-field
+// walk: a typed property may not be null, but an Agent Card and a policy's
+// parameters are the author's own documents, where null is an ordinary JSON
+// value and must survive to be stored and served byte-for-byte.
+func TestDecodeAgentProxyRequestKeepsNullsInsideFreeFormContent(t *testing.T) {
+	body := `{
+      "displayName": "Weather Agent",
+      "version": "v1.0",
+      "projectId": "default-project",
+      "upstream": { "main": { "url": "http://weather-agent:9000" } },
+      "protocol": "a2a",
+      "a2a": {
+        "protocolVersion": "1.0",
+        "transports": [ { "protocolBinding": "JSONRPC" } ],
+        "operationConfigs": {
+          "policies": [ { "name": "jwt-auth", "version": "v1", "params": { "audience": null } } ]
+        },
+        "agentCard": {
+          "public": {
+            "mode": "managed",
+            "content": { "name": "Weather Agent", "provider": null }
+          }
+        }
+      }
+    }`
+
+	req, err := DecodeAgentProxyRequest([]byte(body))
+	if err != nil {
+		t.Fatalf("DecodeAgentProxyRequest: %v", err)
+	}
+
+	content := *req.A2a.AgentCard.Public.Content
+	provider, present := content["provider"]
+	if !present || provider != nil {
+		t.Fatalf("null inside card content not preserved: %#v", content)
+	}
+	params := *(*req.A2a.OperationConfigs.Policies)[0].Params
+	audience, present := params["audience"]
+	if !present || audience != nil {
+		t.Fatalf("null inside policy params not preserved: %#v", params)
 	}
 }

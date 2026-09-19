@@ -18,6 +18,7 @@
 package dto
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -134,15 +135,30 @@ func decodeAgentProxyVariant[T any](data []byte) (*T, error) {
 }
 
 // assertDeclaredFields walks a raw JSON value against the Go type it will be
-// decoded into and rejects any object key the type does not declare.
+// decoded into and rejects any object key the type does not declare, and any
+// explicitly null value.
+//
+// Null is rejected here because nothing downstream can see it: no property in
+// the Agent proxy contract is nullable, and `"context": null` decodes to the
+// same nil pointer as an omitted key — so a caller asking to *clear* a field by
+// sending null would silently get the field's default instead. The distinction
+// only exists while the raw bytes are still in hand.
 //
 // The walk stops wherever the contract stops being typed: a map-typed field is
 // free-form by design (Agent Card content, policy parameters, gateway
-// configuration overrides), so nothing inside it is inspected and extension data
-// passes through untouched. It also stops at any value whose JSON shape does not
-// match the Go kind — a mismatch is the decoder's to report, with a message
-// about the field rather than about an unexpected key inside it.
+// configuration overrides), so nothing inside it is inspected — neither an
+// extension key nor a null value — and extension data passes through untouched.
+// It also stops at any value whose JSON shape does not match the Go kind — a
+// mismatch is the decoder's to report, with a message about the field rather
+// than about an unexpected key inside it.
 func assertDeclaredFields(raw json.RawMessage, t reflect.Type, path string) error {
+	// The root is never reached with a null: a body that is not a JSON object
+	// fails before this, so every null seen here is a field or an array element
+	// and has a path to name.
+	if path != "" && isJSONNull(raw) {
+		return fmt.Errorf("The field %s must not be null. Omit it instead.", strconv.Quote(path))
+	}
+
 	for t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -211,6 +227,12 @@ func declaredJSONFields(t reflect.Type) map[string]reflect.Type {
 		fields[name] = field.Type
 	}
 	return fields
+}
+
+// isJSONNull reports whether a raw value is the JSON literal null, ignoring the
+// insignificant whitespace a caller may have sent around it.
+func isJSONNull(raw json.RawMessage) bool {
+	return string(bytes.TrimSpace(raw)) == "null"
 }
 
 func joinFieldPath(path, key string) string {
