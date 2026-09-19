@@ -22,26 +22,26 @@ import {
   Box,
   Button,
   Checkbox,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
+  CircularProgress,
+  Drawer,
   FormControl,
   FormControlLabel,
   FormLabel,
+  IconButton,
   MenuItem,
   Select,
   TextField,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
+import { X } from '@wso2/oxygen-ui-icons-react';
 import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
 import type { ProviderUpstream } from '../providerDeployApi';
 import type { Build, Environment, Gateway } from '../types';
 
-export type ProviderDeployDialogProps = {
+export type ProviderDeployDrawerProps = {
   open: boolean;
   environment: Environment | null;
   /** The provider's builds, newest first. */
@@ -82,14 +82,19 @@ const pickDefaultGateway = (gateways: Gateway[]): Gateway | null =>
   null;
 
 /**
- * Choosing which gateways of one environment to deploy the provider to.
+ * Choosing which gateways of one environment to deploy the provider to, and what each of
+ * them talks to.
+ *
+ * A drawer rather than a modal: this is the portal's shape for configuring a deployment,
+ * and the per-gateway fields need room to breathe rather than a dialog that grows a
+ * scrollbar as soon as two gateways are picked.
  *
  * There is no build to pick: a provider is deployed as it stands, so the choice is
  * only where it goes. Everything else follows the same rules a pipeline deploy
  * does, because the backend is the same — the environment is deployed as a set,
  * and a gateway the provider is already live on has to stay in it.
  */
-const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
+const ProviderDeployDrawer: FC<ProviderDeployDrawerProps> = ({
   open,
   environment,
   builds,
@@ -173,11 +178,29 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontSize: 16, fontWeight: 600 }}>
-        Deploy to {environment.name}
-      </DialogTitle>
-      <DialogContent>
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      sx={{ '& .MuiDrawer-paper': { width: { xs: '100%', sm: 560 }, maxWidth: '100%' } }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: 2,
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}
+      >
+        <Typography variant="h6">Deploy to {environment.name}</Typography>
+        <IconButton onClick={onClose} disabled={submitting} size="small" aria-label="Close">
+          <X size={20} />
+        </IconButton>
+      </Box>
+
+      <Box sx={{ p: 3, overflowY: 'auto', flex: 1 }}>
         {inactiveSelectable.length > 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
             {inactiveSelectable.map((gateway) => gateway.name).join(', ')}
@@ -325,14 +348,25 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
             })}
           </Box>
         </Box>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} disabled={submitting}>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 2,
+          p: 2,
+          borderTop: 1,
+          borderColor: 'divider',
+        }}
+      >
+        <Button fullWidth color="secondary" variant="outlined" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
         <Button
+          fullWidth
           variant="contained"
           disabled={!canConfirm || submitting}
+          startIcon={submitting ? <CircularProgress size={16} /> : null}
           onClick={() =>
             onConfirm(
               selected.map((gateway) => ({
@@ -347,9 +381,9 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
         >
           {submitting ? 'Deploying...' : 'Deploy'}
         </Button>
-      </DialogActions>
-    </Dialog>
+      </Box>
+    </Drawer>
   );
 };
 
-export default ProviderDeployDialog;
+export default ProviderDeployDrawer;

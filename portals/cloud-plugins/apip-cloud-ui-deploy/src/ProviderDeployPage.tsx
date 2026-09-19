@@ -18,8 +18,8 @@
 
 import { useState, type FC } from 'react';
 import { Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
-import ProviderEnvironmentCard from './components/ProviderEnvironmentCard';
-import ProviderDeployDialog from './components/ProviderDeployDialog';
+import ProviderEnvironmentRow from './components/ProviderEnvironmentRow';
+import ProviderDeployDrawer from './components/ProviderDeployDrawer';
 import ProviderBuildsCard from './components/ProviderBuildsCard';
 import { undeletableBuildReasons } from './utils/status';
 import type { ProviderUpstream } from './providerDeployApi';
@@ -66,6 +66,10 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
   onDeleteBuild,
 }) => {
   const [target, setTarget] = useState<Environment | null>(null);
+  // The first environment opens by default; the rest are a click away.
+  const [expandedEnvironments, setExpandedEnvironments] = useState<string[]>(
+    environments[0] ? [environments[0].name] : []
+  );
 
   // The dialog renders from the freshly loaded environment rather than the one
   // captured when it opened, so a background refresh keeps its gateway list and
@@ -83,41 +87,29 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
         </PageTitle.SubHeader>
       </PageTitle>
 
-      <ProviderBuildsCard
-        builds={builds}
-        undeletableBuilds={undeletableBuildReasons(environments)}
-        busy={busy}
-        onDeleteBuild={onDeleteBuild}
-      />
-
       {environments.length === 0 ? (
-        <Box
-          sx={{
-            border: '1px dashed',
-            borderColor: 'divider',
-            borderRadius: 1.5,
-            py: 6,
-            px: 3,
-            textAlign: 'center',
-          }}
-        >
+        <Box sx={{ textAlign: 'center', py: 8 }}>
+          <Typography variant="body1" gutterBottom>
+            No environments yet
+          </Typography>
           <Typography variant="body2" color="text.secondary">
-            This organization has no environments yet. Add one to deploy this provider.
+            Add an environment to deploy this provider.
           </Typography>
         </Box>
       ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gap: 2,
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fill, minmax(360px, 1fr))' },
-            alignItems: 'start',
-          }}
-        >
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {environments.map((environment) => (
-            <ProviderEnvironmentCard
+            <ProviderEnvironmentRow
               key={environment.name}
               environment={environment}
+              expanded={expandedEnvironments.includes(environment.name)}
+              onToggleExpand={(isExpanded) =>
+                setExpandedEnvironments((previous) =>
+                  isExpanded
+                    ? [...previous, environment.name]
+                    : previous.filter((name) => name !== environment.name)
+                )
+              }
               busy={busy}
               onDeployClick={() => setTarget(environment)}
               onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
@@ -126,7 +118,19 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
         </Box>
       )}
 
-      <ProviderDeployDialog
+      {/* Below the environments, not above them: deleting a build is housekeeping for
+          when the provider hits its build limit, and the environments are what the page
+          is read for. */}
+      <Box sx={{ mt: 3 }}>
+        <ProviderBuildsCard
+          builds={builds}
+          undeletableBuilds={undeletableBuildReasons(environments)}
+          busy={busy}
+          onDeleteBuild={onDeleteBuild}
+        />
+      </Box>
+
+      <ProviderDeployDrawer
         open={openTarget !== null}
         environment={openTarget}
         builds={builds}
