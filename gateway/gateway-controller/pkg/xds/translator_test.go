@@ -1610,6 +1610,7 @@ func TestTranslator_AccessLogSinks_DecoupledFromStdoutToggle(t *testing.T) {
 			gotNames := make([]string, 0, len(logs))
 			for _, l := range logs {
 				gotNames = append(gotNames, l.Name)
+				assert.NotNil(t, l.Filter, "sink %q must carry the reserved health-path suppression filter", l.Name)
 			}
 			assert.Equal(t, tt.wantSinkNames, nilIfEmpty(gotNames), "access log sinks")
 
@@ -1690,6 +1691,37 @@ func TestTranslator_CreateAccessLogConfig_JSONMissingFields(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, logs)
 	assert.Contains(t, err.Error(), "json_fields not configured")
+}
+
+// TestTranslator_CreateFileAccessLog_SuppressesHealthProbes pins the invariant
+// that the stdout access log sink suppresses the reserved /_gateway-health
+// prefix, mirroring the ALS sink's suppression (TestTranslator_CreateGRPCAccessLog),
+// so kubernetes readiness/liveness probes never reach the operator's log.
+func TestTranslator_CreateFileAccessLog_SuppressesHealthProbes(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs = config.AccessLogsConfig{
+		Enabled:    true,
+		Format:     "text",
+		TextFormat: "[%START_TIME%] %RESPONSE_CODE%",
+	}
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createFileAccessLog()
+	assert.NoError(t, err)
+	require.NotNil(t, accessLog)
+	require.NotNil(t, accessLog.Filter, "reserved health-path suppression filter is always attached")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayHealthyPath,
+	}), "gateway healthy-check path is suppressed")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "gateway ready-check path is suppressed")
+	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": "/orders",
+	}), "non-health path is still logged")
 }
 
 func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {
@@ -1883,11 +1915,20 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		assert.Equal(t, constants.GatewayHealthyPath, healthyRoute.GetMatch().GetPath())
 		assert.Equal(t, uint32(200), healthyRoute.GetDirectResponse().GetStatus())
 
+		assert.Equal(t, uint32(0), readyRoute.GetTracing().GetOverallSampling().GetNumerator(),
+			"gateway-ready must force tracing sampling to zero")
+		assert.Equal(t, uint32(0), healthyRoute.GetTracing().GetOverallSampling().GetNumerator(),
+			"gateway-healthy must force tracing sampling to zero")
+
 		require.NotEqual(t, -1, catchAllIdx, "virtual host %q missing no-api-found catch-all", vh.Name)
 		assert.Less(t, readyIdx, catchAllIdx,
 			"gateway-ready must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
 		assert.Less(t, healthyIdx, catchAllIdx,
 			"gateway-healthy must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
+
+		catchAllRoute := vh.Routes[catchAllIdx]
+		assert.Nil(t, catchAllRoute.GetTracing(),
+			"tracing suppression must be scoped to the health routes only, not the no-api-found catch-all")
 	}
 
 	t.Run("present on the wildcard vhost with zero deployed artifacts", func(t *testing.T) {
