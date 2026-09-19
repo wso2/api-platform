@@ -17,7 +17,16 @@
 
 package pdk
 
-import "github.com/wso2/api-platform/platform-api/internal/apperror"
+import (
+	"errors"
+
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+)
+
+// ErrBuildLimitReached stands in for the platform's own refusal so a plugin can exercise
+// its handling of it. IsBuildLimitReached recognises this too, which lets a fake capability
+// return it where the real one would refuse. The platform never returns it itself.
+var ErrBuildLimitReached = errors.New("build limit reached")
 
 // IsBuildLimitReached reports whether err is the platform refusing to prepare another
 // build because the artifact already holds as many as it may, with every one of them on a
@@ -29,5 +38,5 @@ import "github.com/wso2/api-platform/platform-api/internal/apperror"
 // that choice itself when it knows which build it is about to replace. The platform's own
 // error types are internal, so this is how that one question is asked from outside.
 func IsBuildLimitReached(err error) bool {
-	return apperror.BuildLimitReached.Is(err)
+	return errors.Is(err, ErrBuildLimitReached) || apperror.BuildLimitReached.Is(err)
 }

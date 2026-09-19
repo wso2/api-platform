@@ -37,6 +37,16 @@ func TestIsBuildLimitReached_RecognisesTheRefusalThroughWrapping(t *testing.T) {
 	}
 }
 
+// The stand-in a plugin's own tests use is recognised the same way, including through a wrap.
+func TestIsBuildLimitReached_RecognisesTheStandInForPluginTests(t *testing.T) {
+	if !IsBuildLimitReached(ErrBuildLimitReached) {
+		t.Fatal("the stand-in should be recognised")
+	}
+	if !IsBuildLimitReached(fmt.Errorf("deploy: %w", ErrBuildLimitReached)) {
+		t.Error("the stand-in should be recognised through a wrap")
+	}
+}
+
 func TestIsBuildLimitReached_IgnoresEverythingElse(t *testing.T) {
 	for _, err := range []error{nil, errors.New("boom"), apperror.DeploymentNotFound.New()} {
 		if IsBuildLimitReached(err) {
