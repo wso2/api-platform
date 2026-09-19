@@ -317,8 +317,11 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 	}
 
 	// Filename only in storage (file-access.md): strip any directory component
-	// from the uploader's declared name before it ever reaches the service/DB.
+	// from the uploader's declared name, and reject one with nothing usable left.
 	fileName := sanitizeUploadFileName(fileHeader.Filename)
+	if fileName == "" {
+		return apperror.APIPublicationValidationFailed.New("thumbnail file name is not valid")
+	}
 
 	if err := h.service.SaveDraftThumbnail(apiType, apiId, apiPortalId, orgId, actor, fileName, data); err != nil {
 		return serviceError(err, "failed to save publication draft thumbnail")

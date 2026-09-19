@@ -579,6 +579,24 @@ func TestPublicationHandler_OversizedBody_Returns413(t *testing.T) {
 	}
 }
 
+// TestPublicationHandler_Thumbnail_UnusableFileName_Returns400 verifies an upload whose
+// declared name sanitizes to nothing is rejected instead of stored with an empty name.
+func TestPublicationHandler_Thumbnail_UnusableFileName_Returns400(t *testing.T) {
+	r, _, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, _ := mw.CreateFormFile("file", "..")
+	_, _ = part.Write([]byte("\x89PNG\r\n\x1a\n0000000000"))
+	_ = mw.Close()
+
+	w := doPublicationRequest(r, http.MethodPut, draftPath+"/thumbnail", mw.FormDataContentType(), buf.Bytes())
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %.200s", w.Code, w.Body.String())
+	}
+}
+
 // TestPublicationHandler_ResolveAPIErrors verifies the status codes for a
 // missing or unresolvable API reference: absent list params are a 400, while
 // an unknown apiId or an unrecognised apiType is the same 404 on every route.
