@@ -123,8 +123,7 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     displayName: values.displayName.trim(),
     version: values.version.trim(),
     description: trimmedOrUndefined(values.description),
-    // The portal requires the endpoints key even when both URLs are empty,
-    // so this is sent whenever either is set.
+    // Sent only when at least one URL is set; omitted when both are empty.
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),
