@@ -270,10 +270,11 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
                       helperText="Leave empty to keep the current key."
                     />
                   ) : null}
-                  {/* The header only matters where a key is being given, and only an
-                      api-key upstream has a header to choose — basic and bearer send
-                      Authorization by definition. */}
-                  {isSelected && takesAuthHeader && keyDrafts[gateway.id]?.trim() ? (
+                  {/* Only an api-key upstream has a header to choose: basic and bearer
+                      send Authorization by definition. Shown with the key rather than
+                      only once one is typed, so the field is discoverable; it is sent
+                      only alongside a key, which the helper text says. */}
+                  {isSelected && takesAuthHeader ? (
                     <TextField
                       fullWidth
                       size="small"
@@ -284,7 +285,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
                       onChange={(event) =>
                         setHeaderDrafts({ ...headerDrafts, [gateway.id]: event.target.value })
                       }
-                      helperText="Leave empty to keep the provider's header."
+                      helperText="Applies to the key above. Leave empty to keep the provider's header."
                     />
                   ) : null}
                 </Box>
