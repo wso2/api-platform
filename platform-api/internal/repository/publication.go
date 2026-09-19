@@ -195,6 +195,40 @@ func (r *PublicationRepo) lookupRowUUID(tx *sql.Tx, artifactUUID, apiPortalUUID,
 	return id, true, nil
 }
 
+// lockDraft takes the write lock on the draft row for (artifactUUID,
+// apiPortalUUID, orgUUID) and returns its uuid and current updated_at, and
+// whether such a row exists. The no-op update is what takes the lock, on every
+// dialect, so a concurrent save waits and the timestamp stays current until
+// tx ends.
+func (r *PublicationRepo) lockDraft(tx *sql.Tx, artifactUUID, apiPortalUUID, orgUUID string) (string, time.Time, bool, error) {
+	lockQuery := `
+		UPDATE api_publications SET updated_by = updated_by
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
+	`
+	result, err := tx.Exec(r.db.Rebind(lockQuery), orgUUID, artifactUUID, apiPortalUUID)
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	locked, err := result.RowsAffected()
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	if locked == 0 {
+		return "", time.Time{}, false, nil
+	}
+
+	query := `
+		SELECT uuid, updated_at FROM api_publications
+		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
+	`
+	var id string
+	var updatedAt time.Time
+	if err := tx.QueryRow(r.db.Rebind(query), orgUUID, artifactUUID, apiPortalUUID).Scan(&id, &updatedAt); err != nil {
+		return "", time.Time{}, false, err
+	}
+	return id, updatedAt, true, nil
+}
+
 // GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
 // plus its raw plan/document UUIDs. Returns (nil, nil, nil, nil) when no draft
 // has been saved.
@@ -545,32 +579,12 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	}
 	defer tx.Rollback()
 
-	// The no-op update takes the draft row's write lock on every dialect, so a
-	// concurrent save waits and the timestamp read next stays current until commit.
-	lockQuery := `
-		UPDATE api_publications SET updated_by = updated_by
-		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
-	`
-	lockResult, err := tx.Exec(r.db.Rebind(lockQuery), orgUUID, artifactUUID, apiPortalUUID)
+	draftUUID, currentUpdatedAt, draftFound, err := r.lockDraft(tx, artifactUUID, apiPortalUUID, orgUUID)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to lock publication draft to promote: %w", err)
+		return nil, false, fmt.Errorf("failed to look up publication draft to promote: %w", err)
 	}
-	locked, err := lockResult.RowsAffected()
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to lock publication draft to promote: %w", err)
-	}
-	if locked == 0 {
+	if !draftFound {
 		return nil, false, nil
-	}
-
-	var draftUUID string
-	var currentUpdatedAt time.Time
-	stateQuery := `
-		SELECT uuid, updated_at FROM api_publications
-		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = 1
-	`
-	if err := tx.QueryRow(r.db.Rebind(stateQuery), orgUUID, artifactUUID, apiPortalUUID).Scan(&draftUUID, &currentUpdatedAt); err != nil {
-		return nil, false, fmt.Errorf("failed to read publication draft to promote: %w", err)
 	}
 	if !currentUpdatedAt.Equal(draftUpdatedAt) {
 		return nil, false, apperror.APIPublicationDraftChanged.New()
