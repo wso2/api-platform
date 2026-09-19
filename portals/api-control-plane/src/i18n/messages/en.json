@@ -1986,8 +1986,17 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.loading": {
     "defaultMessage": "Loading API portals"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesDescription": {
+    "defaultMessage": "Try a different portal name or clear the search."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle": {
+    "defaultMessage": "No matching API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder": {
+    "defaultMessage": "Search API portals"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle": {
-    "defaultMessage": "Choose an API portal to publish this API to, or check where it is already published."
+    "defaultMessage": "Choose the API portal to publish this API to."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
     "defaultMessage": "Publish {apiName}",
@@ -2101,6 +2110,18 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid JSON: {detail}",
     "description": "{detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
+    "defaultMessage": "Deprecated",
+    "description": "Status chip: this API is still listed on this portal but flagged as deprecated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.draft": {
+    "defaultMessage": "Draft",
+    "description": "Status chip: this API has unpublished changes saved as a draft on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.published": {
+    "defaultMessage": "Published",
+    "description": "Status chip: this API is live on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.displayNameRequired": {
     "defaultMessage": "Enter a name."

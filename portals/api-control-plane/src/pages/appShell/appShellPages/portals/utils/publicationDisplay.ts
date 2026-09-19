@@ -16,7 +16,27 @@
  * under the License.
  */
 
+import { defineMessages, type MessageDescriptor } from 'react-intl';
+
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
+
+const messages = defineMessages({
+  draft: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.draft',
+    defaultMessage: 'Draft',
+    description: 'Status chip: this API has unpublished changes saved as a draft on this portal.',
+  },
+  published: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.published',
+    defaultMessage: 'Published',
+    description: 'Status chip: this API is live on this portal.',
+  },
+  deprecated: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated',
+    defaultMessage: 'Deprecated',
+    description: 'Status chip: this API is still listed on this portal but flagged as deprecated.',
+  },
+});
 
 /**
  * Display helpers for the spec's `PublicationSummaryItem` shape — the
@@ -35,9 +55,9 @@ export type ChipColor = 'default' | 'error' | 'info' | 'secondary' | 'success' |
  */
 export const publicationChipMeta = (
   item: Pick<PublicationSummaryItem, 'draftUpdatedAt' | 'status'>,
-): { color: ChipColor; label: string } | null => {
-  if (item.draftUpdatedAt) return { color: 'secondary', label: 'Draft' };
-  if (item.status === 'PUBLISHED') return { color: 'success', label: 'Published' };
-  if (item.status === 'DEPRECATED') return { color: 'warning', label: 'Deprecated' };
+): { color: ChipColor; label: MessageDescriptor } | null => {
+  if (item.draftUpdatedAt) return { color: 'secondary', label: messages.draft };
+  if (item.status === 'PUBLISHED') return { color: 'success', label: messages.published };
+  if (item.status === 'DEPRECATED') return { color: 'warning', label: messages.deprecated };
   return null;
 };

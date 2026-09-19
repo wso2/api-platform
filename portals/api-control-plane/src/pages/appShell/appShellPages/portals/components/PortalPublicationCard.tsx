@@ -18,7 +18,8 @@
 
 import { Avatar, Box, Button, Card, CardContent, Chip, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { ChevronRight, Globe, Link2 } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage } from 'react-intl';
+import { useId } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
 import { publicationChipMeta } from '../utils/publicationDisplay';
@@ -67,6 +68,8 @@ const displayUrl = (url: string): string => url.replace(/^https?:\/\//i, '').rep
  * would be a second, redundant trigger for the same action.
  */
 export function PortalPublicationCard({ publication, onOpen }: PortalPublicationCardProps) {
+  const intl = useIntl();
+  const nameId = useId();
   const name = publication.apiPortalName || publication.apiPortalId || '';
   const chipMeta = publicationChipMeta(publication);
   const open = () => onOpen(publication);
@@ -84,13 +87,13 @@ export function PortalPublicationCard({ publication, onOpen }: PortalPublication
           <Stack alignItems="flex-start" direction="row" spacing={1.5}>
             <PortalAvatar />
             <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap sx={{ fontWeight: 700 }} variant="h6">
+              <Typography id={nameId} noWrap sx={{ fontWeight: 700 }} variant="h6">
                 {name}
               </Typography>
               {chipMeta && (
                 <Chip
                   color={chipMeta.color}
-                  label={chipMeta.label}
+                  label={intl.formatMessage(chipMeta.label)}
                   size="small"
                   sx={{ mt: 0.5, typography: 'caption' }}
                   variant="outlined"
@@ -104,7 +107,6 @@ export function PortalPublicationCard({ publication, onOpen }: PortalPublication
               color="text.secondary"
               sx={{
                 display: '-webkit-box',
-                fontSize: '0.8rem',
                 overflow: 'hidden',
                 WebkitBoxOrient: 'vertical',
                 WebkitLineClamp: 2,
@@ -142,7 +144,12 @@ export function PortalPublicationCard({ publication, onOpen }: PortalPublication
       <Divider />
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 2, py: 1.25 }}>
-        <Button endIcon={<ChevronRight size={16} />} onClick={open} size="small" variant="outlined">
+        <Button
+          aria-describedby={nameId}
+          endIcon={<ChevronRight size={16} />}
+          onClick={open} size="small"
+          variant="outlined"
+        >
           <FormattedMessage {...messages.goToPublish} />
         </Button>
       </Box>

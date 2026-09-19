@@ -140,4 +140,73 @@ describe('ApiPortalPublicationsList', () => {
 
     expect(await screen.findByText('publish flow')).toBeInTheDocument();
   });
+
+  it('names each portal for assistive tech on its otherwise identical button', async () => {
+    servePublications([
+      aPublicationSummary({ apiPortalId: 'one', apiPortalName: 'API Portal 1' }),
+      aPublicationSummary({ apiPortalId: 'two', apiPortalName: 'API Portal 2' }),
+    ]);
+
+    renderPage();
+
+    await screen.findByText('API Portal 1');
+    const buttons = screen.getAllByRole('button', { name: 'Go To Publish' });
+    expect(buttons.map((button) => button.getAttribute('aria-describedby'))).toHaveLength(2);
+    expect(buttons[0]).toHaveAccessibleDescription('API Portal 1');
+    expect(buttons[1]).toHaveAccessibleDescription('API Portal 2');
+  });
+
+  it('shows Deprecated for a deprecated listing', async () => {
+    servePublications([aPublicationSummary({ status: 'DEPRECATED', draftUpdatedAt: null })]);
+
+    renderPage();
+
+    expect(await screen.findByText('Deprecated')).toBeInTheDocument();
+  });
+
+  it('titles the page with the API handle until its display name is known', async () => {
+    servePublications([aPublicationSummary()]);
+
+    renderWithProviders(
+      <ApiScopeProvider orgId={ORG}>
+        <ApiPortalPublicationsList />
+      </ApiScopeProvider>,
+      {
+        route: `/organizations/${ORG}/projects/${PROJECT}/apis/${API}/portals`,
+        scope: makeConsoleScope({
+          params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
+        }),
+      },
+    );
+
+    expect(await screen.findByText(`Publish ${API}`)).toBeInTheDocument();
+  });
+
+  it('filters the cards by the search text and explains an empty result', async () => {
+    servePublications([
+      aPublicationSummary({ apiPortalId: 'one', apiPortalName: 'Partner Portal', apiPortalDescription: 'For partners.' }),
+      aPublicationSummary({ apiPortalId: 'two', apiPortalName: 'Internal Portal', apiPortalDescription: 'For staff.' }),
+    ]);
+    const { user } = renderPage();
+
+    await screen.findByText('Partner Portal');
+    await user.type(screen.getByPlaceholderText('Search API portals'), 'partner');
+
+    expect(screen.getByText('Partner Portal')).toBeInTheDocument();
+    expect(screen.queryByText('Internal Portal')).not.toBeInTheDocument();
+
+    await user.clear(screen.getByPlaceholderText('Search API portals'));
+    await user.type(screen.getByPlaceholderText('Search API portals'), 'zzz');
+
+    expect(await screen.findByText('No matching API portals')).toBeInTheDocument();
+  });
+
+  it('does not offer a search when the organization has no portals', async () => {
+    servePublications([]);
+
+    renderPage();
+
+    await screen.findByText('No API portals available');
+    expect(screen.queryByPlaceholderText('Search API portals')).not.toBeInTheDocument();
+  });
 });

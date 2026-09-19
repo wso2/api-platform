@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { Box, PageTitle } from '@wso2/oxygen-ui';
+import { useState } from 'react';
+import { Box, PageTitle, SearchBar, Stack } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
@@ -35,8 +36,19 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle',
-    defaultMessage:
-      'Choose an API portal to publish this API to, or check where it is already published.',
+    defaultMessage: 'Choose the API portal to publish this API to.',
+  },
+  searchPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder',
+    defaultMessage: 'Search API portals',
+  },
+  noMatchesTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle',
+    defaultMessage: 'No matching API portals',
+  },
+  noMatchesDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesDescription',
+    defaultMessage: 'Try a different portal name or clear the search.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.loading',
@@ -84,6 +96,7 @@ export function ApiPortalPublicationsList() {
   const projectHandler = params.projectHandler ?? '';
   const apiHandler = params.apiHandler ?? '';
 
+  const [search, setSearch] = useState('');
   const publicationsQuery = useApiPublications(API_TYPE, apiHandler, { limit: LIST_LIMIT });
 
   const openPublication = (publication: PublicationSummaryItem) => {
@@ -108,12 +121,20 @@ export function ApiPortalPublicationsList() {
   }
 
   const publications = publicationsQuery.data?.list ?? [];
+  const term = search.trim().toLowerCase();
+  const visiblePublications = term
+    ? publications.filter((publication) =>
+        [publication.apiPortalName, publication.apiPortalDescription, publication.apiPortalUrl]
+          .filter(Boolean)
+          .some((text) => text!.toLowerCase().includes(term)),
+      )
+    : publications;
 
   return (
     <>
       <PageTitle>
         <PageTitle.Header>
-          <FormattedMessage {...messages.title} values={{ apiName: component?.displayName ?? '' }} />
+          <FormattedMessage {...messages.title} values={{ apiName: component?.displayName || apiHandler }} />
         </PageTitle.Header>
         <PageTitle.SubHeader>
           <FormattedMessage {...messages.subtitle} />
@@ -128,27 +149,45 @@ export function ApiPortalPublicationsList() {
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gap: 2,
-            gridTemplateColumns: {
-              xs: '1fr',
-              sm: 'repeat(2, 1fr)',
-              md: 'repeat(3, 1fr)',
-            },
-            // Allow cards to shrink so long text does not widen the grid.
-            '& > *': { minWidth: 0 },
-          }}
-        >
-          {publications.map((publication) => (
-            <PortalPublicationCard
-              key={publication.apiPortalId}
-              onOpen={openPublication}
-              publication={publication}
+        <Stack spacing={3}>
+          {/* Full-bleed search, the same band the gateway listing puts above its cards. */}
+          <SearchBar
+            fullWidth
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={intl.formatMessage(messages.searchPlaceholder)}
+            value={search}
+          />
+
+          {visiblePublications.length === 0 ? (
+            <EmptyState
+              description={intl.formatMessage(messages.noMatchesDescription)}
+              title={intl.formatMessage(messages.noMatchesTitle)}
             />
-          ))}
-        </Box>
+          ) : (
+            <Box
+              sx={{
+                display: 'grid',
+                gap: 2.5,
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, 1fr)',
+                  md: 'repeat(3, 1fr)',
+                  lg: 'repeat(4, 1fr)',
+                },
+                // Allow cards to shrink so long names do not widen the grid.
+                '& > *': { minWidth: 0 },
+              }}
+            >
+              {visiblePublications.map((publication) => (
+                <PortalPublicationCard
+                  key={publication.apiPortalId}
+                  onOpen={openPublication}
+                  publication={publication}
+                />
+              ))}
+            </Box>
+          )}
+        </Stack>
       )}
     </>
   );
