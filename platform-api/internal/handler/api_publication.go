@@ -25,6 +25,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -302,10 +303,7 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 	// from the uploader's declared name before it ever reaches the service/DB.
 	fileName := ""
 	if fileHeader != nil {
-		fileName = filepath.Base(fileHeader.Filename)
-		if fileName == "." || fileName == string(filepath.Separator) {
-			fileName = ""
-		}
+		fileName = sanitizeUploadFileName(fileHeader.Filename)
 	}
 
 	if err := h.service.SaveDraftThumbnail(apiType, apiId, apiPortalId, orgId, actor, fileName, data); err != nil {
@@ -313,6 +311,20 @@ func (h *PublicationHandler) SaveDraftThumbnail(w http.ResponseWriter, r *http.R
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+// sanitizeUploadFileName reduces an uploader-declared name to a bare file name,
+// returning "" for names that are not usable (dot-only, separator-only, or
+// containing a NUL byte).
+func sanitizeUploadFileName(name string) string {
+	if strings.ContainsRune(name, 0) {
+		return ""
+	}
+	base := filepath.Base(name)
+	if base == "." || base == ".." || base == string(filepath.Separator) {
+		return ""
+	}
+	return base
 }
 
 // GetPublication handles GET .../publication
