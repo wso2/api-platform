@@ -123,6 +123,7 @@ func (r *RetryableHTTPClient) Do(req *http.Request) (*http.Response, error) {
 			req.Body = body
 		}
 
+		// Execute the request
 		resp, err = r.client.Do(req)
 
 		// Success: no error and status code < 500
@@ -130,6 +131,7 @@ func (r *RetryableHTTPClient) Do(req *http.Request) (*http.Response, error) {
 			return resp, nil
 		}
 
+		// Log retry attempt
 		if attempt < r.maxRetries {
 			if err != nil {
 				log.Printf("[RetryClient] Attempt %d/%d failed with error: %v. Retrying in %s...",
