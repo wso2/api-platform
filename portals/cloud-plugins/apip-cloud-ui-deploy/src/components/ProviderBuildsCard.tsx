@@ -20,13 +20,13 @@ import { useState, type FC } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
+  Chip,
+  Collapse,
   IconButton,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Clock, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronUp, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { relativeTime } from '../utils/time';
 import type { Build } from '../types';
 
@@ -48,12 +48,15 @@ const sectionLabelSx = {
 };
 
 /**
- * The provider's builds, and the one thing there is to do with them here: delete one.
+ * The provider's builds, collapsed to a single line until asked for.
  *
- * Deleting is what frees a slot once the provider is at its build limit and deploying
- * is refused, which is the only reason this list needs to exist — deploying a build is
- * done from an environment, not from here. A build a gateway is serving cannot go, and
- * the row says which environment is holding it rather than failing on the attempt.
+ * Deleting is the only thing there is to do with them here — deploying a build is done
+ * from an environment — and that is housekeeping, needed once the provider is at its
+ * build limit and deploys start being refused. So the list stays out of the way of the
+ * environments, which are what the page is about, rather than taking the top of it.
+ *
+ * A build a gateway is serving cannot go, and the row says which environment is holding
+ * it rather than failing on the attempt.
  */
 const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
   builds,
@@ -62,92 +65,115 @@ const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
   onDeleteBuild,
 }) => {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   if (builds.length === 0) return null;
 
   return (
-    <Box sx={{ mb: 2 }}>
-      <Typography sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Builds</Typography>
+    <Box sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
       <Box
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded((prev) => !prev)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') setExpanded((prev) => !prev);
+        }}
         sx={{
-          display: 'grid',
-          gap: 1,
-          gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fill, minmax(280px, 1fr))' },
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          px: 2,
+          py: 1.25,
+          cursor: 'pointer',
+          userSelect: 'none',
         }}
       >
-        {builds.map((build) => {
-          const blockedReason = undeletableBuilds[build.buildId];
-          const confirming = pendingDelete === build.buildId;
-          return (
-            <Card key={build.buildId} variant="outlined">
-              <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                  <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 700, fontSize: 14 }}>
-                      {build.buildId}
-                    </Typography>
-                    {build.description ? (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: 'block', mt: 0.25, fontSize: 12 }}
-                      >
-                        {build.description}
-                      </Typography>
-                    ) : null}
-                    {build.createdAt ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                        <Clock size={13} />
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-                          {relativeTime(build.createdAt)}
-                        </Typography>
-                      </Box>
-                    ) : null}
-                  </Box>
-                  {confirming ? null : (
-                    <Tooltip title={blockedReason || 'Delete this build'}>
-                      <span>
-                        <IconButton
-                          size="small"
-                          aria-label={`Delete build ${build.buildId}`}
-                          disabled={busy || Boolean(blockedReason)}
-                          onClick={() => setPendingDelete(build.buildId)}
-                        >
-                          <Trash2 size={15} />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  )}
-                </Box>
-                {confirming ? (
-                  <Box sx={{ mt: 1 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-                      Delete this build?
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                      <Button
-                        size="small"
-                        color="error"
-                        variant="contained"
-                        disabled={busy}
-                        onClick={() => {
-                          setPendingDelete(null);
-                          onDeleteBuild(build.buildId);
-                        }}
-                      >
-                        Delete
-                      </Button>
-                      <Button size="small" disabled={busy} onClick={() => setPendingDelete(null)}>
-                        Cancel
-                      </Button>
-                    </Box>
-                  </Box>
-                ) : null}
-              </CardContent>
-            </Card>
-          );
-        })}
+        <Typography sx={sectionLabelSx}>Builds</Typography>
+        <Chip label={builds.length} size="small" sx={{ height: 18, fontSize: 11 }} />
+        <Box sx={{ flexGrow: 1 }} />
+        {!expanded ? (
+          <Typography variant="caption" color="text.secondary" noWrap>
+            Latest {builds[0].buildId}
+          </Typography>
+        ) : null}
+        <Box sx={{ display: 'flex', color: 'text.secondary' }}>
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </Box>
       </Box>
+
+      <Collapse in={expanded}>
+        <Box sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
+          {builds.map((build) => {
+            const blockedReason = undeletableBuilds[build.buildId];
+            const confirming = pendingDelete === build.buildId;
+            return (
+              <Box
+                key={build.buildId}
+                sx={{
+                  px: 2,
+                  py: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  '&:first-of-type': { borderTop: 'none' },
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
+                  {build.buildId}
+                </Typography>
+                {build.createdAt ? (
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {relativeTime(build.createdAt)}
+                  </Typography>
+                ) : null}
+                {build.description ? (
+                  <Typography variant="caption" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
+                    · {build.description}
+                  </Typography>
+                ) : null}
+                <Box sx={{ flexGrow: 1 }} />
+                {confirming ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Delete?
+                    </Typography>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="contained"
+                      disabled={busy}
+                      onClick={() => {
+                        setPendingDelete(null);
+                        onDeleteBuild(build.buildId);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                    <Button size="small" disabled={busy} onClick={() => setPendingDelete(null)}>
+                      Cancel
+                    </Button>
+                  </Box>
+                ) : (
+                  <Tooltip title={blockedReason || 'Delete this build'}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={`Delete build ${build.buildId}`}
+                        disabled={busy || Boolean(blockedReason)}
+                        onClick={() => setPendingDelete(build.buildId)}
+                      >
+                        <Trash2 size={15} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+      </Collapse>
     </Box>
   );
 };

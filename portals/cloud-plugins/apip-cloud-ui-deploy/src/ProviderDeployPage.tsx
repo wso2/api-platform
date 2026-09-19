@@ -29,10 +29,12 @@ export type ProviderDeployPageProps = {
   environments: Environment[];
   /** The provider's builds, newest first. */
   builds: Build[];
+  /** Whether a gateway can name the header its credential is sent in (api-key upstreams). */
+  takesAuthHeader: boolean;
   busy: boolean;
   onDeploy: (
     target: Environment,
-    gateways: { gatewayId: string; apiKey?: string }[],
+    gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[],
     buildId?: string
   ) => void;
   onStopGateway: (environment: Environment, gatewayId: string) => void;
@@ -51,6 +53,7 @@ export type ProviderDeployPageProps = {
 const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
   environments,
   builds,
+  takesAuthHeader,
   busy,
   onDeploy,
   onStopGateway,
@@ -121,6 +124,7 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
         open={openTarget !== null}
         environment={openTarget}
         builds={builds}
+        takesAuthHeader={takesAuthHeader}
         submitting={busy}
         onClose={() => setTarget(null)}
         onConfirm={(gateways, buildId) => {

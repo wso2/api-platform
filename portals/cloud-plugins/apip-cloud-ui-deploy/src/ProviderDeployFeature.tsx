@@ -56,6 +56,8 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
+  // Only an api-key upstream lets a deployment name the header its credential is sent in.
+  const [authType, setAuthType] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,6 +96,13 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Read once per provider rather than on every settling poll: how it authenticates is
+  // not deployment state, and failing to read it must leave the rest of the page working.
+  useEffect(() => {
+    if (!client) return;
+    void client.readUpstreamAuthType().then(setAuthType, () => setAuthType(undefined));
+  }, [client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
   // while anything is in flight and stop as soon as everything has settled.
@@ -134,7 +143,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
    */
   const handleDeploy = (
     target: Environment,
-    gateways: { gatewayId: string; apiKey?: string }[],
+    gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[],
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
@@ -149,6 +158,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
             return {
               gatewayId: gateway.gatewayId,
               apiKey: await client.storeCredential(gateway.apiKey, `${handle} · ${target.name} · ${name}`),
+              authHeader: gateway.authHeader,
             };
           })
         );
@@ -241,6 +251,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
     <ProviderDeployPage
       environments={environments}
       builds={builds}
+      takesAuthHeader={authType === 'api-key'}
       busy={busy}
       onDeleteBuild={handleDeleteBuild}
       onDeploy={handleDeploy}

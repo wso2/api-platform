@@ -45,6 +45,8 @@ export type ProviderDeployDialogProps = {
   environment: Environment | null;
   /** The provider's builds, newest first. */
   builds: Build[];
+  /** Whether a gateway can name the header its credential is sent in (api-key upstreams). */
+  takesAuthHeader: boolean;
   submitting: boolean;
   onClose: () => void;
   /**
@@ -53,7 +55,10 @@ export type ProviderDeployDialogProps = {
    * deploy, so nothing here holds it beyond this call. `buildId` is empty when the
    * provider is to be shipped as it stands.
    */
-  onConfirm: (gateways: { gatewayId: string; apiKey?: string }[], buildId?: string) => void;
+  onConfirm: (
+    gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[],
+    buildId?: string
+  ) => void;
 };
 
 const sectionLabelSx = {
@@ -82,6 +87,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
   open,
   environment,
   builds,
+  takesAuthHeader,
   submitting,
   onClose,
   onConfirm,
@@ -96,6 +102,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
   // is, so there is nothing to read back and an empty field means "leave it as it is"
   // rather than "clear it".
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  const [headerDrafts, setHeaderDrafts] = useState<Record<string, string>>({});
   // Empty means "as it stands now", which is what a deploy does when it names no
   // build: the platform snapshots the definition and deploys that snapshot.
   const [buildId, setBuildId] = useState('');
@@ -104,6 +111,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
     if (!open) return;
     setSelectedIds(null);
     setKeyDrafts({});
+    setHeaderDrafts({});
     setBuildId('');
   }, [open]);
 
@@ -149,11 +157,6 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
         Deploy to {environment.name}
       </DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Deploys this provider as it stands now to {environment.name}. Select the gateways to
-          deploy to.
-        </Typography>
-
         {inactiveSelectable.length > 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
             {inactiveSelectable.map((gateway) => gateway.name).join(', ')}
@@ -198,11 +201,11 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
 
         <Box sx={{ mb: 1 }}>
           <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateways</FormLabel>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            {lockedIds.length > 0
-              ? 'Every gateway this provider is already deployed on stays selected — the environment is deployed together. Stop a gateway to drop it.'
-              : 'Select the gateways to deploy to.'}
-          </Typography>
+          {lockedIds.length > 0 ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Gateways already deployed on stay selected — the environment deploys together.
+            </Typography>
+          ) : null}
           <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
             {environment.gateways.map((gateway, index) => {
               const isSelected = selection.includes(gateway.id);
@@ -264,7 +267,24 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
                       onChange={(event) =>
                         setKeyDrafts({ ...keyDrafts, [gateway.id]: event.target.value })
                       }
-                      helperText="Leave empty to keep the key this gateway already uses."
+                      helperText="Leave empty to keep the current key."
+                    />
+                  ) : null}
+                  {/* The header only matters where a key is being given, and only an
+                      api-key upstream has a header to choose — basic and bearer send
+                      Authorization by definition. */}
+                  {isSelected && takesAuthHeader && keyDrafts[gateway.id]?.trim() ? (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      sx={{ mt: 1 }}
+                      label="Header"
+                      placeholder="Authorization"
+                      value={headerDrafts[gateway.id] ?? ''}
+                      onChange={(event) =>
+                        setHeaderDrafts({ ...headerDrafts, [gateway.id]: event.target.value })
+                      }
+                      helperText="Leave empty to keep the provider's header."
                     />
                   ) : null}
                 </Box>
@@ -285,6 +305,7 @@ const ProviderDeployDialog: FC<ProviderDeployDialogProps> = ({
               selected.map((gateway) => ({
                 gatewayId: gateway.id,
                 apiKey: keyDrafts[gateway.id]?.trim() || undefined,
+                authHeader: headerDrafts[gateway.id]?.trim() || undefined,
               })),
               buildId || undefined
             )

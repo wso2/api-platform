@@ -21,6 +21,15 @@ import { GATEWAY_TYPES_FOR_KIND } from './deployApi';
 import type { Build, Environment } from './types';
 import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type StageDTO } from './wire';
 
+/**
+ * The provider's own record. Only its upstream auth type is read: it decides whether a
+ * deployment can name the header its credential is sent in, which only an api-key upstream
+ * can. The credential itself never comes back — it is write-only.
+ */
+type ProviderDTO = {
+  upstream?: { main?: { auth?: { type?: string } } };
+};
+
 /** One of the provider's builds, as the platform reports it. */
 type BuildDTO = {
   buildId: string;
@@ -62,6 +71,16 @@ export function createProviderDeployClient(apiFetch: ApiFetch, providerHandle: s
         apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', gatewaysPath).catch(() => undefined),
       ]);
       return toEnvironments(stages?.list, gateways?.list);
+    },
+
+    /**
+     * How the provider authenticates to its upstream, so the deploy form knows whether a
+     * per-gateway header can be named. Absent when it cannot be read, which leaves the
+     * header out rather than offering a field the deploy would refuse.
+     */
+    async readUpstreamAuthType(): Promise<string | undefined> {
+      const provider = await apiFetch<ProviderDTO>('GET', nativeBase);
+      return provider?.upstream?.main?.auth?.type;
     },
 
     /**
@@ -134,7 +153,7 @@ export function createProviderDeployClient(apiFetch: ApiFetch, providerHandle: s
      */
     async deploy(input: {
       environment: string;
-      gateways: { gatewayId: string; apiKey?: string }[];
+      gateways: { gatewayId: string; apiKey?: string; authHeader?: string }[];
       buildId?: string;
     }): Promise<void> {
       await apiFetch('POST', base, {
@@ -142,7 +161,16 @@ export function createProviderDeployClient(apiFetch: ApiFetch, providerHandle: s
         ...(input.buildId ? { buildId: input.buildId } : {}),
         gateways: input.gateways.map((gateway) => ({
           gatewayId: gateway.gatewayId,
-          ...(gateway.apiKey ? { parameters: { apiKey: gateway.apiKey } } : {}),
+          // The header travels only with a key: on its own it would name where to put a
+          // credential this deployment does not have, and the platform refuses it.
+          ...(gateway.apiKey
+            ? {
+                parameters: {
+                  apiKey: gateway.apiKey,
+                  ...(gateway.authHeader ? { authHeader: gateway.authHeader } : {}),
+                },
+              }
+            : {}),
         })),
       });
     },
