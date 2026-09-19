@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Box, PageTitle, Tab, Tabs } from '@wso2/oxygen-ui';
+import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useParams } from 'react-router-dom';
@@ -27,6 +27,7 @@ import {
   useApiPublicationDefinition,
   useApiPublicationDraft,
   useApiPublicationDraftDefinition,
+  useDeprecateRestApiOnApiPortal,
   usePublishRestApiToApiPortal,
   useSaveApiPublicationDraft,
   useSaveApiPublicationDraftDefinition,
@@ -120,7 +121,33 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmAction',
     defaultMessage: 'Unpublish',
   },
+  deprecated: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated',
+    defaultMessage: 'Deprecated on {portalName}.',
+  },
+  deprecateConfirmTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmTitle',
+    defaultMessage: 'Deprecate this API?',
+  },
+  deprecateConfirmMessage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage',
+    defaultMessage:
+      'This marks the live listing on {portalName} as deprecated. It stays visible there with a deprecated flag, and your current draft is not changed. You can unpublish it or publish again later.',
+  },
+  deprecateConfirmAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmAction',
+    defaultMessage: 'Deprecate',
+  },
 });
+
+/**
+ * A failed API call is already reported by the global mutation snackbar, so the
+ * action handlers only need to stop it from surfacing again as an unhandled
+ * rejection. Anything that is not an `ApiError` is a real bug and still throws.
+ */
+const rethrowUnreported = (error: unknown): void => {
+  if (!isApiError(error)) throw error;
+};
 
 /**
  * `apiType` is hardcoded to `rest-api`, same reasoning as
@@ -132,7 +159,7 @@ const API_TYPE = 'rest-api';
 type Tab = 'details' | 'specification';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
-type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing';
+type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
 
 /**
  * `GET /rest-apis/{id}/openapi` (`useRestApiOpenApi`) returns the raw spec as
@@ -153,7 +180,7 @@ const parseOpenApiContent = (content: string): DraftDefinitionDocument | undefin
 };
 
 /**
- * The publish/unpublish flow for one API on one API Portal.
+ * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
  * Alpha scope, per the design this implements: only "API Details" and
  * "Specification" are editable — Subscription Plans, Documentations and
@@ -221,6 +248,7 @@ export function PortalPublishPage() {
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition();
   const publishMutation = usePublishRestApiToApiPortal();
   const unpublishMutation = useUnpublishRestApiFromApiPortal();
+  const deprecateMutation = useDeprecateRestApiOnApiPortal();
 
   const [tab, setTab] = useState<Tab>('details');
   const [values, setValues] = useState<DraftFormValues>(emptyDraftFormValues);
@@ -229,6 +257,7 @@ export function PortalPublishPage() {
   const [definitionParseError, setDefinitionParseError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
+  const [confirmingDeprecate, setConfirmingDeprecate] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   // A disabled query's own `isPending` is permanently `true` — it never runs,
@@ -293,7 +322,14 @@ export function PortalPublishPage() {
   }
 
   const api = apiQuery.data;
-  const isPublished = Boolean(publicationQuery.data);
+  // A refetch that 404s (PUBLICATION_NOT_FOUND after an unpublish) keeps the
+  // previous successful `data` alongside the error, so the 404 itself decides
+  // that the listing is gone. Any other failure (5xx, network) says nothing about
+  // the listing, so the last known state is kept.
+  const publicationGone = isApiError(publicationQuery.error) && publicationQuery.error.isNotFound;
+  const livePublication = publicationGone ? undefined : publicationQuery.data;
+  const isPublished = Boolean(livePublication);
+  const canDeprecate = livePublication?.status === 'PUBLISHED';
   const errors = validateDraftFormValues(values);
   const errorFor = (field: DraftFormField) => (touched[field] ? errors[field] : undefined);
   const formInvalid = Object.keys(errors).length > 0;
@@ -348,6 +384,8 @@ export function PortalPublishPage() {
       if (await saveDraft()) {
         notify(intl.formatMessage(messages.draftSaved), 'success');
       }
+    } catch (error) {
+      rethrowUnreported(error);
     } finally {
       setPendingAction('idle');
     }
@@ -361,6 +399,8 @@ export function PortalPublishPage() {
       if (!(await saveDraft())) return;
       await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
+    } catch (error) {
+      rethrowUnreported(error);
     } finally {
       setPendingAction('idle');
     }
@@ -372,13 +412,28 @@ export function PortalPublishPage() {
     try {
       await unpublishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.unpublished, { portalName }), 'success');
+    } catch (error) {
+      rethrowUnreported(error);
+    } finally {
+      setPendingAction('idle');
+    }
+  };
+
+  const confirmDeprecate = async () => {
+    setConfirmingDeprecate(false);
+    setPendingAction('deprecating');
+    try {
+      await deprecateMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+      notify(intl.formatMessage(messages.deprecated, { portalName }), 'success');
+    } catch (error) {
+      rethrowUnreported(error);
     } finally {
       setPendingAction('idle');
     }
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+    <>
       <PageTitle>
         <Link to={routes.apiPortals(orgHandle, projectHandler, apiHandler)}>
           <PageTitle.BackButton>
@@ -396,53 +451,60 @@ export function PortalPublishPage() {
         </PageTitle.SubHeader>
       </PageTitle>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs onChange={(_event, next: Tab) => setTab(next)} value={tab}>
-          <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
-          <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-          {/* Disabled, not omitted — still on the roadmap, just not this release. */}
-          <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
-          <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
-          <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
-        </Tabs>
-      </Box>
+      <Stack spacing={3}>
+        <Box>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs onChange={(_event, next: Tab) => setTab(next)} value={tab}>
+              <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
+              <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
+              {/* Disabled, not omitted — still on the roadmap, just not this release. */}
+              <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
+              <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
+              <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
+            </Tabs>
+          </Box>
 
-      <Box sx={{ flex: 1, py: 3 }}>
-        {tab === 'details' ? (
-          <ApiDetailsTab
-            disabled={pendingAction !== 'idle'}
-            errors={{
-              displayName: errorFor('displayName'),
-              version: errorFor('version'),
-              productionUrl: errorFor('productionUrl'),
-              sandboxUrl: errorFor('sandboxUrl'),
-            }}
-            onBlurField={markTouched}
-            onChange={setValues}
-            values={values}
-          />
-        ) : (
-          <SpecificationTab
-            disabled={pendingAction !== 'idle'}
-            onChange={(text) => {
-              setDefinitionText(text);
-              if (definitionParseError) setDefinitionParseError(undefined);
-            }}
-            parseError={definitionParseError}
-            text={definitionText}
-          />
-        )}
-      </Box>
+          <Box sx={{ pt: 3 }}>
+            {tab === 'details' ? (
+              <ApiDetailsTab
+                disabled={pendingAction !== 'idle'}
+                errors={{
+                  displayName: errorFor('displayName'),
+                  version: errorFor('version'),
+                  productionUrl: errorFor('productionUrl'),
+                  sandboxUrl: errorFor('sandboxUrl'),
+                }}
+                onBlurField={markTouched}
+                onChange={setValues}
+                values={values}
+              />
+            ) : (
+              <SpecificationTab
+                disabled={pendingAction !== 'idle'}
+                onChange={(text) => {
+                  setDefinitionText(text);
+                  if (definitionParseError) setDefinitionParseError(undefined);
+                }}
+                parseError={definitionParseError}
+                text={definitionText}
+              />
+            )}
+          </Box>
+        </Box>
 
-      <PublishActionsBar
-        isPublished={isPublished}
-        onPublish={handlePublish}
-        onSaveDraft={handleSaveDraft}
-        onUnpublish={() => setConfirmingUnpublish(true)}
-        publishing={pendingAction === 'publishing'}
-        savingDraft={pendingAction === 'saving'}
-        unpublishing={pendingAction === 'unpublishing'}
-      />
+        <PublishActionsBar
+          canDeprecate={canDeprecate}
+          deprecating={pendingAction === 'deprecating'}
+          isPublished={isPublished}
+          onDeprecate={() => setConfirmingDeprecate(true)}
+          onPublish={handlePublish}
+          onSaveDraft={handleSaveDraft}
+          onUnpublish={() => setConfirmingUnpublish(true)}
+          publishing={pendingAction === 'publishing'}
+          savingDraft={pendingAction === 'saving'}
+          unpublishing={pendingAction === 'unpublishing'}
+        />
+      </Stack>
 
       <ConfirmDialog
         confirmLabel={intl.formatMessage(messages.unpublishConfirmAction)}
@@ -454,6 +516,16 @@ export function PortalPublishPage() {
         open={confirmingUnpublish}
         title={intl.formatMessage(messages.unpublishConfirmTitle)}
       />
-    </Box>
+
+      <ConfirmDialog
+        confirmLabel={intl.formatMessage(messages.deprecateConfirmAction)}
+        loading={pendingAction === 'deprecating'}
+        message={intl.formatMessage(messages.deprecateConfirmMessage, { portalName })}
+        onCancel={() => setConfirmingDeprecate(false)}
+        onConfirm={confirmDeprecate}
+        open={confirmingDeprecate}
+        title={intl.formatMessage(messages.deprecateConfirmTitle)}
+      />
+    </>
   );
 }

@@ -16,20 +16,12 @@
  * under the License.
  */
 
-import { FormControl, FormHelperText, FormLabel, Grid, OutlinedInput, Paper, Stack, Typography } from '@wso2/oxygen-ui';
+import { Form, FormControl, FormHelperText, FormLabel, Grid, OutlinedInput, Paper } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { DraftFormField, DraftFormValues, FormFieldErrors } from '../utils/publicationForm';
 
 const messages = defineMessages({
-  identitySection: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.identitySection',
-    defaultMessage: 'Identity',
-  },
-  endpointsSection: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.endpointsSection',
-    defaultMessage: 'Endpoints',
-  },
   nameLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.nameLabel',
     defaultMessage: 'Name',
@@ -65,8 +57,8 @@ export type ApiDetailsTabProps = {
 };
 
 /**
- * "API Details" — the one form field group this alpha shows: name, version,
- * description and the two author-entered endpoint URLs. The icon/thumbnail
+ * "API Details" — the one form this alpha shows: name, version, description
+ * and the two author-entered endpoint URLs, in a single card like the edit-API form. The icon/thumbnail
  * control from the design is left out entirely rather than shown disabled —
  * thumbnails are an out-of-scope feature this release, same treatment the
  * doc-attachment picker got (see `Implementation_Plan.md` Slice 7).
@@ -78,76 +70,55 @@ export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values 
     onChange({ ...values, [field]: value });
 
   return (
-    <Stack spacing={2}>
-      <Paper component="section" sx={{ p: 3 }} variant="outlined">
-        <Typography sx={{ fontWeight: 600 }} variant="body2">
-          <FormattedMessage {...messages.identitySection} />
-        </Typography>
-
-        <Stack spacing={2} sx={{ mt: 1.5 }}>
-          <Grid container spacing={2}>
-            <Grid size={{ md: 8, xs: 12 }}>
-              <FormControl disabled={disabled} error={Boolean(errors.displayName)} fullWidth required>
-                <FormLabel htmlFor="publicationDisplayName">
-                  {intl.formatMessage(messages.nameLabel)}
-                </FormLabel>
-                <OutlinedInput
-                  aria-describedby="publicationDisplayName-error"
-                  id="publicationDisplayName"
-                  onBlur={() => onBlurField('displayName')}
-                  onChange={(event) => setField('displayName', event.target.value)}
-                  sx={{ mt: 0.75 }}
-                  value={values.displayName}
-                />
-                <FormHelperText id="publicationDisplayName-error">
-                  {errors.displayName && <FormattedMessage {...errors.displayName} />}
-                </FormHelperText>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ md: 4, xs: 12 }}>
-              <FormControl disabled={disabled} error={Boolean(errors.version)} fullWidth required>
-                <FormLabel htmlFor="publicationVersion">
-                  {intl.formatMessage(messages.versionLabel)}
-                </FormLabel>
-                <OutlinedInput
-                  aria-describedby="publicationVersion-error"
-                  id="publicationVersion"
-                  onBlur={() => onBlurField('version')}
-                  onChange={(event) => setField('version', event.target.value)}
-                  sx={{ mt: 0.75 }}
-                  value={values.version}
-                />
-                <FormHelperText id="publicationVersion-error">
-                  {errors.version && <FormattedMessage {...errors.version} />}
-                </FormHelperText>
-              </FormControl>
-            </Grid>
+    <Paper component="section" sx={{ p: 3 }}>
+      <Form.Stack spacing={2}>
+        <Grid container spacing={2}>
+          <Grid size={{ md: 8, xs: 12 }}>
+            <FormControl disabled={disabled} error={Boolean(errors.displayName)} fullWidth required>
+              <FormLabel htmlFor="publicationDisplayName">{intl.formatMessage(messages.nameLabel)}</FormLabel>
+              <OutlinedInput
+                aria-describedby="publicationDisplayName-error"
+                id="publicationDisplayName"
+                onBlur={() => onBlurField('displayName')}
+                onChange={(event) => setField('displayName', event.target.value)}
+                value={values.displayName}
+              />
+              <FormHelperText id="publicationDisplayName-error">
+                {errors.displayName && <FormattedMessage {...errors.displayName} />}
+              </FormHelperText>
+            </FormControl>
           </Grid>
 
-          <FormControl disabled={disabled} fullWidth>
-            <FormLabel htmlFor="publicationDescription">
-              {intl.formatMessage(messages.descriptionLabel)}
-            </FormLabel>
-            <OutlinedInput
-              id="publicationDescription"
-              multiline
-              onChange={(event) => setField('description', event.target.value)}
-              placeholder={intl.formatMessage(messages.descriptionPlaceholder)}
-              rows={3}
-              sx={{ mt: 0.75 }}
-              value={values.description}
-            />
-          </FormControl>
-        </Stack>
-      </Paper>
+          <Grid size={{ md: 4, xs: 12 }}>
+            <FormControl disabled={disabled} error={Boolean(errors.version)} fullWidth required>
+              <FormLabel htmlFor="publicationVersion">{intl.formatMessage(messages.versionLabel)}</FormLabel>
+              <OutlinedInput
+                aria-describedby="publicationVersion-error"
+                id="publicationVersion"
+                onBlur={() => onBlurField('version')}
+                onChange={(event) => setField('version', event.target.value)}
+                value={values.version}
+              />
+              <FormHelperText id="publicationVersion-error">
+                {errors.version && <FormattedMessage {...errors.version} />}
+              </FormHelperText>
+            </FormControl>
+          </Grid>
+        </Grid>
 
-      <Paper component="section" sx={{ p: 3 }} variant="outlined">
-        <Typography sx={{ fontWeight: 600 }} variant="body2">
-          <FormattedMessage {...messages.endpointsSection} />
-        </Typography>
+        <FormControl disabled={disabled} fullWidth>
+          <FormLabel htmlFor="publicationDescription">{intl.formatMessage(messages.descriptionLabel)}</FormLabel>
+          <OutlinedInput
+            id="publicationDescription"
+            multiline
+            onChange={(event) => setField('description', event.target.value)}
+            placeholder={intl.formatMessage(messages.descriptionPlaceholder)}
+            rows={3}
+            value={values.description}
+          />
+        </FormControl>
 
-        <Grid container spacing={2} sx={{ mt: 0.5 }}>
+        <Grid container spacing={2}>
           <Grid size={{ md: 6, xs: 12 }}>
             <FormControl disabled={disabled} error={Boolean(errors.productionUrl)} fullWidth>
               <FormLabel htmlFor="publicationProductionUrl">
@@ -158,7 +129,6 @@ export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values 
                 id="publicationProductionUrl"
                 onBlur={() => onBlurField('productionUrl')}
                 onChange={(event) => setField('productionUrl', event.target.value)}
-                sx={{ mt: 0.75 }}
                 value={values.productionUrl}
               />
               <FormHelperText id="publicationProductionUrl-error">
@@ -169,15 +139,12 @@ export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values 
 
           <Grid size={{ md: 6, xs: 12 }}>
             <FormControl disabled={disabled} error={Boolean(errors.sandboxUrl)} fullWidth>
-              <FormLabel htmlFor="publicationSandboxUrl">
-                {intl.formatMessage(messages.sandboxUrlLabel)}
-              </FormLabel>
+              <FormLabel htmlFor="publicationSandboxUrl">{intl.formatMessage(messages.sandboxUrlLabel)}</FormLabel>
               <OutlinedInput
                 aria-describedby="publicationSandboxUrl-error"
                 id="publicationSandboxUrl"
                 onBlur={() => onBlurField('sandboxUrl')}
                 onChange={(event) => setField('sandboxUrl', event.target.value)}
-                sx={{ mt: 0.75 }}
                 value={values.sandboxUrl}
               />
               <FormHelperText id="publicationSandboxUrl-error">
@@ -186,7 +153,7 @@ export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values 
             </FormControl>
           </Grid>
         </Grid>
-      </Paper>
-    </Stack>
+      </Form.Stack>
+    </Paper>
   );
 }

@@ -21,8 +21,8 @@ import type { QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
  * Transport layer for the API Publications feature: the `/api-publications`
- * rollup, one API's draft/publication on one portal, and the publish/unpublish
- * actions. One thin function per spec operation, typed by `operationId`.
+ * rollup, one API's draft/publication on one portal, and the publish/unpublish/
+ * deprecate actions. One thin function per spec operation, typed by `operationId`.
  */
 
 export type PublicationSummaryItem = Schema<'PublicationSummaryItem'>;
@@ -163,4 +163,15 @@ export const unpublishRestApiFromApiPortal = async (
   http.post<void>(restApiPortalActionPath(apiPortalId, apiId, 'unpublish'), undefined, {
     ...options,
     operationName: 'unpublishRestApiFromApiPortal',
+  });
+
+/** Marks the live listing deprecated — still visible on the portal, flagged as deprecated. Valid only when currently published. */
+export const deprecateRestApiOnApiPortal = async (
+  apiPortalId: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<Publication> =>
+  http.post<Publication>(restApiPortalActionPath(apiPortalId, apiId, 'deprecate'), undefined, {
+    ...options,
+    operationName: 'deprecateRestApiOnApiPortal',
   });

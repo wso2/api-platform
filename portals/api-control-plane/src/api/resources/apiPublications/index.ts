@@ -19,7 +19,7 @@
 /**
  * Public surface of the API Publications feature (the `/api-publications`
  * rollup, plus one API's draft/publication on one portal and the publish/
- * unpublish actions). Import from `api/resources/apiPublications` only;
+ * unpublish/deprecate actions). Import from `api/resources/apiPublications` only;
  * deeper imports skip scope binding and gating.
  * @see ./apiPublications.hooks.ts for the hook contract.
  */
@@ -47,6 +47,7 @@ export {
   useApiPublicationDraft,
   useApiPublicationDraftDefinition,
   useApiPublications,
+  useDeprecateRestApiOnApiPortal,
   usePublishRestApiToApiPortal,
   useSaveApiPublicationDraft,
   useSaveApiPublicationDraftDefinition,

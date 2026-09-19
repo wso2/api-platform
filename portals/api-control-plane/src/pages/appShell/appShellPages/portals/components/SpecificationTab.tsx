@@ -17,7 +17,7 @@
  */
 
 import { lazy, Suspense } from 'react';
-import { Alert, Box } from '@wso2/oxygen-ui';
+import { Alert, Box, Stack } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
@@ -65,7 +65,7 @@ export function SpecificationTab({ disabled, parseError, onChange, text }: Speci
   const intl = useIntl();
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+    <Stack spacing={1.5}>
       {parseError && (
         <Alert severity="error">
           <FormattedMessage {...messages.malformed} values={{ detail: parseError }} />
@@ -76,7 +76,7 @@ export function SpecificationTab({ disabled, parseError, onChange, text }: Speci
           border: hairline(theme),
           borderColor: 'divider',
           borderRadius: 1,
-          height: 480,
+          height: 'clamp(480px, calc(100vh - 380px), 800px)',
           overflow: 'hidden',
         })}
       >
@@ -84,6 +84,6 @@ export function SpecificationTab({ disabled, parseError, onChange, text }: Speci
           <SpecCodeEditor format="json" onChange={onChange} readOnly={disabled} value={text} />
         </Suspense>
       </Box>
-    </Box>
+    </Stack>
   );
 }

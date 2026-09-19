@@ -81,6 +81,7 @@ const PUBLICATION_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publicatio
 const PUBLICATION_DEFINITION_PATH = `${PUBLICATION_PATH}/definition`;
 const PUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publish`;
 const UNPUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/unpublish`;
+const DEPRECATE_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/deprecate`;
 const API_OPENAPI_PATH = `/rest-apis/${API}/openapi`;
 
 /** The definition chain's three tiers, each with its own call recorder. */
@@ -266,5 +267,226 @@ describe('PortalPublishPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Unpublish' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
+  });
+
+  it('Deprecate asks for confirmation, then marks the live listing deprecated', async () => {
+    servePublicationState({ publication: aPublication() });
+    server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' }), { record: requests }));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    const deprecateItem = await screen.findByRole('menuitem', { name: 'Deprecate' });
+    expect(deprecateItem).not.toHaveAttribute('aria-disabled', 'true');
+    await user.click(deprecateItem);
+
+    // Like Unpublish, picking it from the menu only arms the primary button.
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Deprecate' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(await screen.findByText('Deprecated on acme-portal.')).toBeInTheDocument();
+  });
+
+  it('Deprecate is disabled when the API is not published', async () => {
+    servePublicationState();
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('Deprecate is disabled once already deprecated, while Unpublish stays available', async () => {
+    servePublicationState({ publication: aPublication({ status: 'DEPRECATED' }) });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'Unpublish' })).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('goes back to Publish once the API has been unpublished', async () => {
+    servePublicationState({ publication: aPublication() });
+    server.use(noContent('post', UNPUBLISH_PATH));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
+    // The refetch that follows the unpublish now finds no live listing.
+    server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Unpublish' }));
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+  });
+
+  it('goes back to Publish once the API has been deprecated', async () => {
+    servePublicationState({ publication: aPublication() });
+    server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' })));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
+    await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
+
+    server.use(resource(PUBLICATION_PATH, aPublication({ status: 'DEPRECATED' })));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Deprecate' }));
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deprecate' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Publish as the button after unpublishing and publishing again', async () => {
+    servePublicationState({ publication: aPublication() });
+    server.use(
+      noContent('post', UNPUBLISH_PATH),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      accepts('post', PUBLISH_PATH, aPublication()),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Unpublish' }));
+    await screen.findByText('Unpublished from acme-portal.');
+
+    server.use(resource(PUBLICATION_PATH, aPublication()));
+    await user.click(await screen.findByRole('button', { name: 'Publish' }));
+    await screen.findByText('Published to acme-portal.');
+
+    // Live again — the primary side must still say Publish, not fall back to the old Unpublish.
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the armed Unpublish button when the confirmation is cancelled', async () => {
+    servePublicationState({ publication: aPublication() });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    expect(await screen.findByRole('button', { name: 'Unpublish' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
+  });
+
+  it('refreshes the actions when unpublish finds the listing already removed (409 PUBLICATION_STATE_CONFLICT)', async () => {
+    servePublicationState({ publication: aPublication() });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
+    // Another session already unpublished it: the action conflicts and a re-read finds nothing live.
+    server.use(
+      failure('post', UNPUBLISH_PATH, 409, 'PUBLICATION_STATE_CONFLICT'),
+      failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'),
+    );
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Unpublish' }));
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+  });
+
+  it('refreshes the actions when deprecate finds the listing no longer published (409 PUBLICATION_STATE_CONFLICT)', async () => {
+    servePublicationState({ publication: aPublication() });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
+    await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
+
+    // Another session already deprecated it, so a re-read reports DEPRECATED.
+    server.use(
+      failure('post', DEPRECATE_PATH, 409, 'PUBLICATION_STATE_CONFLICT'),
+      resource(PUBLICATION_PATH, aPublication({ status: 'DEPRECATED' })),
+    );
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deprecate' }));
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it.each([
+    ['409 PUBLICATION_PORTAL_CONFLICT', 409, 'PUBLICATION_PORTAL_CONFLICT'],
+    ['503 PUBLICATION_PORTAL_UNAVAILABLE', 503, 'PUBLICATION_PORTAL_UNAVAILABLE'],
+  ])('keeps the actions unchanged on %s, since the listing itself did not change', async (_label, status, code) => {
+    servePublicationState({ publication: aPublication() });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
+    server.use(failure('post', UNPUBLISH_PATH, status, code, { record: requests }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Unpublish' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    // The re-read still finds it live, so Unpublish stays armed and usable.
+    expect(await screen.findByRole('button', { name: 'Unpublish' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
+  });
+
+  it('stays usable after Save Draft fails with 413', async () => {
+    servePublicationState();
+    server.use(failure('put', DRAFT_PATH, 413, 'REQUEST_TOO_LARGE'));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled());
+    expect(screen.queryByText('Draft saved.')).not.toBeInTheDocument();
+  });
+
+  it('stays usable after Publish fails with a portal conflict', async () => {
+    servePublicationState();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 409, 'PUBLICATION_PORTAL_CONFLICT'),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
   });
 });

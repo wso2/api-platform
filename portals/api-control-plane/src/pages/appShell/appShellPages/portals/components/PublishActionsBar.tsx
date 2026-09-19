@@ -17,11 +17,10 @@
  */
 
 import { useState } from 'react';
-import { Box, Button, ButtonGroup, Menu, MenuItem } from '@wso2/oxygen-ui';
+import { Button, ButtonGroup, Menu, MenuItem, Stack } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { stickyBottomBarSx } from '@/theme/receipes';
 
 const messages = defineMessages({
   saveDraft: {
@@ -36,6 +35,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish',
     defaultMessage: 'Unpublish',
   },
+  deprecate: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate',
+    defaultMessage: 'Deprecate',
+  },
   moreActions: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions',
     defaultMessage: 'More publish actions',
@@ -43,8 +46,12 @@ const messages = defineMessages({
 });
 
 export type PublishActionsBarProps = {
-  /** Whether this API is currently live on this portal — what enables Unpublish. */
+  /** Whether this API is currently live on this portal (published or deprecated) — what enables Unpublish. */
   isPublished: boolean;
+  /** Whether the live listing is in the published state — what enables Deprecate. */
+  canDeprecate: boolean;
+  deprecating: boolean;
+  onDeprecate: () => void;
   onPublish: () => void;
   onSaveDraft: () => void;
   onUnpublish: () => void;
@@ -54,22 +61,27 @@ export type PublishActionsBarProps = {
 };
 
 /**
- * The page's sticky footer: Save Draft, and a Publish action with Unpublish as
- * its one alternative — "the publish button will only have publish and
- * unpublish actions" (no Deprecate; that release action isn't built yet, see
- * `Implementation_Plan.md` Slice 8). Publish is always the primary action —
- * REST_Design.md's lifecycle table allows publishing (republishing) from every
- * state a draft can exist in; Unpublish is only valid once actually live, so
- * it's disabled rather than hidden the rest of the time.
+ * The page's action row, right-aligned under the form like the edit-API form's
+ * buttons: Save Draft, and a split button whose primary side
+ * is Publish, with Unpublish and Deprecate as its alternatives. Publish is
+ * always available — REST_Design.md's lifecycle table allows publishing
+ * (republishing) from every state a draft can exist in. Unpublish needs a live
+ * listing (published or deprecated) and Deprecate needs a published one, so
+ * each is disabled rather than hidden the rest of the time.
  *
- * Field validation isn't gated here: both actions stay clickable and reveal
+ * Field validation isn't gated here: every action stays clickable and reveals
  * any problem on submit, the same way `GeneralCreateApiForm`'s Create button
  * does — a proactively-disabled button would never get the chance to.
  */
-type PrimaryAction = 'publish' | 'unpublish';
+type PrimaryAction = 'publish' | 'unpublish' | 'deprecate';
+
+const ACTION_COLOR = { publish: 'primary', unpublish: 'error', deprecate: 'warning' } as const;
 
 export function PublishActionsBar({
+  canDeprecate,
+  deprecating,
   isPublished,
+  onDeprecate,
   onPublish,
   onSaveDraft,
   onUnpublish,
@@ -82,32 +94,43 @@ export function PublishActionsBar({
   // Which action the split button's primary side currently performs — chosen
   // from the dropdown, mirroring the "Merge pull request"-style split button:
   // picking an alternative from the menu re-arms the primary button with that
-  // action (and its own color) rather than firing it immediately. Falls back
-  // to 'publish' if Unpublish was armed and the API is no longer live.
-  const [primaryAction, setPrimaryAction] = useState<PrimaryAction>('publish');
-  const busy = savingDraft || publishing || unpublishing;
-  const effectiveAction: PrimaryAction = primaryAction === 'unpublish' && isPublished ? 'unpublish' : 'publish';
+  // action (and its own color) rather than firing it immediately. The choice is
+  // cleared whenever the server-reported live state changes (unpublished,
+  // deprecated, republished), never by a click alone — cancelling a confirm
+  // dialog keeps it armed.
+  const liveState = `${isPublished}:${canDeprecate}`;
+  const [seenLiveState, setSeenLiveState] = useState(liveState);
+  const [armedAction, setArmedAction] = useState<PrimaryAction>('publish');
+  if (seenLiveState !== liveState) {
+    setSeenLiveState(liveState);
+    setArmedAction('publish');
+  }
+  const busy = savingDraft || publishing || unpublishing || deprecating;
+
+  const available: Record<PrimaryAction, boolean> = {
+    publish: true,
+    unpublish: isPublished,
+    deprecate: canDeprecate,
+  };
+  const run: Record<PrimaryAction, () => void> = {
+    publish: onPublish,
+    unpublish: onUnpublish,
+    deprecate: onDeprecate,
+  };
+  const effectiveAction: PrimaryAction = available[armedAction] ? armedAction : 'publish';
+  const alternatives = (['publish', 'unpublish', 'deprecate'] as const).filter(
+    (action) => action !== effectiveAction,
+  );
 
   return (
-    <Box
-      sx={(theme) => ({
-        ...stickyBottomBarSx(theme),
-        bottom: 0,
-        display: 'flex',
-        gap: 2,
-        justifyContent: 'flex-end',
-        mx: -3,
-        px: 3,
-        py: 2,
-      })}
-    >
+    <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
       <Button disabled={busy} onClick={onSaveDraft} variant="outlined">
         <FormattedMessage {...messages.saveDraft} />
       </Button>
 
-      <ButtonGroup color={effectiveAction === 'unpublish' ? 'error' : 'primary'} disabled={busy} variant="contained">
-        <Button onClick={effectiveAction === 'unpublish' ? onUnpublish : onPublish}>
-          <FormattedMessage {...(effectiveAction === 'unpublish' ? messages.unpublish : messages.publish)} />
+      <ButtonGroup color={ACTION_COLOR[effectiveAction]} disabled={busy} variant="contained">
+        <Button onClick={run[effectiveAction]}>
+          <FormattedMessage {...messages[effectiveAction]} />
         </Button>
         <Button
           aria-label={intl.formatMessage(messages.moreActions)}
@@ -125,28 +148,19 @@ export function PublishActionsBar({
         open={Boolean(menuAnchor)}
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
       >
-
-        {effectiveAction === 'unpublish' ? (
+        {alternatives.map((action) => (
           <MenuItem
+            disabled={!available[action] || busy}
+            key={action}
             onClick={() => {
               setMenuAnchor(null);
-              setPrimaryAction('publish');
+              setArmedAction(action);
             }}
           >
-            <FormattedMessage {...messages.publish} />
+            <FormattedMessage {...messages[action]} />
           </MenuItem>
-        ) : (
-          <MenuItem
-            disabled={!isPublished || busy}
-            onClick={() => {
-              setMenuAnchor(null);
-              setPrimaryAction('unpublish');
-            }}
-          >
-            <FormattedMessage {...messages.unpublish} />
-          </MenuItem>
-        )}
+        ))}
       </Menu>
-    </Box>
+    </Stack>
   );
 }

@@ -21,6 +21,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type { ApiError } from '../../core/errors';
 import { useApiScope } from '../../core/scope';
 import {
+  deprecateRestApiOnApiPortal,
   publishRestApiToApiPortal,
   saveApiPublicationDraft,
   saveApiPublicationDraftDefinition,
@@ -130,7 +131,7 @@ export const useApiPublicationDefinition = (
 };
 
 /**
- * Invalidation shared by every write below: a save/publish/unpublish can shift
+ * Invalidation shared by every write below: a save/publish/unpublish/deprecate can shift
  * the draft, the publication, and the rollup's status/timestamps all at once,
  * so the whole resource is invalidated rather than one specific key.
  */
@@ -192,6 +193,19 @@ export const useUnpublishRestApiFromApiPortal = (overrides: { orgId?: string } =
   return useMutation<void, ApiError, { apiPortalId: string; apiId: string }>({
     mutationFn: ({ apiPortalId, apiId }) =>
       unpublishRestApiFromApiPortal(apiPortalId, apiId, { orgId }),
-    onSuccess: () => invalidate(),
+    // Settled, not success-only: a failed unpublish (e.g. 409 PUBLICATION_STATE_CONFLICT
+    // after another session already changed the listing) must re-read the real status.
+    onSettled: () => invalidate(),
+  });
+};
+
+export const useDeprecateRestApiOnApiPortal = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+  const invalidate = useInvalidateApiPublications(orgId);
+
+  return useMutation<Publication, ApiError, { apiPortalId: string; apiId: string }>({
+    mutationFn: ({ apiPortalId, apiId }) =>
+      deprecateRestApiOnApiPortal(apiPortalId, apiId, { orgId }),
+    onSettled: () => invalidate(),
   });
 };

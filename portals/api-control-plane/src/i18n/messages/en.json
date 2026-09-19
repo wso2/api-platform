@@ -1996,6 +1996,18 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
     "defaultMessage": "Back to Available Portals"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmAction": {
+    "defaultMessage": "Deprecate"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage": {
+    "defaultMessage": "This marks the live listing on {portalName} as deprecated. It stays visible there with a deprecated flag, and your current draft is not changed. You can unpublish it or publish again later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmTitle": {
+    "defaultMessage": "Deprecate this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
+    "defaultMessage": "Deprecated on {portalName}."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
     "defaultMessage": "Draft saved."
   },
@@ -2052,12 +2064,6 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionPlaceholder": {
     "defaultMessage": "What this API does, in one or two sentences."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.endpointsSection": {
-    "defaultMessage": "Endpoints"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.identitySection": {
-    "defaultMessage": "Identity"
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.nameLabel": {
     "defaultMessage": "Name"
   },
@@ -2073,6 +2079,9 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
     "defaultMessage": "Go To Publish",
     "description": "Card action opening the publish flow for this API on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
+    "defaultMessage": "Deprecate"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions": {
     "defaultMessage": "More publish actions"
