@@ -29,14 +29,19 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
-type redirectTransport struct {
-	location    string
-	plainHits   int
-	plainAuthHd string
+// fakePortal answers every https request with a redirect to location, but only for the first
+// hop when redirectOnce is set; any non-https request is recorded and answered 200.
+type fakePortal struct {
+	location          string
+	redirectOnce      bool
+	redirected        bool
+	httpHits          int
+	httpAuthorization string
 }
 
-func (f *redirectTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if r.URL.Scheme == "https" {
+func (f *fakePortal) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Scheme == "https" && !(f.redirectOnce && f.redirected) {
+		f.redirected = true
 		return &http.Response{
 			StatusCode: http.StatusTemporaryRedirect,
 			Header:     http.Header{"Location": {f.location}},
@@ -44,61 +49,59 @@ func (f *redirectTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			Request:    r,
 		}, nil
 	}
-	f.plainHits++
-	f.plainAuthHd = r.Header.Get("Authorization")
+	if r.URL.Scheme != "https" {
+		f.httpHits++
+		f.httpAuthorization = r.Header.Get("Authorization")
+	}
 	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
 }
 
-// newClientWithRedirectingTransport builds the retryable client over a shared client that
-// permits http redirects (the shipped allowed_schemes default), then swaps in a fake transport.
-func newClientWithRedirectingTransport(t *testing.T, location string) (*RetryableHTTPClient, *redirectTransport) {
+// newClientOverFakePortal builds the retryable client over a shared client that permits http
+// redirects (the shipped allowed_schemes default), then swaps in the fake portal transport.
+func newClientOverFakePortal(t *testing.T, portal *fakePortal) *RetryableHTTPClient {
 	t.Helper()
 	policy := netguard.PermitPrivateBlockMetadata()
 	policy.AllowedSchemes = []string{"http", "https"}
 	utils.InitSharedHTTPClient(&http.Client{CheckRedirect: netguard.CheckRedirect(policy, 5)}, 0)
+	t.Cleanup(func() { utils.InitSharedHTTPClient(nil, 0) })
 
 	c, err := NewRetryableHTTPClient(0, 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewRetryableHTTPClient: %v", err)
 	}
-	ft := &redirectTransport{location: location}
-	c.client.Transport = ft
-	return c, ft
+	c.client.Transport = portal
+	return c
 }
 
-func doWithAuth(c *RetryableHTTPClient) error {
+func publishWithAuth(c *RetryableHTTPClient) (*http.Response, error) {
 	req, _ := http.NewRequest(http.MethodPost, "https://portal.example/publish", strings.NewReader("x"))
 	req.Header.Set("Authorization", "Bearer secret")
-	resp, err := c.Do(req)
-	if resp != nil {
-		resp.Body.Close()
-	}
-	return err
+	return c.Do(req)
 }
 
 func TestRetryableClientRefusesRedirectToHTTP(t *testing.T) {
-	c, ft := newClientWithRedirectingTransport(t, "http://portal.example/publish")
+	portal := &fakePortal{location: "http://portal.example/publish"}
+	c := newClientOverFakePortal(t, portal)
 
-	err := doWithAuth(c)
-	if err == nil || !errors.Is(err, errInsecureRedirect) {
+	_, err := publishWithAuth(c)
+	if !errors.Is(err, errInsecureRedirect) {
 		t.Fatalf("want errInsecureRedirect, got %v", err)
 	}
-	if ft.plainHits != 0 || ft.plainAuthHd != "" {
-		t.Fatalf("request reached the http hop (hits=%d, Authorization=%q)", ft.plainHits, ft.plainAuthHd)
+	if portal.httpHits != 0 || portal.httpAuthorization != "" {
+		t.Fatalf("request reached the http hop (hits=%d, Authorization=%q)", portal.httpHits, portal.httpAuthorization)
 	}
 }
 
-func TestRetryableClientStillFollowsSameHostHTTPSRedirect(t *testing.T) {
-	c, ft := newClientWithRedirectingTransport(t, "https://portal.example/publish/")
-	ft.location = "https://portal.example/publish/"
+func TestRetryableClientFollowsSameHostHTTPSRedirect(t *testing.T) {
+	portal := &fakePortal{location: "https://portal.example/publish/", redirectOnce: true}
+	c := newClientOverFakePortal(t, portal)
 
-	// The fake answers every https request with a redirect, so the shared client's hop cap
-	// ends the chain; what matters is that it is not refused as insecure.
-	err := doWithAuth(c)
-	if err == nil || errors.Is(err, errInsecureRedirect) {
-		t.Fatalf("want a hop-limit error from the shared check, got %v", err)
+	resp, err := publishWithAuth(c)
+	if err != nil {
+		t.Fatalf("https redirect should be followed, got %v", err)
 	}
-	if ft.plainHits != 0 {
-		t.Fatalf("unexpected http hop: %d", ft.plainHits)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 after following the redirect, got %d", resp.StatusCode)
 	}
 }
