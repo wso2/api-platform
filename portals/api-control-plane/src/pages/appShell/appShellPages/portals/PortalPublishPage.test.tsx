@@ -162,6 +162,13 @@ beforeEach(() => {
 
 const API_NAME = 'Loan Management Service';
 
+/** Types the API name the dialog asks for, then confirms. */
+async function confirmInDialog(user: ReturnType<typeof renderPage>['user']) {
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByRole('textbox'), API_NAME);
+  await user.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+}
+
 describe('PortalPublishPage', () => {
   it('pre-fills from an existing draft when one exists', async () => {
     servePublicationState({ draft: aPublicationDraftDetails() });
@@ -405,8 +412,7 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
 
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
 
     await waitFor(() => expect(requests.count()).toBe(1));
   });
@@ -427,8 +433,7 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
 
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: 'Deprecate' }));
+    await confirmInDialog(user);
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(await screen.findByText('Deprecated on acme-portal.')).toBeInTheDocument();
@@ -468,8 +473,7 @@ describe('PortalPublishPage', () => {
 
     // The refetch that follows the unpublish now finds no live listing.
     server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
 
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
@@ -487,8 +491,7 @@ describe('PortalPublishPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
 
     server.use(resource(PUBLICATION_PATH, aPublication({ status: 'DEPRECATED' })));
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: 'Deprecate' }));
+    await confirmInDialog(user);
 
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Deprecate' })).not.toBeInTheDocument();
@@ -510,7 +513,7 @@ describe('PortalPublishPage', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
     await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
     server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
     await screen.findByText('Unpublished from acme-portal.');
 
     server.use(resource(PUBLICATION_PATH, aPublication()));
@@ -533,6 +536,46 @@ describe('PortalPublishPage', () => {
     const items = await screen.findAllByRole('menuitem');
     expect(items.map((item) => item.textContent)).toEqual(['Deprecate', 'Unpublish']);
   });
+
+  it.each(['Unpublish', 'Deprecate'] as const)(
+    '%s only confirms once the API name has been typed',
+    async (action) => {
+      servePublicationState({ publication: aPublication() });
+      const path = action === 'Unpublish' ? UNPUBLISH_PATH : DEPRECATE_PATH;
+      server.use(
+        action === 'Unpublish'
+          ? noContent('post', path, { record: requests })
+          : accepts('post', path, aPublication({ status: 'DEPRECATED' }), { record: requests }),
+      );
+
+      const { user } = renderPage();
+
+      await screen.findByDisplayValue(API_NAME);
+      await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+      await user.click(await screen.findByRole('menuitem', { name: action }));
+      await user.click(await screen.findByRole('button', { name: action }));
+
+      const dialog = await screen.findByRole('dialog');
+      const confirm = within(dialog).getByRole('button', { name: 'Confirm' });
+      expect(within(dialog).getByText(`Type "${API_NAME}" to confirm`)).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          action === 'Unpublish'
+            ? `This removes the API "${API_NAME}" from acme-portal. You can publish it again later.`
+            : `This marks the API "${API_NAME}" as deprecated on acme-portal. It stays visible there.`,
+        ),
+      ).toBeInTheDocument();
+      expect(confirm).toBeDisabled();
+
+      await user.type(within(dialog).getByRole('textbox'), 'Wrong name');
+      expect(confirm).toBeDisabled();
+
+      await user.clear(within(dialog).getByRole('textbox'));
+      await user.type(within(dialog).getByRole('textbox'), API_NAME);
+      expect(confirm).toBeEnabled();
+      expect(requests.count()).toBe(0);
+    },
+  );
 
   it('keeps the armed Unpublish button when the confirmation is cancelled', async () => {
     servePublicationState({ publication: aPublication() });
@@ -564,7 +607,7 @@ describe('PortalPublishPage', () => {
       failure('post', UNPUBLISH_PATH, 409, 'PUBLICATION_STATE_CONFLICT'),
       failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'),
     );
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
 
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
@@ -585,7 +628,7 @@ describe('PortalPublishPage', () => {
       failure('post', DEPRECATE_PATH, 409, 'PUBLICATION_STATE_CONFLICT'),
       resource(PUBLICATION_PATH, aPublication({ status: 'DEPRECATED' })),
     );
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deprecate' }));
+    await confirmInDialog(user);
 
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
@@ -606,7 +649,7 @@ describe('PortalPublishPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
 
     server.use(failure('post', UNPUBLISH_PATH, status, code, { record: requests }));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
 
     await waitFor(() => expect(requests.count()).toBe(1));
     // The re-read still finds it live, so Unpublish stays armed and usable.

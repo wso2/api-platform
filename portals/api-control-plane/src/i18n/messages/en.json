@@ -2002,14 +2002,19 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
     "defaultMessage": "Back to Available Portals"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmAction": {
+    "defaultMessage": "Confirm",
+    "description": "Button on the unpublish and deprecate confirmation dialogs. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmInputLabel": {
+    "defaultMessage": "Type \"{name}\" to confirm",
+    "description": "Label for the type-to-confirm field. {name} is the API name; do not translate it."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject": {
     "defaultMessage": "The definition must be an object, not a list or a single value."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmAction": {
-    "defaultMessage": "Deprecate"
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage": {
-    "defaultMessage": "This marks the live listing on {portalName} as deprecated. It stays visible there with a deprecated flag, and your current draft is not changed. You can unpublish it or publish again later."
+    "defaultMessage": "This marks the API \"{name}\" as deprecated on {portalName}. It stays visible there."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmTitle": {
     "defaultMessage": "Deprecate this API?"
@@ -2052,11 +2057,8 @@
     "defaultMessage": "Publish to {portalName}",
     "description": "Page heading. {portalName} is the API Portal display name; do not translate it."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmAction": {
-    "defaultMessage": "Unpublish"
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmMessage": {
-    "defaultMessage": "This removes the live listing from {portalName}. If it still has active subscriptions or API keys, the portal will reject the removal until those are cleared. Either way, the current listing content is kept as a draft, so republishing later is still possible."
+    "defaultMessage": "This removes the API \"{name}\" from {portalName}. You can publish it again later."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmTitle": {
     "defaultMessage": "Unpublish this API?"

@@ -123,11 +123,17 @@ const messages = defineMessages({
   unpublishConfirmMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmMessage',
     defaultMessage:
-      'This removes the live listing from {portalName}. If it still has active subscriptions or API keys, the portal will reject the removal until those are cleared. Either way, the current listing content is kept as a draft, so republishing later is still possible.',
+      'This removes the API "{name}" from {portalName}. You can publish it again later.',
   },
-  unpublishConfirmAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmAction',
-    defaultMessage: 'Unpublish',
+  confirmAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmAction',
+    defaultMessage: 'Confirm',
+    description: 'Button on the unpublish and deprecate confirmation dialogs. Verb.',
+  },
+  confirmInputLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmInputLabel',
+    defaultMessage: 'Type "{name}" to confirm',
+    description: 'Label for the type-to-confirm field. {name} is the API name; do not translate it.',
   },
   deprecated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated',
@@ -140,11 +146,7 @@ const messages = defineMessages({
   deprecateConfirmMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage',
     defaultMessage:
-      'This marks the live listing on {portalName} as deprecated. It stays visible there with a deprecated flag, and your current draft is not changed. You can unpublish it or publish again later.',
-  },
-  deprecateConfirmAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmAction',
-    defaultMessage: 'Deprecate',
+      'This marks the API "{name}" as deprecated on {portalName}. It stays visible there.',
   },
 });
 
@@ -541,10 +543,12 @@ export function PortalPublishPage() {
       </Box>
 
       <ConfirmDialog
-        confirmLabel={intl.formatMessage(messages.unpublishConfirmAction)}
+        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, { name: api.displayName })}
+        confirmLabel={intl.formatMessage(messages.confirmAction)}
+        confirmPhrase={api.displayName}
         destructive
         loading={pendingAction === 'unpublishing'}
-        message={intl.formatMessage(messages.unpublishConfirmMessage, { portalName })}
+        message={intl.formatMessage(messages.unpublishConfirmMessage, { name: api.displayName, portalName })}
         onCancel={() => setConfirmingUnpublish(false)}
         onConfirm={confirmUnpublish}
         open={confirmingUnpublish}
@@ -552,9 +556,12 @@ export function PortalPublishPage() {
       />
 
       <ConfirmDialog
-        confirmLabel={intl.formatMessage(messages.deprecateConfirmAction)}
+        confirmColor="warning"
+        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, { name: api.displayName })}
+        confirmLabel={intl.formatMessage(messages.confirmAction)}
+        confirmPhrase={api.displayName}
         loading={pendingAction === 'deprecating'}
-        message={intl.formatMessage(messages.deprecateConfirmMessage, { portalName })}
+        message={intl.formatMessage(messages.deprecateConfirmMessage, { name: api.displayName, portalName })}
         onCancel={() => setConfirmingDeprecate(false)}
         onConfirm={confirmDeprecate}
         open={confirmingDeprecate}
