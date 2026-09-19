@@ -50,6 +50,21 @@ func bodyReadError(err error, fallback error) error {
 	return fallback
 }
 
+// decodeJSONBody decodes exactly one JSON value from the request body into dst, capped at
+// maxBytes. Trailing non-whitespace data is rejected, and it is read through the size cap so an
+// oversized body still yields 413 rather than being silently ignored.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any) error {
+	invalid := apperror.ValidationFailed.New("Request body is not valid JSON")
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
+	if err := dec.Decode(dst); err != nil {
+		return bodyReadError(err, invalid)
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return bodyReadError(err, invalid)
+	}
+	return nil
+}
+
 // restAPITypeValue is the type-agnostic path value for RestApi. The
 // publish/unpublish/deprecate routes are pinned to this one literal per
 // type — unlike the shared read/draft routes, apiType is not a path
@@ -148,8 +163,8 @@ func (h *PublicationHandler) SaveDraft(w http.ResponseWriter, r *http.Request) e
 	}
 
 	var in api.PublicationDraftDetailsInput
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, h.contentMaxBytes)).Decode(&in); err != nil {
-		return bodyReadError(err, apperror.ValidationFailed.New("Request body is not valid JSON"))
+	if err := decodeJSONBody(w, r, h.contentMaxBytes, &in); err != nil {
+		return err
 	}
 
 	draft, planHandles, docHandles := draftInputToModel(&in)
