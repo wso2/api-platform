@@ -801,10 +801,10 @@ func (s *LLMProviderDeploymentService) cleanupRotatedCredential(
 
 // namingBuild reports the build a deployment runs alongside the rest of its response.
 //
-// An LLM provider's deployments are built like a REST API's — `base: build` runs the build
-// it names and `base: current` stores what it renders — so they can say which one they are
-// running. The shared response builder does not set it, because the kinds that have no
-// builds share that builder too.
+// LLM providers, LLM proxies and MCP proxies are all built the way a REST API is — `base:
+// build` runs the build it names and `base: current` stores what it renders — so each can
+// say which build it is running. The shared response builder does not set it, because a
+// kind that has no builds shares that builder too.
 func namingBuild(resp *api.DeploymentResponse, err error, buildID *string) (*api.DeploymentResponse, error) {
 	if err != nil || resp == nil {
 		return resp, err
@@ -1739,7 +1739,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -1751,6 +1751,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		deployment.UpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // RestoreLLMProxyDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
@@ -1831,7 +1832,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
@@ -1843,6 +1844,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		&updatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, targetDeployment.BuildID)
 }
 
 // UndeployLLMProxyDeployment undeploys an active deployment
@@ -1917,7 +1919,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		}
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -1929,6 +1931,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		&newUpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // DeleteLLMProxyDeployment permanently deletes an undeployed deployment artifact
@@ -2016,6 +2019,9 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 			d.UpdatedAt,
 			d.StatusReason,
 		)
+		if err == nil && mapped != nil {
+			mapped.BuildId = d.BuildID
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -2046,7 +2052,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		return nil, apperror.DeploymentNotFound.New()
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -2058,6 +2064,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		deployment.UpdatedAt,
 		deployment.StatusReason,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeploymentYAML, error) {

@@ -1193,9 +1193,9 @@ type DeploymentResponse struct {
 	// BaseDeploymentId UUID of the base deployment this was created from
 	BaseDeploymentId *openapi_types.UUID `json:"baseDeploymentId" yaml:"baseDeploymentId"`
 
-	// BuildId Build this deployment runs, such as `2026-01-31-2`. A REST API and an LLM
-	// provider deployment both have one: `base: build` runs the build it names, and
-	// `base: current` stores what it renders as a build and runs that.
+	// BuildId Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+	// LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+	// it names, and `base: current` stores what it renders as a build and runs that.
 	//
 	// Null for artifact kinds that have no builds, and for a deployment promoted from
 	// another, which reuses that deployment's rendered artifact. Also null once the
