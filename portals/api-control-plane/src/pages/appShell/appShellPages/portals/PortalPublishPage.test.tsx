@@ -160,6 +160,8 @@ beforeEach(() => {
   resetHttpClient();
 });
 
+const API_NAME = 'Loan Management Service';
+
 describe('PortalPublishPage', () => {
   it('pre-fills from an existing draft when one exists', async () => {
     servePublicationState({ draft: aPublicationDraftDetails() });
@@ -518,6 +520,18 @@ describe('PortalPublishPage', () => {
     // Live again — the primary side must still say Publish, not fall back to the old Unpublish.
     expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+  });
+
+  it('lists Deprecate before Unpublish in the dropdown', async () => {
+    servePublicationState({ publication: aPublication() });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue(API_NAME);
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+
+    const items = await screen.findAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Deprecate', 'Unpublish']);
   });
 
   it('keeps the armed Unpublish button when the confirmation is cancelled', async () => {

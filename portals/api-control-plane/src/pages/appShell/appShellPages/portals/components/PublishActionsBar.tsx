@@ -63,7 +63,7 @@ export type PublishActionsBarProps = {
 /**
  * The page's action row, right-aligned under the form like the edit-API form's
  * buttons: Save Draft, and a split button whose primary side
- * is Publish, with Unpublish and Deprecate as its alternatives. Publish is
+ * is Publish, with Deprecate and Unpublish as its alternatives. Publish is
  * always available — publishing (republishing) is valid from every state a
  * draft can exist in. Unpublish needs a live
  * listing (published or deprecated) and Deprecate needs a published one, so
@@ -118,7 +118,7 @@ export function PublishActionsBar({
     deprecate: onDeprecate,
   };
   const effectiveAction: PrimaryAction = available[armedAction] ? armedAction : 'publish';
-  const alternatives = (['publish', 'unpublish', 'deprecate'] as const).filter(
+  const alternatives = (['publish', 'deprecate', 'unpublish'] as const).filter(
     (action) => action !== effectiveAction,
   );
 
