@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
@@ -318,6 +319,75 @@ func TestCascade_APIPublicationFixtures(t *testing.T) {
 	}
 	if got := it.count(t, "api_documents", "uuid", g.apiDoc); got != 1 {
 		t.Fatalf("[%s] want 1 api_documents row, got %d", it.driver, got)
+	}
+}
+
+// seedPublications gives the seeded API a live listing plus a newer draft on
+// the seeded portal, so both rows of api_publications exist.
+func seedPublications(t *testing.T, it *itDB, g graph) {
+	t.Helper()
+	repo := repository.NewPublicationRepo(it.db)
+	draft := func(version string) *model.Publication {
+		return &model.Publication{
+			OrganizationUUID: g.org,
+			ArtifactUUID:     g.apiArtifact,
+			APIPortalUUID:    g.apiPortal,
+			DisplayName:      "Listing",
+			Version:          version,
+			AgentVisibility:  "VISIBLE",
+		}
+	}
+	if _, err := repo.SaveDraftDetails(draft("1.0.0"), nil, nil, "actor"); err != nil {
+		t.Fatalf("[%s] saving first draft: %v", it.driver, err)
+	}
+	if _, _, err := repo.PromoteDraftToPublication(g.apiArtifact, g.apiPortal, g.org, "actor"); err != nil {
+		t.Fatalf("[%s] promoting draft: %v", it.driver, err)
+	}
+	if _, err := repo.SaveDraftDetails(draft("1.0.1"), nil, nil, "actor"); err != nil {
+		t.Fatalf("[%s] saving second draft: %v", it.driver, err)
+	}
+	if got := it.count(t, "api_publications", "artifact_uuid", g.apiArtifact); got != 2 {
+		t.Fatalf("[%s] precondition: want a live row and a draft row, got %d", it.driver, got)
+	}
+}
+
+// TestCascade_DeleteRemovesPublications verifies deleting an API or an API
+// Portal that still has a live listing and a draft succeeds on every dialect.
+// SQL Server's FKs from api_publications are NO ACTION, so the delete paths
+// must remove those rows themselves.
+func TestCascade_DeleteRemovesPublications(t *testing.T) {
+	cases := []struct {
+		name        string
+		parentTable string
+		parentCol   string
+		fkCol       string
+		parentID    func(graph) string
+		del         func(*itDB, graph) error
+	}{
+		{"api", "artifacts", "uuid", "artifact_uuid",
+			func(g graph) string { return g.apiArtifact },
+			func(it *itDB, g graph) error { return repository.NewAPIRepo(it.db).DeleteAPI(g.apiArtifact, g.org) }},
+		{"portal", "api_portals", "uuid", "api_portal_uuid",
+			func(g graph) string { return g.apiPortal },
+			func(it *itDB, g graph) error { return repository.NewAPIPortalRepo(it.db).Delete(g.apiPortal, g.org) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			it := openITDB(t)
+			defer it.db.Close()
+			g := seedOrgGraph(t, it)
+			seedPublications(t, it, g)
+
+			if err := tc.del(it, g); err != nil {
+				t.Fatalf("[%s] delete with publications: %v", it.driver, err)
+			}
+			if got := it.count(t, "api_publications", tc.fkCol, tc.parentID(g)); got != 0 {
+				t.Errorf("[%s] publications remain: %d", it.driver, got)
+			}
+			if got := it.count(t, tc.parentTable, tc.parentCol, tc.parentID(g)); got != 0 {
+				t.Errorf("[%s] %s row remains: %d", it.driver, tc.parentTable, got)
+			}
+		})
 	}
 }
 

@@ -232,17 +232,17 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	}
 
 	if strings.TrimSpace(draft.DisplayName) == "" {
-		return nil, apperror.ValidationFailed.New("displayName is required")
+		return nil, apperror.APIPublicationValidationFailed.New("displayName is required")
 	}
 	if strings.TrimSpace(draft.Version) == "" {
-		return nil, apperror.ValidationFailed.New("version is required")
+		return nil, apperror.APIPublicationValidationFailed.New("version is required")
 	}
 	switch draft.AgentVisibility {
 	case "":
 		draft.AgentVisibility = "VISIBLE"
 	case "VISIBLE", "HIDDEN":
 	default:
-		return nil, apperror.ValidationFailed.New("agentVisibility must be VISIBLE or HIDDEN")
+		return nil, apperror.APIPublicationValidationFailed.New("agentVisibility must be VISIBLE or HIDDEN")
 	}
 
 	planHandles = dedupe(planHandles)

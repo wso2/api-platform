@@ -37,10 +37,10 @@ func TestDecodeJSONBody(t *testing.T) {
 	}{
 		{name: "single object", body: `{"a":1}`},
 		{name: "trailing whitespace", body: "{\"a\":1}\n \t"},
-		{name: "trailing garbage", body: `{"a":1} garbage`, want: &apperror.ValidationFailed},
-		{name: "two objects", body: `{"a":1}{"a":2}`, want: &apperror.ValidationFailed},
-		{name: "malformed", body: `{"a":`, want: &apperror.ValidationFailed},
-		{name: "empty", body: ``, want: &apperror.ValidationFailed},
+		{name: "trailing garbage", body: `{"a":1} garbage`, want: &apperror.APIPublicationValidationFailed},
+		{name: "two objects", body: `{"a":1}{"a":2}`, want: &apperror.APIPublicationValidationFailed},
+		{name: "malformed", body: `{"a":`, want: &apperror.APIPublicationValidationFailed},
+		{name: "empty", body: ``, want: &apperror.APIPublicationValidationFailed},
 		{name: "valid object then padding past the cap", body: `{"a":1}` + padding, want: &apperror.PayloadTooLarge},
 		{name: "oversized object", body: `{"a":"` + strings.Repeat("x", maxBytes) + `"}`, want: &apperror.PayloadTooLarge},
 	}

@@ -39,7 +39,7 @@ type RetryableHTTPClient struct {
 //
 // This client is built around the single shared, SSRF-guarded *http.Client the process
 // constructs once at startup (see internal/utils.InitSharedHTTPClient and cmd/main.go) —
-// it no longer builds its own independent httpclient.New config. It inherits the shared
+// it does not build its own httpclient.New config. It inherits the shared
 // client's SSRF policy (netguard.PermitPrivateBlockMetadata() by default, operator-configurable
 // via platform_api.http_client in config.toml), and additionally refuses any redirect to a
 // non-HTTPS URL so a credential header is never sent in cleartext.

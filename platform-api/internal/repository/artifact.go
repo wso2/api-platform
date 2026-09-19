@@ -69,6 +69,12 @@ func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
 	if err := deleteCustomPolicyUsagesTx(tx, r.db, uuid); err != nil {
 		return err
 	}
+	// SQL Server's foreign key from api_publications is NO ACTION, so the drafts
+	// and listings (and, by cascade, their content and mappings) go first.
+	deletePublicationsQuery := `DELETE FROM api_publications WHERE artifact_uuid = ?`
+	if _, err := tx.Exec(r.db.Rebind(deletePublicationsQuery), uuid); err != nil {
+		return err
+	}
 	query := `DELETE FROM artifacts WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query), uuid)
 	if err != nil {

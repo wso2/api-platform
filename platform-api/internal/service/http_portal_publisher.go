@@ -207,8 +207,7 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 		// a conflicting handle/display name (409), an unresolvable reference
 		// like a subscription plan the portal doesn't recognize (404), or any
 		// other validation failure. All of these are "will keep rejecting",
-		// not "unreachable" — retrying without changing the listing or the portal can't help,
-		// same as the literal-409 case this used to special-case alone.
+		// not "unreachable" — retrying without changing the listing or the portal can't help.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, portalErrorBodyMaxBytes))
 		return &PortalConflictError{
 			Message: fmt.Sprintf("the API Portal rejected this listing (status %d)", resp.StatusCode),
@@ -395,8 +394,8 @@ func buildPortalMetadataMultipart(apiHandle, status string, pub *model.Publicati
 			Description:     pub.Description,
 			Status:          status,
 			AgentVisibility: pub.AgentVisibility,
-			Tags:            nonNilStringsForYAML(pub.Tags),
-			Labels:          nonNilStringsForYAML(pub.Labels),
+			Tags:            nonNil(pub.Tags),
+			Labels:          nonNil(pub.Labels),
 			ReferenceID:     apiHandle,
 			Endpoints: portalMetadataEndpoints{
 				ProductionURL: pub.ProductionURL,
@@ -408,7 +407,7 @@ func buildPortalMetadataMultipart(apiHandle, status string, pub *model.Publicati
 				TechnicalOwner:      pub.TechnicalOwner,
 				TechnicalOwnerEmail: pub.TechnicalOwnerEmail,
 			},
-			SubscriptionPlans: nonNilStringsForYAML(pub.SubscriptionPlanIds),
+			SubscriptionPlans: nonNil(pub.SubscriptionPlanIds),
 		},
 	}
 
@@ -446,13 +445,4 @@ func buildPortalMetadataMultipart(apiHandle, status string, pub *model.Publicati
 		return nil, "", fmt.Errorf("failed to finalize multipart body: %w", err)
 	}
 	return &buf, mw.FormDataContentType(), nil
-}
-
-// nonNilStringsForYAML returns s, or a non-nil empty slice when s is nil, so
-// the field marshals as an empty YAML list rather than "null".
-func nonNilStringsForYAML(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }
