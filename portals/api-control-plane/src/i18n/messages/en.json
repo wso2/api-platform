@@ -1970,9 +1970,6 @@
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.unresolvedOrganization": {
     "defaultMessage": "Unable to resolve organization context. The organization API returned no usable organizations for this session."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyAction": {
-    "defaultMessage": "Manage portals"
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyDescription": {
     "defaultMessage": "An organization admin needs to register an API portal before this API can be published."
   },

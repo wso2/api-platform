@@ -68,10 +68,6 @@ const messages = defineMessages({
     defaultMessage:
       'An organization admin needs to register an API portal before this API can be published.',
   },
-  emptyAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyAction',
-    defaultMessage: 'Manage portals',
-  },
 });
 
 /**
@@ -143,9 +139,7 @@ export function ApiPortalPublicationsList() {
 
       {publications.length === 0 ? (
         <EmptyState
-          actionLabel={intl.formatMessage(messages.emptyAction)}
           description={intl.formatMessage(messages.emptyDescription)}
-          onAction={() => navigate(routes.organizationPortals(orgHandle))}
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (

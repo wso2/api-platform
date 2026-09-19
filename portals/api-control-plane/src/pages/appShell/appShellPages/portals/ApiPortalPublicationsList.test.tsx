@@ -128,6 +128,7 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     expect(await screen.findByText('No API portals available')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage portals' })).not.toBeInTheDocument();
   });
 
   it('opens the publish flow for the portal the card names', async () => {
