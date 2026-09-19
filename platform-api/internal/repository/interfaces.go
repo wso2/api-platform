@@ -255,8 +255,10 @@ type PublicationRepository interface {
 	// content is merged into the existing anchor row instead, and the draft
 	// row is discarded. Returns (nil, false, nil) if no draft exists to
 	// promote. replaced reports whether an existing live row was found
-	// (republish) versus this being the first publish.
-	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string) (pub *model.Publication, replaced bool, err error)
+	// (republish) versus this being the first publish. draftUpdatedAt is the
+	// draft's updated_at as the caller read it before pushing to the portal;
+	// a draft saved since then is not promoted (APIPublicationDraftChanged).
+	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time) (pub *model.Publication, replaced bool, err error)
 	// UnpublishPublication is PromoteDraftToPublication's mirror, called
 	// after the portal removal succeeds: if no draft
 	// exists for (artifactUUID, apiPortalUUID, orgUUID), the live row (the

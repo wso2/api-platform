@@ -11096,7 +11096,9 @@ components:
       description: >-
         Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid
         for the publication's current status (unpublish needs a published or deprecated listing,
-        deprecate a published one), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
+        deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a
+        publish of it was in flight (nothing was published; review the draft and publish again),
+        or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
         change — another API already holds this handle or display name and version, or the listing
         still has subscriptions or active API keys and so cannot be removed. A portal conflict does
         not clear on retry: the operator renames, removes the consumers, or deprecates instead. A

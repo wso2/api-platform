@@ -250,4 +250,8 @@ var (
 	// current status. %s is the refused action, e.g. "unpublished".
 	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict,
 		"This API's current status on this API Portal does not allow it to be %s.")
+	// APIPublicationDraftChanged: the draft was saved while it was being
+	// published; nothing local was changed, so publishing again is safe.
+	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
+		"The draft was changed while it was being published. Review the draft and publish again.")
 )

@@ -230,4 +230,7 @@ const (
 	// CodeAPIPublicationNotFound (404, used by the live-listing reads) — this is
 	// a 409 on an action, not a missing-resource read.
 	CodeAPIPublicationStateConflict = "PUBLICATION_STATE_CONFLICT"
+	// CodeAPIPublicationDraftChanged: the draft was saved while a publish of it
+	// was in flight, so the copy sent to the portal is no longer the draft.
+	CodeAPIPublicationDraftChanged = "PUBLICATION_DRAFT_CHANGED"
 )

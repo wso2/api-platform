@@ -524,6 +524,11 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // (API, portal) pairing — never changes across a republish. A repeat publish
 // with no intervening edit goes through the same path and is a normal
 // no-op refresh, not an error.
+//
+// If the draft is saved while the portal push is in flight, the promote is
+// refused with APIPublicationDraftChanged: the portal has the copy read
+// above, so promoting the newer draft would leave the two disagreeing. The
+// draft is kept and publishing again sends the newer copy.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
@@ -555,7 +560,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, portalPushError(err)
 	}
 
-	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor)
+	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor, draft.UpdatedAt)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
 	}
