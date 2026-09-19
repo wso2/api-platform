@@ -1169,7 +1169,9 @@ type DeployRequest struct {
 	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
-	// Metadata Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
+	// Metadata Optional metadata for the deployment. Supported keys are `endpointUrl`, `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes `endpointUrl` too, which replaces the backend it routes to, and `upstreamAuthValue` — the credential that deployment authenticates to the provider's upstream with, so one provider can run on several gateways against different accounts with the same vendor. It must be given as a `{{ secret "handle" }}` reference naming a secret of this organization, never the credential itself. Like the provider's own `auth.value` it is write-only: it is never returned by any read of a deployment, so replacing it means giving a new one rather than editing what came back. Omitting it leaves the provider's own credential in place.
+	//
+	// `upstreamAuthHeader` names the header that credential is sent in. It is read only alongside `upstreamAuthValue`, and only where the upstream authenticates with an api-key — basic and bearer send `Authorization` by definition.
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
@@ -1191,15 +1193,14 @@ type DeploymentResponse struct {
 	// BaseDeploymentId UUID of the base deployment this was created from
 	BaseDeploymentId *openapi_types.UUID `json:"baseDeploymentId" yaml:"baseDeploymentId"`
 
-	// BuildId Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
-	// has one: `base: build` runs the build it names, and `base: current` stores what
-	// it renders as a build and runs that.
+	// BuildId Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+	// LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+	// it names, and `base: current` stores what it renders as a build and runs that.
 	//
-	// Null for artifact kinds that have no builds — MCP proxy, LLM and event API
-	// deployments — including one promoted from another deployment, which reuses that
-	// deployment's rendered artifact. Also null once the build it ran has been pruned.
-	// Null means only that no build can be named; the deployment keeps its own
-	// rendered artifact either way.
+	// Null for artifact kinds that have no builds, and for a deployment promoted from
+	// another, which reuses that deployment's rendered artifact. Also null once the
+	// build it ran has been pruned. Null means only that no build can be named; the
+	// deployment keeps its own rendered artifact either way.
 	BuildId *string `json:"buildId" yaml:"buildId"`
 
 	// CreatedAt Timestamp when the deployment artifact was created

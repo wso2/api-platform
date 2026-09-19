@@ -1179,6 +1179,30 @@ func resolveGatewayFilter(gatewayRepo repository.GatewayRepository, gatewayHandl
 	return &gateway.ID, true, nil
 }
 
+// redactWriteOnlyMetadata drops the deployment metadata that is write-only, the way
+// an artifact's own upstream credential is dropped when it is read back
+// (UpstreamAuth.value is writeOnly, redacted in mapUpstreamConfigToDTO). A deployment's
+// credential is given the same treatment for the same reason: it is written with a
+// deploy and never read back, so replacing it means giving a new one rather than
+// editing what came out of a read.
+//
+// It sits in the one response builder every artifact kind uses, so no read path can
+// return it by omission. The caller's map is left alone — the same map is stored on the
+// deployment record — so a copy is made only when there is something to remove.
+func redactWriteOnlyMetadata(metadata map[string]interface{}) map[string]interface{} {
+	if _, present := metadata[constants.MetadataKeyUpstreamAuthValue]; !present {
+		return metadata
+	}
+	out := make(map[string]interface{}, len(metadata))
+	for key, value := range metadata {
+		if key == constants.MetadataKeyUpstreamAuthValue {
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
 func toAPIDeploymentResponse(
 	gatewayRepo repository.GatewayRepository,
 	deploymentID string,
@@ -1208,7 +1232,7 @@ func toAPIDeploymentResponse(
 		CreatedAt:        createdAt,
 		DeploymentId:     deploymentUUID,
 		GatewayId:        gatewayHandle,
-		Metadata:         utils.MapPtrIfNotEmpty(metadata),
+		Metadata:         utils.MapPtrIfNotEmpty(redactWriteOnlyMetadata(metadata)),
 		Name:             name,
 		Status:           api.DeploymentResponseStatus(status),
 		StatusReason:     statusReason,
