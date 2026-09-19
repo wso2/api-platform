@@ -143,6 +143,21 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
   ''
 );
 
+/**
+ * True when the BFF has [control_plane] cloud_url configured. The SPA then calls
+ * Moesif analytics via the same-origin /proxy/cloud/... hop.
+ */
+export const CLOUD_PROXY_ENABLED = getEnvOrDefault(
+  'APIP_AIW_CLOUD_PROXY_ENABLED',
+  false
+);
+
+/**
+ * Moesif environment id for collector-key requests. Defaults to "default" (the
+ * env created during org Moesif provisioning).
+ */
+export const MOESIF_ENV_ID = getEnvOrDefault('APIP_AIW_MOESIF_ENV_ID', 'default');
+
 export interface GatewayVersionEntry {
   version: string;
   latestVersion?: string;

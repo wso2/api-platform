@@ -57,6 +57,8 @@ var browserSafeKeys = []string{
 	"policy_hub_web_url",
 	"moesif_web_url",
 	"moesif_app_api_key",
+	// Moesif environment id for cloud collector-key requests (defaults client-side).
+	"moesif_env_id",
 }
 
 // runtimeKey converts a config key into the name the SPA reads: APIP_AIW_ + the key's
@@ -94,6 +96,12 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 	// src/config.env.ts), so there is no runtime value that could disagree with the
 	// prefix the BFF actually strips.
 	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
+
+	// Cloud analytics proxy: set when [control_plane] cloud_url is configured so the
+	// SPA can call /proxy/cloud/... without learning the real upstream URL.
+	if cfg.ControlPlane.CloudURL != "" {
+		out[runtimeKey("cloud_proxy_enabled")] = "true"
+	}
 
 	return out
 }

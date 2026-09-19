@@ -48,6 +48,11 @@ export type RuntimeConfig = {
    */
   cloudProxyEnabled: boolean;
   /**
+   * Moesif environment id passed to cloud analytics collector-key requests.
+   * Defaults to "default" (the env created during org Moesif provisioning).
+   */
+  moesifEnvId: string;
+  /**
    * Moesif wrap/basic iframe origin (HTTPS). Absent when Insights embed is
    * not configured for this deployment.
    */
@@ -103,6 +108,8 @@ type LegacyWindowConfig = Partial<{
   billingProxyEnabled: boolean | string;
   CLOUD_PROXY_ENABLED: string;
   cloudProxyEnabled: boolean | string;
+  MOESIF_ENV_ID: string;
+  moesifEnvId: string;
   MOESIF_APP_URL: string;
   moesifAppUrl: string;
   DEFAULT_LOCALE: string;
@@ -225,6 +232,11 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().cloudProxyEnabled ||
       import.meta.env.VITE_CLOUD_PROXY_ENABLED
   ),
+  moesifEnvId:
+    fromWindow().MOESIF_ENV_ID ||
+    fromWindow().moesifEnvId ||
+    import.meta.env.VITE_MOESIF_ENV_ID ||
+    'default',
   moesifAppUrl:
     fromWindow().MOESIF_APP_URL ||
     fromWindow().moesifAppUrl ||
