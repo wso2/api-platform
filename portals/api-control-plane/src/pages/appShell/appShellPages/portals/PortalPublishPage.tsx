@@ -98,7 +98,7 @@ const messages = defineMessages({
   },
   tabDocumentations: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDocumentations',
-    defaultMessage: 'Documentations',
+    defaultMessage: 'Documentation',
   },
   tabLandingPage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage',
@@ -201,7 +201,7 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
  * Alpha scope, per the design this implements: only "API Details" and
- * "Specification" are editable — Subscription Plans, Documentations and
+ * "Specification" are editable — Subscription Plans, Documentation and
  * Landing Page render as disabled tabs rather than being left out, since
  * they're still on the roadmap, just not this release (contrast the
  * thumbnail/icon control, which is dropped entirely — see `ApiDetailsTab`).

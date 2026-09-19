@@ -182,14 +182,14 @@ describe('PortalPublishPage', () => {
     expect(screen.getByDisplayValue('https://backend.internal/loans')).toBeInTheDocument();
   });
 
-  it('disables Subscription Plans, Documentations and Landing Page for this alpha', async () => {
+  it('disables Subscription Plans, Documentation and Landing Page for this alpha', async () => {
     servePublicationState();
 
     renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
     expect(screen.getByRole('tab', { name: 'Subscription Plans' })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: 'Documentations' })).toBeDisabled();
+    expect(screen.getByRole('tab', { name: 'Documentation' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'Landing Page' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'API Details' })).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
