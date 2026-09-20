@@ -34,6 +34,10 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/service"
 )
 
+// minimalValidDefinition is the smallest OpenAPI 3.x document that passes
+// Publish's definition validation.
+const minimalValidDefinition = `{"openapi":"3.0.0","info":{"title":"t","version":"1"},"paths":{"/":{"get":{"responses":{"200":{"description":"ok"}}}}}}`
+
 // deprecateRecorder records the listing pushed by Deprecate, can fail the call, and can
 // run a hook during it.
 type deprecateRecorder struct {
@@ -106,7 +110,7 @@ func publishedListing(t *testing.T, it *itDB, svc *service.PublicationService, g
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "publisher", draft, []string{planHandleFor(g)}, []string{docHandleFor(g)}); err != nil {
 		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
 	}
-	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "publisher", "application/json", []byte(`{"openapi":"3.0.0"}`)); err != nil {
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "publisher", "application/json", []byte(minimalValidDefinition)); err != nil {
 		t.Fatalf("[%s] SaveDraftDefinition failed: %v", it.driver, err)
 	}
 	if err := svc.SaveDraftLandingPage(apiType, apiHandle, portalHandle, g.org, "publisher", []byte("# live landing page")); err != nil {
@@ -329,6 +333,9 @@ func TestPublicationLifecycle_Cycle(t *testing.T) {
 		draft := &model.Publication{DisplayName: "Cycle", Version: version, AgentVisibility: "VISIBLE"}
 		if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft, nil, nil); err != nil {
 			t.Fatalf("[%s] SaveDraftDetails %s failed: %v", it.driver, version, err)
+		}
+		if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+			t.Fatalf("[%s] SaveDraftDefinition %s failed: %v", it.driver, version, err)
 		}
 		if _, _, err := svc.Publish(ctx, apiType, apiHandle, portalHandle, g.org, "actor"); err != nil {
 			t.Fatalf("[%s] Publish %s failed: %v", it.driver, version, err)

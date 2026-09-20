@@ -35,7 +35,7 @@ import {
   type DraftDefinitionDocument,
 } from '@/api/resources/apiPublications';
 import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
-import { isApiError } from '@/api/core/errors';
+import { isApiError, isErrorCode } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useNotifications } from '@/components/Notifications';
@@ -340,22 +340,25 @@ export function PortalPublishPage() {
   const touchAllFields = () =>
     setTouched({ displayName: true, version: true, productionUrl: true, sandboxUrl: true });
 
-  /** Parses the definition buffer, surfacing a malformed one on its own tab rather than failing silently. */
+  /**
+   * Reads the definition buffer into the object the server expects. A draft
+   * is a work in progress — whether it's a genuinely valid, complete OpenAPI
+   * document is checked only at publish, not here — so this only blocks the
+   * save when the text isn't even parseable JSON/YAML, since that can't be
+   * sent as a definition at all.
+   */
   const parseDefinition = (): DraftDefinitionDocument | undefined => {
-    if (definitionText.trim() === '') {
-      setDefinitionParseError(undefined);
-      return {};
-    }
+    if (definitionText.trim() === '') return {};
     const result = parseSpecText(definitionText, definitionFormat);
-    if (result.status === 'parsed') {
-      setDefinitionParseError(undefined);
-      return result.spec;
+    if (result.status !== 'parsed') {
+      setDefinitionParseError(
+        result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
+      );
+      setTab('specification');
+      return undefined;
     }
-    setDefinitionParseError(
-      result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
-    );
-    setTab('specification');
-    return undefined;
+    setDefinitionParseError(undefined);
+    return result.spec;
   };
 
   /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
@@ -405,7 +408,14 @@ export function PortalPublishPage() {
   const handlePublish = () =>
     runAction('publishing', async () => {
       if (!(await saveDraft())) return;
-      await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+      try {
+        await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+      } catch (error) {
+        // The message itself is already reported by the global snackbar;
+        // this only sends the user to where they'd fix it.
+        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED')) setTab('specification');
+        throw error;
+      }
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
     });
 

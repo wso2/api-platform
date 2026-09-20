@@ -519,7 +519,7 @@ export function DefinitionPanel() {
   const handleDownload = () => {
     let content = savedContent;
     let filename = 'api_definition.yaml';
-    let mimeType = 'application/x-yaml';
+    let mimeType = 'application/yaml';
 
     if (format === 'json') {
       filename = 'api_definition.json';
@@ -564,7 +564,7 @@ export function DefinitionPanel() {
       }
     }
 
-    const mimeType = format === 'json' ? 'application/json' : 'application/x-yaml';
+    const mimeType = format === 'json' ? 'application/json' : 'application/yaml';
     const ext = format === 'json' ? '.json' : '.yaml';
     const baseName = (pendingFileName ?? 'openapi.yaml').replace(/\.(json|yaml|yml)$/i, '');
     const fileName = `${baseName}${ext}`;

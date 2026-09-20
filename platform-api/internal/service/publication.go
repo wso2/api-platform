@@ -50,7 +50,7 @@ const (
 // constants. No other media type is accepted.
 var definitionFileNamesByContentType = map[string]string{
 	"application/json":    "definition.json",
-	"application/x-yaml":  "definition.yaml",
+	"application/yaml":    "definition.yaml",
 	"application/graphql": "definition.graphql",
 	"application/xml":     "definition.xml",
 }
@@ -371,11 +371,16 @@ func (s *PublicationService) GetDraftDefinition(apiType, apiId, apiPortalId, org
 // SaveDraftDefinition replaces the draft's definition. contentTypeHeader must
 // be one of the four accepted serializations; it selects both the stored
 // Content-Type and the canonical file name recorded alongside it.
+//
+// A draft is a work in progress: its definition is not required to be a
+// complete, valid document, or even one that matches apiType's own rules —
+// only Publish enforces that, at the one point it actually matters (a
+// listing going live). Saving progress must never be blocked on that.
 func (s *PublicationService) SaveDraftDefinition(apiType, apiId, apiPortalId, orgUUID, actor, contentTypeHeader string, data []byte) error {
 	fileName, ok := definitionFileNamesByContentType[contentTypeHeader]
 	if !ok {
 		return apperror.APIPublicationValidationFailed.New(
-			"Content-Type must be one of application/json, application/x-yaml, application/graphql, application/xml")
+			"Content-Type must be one of application/json, application/yaml, application/graphql, application/xml")
 	}
 	pub, err := s.getDraftRow(apiType, apiId, apiPortalId, orgUUID)
 	if err != nil {
@@ -547,11 +552,14 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 
 // Publish publishes the current draft to the API Portal. In the UI's own
 // flow, the client always saves the draft (draft PUT) immediately before
-// calling this bodyless action, so a draft is guaranteed to exist and
-// already validated by the time this runs — APIPublicationDraftNotFound
-// here is a defensive, fail-closed check for a client bug or a failed prior
-// save proceeding anyway, not a normal user-facing gate. Publish itself
-// validates nothing further.
+// calling this bodyless action, so a draft is guaranteed to exist by the
+// time this runs — APIPublicationDraftNotFound here is a defensive,
+// fail-closed check for a client bug or a failed prior save proceeding
+// anyway, not a normal user-facing gate.
+//
+// This is the one place a definition is required to exist and be valid —
+// SaveDraftDefinition accepts anything (or nothing), so nothing upstream can
+// be assumed to have checked it.
 //
 // The portal is pushed first: nothing local changes unless that succeeds. On
 // success, one transaction (PublicationRepository.PromoteDraftToPublication):
@@ -589,6 +597,9 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	definition, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeDefinition, orgUUID)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get publication draft definition: %w", err)
+	}
+	if err := validateDefinitionContent(apiType, definition); err != nil {
+		return nil, false, err
 	}
 
 	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {

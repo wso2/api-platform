@@ -58,6 +58,7 @@ func TestPublicationHandler_Unpublish_DemotesWhenNoDraft(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft: want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	saveMinimalValidDefinition(t, r)
 	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("POST publish: want 201, got %d: %s", w.Code, w.Body.String())
@@ -110,6 +111,7 @@ func TestPublicationHandler_Unpublish_DeletesWhenDraftExists(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft: want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	saveMinimalValidDefinition(t, r)
 	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("POST publish: want 201, got %d: %s", w.Code, w.Body.String())

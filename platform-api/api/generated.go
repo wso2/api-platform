@@ -3240,8 +3240,8 @@ type PublicationConflict = Error
 // PublicationDefinitionResponse defines model for PublicationDefinitionResponse.
 type PublicationDefinitionResponse = openapi_types.File
 
-// PublicationTypeUnsupported The single error shape returned by every failed request across the API.
-type PublicationTypeUnsupported = Error
+// PublicationPublishBadRequest The single error shape returned by every failed request across the API.
+type PublicationPublishBadRequest = Error
 
 // ServiceUnavailable The single error shape returned by every failed request across the API.
 type ServiceUnavailable = Error

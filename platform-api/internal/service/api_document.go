@@ -206,7 +206,7 @@ func (s *APIDocumentService) DeleteDocument(artifactUUID, handle, orgId string) 
 // Swagger 2.x specs are rejected.
 // Returns the validation result with any errors and spec info (title, version).
 func (s *APIDocumentService) ValidateOpenAPISpec(specContent []byte) api.ValidateOpenAPIResponse {
-	sd, loadErr := loadSpecDocument([]byte(strings.TrimSpace(string(specContent))))
+	sd, loadErr := LoadSpecDocument([]byte(strings.TrimSpace(string(specContent))))
 	if loadErr != nil {
 		return api.ValidateOpenAPIResponse{
 			IsValid: false,
@@ -214,19 +214,19 @@ func (s *APIDocumentService) ValidateOpenAPISpec(specContent []byte) api.Validat
 		}
 	}
 
-	return validateSpec(sd)
+	return ValidateSpec(sd)
 }
 
 // ExtractOperationsFromSpec extracts operations from an OpenAPI spec.
 // Returns nil if the spec has no paths; the caller creates a wildcard operation.
 func (s *APIDocumentService) ExtractOperationsFromSpec(specContent []byte) ([]api.Operation, error) {
-	sd, loadErr := loadSpecDocument(specContent)
+	sd, loadErr := LoadSpecDocument(specContent)
 	if loadErr != nil {
 		s.slogger.Error("Failed to parse OpenAPI spec for operation extraction", "error", loadErr)
 		return nil, apperror.ValidationFailed.New("invalid OpenAPI specification")
 	}
 
-	if result := validateSpec(sd); !result.IsValid {
+	if result := ValidateSpec(sd); !result.IsValid {
 		msg := "invalid OpenAPI specification"
 		if len(result.Errors) > 0 {
 			msg = result.Errors[0].Message
@@ -305,11 +305,11 @@ func isJSONBytes(data []byte) bool {
 	return false
 }
 
-// loadSpecDocument parses the spec with libopenapi, builds the typed model,
+// LoadSpecDocument parses the spec with libopenapi, builds the typed model,
 // and returns an error if the spec is not OpenAPI 3.x.
 // Swagger 2.x specs are rejected with a validation error.
 // Build/validation errors are stored in sd.errs.
-func loadSpecDocument(data []byte) (*specDoc, error) {
+func LoadSpecDocument(data []byte) (*specDoc, error) {
 	doc, err := libopenapi.NewDocument(data)
 	if err != nil {
 		return nil, fmt.Errorf("spec is neither valid JSON nor YAML, or is missing 'openapi' key: %w", err)
@@ -336,12 +336,12 @@ func loadSpecDocument(data []byte) (*specDoc, error) {
 	return sd, nil
 }
 
-// validateSpec validates the OpenAPI 3.x spec against the full OpenAPI JSON
+// ValidateSpec validates the OpenAPI 3.x spec against the full OpenAPI JSON
 // Meta-Schema via libopenapi-validator, which catches structural violations
 // (unknown path item keys, paths without a leading "/", missing required
 // fields, invalid $ref targets, etc.). Returns an api.ValidateOpenAPIResponse
 // with Info (title/version) populated when valid.
-func validateSpec(sd *specDoc) api.ValidateOpenAPIResponse {
+func ValidateSpec(sd *specDoc) api.ValidateOpenAPIResponse {
 	// Surface any model-build errors first ($ref resolution failures, etc.).
 	// When present, skip the JSON Schema validator — NewValidator would also fail.
 	if len(sd.errs) > 0 {

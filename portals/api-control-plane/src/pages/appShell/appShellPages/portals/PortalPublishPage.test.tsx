@@ -347,6 +347,41 @@ describe('PortalPublishPage', () => {
     expect(definitionRequests.count()).toBe(0);
   });
 
+  it('Save Draft succeeds with an empty definition — only Publish checks validity', async () => {
+    // No draft/publication/own-spec definition is served, so definitionText
+    // stays "" and definitionFormat stays its default, 'json'.
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? 'null')).toEqual({});
+  });
+
+  it('Save Draft succeeds with a syntactically valid but incomplete OpenAPI object', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, '{"foo":1}', 'application/json'));
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? 'null')).toEqual({ foo: 1 });
+  });
+
   it('still opens with a definition that was saved as JSON', async () => {
     servePublicationState({ draft: aPublicationDraftDetails() });
     server.use(
@@ -398,10 +433,12 @@ describe('PortalPublishPage', () => {
   });
 
   it('Publish saves the draft, then calls the publish action', async () => {
-    servePublicationState();
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const definitionRequests = recorder();
     server.use(
       accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
-      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
       accepts('post', PUBLISH_PATH, aPublication(), { record: requests }),
     );
 
@@ -410,6 +447,13 @@ describe('PortalPublishPage', () => {
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'Publish' }));
 
+    // Publish only ever calls the publish action once the definition it
+    // carries has actually been saved — not the empty-draft placeholder.
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? '{}')).toMatchObject({
+      openapi: '3.0.3',
+      info: { title: 'Loan Management Service', version: '1.0.0' },
+    });
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(await screen.findByText('Published to acme-portal.')).toBeInTheDocument();
   });
@@ -724,5 +768,50 @@ describe('PortalPublishPage', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
     expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
+  });
+
+  it('stays usable when Publish rejects the definition as invalid, and sends the user to the Specification tab', async () => {
+    // No client-side check exists any more: the draft (with whatever
+    // definition it holds) saves unconditionally, and only the publish call
+    // itself can reject it. The message itself is surfaced by the ordinary
+    // global error snackbar, not any bespoke handling here — this only
+    // checks that the user lands where they'd actually fix the problem.
+    servePublicationState();
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(screen.getByRole('tab', { name: 'API Details' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Specification' })).toHaveAttribute('aria-selected', 'true'),
+    );
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
+    expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
+  });
+
+  it('does not switch tabs when Publish fails for a reason unrelated to the definition', async () => {
+    servePublicationState();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 409, 'PUBLICATION_PORTAL_CONFLICT'),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(screen.getByRole('tab', { name: 'API Details' })).toHaveAttribute('aria-selected', 'true');
   });
 });

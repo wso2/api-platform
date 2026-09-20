@@ -111,6 +111,12 @@ export function SpecificationTab({
     onFormatChange(next);
   };
 
+  // Pins `editable` open past the error clearing on this same keystroke.
+  const editText = (next: string) => {
+    setIsEditing(true);
+    onChange(next);
+  };
+
   return (
     <Box
       sx={(theme) => ({
@@ -175,7 +181,7 @@ export function SpecificationTab({
           <CodeEditor
             ariaLabel={intl.formatMessage(messages.editorLabel, { format: FORMAT_LABELS[format] })}
             language={format}
-            onChange={onChange}
+            onChange={editText}
             readOnly={disabled || !editable}
             value={text}
           />

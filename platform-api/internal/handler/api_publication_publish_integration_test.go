@@ -20,10 +20,27 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/wso2/api-platform/platform-api/internal/database"
 )
 
 const publishPath = "/api/v0.9/api-portals/my-portal/apis/rest-api/my-api/publish"
+
+// minimalValidDefinition is the smallest OpenAPI 3.x document that passes
+// validateRestAPIDefinition, for tests where Publish must succeed but the
+// definition's content isn't the focus.
+const minimalValidDefinition = `{"openapi":"3.0.0","info":{"title":"t","version":"1"},"paths":{"/":{"get":{"responses":{"200":{"description":"ok"}}}}}}`
+
+// saveMinimalValidDefinition saves minimalValidDefinition for the current draft.
+func saveMinimalValidDefinition(t *testing.T, r http.Handler) {
+	t.Helper()
+	w := doPublicationRequest(r, http.MethodPut, draftPath+"/definition", "application/json", []byte(minimalValidDefinition))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("PUT definition: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+}
 
 // TestPublicationHandler_Publish_DraftNotFound verifies the defensive
 // DRAFT_NOT_FOUND path: calling /publish directly, with no draft ever saved,
@@ -59,6 +76,7 @@ func TestPublicationHandler_Publish_CreatesFromDraft(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft: want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	saveMinimalValidDefinition(t, r)
 
 	// Step 2: the bodyless publish action.
 	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
@@ -121,6 +139,7 @@ func TestPublicationHandler_Publish_RepublishReplacesOldRow(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft #1: want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	saveMinimalValidDefinition(t, r)
 	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("POST publish #1: want 201, got %d: %s", w.Code, w.Body.String())
@@ -130,12 +149,15 @@ func TestPublicationHandler_Publish_RepublishReplacesOldRow(t *testing.T) {
 	// straight from the DB, the same way liveCount below does.
 	anchorID := livePublicationUUID(t, db)
 
-	// Edit, then republish.
+	// Edit, then republish. mergeDraftIntoAnchor replaces the anchor's
+	// content wholesale with the new draft's, so the draft needs its own
+	// definition again too — matching what the real client always does.
 	w = doPublicationRequest(r, http.MethodPut, draftPath, "application/json",
 		[]byte(`{"displayName":"Version Two","version":"2.0"}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft #2: want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	saveMinimalValidDefinition(t, r)
 	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("POST publish #2 (republish): want 200, got %d: %s", w.Code, w.Body.String())
@@ -178,6 +200,7 @@ func TestPublicationHandler_Publish_NoOpRefresh(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft #1: want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	saveMinimalValidDefinition(t, r)
 	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("POST publish #1: want 201, got %d: %s", w.Code, w.Body.String())
@@ -188,6 +211,7 @@ func TestPublicationHandler_Publish_NoOpRefresh(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT draft #2 (no-op): want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	saveMinimalValidDefinition(t, r)
 	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("POST publish #2 (no-op refresh): want 200, got %d: %s", w.Code, w.Body.String())
@@ -197,4 +221,77 @@ func TestPublicationHandler_Publish_NoOpRefresh(t *testing.T) {
 	if got["displayName"] != "Same Listing" {
 		t.Fatalf("POST publish #2: unexpected body: %v", got)
 	}
+}
+
+// assertPublishRejectedWithoutPromotion asserts that a just-rejected Publish
+// call left nothing promoted: the draft still reads back fine, and no live
+// row exists for it.
+func assertPublishRejectedWithoutPromotion(t *testing.T, r http.Handler, db *database.DB) {
+	t.Helper()
+	w := doPublicationRequest(r, http.MethodGet, draftPath, "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET draft after rejected publish: want 200 (draft survives), got %d: %s", w.Code, w.Body.String())
+	}
+	var liveCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM api_publications WHERE artifact_uuid = 'api-artifact-1' AND api_portal_uuid = 'portal-1' AND is_draft = 0`).Scan(&liveCount); err != nil {
+		t.Fatalf("count live rows: %v", err)
+	}
+	if liveCount != 0 {
+		t.Fatalf("want no live row after rejected publish, got %d", liveCount)
+	}
+}
+
+// TestPublicationHandler_Publish_RejectsInvalidDefinition verifies that
+// Publish is the actual enforcement point for definition validity:
+// SaveDraftDefinition accepts a malformed or empty REST definition (a draft
+// is a work in progress), but Publish rejects pushing it live.
+func TestPublicationHandler_Publish_RejectsInvalidDefinition(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{"malformed spec", "application/json", `{"openapi":"3.0.0"}`}, // valid JSON, invalid OpenAPI (missing info/paths)
+		{"empty definition", "application/json", `{}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, db, cleanup := setupPublicationTestEnv(t)
+			defer cleanup()
+
+			w := doPublicationRequest(r, http.MethodPut, draftPath, "application/json", []byte(`{"displayName":"x","version":"1.0"}`))
+			if w.Code != http.StatusOK {
+				t.Fatalf("PUT draft: want 200, got %d: %s", w.Code, w.Body.String())
+			}
+			w = doPublicationRequest(r, http.MethodPut, draftPath+"/definition", tt.contentType, []byte(tt.body))
+			if w.Code != http.StatusNoContent {
+				t.Fatalf("PUT %s definition: want 204 (SaveDraftDefinition accepts it), got %d: %s", tt.name, w.Code, w.Body.String())
+			}
+
+			w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
+			if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "PUBLICATION_VALIDATION_FAILED") {
+				t.Fatalf("POST publish with a %s definition: want 400 PUBLICATION_VALIDATION_FAILED, got %d: %s", tt.name, w.Code, w.Body.String())
+			}
+			assertPublishRejectedWithoutPromotion(t, r, db)
+		})
+	}
+}
+
+// TestPublicationHandler_Publish_RejectsMissingDefinition verifies Publish
+// rejects a draft with no definition saved at all, distinct from an invalid
+// or empty one.
+func TestPublicationHandler_Publish_RejectsMissingDefinition(t *testing.T) {
+	r, db, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	w := doPublicationRequest(r, http.MethodPut, draftPath, "application/json", []byte(`{"displayName":"x","version":"1.0"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT draft: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = doPublicationRequest(r, http.MethodPost, publishPath, "", nil)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "PUBLICATION_VALIDATION_FAILED") {
+		t.Fatalf("POST publish with no definition: want 400 PUBLICATION_VALIDATION_FAILED, got %d: %s", w.Code, w.Body.String())
+	}
+	assertPublishRejectedWithoutPromotion(t, r, db)
 }
