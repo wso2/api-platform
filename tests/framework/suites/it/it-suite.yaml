@@ -507,6 +507,19 @@ blocks:
         features:
           - features/jwt_auth.feature
 
+  - name: mcp-auth-gateway-host
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-auth-gateway-host.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mcp-auth-gateway-host
+        features:
+          - features/mcp_auth_gateway_host.feature
+
   - name: analytics
     parallel: 1
     components:
