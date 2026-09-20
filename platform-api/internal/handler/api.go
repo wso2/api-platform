@@ -402,14 +402,14 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	// Persist the spec document
 	// If this fails, rollback the API creation
 	docReq := &dto.CreateAPIDocumentRequest{
-		ArtifactUUID:     artifactUUID,
-		OrganizationUUID: orgId,
+		Type:             constants.DocumentTypeDefinition,
+		Handle:           constants.DocumentHandleDefinition,
+		DisplayName:      constants.DocumentDisplayNameDefinition,
 		FileName:         specFileName,
-		Content:          specContent,
-		CreatedBy:        createdBy,
+		Content:		  specContent,
 	}
 
-	_, docErr := h.apiDocumentService.CreateDocument(docReq)
+	_, docErr := h.apiDocumentService.CreateDocument(docReq,orgId, createdBy, artifactUUID)
 	if docErr != nil {
 		h.slogger.Error("Failed to persist OpenAPI spec document; rolling back API", 
 			"apiId", artifactUUID, "error", docErr)
@@ -539,14 +539,14 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 
 	// Update document
 	docReq := &dto.PutAPIDocumentRequest{
-		ArtifactUUID:     artifactUUID,
-		OrganizationUUID: orgId,
+		Type:             constants.DocumentTypeDefinition,
+		Handle:           constants.DocumentHandleDefinition,
+		DisplayName:      constants.DocumentDisplayNameDefinition,
 		FileName:         specFileName,
-		Content:          specContent,
-		UpdatedBy:        updatedBy,
+		Content:		  specContent,
 	}
 
-	if err := h.apiDocumentService.PutDocument(docReq); err != nil {
+	if err := h.apiDocumentService.PutDocument(docReq, orgId, updatedBy, artifactUUID); err != nil {
 		h.slogger.Error("Failed to persist spec", "api", restApiId, "error", err)
 		if operationsUpdated {
 			if _, rollbackErr := h.apiService.UpdateAPIByHandle(restApiId, existingAPI, orgId, updatedBy); rollbackErr != nil {

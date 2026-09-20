@@ -53,24 +53,24 @@ func NewAPIDocumentService(documentRepo repository.DocumentRepository, auditRepo
 }
 
 // CreateDocument creates a new OpenAPI spec document for an artifact.
-func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest) (string, error) {
+func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, orgId string, userId string, artifactUUID string) (string, error) {
 	if req == nil {
 		return "", apperror.ValidationFailed.New("document request is required")
 	}
-	if req.ArtifactUUID == "" {
+	if artifactUUID == "" {
 		return "", apperror.ValidationFailed.New("artifact UUID is required")
 	}
 
 	doc := &model.Document{
-		ArtifactUUID:     req.ArtifactUUID,
-		OrganizationUUID: req.OrganizationUUID,
-		Type:             constants.DocumentTypeDefinition,
-		Handle:           constants.DocumentHandleDefinition,
-		DisplayName:      constants.DocumentDisplayNameDefinition,
+		ArtifactUUID:     artifactUUID,
+		OrganizationUUID: orgId,
+		Type:             req.Type,
+		Handle:           req.Handle,
+		DisplayName:      req.DisplayName,
 		FileName:         req.FileName,
 		ContentType:      s.GetSpecContentType(req.Content),
 		Content:          req.Content,
-		CreatedBy:        req.CreatedBy,
+		CreatedBy:        userId,
 	}
 
 	if doc.Handle == "" {
@@ -125,27 +125,27 @@ func (s *APIDocumentService) GetDocument(artifactUUID, orgId string) (*dto.APIDo
 // PutDocument updates or creates an OpenAPI spec document for an artifact.
 // If a document of the same type already exists, it is updated in-place.
 // If no document exists, a new one is created.
-func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest) error {
+func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest, orgId string, userId string, artifactUUID string) error {
 	if req == nil {
 		return apperror.ValidationFailed.New("document request is required")
 	}
-	if req.ArtifactUUID == "" {
+	if artifactUUID == "" {
 		return apperror.ValidationFailed.New("artifact UUID is required")
 	}
 
 	doc := &model.Document{
-		ArtifactUUID:     req.ArtifactUUID,
-		OrganizationUUID: req.OrganizationUUID,
-		Type:             constants.DocumentTypeDefinition,
-		Handle:           constants.DocumentHandleDefinition,
-		DisplayName:      constants.DocumentDisplayNameDefinition,
+		ArtifactUUID:     artifactUUID,
+		OrganizationUUID: orgId,
+		Type:             req.Type,
+		Handle:           req.Handle,
+		DisplayName:      req.DisplayName,
 		FileName:         req.FileName,
 		ContentType:      s.GetSpecContentType(req.Content),
 		Content:          req.Content,
-		UpdatedBy:        req.UpdatedBy,
+		UpdatedBy:        userId,
 	}
 
-	existing, err := s.documentRepo.GetDocumentByArtifactAndType(doc.ArtifactUUID, constants.DocumentTypeDefinition, doc.OrganizationUUID)
+	existing, err := s.documentRepo.GetDocumentByArtifactAndType(doc.ArtifactUUID, doc.Type, doc.OrganizationUUID)
 	if err != nil {
 		s.slogger.Error("Failed to check existing document", "artifactUUID", doc.ArtifactUUID, "error", err)
 		return err
@@ -155,6 +155,7 @@ func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest) error {
 	if isUpdate {
 		doc.Handle = existing.Handle
 	} else {
+		doc.CreatedBy = userId
 		if doc.Handle == "" {
 			handle, handleErr := utils.GenerateHandle(doc.DisplayName, func(candidate string) bool {
 				exists, err := s.documentRepo.DocumentHandleExistsForArtifact(doc.ArtifactUUID, candidate)
@@ -181,25 +182,27 @@ func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest) error {
 		action = "UPDATE"
 	}
 	if err := s.auditRepo.Record(action, doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.UpdatedBy); err != nil {
+		// Log but do not return: the document is already committed. Returning here
+		// would trigger the handler's operation rollback without un-committing the
+		// document, leaving operations and spec inconsistent.
 		s.slogger.Error("Failed to record audit entry for document upsert", "artifactUUID", doc.ArtifactUUID, "error", err)
-		return err
 	}
 	return nil
 }
 
-// DeleteDocument deletes a document for an artifact.
-func (s *APIDocumentService) DeleteDocument(artifactUUID, orgId string) error {
+// DeleteDocument deletes a document for an artifact identified by its handle.
+func (s *APIDocumentService) DeleteDocument(artifactUUID, handle, orgId string) error {
 	if artifactUUID == "" {
 		return apperror.ValidationFailed.New("artifact UUID is required")
 	}
+	if handle == "" {
+		return apperror.ValidationFailed.New("document handle is required")
+	}
 
-	// Note: Delete implementation depends on your repository interface.
-	// If DocumentRepository doesn't have DeleteDocument, you may need to add it
-	// or implement soft delete logic within UpsertDocument.
-	// For now, this is a placeholder that logs intent.
-	s.slogger.Info("Document deletion requested", "artifactUUID", artifactUUID, "orgId", orgId)
-
-	// Implement based on your repository's delete capabilities
+	if err := s.documentRepo.DeleteDocument(artifactUUID, handle, orgId); err != nil {
+		s.slogger.Error("Failed to delete document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		return err
+	}
 	return nil
 }
 
@@ -282,7 +285,7 @@ func (s *APIDocumentService) GetSpecContentType(specContent []byte) string {
 	if isJSONBytes(specContent) {
 		return "application/json"
 	}
-	return "application/x-yaml"
+	return "application/yaml"
 }
 
 // specDoc holds a libopenapi-parsed OpenAPI 3.x document with format metadata

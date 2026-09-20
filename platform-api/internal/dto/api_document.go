@@ -20,21 +20,21 @@ package dto
 // CreateAPIDocumentRequest carries the raw spec and metadata when persisting a new spec
 // document for an API. The service fills in document type, handle, display name, and content type.
 type CreateAPIDocumentRequest struct {
-	ArtifactUUID     string
-	OrganizationUUID string
+	Type             string
+	Handle           string
+	DisplayName      string
 	FileName         string
-	Content          []byte
-	CreatedBy        string
+	Content 		[]byte
 }
 
 // PutAPIDocumentRequest carries the raw spec and metadata when replacing an existing
 // spec document for an API. The service fills in document type, handle, display name, and content type.
 type PutAPIDocumentRequest struct {
-	ArtifactUUID     string
-	OrganizationUUID string
+	Type             string
+	Handle           string
+	DisplayName      string
 	FileName         string
-	Content          []byte
-	UpdatedBy        string
+	Content 		[]byte
 }
 
 // APIDocumentContent is returned by GetDocument — the raw spec bytes ready to serve.

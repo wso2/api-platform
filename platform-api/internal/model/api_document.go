@@ -19,15 +19,15 @@ package model
 
 // Document represents a stored document attached to an artifact (e.g. an OpenAPI spec).
 type Document struct {
-	ID               string
-	ArtifactUUID     string
-	OrganizationUUID string
-	Type             string
-	Handle           string
-	DisplayName      string
-	FileName         string
-	ContentType      string
-	Content          []byte
-	CreatedBy        string
-	UpdatedBy        string
+	ID               string `json:"id"               db:"uuid"`
+	ArtifactUUID     string `json:"artifactId"       db:"artifact_uuid"`
+	OrganizationUUID string `json:"organizationId"   db:"organization_uuid"`
+	Type             string `json:"type"             db:"type"`
+	Handle           string `json:"handle"           db:"handle"`
+	DisplayName      string `json:"displayName"      db:"display_name"`
+	FileName         string `json:"fileName"         db:"file_name"`
+	ContentType      string `json:"contentType"      db:"content_type"`
+	Content          []byte `json:"content,omitempty" db:"content"`
+	CreatedBy        string `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string `json:"updatedBy,omitempty" db:"updated_by"`
 }
