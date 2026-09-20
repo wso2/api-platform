@@ -36,13 +36,15 @@ import (
 // It manages document CRUD operations and OpenAPI spec validation.
 type APIDocumentService struct {
 	documentRepo repository.DocumentRepository
+	auditRepo    repository.AuditRepository
 	slogger      *slog.Logger
 }
 
 // NewAPIDocumentService creates a new API document service
-func NewAPIDocumentService(documentRepo repository.DocumentRepository, slogger *slog.Logger) *APIDocumentService {
+func NewAPIDocumentService(documentRepo repository.DocumentRepository, auditRepo repository.AuditRepository, slogger *slog.Logger) *APIDocumentService {
 	return &APIDocumentService{
 		documentRepo: documentRepo,
+		auditRepo:    auditRepo,
 		slogger:      slogger,
 	}
 }
@@ -79,6 +81,7 @@ func (s *APIDocumentService) CreateDocument(doc *model.Document) (string, error)
 		return "", err
 	}
 
+	_ = s.auditRepo.Record("CREATE", doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.CreatedBy)
 	return doc.Handle, nil
 }
 
@@ -120,7 +123,8 @@ func (s *APIDocumentService) PutDocument(doc *model.Document) error {
 		return err
 	}
 
-	if existing != nil {
+	isUpdate := existing != nil
+	if isUpdate {
 		// Reuse existing handle to update in-place
 		doc.Handle = existing.Handle
 	} else {
@@ -146,6 +150,15 @@ func (s *APIDocumentService) PutDocument(doc *model.Document) error {
 		return err
 	}
 
+	actor := doc.UpdatedBy
+	if actor == "" {
+		actor = doc.CreatedBy
+	}
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
+	}
+	_ = s.auditRepo.Record(action, doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, actor)
 	return nil
 }
 
