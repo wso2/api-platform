@@ -40,6 +40,7 @@ import { ExternalLink, Globe, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons
 
 import { useManagedPortalList } from './hooks';
 import type { ManagedPortal } from './types';
+import { portalHandleFromName, validatePortalName } from './utils/name';
 
 export type ManagedPortalsListProps = {
   /** Invoked when a row's non-action area is clicked; the delete icon stops propagation to avoid double-firing. */
@@ -51,21 +52,15 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
 
   // No loginEnvironment on create: server is authoritative on org bootstrap; Edit exposes the switch later.
   const [createOpen, setCreateOpen] = useState(false);
-  const [handle, setHandle] = useState('');
-  // Handle validation is client-side only. Backend allows up to 40 chars, but the
-  // effective K8s label ceiling for openchoreo's RenderedRelease name derivation
-  // caps the practical length lower; keep the UI aligned with what actually
-  // succeeds so users don't have to submit to discover the ceiling.
-  const handleError = useMemo(() => {
-    if (handle === '') return '';
-    if (handle.length < 3) return 'Handle must be at least 3 characters.';
-    if (handle.length > 34) return 'Handle must be at most 34 characters.';
-    if (!/^[a-z0-9-]+$/.test(handle)) return 'Handle can contain only lowercase letters, digits, and hyphens.';
-    return '';
-  }, [handle]);
-  const handleValid = handle !== '' && handleError === '';
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  // The handle is derived from the display name (same conversion the backend
+  // applies) rather than typed by the user, so the two-field UX collapses to
+  // one input with a live preview in the helper text - mirrors the gateway
+  // create form. The handle is immutable after create, so we show what the
+  // name will become before the user commits.
+  const nameError = useMemo(() => validatePortalName(name), [name]);
+  const derivedHandle = useMemo(() => portalHandleFromName(name), [name]);
   const [submitting, setSubmitting] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
@@ -86,7 +81,6 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
   }, [portals, searchQuery]);
 
   const resetCreateForm = () => {
-    setHandle('');
     setName('');
     setDescription('');
   };
@@ -95,7 +89,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
     setSubmitting(true);
     try {
       await create({
-        handle: handle.trim(),
+        handle: derivedHandle,
         name: name.trim(),
         description: description.trim() || undefined,
         // loginEnvironment omitted; server picks the org's preferred env.
@@ -327,27 +321,22 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
         <DialogTitle>Create Portal</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <FormControl fullWidth error={Boolean(handleError)}>
-              <FormLabel>Handle</FormLabel>
-              <TextField
-                fullWidth
-                autoFocus
-                placeholder="e.g. acme-portal"
-                value={handle}
-                onChange={(event) => setHandle(event.target.value)}
-                disabled={submitting}
-                error={Boolean(handleError)}
-                helperText={handleError || 'Lowercase letters, digits, and hyphens; 3-34 characters.'}
-              />
-            </FormControl>
-            <FormControl fullWidth>
+            <FormControl fullWidth error={Boolean(nameError)}>
               <FormLabel>Name</FormLabel>
               <TextField
                 fullWidth
+                autoFocus
                 placeholder="e.g. Acme Developer Portal"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 disabled={submitting}
+                error={Boolean(nameError)}
+                helperText={
+                  nameError
+                  ?? (derivedHandle
+                    ? `Handle: ${derivedHandle}`
+                    : 'The portal handle is derived from this name and cannot be changed later.')
+                }
               />
             </FormControl>
             <FormControl fullWidth>
@@ -378,7 +367,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
           </Button>
           <Button
             variant="contained"
-            disabled={submitting || !handleValid || !name.trim()}
+            disabled={submitting || !name.trim() || Boolean(nameError) || !derivedHandle}
             onClick={handleCreate}
           >
             Create
