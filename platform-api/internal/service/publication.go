@@ -26,11 +26,23 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+)
+
+// Maximum lengths of the draft fields the editor sends, matching the
+// api_publications column widths. A longer value is rejected up front: the
+// PostgreSQL and SQL Server columns would otherwise fail the insert with an
+// unhandled error, while SQLite would store it silently.
+const (
+	publicationDisplayNameMaxLength = 255
+	publicationVersionMaxLength     = 30
+	publicationDescriptionMaxLength = 1023
+	publicationURLMaxLength         = 255
 )
 
 // definitionFileNamesByContentType maps an accepted definition Content-Type to
@@ -235,6 +247,9 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	if strings.TrimSpace(draft.Version) == "" {
 		return nil, apperror.APIPublicationValidationFailed.New("version is required")
 	}
+	if err := validateDraftFieldLengths(draft); err != nil {
+		return nil, err
+	}
 	switch draft.AgentVisibility {
 	case "":
 		draft.AgentVisibility = "VISIBLE"
@@ -269,6 +284,28 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	saved.SubscriptionPlanIds = nonNil(planHandles)
 	saved.DocIds = nonNil(docHandles)
 	return saved, nil
+}
+
+// validateDraftFieldLengths counts characters rather than bytes, since the
+// columns are VARCHAR(n).
+func validateDraftFieldLengths(draft *model.Publication) error {
+	limits := []struct {
+		field string
+		value string
+		max   int
+	}{
+		{"displayName", draft.DisplayName, publicationDisplayNameMaxLength},
+		{"version", draft.Version, publicationVersionMaxLength},
+		{"description", draft.Description, publicationDescriptionMaxLength},
+		{"productionUrl", draft.ProductionURL, publicationURLMaxLength},
+		{"sandboxUrl", draft.SandboxURL, publicationURLMaxLength},
+	}
+	for _, l := range limits {
+		if utf8.RuneCountInString(l.value) > l.max {
+			return apperror.APIPublicationValidationFailed.New(fmt.Sprintf("%s must not exceed %d characters", l.field, l.max))
+		}
+	}
+	return nil
 }
 
 // nonNil returns s, or a non-nil empty slice when s is nil, so the field
