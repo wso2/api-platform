@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	// "github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -41,22 +41,7 @@ func NewDocumentRepo(db *database.DB) DocumentRepository {
 }
 
 // CreateDocument inserts a new document row.
-//
-// Singleton types (currently only model.DocumentTypeDefinition) are enforced
-// at the application layer: attempting to create a second document of a
-// singleton type for the same artifact returns apperror.Conflict.
 func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
-	if model.IsSingletonDocumentType(doc.Type) {
-		existing, err := r.GetDocumentByArtifactAndType(doc.ArtifactUUID, doc.Type, doc.OrganizationUUID)
-		if err != nil {
-			return fmt.Errorf("create document (singleton check): %w", err)
-		}
-		if existing != nil {
-			return apperror.Conflict.New(
-				fmt.Sprintf("a document of type %q already exists for this API", doc.Type),
-			)
-		}
-	}
 
 	if doc.ID == "" {
 		doc.ID = uuid.New().String()

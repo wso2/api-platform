@@ -188,7 +188,7 @@ export const ApiCreationWizard = () => {
     // draft: contract passes the imported spec, scratch passes the skeleton
     // (or whatever the user edited). Both submit via import-openapi.
     const formData = new FormData();
-    formData.append('file', values.contractImport.specFile, 'openapi.json');
+    formData.append('file', values.contractImport.specFile, values.contractImport.specFile.name);
     formData.append('id', values.id.trim());
     formData.append('displayName', values.displayName.trim());
     formData.append('version', values.version.trim());

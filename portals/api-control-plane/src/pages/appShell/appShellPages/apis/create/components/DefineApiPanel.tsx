@@ -167,26 +167,31 @@ export const DefineApiPanel = ({
         main: { url: endpointUrl.trim() || PLACEHOLDER_UPSTREAM_URL },
       },
       contractImport: {
-        specFile: new File([scratchRawText], 'openapi.json', { type: 'application/json' }),
+        specFile: new File([scratchRawText], 'api_definition.json', { type: 'application/json' }),
       },
     };
   }, [endpointUrl]);
 
   const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
-    if (contract === null) return null;
-    const contentType = contract.rawText.trimStart().startsWith('{')
-      ? 'application/json'
-      : 'application/yaml';
-    return {
-      ...extractApiDetails(contract.spec),
-      contractImport: {
-        specFile: new File(
-          [contract.rawText],
-          `openapi.${contentType.endsWith('json') ? 'json' : 'yaml'}`,
-          { type: contentType },
-        ),
-      },
-    };
+    if (contract?.spec === undefined) return null;
+    const base = extractApiDetails(contract.spec);
+    const rawText = contract.rawText;
+    if (rawText !== undefined) {
+      const isJson = rawText.trimStart().startsWith('{');
+      const contentType = isJson ? 'application/json' : 'application/yaml';
+      let fileName = contract.values.file?.name;
+      if (!fileName) {
+        fileName = isJson ? 'api_definition.json' : 'api_definition.yaml';
+      }
+      const rawBlob = new Blob([rawText], { type: contentType });
+      return {
+        ...base,
+        contractImport: {
+          specFile: new File([rawBlob], fileName, { type: contentType }),
+        },
+      };
+    }
+    return null;
   }, [contract]);
 
   useEffect(() => {

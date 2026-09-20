@@ -226,9 +226,6 @@ const messages = defineMessages({
   },
 });
 
-/** 5 MiB — matches backend importOpenAPIMaxBytes. */
-const IMPORT_SPEC_MAX_BYTES = 5 * 1024 * 1024;
-
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] as const;
 type HttpMethod = (typeof HTTP_METHODS)[number];
 
@@ -263,14 +260,13 @@ function extractOperations(spec: OpenApiSpec): Operation[] {
     return SUPPORTED_METHODS.flatMap((method): Operation[] => {
       const op = asRecord(item[method]);
       if (!op) return [];
-      const name = asText(op.description);
-      return [
-        {
-          name,
-          ...(asText(op.description) !== undefined ? { description: asText(op.description) } : {}),
-          request: { method: method.toUpperCase() as Operation['request']['method'], path },
-        },
-      ];
+      const name = asText(op.description) ?? asText(op.summary);
+      const description = asText(op.description);
+      return [{
+        name,
+        ...(description !== undefined ? { description } : {}),
+        request: { method: method.toUpperCase() as Operation['request']['method'], path }
+      }];
     });
   });
 }
@@ -457,10 +453,6 @@ export function DefinitionPanel() {
     if (!file) return;
     event.target.value = '';
     if (isSaving) return;
-    if (file.size > IMPORT_SPEC_MAX_BYTES) {
-      setFetchError(intl.formatMessage(messages.fileTooLarge));
-      return;
-    }
     applyFileContent(file);
     closeDialog();
   };
@@ -481,11 +473,6 @@ export function DefinitionPanel() {
         const { done, value } = await reader.read();
         if (done) break;
         totalBytes += value.length;
-        if (totalBytes > IMPORT_SPEC_MAX_BYTES) {
-          await reader.cancel();
-          setFetchError(intl.formatMessage(messages.fileTooLarge));
-          return;
-        }
         chunks.push(value);
       }
       const combined = new Uint8Array(totalBytes);
@@ -518,11 +505,11 @@ export function DefinitionPanel() {
 
   const handleDownload = () => {
     let content = savedContent;
-    let filename = 'openapi.yaml';
+    let filename = 'api_definition.yaml';
     let mimeType = 'application/x-yaml';
 
     if (format === 'json') {
-      filename = 'openapi.json';
+      filename = 'api_definition.json';
       mimeType = 'application/json';
       try {
         const parsed = yaml.load(savedContent) as Record<string, unknown>;
