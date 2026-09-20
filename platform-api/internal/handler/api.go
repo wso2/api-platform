@@ -24,42 +24,32 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"strings"
 
-	"github.com/pb33f/libopenapi"
-	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
-	openapivalidator "github.com/pb33f/libopenapi-validator"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
-	"github.com/wso2/api-platform/platform-api/internal/model"
-	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	// "github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
-// const importOpenAPIMaxBytes = 5 << 20 // 5 MiB
-
 type APIHandler struct {
 	apiService   *service.APIService
 	identity     *service.IdentityService
 	apiDocumentService *service.APIDocumentService
-	documentRepo repository.DocumentRepository
 	slogger      *slog.Logger
 	cfg          *config.Server
 }
 
-func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, apiDocumentService *service.APIDocumentService,documentRepo repository.DocumentRepository, slogger *slog.Logger,cfg *config.Server) *APIHandler {
+func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, apiDocumentService *service.APIDocumentService, slogger *slog.Logger,cfg *config.Server) *APIHandler {
 	return &APIHandler{
 		apiService:   apiService,
 		identity:     identity,
 		apiDocumentService: apiDocumentService,
-		documentRepo: documentRepo,
 		slogger:      slogger,
 		cfg:          cfg,
 	}
@@ -68,7 +58,7 @@ func NewAPIHandler(apiService *service.APIService, identity *service.IdentitySer
 // getOpenAPISpecMaxBytes returns the configured max bytes, falling back to 5 MiB if unset.
 func (h *APIHandler) getOpenAPISpecMaxBytes() int64 {
 	if h.cfg.OpenAPISpecMaxFetchBytes <= 0 {
-		return 5 << 20 // 5 MiB default
+		return constants.DefaultOpenAPISpecMaxBytes
 	}
 	return h.cfg.OpenAPISpecMaxFetchBytes
 }
@@ -379,7 +369,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return apperror.PayloadTooLarge.New("spec file exceeds maximum allowed size")
 	}
 
-	specFileName := normalizeSpecFileName(header.Filename)
+	specFileName := h.apiDocumentService.NormalizeSpecFileName(header.Filename)
  
 	// Validate and extract operations from spec
 	operations, err := h.apiDocumentService.ExtractOperationsFromSpec(specContent)
@@ -411,20 +401,15 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 
 	// Persist the spec document
 	// If this fails, rollback the API creation
-	contentType := h.apiDocumentService.GetSpecContentType(specContent)
-	doc := &model.Document{
+	docReq := &dto.CreateAPIDocumentRequest{
 		ArtifactUUID:     artifactUUID,
 		OrganizationUUID: orgId,
-		Type:             model.DocumentTypeDefinition,
-		Handle:           model.DocumentHandleDefinition,
-		DisplayName:      "OpenAPI Definition",
 		FileName:         specFileName,
-		ContentType:      contentType,
 		Content:          specContent,
 		CreatedBy:        createdBy,
 	}
 
-	_, docErr := h.apiDocumentService.CreateDocument(doc)
+	_, docErr := h.apiDocumentService.CreateDocument(docReq)
 	if docErr != nil {
 		h.slogger.Error("Failed to persist OpenAPI spec document; rolling back API", 
 			"apiId", artifactUUID, "error", docErr)
@@ -438,85 +423,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
 	httputil.WriteJSON(w, http.StatusCreated, apiResponse)
 	return nil
-}
-
-// normalizeSpecFileName strips the directory component from the uploaded filename.
-func normalizeSpecFileName(name string) string {
-	return filepath.Base(name)
-}
-
-// specDoc holds a libopenapi-parsed OpenAPI 3.x document with format metadata
-// and a pre-built typed model.
-type specDoc struct {
-	doc    libopenapi.Document
-	raw    []byte // original input bytes, used for re-encoding
-	isJSON bool
-	v3     *libopenapi.DocumentModel[v3high.Document]
-	errs   []error // model-build / validation errors
-}
-
-// validateSpec validates the OpenAPI 3.x spec against the full OpenAPI JSON
-// Meta-Schema via libopenapi-validator, which catches structural violations
-// (unknown path item keys, paths without a leading "/", missing required
-// fields, invalid $ref targets, etc.). Returns an api.ValidateOpenAPIResponse
-// with Info (title/version) populated when valid.
-func validateSpec(sd *specDoc) api.ValidateOpenAPIResponse {
-	// Surface any model-build errors first ($ref resolution failures, etc.).
-	// When present, skip the JSON Schema validator — NewValidator would also fail.
-	if len(sd.errs) > 0 {
-		errs := make([]api.OpenAPIValidationError, 0, len(sd.errs))
-		for _, e := range sd.errs {
-			errs = append(errs, api.OpenAPIValidationError{Message: e.Error()})
-		}
-		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
-	}
-
-	// NewValidator internally calls BuildV3Model and — critically — sets the
-	// document field that ValidateDocument requires. NewValidatorFromV3Model does
-	// not set that field, causing the "Document is not set" error.
-	v, vErrs := openapivalidator.NewValidator(sd.doc)
-	if vErrs != nil {
-		errs := make([]api.OpenAPIValidationError, 0, len(vErrs))
-		for _, e := range vErrs {
-			errs = append(errs, api.OpenAPIValidationError{Message: e.Error()})
-		}
-		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
-	}
-
-	valid, valErrs := v.ValidateDocument()
-	if !valid {
-		errs := make([]api.OpenAPIValidationError, 0, len(valErrs))
-		for _, e := range valErrs {
-			if len(e.SchemaValidationErrors) > 0 {
-				for _, sve := range e.SchemaValidationErrors {
-					var path *string
-					if p := sve.FieldPath; p != "" {
-						path = &p
-					}
-					errs = append(errs, api.OpenAPIValidationError{
-						Message: sve.Reason,
-						Path:    path,
-					})
-				}
-			} else {
-				var path *string
-				if p := e.SpecPath; p != "" {
-					path = &p
-				}
-				errs = append(errs, api.OpenAPIValidationError{
-					Message: e.Message,
-					Path:    path,
-				})
-			}
-		}
-		return api.ValidateOpenAPIResponse{IsValid: false, Errors: errs}
-	}
-	result := api.ValidateOpenAPIResponse{IsValid: true, Errors: []api.OpenAPIValidationError{}}
-	if sd.v3 != nil && sd.v3.Model.Info != nil {
-		title, version := sd.v3.Model.Info.Title, sd.v3.Model.Info.Version
-		result.Info = &api.OpenAPISpecInfo{Title: &title, Version: &version}
-	}
-	return result
 }
 
 // GetOpenAPISpec handles GET /rest-apis/{restApiId}/openapi.
@@ -586,40 +492,43 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return apperror.PayloadTooLarge.New("spec file exceeds maximum allowed size")
 	}
 
-	specFileName := normalizeSpecFileName(header.Filename)
- 
-	// Validate and extract operations from spec
-	specOps, err := h.apiDocumentService.ExtractOperationsFromSpec(specContent)
-	if err != nil {
-		return err
-	}
+	specFileName := h.apiDocumentService.NormalizeSpecFileName(header.Filename)
 
 	updatedBy, err := resolveActorErr(r, h.identity, "update API openapi spec")
 	if err != nil {
 		return err
 	}
 
-	// Fetch existing API to merge operations with policies
+	// Fetch existing API before branching — needed to check read-only status and,
+	// in the non-read-only path, to merge existing operation policies.
 	existingAPI, err := h.apiService.GetAPIByHandle(restApiId, orgId)
 	if err != nil {
 		return serviceError(err, "failed to fetch API "+restApiId+" to sync operations from spec")
 	}
 
-	// Check if API is read-only (gateway-originated)
+	operationsUpdated := false
 	if existingAPI.ReadOnly != nil && *existingAPI.ReadOnly {
-		// Skip operations update for read-only APIs
-		// Proceed directly to spec document update
+		// Read-only API: validate the spec but do not update operations.
+		if result := h.apiDocumentService.ValidateOpenAPISpec(specContent); !result.IsValid {
+			msg := "invalid OpenAPI specification"
+			if len(result.Errors) > 0 {
+				msg = result.Errors[0].Message
+			}
+			return apperror.ValidationFailed.New(msg)
+		}
 	} else {
-		// Merge operations: preserve existing policies
-		syncedOps := mergeOperations(existingAPI.Operations, specOps)
- 
-		// Update API with synced operations
+		// Non-read-only: validate, extract operations, merge with existing policies.
+		syncedOps, err := h.apiDocumentService.ExtractAndMergeOperations(specContent, existingAPI.Operations)
+		if err != nil {
+			return err
+		}
 		updatedAPI := *existingAPI
 		updatedAPI.Operations = &syncedOps
-		_, err := h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy)
+		_, err = h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy)
 		if err != nil {
 			return serviceError(err, "failed to update operations for API "+restApiId+" after spec change")
 		}
+		operationsUpdated = true
 	}
 
 	// Resolve artifact UUID
@@ -629,25 +538,22 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 	}
 
 	// Update document
-	contentType := h.apiDocumentService.GetSpecContentType(specContent)
-	doc := &model.Document{
+	docReq := &dto.PutAPIDocumentRequest{
 		ArtifactUUID:     artifactUUID,
 		OrganizationUUID: orgId,
-		Type:             model.DocumentTypeDefinition,
-		Handle:           model.DocumentHandleDefinition,
-		DisplayName:      "OpenAPI Definition",
 		FileName:         specFileName,
-		ContentType:      contentType,
 		Content:          specContent,
 		UpdatedBy:        updatedBy,
 	}
 
-	if err := h.apiDocumentService.PutDocument(doc); err != nil {
-		// If spec update fails after operations update, we have a consistency issue
-		// Log the error but don't attempt rollback as it would be complex
-		// The UI should reflect spec and operations may be out of sync
-		h.slogger.Error("Failed to persist spec after operations update",
-			"api", restApiId, "error", err)
+	if err := h.apiDocumentService.PutDocument(docReq); err != nil {
+		h.slogger.Error("Failed to persist spec", "api", restApiId, "error", err)
+		if operationsUpdated {
+			if _, rollbackErr := h.apiService.UpdateAPIByHandle(restApiId, existingAPI, orgId, updatedBy); rollbackErr != nil {
+				h.slogger.Error("Failed to restore operations after spec persist failure",
+					"api", restApiId, "error", rollbackErr)
+			}
+		}
 		return serviceError(err, "failed to persist API specification for API "+restApiId)
 	}
 
@@ -730,26 +636,4 @@ func validateUpstreamDefinitions(upstream api.Upstream) error {
 		return apperror.ValidationFailed.New("The upstream sandbox must specify either a url or a ref, not both.")
 	}
 	return nil
-}
-
-func mergeOperations(existing *[]api.Operation, specOps []api.Operation) []api.Operation {
-	if existing == nil {
-		return specOps
-	}
- 
-	existingByKey := make(map[string]api.Operation)
-	for _, op := range *existing {
-		key := strings.ToUpper(string(op.Request.Method)) + ":" + op.Request.Path
-		existingByKey[key] = op
-	}
- 
-	synced := make([]api.Operation, 0, len(specOps))
-	for _, op := range specOps {
-		key := strings.ToUpper(string(op.Request.Method)) + ":" + op.Request.Path
-		if prev, ok := existingByKey[key]; ok && prev.Request.Policies != nil && len(*prev.Request.Policies) > 0 {
-			op.Request.Policies = prev.Request.Policies
-		}
-		synced = append(synced, op)
-	}
-	return synced
 }

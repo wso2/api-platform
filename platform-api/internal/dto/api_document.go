@@ -15,19 +15,30 @@
  *
  */
 
-package model
+package dto
 
-// Document represents a stored document attached to an artifact (e.g. an OpenAPI spec).
-type Document struct {
-	ID               string
+// CreateAPIDocumentRequest carries the raw spec and metadata when persisting a new spec
+// document for an API. The service fills in document type, handle, display name, and content type.
+type CreateAPIDocumentRequest struct {
 	ArtifactUUID     string
 	OrganizationUUID string
-	Type             string
-	Handle           string
-	DisplayName      string
 	FileName         string
-	ContentType      string
 	Content          []byte
 	CreatedBy        string
+}
+
+// PutAPIDocumentRequest carries the raw spec and metadata when replacing an existing
+// spec document for an API. The service fills in document type, handle, display name, and content type.
+type PutAPIDocumentRequest struct {
+	ArtifactUUID     string
+	OrganizationUUID string
+	FileName         string
+	Content          []byte
 	UpdatedBy        string
+}
+
+// APIDocumentContent is returned by GetDocument — the raw spec bytes ready to serve.
+type APIDocumentContent struct {
+	Content     []byte
+	ContentType string
 }

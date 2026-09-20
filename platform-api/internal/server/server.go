@@ -363,7 +363,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
-	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, documentRepo, slogger, cfg)
+	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)

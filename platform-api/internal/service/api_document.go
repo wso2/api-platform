@@ -20,6 +20,7 @@ package service
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	"github.com/pb33f/libopenapi"
@@ -27,6 +28,8 @@ import (
 	openapivalidator "github.com/pb33f/libopenapi-validator"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -49,23 +52,32 @@ func NewAPIDocumentService(documentRepo repository.DocumentRepository, auditRepo
 	}
 }
 
-// CreateDocument creates a new document for an artifact.
-// Generates a unique handle if not provided.
-func (s *APIDocumentService) CreateDocument(doc *model.Document) (string, error) {
-	if doc == nil {
-		return "", apperror.ValidationFailed.New("document is required")
+// CreateDocument creates a new OpenAPI spec document for an artifact.
+func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest) (string, error) {
+	if req == nil {
+		return "", apperror.ValidationFailed.New("document request is required")
 	}
-
-	if doc.ArtifactUUID == "" {
+	if req.ArtifactUUID == "" {
 		return "", apperror.ValidationFailed.New("artifact UUID is required")
 	}
 
-	// for non-singleton types, generate a unique handle if not provided
+	doc := &model.Document{
+		ArtifactUUID:     req.ArtifactUUID,
+		OrganizationUUID: req.OrganizationUUID,
+		Type:             constants.DocumentTypeDefinition,
+		Handle:           constants.DocumentHandleDefinition,
+		DisplayName:      constants.DocumentDisplayNameDefinition,
+		FileName:         req.FileName,
+		ContentType:      s.GetSpecContentType(req.Content),
+		Content:          req.Content,
+		CreatedBy:        req.CreatedBy,
+	}
+
 	if doc.Handle == "" {
 		handle, handleErr := utils.GenerateHandle(doc.DisplayName, func(candidate string) bool {
 			exists, err := s.documentRepo.DocumentHandleExistsForArtifact(doc.ArtifactUUID, candidate)
 			if err != nil {
-				return true // Assume exists on error for safety
+				return true
 			}
 			return exists
 		})
@@ -81,17 +93,20 @@ func (s *APIDocumentService) CreateDocument(doc *model.Document) (string, error)
 		return "", err
 	}
 
-	_ = s.auditRepo.Record("CREATE", doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.CreatedBy)
+	if err := s.auditRepo.Record("CREATE", doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.CreatedBy); err != nil {
+		s.slogger.Error("Failed to record audit entry for document create", "artifactUUID", doc.ArtifactUUID, "error", err)
+		return "", err
+	}
 	return doc.Handle, nil
 }
 
-// GetDocument retrieves a document by artifact UUID and type.
-func (s *APIDocumentService) GetDocument(artifactUUID, orgId string) (*model.Document, error) {
+// GetDocument retrieves an OpenAPI spec document by artifact UUID and org.
+func (s *APIDocumentService) GetDocument(artifactUUID, orgId string) (*dto.APIDocumentContent, error) {
 	if artifactUUID == "" {
 		return nil, apperror.ValidationFailed.New("artifact UUID is required")
 	}
 
-	doc, err := s.documentRepo.GetDocumentByArtifactAndType(artifactUUID, model.DocumentTypeDefinition, orgId)
+	doc, err := s.documentRepo.GetDocumentByArtifactAndType(artifactUUID, constants.DocumentTypeDefinition, orgId)
 	if err != nil {
 		s.slogger.Error("Failed to get document", "artifactUUID", artifactUUID, "error", err)
 		return nil, err
@@ -101,23 +116,36 @@ func (s *APIDocumentService) GetDocument(artifactUUID, orgId string) (*model.Doc
 		return nil, apperror.NotFound.New("API definition not found")
 	}
 
-	return doc, nil
+	return &dto.APIDocumentContent{
+		Content:     doc.Content,
+		ContentType: doc.ContentType,
+	}, nil
 }
 
-// PutDocument updates or creates a document for an artifact.
+// PutDocument updates or creates an OpenAPI spec document for an artifact.
 // If a document of the same type already exists, it is updated in-place.
-// If no document exists, a new one is created with a generated handle.
-func (s *APIDocumentService) PutDocument(doc *model.Document) error {
-	if doc == nil {
-		return apperror.ValidationFailed.New("document is required")
+// If no document exists, a new one is created.
+func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest) error {
+	if req == nil {
+		return apperror.ValidationFailed.New("document request is required")
 	}
-
-	if doc.ArtifactUUID == "" {
+	if req.ArtifactUUID == "" {
 		return apperror.ValidationFailed.New("artifact UUID is required")
 	}
 
-	// Check if document already exists
-	existing, err := s.documentRepo.GetDocumentByArtifactAndType(doc.ArtifactUUID, model.DocumentTypeDefinition, doc.OrganizationUUID)
+	doc := &model.Document{
+		ArtifactUUID:     req.ArtifactUUID,
+		OrganizationUUID: req.OrganizationUUID,
+		Type:             constants.DocumentTypeDefinition,
+		Handle:           constants.DocumentHandleDefinition,
+		DisplayName:      constants.DocumentDisplayNameDefinition,
+		FileName:         req.FileName,
+		ContentType:      s.GetSpecContentType(req.Content),
+		Content:          req.Content,
+		UpdatedBy:        req.UpdatedBy,
+	}
+
+	existing, err := s.documentRepo.GetDocumentByArtifactAndType(doc.ArtifactUUID, constants.DocumentTypeDefinition, doc.OrganizationUUID)
 	if err != nil {
 		s.slogger.Error("Failed to check existing document", "artifactUUID", doc.ArtifactUUID, "error", err)
 		return err
@@ -125,15 +153,13 @@ func (s *APIDocumentService) PutDocument(doc *model.Document) error {
 
 	isUpdate := existing != nil
 	if isUpdate {
-		// Reuse existing handle to update in-place
 		doc.Handle = existing.Handle
 	} else {
-		// Generate a new handle if updating a non-existent document
 		if doc.Handle == "" {
 			handle, handleErr := utils.GenerateHandle(doc.DisplayName, func(candidate string) bool {
 				exists, err := s.documentRepo.DocumentHandleExistsForArtifact(doc.ArtifactUUID, candidate)
 				if err != nil {
-					return true // Assume exists on error for safety
+					return true
 				}
 				return exists
 			})
@@ -150,15 +176,14 @@ func (s *APIDocumentService) PutDocument(doc *model.Document) error {
 		return err
 	}
 
-	actor := doc.UpdatedBy
-	if actor == "" {
-		actor = doc.CreatedBy
-	}
 	action := "CREATE"
 	if isUpdate {
 		action = "UPDATE"
 	}
-	_ = s.auditRepo.Record(action, doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, actor)
+	if err := s.auditRepo.Record(action, doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.UpdatedBy); err != nil {
+		s.slogger.Error("Failed to record audit entry for document upsert", "artifactUUID", doc.ArtifactUUID, "error", err)
+		return err
+	}
 	return nil
 }
 
@@ -211,6 +236,45 @@ func (s *APIDocumentService) ExtractOperationsFromSpec(specContent []byte) ([]ap
 	}
 
 	return extractOperations(sd), nil
+}
+
+// NormalizeSpecFileName strips the directory component from an uploaded filename,
+// storing only the bare name (file-access rule: filename only in storage).
+func (s *APIDocumentService) NormalizeSpecFileName(name string) string {
+	return filepath.Base(name)
+}
+
+// ExtractAndMergeOperations validates the spec, extracts its operations, and
+// merges them with existing ones, preserving per-operation policies.
+// Use this in the non-read-only spec update path where all three steps are needed.
+func (s *APIDocumentService) ExtractAndMergeOperations(specContent []byte, existing *[]api.Operation) ([]api.Operation, error) {
+	specOps, err := s.ExtractOperationsFromSpec(specContent)
+	if err != nil {
+		return nil, err
+	}
+	return s.MergeOperations(existing, specOps), nil
+}
+
+// MergeOperations merges spec-derived operations with existing ones, preserving
+// per-operation policies so a spec update doesn't silently drop attached policies.
+func (s *APIDocumentService) MergeOperations(existing *[]api.Operation, specOps []api.Operation) []api.Operation {
+	if existing == nil {
+		return specOps
+	}
+	existingByKey := make(map[string]api.Operation)
+	for _, op := range *existing {
+		key := strings.ToUpper(string(op.Request.Method)) + ":" + op.Request.Path
+		existingByKey[key] = op
+	}
+	synced := make([]api.Operation, 0, len(specOps))
+	for _, op := range specOps {
+		key := strings.ToUpper(string(op.Request.Method)) + ":" + op.Request.Path
+		if prev, ok := existingByKey[key]; ok && prev.Request.Policies != nil && len(*prev.Request.Policies) > 0 {
+			op.Request.Policies = prev.Request.Policies
+		}
+		synced = append(synced, op)
+	}
+	return synced
 }
 
 // GetSpecContentType determines the content type (JSON or YAML) for spec content.

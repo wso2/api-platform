@@ -260,6 +260,18 @@ var ValidThrottleLimitUnits = map[string]bool{
 	ThrottleLimitUnitMonth:  true,
 }
 
+// DefaultOpenAPISpecMaxBytes is the fallback maximum size for an OpenAPI specification
+// upload or fetch when OpenAPISpecMaxFetchBytes is not set in config.
+const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
+
+// API document type and handle constants for the singleton doc types
+// Currenlty only the OpenAPI definition is a singleton doc type
+const (
+	DocumentTypeDefinition   = "DEFINITION"
+	DocumentHandleDefinition = "api-definition"
+	DocumentDisplayNameDefinition = "OpenAPI Definition"
+)
+
 // Metadata key constants for deployment metadata
 const (
 	// MetadataKeyEndpointUrl is the metadata key for the per-deployment endpoint URL override.
