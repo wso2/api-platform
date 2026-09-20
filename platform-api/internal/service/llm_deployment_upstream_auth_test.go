@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -179,8 +180,13 @@ func TestUpstreamAuthOverride_RefusesAReferenceToASecretTheOrganizationDoesNotHa
 	if err == nil {
 		t.Fatal("expected a reference to an unknown secret to be refused")
 	}
-	if !strings.Contains(err.Error(), "missing-key") {
-		t.Errorf("message %q does not name the missing secret", err.Error())
+	// The refusal must not carry the handle: it reaches the client verbatim and is
+	// logged with the request, and the caller already knows what it sent.
+	if strings.Contains(err.Error(), "missing-key") {
+		t.Errorf("message %q names the secret handle", err.Error())
+	}
+	if !apperror.LLMProviderDeploymentValidationFailed.Is(err) {
+		t.Errorf("error %v is not a deployment validation failure", err)
 	}
 }
 

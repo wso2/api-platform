@@ -892,6 +892,15 @@ func (s *LLMProviderDeploymentService) applyUpstreamAuthOverride(
 	}
 	if s.secretService != nil {
 		if err := s.secretService.ValidateSecretRefs(orgUUID, value); err != nil {
+			// The validator names the handles it could not resolve, which is how it
+			// reports a whole config at once. Here there is exactly one, and the caller
+			// supplied it, so naming it back buys nothing and puts a secret handle into
+			// the response body and the request log. Say only that it did not resolve.
+			if apperror.ValidationFailed.Is(err) {
+				return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+					"Metadata %q references a secret that does not exist in this organization.",
+					constants.MetadataKeyUpstreamAuthValue))
+			}
 			return err
 		}
 	}
