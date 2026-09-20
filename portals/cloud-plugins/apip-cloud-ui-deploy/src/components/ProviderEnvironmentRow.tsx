@@ -195,17 +195,21 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
                 >
                   <StatusDot tone={gateway.health === 'active' ? 'success' : 'default'} />
                   <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                      {gateway.name}
-                      {gateway.isDefault ? ' · Default' : ''}
-                    </Typography>
+                    {/* The state sits with the name it describes, leaving the right of the
+                        row to the one action. */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                        {gateway.name}
+                        {gateway.isDefault ? ' · Default' : ''}
+                      </Typography>
+                      <StatusPill tone={gatewayStatusTone(gateway.status)} variant="outlined" />
+                    </Box>
                     {gateway.host ? (
                       <Typography variant="caption" color="text.secondary" noWrap display="block">
                         {gateway.host}
                       </Typography>
                     ) : null}
                   </Box>
-                  <StatusPill tone={gatewayStatusTone(gateway.status)} variant="outlined" />
                   <Button
                     size="small"
                     color="error"
