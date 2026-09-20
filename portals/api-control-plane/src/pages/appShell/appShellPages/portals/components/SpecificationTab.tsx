@@ -17,7 +17,7 @@
  */
 
 import { lazy, Suspense, useState } from 'react';
-import { Alert, Box, Button, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@wso2/oxygen-ui';
 import { Pencil } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -51,6 +51,11 @@ const messages = defineMessages({
     defaultMessage: 'This is not valid {format}: {detail}',
     description: '{format} is JSON or YAML; {detail} is the parser’s own message naming the line.',
   },
+  invalidOpenApi: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.invalidOpenApi',
+    defaultMessage: 'This is not a valid OpenAPI definition:',
+    description: 'Heading above the list of OpenAPI validation errors.',
+  },
   formatLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel',
     defaultMessage: 'Source format',
@@ -74,6 +79,8 @@ export type SpecificationTabProps = {
   onFormatChange: (format: SpecFormat) => void;
   /** The parser's own complaint, when the current buffer doesn't read in its format. */
   parseError?: string;
+  /** The backend validator's complaints, when the text parses but is not a valid OpenAPI document. */
+  validationErrors?: string[];
   /** The definition's raw text, in `format`. */
   text: string;
 };
@@ -93,6 +100,7 @@ export function SpecificationTab({
   onFormatChange,
   parseError,
   text,
+  validationErrors,
 }: SpecificationTabProps) {
   const intl = useIntl();
   const [isEditing, setIsEditing] = useState(false);
@@ -100,7 +108,7 @@ export function SpecificationTab({
   const hasText = text.trim() !== '';
   // A definition that failed to parse sends the user back here to fix it, so
   // it stays editable without another click.
-  const editable = isEditing || !hasText || Boolean(parseError);
+  const editable = isEditing || !hasText || Boolean(parseError) || Boolean(validationErrors?.length);
 
   const switchFormat = (next: SpecFormat) => {
     if (next === format || disabled) return;
@@ -168,6 +176,18 @@ export function SpecificationTab({
             {...messages.malformed}
             values={{ detail: parseError, format: FORMAT_LABELS[format] }}
           />
+        </Alert>
+      )}
+      {validationErrors && validationErrors.length > 0 && (
+        <Alert severity="error" sx={{ borderRadius: 0, flexShrink: 0 }}>
+          <FormattedMessage {...messages.invalidOpenApi} />
+          <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+            {validationErrors.map((message, index) => (
+              <Typography component="li" key={index} variant="body2">
+                {message}
+              </Typography>
+            ))}
+          </Box>
         </Alert>
       )}
       <Box sx={{ flex: 1, minHeight: 0 }}>

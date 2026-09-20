@@ -20,6 +20,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime"
@@ -219,11 +220,47 @@ func (h *PublicationHandler) SaveDraftDefinition(w http.ResponseWriter, r *http.
 		return bodyReadError(err, apperror.APIPublicationValidationFailed.New("definition upload could not be read"))
 	}
 
+	if apiType == restAPITypeValue {
+		if err := validateRestDefinition(contentType, data); err != nil {
+			return err
+		}
+	}
+
 	if err := h.service.SaveDraftDefinition(apiType, apiId, apiPortalId, orgId, actor, contentType, data); err != nil {
 		return serviceError(err, "failed to save publication draft definition")
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+// validateRestDefinition rejects a JSON/YAML REST definition that is not a
+// valid OpenAPI 3.x document. An empty definition ("" or "{}") is accepted:
+// the editor saves "{}" when nothing was entered and the portal decides
+// whether a listing without a definition is acceptable.
+func validateRestDefinition(contentType string, data []byte) error {
+	if contentType != "application/json" && contentType != "application/x-yaml" {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "{}" {
+		return nil
+	}
+	sd, err := service.LoadSpecDocument([]byte(trimmed))
+	if err != nil {
+		return apperror.APIPublicationValidationFailed.New("definition is not a valid OpenAPI 3.x document: " + err.Error())
+	}
+	result := service.ValidateSpec(sd)
+	if result.IsValid {
+		return nil
+	}
+	msg := "definition is not a valid OpenAPI 3.x document"
+	if len(result.Errors) > 0 {
+		msg += ": " + result.Errors[0].Message
+		if len(result.Errors) > 1 {
+			msg += fmt.Sprintf(" (and %d more)", len(result.Errors)-1)
+		}
+	}
+	return apperror.APIPublicationValidationFailed.New(msg)
 }
 
 // GetDraftLandingPage handles GET .../draft/landing-page

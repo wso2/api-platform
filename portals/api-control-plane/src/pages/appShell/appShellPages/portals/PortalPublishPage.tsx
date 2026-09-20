@@ -34,7 +34,7 @@ import {
   useUnpublishRestApiFromApiPortal,
   type DraftDefinitionDocument,
 } from '@/api/resources/apiPublications';
-import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
+import { useRestApi, useRestApiOpenApi, useValidateOpenApiSpec } from '@/api/resources/restApis';
 import { isApiError } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
@@ -248,6 +248,7 @@ export function PortalPublishPage() {
   // has ever been uploaded.
   const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
 
+  const validateOpenApi = useValidateOpenApiSpec();
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition();
   const publishMutation = usePublishRestApiToApiPortal();
@@ -260,6 +261,7 @@ export function PortalPublishPage() {
   const [definitionText, setDefinitionText] = useState('');
   const [definitionFormat, setDefinitionFormat] = useState<SpecFormat>('json');
   const [definitionParseError, setDefinitionParseError] = useState<string>();
+  const [definitionValidationErrors, setDefinitionValidationErrors] = useState<string[]>();
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
   const [confirmingDeprecate, setConfirmingDeprecate] = useState(false);
@@ -340,22 +342,37 @@ export function PortalPublishPage() {
   const touchAllFields = () =>
     setTouched({ displayName: true, version: true, productionUrl: true, sandboxUrl: true });
 
-  /** Parses the definition buffer, surfacing a malformed one on its own tab rather than failing silently. */
-  const parseDefinition = (): DraftDefinitionDocument | undefined => {
+  /**
+   * Reads the definition buffer and checks it is a valid OpenAPI document,
+   * surfacing either problem on its own tab. If the validator itself can't be
+   * reached the save goes ahead — the server checks again.
+   */
+  const parseDefinition = async (): Promise<DraftDefinitionDocument | undefined> => {
+    setDefinitionValidationErrors(undefined);
     if (definitionText.trim() === '') {
       setDefinitionParseError(undefined);
       return {};
     }
     const result = parseSpecText(definitionText, definitionFormat);
-    if (result.status === 'parsed') {
-      setDefinitionParseError(undefined);
-      return result.spec;
+    if (result.status !== 'parsed') {
+      setDefinitionParseError(
+        result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
+      );
+      setTab('specification');
+      return undefined;
     }
-    setDefinitionParseError(
-      result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
-    );
-    setTab('specification');
-    return undefined;
+    setDefinitionParseError(undefined);
+    try {
+      const validation = await validateOpenApi.mutateAsync(definitionText);
+      if (!validation.isValid) {
+        setDefinitionValidationErrors(validation.errors.map((error) => error.message));
+        setTab('specification');
+        return undefined;
+      }
+    } catch {
+      // Validator unreachable; the server enforces the same check on save.
+    }
+    return result.spec;
   };
 
   /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
@@ -365,7 +382,7 @@ export function PortalPublishPage() {
       setTab('details');
       return false;
     }
-    const definitionDocument = parseDefinition();
+    const definitionDocument = await parseDefinition();
     if (!definitionDocument) return false;
 
     await saveDraftMutation.mutateAsync({
@@ -479,9 +496,11 @@ export function PortalPublishPage() {
                   onChange={(text) => {
                     setDefinitionText(text);
                     if (definitionParseError) setDefinitionParseError(undefined);
+                    if (definitionValidationErrors) setDefinitionValidationErrors(undefined);
                   }}
                   parseError={definitionParseError}
                   text={definitionText}
+                  validationErrors={definitionValidationErrors}
                 />
               )}
             </Box>

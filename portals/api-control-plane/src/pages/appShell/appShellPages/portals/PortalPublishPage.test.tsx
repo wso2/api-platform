@@ -43,6 +43,13 @@ import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { PortalPublishPage } from './PortalPublishPage';
 
 // Monaco does not run in jsdom; a textarea stands in for it.
+// The real validator posts multipart form data, which never completes under jsdom + MSW.
+const { validateOpenApi } = vi.hoisted(() => ({ validateOpenApi: vi.fn() }));
+vi.mock('@/api/resources/restApis', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/resources/restApis')>()),
+  useValidateOpenApiSpec: () => ({ mutateAsync: validateOpenApi }),
+}));
+
 vi.mock('@/components/CodeEditor/CodeEditor', () => ({
   CodeEditor: ({
     ariaLabel,
@@ -158,6 +165,7 @@ const YAML_DEFINITION =
   'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n';
 
 beforeEach(() => {
+  validateOpenApi.mockReset().mockResolvedValue({ errors: [], isValid: true });
   requests = recorder();
   resetHttpClient();
 });
@@ -345,6 +353,50 @@ describe('PortalPublishPage', () => {
 
     expect(await screen.findByText(/This is not valid YAML:/)).toBeInTheDocument();
     expect(definitionRequests.count()).toBe(0);
+  });
+
+  it('lists the OpenAPI validation errors on the Specification tab and saves nothing', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const detailsRequests = recorder();
+    const definitionRequests = recorder();
+    validateOpenApi.mockResolvedValueOnce({
+      errors: [{ message: "missing properties 'info'" }, { message: "'paths' is required" }],
+      isValid: false,
+    });
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: detailsRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+      accepts('post', PUBLISH_PATH, aPublication(), { record: requests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText('This is not a valid OpenAPI definition:')).toBeInTheDocument();
+    expect(screen.getByText("missing properties 'info'")).toBeInTheDocument();
+    expect(screen.getByText("'paths' is required")).toBeInTheDocument();
+    expect(detailsRequests.count()).toBe(0);
+    expect(definitionRequests.count()).toBe(0);
+    expect(requests.count()).toBe(0);
+  });
+
+  it('still saves when the OpenAPI validator cannot be reached', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const definitionRequests = recorder();
+    validateOpenApi.mockRejectedValueOnce(new Error('validator down'));
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
   });
 
   it('still opens with a definition that was saved as JSON', async () => {
