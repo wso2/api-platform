@@ -94,11 +94,17 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
       <AccordionSummary
         sx={{
           px: 3,
+          py: 1.5,
+          // Two lines of content need room MUI's default summary height does not give,
+          // and the expanded height must not jump when the row opens.
+          minHeight: 72,
+          '&.Mui-expanded': { minHeight: 72 },
           '& .MuiAccordionSummary-content': {
             m: 0,
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 2,
+            '&.Mui-expanded': { m: 0 },
           },
         }}
       >
@@ -106,7 +112,7 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
           {/* What this provider is doing here comes first; what the environment could do
               is the quieter second line. */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
-            <Typography sx={{ fontWeight: 600 }}>{environment.name}</Typography>
+            <Typography sx={{ fontWeight: 600, fontSize: 15 }}>{environment.name}</Typography>
             <Typography variant="body2" color="text.secondary" noWrap>
               {gateways.length === 0
                 ? 'No gateways'
@@ -134,7 +140,7 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
           )}
           </Box>
           {gateways.length > 0 ? (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
               {activeCount} of {gateways.length} gateway{gateways.length === 1 ? '' : 's'} active
             </Typography>
           ) : null}
@@ -167,7 +173,7 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
         </Box>
       </AccordionSummary>
 
-      <AccordionDetails sx={{ px: 3, pb: 2.5, pt: 0 }}>
+      <AccordionDetails sx={{ px: 3, pb: 3, pt: 0.5 }}>
         {gateways.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             No AI gateway is bound to this environment yet.
@@ -185,7 +191,7 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
                   key={gateway.id}
                   sx={{
                     px: 2,
-                    py: 1.25,
+                    py: 1.75,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 1.5,

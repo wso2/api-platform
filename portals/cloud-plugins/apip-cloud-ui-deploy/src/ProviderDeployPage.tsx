@@ -107,7 +107,7 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
           </Typography>
         </Box>
       ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {environments.map((environment) => (
             <ProviderEnvironmentRow
               key={environment.name}
