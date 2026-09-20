@@ -124,6 +124,10 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
         await load({ quiet: true });
       } catch (actionError) {
         notify(errorMessage(actionError, failure), 'error');
+        // Re-read after a failure too. A refusal is often the page acting on something
+        // that has since moved — a deployment already stopped, a build already gone — and
+        // leaving the stale view up invites the same click again.
+        await load({ quiet: true });
       } finally {
         setBusy(false);
       }

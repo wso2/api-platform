@@ -54,6 +54,17 @@ export function activeGatewayCount(gateways: Gateway[]): number {
   return gateways.filter((gateway) => gateway.health === 'active').length;
 }
 
+/**
+ * How many of an environment's gateways are serving this artifact right now. This is the
+ * deployment, not the gateway: it answers "where is this running", which is what the page
+ * is about, whereas a gateway being up only says where it could run.
+ */
+export function deployedGatewayCount(gateways: Gateway[]): number {
+  return gateways.filter(
+    (gateway) => gateway.status === 'DEPLOYED' || gateway.status === 'DEPLOYING'
+  ).length;
+}
+
 /** Whether anything has ever been deployed in this environment — gates the Promote button. */
 export function hasAnyDeployment(gateways: Gateway[]): boolean {
   return gateways.some((gateway) => gateway.status !== 'NOT_DEPLOYED');

@@ -66,10 +66,9 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
   onDeleteBuild,
 }) => {
   const [target, setTarget] = useState<Environment | null>(null);
-  // The first environment opens by default; the rest are a click away.
-  const [expandedEnvironments, setExpandedEnvironments] = useState<string[]>(
-    environments[0] ? [environments[0].name] : []
-  );
+  // Nothing opens by default: the summary lines carry what the page is read for, and an
+  // environment opened for you is one you did not choose.
+  const [expandedEnvironments, setExpandedEnvironments] = useState<string[]>([]);
 
   // The dialog renders from the freshly loaded environment rather than the one
   // captured when it opened, so a background refresh keeps its gateway list and
@@ -86,6 +85,17 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
           Deploy this provider to the gateways of your environments.
         </PageTitle.SubHeader>
       </PageTitle>
+
+      {/* Half width: it is a short list of short lines, and stretching it across the page
+          gave every build a line of empty space to sit in. */}
+      <Box sx={{ maxWidth: { xs: '100%', md: '50%' }, mb: 2 }}>
+        <ProviderBuildsCard
+          builds={builds}
+          undeletableBuilds={undeletableBuildReasons(environments)}
+          busy={busy}
+          onDeleteBuild={onDeleteBuild}
+        />
+      </Box>
 
       {environments.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -117,18 +127,6 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
           ))}
         </Box>
       )}
-
-      {/* Below the environments, not above them: deleting a build is housekeeping for
-          when the provider hits its build limit, and the environments are what the page
-          is read for. */}
-      <Box sx={{ mt: 3 }}>
-        <ProviderBuildsCard
-          builds={builds}
-          undeletableBuilds={undeletableBuildReasons(environments)}
-          busy={busy}
-          onDeleteBuild={onDeleteBuild}
-        />
-      </Box>
 
       <ProviderDeployDrawer
         open={openTarget !== null}

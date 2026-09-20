@@ -120,20 +120,15 @@ const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
                   '&:first-of-type': { borderTop: 'none' },
                 }}
               >
-                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
-                  {build.buildId}
-                </Typography>
-                {build.createdAt ? (
-                  <Typography variant="caption" color="text.secondary" noWrap>
-                    {relativeTime(build.createdAt)}
+                <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13 }} noWrap>
+                    {build.buildId}
                   </Typography>
-                ) : null}
-                {build.description ? (
-                  <Typography variant="caption" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
-                    · {build.description}
+                  <Typography variant="caption" color="text.secondary" noWrap display="block">
+                    {build.createdAt ? relativeTime(build.createdAt) : ''}
+                    {build.description ? ` · ${build.description}` : ''}
                   </Typography>
-                ) : null}
-                <Box sx={{ flexGrow: 1 }} />
+                </Box>
                 {confirming ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography variant="caption" color="text.secondary">

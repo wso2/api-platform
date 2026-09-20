@@ -28,8 +28,10 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, Rocket } from '@wso2/oxygen-ui-icons-react';
-import GatewayRow from './GatewayRow';
-import { activeGatewayCount } from '../utils/status';
+import StatusDot from './StatusDot';
+import StatusPill from './StatusPill';
+import { gatewayStatusTone } from '../utils/status';
+import { activeGatewayCount, deployedGatewayCount } from '../utils/status';
 import type { Environment } from '../types';
 
 export type ProviderEnvironmentRowProps = {
@@ -59,6 +61,7 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
 }) => {
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
+  const deployedCount = deployedGatewayCount(gateways);
   // What the environment is serving: the distinct builds across gateways that are up. More
   // than one means its gateways are split, which is worth saying rather than picking one.
   const runningBuilds = Array.from(
@@ -99,13 +102,16 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
           },
         }}
       >
-        <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Typography sx={{ fontWeight: 600 }}>{environment.name}</Typography>
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {gateways.length === 0
-              ? 'No gateways'
-              : `${activeCount} of ${gateways.length} gateway${gateways.length === 1 ? '' : 's'} active`}
-          </Typography>
+        <Box sx={{ minWidth: 0 }}>
+          {/* What this provider is doing here comes first; what the environment could do
+              is the quieter second line. */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 600 }}>{environment.name}</Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {gateways.length === 0
+                ? 'No gateways'
+                : `Deployed on ${deployedCount} of ${gateways.length} gateway${gateways.length === 1 ? '' : 's'}`}
+            </Typography>
           {runningBuilds.length === 1 ? (
             <Chip
               size="small"
@@ -126,6 +132,12 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
               Nothing deployed
             </Typography>
           )}
+          </Box>
+          {gateways.length > 0 ? (
+            <Typography variant="caption" color="text.secondary">
+              {activeCount} of {gateways.length} gateway{gateways.length === 1 ? '' : 's'} active
+            </Typography>
+          ) : null}
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
@@ -161,17 +173,51 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
             No AI gateway is bound to this environment yet.
           </Typography>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {gateways.map((gateway) => (
-              <GatewayRow
-                key={gateway.id}
-                gateway={gateway}
-                environmentName={environment.name}
-                busy={busy}
-                showEndpointUrl={false}
-                onStop={() => onStopGateway(gateway.id)}
-              />
-            ))}
+          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            {gateways.map((gateway, index) => {
+              // Stopping is offered on the gateway's own line rather than behind another
+              // disclosure: it is the only thing there is to do to a gateway here, and a
+              // second thing to open before reaching it read as though it were missing.
+              const canStop =
+                !busy && !!gateway.deploymentId && ['DEPLOYED', 'FAILED'].includes(gateway.status);
+              return (
+                <Box
+                  key={gateway.id}
+                  sx={{
+                    px: 2,
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    borderTop: index === 0 ? 'none' : '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <StatusDot tone={gateway.health === 'active' ? 'success' : 'default'} />
+                  <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                      {gateway.name}
+                      {gateway.isDefault ? ' · Default' : ''}
+                    </Typography>
+                    {gateway.host ? (
+                      <Typography variant="caption" color="text.secondary" noWrap display="block">
+                        {gateway.host}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                  <StatusPill tone={gatewayStatusTone(gateway.status)} variant="outlined" />
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    disabled={!canStop}
+                    onClick={() => onStopGateway(gateway.id)}
+                  >
+                    Stop
+                  </Button>
+                </Box>
+              );
+            })}
           </Box>
         )}
       </AccordionDetails>
