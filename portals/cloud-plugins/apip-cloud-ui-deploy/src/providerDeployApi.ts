@@ -148,6 +148,21 @@ export function createProviderDeployClient(apiFetch: ApiFetch, providerHandle: s
     },
 
     /**
+     * Discards a credential stored for a deploy that then failed, so a key typed into
+     * a deploy that never happened does not linger in the organization's secrets.
+     *
+     * Safe to call whenever the deploy did not report success, including when its
+     * outcome is unknown: the platform refuses to delete a secret a deployment
+     * references, so one that did reach a gateway survives this. A refusal is
+     * therefore the correct answer, not an error worth surfacing.
+     */
+    async discardCredential(reference: string): Promise<void> {
+      const handle = reference.match(/^\{\{\s*secret\s+"([^"]+)"\s*\}\}$/)?.[1];
+      if (!handle) return;
+      await apiFetch('DELETE', `/secrets/${encodeURIComponent(handle)}`);
+    },
+
+    /**
      * Deploys the provider as it stands onto every gateway named of one
      * environment. The gateways go in one call because the environment is deployed
      * as a set: if any gateway fails, the backend puts them all back.

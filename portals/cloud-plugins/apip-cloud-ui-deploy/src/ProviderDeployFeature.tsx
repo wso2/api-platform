@@ -144,6 +144,10 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
    * The exchange happens per gateway before any deploy is sent, so a key that cannot be
    * stored fails the whole action rather than deploying some gateways on their new key
    * and the rest on their old one.
+   *
+   * Every reference this action creates is tracked, and any the deploy did not go on to
+   * use is discarded — otherwise a failed deploy would leave the key it stored sitting
+   * in the organization's secrets, referenced by nothing and belonging to no one.
    */
   const handleDeploy = (
     target: Environment,
@@ -153,23 +157,37 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
     if (!client || gateways.length === 0) return;
     void runAction(
       async () => {
-        const targets = await Promise.all(
-          gateways.map(async (gateway) => {
-            if (!gateway.apiKey) {
-              return { gatewayId: gateway.gatewayId, endpointUrl: gateway.endpointUrl };
-            }
-            const name =
-              target.gateways.find((candidate) => candidate.id === gateway.gatewayId)?.name ??
-              gateway.gatewayId;
-            return {
-              gatewayId: gateway.gatewayId,
-              apiKey: await client.storeCredential(gateway.apiKey, `${handle} · ${target.name} · ${name}`),
-              authHeader: gateway.authHeader,
-              endpointUrl: gateway.endpointUrl,
-            };
-          })
-        );
-        await client.deploy({ environment: target.name, gateways: targets, buildId });
+        const stored: string[] = [];
+        try {
+          const targets = await Promise.all(
+            gateways.map(async (gateway) => {
+              if (!gateway.apiKey) {
+                return { gatewayId: gateway.gatewayId, endpointUrl: gateway.endpointUrl };
+              }
+              const name =
+                target.gateways.find((candidate) => candidate.id === gateway.gatewayId)?.name ??
+                gateway.gatewayId;
+              const reference = await client.storeCredential(
+                gateway.apiKey,
+                `${handle} · ${target.name} · ${name}`
+              );
+              stored.push(reference);
+              return {
+                gatewayId: gateway.gatewayId,
+                apiKey: reference,
+                authHeader: gateway.authHeader,
+                endpointUrl: gateway.endpointUrl,
+              };
+            })
+          );
+          await client.deploy({ environment: target.name, gateways: targets, buildId });
+        } catch (deployError) {
+          // Discarding is safe even when the deploy's outcome is unknown: the platform
+          // refuses to delete a secret a deployment references, so a key that did reach
+          // a gateway survives. The original failure is what the user is told about.
+          await Promise.allSettled(stored.map((reference) => client.discardCredential(reference)));
+          throw deployError;
+        }
       },
       `Deploying to ${target.name}.`,
       `Unable to deploy to ${target.name}.`
