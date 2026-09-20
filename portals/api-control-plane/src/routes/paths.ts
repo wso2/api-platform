@@ -228,6 +228,14 @@ export const routes = {
     projectHandler = ':projectHandler',
     apiHandler = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'portals'),
+  // Reached only from the Portals page's own card — like `apiEdit`/`newApi`,
+  // there is no sidebar link to it and so no scope-less alias to register.
+  apiPortalPublish: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler',
+    apiPortalId = ':apiPortalId',
+  ) => apiPath(orgHandle, projectHandler, apiHandler, `portals/${apiPortalId}`),
   apiAdmin: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

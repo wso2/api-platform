@@ -44,14 +44,16 @@ import { AppSidebar } from './AppSidebar';
 import { FormattedMessage, useIntl } from 'react-intl';
 
 /**
- * Full-page creation flows, which the shell renders without a breadcrumb trail.
+ * Full-page flows, which the shell renders without a breadcrumb trail.
  *
- * A wizard is creating the very scope a trail would describe, so the crumbs can
- * only point at where the user came from — noise beside a form that owns the
- * whole page. Built from the route builders rather than written out, so a path
- * change cannot silently stop matching (`routes.*` is the single source).
+ * A creation wizard is building the very scope a trail would describe, and the
+ * API publication page has its own back button to the list it came from, so the
+ * crumbs can only repeat where the user came from — noise beside a form that
+ * owns the whole page. Built from the route builders rather than written out,
+ * so a path change cannot silently stop matching (`routes.*` is the single
+ * source).
  */
-const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway()];
+const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway(), routes.apiPortalPublish()];
 
 export default function AppLayout() {
   const intl = useIntl();
