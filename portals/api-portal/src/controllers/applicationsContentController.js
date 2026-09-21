@@ -29,6 +29,9 @@ const sampleApiLoader = require('../utils/sampleApiLoader');
 const kmDao = require('../dao/keyManagerDao');
 const adminService = require('../services/adminService');
 const apiKeyService = require('../services/apiKeyService');
+const oauth2KeyDao = require('../dao/oauth2ConsumerKeyDao');
+const keyAppMappingDao = require('../dao/oauth2KeyAppMappingDao');
+const kmRegistry = require('../services/keyManagerRegistry');
 const { CustomError } = require('../utils/errors/customErrors');
 
 const orgIDValue = async (orgName) => {
@@ -55,8 +58,7 @@ const buildProfile = (req) => {
 };
 
 /**
- * Shared data loader for both application overview and manage-keys pages.
- * Keeps loadApplication / loadApplicationKeys lean and avoids drift between the two.
+ * Shared data loader for the application page.
  */
 const loadApplicationData = async (req, orgName, applicationHandle, viewName) => {
     const orgId = await orgIDValue(orgName);
@@ -241,7 +243,7 @@ const loadApplications = async (req, res, next) => {
 // ***** Load Application *****
 
 const loadApplication = async (req, res, next) => {
-    let html, templateContent, metaData, kMmetaData;
+    let html, templateContent, metaData;
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
@@ -249,31 +251,22 @@ const loadApplication = async (req, res, next) => {
         const applicationHandle = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
         metaData = data.applicationList;
-        kMmetaData = data.keyManagersMetadata;
-        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId, resolveActor(req));
+        const actor = resolveActor(req);
+        const { associatedApiKeys, availableKeysByApi } = await loadApplicationApiKeysData(data.orgId, data.applicationId, actor);
+        const { associatedOAuth2Keys, availableOAuth2Keys } = await loadApplicationOAuth2KeysData(data.orgId, data.applicationId, actor);
 
+        // productionKeys / sandboxKeys / applicationKeys / keyManagersMetadata /
+        // subscriptionScopes fed the removed "Manage Keys" section and nothing else
+        // on this page, so they are no longer passed to the template.
         templateContent = {
             orgId: data.orgId,
             applicationMetadata: metaData,
-            keyManagersMetadata: kMmetaData,
             baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            productionKeys: data.productionKeys,
-            sandboxKeys: data.sandboxKeys,
-            applicationKeys: [
-                {
-                    keys: data.productionKeys,
-                    keyType: constants.KEY_TYPE.PRODUCTION
-                },
-                {
-                    keys: data.sandboxKeys,
-                    keyType: constants.KEY_TYPE.SANDBOX
-                }
-            ],
-            isProduction: true,
-            subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             associatedApiKeys,
-            availableKeysByApi
+            availableKeysByApi,
+            associatedOAuth2Keys,
+            availableOAuth2Keys
         }
         const templateResponse = await templateResponseValue('application');
         const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
@@ -300,62 +293,6 @@ const loadApplication = async (req, res, next) => {
     res.send(html);
 }
 
-const loadApplicationKeys = async (req, res, next) => {
-    let html, templateContent, metaData, kMmetaData;
-    const viewName = req.params.viewName;
-    const orgName = req.params.orgName;
-    const orgDetails = await orgDao.get(orgName);
-    try {
-        const applicationHandle = req.params.applicationId;
-        const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
-        metaData = data.applicationList;
-        kMmetaData = data.keyManagersMetadata;
-
-        templateContent = {
-            orgId: data.orgId,
-            applicationMetadata: metaData,
-            keyManagersMetadata: kMmetaData,
-            baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-            productionKeys: data.productionKeys,
-            sandboxKeys: data.sandboxKeys,
-            applicationKeys: [
-                {
-                    keys: data.productionKeys,
-                    keyType: constants.KEY_TYPE.PRODUCTION
-                },
-                {
-                    keys: data.sandboxKeys,
-                    keyType: constants.KEY_TYPE.SANDBOX
-                }
-            ],
-            subscriptionScopes: data.subscriptionScopes,
-            profile: req.isAuthenticated() ? data.profile : null,
-        }
-        const templateResponse = await templateResponseValue('manage-keys');
-        const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);
-        if (layoutResponse === "") {
-            html = renderTemplate('../pages/manage-keys/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-        } else {
-            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
-        }
-    } catch (error) {
-        logger.error("Error occurred while loading application keys", {
-            orgName: orgName,
-            applicationId: req?.params?.applicationId,
-            error: error.message,
-            stack: error.stack
-        });
-        if (Number(error?.statusCode) === 401) {
-            const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
-            return next(err);
-        } else {
-            error.status = error.statusCode || error.status || 500;
-            return next(error);
-        }
-    }
-    res.send(html);
-}
-
 /**
  * Loads the keys currently associated with this app, plus a by-API grouping of keys
  * that could be associated instead (anything not already associated with this app).
@@ -364,6 +301,64 @@ function formatApiDisplayName(apiMetadata, fallbackId) {
     if (!apiMetadata) return fallbackId;
     const namePart = [apiMetadata.name, apiMetadata.version].filter(Boolean).join(' ');
     return apiMetadata.handle ? `${namePart} (${apiMetadata.handle})` : namePart;
+}
+
+/**
+ * The OAuth2 keys on this application, plus the caller's other keys that could be
+ * associated instead.
+ *
+ * "Available" deliberately includes keys already on ANOTHER application: a key
+ * belongs to at most one, so choosing one here moves it. Hiding those would make
+ * a key the caller owns look like it had vanished. Only keys already on THIS
+ * application are excluded, since associating one again is a no-op.
+ */
+async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
+    let associatedOAuth2Keys = [];
+    let availableOAuth2Keys = [];
+    try {
+        const names = new Map();
+        try {
+            for (const entry of await kmRegistry.list(orgId, { includeDisabled: true })) {
+                names.set(entry.handle, entry.display_name || entry.handle);
+            }
+        } catch (kmError) {
+            // Falls back to the raw handle below — the keys are the point here.
+            logger.warn('Could not resolve key manager names for the application OAuth2 keys section', {
+                error: kmError.message, orgId,
+            });
+        }
+
+        const all = await oauth2KeyDao.listByCreator(orgId, userId);
+        const appByKey = await keyAppMappingDao.getByKeys((all || []).map((k) => k.keyId));
+
+        // One lookup per distinct application, not per key.
+        const appNames = new Map();
+        for (const appUuid of new Set(appByKey.values())) {
+            if (appUuid === applicationId) continue;
+            const app = await appDao.get(orgId, appUuid, userId);
+            if (app) appNames.set(appUuid, app.display_name);
+        }
+
+        for (const key of all || []) {
+            const on = appByKey.get(key.keyId);
+            const row = {
+                keyId: key.keyId,
+                keyManagerName: names.get(key.keyManagerId) || key.keyManagerId,
+                consumerKey: key.consumerKey,
+                status: String(key.status || 'ACTIVE'),
+            };
+            if (on === applicationId) {
+                associatedOAuth2Keys.push(row);
+            } else {
+                availableOAuth2Keys.push({ ...row, applicationName: on ? appNames.get(on) || '' : '' });
+            }
+        }
+    } catch (error) {
+        logger.warn('Failed to load OAuth2 keys for the application OAuth2 keys section', {
+            orgId, applicationId, error: error.message,
+        });
+    }
+    return { associatedOAuth2Keys, availableOAuth2Keys };
 }
 
 async function loadApplicationApiKeysData(orgId, applicationId, userId) {
@@ -402,5 +397,4 @@ async function loadApplicationApiKeysData(orgId, applicationId, userId) {
 module.exports = {
     loadApplications,
     loadApplication,
-    loadApplicationKeys
 };

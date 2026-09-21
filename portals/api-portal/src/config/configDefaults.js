@@ -355,6 +355,53 @@ const DEFAULTS = {
         maxRequestBytes: 1048576,   // 1 MiB
         maxResponseBytes: 5242880,  // 5 MiB
     },
+    // OAuth2 key generation via Dynamic Client Registration — the key managers
+    // the portal may register clients on. An array of tables in TOML:
+    //
+    //   [[api_portal.key_manager]]
+    //   id = "thunder-local"; name = "ThunderID"; type = "thunderid"
+    //   registration_endpoint / token_endpoint / authorize_endpoint = "..."
+    //     [api_portal.key_manager.auth]
+    //     method = "client_credentials"; client_id = "..."
+    //     client_secret = '{{ env "THUNDER_CLIENT_SECRET" }}'
+    //
+    // Empty by default: no key manager means GET /key-managers/metadata returns
+    // an empty list and POST /oauth2-keys has nothing to register against, which
+    // is the correct posture for a portal whose operator has not configured one.
+    // Validated at startup by src/config/keyManagerConfig.js — see
+    // src/keymanagers/ for the drivers each `type` activates.
+    keyManager: [],
+    // Deployment-wide resource bounds for key manager calls (the provisioning
+    // token request and the DCR calls alike).
+    //
+    // Only bounds live here. Whether a given key manager may be reached over
+    // plain http, on a private/loopback address, or without TLS verification is
+    // set per key manager — `allow_http_endpoints`, `allow_private_endpoints`
+    // and `insecure_skip_verify` on its own [[api_portal.key_manager]] entry.
+    // Each describes one host, so a global value would hand the loosest setting
+    // to every key manager configured.
+    keyManagerClient: {
+        timeoutMs: 10000,
+        maxRequestBytes: 1048576,   // 1 MiB
+        maxResponseBytes: 1048576,  // 1 MiB — a DCR response is small
+    },
+    // The outbound posture for key managers created through the REST API / the
+    // Settings UI, which — unlike an [[api_portal.key_manager]] entry — cannot
+    // set their own.
+    //
+    // Global rather than per key manager, which is the opposite of how the TOML
+    // entries work, and deliberately so: these hosts are chosen by whoever holds
+    // an admin token, not by whoever deployed the portal. Letting each row widen
+    // its own reach would make the address guard something an API caller can
+    // switch off, on exactly the endpoints that guard exists for. All three
+    // default off, so an API-created key manager must use https on a public
+    // address with a valid certificate until an operator says otherwise —
+    // typically to point a development portal at an identity server on localhost.
+    keyManagerProvisioning: {
+        allowPrivateEndpoints: false,
+        allowHttpEndpoints: false,
+        insecureSkipVerify: false,
+    },
     developer: {
         // Internal/debug knob for the /portal REST router's response validation
         // strictness (express-openapi-validator) — 'off' | 'strict' | 'log-only'. Not

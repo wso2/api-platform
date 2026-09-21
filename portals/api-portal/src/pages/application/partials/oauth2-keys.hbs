@@ -1,0 +1,110 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ -->
+
+{{!-- Mirrors the API keys section above it: same section shell, same table
+      classes, same associate-and-remove model. The two are the same job for two
+      kinds of credential, so they should not look like two designs. --}}
+<div id="application-oauth2-keys-config" style="display:none"
+    data-org-id="{{orgId}}"
+    data-app-id="{{applicationMetadata.id}}"
+    data-available-oauth2-keys="{{json availableOAuth2Keys}}">
+</div>
+
+<section class="section mb-6">
+  <div class="ak-header d-flex justify-content-between align-items-start">
+    <div>
+      <h2 class="ak-title">OAuth2 keys</h2>
+      <p class="ak-page-desc">
+        OAuth2 client credentials associated with this app, for usage analytics only — association has no effect on a key's validity.
+      </p>
+    </div>
+    <button type="button" class="dp-btn dp-btn--outline" id="btn-open-associate-oauth2-key">
+      <i class="bi bi-plus"></i> Associate existing key
+    </button>
+  </div>
+
+  {{#if associatedOAuth2Keys.length}}
+  <div class="ak-tablewrap">
+    <table class="ak-table" id="application-oauth2-keys-table">
+      <thead>
+        <tr>
+          <th>Key manager</th>
+          <th>Consumer key</th>
+          <th>Status</th>
+          <th class="ak-th-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each associatedOAuth2Keys}}
+        <tr>
+          <td><span class="ak-key-name">{{this.keyManagerName}}</span></td>
+          {{!-- The consumer key is an identifier, not a secret. The secret is
+                returned once at creation and never stored, so it cannot appear. --}}
+          <td><span class="ak-key-masked">{{this.consumerKey}}</span></td>
+          <td>
+            <span class="ak-status {{#if (eq (lowercase this.status) 'active')}}ak-status--active{{else}}ak-status--inactive{{/if}}">
+              <span class="ak-status-dot"></span>{{lowercase this.status}}
+            </span>
+          </td>
+          <td>
+            <div class="ak-actions">
+              <button type="button" class="ak-btn-revoke btn-remove-oauth2-key-association"
+                data-key-id="{{this.keyId}}" data-key-name="{{this.consumerKey}}">
+                <i class="bi bi-x-circle"></i> Remove
+              </button>
+            </div>
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="dp-empty" id="no-associated-oauth2-keys">
+    <span class="dp-empty-icon"><i class="bi bi-shield-lock-fill"></i></span>
+    <h2 class="dp-empty-title">No OAuth2 keys associated</h2>
+    <p class="dp-empty-desc">Associate an existing OAuth2 key with this app to attribute its usage in analytics. Generate keys from the Keys section in the sidebar.</p>
+  </div>
+  {{/if}}
+</section>
+
+<!-- Associate existing OAuth2 key modal -->
+<div class="ak-overlay" id="associate-oauth2-key-modal">
+  <div class="ak-modal">
+    <div class="ak-modal-head">
+      <h2 class="ak-modal-title">Associate existing OAuth2 key</h2>
+      <button type="button" class="ak-modal-close" id="associate-oauth2-key-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="ak-modal-body">
+      {{!-- A key belongs to at most one application, so choosing one here moves it
+            off whatever it was on. The picker says so rather than letting the move
+            be a surprise. --}}
+      <div class="ak-form-group">
+        <label for="associate-oauth2-key-select">Key</label>
+        <select id="associate-oauth2-key-select" class="ak-form-input">
+          <option value="">— Select a key —</option>
+        </select>
+        <p class="ak-form-hint">Only your own keys are listed. A key already associated with another application will be moved to this one.</p>
+      </div>
+    </div>
+    <div class="ak-modal-footer">
+      <button type="button" class="dp-btn dp-btn--outline" id="associate-oauth2-key-cancel">Cancel</button>
+      <button type="button" class="dp-btn dp-btn--primary" id="btn-submit-associate-oauth2-key" disabled>Associate</button>
+    </div>
+  </div>
+</div>

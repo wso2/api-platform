@@ -470,3 +470,180 @@ tls_skip_verify = false        # development only
 timeout_ms = 15000
 max_request_bytes = 1048576    # 1 MiB
 max_response_bytes = 5242880   # 5 MiB
+
+# =============================================================================
+# KEY MANAGERS (OAuth2 key generation)
+# =============================================================================
+# The identity providers this portal may register OAuth2 applications on, via
+# Dynamic Client Registration (RFC 7591), for GET /key-managers/metadata and
+# POST /oauth2-keys.
+#
+# Extension model: built-in drivers, config-activated. Every driver ships in the
+# image; an entry below activates one and supplies its endpoints and credentials.
+# Operators add configuration, never code. Built-in `type` values live in
+# src/keymanagers/drivers/ — currently:
+#
+#   thunderid   ThunderID. RFC 7591 registration with RFC 7592 read/update/delete.
+#   wso2is      WSO2 Identity Server 7.x, via its DCR v1.1 API.
+#   asgardeo    WSO2 Asgardeo. The same API and the same driver as wso2is — the two
+#               names exist so an entry reads as the product it points at.
+#   provision   No registration at all: the application is created at the identity
+#               server by hand and its client id is recorded here. This is also what
+#               a key manager configured before DCR support became available behaves
+#               as, so existing entries keep working.
+#
+# A driver implements only what its key manager can actually do; an attempt to use
+# an operation it does not implement is refused with 409, rather than returning
+# credentials no authorization server would honour.
+#
+# Declared with DOUBLE brackets: it is an array of tables, one per key manager.
+# Several entries may share a `type` (two Asgardeo organisations, say); `id` is what a
+# caller sends as `keyManagerId` and must be unique.
+#
+# Omit the section entirely if no key manager is configured: metadata then
+# returns an empty list and key generation has nothing to register against.
+#
+# Every field is validated at startup — a missing field, an unknown `type`, a
+# duplicate `id`, or an endpoint in a blocked address range aborts the boot
+# rather than failing on the first request.
+
+# [[api_portal.key_manager]]
+# id   = "thunder-local"        # sent as keyManagerId; unique across entries
+# name = "ThunderID"            # display name shown in the key manager selector
+# type = "thunderid"            # which built-in driver handles this entry
+# description = "ThunderID identity server."
+# registration_endpoint = "https://localhost:8090/oauth2/dcr/register"
+# token_endpoint        = "https://localhost:8090/oauth2/token"
+# authorize_endpoint    = "https://localhost:8090/oauth2/authorize"  # omit for a
+#                            # key manager with no interactive grant
+# # How to reach this key manager's HOST. All three are per key manager rather
+# # than global: each describes one host, so a global value would hand the
+# # loosest setting to every key manager configured. Startup fails with a message
+# # naming the right place if one of them is put under [.auth] or in
+# # [api_portal.key_manager_client].
+# #
+# # Skips TLS verification for EVERY call to this key manager — the provisioning
+# # token request and the DCR calls alike. Development only, for a self-signed
+# # local identity server. Default false.
+# insecure_skip_verify    = true
+# # Permits this key manager to sit on a private/loopback address (localhost, a
+# # docker-compose service name, a cluster IP) — the usual local Thunder. Default
+# # FALSE, deny-by-default: startup fails with a message naming
+# # this setting if the endpoint resolves into a private range while it is off.
+# # Link-local and cloud-metadata addresses (169.254.169.254 and friends) are
+# # refused whatever this is set to.
+# allow_private_endpoints = true
+# # Permits plain http:// for this key manager. Default true — an identity server
+# # commonly sits behind a TLS-terminating ingress. Set false to require https.
+# allow_http_endpoints    = true
+#
+# # WSO2 Asgardeo. The endpoints are the ones the organisation's OIDC discovery
+# # document advertises, at
+# #   https://api.asgardeo.io/t/<org>/oauth2/token/.well-known/openid-configuration
+# #
+# # The credential below is a MACHINE-TO-MACHINE application in the same Asgardeo
+# # organisation, authorized for the DCR management scopes. Without that
+# # authorization Asgardeo still issues a token, but grants none of the scopes and
+# # every registration call comes back 403.
+# [[api_portal.key_manager]]
+# id   = "asgardeo"
+# name = "Asgardeo"
+# type = "asgardeo"
+# registration_endpoint = "https://api.asgardeo.io/t/<org>/api/identity/oauth2/dcr/v1.1/register"
+# token_endpoint        = "https://api.asgardeo.io/t/<org>/oauth2/token"
+# authorize_endpoint    = "https://api.asgardeo.io/t/<org>/oauth2/authorize"
+#   [api_portal.key_manager.auth]
+#   method        = "client_credentials"
+#   client_id     = "<m2m application client id>"
+#   client_secret = '{{ env "ASGARDEO_CLIENT_SECRET" }}'
+#   scopes = ["internal_dcr_create", "internal_dcr_view",
+#             "internal_dcr_update", "internal_dcr_delete"]
+#
+# # WSO2 Identity Server 7.x, self-hosted. Same DCR API as Asgardeo above, so the
+# # same driver — what differs is the credential and the host posture.
+# #
+# # A self-hosted server is usually on a private address behind a self-signed
+# # certificate, so both flags below are needed; both are off by default and both
+# # are per key manager, so turning them on here does not grant them to any other.
+# # insecure_skip_verify is for development only — with it set, this portal will
+# # not notice a forged certificate on the way to the identity server.
+# [[api_portal.key_manager]]
+# id   = "wso2is-local"
+# name = "WSO2 Identity Server"
+# type = "wso2is"
+# registration_endpoint = "https://localhost:9443/api/identity/oauth2/dcr/v1.1/register"
+# token_endpoint        = "https://localhost:9443/oauth2/token"
+# authorize_endpoint    = "https://localhost:9443/oauth2/authorize"
+# allow_private_endpoints = true   # localhost — denied unless set
+# insecure_skip_verify    = true   # default self-signed certificate; development only
+#   [api_portal.key_manager.auth]
+#   method   = "basic"
+#   username = '{{ env "WSO2IS_ADMIN_USER" }}'
+#   password = '{{ env "WSO2IS_ADMIN_PASSWORD" }}'
+#
+#   # How the portal authenticates ITSELF to this key manager in order to
+#   # register clients on it — a privileged provisioning credential, distinct
+#   # from the end user's token on the inbound request.
+#   [api_portal.key_manager.auth]
+#   method        = "client_credentials"   # client_credentials | basic | mtls
+#   # token_endpoint defaults to the key manager's own token_endpoint above;
+#   # set it only when the provisioning token comes from somewhere else.
+#   client_id     = "my-system-app"
+#   # Secrets use this file's own {{ env }} interpolation, which fails startup
+#   # when the variable is unset — never a literal in the file.
+#   client_secret = '{{ env "THUNDER_CLIENT_SECRET" }}'
+#   scopes        = ["system"]
+#   resource      = "https://localhost:8090/mcp"  # RFC 8707; omit if unused
+#   send_credentials_in_body = false  # false => client_secret_basic (default)
+#
+#   # method = "basic"
+#   # username = "dcr-user"
+#   # password = '{{ env "KM_DCR_PASSWORD" }}'
+#
+#   # method = "mtls"
+#   # cert_file = "/etc/api-portal/keys/km-client.crt"
+#   # key_file  = "/etc/api-portal/keys/km-client.key"
+#   # ca_file   = "/etc/api-portal/keys/km-ca.crt"   # optional
+#
+#   # A fixed key in a header, for key managers that issue a long-lived admin
+#   # token rather than an OAuth credential. Nothing is minted or refreshed, so
+#   # the key does not expire on its own -- revoke it at the key manager.
+#   # method      = "api_key"
+#   # header_name = "Authorization"   # default; or e.g. "X-API-Key"
+#   # scheme      = "Bearer"          # omit to send the key on its own
+#   # api_key     = '{{ env "KM_API_KEY" }}'
+
+# Deployment-wide resource bounds for key manager calls. ONLY bounds live here:
+# whether a given key manager may be reached over plain http, on a private
+# address, or without TLS verification is set on that key manager's own entry
+# above (allow_http_endpoints / allow_private_endpoints / insecure_skip_verify),
+# because each describes one host rather than a global posture.
+[api_portal.key_manager_client]
+timeout_ms = 10000
+max_request_bytes = 1048576     # 1 MiB
+max_response_bytes = 1048576    # 1 MiB — a DCR response is small
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KEY MANAGERS ADDED THROUGH THE UI
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# An admin can also add a key manager from Settings → Key Managers and give it a
+# registration endpoint and a provisioning credential, so the portal registers
+# OAuth applications on it the same way it does for the entries above. That
+# credential is encrypted at rest with [api_portal.security] encryption_key,
+# which must therefore be configured before one can be saved.
+#
+# Unlike an [[api_portal.key_manager]] entry, such a key manager cannot set its
+# own outbound posture — it was configured through an authenticated API, and the
+# address guard exists precisely for endpoints supplied that way. This section is
+# the operator's answer for ALL of them, which is why it is global here and per
+# key manager above: these hosts are chosen by API callers, not by whoever
+# deployed the portal.
+#
+# All three default false, so a key manager added through the UI must use https
+# on a public address with a valid certificate. Relax them for a development
+# portal pointed at an identity server on localhost.
+[api_portal.key_manager_provisioning]
+allow_private_endpoints = false
+allow_http_endpoints    = false
+insecure_skip_verify    = false

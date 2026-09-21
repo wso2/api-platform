@@ -95,6 +95,8 @@ roles:
       - dp:subscription_plan:manage
       - dp:key_manager:manage
       - dp:key_manager:read
+      - dp:key_manager:metadata_read
+      - dp:oauth2_key:manage
       - dp:view:manage
       - dp:label:manage
       - dp:webhook_subscriber:manage
@@ -111,6 +113,8 @@ roles:
       - dp:subscription:manage
       - dp:api_key:manage
       - dp:mcp_server_key:manage
+      - dp:key_manager:metadata_read
+      - dp:oauth2_key:manage
       - dp:api:read
       - dp:api_content:read
       - dp:mcp_server:read

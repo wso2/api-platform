@@ -54,6 +54,7 @@ tags:
   - name: Application Keys
   - name: API Workflows
   - name: Key Managers
+  - name: OAuth2 Keys
   - name: Webhook Events
   - name: Webhook Subscribers
 paths:
@@ -2107,7 +2108,8 @@ paths:
       summary: Create a key manager
       description: >-
         Creates a key manager configuration for the organization. If `id` is omitted, the service generates a UUID
-        handle. Accepts either a `application/json` body or a `multipart/form-data` upload with a
+        handle. A supplied `id` that a configuration-declared key manager already claims is rejected with `409`,
+        since both sources share one id space. Accepts either a `application/json` body or a `multipart/form-data` upload with a
         `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key
         manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings`
         token requests.
@@ -2146,6 +2148,11 @@ paths:
         Returns key manager configurations for the organization. Admins receive the full configuration for every key
         manager, including disabled ones; other callers receive the minimal, developer-facing view of enabled key
         managers only, with no admin credentials. Admin appKeyMappings are never included in the response.
+
+
+        The list merges two sources, distinguished by each item's `source`: entries declared in the portal's
+        deployed configuration (`config`) and records created through this API (`api`). A `config` entry is
+        read-only here — `PUT` and `DELETE` on one answer `409` — and is always reported as enabled.
       parameters:
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
@@ -2162,6 +2169,39 @@ paths:
         - OAuth2Security:
             - dp:key_manager:read
             - dp:application_key_mapping:read
+  # Declared ahead of /key-managers/{kmId} deliberately: express-openapi-validator
+  # registers routes in the order the paths appear here, so the literal `metadata`
+  # segment has to be matched before the templated one — otherwise this request
+  # resolves to getKeyManager with kmId="metadata".
+  /key-managers/metadata:
+    get:
+      tags:
+        - Key Managers
+      summary: List key managers and the properties each accepts
+      description: >-
+        Returns one entry per key manager the caller may generate OAuth2 keys on, together with the properties that
+        key manager accepts. An entry's `properties` list is the authority on what `POST /oauth2-keys` will accept
+        for that key manager: a property absent from the list is rejected, and one marked `required` must be
+        supplied. Carries no key manager credentials. Returns an empty list when the organization has no enabled key
+        manager configured.
+      operationId: getKeyManagerMetadata
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/KeyManagerMetadataListResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      # Mirrors getKeyManagers: a developer needs the available key managers and their
+      # property descriptors before they can generate a key, so the key-mapping read
+      # scope reaches this credential-free view too. Scopes are OR-ed.
+      security:
+        - OAuth2Security:
+            - dp:key_manager:metadata_read
+            - dp:key_manager:read
+            - dp:key_manager:manage
+            - dp:application_key_mapping:read
   /key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/kmId"
@@ -2169,7 +2209,9 @@ paths:
       tags:
         - Key Managers
       summary: Get a key manager
-      description: Retrieves a single key manager configuration by ID.
+      description: >-
+        Retrieves a single key manager configuration by ID, whether it is declared in the portal's deployed
+        configuration or stored as a record created through this API. The response's `source` says which.
       operationId: getKeyManager
       responses:
         "200":
@@ -2190,6 +2232,11 @@ paths:
         Updates an existing key manager configuration. Accepts either a `application/json` body or a
         `multipart/form-data` upload with a `keymanager` YAML file. Only supplied fields are updated; omitted fields
         retain their stored values.
+
+
+        Only an `api`-sourced key manager can be updated. One declared in the portal's deployed configuration
+        answers `409`: its definition lives in that configuration, so it is changed there rather than here.
+        Supplying an `id` that a configuration entry already claims is also `409`.
       operationId: updateKeyManager
       requestBody:
         $ref: "#/components/requestBodies/KeyManagerUpdateBody"
@@ -2212,19 +2259,312 @@ paths:
       tags:
         - Key Managers
       summary: Delete a key manager
-      description: Deletes a key manager configuration by ID.
+      description: >-
+        Deletes a key manager configuration by ID. Only an `api`-sourced key manager can be deleted; one declared
+        in the portal's deployed configuration answers `409` and is removed by editing that configuration.
       operationId: deleteKeyManager
       responses:
         "204":
           description: Key manager deleted successfully.
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
             - dp:key_manager:delete
             - dp:key_manager:manage
+  /oauth2-keys:
+    post:
+      tags:
+        - OAuth2 Keys
+      summary: Generate an OAuth2 key
+      description: >-
+        Registers a new OAuth2 application on the selected key manager through a Dynamic Client Registration
+        (RFC 7591) call and returns the issued credentials. This is the only response that carries
+        `consumerSecret` — the key manager does not hand it back afterwards.
+
+
+        Accepted property names come from `GET /key-managers/metadata` for the chosen `keyManagerId`. A required
+        property that is missing, or a property that key manager does not declare, is rejected with `400`, the
+        offending property paths listed in the error's `errors` array. Unlike `POST
+        /applications/{applicationId}/generate-keys`, which only records a client_id created out-of-band, this
+        operation creates the OAuth2 application itself.
+      operationId: createOAuth2Key
+      requestBody:
+        $ref: "#/components/requestBodies/OAuth2KeyCreateBody"
+      responses:
+        "201":
+          description: Key generated. The consumer secret is returned here and nowhere else.
+          headers:
+            Location:
+              description: URL of the created OAuth2 key.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuth2KeyResponseSchema"
+              example:
+                keyId: 3f8a1c42-6d5e-4b70-9a1f-2c8e0d7b4a61
+                keyManagerId: asgardeo-prod
+                keyManagerName: Asgardeo
+                consumerKey: s6BhdRkqt3
+                consumerSecret: cf136dc3c1fc93f31185e5885805d
+                properties:
+                  client_name: Partner Portal
+                  redirect_uris:
+                    - https://portal.example.com/callback
+                  grant_types:
+                    - authorization_code
+                    - refresh_token
+                  response_types:
+                    - code
+                  scope:
+                    - openid
+                    - profile
+                  token_endpoint_auth_method: client_secret_basic
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:create
+            - dp:oauth2_key:manage
+    get:
+      tags:
+        - OAuth2 Keys
+      summary: List the caller's OAuth2 keys
+      description: >-
+        Returns the OAuth2 keys the authenticated caller owns, newest first, across every key manager. List items
+        omit the per-key property set and carry an empty `consumerSecret` — use `GET /oauth2-keys/{keyId}` for a
+        single key's full properties.
+      operationId: listOAuth2Keys
+      parameters:
+        - $ref: "#/components/parameters/keyManagerIdQueryOptional"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/OAuth2KeyListResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:read
+            - dp:oauth2_key:manage
+  /oauth2-keys/{keyId}:
+    parameters:
+      - $ref: "#/components/parameters/keyId"
+    get:
+      tags:
+        - OAuth2 Keys
+      summary: Get an OAuth2 key
+      description: >-
+        Returns the full property set of a single OAuth2 key. A key owned by another caller is answered identically
+        to one that does not exist, so the response cannot be used to discover what keys the organization holds.
+      operationId: getOAuth2Key
+      responses:
+        "200":
+          $ref: "#/components/responses/OAuth2KeyResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:read
+            - dp:oauth2_key:manage
+    put:
+      tags:
+        - OAuth2 Keys
+      summary: Update an OAuth2 key
+      description: >-
+        Replaces the client metadata of an existing key through an RFC 7592 update call. Not every key manager
+        offers an update operation; one that does not is answered with `409`.
+
+
+        This is a full replacement, not a merge — a property omitted from the body is cleared at the key manager, so
+        send the complete set as returned by `GET /oauth2-keys/{keyId}`. `keyManagerId` is immutable and is not
+        accepted here; to move a key to another key manager, delete it and generate a new one.
+      operationId: updateOAuth2Key
+      requestBody:
+        $ref: "#/components/requestBodies/OAuth2KeyUpdateBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/OAuth2KeyResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:update
+            - dp:oauth2_key:manage
+    delete:
+      tags:
+        - OAuth2 Keys
+      summary: Delete an OAuth2 key
+      description: >-
+        Deletes the OAuth2 application at the key manager and removes the portal's own record of it. Not every key
+        manager offers a delete operation; one that does not is answered with `409`.
+      operationId: deleteOAuth2Key
+      responses:
+        "204":
+          description: OAuth2 key deleted successfully.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:delete
+            - dp:oauth2_key:manage
+  /oauth2-keys/{keyId}/generate-token:
+    parameters:
+      - $ref: "#/components/parameters/keyId"
+    post:
+      tags:
+        - OAuth2 Keys
+      summary: Generate an access token for an OAuth2 key
+      description: >-
+        Exchanges this key's credentials for an access token at its key manager's token endpoint, using the
+        `client_credentials` grant, and returns the token.
+
+
+        The consumer secret must be supplied in the request. The portal does not store it — the key manager
+        returns it once, at registration, and never again — so it cannot mint a token without being given the
+        secret each time. Nothing about the secret is retained: it is used for this one request and never written
+        to a log or a response.
+
+
+        A token this returns is a live credential for the caller's own client, so treat the response the way you
+        would the credential itself.
+      operationId: generateOAuth2KeyToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuth2KeyTokenRequest"
+      responses:
+        "200":
+          description: Access token issued by the key manager.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuth2KeyTokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:read
+            - dp:oauth2_key:manage
+  /oauth2-keys/{keyId}/associate:
+    parameters:
+      - $ref: "#/components/parameters/keyId"
+    post:
+      tags:
+        - OAuth2 Keys
+      summary: Associate an OAuth2 key with an application
+      description: >-
+        Associates, or re-associates, an existing OAuth2 key with an application in this organization. A key belongs
+        to at most one application; an application may hold any number of keys.
+      operationId: associateOAuth2KeyApplication
+      requestBody:
+        $ref: "#/components/requestBodies/OAuth2KeyAssociateBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/OAuth2KeyApplicationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:update
+            - dp:oauth2_key:manage
+  /oauth2-keys/{keyId}/dissociate:
+    parameters:
+      - $ref: "#/components/parameters/keyId"
+    post:
+      tags:
+        - OAuth2 Keys
+      summary: Remove an OAuth2 key's application association
+      description: >-
+        Removes the application association from the key. Succeeds whether or not the key was associated with an
+        application; the OAuth2 application at the key manager is left untouched.
+      operationId: dissociateOAuth2KeyApplication
+      responses:
+        "204":
+          description: Association removed, or none existed.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:update
+            - dp:oauth2_key:manage
+  /applications/{applicationId}/oauth2-keys:
+    parameters:
+      - $ref: "#/components/parameters/applicationId"
+    get:
+      tags:
+        - OAuth2 Keys
+      summary: List OAuth2 keys associated with an application
+      description: >-
+        Lists the OAuth2 keys currently associated with the given application, across every key manager. Unlike
+        `listOAuth2Keys`, the results are scoped to one application rather than to everything the caller owns.
+      operationId: listApplicationOAuth2Keys
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/OAuth2KeyListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:oauth2_key:read
+            - dp:oauth2_key:manage
   /webhook-subscribers:
     post:
       tags:
@@ -2552,6 +2892,12 @@ components:
             dp:key_manager:update: Update key manager configurations.
             dp:key_manager:delete: Delete key manager configurations.
             dp:key_manager:manage: Manage key manager configurations (including creating, updating, and deleting).
+            dp:key_manager:metadata_read: Read key manager metadata and the properties each key manager accepts.
+            dp:oauth2_key:read: Read OAuth2 keys.
+            dp:oauth2_key:create: Generate OAuth2 keys.
+            dp:oauth2_key:update: Update OAuth2 keys and their application association.
+            dp:oauth2_key:delete: Delete OAuth2 keys.
+            dp:oauth2_key:manage: Manage OAuth2 keys (including creating, updating, reading, and deleting).
             dp:webhook_subscriber:read: Read webhook subscriber configurations.
             dp:webhook_subscriber:create: Create webhook subscriber configurations.
             dp:webhook_subscriber:update: Update webhook subscriber configurations.
@@ -2787,6 +3133,26 @@ components:
         minimum: 0
         default: 0
       description: Number of records to skip before returning results.
+    keyId:
+      name: keyId
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 64
+        example: 3f8a1c42-6d5e-4b70-9a1f-2c8e0d7b4a61
+      description: >-
+        The OAuth2 key's handle, generated when the key is created. Not the consumer key. Treat it as an opaque
+        string — it is a UUID today, and nothing should depend on that.
+    keyManagerIdQueryOptional:
+      name: keyManagerId
+      in: query
+      required: false
+      schema:
+        type: string
+        example: asgardeo-prod
+      description: >-
+        Optional key manager handle used to return only the OAuth2 keys issued by that key manager.
   requestBodies:
     OrganizationCreateBody:
       required: true
@@ -3393,6 +3759,93 @@ components:
               summary: Application YAML upload
               value:
                 application: application.yaml
+    OAuth2KeyCreateBody:
+      required: true
+      description: >-
+        OAuth2 key generation payload. `keyManagerId` selects the key manager to register on; `properties` carries
+        the client metadata, keyed by the property names that key manager declares in `GET /key-managers/metadata`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OAuth2KeyRequest"
+          examples:
+            confidentialWebApp:
+              summary: Confidential web application
+              value:
+                keyManagerId: asgardeo-prod
+                properties:
+                  client_name: Partner Portal
+                  redirect_uris:
+                    - https://portal.example.com/callback
+                  grant_types:
+                    - authorization_code
+                    - refresh_token
+                  response_types:
+                    - code
+                  scope:
+                    - openid
+                    - profile
+                  token_endpoint_auth_method: client_secret_basic
+                  contacts:
+                    - platform-team@example.com
+            machineToMachine:
+              summary: Backend service using the client credentials grant
+              value:
+                keyManagerId: asgardeo-prod
+                properties:
+                  client_name: Billing Sync Job
+                  grant_types:
+                    - client_credentials
+                  scope:
+                    - billing:read
+                    - billing:write
+                  token_endpoint_auth_method: client_secret_post
+            publicSpa:
+              summary: Public single-page application — no secret is issued
+              value:
+                keyManagerId: asgardeo-prod
+                properties:
+                  client_name: Console SPA
+                  redirect_uris:
+                    - https://console.example.com/oauth/callback
+                  grant_types:
+                    - authorization_code
+                  response_types:
+                    - code
+                  token_endpoint_auth_method: none
+    OAuth2KeyUpdateBody:
+      required: true
+      description: >-
+        Full replacement of the key's client metadata. Every property the key should keep must be present — an
+        omitted one is cleared at the key manager. `keyManagerId` is immutable and is not accepted here.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OAuth2KeyUpdateRequest"
+          example:
+            properties:
+              client_name: Partner Portal
+              redirect_uris:
+                - https://portal.example.com/callback
+                - https://portal.example.com/callback-v2
+              grant_types:
+                - authorization_code
+                - refresh_token
+              response_types:
+                - code
+              scope:
+                - openid
+                - profile
+              token_endpoint_auth_method: client_secret_basic
+    OAuth2KeyAssociateBody:
+      required: true
+      description: Identifies the application the OAuth2 key should belong to.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OAuth2KeyAssociateRequest"
+          example:
+            applicationId: my-weather-app
   responses:
     DefaultResponse:
       description: Operation response. The exact schema is produced by the route handler.
@@ -3524,7 +3977,11 @@ components:
       content:
         application/json:
           schema:
-            oneOf:
+            # anyOf, not oneOf: MessageResponse requires only `message` and does not
+            # forbid extra properties, so every ErrorResponse body also satisfies it.
+            # Under oneOf that ambiguity fails validation ("must match exactly one")
+            # for any error object carrying a message — which is all of them.
+            anyOf:
               - $ref: "#/components/schemas/ErrorResponse"
               - $ref: "#/components/schemas/MessageResponse"
           examples:
@@ -4048,15 +4505,24 @@ components:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
+              # Declared in the portal's deployed configuration: no orgId, no audit
+              # fields, and not editable through this API.
+              - id: thunder-local
+                displayName: ThunderID
+                enabled: true
+                tokenEndpoint: https://localhost:8090/oauth2/token
+                source: config
+              # Created through this API and stored as a record.
               - id: asgardeo-prod
                 displayName: Asgardeo
                 orgId: org-12345
                 enabled: true
                 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
+                source: api
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
                 updatedAt: "2026-05-07T08:30:00Z"
-            count: 1
+            count: 2
             pagination:
               total: 42
               limit: 20
@@ -4237,6 +4703,145 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/WebhookEvent"
+    KeyManagerMetadataListResponse:
+      description: >-
+        List of key managers available for OAuth2 key generation, each with the property descriptors that drive the
+        key generation form. Empty list when no key manager is configured.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyManagerMetadataResponseSchema"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
+              pagination:
+                $ref: "#/components/schemas/Pagination"
+          example:
+            list:
+              - id: asgardeo-prod
+                displayName: Asgardeo
+                type: asgardeo
+                description: Asgardeo organization for myorg.
+                tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
+                authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
+                properties:
+                  - name: client_name
+                    label: Application name
+                    description: Shown to end users on the consent screen.
+                    type: string
+                    required: true
+                  - name: redirect_uris
+                    label: Callback URLs
+                    description: Where the key manager sends the user after login. Absolute URIs, no fragment.
+                    type: string_list
+                    required: true
+                  - name: grant_types
+                    label: Grant types
+                    description: OAuth2 grants this application may use.
+                    type: multiselect
+                    required: true
+                    options:
+                      - value: authorization_code
+                        label: Authorization code
+                      - value: refresh_token
+                        label: Refresh token
+                      - value: client_credentials
+                        label: Client credentials
+                  - name: token_endpoint_auth_method
+                    label: Client authentication method
+                    description: How the application authenticates at the token endpoint.
+                    type: select
+                    required: false
+                    options:
+                      - value: client_secret_basic
+                        label: Client secret (Basic header)
+                      - value: client_secret_post
+                        label: Client secret (POST body)
+                      - value: none
+                        label: Public client (no secret)
+            count: 1
+            pagination:
+              total: 1
+              limit: 20
+              offset: 0
+    OAuth2KeyResponse:
+      description: >-
+        OAuth2 key with its full property set. `consumerSecret` is an empty string outside the create response —
+        see the schema for how to tell a public client from a secret that cannot be read back.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OAuth2KeyResponseSchema"
+          example:
+            keyId: 3f8a1c42-6d5e-4b70-9a1f-2c8e0d7b4a61
+            keyManagerId: asgardeo-prod
+            keyManagerName: Asgardeo
+            consumerKey: s6BhdRkqt3
+            consumerSecret: ""
+            application:
+              id: my-weather-app
+              displayName: Weather App
+            properties:
+              client_name: Partner Portal
+              redirect_uris:
+                - https://portal.example.com/callback
+              grant_types:
+                - authorization_code
+                - refresh_token
+              response_types:
+                - code
+              scope:
+                - openid
+                - profile
+              token_endpoint_auth_method: client_secret_basic
+    OAuth2KeyListResponse:
+      description: List of OAuth2 key summaries.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OAuth2KeyListItemResponseSchema"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
+              pagination:
+                $ref: "#/components/schemas/Pagination"
+          example:
+            list:
+              - keyId: 3f8a1c42-6d5e-4b70-9a1f-2c8e0d7b4a61
+                keyManagerId: asgardeo-prod
+                keyManagerName: Asgardeo
+                consumerKey: s6BhdRkqt3
+                consumerSecret: ""
+                application:
+                  id: my-weather-app
+                  displayName: Weather App
+            count: 1
+            pagination:
+              total: 1
+              limit: 20
+              offset: 0
+    OAuth2KeyApplicationResponse:
+      description: The application the OAuth2 key is now associated with.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OAuth2KeyApplicationResponseSchema"
+          example:
+            application:
+              id: my-weather-app
+              displayName: Weather App
   schemas:
     Pagination:
       type: object
@@ -4313,6 +4918,21 @@ components:
               message:
                 type: string
             additionalProperties: false
+        trackingId:
+          type: string
+          format: uuid
+          description: >-
+            Correlation id for this failure, present when the cause was recorded in the server log rather than
+            described here. Quote it when reporting the problem — the log entry under the same id carries the
+            detail, which is deliberately not in this response.
+          example: 6a1bc5a7-6121-41fb-a6b1-f82fd5e64d69
+        details:
+          type: array
+          description: >-
+            Optional additional context. Like `errors`, never populated with internal detail (upstream URLs,
+            response bodies, stack traces) — those go to the server log only.
+          items:
+            type: string
       additionalProperties: false
     OrganizationResponse:
       type: object
@@ -5154,9 +5774,12 @@ components:
           type: string
           format: uri
           description: >-
-            OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the
-            portal only proxies `client_appKeyMappings` token requests to this endpoint.
+            OAuth2 token endpoint, where a client exchanges its credentials for an access token. Required for every
+            key manager. On its own it is all the portal needs to proxy token requests for an OAuth application
+            created out of band; `provisioning` is what additionally lets the portal create those applications.
           example: https://api.asgardeo.io/t/myorg/oauth2/token
+        provisioning:
+          $ref: "#/components/schemas/KeyManagerProvisioningRequest"
       additionalProperties: false
     KeyManagerUpdateRequest:
       type: object
@@ -5179,6 +5802,8 @@ components:
           type: string
           format: uri
           example: https://api.asgardeo.io/t/myorg/oauth2/token
+        provisioning:
+          $ref: "#/components/schemas/KeyManagerProvisioningRequest"
       additionalProperties: false
     KeyManagerResponseSchema:
       type: object
@@ -5201,11 +5826,43 @@ components:
           type: string
           format: uri
           example: https://api.asgardeo.io/t/myorg/oauth2/token
+        source:
+          type: string
+          description: >-
+            Where this key manager is declared. `config` entries come from the portal's deployed configuration
+            and are read-only through this API — `PUT` and `DELETE` on one answer `409`. `api` entries are stored
+            records, created through this API, and are fully mutable. A `config` entry carries no `orgId` or audit
+            fields, because it is declared per portal in a file rather than created by a user.
+          enum:
+            - config
+            - api
+          example: config
+        type:
+          type: string
+          description: >-
+            Which built-in driver handles this key manager, fixed when it is created. A DCR driver registers
+            OAuth applications here; `provision` registers nothing, and its applications are created at the
+            identity server and recorded by client id. A key manager with no provisioning configuration
+            resolves to `provision`, which is what the portal actually uses for it — so this is always
+            populated. The accepted values are the drivers shipped in this build.
+          example: asgardeo
+        canGenerateKeys:
+          type: boolean
+          description: >-
+            Whether `POST /oauth2-keys` can register an OAuth application on this key manager. True for a
+            config-declared entry, and for an `api` entry that has a `provisioning` configuration. False means the
+            key manager is usable for token requests against an application created elsewhere, but the portal
+            cannot create one for you. Equivalent to `type` being anything other than `provision`; retained
+            because it states the consequence directly.
+          example: true
+        provisioning:
+          $ref: "#/components/schemas/KeyManagerProvisioningResponse"
         createdBy:
           type: string
           description: >-
             Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no
-            longer exists. Present on single-resource GET responses and list items.
+            longer exists. Present on single-resource GET responses and list items, and omitted for a `config`
+            entry, which no user created.
           example: alice@example.com
         updatedBy:
           type: string
@@ -5235,6 +5892,17 @@ components:
           type: string
           format: uri
           example: https://api.asgardeo.io/t/myorg/oauth2/token
+        source:
+          type: string
+          description: >-
+            Where this key manager is declared. `config` entries come from the portal's deployed configuration
+            and are read-only through this API — `PUT` and `DELETE` on one answer `409`. `api` entries are stored
+            records, created through this API, and are fully mutable. A `config` entry carries no `orgId` or audit
+            fields, because it is declared per portal in a file rather than created by a user.
+          enum:
+            - config
+            - api
+          example: config
       additionalProperties: false
     WebhookSubscriberRequest:
       type: object
@@ -5774,4 +6442,731 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WebhookEventDelivery"
+      additionalProperties: false
+    KeyManagerMetadataResponseSchema:
+      type: object
+      description: >-
+        One key manager available for OAuth2 key generation, and the properties it accepts. Carries no key manager
+        credentials — this view is reachable by any caller who may generate a key.
+      properties:
+        id:
+          type: string
+          description: >-
+            The key manager's handle, sent back as `keyManagerId` when generating a key. Distinct from
+            `displayName` so the label can change without breaking callers.
+          example: asgardeo-prod
+        displayName:
+          type: string
+          description: Display name for the key manager selector.
+          example: Asgardeo
+        type:
+          type: string
+          description: >-
+            The backend driver handling this key manager. Several key managers may share a type — two Asgardeo
+            organizations, for instance.
+          example: asgardeo
+        keyCreation:
+          type: string
+          description: >-
+            What creating a key on this key manager does. `register` means the portal creates the
+            application and returns credentials the developer has not seen before; `provide` means the
+            application already exists and the developer supplies its client id, with no secret issued.
+            Prefer this over branching on `type`, which is a driver identifier rather than a statement
+            about behaviour.
+          enum:
+            - register
+            - provide
+          example: register
+        description:
+          type: string
+          description: One-line explanation shown under the display name.
+          example: Asgardeo organization for myorg.
+        tokenEndpoint:
+          type: string
+          format: uri
+          description: >-
+            The key manager's OAuth2 token endpoint, where a client exchanges the issued `consumerKey` and
+            `consumerSecret` for an access token. Show it alongside the credentials; they are unusable without it.
+          maxLength: 2048
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
+        authorizeEndpoint:
+          type: string
+          format: uri
+          description: >-
+            The key manager's OAuth2 authorization endpoint, where the user is sent to log in and consent. Present
+            only for key managers offering an interactive grant; omitted for one that issues `client_credentials`
+            tokens alone.
+          maxLength: 2048
+          example: https://api.asgardeo.io/t/myorg/oauth2/authorize
+        properties:
+          type: array
+          description: >-
+            Every property this key manager accepts, in render order — RFC 7591 client metadata and
+            key-manager-specific properties in one list. A property absent here is not accepted by this key manager.
+          items:
+            $ref: "#/components/schemas/KeyManagerPropertyDescriptor"
+      additionalProperties: false
+    OAuth2KeyTokenRequest:
+      type: object
+      description: What the key manager needs in order to issue a token for this key.
+      required:
+        - consumerSecret
+      properties:
+        consumerSecret:
+          type: string
+          format: password
+          description: >-
+            The secret issued alongside this key's consumer key. Required every time: the portal never stores it,
+            so there is nothing for it to remember.
+          maxLength: 512
+        scopes:
+          type: array
+          description: >-
+            Scopes to request. Omit to let the key manager decide what this client is entitled to; a scope the
+            client may not have is the key manager's to refuse.
+          items:
+            type: string
+          example:
+            - read
+        validityPeriod:
+          type: integer
+          format: int32
+          description: >-
+            Requested lifetime in seconds. A hint only — the key manager sets the real lifetime and may ignore
+            this entirely, which is why the response carries the value that actually applies.
+          minimum: 1
+          example: 3600
+      additionalProperties: false
+    OAuth2KeyTokenResponse:
+      type: object
+      description: >-
+        The token the key manager issued. `validityTime` and `tokenScopes` are what the key manager actually
+        granted, which may differ from what was asked for.
+      properties:
+        accessToken:
+          type: string
+          description: The access token. A live credential — handle it as one.
+        tokenType:
+          type: string
+          example: Bearer
+        validityTime:
+          type: integer
+          format: int32
+          description: Lifetime in seconds, as granted by the key manager.
+          example: 3600
+        tokenScopes:
+          type: array
+          description: Scopes actually granted, which may be narrower than those requested.
+          items:
+            type: string
+      additionalProperties: false
+    KeyManagerProvisioningRequest:
+      type: object
+      description: >-
+        What the portal needs in order to register OAuth applications on this key manager itself, over Dynamic
+        Client Registration (RFC 7591). Supply it and `POST /oauth2-keys` can create clients here; omit it and the
+        key manager is still valid — it just holds a token endpoint, and applications must be created directly in
+        the key manager as before.
+
+
+        Not accepted for a key manager declared in the portal configuration: those carry their own equivalent in
+        the deployed TOML, and are read-only through this API.
+
+
+        The TLS and address-range escapes available in configuration
+        (`insecure_skip_verify`, `allow_private_endpoints`, `allow_http_endpoints`) are deliberately absent here.
+        They relax the outbound address guard, and an endpoint set through an authenticated API is precisely the
+        case that guard exists for — so a key manager configured this way must use `https` and a public address,
+        unless the deployment's own `[api_portal.key_manager_provisioning]` settings say otherwise.
+      required:
+        - type
+        - registrationEndpoint
+        - auth
+      properties:
+        type:
+          type: string
+          description: >-
+            Which built-in driver handles this key manager. The accepted values are the drivers shipped in this
+            build; an unknown one is rejected with `400` listing what is available.
+          example: thunderid
+        registrationEndpoint:
+          type: string
+          format: uri
+          description: RFC 7591 client registration endpoint.
+          maxLength: 1023
+          example: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
+        authorizeEndpoint:
+          type: string
+          format: uri
+          description: >-
+            OAuth2 authorization endpoint, where the user is sent to log in and consent. Omit it for a key manager
+            offering only non-interactive grants.
+          maxLength: 1023
+          example: https://api.asgardeo.io/t/myorg/oauth2/authorize
+        auth:
+          $ref: "#/components/schemas/KeyManagerProvisioningAuth"
+      additionalProperties: false
+    KeyManagerProvisioningAuth:
+      type: object
+      description: >-
+        How the portal authenticates ITSELF to this key manager when registering a client. This is the portal's own
+        provisioning credential, not an end user's, and it is never returned by any response.
+      required:
+        - method
+      properties:
+        method:
+          type: string
+          description: >-
+            `client_credentials` mints a token from the key manager's token endpoint; `basic` sends a static
+            Authorization header; `api_key` sends a fixed, long-lived key in a named header. Mutual TLS is
+            available in configuration only — it needs certificate files on the
+            server, which is not something an API caller can supply.
+          enum:
+            - client_credentials
+            - basic
+            - api_key
+          example: client_credentials
+        clientId:
+          type: string
+          description: Required for `client_credentials`.
+          maxLength: 255
+          example: portal-provisioning-app
+        clientSecret:
+          type: string
+          format: password
+          description: >-
+            Required for `client_credentials` on create. Write-only: it is encrypted at rest and never returned.
+            On update, omit it to keep the stored one — an empty value means "unchanged", not "clear it".
+          maxLength: 512
+        username:
+          type: string
+          description: Required for `basic`.
+          maxLength: 255
+        password:
+          type: string
+          format: password
+          description: >-
+            Required for `basic` on create. Write-only, encrypted at rest, never returned; omit on update to keep
+            the stored one.
+          maxLength: 512
+        scopes:
+          type: array
+          description: Scopes requested when minting the provisioning token. `client_credentials` only.
+          items:
+            type: string
+          example:
+            - internal_client_management
+        resource:
+          type: string
+          description: >-
+            RFC 8707 resource indicator, sent with the token request. Some key managers will not issue a token
+            their registration endpoint accepts without it.
+          maxLength: 1023
+        headerName:
+          type: string
+          description: >-
+            Which header the key travels in, for `api_key`. Defaults to `Authorization`. Must be a single HTTP
+            header name; `Host`, `Content-Length`, `Transfer-Encoding` and `Connection` are refused, because they
+            decide where a request goes rather than who is making it.
+          maxLength: 255
+          example: Authorization
+        scheme:
+          type: string
+          description: >-
+            The word before the key in that header, for `api_key` — `Bearer` for a static bearer token, or
+            whatever scheme the key manager expects. Omit it for a bare key such as `X-API-Key: <key>`. Held
+            apart from the key so it is not encrypted with it, and so rotating the key does not mean retyping
+            the scheme.
+          maxLength: 64
+          example: Bearer
+        apiKey:
+          type: string
+          format: password
+          description: >-
+            Required for `api_key` on create. Write-only: encrypted at rest and never returned. On update, omit it
+            to keep the stored one. Unlike a minted token this one does not expire on its own, so revoking it is an
+            action taken at the key manager.
+          maxLength: 1023
+          example: 00aBcDeFgHiJkLmNoPqRsTuVwXyZ
+      additionalProperties: false
+    KeyManagerProvisioningResponse:
+      type: object
+      description: >-
+        The stored provisioning configuration, with every credential omitted. `hasClientSecret`, `hasPassword`
+        and `hasApiKey` report whether one is held, which is what a form needs in order to offer "leave blank to
+        keep the current value" without ever receiving the value itself. Only the one matching `authMethod` can
+        be true.
+      properties:
+        type:
+          type: string
+          example: thunderid
+        registrationEndpoint:
+          type: string
+          format: uri
+          example: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
+        authorizeEndpoint:
+          type: string
+          format: uri
+          example: https://api.asgardeo.io/t/myorg/oauth2/authorize
+        authMethod:
+          type: string
+          enum:
+            - client_credentials
+            - basic
+            - api_key
+          example: client_credentials
+        headerName:
+          type: string
+          example: Authorization
+        scheme:
+          type: string
+          example: Bearer
+        clientId:
+          type: string
+          example: portal-provisioning-app
+        username:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        resource:
+          type: string
+        hasClientSecret:
+          type: boolean
+          example: true
+        hasPassword:
+          type: boolean
+          example: false
+        hasApiKey:
+          type: boolean
+          example: false
+      additionalProperties: false
+    KeyManagerPropertyDescriptor:
+      type: object
+      description: >-
+        Everything needed to render and submit one key generation input. `name` is the key the value is sent under
+        in `OAuth2KeyRequest.properties`; `label` is only ever displayed.
+      required:
+        - name
+        - label
+        - type
+        - required
+      properties:
+        name:
+          type: string
+          description: >-
+            Key the value is sent under in the request's `properties` object. For RFC 7591 client metadata this is
+            the specification's own member name, so it stays snake_case rather than being camelCased.
+          example: redirect_uris
+        label:
+          type: string
+          description: Field label shown to the user.
+          example: Callback URLs
+        description:
+          type: string
+          description: Explanatory text shown under the input.
+          example: Where the key manager sends the user after login.
+        type:
+          type: string
+          description: >-
+            Input widget to render, and the JSON type of the submitted value:
+
+
+            * `string`, `textarea`, `uri`, `email` — string
+
+            * `number` — number
+
+            * `boolean` — boolean
+
+            * `select` — string, one of `options[].value`
+
+            * `multiselect` — array of strings drawn from `options[].value`
+
+            * `string_list` — array of free-text strings
+          enum:
+            - string
+            - textarea
+            - uri
+            - email
+            - number
+            - boolean
+            - select
+            - multiselect
+            - string_list
+          example: string_list
+        options:
+          type: array
+          description: Allowed values. Present for `select` and `multiselect`, omitted otherwise.
+          items:
+            $ref: "#/components/schemas/KeyManagerPropertyOption"
+        required:
+          type: boolean
+          description: >-
+            Whether the property must always be supplied. A property whose necessity depends on another choice
+            carries `false` here and a `requiredWhen` rule instead. Enforced on submission as well — this is a
+            rendering hint, not the validation boundary.
+          example: true
+        requiredWhen:
+          type: object
+          description: >-
+            Conditional requirement: this property must be supplied only when another property's submitted value
+            includes one of `anyOf`. `redirect_uris` is the standard case — RFC 7591 requires it only for a client
+            using a redirect-based grant, so demanding it from a `client_credentials` client would be wrong.
+
+
+            Present only when `required` is `false`. A renderer that does not understand this field treats the
+            property as optional, which is the safe reading: the key manager remains the authority and rejects a
+            registration that genuinely needed it.
+          required:
+            - property
+            - anyOf
+          properties:
+            property:
+              type: string
+              description: Name of the deciding property, from this same `properties` list.
+              example: grant_types
+            anyOf:
+              type: array
+              description: >-
+                Values of that property which make this one required. Compared against the submitted value — a
+                single string for `select`, an array for `multiselect` — and satisfied when any one matches.
+              items:
+                type: string
+              example:
+                - authorization_code
+          additionalProperties: false
+      additionalProperties: false
+    KeyManagerPropertyOption:
+      type: object
+      required:
+        - value
+        - label
+      properties:
+        value:
+          type: string
+          description: Value submitted in the request.
+          example: authorization_code
+        label:
+          type: string
+          description: Text shown to the user.
+          example: Authorization code
+      additionalProperties: false
+    OAuth2KeyProperties:
+      type: object
+      description: >-
+        An OAuth2 key's client metadata, keyed by property name.
+
+
+        These names are deliberately snake_case, unlike every other field in this API: they are RFC 7591 wire member
+        names passed through to the key manager verbatim, and they are the same strings
+        `GET /key-managers/metadata` returns in `properties[].name`. Camel-casing them here would break that
+        correspondence.
+
+
+        The RFC 7591 members are declared below and validated by this schema. Key-manager-specific properties are
+        not declared — their names differ per key manager — so they are accepted here and validated on submission
+        against the target key manager's own descriptors. A name that key manager does not declare is rejected
+        with `400`.
+      additionalProperties: true
+      properties:
+        client_name:
+          type: string
+          description: Human-readable name shown to end users on the consent screen.
+          minLength: 1
+          maxLength: 255
+          example: Partner Portal
+        redirect_uris:
+          type: array
+          description: >-
+            Absolute redirection URIs. Required when `grant_types` contains `authorization_code` or `implicit`.
+            Must not contain a fragment.
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+          maxItems: 20
+          example:
+            - https://portal.example.com/callback
+        grant_types:
+          type: array
+          description: OAuth2 grant types the application may use.
+          items:
+            type: string
+            enum:
+              - authorization_code
+              - client_credentials
+              - refresh_token
+              - implicit
+              - password
+              - urn:ietf:params:oauth:grant-type:jwt-bearer
+              - urn:ietf:params:oauth:grant-type:device_code
+          uniqueItems: true
+          example:
+            - authorization_code
+            - refresh_token
+        response_types:
+          type: array
+          description: >-
+            Authorization endpoint response types. Must be consistent with `grant_types` — `code` pairs with
+            `authorization_code`.
+          items:
+            type: string
+            enum:
+              - code
+              - token
+              - id_token
+              - code id_token
+              - code token
+              - id_token token
+              - code id_token token
+          uniqueItems: true
+          example:
+            - code
+        scope:
+          type: array
+          description: >-
+            Scopes the application may request. Sent as an array here; it is joined into the space-delimited string
+            RFC 7591 requires when the key manager is called.
+          items:
+            type: string
+            maxLength: 255
+          maxItems: 100
+          example:
+            - openid
+            - profile
+        token_endpoint_auth_method:
+          type: string
+          description: >-
+            How the application authenticates at the token endpoint. `none` marks a public client: no secret is
+            issued and `consumerSecret` stays empty.
+          enum:
+            - client_secret_basic
+            - client_secret_post
+            - client_secret_jwt
+            - private_key_jwt
+            - none
+          example: client_secret_basic
+        application_type:
+          type: string
+          description: Client profile. Constrains which redirect URI schemes the key manager allows.
+          enum:
+            - web
+            - native
+          example: web
+        contacts:
+          type: array
+          description: Email addresses of the people responsible for the application.
+          items:
+            type: string
+            format: email
+          maxItems: 10
+          example:
+            - platform-team@example.com
+        client_uri:
+          type: string
+          format: uri
+          description: Home page of the application.
+          maxLength: 2048
+        logo_uri:
+          type: string
+          format: uri
+          description: Logo displayed on the consent screen.
+          maxLength: 2048
+        tos_uri:
+          type: string
+          format: uri
+          description: Terms of service page shown on the consent screen.
+          maxLength: 2048
+        policy_uri:
+          type: string
+          format: uri
+          description: Privacy policy page shown on the consent screen.
+          maxLength: 2048
+        jwks_uri:
+          type: string
+          format: uri
+          description: >-
+            URL of the application's JSON Web Key Set. Required when `token_endpoint_auth_method` is
+            `private_key_jwt`.
+          maxLength: 2048
+        software_id:
+          type: string
+          format: uuid
+          description: >-
+            Stable identifier for the software this application runs, constant across deployments and
+            registrations.
+        software_version:
+          type: string
+          description: Version of the software identified by `software_id`.
+          maxLength: 64
+          example: 2.4.1
+    OAuth2KeyRequest:
+      type: object
+      description: OAuth2 key generation payload.
+      required:
+        - keyManagerId
+        - properties
+      properties:
+        keyManagerId:
+          type: string
+          description: >-
+            Handle of the key manager to register the OAuth2 application on, as returned by
+            `GET /key-managers/metadata`.
+          example: asgardeo-prod
+        properties:
+          $ref: "#/components/schemas/OAuth2KeyProperties"
+      additionalProperties: false
+    OAuth2KeyUpdateRequest:
+      type: object
+      description: >-
+        Full replacement of an OAuth2 key's client metadata. `keyManagerId` is immutable and is not accepted here.
+      required:
+        - properties
+      properties:
+        properties:
+          $ref: "#/components/schemas/OAuth2KeyProperties"
+      additionalProperties: false
+    OAuth2KeyAssociateRequest:
+      type: object
+      description: Identifies the application an OAuth2 key should be associated with.
+      required:
+        - applicationId
+      properties:
+        applicationId:
+          type: string
+          description: The application's handle (unique per org). Not the internal database uuid.
+          example: my-weather-app
+      additionalProperties: false
+    OAuth2KeyApplication:
+      type: object
+      description: >-
+        The application an OAuth2 key is associated with. A key belongs to at most one application; an application
+        may hold any number of keys.
+      properties:
+        id:
+          type: string
+          description: The application's handle (unique per org). Not the internal database uuid.
+          example: my-weather-app
+        displayName:
+          type: string
+          example: Weather App
+      additionalProperties: false
+    OAuth2KeyApplicationResponseSchema:
+      type: object
+      description: An OAuth2 key's application association.
+      properties:
+        application:
+          $ref: "#/components/schemas/OAuth2KeyApplication"
+      additionalProperties: false
+    OAuth2KeyResponseSchema:
+      type: object
+      description: An OAuth2 application registered on a key manager through this API.
+      properties:
+        keyId:
+          type: string
+          description: The OAuth2 key's handle (unique per org). Not the internal database uuid.
+          example: 3f8a1c42-6d5e-4b70-9a1f-2c8e0d7b4a61
+        name:
+          type: string
+          description: >-
+            What the developer called this key when creating it, taken from the `client_name` property.
+            Empty when the driver did not collect one — clients should fall back to the consumer key.
+          maxLength: 255
+          example: Mobile checkout
+        keyManagerId:
+          type: string
+          description: Handle of the key manager that issued the credentials.
+          example: asgardeo-prod
+        keyManagerName:
+          type: string
+          description: Display name of that key manager.
+          example: Asgardeo
+        consumerKey:
+          type: string
+          description: The OAuth2 client id the key manager issued.
+          example: s6BhdRkqt3
+        consumerSecret:
+          type: string
+          description: >-
+            The OAuth2 client secret. Populated on the create response only; an empty string everywhere else,
+            because the key manager does not hand it back.
+
+
+            Empty together with `token_endpoint_auth_method: none` means the key is a public client and never had a
+            secret. Empty with any other auth method means a secret exists but cannot be read back.
+          example: ""
+        application:
+          allOf:
+            - $ref: "#/components/schemas/OAuth2KeyApplication"
+          description: >-
+            The application this key is associated with. Omitted when the key is not associated with one.
+        properties:
+          $ref: "#/components/schemas/OAuth2KeyProperties"
+        createdBy:
+          type: string
+          description: >-
+            Identity of the user who created this key, or `deleted_user` if that user's IDP reference no longer
+            exists.
+          example: alice@example.com
+        updatedBy:
+          type: string
+          description: >-
+            Identity of the user who last updated this key, or `deleted_user` if that user's IDP reference no
+            longer exists.
+          example: alice@example.com
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    OAuth2KeyListItemResponseSchema:
+      type: object
+      description: >-
+        Summary of one OAuth2 key. Use `GET /oauth2-keys/{keyId}` for a key's full property set.
+      properties:
+        keyId:
+          type: string
+          description: Opaque handle to pass to the detail, update, delete and association operations.
+          example: 3f8a1c42-6d5e-4b70-9a1f-2c8e0d7b4a61
+        name:
+          type: string
+          description: >-
+            What the developer called this key when creating it, taken from the `client_name` property.
+            Empty when the driver did not collect one — clients should fall back to the consumer key.
+          maxLength: 255
+          example: Mobile checkout
+        keyManagerId:
+          type: string
+          example: asgardeo-prod
+        keyManagerName:
+          type: string
+          example: Asgardeo
+        consumerKey:
+          type: string
+          example: s6BhdRkqt3
+        consumerSecret:
+          type: string
+          description: >-
+            Always an empty string on list items. See `OAuth2KeyResponseSchema.consumerSecret` for how to tell a
+            public client from a secret that cannot be read back.
+          example: ""
+        application:
+          allOf:
+            - $ref: "#/components/schemas/OAuth2KeyApplication"
+          description: The application this key is associated with. Omitted when the key is not associated with one.
+        createdBy:
+          type: string
+          description: >-
+            Identity of the user who created this key, or `deleted_user` if that user's IDP reference no longer
+            exists.
+          example: alice@example.com
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
       additionalProperties: false

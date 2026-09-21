@@ -91,6 +91,13 @@ function sanitizeObject(obj, sensitiveFields) {
     if (!obj || typeof obj !== 'object') {
         return obj;
     }
+    // An array is `typeof "object"`, so without this it is rebuilt below as a
+    // plain object and `["client_credentials"]` is logged as
+    // `{"0":"client_credentials"}` — which reads like the caller sent the wrong
+    // shape, and sends whoever is debugging after a bug that is not there.
+    if (Array.isArray(obj)) {
+        return obj.map((item) => sanitizeObject(item, sensitiveFields));
+    }
     const sanitized = {};
     for (const [key, value] of Object.entries(obj)) {
         const lowerKey = key.toLowerCase();

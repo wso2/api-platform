@@ -1,0 +1,686 @@
+/* OAuth2 Keys page — ok-* prefix.
+ *
+ * Deliberately mirrors api-keys-page.css measurement for measurement (table radius,
+ * cell padding, status pill, modal box, form control) so the two key pages read as
+ * siblings rather than as two designs that happen to sit in the same sidebar. Only
+ * what this page needs is defined here; page-container / page-header / page-title /
+ * dp-btn / dp-empty all come from components.css. */
+
+/* ── Load failure ─────────────────────────────────────────────── */
+.ok-load-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6875rem;
+  margin-top: 1.5rem;
+  background: var(--danger-surface);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--surface));
+  border-radius: 0.6875rem;
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  color: var(--danger);
+}
+
+.ok-load-error i { flex: none; margin-top: 0.0625rem; font-size: 1.0625rem; }
+
+/* ── Table ────────────────────────────────────────────────────── */
+.ok-tablewrap {
+  margin-top: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  /* The table has a min-width, so narrow viewports scroll this container rather
+     than the page body. */
+  overflow-x: auto;
+}
+
+.ok-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  color: var(--text);
+  min-width: 72rem;
+}
+
+.ok-table thead tr { background: var(--primary-surface); }
+
+.ok-table thead th {
+  padding: 0.875rem 1.375rem;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.ok-table tbody tr {
+  border-top: 1px solid var(--border);
+  transition: background 0.12s;
+}
+
+.ok-table tbody tr:hover { background: var(--surface-sunken); }
+
+.ok-table tbody td {
+  padding: 1.125rem 1.375rem;
+  vertical-align: middle;
+}
+
+/* ── Key manager cell ─────────────────────────────────────────── */
+.ok-km-name {
+  display: block;
+  font-weight: 700;
+  color: var(--text-strong);
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+/* ── Token dialog: the client cannot use this grant ───────────── */
+/* Replaces the form rather than sitting above it, because there is nothing to
+   fill in — a disabled form would still read as "try harder". */
+.ok-token-blocked {
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.5rem;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* ── Key manager hint ─────────────────────────────────────────── */
+/* Two lines: what picking this key manager will do, then the operator's own
+   note about it if they wrote one. The mode line is the one a developer has to
+   read, so it carries the weight. */
+.ok-km-mode,
+.ok-km-note { display: block; }
+
+.ok-km-mode { color: var(--text-muted); }
+
+.ok-km-note {
+  margin-top: 0.25rem;
+  color: var(--text-subtle);
+  font-style: italic;
+}
+
+/* ── Name cell ────────────────────────────────────────────────── */
+/* The first thing read in a row, so it carries the weight the consumer key used
+   to. An unnamed key falls back to its consumer key, set in the muted monospace
+   the key is shown in elsewhere so the substitution is visible rather than
+   passing as a name someone chose. */
+.ok-name {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.ok-unnamed {
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--text-subtle);
+}
+
+/* ── Consumer key cell ────────────────────────────────────────── */
+.ok-consumer-key {
+  display: inline-block;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  color: var(--text-strong);
+  background: var(--surface-sunken);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.5625rem;
+  line-height: 1.2;
+}
+
+/* ── Copy button ──────────────────────────────────────────────── */
+.ok-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-left: 0.375rem;
+  vertical-align: middle;
+  border: none;
+  background: none;
+  border-radius: 0.375rem;
+  color: var(--text-subtle);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ok-copy:hover { background: var(--border); color: var(--text-strong); }
+
+/* Confirmation is a state on the button itself: swapping the glyph keeps the
+   feedback at the point of action, with no layout shift. */
+.ok-copy.is-copied { color: var(--success); }
+.ok-copy.is-copied i::before { content: "\f26e"; } /* bi-check-lg */
+
+.ok-copy--field {
+  position: absolute;
+  top: 0.6875rem;
+  right: 0.6875rem;
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.875rem;
+}
+
+/* ── Application cell ─────────────────────────────────────────── */
+.ok-app {
+  font-size: 0.84375rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+/* ── Row actions ──────────────────────────────────────────────── */
+.ok-table thead th.ok-th-right { text-align: right; }
+
+.ok-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.625rem;
+}
+
+/* Matches .ak-btn-app on the API Keys page, so the two tables' row actions are
+   the same control rather than two takes on one. */
+.ok-btn-app {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border-radius: 1.25rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--white);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  transition: background 0.15s;
+}
+
+/* Update and Delete sit beside it, matching .ak-btn-regen / .ak-btn-revoke on the
+   API Keys page: same pill, differing only in the colour that says what it does. */
+.ok-btn-edit,
+.ok-btn-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border-radius: 1.25rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--white);
+  transition: background 0.15s;
+}
+
+.ok-btn-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border-radius: 1.25rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--white);
+  border: 1px solid color-mix(in srgb, var(--success) 34%, var(--surface));
+  color: var(--success);
+  transition: background 0.15s;
+}
+
+.ok-btn-token:hover { background: var(--success-surface); }
+
+.ok-btn-edit   { border: 1px solid #c2d3ea; color: var(--primary); }
+.ok-btn-delete { border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--surface)); color: var(--danger); }
+
+.ok-btn-app:hover    { background: var(--surface-sunken); }
+.ok-btn-edit:hover   { background: var(--primary-surface); }
+.ok-btn-delete:hover { background: var(--danger-surface); }
+
+/* A value the dialog shows but the user cannot edit — the key's consumer key. */
+.ok-token-fixed {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  color: var(--text-strong);
+  background: var(--surface-sunken);
+  border-radius: 0.5rem;
+  padding: 0.6875rem 0.8125rem;
+  word-break: break-all;
+}
+
+/* ── Selectable row ───────────────────────────────────────────── */
+/* The row opens the key, so it has to look and behave like a control: a pointer,
+   a hover ground, and a visible focus ring for keyboard use. */
+.ok-row { cursor: pointer; }
+
+.ok-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+/* ── Confirmation dialog ──────────────────────────────────────── */
+.ok-confirm {
+  width: 26.25rem;
+  max-width: calc(100vw - 2rem);
+  background: var(--white);
+  border-radius: 1rem;
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--ink) 34%, transparent);
+  padding: 1.75rem 1.875rem 1.5rem;
+  animation: ok-pop 0.28s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ok-confirm { animation: none; }
+}
+
+.ok-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+}
+
+.ok-confirm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 1.0625rem;
+}
+
+.ok-confirm-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1.3;
+}
+
+.ok-confirm-body {
+  margin: 0 0 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.ok-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.ok-confirm-footer .dp-btn { border-radius: 1.25rem; }
+
+/* Destructive confirm: the accent gradient would read as "proceed, this is fine". */
+.ok-btn-danger,
+.ok-btn-danger:hover { background: var(--danger); }
+
+/* ── Created cell ─────────────────────────────────────────────── */
+.ok-created {
+  font-size: 0.84375rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+/* ── Empty state: the config snippet in the "no key manager" copy ── */
+.dp-empty-desc code {
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  background: var(--surface-sunken);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.3125rem;
+  color: var(--text-strong);
+}
+
+/* ── Modal overlay ────────────────────────────────────────────── */
+.ok-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+}
+
+/* ── Modal box ────────────────────────────────────────────────── */
+.ok-modal {
+  width: 31.25rem;
+  max-width: calc(100vw - 2rem);
+  /* The property form is as long as the key manager's descriptor list, which the
+     driver decides — so the box caps at the viewport and scrolls its own body. */
+  max-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border-radius: 1rem;
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--ink) 34%, transparent);
+  overflow: hidden;
+  animation: ok-pop 0.28s ease;
+}
+
+@keyframes ok-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ok-modal { animation: none; }
+}
+
+.ok-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.375rem 1.625rem;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.ok-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1.3;
+}
+
+.ok-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: none;
+  border-radius: 0.4375rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.12s, color 0.12s;
+}
+.ok-modal-close:hover { background: var(--border); color: var(--text-strong); }
+
+.ok-modal-body {
+  padding: 1.5rem 1.625rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+}
+
+.ok-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1.125rem 1.625rem;
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+
+.ok-modal-footer .dp-btn { border-radius: 1.25rem; }
+
+/* ── Form ─────────────────────────────────────────────────────── */
+
+/* The property fields are appended into one container, so the modal body's own
+   `gap` sees them as a single child and spaces nothing inside it. This restates
+   that gap on the container itself, otherwise every field's hint text collides
+   with the next field's label. */
+#ok-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.ok-form-group label {
+  display: block;
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 0.5rem;
+}
+
+.ok-required { color: var(--danger); }
+
+.ok-form-hint {
+  margin-top: 0.4375rem;
+  margin-bottom: 0;
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+  line-height: 1.4;
+}
+
+.ok-form-input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  padding: 0.6875rem 0.8125rem;
+  font-size: 0.875rem;
+  font-family: var(--font-family-mono);
+  color: var(--text-strong);
+  background: var(--white);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.ok-form-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(31,111,235,.14); }
+
+.ok-form-textarea { resize: vertical; line-height: 1.5; }
+
+select.ok-form-input { font-family: inherit; }
+
+/* Multiselect descriptors render as checkboxes: the set is short and visible at a
+   glance, where a multi-select listbox hides its own state. */
+.ok-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.125rem 0;
+}
+
+/* Scoped as `.ok-checks .ok-check`, not a bare `.ok-check`, and every inherited
+   property restated. These are <label> elements inside .ok-form-group, so the
+   field-label rule above — `.ok-form-group label`, specificity (0,1,1) — beats a
+   bare `.ok-check` (0,1,0) and was winning: the element stayed display:block, so
+   it was never a flex container and its `gap` did nothing, leaving the box and its
+   text touching. It also inherited that rule's 600 weight and 0.5rem bottom margin. */
+.ok-checks .ok-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  margin: 0 0 0;
+  font-size: 0.84375rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ok-checks .ok-check input {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+/* A single boolean descriptor: the checkbox and its label on one row, because a
+   checkbox labels itself sideways. Scoped as `.ok-form-group label.ok-check-row`
+   (0,2,1) so it beats `.ok-form-group label` (0,1,1) — the same specificity trap
+   noted above for .ok-checks .ok-check — and every property that rule sets is
+   restated here, or the row stays display:block with a 600 weight and a 0.5rem
+   bottom margin, which is what made the box look like an empty field. */
+.ok-form-group label.ok-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ok-check-text {
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  line-height: 1.25;
+}
+
+/* Sized and aligned to match .ok-checks .ok-check input rather than inheriting
+   .ok-form-input, which is a text-field rule and would stretch the box to the
+   full column width. flex:none stops it shrinking when the label wraps. */
+.ok-form-check {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0.125rem 0 0;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+/* The hint lines up under the label text, not under the checkbox. */
+.ok-form-group label.ok-check-row + .ok-form-hint {
+  margin-left: 1.375rem;
+}
+
+/* ── Credentials modal ────────────────────────────────────────── */
+.ok-modal--secret { position: relative; }
+
+.ok-secret-close-abs {
+  position: absolute;
+  top: 0.875rem;
+  right: 0.875rem;
+  z-index: 2;
+}
+
+.ok-secret-hero {
+  background: var(--primary-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 2.125rem 2rem 1.75rem;
+  text-align: center;
+  flex: none;
+}
+
+.ok-secret-success-icon {
+  margin: 0 auto;
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 50%;
+  background: var(--success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--white);
+  font-size: 1.5rem;
+  box-shadow: 0 8px 22px rgba(46, 125, 50, 0.34), 0 0 0 7px rgba(46, 125, 50, 0.10);
+}
+
+.ok-secret-hero-title {
+  margin: 1.125rem 0 0;
+  font-size: 1.3125rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.ok-secret-hero-subtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.90625rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.ok-secret-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.ok-secret-label i { color: var(--text-muted); }
+
+.ok-key-field {
+  position: relative;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 0.6875rem;
+  padding: 0.9375rem 3.5rem 0.9375rem 1rem;
+}
+
+.ok-key-code {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.ok-warning-amber {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6875rem;
+  background: var(--warning-surface);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--surface));
+  border-radius: 0.6875rem;
+  padding: 0.8125rem 0.9375rem;
+}
+
+.ok-warning-amber i {
+  flex: none;
+  color: var(--warning);
+  margin-top: 0.0625rem;
+  font-size: 1.0625rem;
+}
+
+.ok-warning-amber span {
+  font-size: 0.84375rem;
+  line-height: 1.55;
+  color: var(--warning);
+}
+
+/* Shown instead of the secret block for a public client, which is issued none. */
+.ok-public-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6875rem;
+  background: var(--primary-surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6875rem;
+  padding: 0.8125rem 0.9375rem;
+}
+
+.ok-public-note i { flex: none; color: var(--primary); margin-top: 0.0625rem; font-size: 1.0625rem; }
+.ok-public-note span { font-size: 0.84375rem; line-height: 1.55; color: var(--text-muted); }
+
+.ok-modal--secret .ok-modal-body { padding: 1.5rem 2rem 1.875rem; }
+
+/* ── Narrow viewports ─────────────────────────────────────────── */
+@media (max-width: 48rem) {
+  .ok-consumer-key { max-width: 10rem; }
+}

@@ -28,6 +28,10 @@ const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const kmDao = require('../dao/keyManagerDao');
+const kmRegistry = require('../services/keyManagerRegistry');
+const kmConfigDao = require('../dao/keyManagerConfigurationDao');
+require('../keymanagers/drivers'); // built-in drivers self-register on require
+const { registeredTypeOptions } = require('../keymanagers/core/registry');
 const { KeyManagerDTO } = require('../dto/keyManagerDto');
 const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
 const { groupWebhookEventTypes } = require('../utils/webhookEventGroups');
@@ -186,14 +190,56 @@ const loadSettingsPage = async (req, res) => {
         // shows up without editing the template.
         templateContent.webhookEventGroups = groupWebhookEventTypes(VALID_EVENT_TYPES);
 
+        // Both sources, through the one resolver — the same list GET /key-managers
+        // returns. Reading kmDao directly here would show only the stored rows, so a
+        // config-declared key manager would be missing from the very screen an admin
+        // goes to in order to see what exists, while appearing everywhere else.
         let keyManagers = [];
         try {
-            const keyManagerRecords = await kmDao.list(orgId);
-            keyManagers = keyManagerRecords.map(r => new KeyManagerDTO(r));
+            const keyManagerRecords = await kmRegistry.list(orgId, { includeDisabled: true });
+            // The same projection the REST API applies, so the panel and
+            // GET /key-managers agree on which entries can generate keys and what
+            // their provisioning holds. One query for the page, not one per row.
+            let configs = new Map();
+            try {
+                configs = await kmConfigDao.listByOrg(orgId);
+            } catch (cfgErr) {
+                logger.warn('Could not load key manager provisioning for the settings page', {
+                    error: cfgErr.message, orgId,
+                });
+            }
+            keyManagers = keyManagerRecords.map((r) => new KeyManagerDTO(
+                r.source === kmRegistry.SOURCE_CONFIG
+                    // A config-declared key manager carries its driver config in the
+                    // deployed TOML, so it can always generate keys and has no row to show.
+                    ? { ...r, canGenerateKeys: true }
+                    : {
+                        ...r,
+                        canGenerateKeys: configs.has(r.uuid),
+                        provisioning: configs.get(r.uuid) || undefined,
+                    }
+            ));
         } catch (err) {
-            logger.warn('Failed to load key managers for settings page', { error: err.message });
+            // The registry also builds the configured key managers, so a bad entry (an
+            // unreadable mTLS certificate, say) throws here. Fall back to the stored rows
+            // rather than showing nothing: an incomplete list an admin can still work with
+            // beats an empty one that looks like the data is gone.
+            logger.warn('Failed to merge configured key managers for the settings page; falling back to stored rows', {
+                error: err.message,
+            });
+            try {
+                const stored = await kmDao.list(orgId);
+                keyManagers = stored.map(r => new KeyManagerDTO({ ...r, source: kmRegistry.SOURCE_API }));
+            } catch (daoErr) {
+                logger.warn('Failed to load key managers for settings page', { error: daoErr.message });
+            }
         }
         templateContent.keyManagers = keyManagers;
+        // The driver types this build ships, for the key manager form's selector.
+        // Read from the registry rather than hardcoded in the template: adding a
+        // driver is a code change, and the list must follow it without a second
+        // edit that could be forgotten.
+        templateContent.keyManagerTypes = registeredTypeOptions();
 
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
