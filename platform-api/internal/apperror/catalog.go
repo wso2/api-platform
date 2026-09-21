@@ -251,6 +251,8 @@ var (
 	// caller can name the state it found (e.g. "already unpublished").
 	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict, "%s")
 	// APIPublicationDraftChanged: the draft was saved during its own publish.
+	// The push is not undone, so the API Portal may hold the earlier copy until
+	// the next publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
-		"The draft was changed while it was being published, so the API Portal may hold an earlier copy. Review the draft and publish again.")
+		"The draft changed while publishing. Review it and publish again.")
 )
