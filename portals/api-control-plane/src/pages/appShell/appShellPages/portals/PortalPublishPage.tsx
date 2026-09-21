@@ -62,7 +62,7 @@ const MIN_PAGE_HEIGHT = 420;
 const messages = defineMessages({
   back: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back',
-    defaultMessage: 'Back to Available Portals',
+    defaultMessage: 'Back to API portals',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title',
@@ -80,11 +80,11 @@ const messages = defineMessages({
   },
   errorMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage',
-    defaultMessage: 'Unable to load this portal’s draft and publication state',
+    defaultMessage: 'Unable to load the publish details.',
   },
   definitionNotAnObject: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject',
-    defaultMessage: 'The definition must be an object, not a list or a single value.',
+    defaultMessage: 'The definition must be a JSON or YAML object.',
   },
   tabDetails: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails',
@@ -152,7 +152,7 @@ const messages = defineMessages({
   deprecateConfirmMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage',
     defaultMessage:
-      'This marks the API "{name}" as deprecated on {portalName}. It stays visible there.',
+      'The API "{name}" will be marked as deprecated on {portalName}. It will remain listed.',
   },
 });
 

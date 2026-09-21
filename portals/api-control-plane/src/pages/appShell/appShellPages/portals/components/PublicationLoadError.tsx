@@ -29,7 +29,7 @@ const messages = defineMessages({
   forbiddenMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage',
     defaultMessage:
-      'Your account isn’t allowed to publish APIs to API portals. Ask an organization admin to grant you access.',
+      'You don’t have permission to publish APIs to API portals. Contact your organization admin to request access.',
   },
 });
 

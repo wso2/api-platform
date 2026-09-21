@@ -682,7 +682,7 @@ describe('PortalPublishPage', () => {
         within(dialog).getByText(
           action === 'Unpublish'
             ? `This removes the API "${API_NAME}" from acme-portal. You can publish it again later.`
-            : `This marks the API "${API_NAME}" as deprecated on acme-portal. It stays visible there.`,
+            : `The API "${API_NAME}" will be marked as deprecated on acme-portal. It will remain listed.`,
         ),
       ).toBeInTheDocument();
       expect(confirm).toBeDisabled();
@@ -822,7 +822,7 @@ describe('PortalPublishPage', () => {
     renderPage();
 
     expect(await screen.findByText('You don’t have permission')).toBeInTheDocument();
-    expect(screen.queryByText(/Unable to load this portal/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unable to load the publish details/)).not.toBeInTheDocument();
   });
 
   it('keeps the generic message when loading fails for a reason other than permission', async () => {
@@ -831,7 +831,7 @@ describe('PortalPublishPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText(/Unable to load this portal/)).toBeInTheDocument();
+    expect(await screen.findByText(/Unable to load the publish details/)).toBeInTheDocument();
     expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
   });
 });
