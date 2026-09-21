@@ -19,26 +19,36 @@
 'use strict';
 
 /*
- * WSO2 Identity Server 7.x — Dynamic Client Registration via its DCR v1.1 API.
+ * WSO2 Asgardeo — Dynamic Client Registration via its DCR v1.1 API.
  *
- * Activated by `type = "wso2is"` in an [[api_portal.key_manager]] entry, or by a
- * key manager created through Settings with that type. Endpoints come from the
- * server's OIDC discovery document:
+ * Activated by `type = "asgardeo"` in an [[api_portal.key_manager]] entry, or by
+ * a key manager created through Settings with that type. Endpoints come from the
+ * organisation's OIDC discovery document:
  *
- *   https://<host>/oauth2/token/.well-known/openid-configuration
- *   registration_endpoint -> https://<host>/api/identity/oauth2/dcr/v1.1/register
+ *   https://api.asgardeo.io/t/<org>/oauth2/token/.well-known/openid-configuration
+ *   registration_endpoint ->
+ *     https://api.asgardeo.io/t/<org>/api/identity/oauth2/dcr/v1.1/register
  *
- * The provisioning credential is normally `basic` auth for a server admin user.
- * A self-hosted instance is usually on a private address, so it needs
- * `allow_private_endpoints`; with the default self-signed certificate it also
- * needs `insecure_skip_verify`, which is development-only.
+ * The provisioning credential is a MACHINE-TO-MACHINE application in the same
+ * organisation, using the `client_credentials` grant and authorized for the DCR
+ * management scopes:
  *
- * Asgardeo is built on this server and speaks the same DCR API today, but it is
- * a separate product on its own release cadence and has its own driver
- * (`asgardeo.js`). The two are deliberately independent: neither imports from the
- * other, so a change made for one cannot move the other. What they do share is
- * `_call`, `_classify` and `_parse` on the `KeyManager` base, which is the HTTP
- * plumbing every driver here uses — not anything specific to this API.
+ *   internal_dcr_create  internal_dcr_view  internal_dcr_update  internal_dcr_delete
+ *
+ * That authorization is the step most easily missed, and it fails quietly:
+ * Asgardeo issues a token for an unauthorized M2M application happily — same 200,
+ * same token shape, no `scope` member in the response, no error — and nothing
+ * goes wrong until the first DCR call returns 403, which this driver reports as
+ * `provisioning_credential_rejected`. The credential is fine; the authorization
+ * is what is missing.
+ *
+ * Asgardeo is built on WSO2 Identity Server and the two speak the same DCR API
+ * today, but they are separate products on separate release cadences, and
+ * Identity Server has its own driver (`wso2is.js`). The two are deliberately
+ * independent: neither imports from the other, so a change made for one cannot
+ * move the other. What they do share is `_call`, `_classify` and `_parse` on the
+ * `KeyManager` base, which is the HTTP plumbing every driver here uses — not
+ * anything specific to this API.
  *
  * Three things make this different from thunderid.js, and they are the reason
  * this is a separate driver rather than a second config entry pointed at that one.
@@ -49,12 +59,12 @@
  *    delete are plain calls to `<registration_endpoint>/<client_id>`, all
  *    authenticated with the portal's own provisioning credential. That falls out
  *    for free — the shared `_call` only attaches a registration access token when
- *    one exists, so here the authenticator's own header is used throughout.
+ *    one exists, so here the authenticator's Bearer is used throughout.
  *
  * 2. PUT PRESERVES EVERY OMITTED MEMBER EXCEPT THE BOOLEANS, WHICH RESET.
  *    RFC 7592 §2.2 makes update wholly destructive; this API is neither that nor
- *    a clean merge. Verified against a live Identity Server 7: a PUT carrying only
- *    `client_name` and `grant_types` left the lifetimes, `redirect_uris`,
+ *    a clean merge. Verified against a live Asgardeo organisation: a PUT carrying
+ *    only `client_name` and `grant_types` left the lifetimes, `redirect_uris`,
  *    `token_type_extension` and the rest untouched — but silently flipped
  *    `ext_pkce_mandatory` and `ext_pkce_support_plain` from true back to false.
  *
@@ -69,19 +79,15 @@
  * 3. A NARROWER, EXTENDED METADATA SET. It accepts a subset of RFC 7591
  *    (no `scope`, no `response_types`, no `token_endpoint_auth_method`) plus its
  *    own `ext_*` members for things the RFC has no word for. Declaring RFC
- *    members this API ignores would be worse than omitting them: the form would
+ *    members Asgardeo ignores would be worse than omitting them: the form would
  *    collect values that silently do nothing.
  *
- * A credential that is accepted but not authorized for client registration shows
- * up as a 403 on the first DCR call, which this driver reports as
- * `provisioning_credential_rejected` — the credential is valid, its permissions
- * are not sufficient.
  */
 
 const { register } = require('../core/registry');
 const { KeyManager, prop, opt, toDcrBody, toKey } = require('../core/keyManager');
 
-const TYPE = 'wso2is';
+const TYPE = 'asgardeo';
 
 /*
  * The members this API types as Java primitive booleans, which is why an update
@@ -90,7 +96,7 @@ const TYPE = 'wso2is';
  */
 const BOOLEAN_MEMBERS = ['ext_pkce_mandatory', 'ext_pkce_support_plain', 'ext_public_client'];
 
-class WSO2ISKeyManager extends KeyManager {
+class AsgardeoKeyManager extends KeyManager {
     constructor(cfg, authRequest) {
         super(cfg);
         this.type = TYPE;
@@ -98,11 +104,11 @@ class WSO2ISKeyManager extends KeyManager {
     }
 
     /*
-     * Only members the DCR v1.1 API actually reads.
+     * Only members Asgardeo's DCR v1.1 API actually reads.
      *
      * This list drives the Add Key form, not what the API accepts — `toDcrBody`
      * passes the whole properties bag through, so an operator sending an `ext_*`
-     * member not listed here still reaches the server. What the list decides is
+     * member not listed here still reaches Asgardeo. What the list decides is
      * what a developer is *offered*, and offering a field the key manager
      * discards is how a form comes to lie about what it configured.
      */
@@ -114,7 +120,7 @@ class WSO2ISKeyManager extends KeyManager {
             // redirect-based flow; a client_credentials-only client never
             // redirects, so this is conditional rather than required.
             prop('redirect_uris', 'Callback URLs', 'string_list',
-                'Where the identity server sends the user after login. Absolute URIs, no fragment. '
+                'Where Asgardeo sends the user after login. Absolute URIs, no fragment. '
                 + 'Needed only for the authorization code grant.', false, null,
                 { property: 'grant_types', anyOf: ['authorization_code'] }),
             prop('grant_types', 'Grant types', 'multiselect',
@@ -135,7 +141,7 @@ class WSO2ISKeyManager extends KeyManager {
                 'Permits the "plain" code challenge method as well as S256. S256 only is stronger.',
                 false),
             prop('token_type_extension', 'Access token type', 'select',
-                'The token format the identity server issues to this application.', false, [
+                'The token format Asgardeo issues to this application.', false, [
                     opt('JWT', 'JWT (self-contained)'),
                     opt('Default', 'Opaque'),
                 ]),
@@ -164,7 +170,7 @@ class WSO2ISKeyManager extends KeyManager {
      * Update, with the omitted booleans filled in first.
      *
      * A caller that sends only the members it wants to change is behaving
-     * perfectly reasonably, and for every other member the server agrees. For the
+     * perfectly reasonably, and for every other member Asgardeo agrees. For the
      * booleans it does not: an omitted one is taken as `false`. Reading the
      * client back and restoring only those keeps a partial update from turning
      * off a security setting nobody touched.
@@ -224,7 +230,7 @@ class WSO2ISKeyManager extends KeyManager {
     /**
      * Turn a DCR read response back into the `properties` bag the API defines.
      *
-     * Two response-only members to drop beyond the RFC's own: `id`, the server's
+     * Two response-only members to drop beyond the RFC's own: `id`, Asgardeo's
      * internal application identifier, and `client_secret_expires_at`.
      */
     _propertiesFromDcr(dcr) {
@@ -254,6 +260,6 @@ class WSO2ISKeyManager extends KeyManager {
     }
 }
 
-register(TYPE, (cfg, authRequest) => new WSO2ISKeyManager(cfg, authRequest), 'WSO2 Identity Server');
+register(TYPE, (cfg, authRequest) => new AsgardeoKeyManager(cfg, authRequest), 'Asgardeo');
 
-module.exports = { WSO2ISKeyManager, TYPE };
+module.exports = { AsgardeoKeyManager, TYPE };

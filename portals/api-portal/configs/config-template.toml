@@ -485,8 +485,8 @@ max_response_bytes = 5242880   # 5 MiB
 #
 #   thunderid   ThunderID. RFC 7591 registration with RFC 7592 read/update/delete.
 #   wso2is      WSO2 Identity Server 7.x, via its DCR v1.1 API.
-#   asgardeo    WSO2 Asgardeo. The same API and the same driver as wso2is — the two
-#               names exist so an entry reads as the product it points at.
+#   asgardeo    WSO2 Asgardeo, via its DCR v1.1 API. The same API as wso2is today, but
+#               a separate driver: separate products, separate release cadences.
 #   provision   No registration at all: the application is created at the identity
 #               server by hand and its client id is recorded here. This is also what
 #               a key manager configured before DCR support became available behaves
@@ -559,8 +559,8 @@ max_response_bytes = 5242880   # 5 MiB
 #   scopes = ["internal_dcr_create", "internal_dcr_view",
 #             "internal_dcr_update", "internal_dcr_delete"]
 #
-# # WSO2 Identity Server 7.x, self-hosted. Same DCR API as Asgardeo above, so the
-# # same driver — what differs is the credential and the host posture.
+# # WSO2 Identity Server 7.x, self-hosted. Same DCR API as Asgardeo above; what
+# # differs is the credential and the host posture.
 # #
 # # A self-hosted server is usually on a private address behind a self-signed
 # # certificate, so both flags below are needed; both are off by default and both
