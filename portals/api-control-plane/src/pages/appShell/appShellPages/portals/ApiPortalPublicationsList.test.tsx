@@ -128,7 +128,9 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     expect(await screen.findByText('No Portals Available')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Manage portals' })).not.toBeInTheDocument();
+    // No CTA when the managed-portals extension isn't registered (the empty-state
+    // link points at that extension's route, so a naked button would 404 in OSS).
+    expect(screen.queryByRole('button', { name: 'Add Portal' })).not.toBeInTheDocument();
   });
 
   it('opens the publish flow for the portal the card names', async () => {

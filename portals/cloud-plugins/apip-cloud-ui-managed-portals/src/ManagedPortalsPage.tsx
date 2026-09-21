@@ -16,7 +16,6 @@ import ManagedPortalEdit from './ManagedPortalEdit';
 import ManagedPortalsList from './ManagedPortalsList';
 import { PortalFeatureProvider } from './portContext';
 import { createRealPortalPort, resolveApiBase } from './realPort';
-import type { ManagedPortal } from './types';
 
 export type ManagedPortalsPageProps = {
   /** Host capabilities supplied by the mounting console; kept as a prop so the feature stays host-agnostic. */
@@ -24,13 +23,16 @@ export type ManagedPortalsPageProps = {
 };
 
 /**
- * Sub-view state. Kept as a discriminated union so `editingPortal` cannot be set
+ * Sub-view state. Kept as a discriminated union so `portalId` cannot be set
  * without an edit view, and vice versa - no react-router in this feature package.
+ *
+ * Edit carries an id, not the record from the list: the list projection strips
+ * loginEnvironment, so the edit view has to GET the full portal to seed its form.
  */
 type PageView =
   | { kind: 'list' }
   | { kind: 'create' }
-  | { kind: 'edit'; portal: ManagedPortal };
+  | { kind: 'edit'; portalId: string };
 
 export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
   // Fail closed when the platform-api base is missing; tests / storybook build the mock port directly.
@@ -61,11 +63,11 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
       {view.kind === 'create' ? (
         <ManagedPortalCreate onCancel={goToList} onCreated={goToList} />
       ) : view.kind === 'edit' ? (
-        <ManagedPortalEdit portal={view.portal} onCancel={goToList} onSaved={goToList} />
+        <ManagedPortalEdit portalId={view.portalId} onCancel={goToList} onSaved={goToList} />
       ) : (
         <ManagedPortalsList
           onCreate={() => setView({ kind: 'create' })}
-          onEdit={(portal) => setView({ kind: 'edit', portal })}
+          onEdit={(portal) => setView({ kind: 'edit', portalId: portal.id })}
         />
       )}
     </PortalFeatureProvider>

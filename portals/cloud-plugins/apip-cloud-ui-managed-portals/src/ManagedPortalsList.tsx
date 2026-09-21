@@ -48,23 +48,22 @@ export type ManagedPortalsListProps = {
 };
 
 /**
- * Short relative-time using the built-in Intl.RelativeTimeFormat so the feature
- * package stays dependency-free. Picks the coarsest unit that still fits inside
- * a table cell ("3h ago", "5d ago", "2mo ago") - trimmed labels to keep the row compact.
+ * Short relative-time formatter local to this feature so the package stays
+ * dependency-free. Picks the coarsest unit that fits a table cell ("3h ago",
+ * "5d ago", "2mo ago"). Clock skew that puts the stamp in the future collapses
+ * to "just now" rather than the misleading "3h ago".
  */
 function shortRelative(iso: string | null | undefined): string {
   if (!iso) return '';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
-  const now = Date.now();
-  const seconds = Math.round((then - now) / 1000);
-  const abs = Math.abs(seconds);
-  if (abs < 60) return 'just now';
-  if (abs < 3600) return `${Math.round(abs / 60)}m ago`;
-  if (abs < 86400) return `${Math.round(abs / 3600)}h ago`;
-  if (abs < 2592000) return `${Math.round(abs / 86400)}d ago`;
-  if (abs < 31536000) return `${Math.round(abs / 2592000)}mo ago`;
-  return `${Math.round(abs / 31536000)}y ago`;
+  const seconds = Math.round((Date.now() - then) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  if (seconds < 2592000) return `${Math.round(seconds / 86400)}d ago`;
+  if (seconds < 31536000) return `${Math.round(seconds / 2592000)}mo ago`;
+  return `${Math.round(seconds / 31536000)}y ago`;
 }
 
 export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsListProps) {

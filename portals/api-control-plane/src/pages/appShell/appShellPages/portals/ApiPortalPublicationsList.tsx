@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { REST_API_TYPE, useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { useExtensions } from '@/extensions';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
@@ -94,6 +95,12 @@ export function ApiPortalPublicationsList() {
   const [search, setSearch] = useState('');
   const publicationsQuery = useApiPublications(REST_API_TYPE, apiHandler, { limit: LIST_LIMIT });
 
+  // The empty-state "Add Portal" action points at the org-level portal registry,
+  // which lives in a cloud plugin. The OSS build has no such route, so guard on
+  // the extension being registered rather than emit a link that would 404.
+  const extensions = useExtensions();
+  const hasManagedPortalsExtension = extensions.some((ext) => ext.id === 'managed-api-portals');
+
   const openPublication = (publication: PublicationSummaryItem) => {
     if (!publication.apiPortalId) return;
     navigate(
@@ -135,9 +142,15 @@ export function ApiPortalPublicationsList() {
 
       {publications.length === 0 ? (
         <EmptyState
-          actionLabel={intl.formatMessage(messages.emptyAction)}
+          actionLabel={
+            hasManagedPortalsExtension ? intl.formatMessage(messages.emptyAction) : undefined
+          }
           description={intl.formatMessage(messages.emptyDescription)}
-          onAction={() => navigate(routes.managedApiPortals(orgHandle))}
+          onAction={
+            hasManagedPortalsExtension
+              ? () => navigate(routes.managedApiPortals(orgHandle))
+              : undefined
+          }
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (

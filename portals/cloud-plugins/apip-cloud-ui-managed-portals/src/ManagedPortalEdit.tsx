@@ -25,23 +25,66 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 
-import { useManagedPortalList, useOrgEnvironments } from './hooks';
-import type { ManagedPortal } from './types';
+import { useManagedPortal, useOrgEnvironments } from './hooks';
+import type { ManagedPortal, UpdateManagedPortalInput } from './types';
 import { validatePortalName } from './utils/name';
 
 export type ManagedPortalEditProps = {
-  portal: ManagedPortal;
+  portalId: string;
   onCancel: () => void;
   onSaved: () => void;
 };
 
 /**
- * Full-page edit form. Mirrors ManagedPortalCreate so the two share visual
- * conventions - the difference is a locked handle, an editable login-environment
- * picker, and the save-changes-only patch semantics.
+ * Fetches the full portal by id before rendering the form: the list projection
+ * strips loginEnvironment, and seeding the picker off that stripped record made
+ * the current env look unset. The form is a separate inner component so its
+ * useState initializers see the fetched values on first render.
  */
-export default function ManagedPortalEdit({ portal, onCancel, onSaved }: ManagedPortalEditProps) {
-  const { update } = useManagedPortalList();
+export default function ManagedPortalEdit({ portalId, onCancel, onSaved }: ManagedPortalEditProps) {
+  const { portal, isLoading, error, update } = useManagedPortal(portalId);
+
+  if (isLoading) {
+    return (
+      <PageContent fullWidth>
+        <Typography variant="body2" color="text.secondary">
+          Loading portal…
+        </Typography>
+      </PageContent>
+    );
+  }
+
+  if (error) {
+    return (
+      <PageContent fullWidth>
+        <Typography variant="body2" color="error">
+          {error.message}
+        </Typography>
+      </PageContent>
+    );
+  }
+
+  if (!portal) {
+    return (
+      <PageContent fullWidth>
+        <Typography variant="body2" color="text.secondary">
+          Portal not found.
+        </Typography>
+      </PageContent>
+    );
+  }
+
+  return <EditForm portal={portal} update={update} onCancel={onCancel} onSaved={onSaved} />;
+}
+
+type EditFormProps = {
+  portal: ManagedPortal;
+  update: (input: UpdateManagedPortalInput) => Promise<ManagedPortal>;
+  onCancel: () => void;
+  onSaved: () => void;
+};
+
+function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
   const { environments, isLoading: envsLoading, error: envsError } = useOrgEnvironments();
 
   const [name, setName] = useState(portal.name);
@@ -52,14 +95,18 @@ export default function ManagedPortalEdit({ portal, onCancel, onSaved }: Managed
   const nameError = useMemo(() => validatePortalName(name), [name]);
   const missingRequired = !name.trim();
 
-  // Enable Save only when at least one field has actually changed relative to
-  // the loaded portal - avoids the "Save enabled, click, nothing happens" trap.
+  // Compare on trim-normalized values so a whitespace-only edit does not enable
+  // Save or restamp updatedAt server-side.
+  const trimmedName = name.trim();
+  const trimmedDescription = description.trim();
+  const trimmedLogin = loginEnvironment.trim();
+
   const hasChanges = useMemo(() => {
-    if (name.trim() !== portal.name) return true;
-    if (description !== (portal.description ?? '')) return true;
-    if (loginEnvironment !== (portal.loginEnvironment ?? '')) return true;
+    if (trimmedName !== portal.name) return true;
+    if (trimmedDescription !== (portal.description ?? '')) return true;
+    if (trimmedLogin !== (portal.loginEnvironment ?? '')) return true;
     return false;
-  }, [portal, name, description, loginEnvironment]);
+  }, [portal, trimmedName, trimmedDescription, trimmedLogin]);
 
   const canSubmit = !missingRequired && !nameError && hasChanges && !submitting;
 
@@ -67,19 +114,16 @@ export default function ManagedPortalEdit({ portal, onCancel, onSaved }: Managed
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      // Send only changed fields so a no-op save doesn't restamp values and untouched fields aren't cleared.
-      const patch = {
-        ...(name.trim() !== portal.name ? { name: name.trim() } : {}),
-        ...(description !== (portal.description ?? '') ? { description: description.trim() } : {}),
-        ...(loginEnvironment !== (portal.loginEnvironment ?? '')
-          ? { loginEnvironment: loginEnvironment.trim() }
-          : {}),
+      const patch: UpdateManagedPortalInput = {
+        ...(trimmedName !== portal.name ? { name: trimmedName } : {}),
+        ...(trimmedDescription !== (portal.description ?? '') ? { description: trimmedDescription } : {}),
+        ...(trimmedLogin !== (portal.loginEnvironment ?? '') ? { loginEnvironment: trimmedLogin } : {}),
       };
       if (Object.keys(patch).length === 0) {
         onSaved();
         return;
       }
-      await update(portal.id, patch);
+      await update(patch);
       onSaved();
     } catch {
       // Hook already notified; leave the form in place with user input for retry.
