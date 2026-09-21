@@ -285,6 +285,7 @@ func TestObservabilityAbortsAfterResponseStarted(t *testing.T) {
 	h := observability("echo", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("before panic"))
+		w.(http.Flusher).Flush()
 		panic("boom after response")
 	})))
 	server := httptest.NewUnstartedServer(h)
@@ -293,13 +294,13 @@ func TestObservabilityAbortsAfterResponseStarted(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	resp, err := server.Client().Get(server.URL)
-	if err == nil {
-		body, readErr := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		require.NoError(t, readErr)
-		require.NotContains(t, string(body), "boom after response")
-		require.NotContains(t, string(body), "testbench handler panicked")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.Error(t, readErr)
+	require.NotContains(t, string(body), "boom after response")
+	require.NotContains(t, string(body), "testbench handler panicked")
 }
 
 // The partition is what ties a log line to one block out of the fifty-plus sharing this
