@@ -109,14 +109,15 @@ const PoliciesPage = lazy(() =>
     default: m.PoliciesPage,
   })),
 );
-const RoutingPage = lazy(() =>
-  import('../pages/appShell/appShellPages/develop/routings/RoutingPage').then((m) => ({
-    default: m.RoutingPage,
-  })),
-);
+
 const DocumentsPage = lazy(() =>
   import('../pages/appShell/appShellPages/develop/documents/DocumentsPage').then((m) => ({
     default: m.DocumentsPage,
+  })),
+);
+const DefinitionPage = lazy(() =>
+  import('../pages/appShell/appShellPages/develop/definition/DefinitionPage').then((m) => ({
+    default: m.DefinitionPage,
   })),
 );
 const ApiConsolePage = lazy(() =>
@@ -172,6 +173,11 @@ const RuntimeLogsPage = lazy(() =>
 const PortalsPage = lazy(() =>
   import('../pages/appShell/appShellPages/portals/PortalsPage').then((m) => ({
     default: m.PortalsPage,
+  })),
+);
+const PortalPublishPage = lazy(() =>
+  import('../pages/appShell/appShellPages/portals/PortalPublishPage').then((m) => ({
+    default: m.PortalPublishPage,
   })),
 );
 const SettingsLayout = lazy(() =>
@@ -344,8 +350,9 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             produced and are not registered.
           */}
           {scopedRoutes(apiScopedPaths(routes.apiDevelopPolicies), <PoliciesPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiDevelopRouting), <RoutingPage />)}
+
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDevelopDefinition), <DefinitionPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestCurl), <TestPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestChat), <ApiChatPage />)}
@@ -358,6 +365,11 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.organizationPortals()} element={<PortalsPage />} />
           <Route path={routes.projectPortals()} element={<PortalsPage />} />
           <Route path={routes.apiPortals()} element={<PortalsPage />} />
+          {/*
+            Reached only from a portal card on the page above — like `apiEdit`,
+            there is no sidebar link to it and so no scope-less alias to register.
+          */}
+          <Route path={routes.apiPortalPublish()} element={<PortalPublishPage />} />
           {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}

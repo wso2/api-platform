@@ -94,8 +94,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 20
                       duration: "1m"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And the JSON response field "status" should be "success"
@@ -229,8 +227,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 15
                       duration: "1m"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/multi-quota/chat/completions" to be ready
@@ -337,8 +333,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 2
                       duration: "1m"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/gzip-response/chat/completions" to be ready
@@ -438,8 +432,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 100
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/headers-ratelimit/chat/completions" to be ready
@@ -555,8 +547,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 5
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
 
@@ -593,8 +583,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 5
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/provider-a/chat/completions" to be ready
@@ -736,8 +724,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 25
                       duration: "1m"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/multi-quota-detailed/chat/completions" to be ready
@@ -862,8 +848,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 5
                       duration: "10s"  # Short window for testing
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/window-test/chat/completions" to be ready
@@ -966,8 +950,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 10
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/zero-token-test/chat/completions" to be ready
@@ -1076,8 +1058,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 10
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/header-cost-test/chat/completions" to be ready
@@ -1166,8 +1146,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 5
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/change-test/chat/completions" to be ready
@@ -1230,8 +1208,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 10
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/change-test/chat/completions" to be ready
@@ -1310,8 +1286,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 5
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
 
@@ -1349,8 +1323,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 5
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/provider-alpha/chat/completions" to be ready
@@ -1456,8 +1428,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 5
                       duration: "1m"
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/empty-limits/chat/completions" to be ready
@@ -1566,8 +1536,6 @@ Feature: Token-Based Rate Limiting
                       duration: "1m"
                   completionTokenLimits: []
                   totalTokenLimits: []
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/prompt-only-empty-limits/chat/completions" to be ready
@@ -1675,8 +1643,6 @@ Feature: Token-Based Rate Limiting
                     - count: 5
                       duration: "1m"
                   totalTokenLimits: []
-                  algorithm: fixed-window
-                  backend: memory
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/completion-only-empty-limits/chat/completions" to be ready
@@ -1871,8 +1837,6 @@ Feature: Token-Based Rate Limiting
                   totalTokenLimits:
                     - count: 1000
                       duration: "1h"
-                  algorithm: fixed-window
-                  backend: memory
                   consumerBased: true
       """
     Then the response status code should be 201

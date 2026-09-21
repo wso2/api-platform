@@ -57,10 +57,13 @@ var (
 	KindAPIKey       = Kind{Name: "api-key", Order: 30}
 	KindAPIProduct   = Kind{Name: "api-product", Order: 40}
 	KindAPI          = Kind{Name: "api", Order: 50}
-	KindMCPServer    = Kind{Name: "mcp-server", Order: 55}
-	KindPolicy       = Kind{Name: "policy", Order: 60}
-	KindSharedScope  = Kind{Name: "shared-scope", Order: 70}
-	KindCertificate  = Kind{Name: "certificate", Order: 80}
+	// gateway-controller's own Mcp resource (the "/mcp-proxies" collection), distinct from
+	// KindMCPServer below (platform-api's separate MCP server registration).
+	KindMCPProxy    = Kind{Name: "mcp-proxy", Order: 52}
+	KindMCPServer   = Kind{Name: "mcp-server", Order: 55}
+	KindPolicy      = Kind{Name: "policy", Order: 60}
+	KindSharedScope = Kind{Name: "shared-scope", Order: 70}
+	KindCertificate = Kind{Name: "certificate", Order: 80}
 	// LLMProxy and LLMProvider both delete before Secret: either can hold a credential as a
 	// {{ secret "handle" }} placeholder, and platform-api refuses to delete a secret still
 	// referenced by one (409 SECRET_IN_USE). LLMProxy also deletes before LLMProvider, since
@@ -95,6 +98,7 @@ type Resource struct {
 	cleanupFailures int
 }
 
+// String renders the resource for a leak or cleanup-failure diagnostic.
 func (r Resource) String() string {
 	if r.Description != "" {
 		return fmt.Sprintf("%s %q (%s, created by %s)", r.Kind.Name, r.ID, r.Description, r.Actor)

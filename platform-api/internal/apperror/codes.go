@@ -32,6 +32,7 @@ const (
 	CodeCommonInternalError       = "INTERNAL_ERROR"
 	CodeCommonServiceUnavailable  = "SERVICE_UNAVAILABLE"
 	CodeCommonTooManyRequests     = "TOO_MANY_REQUESTS"
+	CodeCommonPayloadTooLarge     = "PAYLOAD_TOO_LARGE"
 )
 
 // LLM provider/proxy domain codes, matching the examples documented in
@@ -136,6 +137,12 @@ const (
 	CodeApplicationExists   = "APPLICATION_EXISTS"
 )
 
+// API Portal domain codes.
+const (
+	CodeAPIPortalNotFound = "API_PORTAL_NOT_FOUND"
+	CodeAPIPortalExists   = "API_PORTAL_EXISTS"
+)
+
 // Subscription domain codes.
 const (
 	CodeSubscriptionNotFound     = "SUBSCRIPTION_NOT_FOUND"
@@ -204,4 +211,26 @@ const (
 	CodeHmacSecretExists        = "HMAC_SECRET_EXISTS"
 	CodeHmacSecretInvalidValue  = "HMAC_SECRET_INVALID_VALUE"
 	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
+)
+
+// API Publication domain codes. CodeAPIPublicationAPINotFound covers an
+// unknown (apiType, apiId) pair or an apiType this build doesn't serve —
+// distinct from CodeArtifactNotFound (used elsewhere in the codebase for the
+// same resolution mechanism) because this feature documents API_NOT_FOUND as
+// part of its own client-facing contract.
+const (
+	CodeAPIPublicationAPINotFound       = "API_NOT_FOUND"
+	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
+	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
+	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
+	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
+	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
+	// CodeAPIPublicationStateConflict: the action (unpublish, deprecate) is not
+	// valid for the listing's current status. Distinct from
+	// CodeAPIPublicationNotFound (404, used by the live-listing reads) — this is
+	// a 409 on an action, not a missing-resource read.
+	CodeAPIPublicationStateConflict = "PUBLICATION_STATE_CONFLICT"
+	// CodeAPIPublicationDraftChanged: the draft was saved while a publish of it
+	// was in flight, so the copy sent to the portal is no longer the draft.
+	CodeAPIPublicationDraftChanged = "PUBLICATION_DRAFT_CHANGED"
 )

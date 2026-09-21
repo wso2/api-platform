@@ -81,6 +81,10 @@
     "defaultMessage": "How do you want to define your {apiType}?",
     "description": "{apiType} is the type picked in the first step, e.g. \"REST API\". Reads as one sentence."
   },
+  "api.create.ApiCreationWizard.specInvalidOnCreate": {
+    "defaultMessage": "Fix the following spec issues before creating:",
+    "description": "Heading above spec validation errors shown when the Create button is clicked."
+  },
   "api.create.ApiCreationWizard.stepCount": {
     "defaultMessage": "Step {current} of 3"
   },
@@ -115,15 +119,23 @@
     "defaultMessage": "Not available yet.",
     "description": "Tooltip explaining why an unreleased API type card cannot be clicked."
   },
+  "api.create.apiResourcesPreview.editorLoading": {
+    "defaultMessage": "Loading editor…",
+    "description": "Placeholder shown while Monaco editor initialises."
+  },
   "api.create.apiResourcesPreview.empty.body": {
     "defaultMessage": "Import a contract to explore its endpoints"
   },
   "api.create.apiResourcesPreview.empty.title": {
     "defaultMessage": "Resources will show here"
   },
+  "api.create.apiResourcesPreview.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
   "api.create.apiResourcesPreview.source": {
     "defaultMessage": "Source",
-    "description": "Toggle that swaps the rendered resources for the definition’s own text."
+    "description": "Toggle that swaps the rendered resources for the definition's own text."
   },
   "api.create.apiResourcesPreview.title": {
     "defaultMessage": "API resources"
@@ -158,21 +170,34 @@
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
   },
-  "api.create.defineApi.approach.label": {
-    "defaultMessage": "How do you want to define this API?",
-    "description": "Accessible name for the pair of approach tabs at the top of the step."
+  "api.create.defineApi.changeSource": {
+    "defaultMessage": "Change source",
+    "description": "Back button label in the contract import view."
+  },
+  "api.create.defineApi.continue": {
+    "defaultMessage": "Continue",
+    "description": "Button that advances the wizard from the contract view to the next step."
   },
   "api.create.defineApi.contract.description": {
-    "defaultMessage": "Import from a URL or a file."
+    "defaultMessage": "Import an API contract from a URL or a file."
+  },
+  "api.create.defineApi.contract.heading": {
+    "defaultMessage": "Point us at your contract"
+  },
+  "api.create.defineApi.contract.subheading": {
+    "defaultMessage": "Import OpenAPI or Swagger definition"
   },
   "api.create.defineApi.contract.title": {
-    "defaultMessage": "Start with a contract"
+    "defaultMessage": "Start with a Contract"
   },
   "api.create.defineApi.scratch.description": {
-    "defaultMessage": "Start blank and chat with AI to build it."
+    "defaultMessage": "Begin with a blank API and fill in the details."
+  },
+  "api.create.defineApi.scratch.hasEndpoint": {
+    "defaultMessage": "I have an endpoint URL"
   },
   "api.create.defineApi.scratch.title": {
-    "defaultMessage": "Design from scratch"
+    "defaultMessage": "Start from Scratch"
   },
   "api.create.fromContract.action.clearUrl": {
     "defaultMessage": "Clear URL",
@@ -247,6 +272,10 @@
   },
   "api.create.fromContract.source.url": {
     "defaultMessage": "URL"
+  },
+  "api.create.fromContract.spec.invalidByBackend": {
+    "defaultMessage": "The specification is not a valid OpenAPI document:",
+    "description": "Heading above the list of backend validation errors."
   },
   "api.create.fromContract.spec.oversized": {
     "defaultMessage": "That file is too large to validate in the browser."
@@ -486,9 +515,6 @@
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
   },
-  "api.create.specIssue.badPathKeys": {
-    "defaultMessage": "Some entries under paths are not paths and were skipped: {detail}"
-  },
   "api.create.specIssue.externalRefs": {
     "defaultMessage": "This definition references files outside itself, which are not read: {detail}"
   },
@@ -498,20 +524,8 @@
   "api.create.specIssue.missingVersion": {
     "defaultMessage": "No version in this definition — set one on the next step."
   },
-  "api.create.specIssue.noOperations": {
-    "defaultMessage": "This definition declares no GET, POST, PUT, PATCH or DELETE operation."
-  },
-  "api.create.specIssue.noPaths": {
-    "defaultMessage": "This definition has no paths section."
-  },
   "api.create.specIssue.noServers": {
     "defaultMessage": "No server URL in this definition — set the backend on the next step."
-  },
-  "api.create.specIssue.notASpec": {
-    "defaultMessage": "That file is not an OpenAPI definition: it names neither an openapi nor a swagger version."
-  },
-  "api.create.specIssue.unsupportedDialect": {
-    "defaultMessage": "OpenAPI {detail} is not supported. Import a Swagger 2.0 or OpenAPI 3 definition."
   },
   "api.create.specSourceEditor.action.cancel": {
     "defaultMessage": "Cancel",
@@ -532,6 +546,10 @@
   "api.create.specSourceEditor.action.save": {
     "defaultMessage": "Save",
     "description": "Checks the edited definition and, if it holds up, adopts it."
+  },
+  "api.create.specSourceEditor.backendInvalid": {
+    "defaultMessage": "The specification has issues:",
+    "description": "Heading above backend validation errors shown when Save is clicked."
   },
   "api.create.specSourceEditor.editorLoading": {
     "defaultMessage": "Loading editor",
@@ -634,14 +652,6 @@
   "apiControlPlane.components.SwaggerOperationsView.SwaggerResourceRow.expand": {
     "defaultMessage": "Show details for {method} {path}",
     "description": "Accessible label for the control that opens one resource row. {method} is an HTTP verb such as GET; {path} is a URL path. Neither is translated."
-  },
-  "apiControlPlane.components.SwaggerOperationsView.delete": {
-    "defaultMessage": "Delete resource",
-    "description": "Tooltip on the button that removes one API resource from the list. Verb phrase."
-  },
-  "apiControlPlane.components.SwaggerOperationsView.deleteLabel": {
-    "defaultMessage": "Delete {method} {path}",
-    "description": "Accessible label for the delete button on one resource. {method} is an HTTP verb such as GET; {path} is a URL path such as /books/{id}. Neither is translated."
   },
   "apiControlPlane.components.SwaggerOperationsView.empty": {
     "defaultMessage": "No operations available."
@@ -1127,17 +1137,19 @@
     "defaultMessage": "Test",
     "description": "Third step of the API progress stepper — the API has been called from the test console. A stage name, not a button command."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.count": {
-    "defaultMessage": "Showing {count, plural, one {# resource} other {# resources}}",
-    "description": "Number of API operations displayed in the resources panel."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty": {
     "defaultMessage": "No available resources.",
     "description": "Shown in place of the operation list when the API definition exposes none."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.emptyDescription": {
     "defaultMessage": "This API’s definition does not expose any operations yet.",
-    "description": "Sits under “No available resources.” and explains why the list is empty — the definition itself has no operations, as opposed to anything having failed."
+    "description": "Sits under \"No available resources.\" and explains why the list is empty — the definition itself has no operations, as opposed to anything having failed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.loadError": {
+    "defaultMessage": "Unable to load the API definition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.loading": {
+    "defaultMessage": "Loading API definition"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.title": {
     "defaultMessage": "Resources",
@@ -1990,8 +2002,176 @@
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.unresolvedOrganization": {
     "defaultMessage": "Unable to resolve organization context. The organization API returned no usable organizations for this session."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyDescription": {
+    "defaultMessage": "An organization admin needs to register an API portal before this API can be published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle": {
+    "defaultMessage": "No API portals available",
+    "description": "Shown when the organization has not registered any API Portal yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.errorMessage": {
+    "defaultMessage": "Unable to load API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.loading": {
+    "defaultMessage": "Loading API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesDescription": {
+    "defaultMessage": "Try a different portal name or clear the search."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle": {
+    "defaultMessage": "No matching API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder": {
+    "defaultMessage": "Search API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle": {
+    "defaultMessage": "Choose the API portal to publish this API to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
+    "defaultMessage": "Publish {apiName}",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
+    "defaultMessage": "Back to Available Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmAction": {
+    "defaultMessage": "Confirm",
+    "description": "Button on the unpublish and deprecate confirmation dialogs. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmInputLabel": {
+    "defaultMessage": "Type \"{name}\" to confirm",
+    "description": "Label for the type-to-confirm field. {name} is the API name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject": {
+    "defaultMessage": "The definition must be an object, not a list or a single value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage": {
+    "defaultMessage": "This marks the API \"{name}\" as deprecated on {portalName}. It stays visible there."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmTitle": {
+    "defaultMessage": "Deprecate this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
+    "defaultMessage": "Deprecated on {portalName}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
+    "defaultMessage": "Draft saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
+    "defaultMessage": "Unable to load this portal’s draft and publication state"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading": {
+    "defaultMessage": "Loading publish details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published": {
+    "defaultMessage": "Published to {portalName}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
+    "defaultMessage": "{apiName} · v{version}",
+    "description": "Byline under the heading. Both values are user-supplied; do not translate them."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails": {
+    "defaultMessage": "API Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDocumentations": {
+    "defaultMessage": "Documentation"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage": {
+    "defaultMessage": "Landing Page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabSpecification": {
+    "defaultMessage": "Specification"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabSubscriptionPlans": {
+    "defaultMessage": "Subscription Plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title": {
+    "defaultMessage": "Publish to {portalName}",
+    "description": "Page heading. {portalName} is the API Portal display name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmMessage": {
+    "defaultMessage": "This removes the API \"{name}\" from {portalName}. You can publish it again later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmTitle": {
+    "defaultMessage": "Unpublish this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublished": {
+    "defaultMessage": "Unpublished from {portalName}."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalsPage.feature": {
     "defaultMessage": "Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionLabel": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionPlaceholder": {
+    "defaultMessage": "What this API does, in one or two sentences."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.nameLabel": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.productionUrlLabel": {
+    "defaultMessage": "Production URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel": {
+    "defaultMessage": "Sandbox URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
+    "defaultMessage": "Version"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
+    "defaultMessage": "Go To Publish",
+    "description": "Card action opening the publish flow for this API on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
+    "defaultMessage": "Deprecate"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions": {
+    "defaultMessage": "More publish actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publish": {
+    "defaultMessage": "Publish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.saveDraft": {
+    "defaultMessage": "Save Draft"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
+    "defaultMessage": "Unpublish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
+    "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
+    "defaultMessage": "Loading editor"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
+    "defaultMessage": "This is not valid {format}: {detail}",
+    "description": "{format} is JSON or YAML; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
+    "defaultMessage": "Deprecated",
+    "description": "Status chip: this API is still listed on this portal but flagged as deprecated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.draft": {
+    "defaultMessage": "Draft",
+    "description": "Status chip: this API has unpublished changes saved as a draft on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.published": {
+    "defaultMessage": "Published",
+    "description": "Status chip: this API is live on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.displayNameRequired": {
+    "defaultMessage": "Enter a name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
+    "defaultMessage": "Enter a version."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView": {
     "defaultMessage": "Grid view",
@@ -2504,6 +2684,128 @@
   },
   "components.common.searchableComplexSelect.dropdownClickAriaLabel": {
     "defaultMessage": "Open {label}"
+  },
+  "develop.definition.DefinitionPage.scopePrompt": {
+    "defaultMessage": "The API definition is specific to a single API."
+  },
+  "develop.definition.DefinitionPanel.addDefinition": {
+    "defaultMessage": "Import definition"
+  },
+  "develop.definition.DefinitionPanel.addResource": {
+    "defaultMessage": "Add resource"
+  },
+  "develop.definition.DefinitionPanel.addResourceCancel": {
+    "defaultMessage": "Cancel"
+  },
+  "develop.definition.DefinitionPanel.addResourceConfirm": {
+    "defaultMessage": "Add"
+  },
+  "develop.definition.DefinitionPanel.addResourceDescriptionPlaceholder": {
+    "defaultMessage": "Description (optional)",
+    "description": "Placeholder for the description input in the Add resource form."
+  },
+  "develop.definition.DefinitionPanel.addResourcePathPlaceholder": {
+    "defaultMessage": "/resource/:id",
+    "description": "Placeholder for the path input in the Add resource form."
+  },
+  "develop.definition.DefinitionPanel.addResourceTitle": {
+    "defaultMessage": "Add Resource"
+  },
+  "develop.definition.DefinitionPanel.dialogCancel": {
+    "defaultMessage": "Cancel"
+  },
+  "develop.definition.DefinitionPanel.dialogFetch": {
+    "defaultMessage": "Fetch specification"
+  },
+  "develop.definition.DefinitionPanel.dialogFetchError": {
+    "defaultMessage": "Failed to fetch specification from the provided URL."
+  },
+  "develop.definition.DefinitionPanel.dialogFetching": {
+    "defaultMessage": "Fetching…"
+  },
+  "develop.definition.DefinitionPanel.dialogImportLabel": {
+    "defaultMessage": "Import Specification"
+  },
+  "develop.definition.DefinitionPanel.dialogParseError": {
+    "defaultMessage": "The fetched content is not a valid OpenAPI/Swagger spec."
+  },
+  "develop.definition.DefinitionPanel.dialogTitle": {
+    "defaultMessage": "Update OpenAPI Definition"
+  },
+  "develop.definition.DefinitionPanel.dialogUpload": {
+    "defaultMessage": "Upload Specification"
+  },
+  "develop.definition.DefinitionPanel.dialogUrlPlaceholder": {
+    "defaultMessage": "Paste OpenAPI URL or upload a file"
+  },
+  "develop.definition.DefinitionPanel.discard": {
+    "defaultMessage": "Discard"
+  },
+  "develop.definition.DefinitionPanel.downloadLabel": {
+    "defaultMessage": "Download Definition"
+  },
+  "develop.definition.DefinitionPanel.edit": {
+    "defaultMessage": "Edit"
+  },
+  "develop.definition.DefinitionPanel.editorLoading": {
+    "defaultMessage": "Loading editor…",
+    "description": "Placeholder shown while Monaco editor initialises."
+  },
+  "develop.definition.DefinitionPanel.emptyDescription": {
+    "defaultMessage": "Upload an OpenAPI or Swagger spec to document your API contract."
+  },
+  "develop.definition.DefinitionPanel.emptyTitle": {
+    "defaultMessage": "No API definition"
+  },
+  "develop.definition.DefinitionPanel.fileReadError": {
+    "defaultMessage": "Failed to read the selected file."
+  },
+  "develop.definition.DefinitionPanel.fileTooLarge": {
+    "defaultMessage": "The specification exceeds the maximum allowed size (5 MB)."
+  },
+  "develop.definition.DefinitionPanel.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
+  "develop.definition.DefinitionPanel.loadError": {
+    "defaultMessage": "Unable to load the API definition."
+  },
+  "develop.definition.DefinitionPanel.loading": {
+    "defaultMessage": "Loading API definition"
+  },
+  "develop.definition.DefinitionPanel.methodLabel": {
+    "defaultMessage": "Method",
+    "description": "Accessible label for the HTTP method select in the Add resource form."
+  },
+  "develop.definition.DefinitionPanel.orDivider": {
+    "defaultMessage": "Or",
+    "description": "Separator between the URL input and the file upload button."
+  },
+  "develop.definition.DefinitionPanel.reset": {
+    "defaultMessage": "Reset"
+  },
+  "develop.definition.DefinitionPanel.save": {
+    "defaultMessage": "Save"
+  },
+  "develop.definition.DefinitionPanel.saveSpecInvalid": {
+    "defaultMessage": "Failed to save the specification. Fix the following issues:",
+    "description": "Heading above spec validation errors shown when Save is clicked."
+  },
+  "develop.definition.DefinitionPanel.saveValidationUnavailable": {
+    "defaultMessage": "Spec validation is currently unavailable. Please try again.",
+    "description": "Error shown when the validation service itself fails (network/auth error)."
+  },
+  "develop.definition.DefinitionPanel.updateOpenApi": {
+    "defaultMessage": "Import Definition"
+  },
+  "develop.definition.OperationsList.allMethods": {
+    "defaultMessage": "All methods"
+  },
+  "develop.definition.OperationsList.operationsParseError": {
+    "defaultMessage": "The current spec cannot be parsed. Fix any syntax errors to preview operations."
+  },
+  "develop.definition.OperationsList.searchResources": {
+    "defaultMessage": "Search resources"
   },
   "gatewayCard.connected": {
     "defaultMessage": "Connected",

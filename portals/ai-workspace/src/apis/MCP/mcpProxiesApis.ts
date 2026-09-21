@@ -25,6 +25,7 @@ import type {
   MCPServerListResponse,
   CreateMCPServerRequest,
   UpdateMCPServerRequest,
+  Publication,
 } from '../../utils/types';
 
 // ============================================================================
@@ -168,10 +169,47 @@ export async function deleteMCPServer(
   }
 }
 
+const MCP_PROXY_API_TYPE = 'mcp-proxy';
+
+function mcpProxyPublicationPath(apiPortalId: string, mcpProxyId: string, suffix: string): string {
+  return `/api-portals/${encodeURIComponent(apiPortalId)}/apis/${MCP_PROXY_API_TYPE}/${encodeURIComponent(mcpProxyId)}${suffix}`;
+}
+
+/** Throws on a 404 (no publication record — i.e. not currently published);
+ * callers should treat that specifically as "unpublished", any other error
+ * as a genuine failure. */
+export async function getMcpProxyApiPortalPublication(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<Publication> {
+  return get<Publication>(mcpProxyPublicationPath(apiPortalId, mcpProxyId, '/publication'), undefined, baseUrl);
+}
+
+export async function publishMcpProxyToApiPortal(
+  apiPortalId: string,
+  mcpProxyId: string,
+  gatewayId: string,
+  baseUrl: string
+): Promise<Publication> {
+  return post<Publication>(mcpProxyPublicationPath(apiPortalId, mcpProxyId, '/publish'), { gatewayId }, baseUrl);
+}
+
+export async function unpublishMcpProxyFromApiPortal(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<void> {
+  await post<void>(mcpProxyPublicationPath(apiPortalId, mcpProxyId, '/unpublish'), undefined, baseUrl);
+}
+
 export const mcpProxiesApis = {
   createMCPServer,
   getMCPServers,
   getMCPServer,
   updateMCPServer,
   deleteMCPServer,
+  getMcpProxyApiPortalPublication,
+  publishMcpProxyToApiPortal,
+  unpublishMcpProxyFromApiPortal,
 };

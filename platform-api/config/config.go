@@ -103,6 +103,14 @@ type Server struct {
 	// responses (internal/utils/mcp.go). <= 0 falls back to the fetcher's built-in 10 MiB
 	// default — mirroring OpenAPISpecMaxFetchBytes's own zero-means-default convention.
 	MCPResponseMaxBytes int64 `koanf:"mcp_response_max_fetch_bytes"`
+	// PublicationContentMaxBytes bounds an API Publication draft/publication definition
+	// or landing-page upload (internal/handler/api_publication.go). <= 0 falls back to
+	// a 10 MiB default — same zero-means-default convention as the two fields above.
+	PublicationContentMaxBytes int64 `koanf:"publication_content_max_bytes"`
+	// PublicationThumbnailMaxBytes bounds an API Publication draft/publication thumbnail
+	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
+	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
+	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
 
 	Database    Database         `koanf:"database"`
 	Auth        Auth             `koanf:"auth"`
@@ -471,16 +479,33 @@ type InternalToken struct {
 	SkipValidation bool `koanf:"skip_validation"`
 }
 
-// JWT holds configuration for local asymmetric (RS256) JWT authentication.
-// Active when Auth.Mode is AuthModeInternalToken (verify-only; tokens minted by
+// JWTAlgorithmRS256 is the only value JWT.Algorithm currently accepts. RS256
+// is quantum-vulnerable; migrating to a config-gated ML-DSA-65 (FIPS 204)
+// alternative per post-quantum-cryptography.md directive 1 is tracked in
+// https://github.com/wso2/api-platform/issues/3450, which also covers the
+// separate work of getting an ML-DSA Go library through this repo's
+// dependency-vetting process (dependency-management.md) before it can be
+// used here, and updating the openssl-based key-generation tooling
+// (scripts/setup-local-dev.sh, kubernetes/helm/*/generate-secrets.sh, the
+// docker-compose jwtkeygen init-containers, and others) that currently mints
+// only RSA-2048 keypairs. JWT.Algorithm exists now so that migration lands as
+// a new accepted value here plus an EffectiveAlgorithm branch in
+// LoadPublicKey/LoadPrivateKey, rather than a breaking change to this struct.
+const JWTAlgorithmRS256 = "RS256"
+
+// JWT holds configuration for local asymmetric JWT authentication. Active
+// when Auth.Mode is AuthModeInternalToken (verify-only; tokens minted by
 // another platform component) or AuthModeFile (file mode also issues these
-// tokens). Signature
-// validation is always on and strictly asymmetric — symmetric (HMAC) and
-// unsigned ("none") algorithms are rejected.
-//
-// TODO(pqc): migrate — RS256 is quantum-vulnerable. Move to an ML-DSA (FIPS 204)
-// signature once a Go JWT library exposes it. See post-quantum-cryptography.md.
+// tokens). Signature validation is always on and strictly asymmetric —
+// symmetric (HMAC) and unsigned ("none") algorithms are rejected.
 type JWT struct {
+	// Algorithm selects the signing/verification scheme. Only
+	// JWTAlgorithmRS256 is accepted today (see its doc comment); empty is
+	// treated as RS256 so existing deployments' config keeps working
+	// unchanged. Startup fails closed on any other value rather than
+	// silently falling back to RS256, so a config typo or a request for an
+	// algorithm this version doesn't yet support is never silently ignored.
+	Algorithm string `koanf:"algorithm"`
 	// PublicKeyFile is the path to a mounted PEM-encoded RSA public key file,
 	// used to verify token signatures. Required in both "internal_token" and
 	// "file" modes. The key is read from disk at the point of use rather than
@@ -494,6 +519,16 @@ type JWT struct {
 	PrivateKeyFile string        `koanf:"private_key_file"`
 	Issuer         string        `koanf:"issuer"`
 	TokenTTL       time.Duration `koanf:"token_ttl"`
+}
+
+// EffectiveAlgorithm returns the configured algorithm, defaulting to
+// JWTAlgorithmRS256 when unset so existing deployments' config keeps working
+// unchanged.
+func (j *JWT) EffectiveAlgorithm() string {
+	if j.Algorithm == "" {
+		return JWTAlgorithmRS256
+	}
+	return j.Algorithm
 }
 
 // LoadPublicKey reads and parses the PEM-encoded RSA public key from
@@ -941,6 +976,10 @@ func ValidateAuthSkipPath(path string) error {
 // asymmetric RSA keys are accepted, so symmetric (HMAC) verification is
 // structurally impossible.
 func validateJWTConfig(jwtCfg *JWT, requireSigningKey bool) error {
+	if jwtCfg.EffectiveAlgorithm() != JWTAlgorithmRS256 {
+		return fmt.Errorf("Auth.JWT.Algorithm must be %q (got %q) — see JWTAlgorithmRS256's doc comment "+
+			"for the tracked PQC migration adding further accepted values", JWTAlgorithmRS256, jwtCfg.Algorithm)
+	}
 	if jwtCfg.PublicKeyFile == "" {
 		return fmt.Errorf("Auth.JWT.PublicKeyFile is required when auth.mode is %q or %q "+
 			"(set auth.jwt.public_key_file to the path of a mounted PEM-encoded RSA public key)",

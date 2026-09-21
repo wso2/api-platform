@@ -19,8 +19,20 @@
 import { FormattedMessage } from 'react-intl';
 
 import { ComingSoon } from '@/components/ComingSoon';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { ApiPortalPublicationsList } from './ApiPortalPublicationsList';
 
+/**
+ * Mounted at all three scope levels (see `AppRoutes.tsx`). Only the API level
+ * has a real page today — publishing an API to a portal is inherently
+ * API-scoped. Portal registration/management at the organization and project
+ * levels is a separate, not-yet-built feature.
+ */
 export function PortalsPage() {
+  const { isApiScope } = useConsoleScope();
+
+  if (isApiScope) return <ApiPortalPublicationsList />;
+
   return (
     <ComingSoon
       feature={

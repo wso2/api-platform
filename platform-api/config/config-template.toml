@@ -176,13 +176,13 @@ role_to_scope_mapping = ""
 # into a nested claim ("realm_access.org_id") — useful for IDPs like
 # Keycloak that nest fields such as roles under realm_access.roles.
 [platform_api.auth.claim_mappings]
-organization = "organization"   # claim carrying the org ID
-org_name     = "org_name"       # claim carrying the org display name
-org_handle   = "org_handle"     # claim carrying the org URL slug
-user_id      = "sub"            # claim used as the user's unique ID
-username     = "username"
-email        = "email"
-scope        = "scope"          # space-separated scope string
+organization  = "organization"    # claim carrying the org ID
+org_name      = "org_name"        # claim carrying the org display name
+org_handle    = "org_handle"      # claim carrying the org URL slug
+user_id       = "sub"             # claim used as the user's unique ID
+username      = "username"
+email         = "email"
+scope         = "scope"           # space-separated scope string
 # Claim carrying the user's roles. Read in role authorization mode, and it is the
 # claim the file-mode login endpoint signs the user's roles into. Default suits
 # Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles". A dotted path works

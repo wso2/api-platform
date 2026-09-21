@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -141,8 +142,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db)
+	apiPortalRepo := repository.NewAPIPortalRepo(db)
+	documentRepo := repository.NewDocumentRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
+	publicationRepo := repository.NewPublicationRepo(db)
 
 	// Seed the file-based organization on startup if file auth mode is selected.
 	if cfg.Auth.Mode == config.AuthModeFile {
@@ -255,7 +259,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
+	// One definition per artifact kind, indexed by the kind the artifact row
+	// carries. Builds and deployments are shared across kinds; rendering is the
+	// one thing that is not, so this is where each kind supplies its own.
+	artifactDefinitions := service.NewArtifactDefinitions(
+		service.NewRestAPIDefinition(apiRepo, apiUtil),
+		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
+		service.NewLLMProxyDefinition(llmProxyRepo),
+		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
+	)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
@@ -273,6 +286,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
@@ -286,6 +301,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
@@ -297,8 +314,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		artifactRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactDefinitions,
 		cfg,
 		slogger,
+	)
+	// One place that knows which service serves which artifact kind, so plugins and
+	// the per-kind paths reach the same code.
+	deploymentsByKind := service.NewDeploymentsByKind(
+		deploymentService,
+		mcpDeploymentService,
+		llmProxyDeploymentService,
+		llmProviderDeploymentService,
 	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,
@@ -325,15 +351,24 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
+	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
+	}
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, slogger)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
-	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
+	apiHandler := handler.NewAPIHandler(apiService, identityService, documentRepo, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
+	publicationHandler := handler.NewPublicationHandler(publicationService, identityService, cfg.PublicationContentMaxBytes, cfg.PublicationThumbnailMaxBytes, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
@@ -389,10 +424,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler.RegisterRoutes(core)
 	projectHandler.RegisterRoutes(core)
 	appHandler.RegisterRoutes(core)
+	apiPortalHandler.RegisterRoutes(core)
 	apiHandler.RegisterRoutes(core)
 	gatewayHandler.RegisterRoutes(core)
 	subscriptionHandler.RegisterRoutes(core)
 	subscriptionPlanHandler.RegisterRoutes(core)
+	publicationHandler.RegisterRoutes(core)
 	wsHandler.RegisterRoutes(core)
 	internalGatewayHandler.RegisterRoutes(core)
 	apiKeyHandler.RegisterRoutes(core)
@@ -436,11 +473,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways:    gatewayService,
-		Projects:    projectService,
-		Deployments: deploymentService,
-		Config:      cfg,
-		Logger:      slogger,
+		Gateways:   gatewayService,
+		Projects:   projectService,
+		APIPortals: apiPortalService,
+		// Kind-routed, so a plugin names the artifact kind alongside the handle and
+		// reaches the same services the platform's own per-kind paths do.
+		Deployments:   deploymentsByKind,
+		Organizations: orgService,
+		Config:        cfg,
+		Logger:        slogger,
 	}
 
 	wiring, err := initPlugins(slogger, mux, scopeRegistry, pluginDeps, pdkDeps, internalPlugins, externalPlugins)
@@ -1035,4 +1076,16 @@ func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 	ba.Organization.UUID = uuid
 	slogger.Info("Seeded file-based organization", "uuid", org.ID, "handle", org.Handle)
 	return nil
+}
+
+// newPortalPublisher builds the real API Portal publisher. Each portal's
+// shared key is resolved per-call from its own api_portals row via
+// authRegistry — there is no server-wide key to read at startup.
+func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, slogger *slog.Logger) (service.PortalPublisher, error) {
+	retryClient, err := client.NewRetryableHTTPClient(3, 10*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
+	}
+	slogger.Info("Initialized the real HTTP publisher for API Publication")
+	return service.NewHTTPPortalPublisher(authRegistry, retryClient), nil
 }

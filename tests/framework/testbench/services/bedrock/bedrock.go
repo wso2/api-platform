@@ -154,7 +154,7 @@ func (s *Service) apply(w http.ResponseWriter, r *http.Request) {
 	}
 	text := strings.Join(content, " ")
 	if text == "" {
-		writeJSON(w, none())
+		writeJSON(w, none(text))
 		return
 	}
 
@@ -196,14 +196,16 @@ func (s *Service) apply(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, none())
+	writeJSON(w, none(text))
 }
 
-func none() applyGuardrailResponse {
-	// Keep empty collections non-nil so they marshal as [] rather than null.
+// none is the "no violation" decision. Real Bedrock always echoes the (possibly unmodified)
+// text back in outputs[0] even when action is NONE; an empty outputs array here previously
+// caused the caller to dereference a non-existent first element.
+func none(text string) applyGuardrailResponse {
 	return applyGuardrailResponse{
 		Action:      "NONE",
-		Outputs:     []map[string]any{},
+		Outputs:     []map[string]any{{"text": text}},
 		Assessments: []assessment{},
 	}
 }

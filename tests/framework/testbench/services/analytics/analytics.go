@@ -22,7 +22,6 @@ package analytics
 
 import (
 	"compress/gzip"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,11 +38,10 @@ import (
 // Port is the container port used by the testbench.
 const Port = 3007
 
+const maxRetainedEvents = 1024
+
 // maxBodyBytes bounds the decompressed size of one ingest request.
 const maxBodyBytes = 8 << 20
-
-// maxPartitionKeyLen bounds the block key path segment.
-const maxPartitionKeyLen = 64
 
 // Event is the Moesif-shaped event buffered by the collector.
 type Event struct {
@@ -56,6 +54,7 @@ type Event struct {
 	Direction    string          `json:"direction,omitempty"`
 	Weight       int             `json:"weight,omitempty"`
 	Tags         string          `json:"tags,omitempty"`
+	A2A          any             `json:"a2a,omitempty"`
 }
 
 // RequestDetails is the request half of an event.
@@ -146,64 +145,7 @@ func (s *Service) Handler() http.Handler {
 	routes.HandleFunc("POST /test/reset", s.scoped(s.reset))
 	routes.HandleFunc("GET /test/health", s.scoped(s.health))
 
-	return boundedGzipBodies(partitionRouter(routes))
-}
-
-// partitionCtxKey carries the validated block key from the router to the handler.
-type partitionCtxKey struct{}
-
-// partitionRouter validates and removes the leading block-key path segment.
-func partitionRouter(inner http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key, rest, err := splitPartition(r.URL.Path)
-		if err != nil {
-			http.Error(w, "analytics collector: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		scoped := r.Clone(context.WithValue(r.Context(), partitionCtxKey{}, key))
-		scoped.URL.Path = rest
-		scoped.URL.RawPath = ""
-		inner.ServeHTTP(w, scoped)
-	})
-}
-
-// splitPartition returns the block key and the remaining route path.
-func splitPartition(path string) (key, rest string, err error) {
-	trimmed := strings.TrimPrefix(path, "/")
-	segment, remainder, found := strings.Cut(trimmed, "/")
-	if segment == "" {
-		return "", "", fmt.Errorf("every route is partitioned by block, so a request needs a "+
-			"leading /<block> segment; got %q", path)
-	}
-	if isReservedPartitionKey(segment) {
-		return "", "", fmt.Errorf("%q is a route root, not a block key: this collector partitions "+
-			"by block, so the path is /<block>%s — a caller configured with the unpartitioned "+
-			"base URL lands here", segment, path)
-	}
-	if len(segment) > maxPartitionKeyLen {
-		return "", "", fmt.Errorf("block key %q is longer than %d characters, so it is not a block "+
-			"key", segment, maxPartitionKeyLen)
-	}
-	for _, c := range segment {
-		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
-			return "", "", fmt.Errorf("block key %q contains %q; a block key is lowercase letters, "+
-				"digits and dashes only", segment, string(c))
-		}
-	}
-	if !found {
-		return segment, "/", nil
-	}
-	return segment, "/" + remainder, nil
-}
-
-func isReservedPartitionKey(key string) bool {
-	switch key {
-	case "v1", "test", "testbench":
-		return true
-	default:
-		return false
-	}
+	return boundedGzipBodies(testbench.NormalizeMethod(testbench.PartitionRouter(routes)))
 }
 
 func (s *Service) events(key string) []Event {
@@ -235,7 +177,7 @@ func (s *Service) count(key string) int {
 // scoped adapts a partition-aware handler to http.HandlerFunc.
 func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		key, ok := r.Context().Value(partitionCtxKey{}).(string)
+		key, ok := testbench.PartitionKeyFromContext(r.Context())
 		if !ok || key == "" {
 			http.Error(w, "analytics collector: internal error: a request reached a handler "+
 				"with no partition", http.StatusInternalServerError)
@@ -260,7 +202,7 @@ func (s *Service) ingestOne(key string, w http.ResponseWriter, r *http.Request) 
 		s.partitions[key] = p
 	}
 	p.mu.Lock()
-	p.events = append(p.events, event)
+	p.events = appendRetained(p.events, []Event{event})
 	p.mu.Unlock()
 	s.mu.Unlock()
 
@@ -286,7 +228,7 @@ func (s *Service) ingestBatch(key string, w http.ResponseWriter, r *http.Request
 		s.partitions[key] = p
 	}
 	p.mu.Lock()
-	p.events = append(p.events, events...)
+	p.events = appendRetained(p.events, events)
 	p.mu.Unlock()
 	s.mu.Unlock()
 
@@ -324,6 +266,25 @@ func (s *Service) reset(key string, w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, map[string]string{"status": "reset"})
+}
+
+func appendRetained(existing, incoming []Event) []Event {
+	if len(incoming) >= maxRetainedEvents {
+		retained := make([]Event, maxRetainedEvents)
+		copy(retained, incoming[len(incoming)-maxRetainedEvents:])
+		return retained
+	}
+
+	total := len(existing) + len(incoming)
+	if total <= maxRetainedEvents {
+		return append(existing, incoming...)
+	}
+
+	retained := make([]Event, maxRetainedEvents)
+	keepExisting := maxRetainedEvents - len(incoming)
+	copy(retained, existing[len(existing)-keepExisting:])
+	copy(retained[keepExisting:], incoming)
+	return retained
 }
 
 // health returns the partitioned service health status.

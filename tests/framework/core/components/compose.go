@@ -20,6 +20,8 @@ package components
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -28,6 +30,10 @@ type ComposeSpec struct {
 	// ComposeFile is the repo-relative compose file. Its services are this component's
 	// internals.
 	ComposeFile string
+
+	// ComposeOverrideFiles are repo-relative Compose files merged after ComposeFile.
+	// They contain only component-specific overrides.
+	ComposeOverrideFiles []string
 
 	// StagedFiles maps repository-relative source files to their names beside the
 	// staged Compose file.
@@ -48,12 +54,19 @@ type ComposeSpec struct {
 
 	// CoverageServices lists services and artifact formats collected after shutdown.
 	CoverageServices []CoverageService
+
+	// BootAttempts caps how many times the runtime retries a failed boot of this stack,
+	// tearing down and relaunching with a fresh stack each time. Zero or one means no
+	// retry, matching the default for every compose component that does not set this.
+	BootAttempts int
 }
 
 // CoverageService identifies a service that writes coverage artifacts.
 type CoverageService struct {
-	Name  string
-	Types []string
+	Name string
+	// OutputName optionally identifies the coverage output directory. Empty uses Name.
+	OutputName string
+	Types      []string
 }
 
 // IsCompose reports whether this component is backed by a compose stack rather than a
@@ -89,6 +102,10 @@ func (d *Definition) validateCompose() error {
 		errs.addf("%s: a compose-backed component still needs endpoints for addressing", d)
 	}
 
+	if c.BootAttempts < 0 {
+		errs.addf("%s: boot attempts must not be negative, got %d", d, c.BootAttempts)
+	}
+
 	for name, rel := range c.StagedFiles {
 		if strings.TrimSpace(name) == "" {
 			errs.addf("%s: a staged file has no name", d)
@@ -96,6 +113,21 @@ func (d *Definition) validateCompose() error {
 		if strings.TrimSpace(rel) == "" {
 			errs.addf("%s: staged file %q has no source path", d, name)
 		}
+	}
+
+	// Everything below is staged into one directory, so a repeated name overwrites a file.
+	staged := make(map[string]bool, 1+len(c.ComposeOverrideFiles)+len(c.StagedFiles))
+	for _, name := range c.StagingNames() {
+		if staged[name] {
+			errs.addf("%s: compose file %q is staged more than once", d, name)
+		}
+		staged[name] = true
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.StagedFiles)) {
+		if staged[name] {
+			errs.addf("%s: staged file %q collides with a compose file of the same name", d, name)
+		}
+		staged[name] = true
 	}
 	seenCoverage := make(map[string]bool, len(c.CoverageServices))
 	for _, service := range c.CoverageServices {
@@ -140,16 +172,32 @@ func (c *ComposeSpec) StagingName() string {
 	return c.ComposeFile
 }
 
+// StagingNames returns the staged base Compose file followed by its overrides.
+func (c *ComposeSpec) StagingNames() []string {
+	names := make([]string, 0, 1+len(c.ComposeOverrideFiles))
+	names = append(names, c.StagingName())
+	for _, file := range c.ComposeOverrideFiles {
+		if i := strings.LastIndex(file, "/"); i >= 0 {
+			names = append(names, file[i+1:])
+		} else {
+			names = append(names, file)
+		}
+	}
+	return names
+}
+
 // WithGenerated returns a copy of the spec with generated files added.
 func (c *ComposeSpec) WithGenerated(files map[string][]byte) *ComposeSpec {
 	out := &ComposeSpec{
-		ComposeFile:      c.ComposeFile,
-		PrimaryService:   c.PrimaryService,
-		Services:         append([]string(nil), c.Services...),
-		StagedFiles:      make(map[string]string, len(c.StagedFiles)),
-		GeneratedFiles:   make(map[string][]byte, len(files)+len(c.GeneratedFiles)),
-		Env:              make(map[string]string, len(c.Env)),
-		CoverageServices: append([]CoverageService(nil), c.CoverageServices...),
+		ComposeFile:          c.ComposeFile,
+		ComposeOverrideFiles: append([]string(nil), c.ComposeOverrideFiles...),
+		PrimaryService:       c.PrimaryService,
+		Services:             append([]string(nil), c.Services...),
+		StagedFiles:          make(map[string]string, len(c.StagedFiles)),
+		GeneratedFiles:       make(map[string][]byte, len(files)+len(c.GeneratedFiles)),
+		Env:                  make(map[string]string, len(c.Env)),
+		CoverageServices:     append([]CoverageService(nil), c.CoverageServices...),
+		BootAttempts:         c.BootAttempts,
 	}
 	for k, v := range c.StagedFiles {
 		out.StagedFiles[k] = v

@@ -91,8 +91,18 @@ func NewInstance(def *Definition, ordinal, replicas int, host string, mapped map
 
 	return &Instance{
 		def: def, ordinal: ordinal, replicas: replicas,
-		alias: alias, host: host, mapped: copied,
+		alias: alias, host: mappedHost(host), mapped: copied,
 	}, nil
+}
+
+// mappedHost returns an IPv4 loopback address for Docker's local host alias.
+// Docker's mapped host-port bindings can be IPv4-only, so using localhost can
+// select an unreachable IPv6 loopback address on hosts that resolve it to ::1 first.
+func mappedHost(host string) string {
+	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
+		return "127.0.0.1"
+	}
+	return host
 }
 
 // NewExternalInstance creates an instance whose endpoints are complete external URLs.
@@ -155,10 +165,15 @@ func (i *Instance) Ordinal() int { return i.ordinal }
 
 // Label identifies this instance in messages, disambiguating replicas.
 func (i *Instance) Label() string {
-	if i.replicas <= 1 {
-		return i.def.Name
+	return Label(i.def.Name, i.ordinal, i.replicas)
+}
+
+// Label formats a component instance identity.
+func Label(name string, ordinal, replicas int) string {
+	if replicas <= 1 {
+		return name
 	}
-	return fmt.Sprintf("%s#%d", i.def.Name, i.ordinal+1)
+	return fmt.Sprintf("%s#%d", name, ordinal+1)
 }
 
 // Host returns the address used to reach mapped ports.

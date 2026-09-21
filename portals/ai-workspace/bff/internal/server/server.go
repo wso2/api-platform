@@ -193,5 +193,8 @@ func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationCo
 	if c.OrgHandle != "" {
 		m.OrgHandle = c.OrgHandle
 	}
+	if c.Organizations != "" {
+		m.Organizations = c.Organizations
+	}
 	return m, nil
 }

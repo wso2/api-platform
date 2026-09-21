@@ -33,6 +33,7 @@ type WiringSpec interface {
 
 type wiringFunc func(node *yaml.Node) (any, error)
 
+// Decode implements WiringSpec.
 func (f wiringFunc) Decode(node *yaml.Node) (any, error) { return f(node) }
 
 // TypedWiring creates a strict WiringSpec for type T.

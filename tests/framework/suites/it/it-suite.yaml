@@ -19,7 +19,7 @@
 suite: it-suite
 
 defaults:
-  parallel: 3
+  parallel: 6
   components:
     platform-gateway:
       db: sqlite
@@ -28,8 +28,165 @@ defaults:
     propagation: 60s
 
 blocks:
+  - name: api-portal-core
+    parallel: 9
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+    runners:
+      - name: security
+        features:
+          - features/apiportal_security.feature
+      - name: auth
+        features:
+          - features/apiportal_auth.feature
+      - name: rest-apis
+        features:
+          - features/apiportal_rest_apis.feature
+      - name: resources
+        features:
+          - features/apiportal_resources.feature
+      - name: mcp-servers
+        features:
+          - features/apiportal_mcp_servers.feature
+      - name: api-types
+        features:
+          - features/apiportal_api_types.feature
+      - name: subscriptions
+        features:
+          - features/apiportal_subscriptions.feature
+      - name: views-labels
+        features:
+          - features/apiportal_views_labels_advanced.feature
+      - name: views-pages
+        features:
+          - features/apiportal_views_pages.feature
+      - name: workflows
+        features:
+          - features/apiportal_workflows.feature
+      - name: content
+        features:
+          - features/apiportal_content.feature
+      - name: organization-content
+        features:
+          - features/apiportal_organization_content.feature
+      - name: api-keys
+        features:
+          - features/apiportal_api_keys.feature
+      - name: discovery
+        features:
+          - features/apiportal_discovery.feature
+      - name: organizations
+        features:
+          - features/apiportal_organizations.feature
+      - name: organization-isolation
+        features:
+          - features/apiportal_organization_isolation.feature
+      - name: artifact-uploads
+        features:
+          - features/apiportal_artifact_upload.feature
+
+  # Webhook subscribers are organization-wide. Keep their intentionally failing
+  # delivery targets isolated from every other API Portal runner.
+  - name: api-portal-webhooks
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+    runners:
+      - name: webhook-subscribers
+        features:
+          - features/apiportal_webhook_subscribers.feature
+      - name: application-webhooks
+        features:
+          - features/apiportal_application_webhooks.feature
+      - name: api-key-webhooks
+        features:
+          - features/apiportal_api_key_webhooks.feature
+      - name: subscription-webhooks
+        features:
+          - features/apiportal_subscription_webhooks.feature
+      - name: webhook-delivery
+        features:
+          - features/apiportal_webhook_delivery.feature
+
+  - name: api-portal-auth-scope
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/platform-api-auth-users.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/platformapi/resources/api-portal-auth-roles.yaml
+      - name: api-portal
+        db: postgres
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/apiportal/resources/api-portal-auth-roles.yaml
+        overlay: tests/framework/core/catalog/overlays/api-portal-auth-scope.toml
+        dependsOn: [platform-api]
+    runners:
+      - name: authorization
+        features:
+          - features/apiportal_auth_scope.feature
+
+  - name: api-portal-auth-role
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/platform-api-auth-users.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/platformapi/resources/api-portal-auth-roles.yaml
+      - name: api-portal
+        db: postgres
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/apiportal/resources/api-portal-auth-roles.yaml
+        overlay: tests/framework/core/catalog/overlays/api-portal-auth-role.toml
+        dependsOn: [platform-api]
+    runners:
+      - name: authorization
+        features:
+          - features/apiportal_auth_role.feature
+
+  - name: api-portal-grant-table
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+    runners:
+      - name: grant-table-parity
+        features:
+          - features/apiportal_grant_table_parity.feature
+
+  - name: api-portal-foreign-org
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: api-portal-other-org
+        db: postgres
+        dependsOn: [platform-api]
+    runners:
+      - name: foreign-org-login
+        features:
+          - features/apiportal_foreign_org_login.feature
+
   - name: gateway-core
-    parallel: 10
+    parallel: 7
     components:
       - name: platform-gateway
         db:
@@ -90,8 +247,120 @@ blocks:
       - name: sandbox-routing
         features:
           - features/sandbox_routing.feature
+      - name: content-length-guardrail
+        features:
+          - features/content_length_guardrail.feature
+      - name: word-count-guardrail
+        features:
+          - features/word_count_guardrail.feature
+      - name: sentence-count-guardrail
+        features:
+          - features/sentence_count_guardrail.feature
+      - name: url-guardrail
+        features:
+          - features/url_guardrail.feature
+      - name: regex-guardrail
+        features:
+          - features/regex_guardrail.feature
+      - name: json-schema-guardrail
+        features:
+          - features/json_schema_guardrail.feature
+      - name: cel-conditions
+        features:
+          - features/cel_conditions.feature
+      - name: certificates
+        features:
+          - features/certificates.feature
+      - name: secrets
+        features:
+          - features/secrets.feature
+      - name: basic-ratelimit
+        features:
+          - features/basic_ratelimit.feature
+      - name: ratelimit-headers
+        features:
+          - features/ratelimit_headers.feature
+      - name: ratelimit-cost-extraction
+        features:
+          - features/ratelimit_cost_extraction.feature
+      - name: ratelimit-key-extraction
+        features:
+          - features/ratelimit_key_extraction.feature
+      - name: ratelimit-multi-quota
+        features:
+          - features/ratelimit_multi_quota.feature
+      - name: token-based-ratelimit
+        features:
+          - features/token_based_ratelimit.feature
+      - name: token-based-ratelimit-provider-templates
+        features:
+          - features/token_based_ratelimit_provider_templates.feature
+      - name: llm-cost-based-ratelimit
+        features:
+          - features/llm_cost_based_ratelimit.feature
+        # Excludes a scenario documenting a known product-contract gap (multi-window
+        # budgetLimits not fully enforced) - see the feature file for details.
+        tags: "~@known-issue"
+      - name: llm-cost-calculation-providers
+        features:
+          - features/llm_cost_calculation_providers.feature
+      - name: llm-provider-global-ratelimit
+        features:
+          - features/llm_provider_global_ratelimit.feature
+      - name: llm-provider-management
+        features:
+          - features/llm_provider.feature
+      - name: llm-provider-template-management
+        features:
+          - features/llm_provider_template.feature
+      - name: llm-proxy-management
+        features:
+          - features/llm_proxy.feature
+      - name: model-round-robin
+        features:
+          - features/model_round_robin.feature
+      - name: model-round-robin-multi-provider
+        features:
+          - features/model_round_robin_multi_provider.feature
+      - name: model-weighted-round-robin
+        features:
+          - features/model_weighted_round_robin.feature
+      - name: model-weighted-round-robin-multi-provider
+        features:
+          - features/model_weighted_round_robin_multi_provider.feature
+      - name: llm-policy-path-specificity
+        features:
+          - features/llm_policy_path_specificity.feature
+      - name: prompt-template
+        features:
+          - features/prompt_template.feature
+      - name: prompt-decorator
+        features:
+          - features/prompt_decorator.feature
+      - name: prompt-compressor
+        features:
+          - features/prompt_compressor.feature
+      - name: aws-bedrock-guardrail
+        features:
+          - features/aws_bedrock_guardrail.feature
+      - name: mcp-deploy
+        features:
+          - features/mcp_deploy.feature
+      - name: oauth2-auth
+        features:
+          - features/oauth2_auth.feature
+      - name: policy-engine-admin
+        features:
+          - features/policy_engine_admin.feature
+      - name: template-functions
+        features:
+          - features/template_functions.feature
+        # Excludes a scenario documenting a known product-contract gap (policy chain/route
+        # config caches missing the deletion-marker workaround applied to the sibling event
+        # channel cache) - see the feature file for details.
+        tags: "~@known-issue"
 
-  - name: gateway-restart
+  - name: config-dump
     parallel: 1
     components:
       - name: platform-gateway
@@ -99,9 +368,42 @@ blocks:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
     runners:
+      - name: config-dump
+        features:
+          - features/config_dump.feature
+
+  # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
+  # this block hosts them alone rather than alongside runners that expect it continuously
+  # reachable - see dp-to-cp-reconnect's own comment for the flake that mixing them caused.
+  - name: gateway-restart
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
       - name: startup-db-bootstrap
         features:
           - features/startup_db_bootstrap.feature
+      - name: dp-to-cp-reconnect
+        features:
+          - features/dp_to_cp_reconnect.feature
+
+  - name: pii-masking-regex
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: pii-masking-regex
+        features:
+          - features/pii_masking_regex.feature
 
   - name: gateway-metrics
     parallel: 1
@@ -155,8 +457,89 @@ blocks:
         features:
           - features/vhost_routing_multi.feature
 
-  - name: backend-timeout
+  - name: azure-content-safety
     parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/azure-content-safety.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: azure-content-safety
+        features:
+          - features/azure_content_safety.feature
+
+  - name: semantic-ai
+    parallel: 2
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/semantic-ai.toml
+        dependsOn: [redis]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: redis
+    runners:
+      - name: semantic-cache
+        features:
+          - features/semantic_cache.feature
+      - name: semantic-prompt-guard
+        features:
+          - features/semantic_prompt_guard.feature
+      - name: semantic-tool-filtering
+        features:
+          - features/semantic_tool_filtering.feature
+
+  - name: mcp-policies
+    parallel: 2
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-jwt-auth.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mcp-policies
+        features:
+          - features/mcp_policies.feature
+      - name: jwt-auth
+        features:
+          - features/jwt_auth.feature
+
+  - name: mcp-auth-gateway-host
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-auth-gateway-host.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mcp-auth-gateway-host
+        features:
+          - features/mcp_auth_gateway_host.feature
+
+  - name: analytics
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: analytics-basic
+        features:
+          - features/analytics_basic.feature
+      - name: analytics-header-filter
+        features:
+          - features/analytics_header_filter.feature
+      - name: subscription-analytics
+        features:
+          - features/subscription_analytics.feature
+
+  - name: backend-timeout
+    parallel: 2
     components:
       - name: platform-gateway
         overlay: tests/framework/core/catalog/overlays/backend-timeout.toml
@@ -176,3 +559,144 @@ blocks:
       - name: interceptor-service
         features:
           - features/interceptor_service.feature
+
+  - name: platform-api-sqlite
+    parallel: 2
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: dp-to-cp
+        features:
+          - features/dp_to_cp.feature
+      - name: platform-api-secret-deploy
+        features:
+          - features/platform_api_secret_deploy.feature
+      - name: platform-api-deployment
+        features:
+          - features/api_deployment.feature
+      - name: platform-api-secured-invocation
+        features:
+          - features/secured_api_invocation.feature
+        tags: "~@known-issue"
+
+  - name: platform-api-postgres
+    parallel: 2
+    components:
+      - name: platform-api
+        db: postgres
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: dp-to-cp
+        features:
+          - features/dp_to_cp.feature
+      - name: platform-api-secret-deploy
+        features:
+          - features/platform_api_secret_deploy.feature
+      - name: platform-api-deployment
+        features:
+          - features/api_deployment.feature
+      - name: platform-api-secured-invocation
+        features:
+          - features/secured_api_invocation.feature
+        tags: "~@known-issue"
+
+  - name: platform-api-sqlserver
+    parallel: 2
+    components:
+      - name: platform-api
+        db: sqlserver
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: dp-to-cp
+        features:
+          - features/dp_to_cp.feature
+      - name: platform-api-secret-deploy
+        features:
+          - features/platform_api_secret_deploy.feature
+      - name: platform-api-deployment
+        features:
+          - features/api_deployment.feature
+      - name: platform-api-secured-invocation
+        features:
+          - features/secured_api_invocation.feature
+        tags: "~@known-issue"
+
+  - name: dp-to-cp-sync-disabled
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        overlay: tests/framework/core/catalog/overlays/dp-to-cp-sync-disabled.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: dp-to-cp-sync-disabled
+        features:
+          - features/dp_to_cp_sync_disabled.feature
+
+  - name: multigateway
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        replicas: 2
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: multigateway
+        features:
+          - features/multigateway.feature
+
+  - name: devportal-webhook
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-webhook.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-webhook.toml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: postgres
+      - name: testbench
+    runners:
+      - name: devportal-webhook
+        features:
+          - features/devportal_webhook.feature
+
+  # This block is intended for gateway-controllers pull requests. Its policy source is
+  # an adjacent checkout, so callers must check out gateway-controllers next to this
+  # repository and select this block explicitly.
+  - name: gateway-controller-policies
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        addPoliciesFrom: ../gateway-controllers/policies
+      - name: testbench
+    runners:
+      - name: policy-build-smoke
+        features:
+          - features/gateway_controller_policies.feature

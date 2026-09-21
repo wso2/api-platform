@@ -36,18 +36,18 @@ import (
 type contextKey string
 
 const (
-	keyUserID       contextKey = "user_id"
-	keyUsername     contextKey = "username"
-	keyEmail        contextKey = "email"
-	keyFirstName    contextKey = "first_name"
-	keyLastName     contextKey = "last_name"
-	keyOrganization contextKey = "organization"
-	keyOrgName      contextKey = "org_name"
-	keyOrgHandle    contextKey = "org_handle"
-	keyScope        contextKey = "scope"
-	keyAudience     contextKey = "audience"
-	keyClaims       contextKey = "claims"
-	keyRoles        contextKey = "roles"
+	keyUserID        contextKey = "user_id"
+	keyUsername      contextKey = "username"
+	keyEmail         contextKey = "email"
+	keyFirstName     contextKey = "first_name"
+	keyLastName      contextKey = "last_name"
+	keyOrganization  contextKey = "organization"
+	keyOrgName       contextKey = "org_name"
+	keyOrgHandle     contextKey = "org_handle"
+	keyScope         contextKey = "scope"
+	keyAudience      contextKey = "audience"
+	keyClaims        contextKey = "claims"
+	keyRoles         contextKey = "roles"
 )
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
@@ -68,14 +68,14 @@ type AuthConfig struct {
 	// PublicKey is the RSA public key used to verify token signatures (RS256).
 	// Only asymmetric verification is supported; symmetric (HMAC) and unsigned
 	// ("none") tokens are rejected.
-	PublicKey   	*rsa.PublicKey
-	TokenIssuer 	string
-	SkipPaths   	[]string
-	SkipValidation	bool
+	PublicKey      *rsa.PublicKey
+	TokenIssuer    string
+	SkipPaths      []string
+	SkipValidation bool
 	// ClaimMappings is the same claim-name mapping used by IDP mode
 	// (PlatformClaimsMiddleware) and by the file-mode login endpoint when it
 	// signs tokens — one mapping shared by issuance and validation.
-	ClaimMappings	ClaimMappings
+	ClaimMappings ClaimMappings
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
@@ -607,15 +607,18 @@ func RequireOrganization(organizationParam string) func(http.Handler) http.Handl
 }
 
 // NewTestContextMiddleware creates an http.Handler middleware for integration tests.
-// It reads X-Test-Org, X-Test-User, and X-Test-Scope request headers and injects the
-// values into the request context so that GetOrganizationFromRequest /
-// GetUsernameFromRequest / GetScopeFromRequest work without a real JWT. Never use this
-// in production code.
+// It reads X-Test-Org, X-Test-Org-Handle, X-Test-User, and X-Test-Scope request
+// headers and injects the values into the request context so the
+// Get*FromRequest accessors work without a real JWT. Never use this in
+// production code.
 func NewTestContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		if org := r.Header.Get("X-Test-Org"); org != "" {
 			ctx = context.WithValue(ctx, keyOrganization, org)
+		}
+		if orgHandle := r.Header.Get("X-Test-Org-Handle"); orgHandle != "" {
+			ctx = context.WithValue(ctx, keyOrgHandle, orgHandle)
 		}
 		if user := r.Header.Get("X-Test-User"); user != "" {
 			ctx = context.WithValue(ctx, keyUsername, user)
@@ -631,6 +634,11 @@ func NewTestContextMiddleware(next http.Handler) http.Handler {
 // WithOrganization is a helper for tests to inject an organization into the request context.
 func WithOrganization(r *http.Request, org string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyOrganization, org))
+}
+
+// WithOrgHandle is a helper for tests to inject an organization handle into the request context.
+func WithOrgHandle(r *http.Request, orgHandle string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyOrgHandle, orgHandle))
 }
 
 // WithUserID is a helper for tests to inject a user ID into the request context.

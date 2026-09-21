@@ -6,9 +6,40 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
 out="${COVERAGE_OUT:-$here/suites/it/coverage-out}"
 tools="$here/tools/coverage"
+# A literal newline: command substitution strips trailing newlines, so it cannot build one.
+newline='
+'
 
 die() { echo "coverage-report: $*" >&2; exit 1; }
 [ -d "$out" ] || die "no coverage output at $out — run the suite with -coverage first"
+
+# Rejected up front rather than left to fail further down: "go tool covdata -i" takes a
+# comma-separated list with no escape for a comma inside a path, and the newest-run lookup
+# below reads one path per line. Either character truncates a path into something that only
+# surfaces later as a confusing missing-directory error.
+case "$out" in
+	*,*) die "COVERAGE_OUT must not contain a comma: go tool covdata reads -i as a comma-separated list" ;;
+	*"$newline"*) die "COVERAGE_OUT must not contain a newline" ;;
+esac
+
+# Every artifact this script consumes is written by the sink under <run>/raw. COVERAGE_OUT
+# may name a run directory or the parent that collects them, so resolve the single run to
+# report on: merging counters from two runs yields a percentage belonging to neither.
+# Reports are still written under COVERAGE_OUT, keeping their published paths stable.
+run_root="$out"
+if [ ! -d "$run_root/raw" ]; then
+	# Read whole lines: COVERAGE_OUT may contain spaces, which word splitting would tear
+	# apart. ls supplies the newest-first ordering that find cannot express portably, and
+	# the run directories it lists are named .run-<digits>, so a line is always one path.
+	while IFS= read -r candidate; do
+		[ -d "${candidate}raw" ] || continue
+		run_root="${candidate%/}"
+		echo "coverage-report: reporting on run $(basename "$run_root")"
+		break
+	done < <(ls -td "$out"/.run-*/ 2>/dev/null)
+fi
+raw_root="$run_root/raw"
+[ -d "$raw_root" ] || die "no coverage artifacts under $out — run the suite with -coverage first"
 
 # Generated reports are disposable. Clear previous layouts so an index never links to
 # reports from an earlier run or an obsolete directory structure.
@@ -17,27 +48,33 @@ rm -rf "$out/platform-gateway" "$out/platform-api" "$out/ai-workspace" \
 	"$out/coverage-go.txt" "$out/coverage-go.raw.txt" "$out/coverage-go.html" \
 	"$out/coverage-go.html.profile" "$out/index.html"
 
+# Counter directories are located by the files they hold rather than by their depth: the
+# sink nests them under raw/<block>/<service>, and a service may appear in several blocks.
+go_counter_dirs() {
+	find "$raw_root" -type f -name 'covmeta.*' -print | while IFS= read -r meta; do
+		dir="$(dirname "$meta")"
+		if ls "$dir"/covcounters.* >/dev/null 2>&1; then
+			printf '%s\n' "$dir"
+		fi
+	done | sort -u
+}
+
 go_inputs=""
 while IFS= read -r dir; do
-	if ls "$dir"/covmeta.* >/dev/null 2>&1 && ls "$dir"/covcounters.* >/dev/null 2>&1; then
-		go_inputs="${go_inputs:+$go_inputs,}$dir"
-	fi
-done < <(find "$out" -mindepth 2 -maxdepth 2 -type d | sort)
+	go_inputs="${go_inputs:+$go_inputs,}$dir"
+done < <(go_counter_dirs)
 
 node_files=()
 while IFS= read -r file; do
 	node_files+=("$file")
-done < <(find "$out" -type f -name 'coverage-*.json' \
-	-not -path "$out/node-v8-input/*" -not -path "$out/node-v8-report/*" \
-	-not -path "$out/browser-report/*" | sort)
+done < <(find "$raw_root" -type f -name 'coverage-*.json' | sort)
 
 browser_files=()
 while IFS= read -r file; do
 	browser_files+=("$file")
-done < <(find "$out" -type f -name 'raw-istanbul.json' \
-	-not -path "$out/browser-report/*" | sort)
+done < <(find "$raw_root" -type f -name 'raw-istanbul.json' | sort)
 
-[ -n "$go_inputs" ] || [ "${#node_files[@]}" -gt 0 ] || [ "${#browser_files[@]}" -gt 0 ] || die "no Go, Node/V8, or browser coverage artifacts found under $out"
+[ -n "$go_inputs" ] || [ "${#node_files[@]}" -gt 0 ] || [ "${#browser_files[@]}" -gt 0 ] || die "no Go, Node/V8, or browser coverage artifacts found under $raw_root"
 
 if [ -n "$go_inputs" ]; then
 	echo "merging Go coverage: $go_inputs"
@@ -75,8 +112,9 @@ if [ -n "$go_inputs" ]; then
 	for service in gateway-controller gateway-runtime platform-api ai-workspace; do
 		service_inputs=""
 		while IFS= read -r dir; do
+			[ "$(basename "$dir")" = "$service" ] || continue
 			service_inputs="${service_inputs:+$service_inputs,}$dir"
-		done < <(find "$out" -mindepth 2 -maxdepth 2 -type d -name "$service" | sort)
+		done < <(go_counter_dirs)
 		[ -n "$service_inputs" ] || continue
 		case "$service" in
 			gateway-controller) report_dir="$out/platform-gateway/controller" ;;
@@ -120,7 +158,7 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 	command -v npm >/dev/null 2>&1 || die "browser coverage artifacts found, but npm is unavailable"
 	[ -f "$tools/package-lock.json" ] || die "browser coverage report tool is not locked at $tools/package-lock.json"
 	npm --prefix "$tools" ci --ignore-scripts --no-audit --no-fund >/dev/null
-	set -- "$tools/browser-to-istanbul.js" "$out" "$out/browser-report" "$repo_root" \
+	set -- "$tools/browser-to-istanbul.js" "$raw_root" "$out/browser-report" "$repo_root" \
 		--source-root portals/ai-workspace/src \
 		--source-root portals/api-portal/src/scripts \
 		--inventory-root portals/ai-workspace/src \
@@ -151,7 +189,7 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 			api-portal-ui) report_dir="$out/api-portal/ui" ;;
 			*) die "unknown browser report $name" ;;
 		esac
-		local -a report_args=("$tools/browser-to-istanbul.js" "$out" "$report_dir" "$repo_root"
+		local -a report_args=("$tools/browser-to-istanbul.js" "$raw_root" "$report_dir" "$repo_root"
 			--source-root "$source_root" --inventory-root "$inventory_root" --include "$pattern"
 			--exclude '**/*.test.*' --exclude '**/node_modules/**')
 		echo "merging $name browser coverage"
@@ -159,12 +197,14 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 		[ -s "$report_dir/lcov.info" ] || die "$name browser coverage reporter produced no LCOV report"
 	}
 
-	if find "$out/raw/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
-		&& rg -l 'AIWorkspace|/web/src/(App|Components|pages)/' "$out/raw/blocks" >/dev/null; then
+	if find "$raw_root/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
+		&& rg -l 'AIWorkspace|/web/src/(App|Components|pages)/' "$raw_root/blocks" >/dev/null; then
 		run_product_browser_report ai-workspace-ui portals/ai-workspace/src portals/ai-workspace/src 'portals/ai-workspace/src/**'
 	fi
-	if find "$out/raw/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
-		&& rg -l '/web/src/scripts/' "$out/raw/blocks" >/dev/null; then
+	# The two portals are served from different container roots: AI Workspace from /web,
+	# API Portal from /app. Matching the wrong one silently skips the whole report.
+	if find "$raw_root/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
+		&& rg -l '/app/src/scripts/' "$raw_root/blocks" >/dev/null; then
 		run_product_browser_report api-portal-ui portals/api-portal/src/scripts portals/api-portal/src/scripts 'portals/api-portal/src/scripts/**/*.js'
 	fi
 fi

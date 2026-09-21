@@ -20,7 +20,7 @@
 # The framework supplies generated files, the environment file, and the external network.
 
 services:
-  gateway-controller:
+  gateway-controller${INSTANCE:-}:
     image: ${PG_CONTROLLER_IMAGE:-ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT}
     command: ["-config", "/etc/gateway-controller/config.toml"]
     env_file:
@@ -44,14 +44,14 @@ services:
     networks:
       - gateway
 
-  gateway-runtime:
+  gateway-runtime${INSTANCE:-}:
     image: ${PG_RUNTIME_IMAGE:-ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT}
     command: ["--pol.config", "/etc/policy-engine/config.toml"]
     stop_grace_period: 30s
     env_file:
       - api-platform.env
     environment:
-      - GATEWAY_CONTROLLER_HOST=gateway-controller
+      - GATEWAY_CONTROLLER_HOST=gateway-controller${INSTANCE:-}
       - LOG_LEVEL=info
       - ROUTER_ADMIN_ENABLED=true
       - ROUTER_ADMIN_HOST=0.0.0.0
@@ -60,6 +60,7 @@ services:
       - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro
+      - ./llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
     ports:
       - "8080"
       - "8443"
@@ -67,7 +68,7 @@ services:
       - "9002"
       - "9003"
     depends_on:
-      - gateway-controller
+      - gateway-controller${INSTANCE:-}
     networks:
       - gateway
 

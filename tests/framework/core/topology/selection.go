@@ -21,6 +21,7 @@ package topology
 import (
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 	"strings"
@@ -138,6 +139,7 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 				if component.Def != nil && component.Def.Name == "platform-gateway" {
 					component.Def = component.Def.WithImageVersion(version)
 					component.Version = version
+					component.BuildFromSource = false
 				}
 			}
 		}
@@ -276,6 +278,7 @@ func cloneBlock(block ResolvedBlock) ResolvedBlock {
 		for key, value := range component.ExternalParameters {
 			out.Components[i].ExternalParameters[key] = value
 		}
+		out.Components[i].StagedFiles = maps.Clone(component.StagedFiles)
 	}
 	out.Runners = make([]Runner, len(block.Runners))
 	for i, runner := range block.Runners {

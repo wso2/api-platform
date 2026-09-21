@@ -22,6 +22,7 @@ import {
   Navigate,
   useLocation,
   useNavigate,
+  useParams,
 } from 'react-router-dom';
 import AutoLoginPage from './pages/login/AutoLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
@@ -80,7 +81,7 @@ import ExternalServersDeploy from './pages/appShell/appShellPages/externalServer
 import EditExternalServer from './pages/appShell/appShellPages/externalServers/EditExternalServer';
 import { MCPServerValidationProvider } from './contexts/MCP';
 import { LLMProvidersProvider } from './contexts/llmProvider';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, type ReactNode } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
@@ -94,6 +95,8 @@ import {
   type AIWorkspaceCloudEntry,
   type AIWorkspaceExtension,
   type AIWorkspacePageOverride,
+  AI_WORKSPACE_MCP_DEPLOY_SLOT,
+  AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
 } from './extensions';
 import { Hideable, HiddenRegionsProvider, useSlot } from './slots';
 import { usePort } from './hostPort';
@@ -327,6 +330,47 @@ function InsightsRoute() {
   );
 }
 
+// The per-artifact Deploy pages follow the same Slot/Hideable split as
+// GatewaysRoute, with one difference: the replacement needs to know WHICH artifact
+// it is deploying, and only the route knows that. The handle is read here and
+// passed to the override, so a cloud plugin does not need a router of its own.
+//
+// Each wrapper is mounted at both the organization- and project-scoped copy of its
+// route, so a replacement registered once applies in both.
+function ArtifactDeployRoute({
+  slot,
+  handle,
+  children,
+}: {
+  slot: string;
+  handle: string | undefined;
+  children: ReactNode;
+}) {
+  const port = usePort();
+  const [override] = useSlot<AIWorkspacePageOverride>(slot);
+  if (override && handle) return <>{override.render(port, handle)}</>;
+  return <Hideable name={slot}>{children}</Hideable>;
+}
+
+function MCPProxyDeployRoute() {
+  const { serverId } = useParams<{ serverId: string }>();
+  return (
+    <ArtifactDeployRoute slot={AI_WORKSPACE_MCP_DEPLOY_SLOT} handle={serverId}>
+      <ExternalServersDeploy />
+    </ArtifactDeployRoute>
+  );
+}
+
+function LLMProxyDeployRoute() {
+  const { proxyId } = useParams<{ proxyId: string }>();
+  return (
+    <ArtifactDeployRoute slot={AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT} handle={proxyId}>
+      <LLMProxyDeploy />
+    </ArtifactDeployRoute>
+  );
+}
+
+
 export type AppProps = {
   extensions?: readonly AIWorkspaceCloudEntry[];
 };
@@ -481,7 +525,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 path=":proxyId/deploy"
                 element={
                   <WithPageBoundary>
-                    <LLMProxyDeploy />
+                    <LLMProxyDeployRoute />
                   </WithPageBoundary>
                 }
               />
@@ -566,7 +610,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
               path="mcp-proxy/:serverId/deploy"
               element={
                 <WithPageBoundary>
-                  <ExternalServersDeploy />
+                  <MCPProxyDeployRoute />
                 </WithPageBoundary>
               }
             />
@@ -731,7 +775,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                   path=":proxyId/deploy"
                   element={
                     <WithPageBoundary>
-                      <LLMProxyDeploy />
+                      <LLMProxyDeployRoute />
                     </WithPageBoundary>
                   }
                 />
@@ -827,7 +871,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 path="mcp-proxy/:serverId/deploy"
                 element={
                   <WithPageBoundary>
-                    <ExternalServersDeploy />
+                    <MCPProxyDeployRoute />
                   </WithPageBoundary>
                 }
               />
