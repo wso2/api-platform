@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"github.com/stretchr/testify/require"
+	"io"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -277,6 +279,27 @@ func TestObservabilityRecoversAndReportsAPanic(t *testing.T) {
 	require.Contains(t, out, `"status":500`)
 	require.Contains(t, out, `"response_bytes"`)
 	require.Contains(t, out, `"partition":"panic-block"`)
+}
+
+func TestObservabilityAbortsAfterResponseStarted(t *testing.T) {
+	h := observability("echo", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("before panic"))
+		panic("boom after response")
+	})))
+	server := httptest.NewUnstartedServer(h)
+	server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	server.Start()
+	t.Cleanup(server.Close)
+
+	resp, err := server.Client().Get(server.URL)
+	if err == nil {
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		require.NoError(t, readErr)
+		require.NotContains(t, string(body), "boom after response")
+		require.NotContains(t, string(body), "testbench handler panicked")
+	}
 }
 
 // The partition is what ties a log line to one block out of the fifty-plus sharing this

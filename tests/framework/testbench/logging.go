@@ -230,13 +230,19 @@ func observability(service string, next http.Handler) http.Handler {
 
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				// A panic in a mock must not take the shared testbench down with it: 13
-				// services share this process, and every concurrent block depends on them.
+				// A panic before the response starts must not take the shared testbench down with
+				// it: 13 services share this process, and every concurrent block depends on them.
 				log.Error("testbench handler panicked",
 					"panic", recovered,
 					"stack", string(debug.Stack()),
 					"duration_ms", time.Since(started).Milliseconds(),
 				)
+				if rec.wroteHeader || rec.bytes > 0 {
+					// Once a response has started, its status and bytes cannot be withdrawn. Let
+					// net/http abort the connection instead of appending panic text to a 200 body.
+					emitAccess()
+					panic(recovered)
+				}
 				http.Error(rec, "testbench handler panicked", http.StatusInternalServerError)
 				emitAccess()
 			}
