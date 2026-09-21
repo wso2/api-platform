@@ -754,6 +754,84 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  Scenario: gatewayurl takes precedence over vhost and gatewayhost in mcp-auth's 401 challenge
+    Given I generate a unique resource name from "mcp-auth-gwurl" and store it as "mcpName"
+    And I generate a unique value from "mcp-auth-gwurl" and store it as "mcpDisplayName"
+    And I generate a unique API version from "mcp-auth-gwurl" and store it as "mcpVersion"
+    And I generate a unique API context from "/mcp-auth-gwurl" and store it as "mcpContext"
+    And I generate a unique resource name from "mcp-auth-gwurl-vhost" and store it as "vhostName"
+    When I create MCP proxy from "resources/templates/mcp.yaml" with values:
+      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | name              | ${CTX:mcpName}                    |
+      | displayName       | ${CTX:mcpDisplayName}             |
+      | version           | ${CTX:mcpVersion}                 |
+      | context           | ${CTX:mcpContext}                 |
+      | specVersion       | 2025-06-18                         |
+      | spec.vhost        | ${CTX:vhostName}.example.com       |
+      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
+    Then the response should be successful
+
+    Given I set request host to "${CTX:vhostName}.example.com"
+    And I set header "Content-Type" to "application/json"
+    And I set header "Accept" to "application/json, text/event-stream"
+    And I send a "POST" request to "${CTX:mcpContext}/mcp" until status 401 with body:
+      """
+      {"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"warmup","version":"1.0.0"}}}
+      """
+    And the response header "WWW-Authenticate" should contain "https://mcp-e2e-gatewayurl.example.com:7777${CTX:mcpContext}/.well-known/oauth-protected-resource"
+
+    When I send a "GET" request to "${CTX:mcpContext}/.well-known/oauth-protected-resource"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "resource" should be "https://mcp-e2e-gatewayurl.example.com:7777${CTX:mcpContext}/mcp"
+    And the JSON response field "authorization_servers[0]" should be "http://testbench:3001/token"
+
+    When I reset the request
+    And I authenticate using basic auth as "admin"
+    And I delete the MCP proxy "${CTX:mcpName}"
+    Then the response should be successful
+
+  Scenario: gatewayurl takes precedence over vhost and gatewayhost in mcp-authz's 403 challenge
+    Given I generate a unique resource name from "mcp-authz-gwurl" and store it as "mcpName"
+    And I generate a unique value from "mcp-authz-gwurl" and store it as "mcpDisplayName"
+    And I generate a unique API version from "mcp-authz-gwurl" and store it as "mcpVersion"
+    And I generate a unique API context from "/mcp-authz-gwurl" and store it as "mcpContext"
+    And I generate a unique resource name from "mcp-authz-gwurl-vhost" and store it as "vhostName"
+    When I create MCP proxy from "resources/templates/mcp.yaml" with values:
+      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | name              | ${CTX:mcpName}                    |
+      | displayName       | ${CTX:mcpDisplayName}             |
+      | version           | ${CTX:mcpVersion}                 |
+      | context           | ${CTX:mcpContext}                 |
+      | specVersion       | 2025-06-18                         |
+      | spec.vhost        | ${CTX:vhostName}.example.com       |
+      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}},{"name":"mcp-authz","version":"v1","params":{"tools":[{"name":"add","scopes":{"anyOf":["add-scope"]}}]}}] |
+    Then the response should be successful
+
+    Given I set request host to "${CTX:vhostName}.example.com"
+    And I set header "Content-Type" to "application/json"
+    And I set header "Accept" to "application/json, text/event-stream"
+    And I send a "POST" request to "${CTX:mcpContext}/mcp" until status 401 with body:
+      """
+      {"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"warmup","version":"1.0.0"}}}
+      """
+
+    When I get a JWT token from the mock JWKS server with issuer "http://testbench:3001/token" and store it as "token"
+    And I set header "Authorization" to "Bearer ${CTX:token}"
+    And I use the MCP Client to send an initialize request to "${CTX:mcpContext}/mcp"
+    Then the response should be successful
+    And I use the MCP Client to send "add" tools/call request to "${CTX:mcpContext}/mcp"
+    Then the response status code should be 403
+    And the response header "WWW-Authenticate" should contain "https://mcp-e2e-gatewayurl.example.com:7777${CTX:mcpContext}/.well-known/oauth-protected-resource"
+    And the response header "WWW-Authenticate" should contain "add-scope"
+
+    When I reset the request
+    And I authenticate using basic auth as "admin"
+    And I delete the MCP proxy "${CTX:mcpName}"
+    Then the response should be successful
+
   Scenario: An MCP proxy with mcp-acl-list enforces mode and exceptions
     Given I generate a unique resource name from "mcp-acl" and store it as "mcpName"
     And I generate a unique value from "mcp-acl" and store it as "mcpDisplayName"
