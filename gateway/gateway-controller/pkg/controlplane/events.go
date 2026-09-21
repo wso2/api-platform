@@ -31,7 +31,7 @@ type DeploymentAckMessage struct {
 type DeploymentAckPayload struct {
 	DeploymentID string    `json:"deploymentId"`
 	ArtifactID   string    `json:"artifactId"`
-	ResourceType string    `json:"resourceType"` // "api", "llmprovider", "llmproxy"
+	ResourceType string    `json:"resourceType"` // "api", "llmprovider", "llmproxy", "mcpproxy", "agentproxy"
 	Action       string    `json:"action"`       // "deploy", "undeploy"
 	Status       string    `json:"status"`       // "success", "failed"
 	PerformedAt  time.Time `json:"performedAt"`
@@ -283,6 +283,49 @@ type MCPProxyDeletedEvent struct {
 	Payload       MCPProxyDeletedEventPayload `json:"payload"`
 	Timestamp     string                      `json:"timestamp"`
 	CorrelationID string                      `json:"correlationId"`
+}
+
+// AgentDeployedEventPayload represents the payload of an Agent deployment event
+type AgentDeployedEventPayload struct {
+	ProxyID      string    `json:"proxyId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// AgentDeployedEvent represents the complete Agent deployment event
+type AgentDeployedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       AgentDeployedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
+}
+
+// AgentUndeployedEventPayload represents the payload of an Agent undeployment event
+type AgentUndeployedEventPayload struct {
+	ProxyID      string    `json:"proxyId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// AgentUndeployedEvent represents the complete Agent undeployment event
+type AgentUndeployedEvent struct {
+	Type          string                      `json:"type"`
+	Payload       AgentUndeployedEventPayload `json:"payload"`
+	Timestamp     string                      `json:"timestamp"`
+	CorrelationID string                      `json:"correlationId"`
+}
+
+// AgentDeletedEventPayload represents the payload of an Agent deletion event
+type AgentDeletedEventPayload struct {
+	ProxyID string `json:"proxyId"`
+}
+
+// AgentDeletedEvent represents the complete Agent deletion event
+type AgentDeletedEvent struct {
+	Type          string                   `json:"type"`
+	Payload       AgentDeletedEventPayload `json:"payload"`
+	Timestamp     string                   `json:"timestamp"`
+	CorrelationID string                   `json:"correlationId"`
 }
 
 // Note: WebSub/WebBroker deploy/undeploy/delete event payload types
