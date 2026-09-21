@@ -1848,7 +1848,8 @@ func TestTranslator_TranslateConfigs_StripsClientOriginalPathHeader(t *testing.T
 	assert.True(t, found, "expected at least one virtual host in the shared route config")
 }
 
-// The gateway's own /ready and /healthy direct-response routes must be present in
+// TestTranslator_TranslateConfigs_GatewayHealthRoutes verifies that the gateway's own
+// /ready and /healthy direct-response routes are present in
 // every virtual host — including the pre-seeded "*" wildcard vhost when zero
 // APIs/LLMProviders/LLMProxies are deployed, and every API-specific vhost once
 // resources are deployed — and must always be evaluated before the "no-api-found"
@@ -2338,6 +2339,8 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 	})
 }
 
+// TestTranslator_CreateFileAccessLog_WithPathFiltering verifies that stdout access logs
+// suppress gateway health checks and configured ignored path prefixes while retaining normal traffic.
 func TestTranslator_CreateFileAccessLog_WithPathFiltering(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
