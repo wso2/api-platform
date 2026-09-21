@@ -34,6 +34,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
@@ -51,6 +52,7 @@ type McpHandler struct {
 	restAPIService       *restapi.RestAPIService
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
+	agentService         *agent.AgentService
 	secretService        *secrets.SecretService
 	apiKeyService        *utils.APIKeyService
 	kinds                map[string]*kindOps
@@ -90,6 +92,7 @@ type McpHandlerParams struct {
 	RestAPIService       *restapi.RestAPIService
 	MCPDeploymentService *utils.MCPDeploymentService
 	LLMDeploymentService *utils.LLMDeploymentService
+	AgentService         *agent.AgentService
 	SecretService        *secrets.SecretService
 	APIKeyService        *utils.APIKeyService
 	CertificateService   *certificate.CertificateService
@@ -109,6 +112,7 @@ func newMcpHandler(p McpHandlerParams) *McpHandler {
 		restAPIService:       p.RestAPIService,
 		mcpDeploymentService: p.MCPDeploymentService,
 		llmDeploymentService: p.LLMDeploymentService,
+		agentService:         p.AgentService,
 		secretService:        p.SecretService,
 		apiKeyService:        p.APIKeyService,
 		certificateService:   p.CertificateService,
@@ -204,19 +208,19 @@ type listInput struct {
 // for a model than a duration+unit pair.
 
 type issueKeyInput struct {
-	Kind      string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy"`
+	Kind      string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy, Agent"`
 	ID        string `json:"id" jsonschema:"handle (metadata.name) of the parent resource the key is issued against"`
 	KeyName   string `json:"keyName" jsonschema:"human-readable name for the new key"`
 	ExpiresAt string `json:"expiresAt,omitempty" jsonschema:"expiry as an RFC 3339 timestamp, e.g. 2027-01-31T23:59:59Z; omit for a key that never expires"`
 }
 
 type listKeysInput struct {
-	Kind string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy"`
+	Kind string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy, Agent"`
 	ID   string `json:"id" jsonschema:"handle (metadata.name) of the parent resource"`
 }
 
 type rotateKeyInput struct {
-	Kind      string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy"`
+	Kind      string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy, Agent"`
 	ID        string `json:"id" jsonschema:"handle (metadata.name) of the parent resource"`
 	KeyName   string `json:"keyName" jsonschema:"name of the existing key to rotate"`
 	ExpiresAt string `json:"expiresAt,omitempty" jsonschema:"new expiry as an RFC 3339 timestamp; omit to keep the key's current expiry"`
@@ -224,7 +228,7 @@ type rotateKeyInput struct {
 }
 
 type revokeKeyInput struct {
-	Kind    string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy"`
+	Kind    string `json:"kind" jsonschema:"parent resource kind; one of RestApi, LlmProvider, LlmProxy, Agent"`
 	ID      string `json:"id" jsonschema:"handle (metadata.name) of the parent resource"`
 	KeyName string `json:"keyName" jsonschema:"name of the key to revoke"`
 	Confirm bool   `json:"confirm" jsonschema:"must be true; guards against accidental revocation"`
@@ -301,7 +305,7 @@ func (h *McpHandler) registerTools(server *mcp.Server) {
 		Description: `Create or update any routable resource on this Gateway.
 
 The kind is read from the manifest's "kind" field — do not guess it and do not
-pass it separately. Routable kinds: RestApi, Mcp, LlmProxy, LlmProvider.
+pass it separately. Routable kinds: RestApi, Mcp, LlmProxy, LlmProvider, Agent.
 
 For supporting configuration (LlmProviderTemplate, Secret) use wso2_apip_gw_apply_config
 instead; this tool rejects it.
@@ -332,7 +336,7 @@ value you do not have rather than inventing one.`,
 		Description: `Take a routable resource offline and remove it from this Gateway.
 
 Destructive. Confirm the exact kind and id with the user, then call with
-confirm=true. Supported kinds: RestApi, Mcp, LlmProxy, LlmProvider.
+confirm=true. Supported kinds: RestApi, Mcp, LlmProxy, LlmProvider, Agent.
 
 For supporting configuration (LlmProviderTemplate, Secret) use wso2_apip_gw_delete_config
 instead.`,
@@ -352,7 +356,7 @@ instead.`,
 Supporting configurations are referenced by routable resources but do not take
 traffic themselves. Config kinds: LlmProviderTemplate, Secret.
 
-For routable resources (RestApi, Mcp, LlmProxy, LlmProvider) use wso2_apip_gw_deploy_api
+For routable resources (RestApi, Mcp, LlmProxy, LlmProvider, Agent) use wso2_apip_gw_deploy_api
 instead; this tool rejects them.
 
 The kind is read from the manifest's "kind" field. Omit "id" to create; pass it
@@ -424,7 +428,7 @@ management REST API does. Treat that as credential material.`,
 		Title: "Issue an API key",
 		Description: `Create a new API key against a key-bearing resource.
 
-Key-bearing kinds: RestApi, LlmProvider, LlmProxy. Other kinds have no API keys
+Key-bearing kinds: RestApi, LlmProvider, LlmProxy, Agent. Other kinds have no API keys
 and are rejected.
 
 IMPORTANT — the response contains the key in PLAIN TEXT, and this is the only
@@ -448,7 +452,7 @@ rotate it later.`,
 		Title: "List API keys",
 		Description: `List the API keys issued against a key-bearing resource.
 
-Key-bearing kinds: RestApi, LlmProvider, LlmProxy.
+Key-bearing kinds: RestApi, LlmProvider, LlmProxy, Agent.
 
 Key values come back masked (the last few characters only) and cannot be
 unmasked — that is the stored form. Use this to find a key's name before

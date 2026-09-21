@@ -715,6 +715,7 @@ func (s *APIServer) EnableMCP(
 		RestAPIService:       s.restAPIService,
 		MCPDeploymentService: s.mcpDeploymentService,
 		LLMDeploymentService: s.llmDeploymentService,
+		AgentService:         s.agentService,
 		SecretService:        s.secretService,
 		APIKeyService:        s.apiKeyService,
 		CertificateService:   s.getCertificateService(),
