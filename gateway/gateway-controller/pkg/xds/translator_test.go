@@ -2717,6 +2717,7 @@ func parseURL(rawURL string) (*url.URL, error) {
 	return url.Parse(rawURL)
 }
 
+// TestTranslator_CreateListener_HTTP verifies the HTTP listener configuration, including dual-stack IPv4/IPv6 binding.
 func TestTranslator_CreateListener_HTTP(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -2730,6 +2731,11 @@ func TestTranslator_CreateListener_HTTP(t *testing.T) {
 	assert.NotNil(t, listener)
 	assert.NotNil(t, routeConfig)
 	assert.Contains(t, listener.Name, "8080")
+
+	socketAddress := listener.GetAddress().GetSocketAddress()
+	require.NotNil(t, socketAddress)
+	assert.Equal(t, "::", socketAddress.GetAddress())
+	assert.True(t, socketAddress.GetIpv4Compat())
 	assert.Equal(t, uint32(1048576), listener.GetPerConnectionBufferLimitBytes().GetValue())
 }
 
