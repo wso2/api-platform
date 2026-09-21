@@ -54,6 +54,17 @@ export function activeGatewayCount(gateways: Gateway[]): number {
   return gateways.filter((gateway) => gateway.health === 'active').length;
 }
 
+/**
+ * How many of an environment's gateways are serving this artifact right now. This is the
+ * deployment, not the gateway: it answers "where is this running", which is what the page
+ * is about, whereas a gateway being up only says where it could run.
+ */
+export function deployedGatewayCount(gateways: Gateway[]): number {
+  return gateways.filter(
+    (gateway) => gateway.status === 'DEPLOYED' || gateway.status === 'DEPLOYING'
+  ).length;
+}
+
 /** Whether anything has ever been deployed in this environment — gates the Promote button. */
 export function hasAnyDeployment(gateways: Gateway[]): boolean {
   return gateways.some((gateway) => gateway.status !== 'NOT_DEPLOYED');
@@ -66,4 +77,32 @@ export function isSettling(environments: Environment[]): boolean {
       (gateway) => gateway.status === 'DEPLOYING' || gateway.status === 'UNDEPLOYING'
     )
   );
+}
+
+/**
+ * The statuses that mean a gateway is holding a build — on it, going on, or coming
+ * off. The platform refuses to delete a build in any of them, so a page says so up
+ * front instead of offering the action and having it rejected. Suspended and failed
+ * deployments are deliberately absent: their builds ARE deletable, and they are the
+ * ones automatic cleanup will not reclaim.
+ */
+const GATEWAY_HELD_STATUSES: DeploymentStatus[] = ['DEPLOYED', 'DEPLOYING', 'UNDEPLOYING'];
+
+/**
+ * Why each build cannot be deleted, by build id, naming the environment holding it so
+ * the reason is actionable rather than just a refusal. The platform stays the
+ * authority — a gateway may have claimed a build since the page last loaded — so a
+ * refusal that comes back is surfaced as it is rather than predicted here.
+ */
+export function undeletableBuildReasons(environments: Environment[]): Record<string, string> {
+  const reasons: Record<string, string> = {};
+  environments.forEach((environment) => {
+    environment.gateways.forEach((gateway) => {
+      if (!gateway.buildId || !gateway.status) return;
+      if (!GATEWAY_HELD_STATUSES.includes(gateway.status)) return;
+      reasons[gateway.buildId] =
+        `This build is on a gateway in ${environment.name}. Undeploy it before deleting the build.`;
+    });
+  });
+  return reasons;
 }
