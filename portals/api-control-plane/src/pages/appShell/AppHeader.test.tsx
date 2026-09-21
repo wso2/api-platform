@@ -17,6 +17,7 @@
  */
 
 import { AppShell } from '@wso2/oxygen-ui';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SidebarErrorFallback } from '../../components/errors/ErrorFallback';
@@ -33,14 +34,23 @@ vi.mock('./HeaderScopeSwitchers', () => ({
 import { AppHeader } from './AppHeader';
 
 /** `useAppShell()` throws outside a provider, so the header needs its real slot. */
-const renderHeader = () =>
+const renderHeader = (route?: string) =>
   renderWithProviders(
     <AppShell>
       <AppShell.Navbar>
         <AppHeader />
       </AppShell.Navbar>
+      <Routes>
+        <Route path="*" element={<CurrentPath />} />
+      </Routes>
     </AppShell>,
+    route ? { route } : undefined,
   );
+
+/** Surfaces the router's location so a brand click can be asserted on. */
+function CurrentPath() {
+  return <div data-testid="pathname">{useLocation().pathname}</div>;
+}
 
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -63,6 +73,22 @@ describe('AppHeader', () => {
     await user.click(screen.getByRole('button', { name: 'Account' }));
     expect(await screen.findByText('Test User')).toBeInTheDocument();
     expect(await screen.findByText(/log ?out|sign out/i)).toBeInTheDocument();
+  });
+
+  it('sends the brand logo to the organization overview', async () => {
+    const { user } = renderHeader('/organizations/acme/projects/orders/apis/a-1/deploy');
+
+    await user.click(screen.getByRole('button', { name: 'Go to organization overview' }));
+
+    expect(screen.getByTestId('pathname')).toHaveTextContent('/organizations/acme/home');
+  });
+
+  it('sends the brand logo to organization selection when no organization is in scope', async () => {
+    const { user } = renderHeader('/');
+
+    await user.click(screen.getByRole('button', { name: 'Go to organization overview' }));
+
+    expect(screen.getByTestId('pathname')).toHaveTextContent('/organizations');
   });
 
   it('leaves a visible marker rather than silently dropping the switchers', () => {

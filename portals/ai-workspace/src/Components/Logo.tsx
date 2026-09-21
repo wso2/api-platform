@@ -16,27 +16,25 @@
  * under the License.
  */
 
-import type { JSX } from 'react';
-import React from 'react';
-import { ColorSchemeImage } from '@wso2/oxygen-ui';
+import type { JSX } from "react";
+import React from "react";
+import { ColorSchemeImage } from "@wso2/oxygen-ui";
 
-import AIWorkspaceLogoDark from '../assets/images/AIWorkspaceLogo.svg';
-import AIWorkspaceLogoLight from '../assets/images/AIWorkspaceLogoDark.svg';
+import { useBrandLogo } from "../branding/BrandLogoProvider";
 
 type LogoProps = {
   height?: number;
 };
 
 export default function Logo({ height = 40 }: LogoProps): JSX.Element {
+  const brandLogo = useBrandLogo();
+
   return (
     <ColorSchemeImage
-      src={{
-        light: AIWorkspaceLogoLight,
-        dark: AIWorkspaceLogoDark,
-      }}
+      src={brandLogo}
       alt={{
-        light: 'AI Workspace Logo (Light)',
-        dark: 'AI Workspace Logo (Dark)',
+        light: "AI Workspace Logo (Light)",
+        dark: "AI Workspace Logo (Dark)",
       }}
       height={height}
       width="auto"

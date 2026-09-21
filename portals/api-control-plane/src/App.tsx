@@ -28,6 +28,7 @@ import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './contexts/auth/AuthProvider';
 import { ProductActivation } from './hooks/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
+import { BrandLogoProvider, type BrandLogo } from './branding/BrandLogoProvider';
 import { ExtensionsProvider, type ApiControlPlaneExtension } from './extensions';
 import { I18nProvider } from './i18n';
 
@@ -72,27 +73,31 @@ function AppQueryProvider({ children }: { children: ReactNode }) {
 
 export type AppProps = {
   extensions?: readonly ApiControlPlaneExtension[];
+  /** Logos used across branded surfaces; host applications may provide them. */
+  brandLogo?: BrandLogo;
 };
 
-export default function App({ extensions = [] }: AppProps) {
+export default function App({ brandLogo, extensions = [] }: AppProps) {
   return (
     <I18nProvider>
-      <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
-        <NotificationProvider>
-          <AppQueryProvider>
-            <ErrorBoundary>
-              <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-                <AuthProvider>
-                  <ProductActivation />
-                  <ExtensionsProvider extensions={extensions}>
-                    <AppRoutes extensions={extensions} />
-                  </ExtensionsProvider>
-                </AuthProvider>
-              </BrowserRouter>
-            </ErrorBoundary>
-          </AppQueryProvider>
-        </NotificationProvider>
-      </OxygenUIThemeProvider>
+      <BrandLogoProvider brandLogo={brandLogo}>
+        <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
+          <NotificationProvider>
+            <AppQueryProvider>
+              <ErrorBoundary>
+                <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
+                  <AuthProvider>
+                    <ProductActivation />
+                    <ExtensionsProvider extensions={extensions}>
+                      <AppRoutes extensions={extensions} />
+                    </ExtensionsProvider>
+                  </AuthProvider>
+                </BrowserRouter>
+              </ErrorBoundary>
+            </AppQueryProvider>
+          </NotificationProvider>
+        </OxygenUIThemeProvider>
+      </BrandLogoProvider>
     </I18nProvider>
   );
 }

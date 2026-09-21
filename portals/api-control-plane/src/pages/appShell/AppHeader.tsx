@@ -16,40 +16,49 @@
  * under the License.
  */
 
-import {
-  ColorSchemeImage,
-  ColorSchemeToggle,
-  Header,
-  UserMenu,
-} from '@wso2/oxygen-ui';
+import { ColorSchemeImage, ColorSchemeToggle, Header, UserMenu } from '@wso2/oxygen-ui';
 import { LogOut, Menu } from '@wso2/oxygen-ui-icons-react';
 import { useIntl } from 'react-intl';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-import brandLogoDark from '@/assets/icons/logos/apiplatform_white.svg';
-import brandLogoLight from '@/assets/icons/logos/apiplatform_black.svg';
+import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
 import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
 import { useAuth } from '@/contexts/auth/AuthProvider';
+import { routes } from '@/routes/paths';
+import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
-const BRAND_LOGO_HEIGHT = 38;
+const BRAND_LOGO_HEIGHT = 32;
 /** Matches Oxygen's own Header.Toggle icon size, so swapping the glyph doesn't resize the button. */
 const TOGGLE_ICON_SIZE = 20;
 
 export function AppHeader() {
   const intl = useIntl();
   const location = useLocation();
+  const navigate = useNavigate();
   // const { actions } = useAppShell();
   const auth = useAuth();
+  const brandLogo = useBrandLogo();
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
 
+  const { orgHandle } = getRouteParamsFromPathname(location.pathname);
+  const goToOrganizationHome = () => {
+    navigate(orgHandle ? routes.organizationHome(orgHandle) : routes.organizations);
+  };
+
   return (
     <Header>
       <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
-      <Header.Brand>
+      <Header.Brand
+        aria-label={intl.formatMessage({
+          id: 'appShell.header.brand.aria',
+          defaultMessage: 'Go to organization overview',
+        })}
+        onClick={goToOrganizationHome}
+      >
         <Header.BrandLogo>
           <ColorSchemeImage
             alt={intl.formatMessage({
@@ -57,7 +66,7 @@ export function AppHeader() {
               defaultMessage: 'API Platform',
             })}
             height={BRAND_LOGO_HEIGHT}
-            src={{ dark: brandLogoDark, light: brandLogoLight }}
+            src={brandLogo}
             width="auto"
           />
         </Header.BrandLogo>

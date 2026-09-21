@@ -56,8 +56,7 @@ import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from
 import { defineMessages, FormattedMessage, type MessageDescriptor, useIntl } from 'react-intl';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import brandLogoDark from '@/assets/icons/logos/apiplatform_white.svg';
-import brandLogoLight from '@/assets/icons/logos/apiplatform_black.svg';
+import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -282,6 +281,7 @@ const featureIconSx = (theme: Theme) =>
 
 export function LoginPage() {
   const auth = useAuth();
+  const brandLogo = useBrandLogo();
   const intl = useIntl();
 
   useDocumentTitle(intl.formatMessage(messages.title));
@@ -381,7 +381,7 @@ export function LoginPage() {
               defaultMessage: 'API Platform',
             })}
             height={BRAND_LOGO_HEIGHT}
-            src={{ dark: brandLogoDark, light: brandLogoLight }}
+            src={brandLogo}
             width="auto"
           />
         </Stack>

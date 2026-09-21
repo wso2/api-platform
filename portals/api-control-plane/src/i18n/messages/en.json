@@ -2435,6 +2435,9 @@
   "appShell.header.api.select": {
     "defaultMessage": "Select API"
   },
+  "appShell.header.brand.aria": {
+    "defaultMessage": "Go to organization overview"
+  },
   "appShell.header.org.aria": {
     "defaultMessage": "Organizations"
   },
