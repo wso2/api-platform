@@ -88,9 +88,6 @@
   "api.create.ApiCreationWizard.stepCount": {
     "defaultMessage": "Step {current} of 3"
   },
-  "api.create.ApiCreationWizard.title": {
-    "defaultMessage": "Create an API"
-  },
   "api.create.ApiTypeSelector.badge.available": {
     "defaultMessage": "Available",
     "description": "Badge on an API type that can be selected now."
@@ -170,34 +167,32 @@
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
   },
-  "api.create.defineApi.changeSource": {
-    "defaultMessage": "Change source",
-    "description": "Back button label in the contract import view."
-  },
-  "api.create.defineApi.continue": {
-    "defaultMessage": "Continue",
-    "description": "Button that advances the wizard from the contract view to the next step."
-  },
   "api.create.defineApi.contract.description": {
-    "defaultMessage": "Import an API contract from a URL or a file."
-  },
-  "api.create.defineApi.contract.heading": {
-    "defaultMessage": "Point us at your contract"
-  },
-  "api.create.defineApi.contract.subheading": {
-    "defaultMessage": "Import OpenAPI or Swagger definition"
+    "defaultMessage": "Import from a URL or a file."
   },
   "api.create.defineApi.contract.title": {
-    "defaultMessage": "Start with a Contract"
+    "defaultMessage": "Start with a contract"
   },
   "api.create.defineApi.scratch.description": {
-    "defaultMessage": "Begin with a blank API and fill in the details."
+    "defaultMessage": "Set the backend endpoint, edit the definition, or continue in API Designer."
   },
-  "api.create.defineApi.scratch.hasEndpoint": {
-    "defaultMessage": "I have an endpoint URL"
+  "api.create.defineApi.scratch.endpoint.description": {
+    "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you publish."
+  },
+  "api.create.defineApi.scratch.endpoint.heading": {
+    "defaultMessage": "Backend endpoint"
+  },
+  "api.create.defineApi.scratch.endpoint.label": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "api.create.defineApi.scratch.endpoint.preview.description": {
+    "defaultMessage": "Every API resource will route to the backend endpoint you provide."
+  },
+  "api.create.defineApi.scratch.endpoint.preview.title": {
+    "defaultMessage": "Ready to connect"
   },
   "api.create.defineApi.scratch.title": {
-    "defaultMessage": "Start from Scratch"
+    "defaultMessage": "Design from scratch"
   },
   "api.create.fromContract.action.clearUrl": {
     "defaultMessage": "Clear URL",
@@ -748,6 +743,19 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.action": {
+    "defaultMessage": "Open API Designer",
+    "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.body": {
+    "defaultMessage": "Design, edit, and validate OpenAPI 3.x APIs directly in VS Code. Includes Spectral governance checks and AI-readiness assessment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.docs": {
+    "defaultMessage": "How to get started"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.title": {
+    "defaultMessage": "API Designer"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.action": {
     "defaultMessage": "Open API Designer",
@@ -2679,6 +2687,9 @@
   "develop.definition.DefinitionPanel.addResourceTitle": {
     "defaultMessage": "Add Resource"
   },
+  "develop.definition.DefinitionPanel.descriptionLabel": {
+    "defaultMessage": "Description"
+  },
   "develop.definition.DefinitionPanel.dialogCancel": {
     "defaultMessage": "Cancel"
   },
@@ -2735,6 +2746,9 @@
     "defaultMessage": "Source format",
     "description": "Accessible name for the YAML / JSON toggle buttons."
   },
+  "develop.definition.DefinitionPanel.lastUpdated": {
+    "defaultMessage": "Last updated {relative}"
+  },
   "develop.definition.DefinitionPanel.loadError": {
     "defaultMessage": "Unable to load the API definition."
   },
@@ -2749,8 +2763,14 @@
     "defaultMessage": "Or",
     "description": "Separator between the URL input and the file upload button."
   },
+  "develop.definition.DefinitionPanel.pathLabel": {
+    "defaultMessage": "Path"
+  },
   "develop.definition.DefinitionPanel.reset": {
     "defaultMessage": "Reset"
+  },
+  "develop.definition.DefinitionPanel.resourceCount": {
+    "defaultMessage": "{count, plural, one {# resource} other {# resources}}"
   },
   "develop.definition.DefinitionPanel.save": {
     "defaultMessage": "Save"
@@ -2762,6 +2782,9 @@
   "develop.definition.DefinitionPanel.saveValidationUnavailable": {
     "defaultMessage": "Spec validation is currently unavailable. Please try again.",
     "description": "Error shown when the validation service itself fails (network/auth error)."
+  },
+  "develop.definition.DefinitionPanel.title": {
+    "defaultMessage": "Definition"
   },
   "develop.definition.DefinitionPanel.updateOpenApi": {
     "defaultMessage": "Import Definition"
