@@ -638,7 +638,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 		return fmt.Errorf("failed to get publication: %w", err)
 	}
 	if live == nil || (live.Status != model.PublicationStatusPublished && live.Status != model.PublicationStatusDeprecated) {
-		return apperror.APIPublicationStateConflict.New("unpublished")
+		return apperror.APIPublicationStateConflict.New("This API is already unpublished from this API Portal. No changes were made.")
 	}
 
 	if err := s.portalPublisher.Unpublish(ctx, portal, apiId); err != nil {
@@ -652,7 +652,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 	if !found {
 		// The live row existed moments ago (checked above) but is gone now —
 		// same defensive precondition failure, not a normal outcome.
-		return apperror.APIPublicationStateConflict.New("unpublished")
+		return apperror.APIPublicationStateConflict.New("This API was unpublished from this API Portal by another change while this request ran. No changes were made.")
 	}
 	return nil
 }
@@ -674,8 +674,11 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	if err != nil {
 		return nil, fmt.Errorf("failed to get publication: %w", err)
 	}
-	if live == nil || live.Status != model.PublicationStatusPublished {
-		return nil, apperror.APIPublicationStateConflict.New("deprecated")
+	if live == nil {
+		return nil, apperror.APIPublicationStateConflict.New("This API isn't published on this API Portal, so it can't be deprecated.")
+	}
+	if live.Status != model.PublicationStatusPublished {
+		return nil, apperror.APIPublicationStateConflict.New("This API is already deprecated on this API Portal. No changes were made.")
 	}
 	if err := s.resolveHandles(live, planUUIDs, docUUIDs, orgUUID); err != nil {
 		return nil, err
@@ -691,7 +694,7 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	}
 	if !found {
 		// The row changed since the check above (for example, a concurrent unpublish).
-		return nil, apperror.APIPublicationStateConflict.New("deprecated")
+		return nil, apperror.APIPublicationStateConflict.New("This API's status on this API Portal changed while it was being deprecated. No changes were made.")
 	}
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }

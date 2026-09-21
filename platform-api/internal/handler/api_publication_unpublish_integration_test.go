@@ -41,7 +41,7 @@ func TestPublicationHandler_Unpublish_NotLive(t *testing.T) {
 	if body["code"] != "PUBLICATION_STATE_CONFLICT" {
 		t.Fatalf("want code PUBLICATION_STATE_CONFLICT, got %v", body)
 	}
-	if msg, _ := body["message"].(string); !strings.Contains(msg, "unpublished") {
+	if msg, _ := body["message"].(string); !strings.Contains(msg, "already unpublished") {
 		t.Fatalf("want a message naming the refused action, got %q", msg)
 	}
 }

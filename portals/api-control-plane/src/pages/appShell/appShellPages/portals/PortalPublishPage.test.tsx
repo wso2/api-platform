@@ -562,6 +562,25 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
   });
 
+  it('does not report success when the API was already unpublished elsewhere, and refreshes to Publish', async () => {
+    servePublicationState({ publication: aPublication() });
+    const message = 'This API is already unpublished from this API Portal. No changes were made.';
+    server.use(failure('post', UNPUBLISH_PATH, 409, 'PUBLICATION_STATE_CONFLICT', { message }));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
+    server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
+    await confirmInDialog(user);
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.queryByText('Unpublished from acme-portal.')).not.toBeInTheDocument();
+  });
+
   it('goes back to Publish once the API has been deprecated', async () => {
     servePublicationState({ publication: aPublication() });
     server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' })));

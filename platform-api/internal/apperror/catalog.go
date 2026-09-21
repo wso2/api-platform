@@ -247,9 +247,9 @@ var (
 	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
 		"The API Portal could not be reached. Please try again.")
 	// APIPublicationStateConflict: the action is not valid for the listing's
-	// current status. %s is the refused action, e.g. "unpublished".
-	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict,
-		"This API's current status on this API Portal does not allow it to be %s.")
+	// current status. %s is the full user-facing sentence saying why, so the
+	// caller can name the state it found (e.g. "already unpublished").
+	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict, "%s")
 	// APIPublicationDraftChanged: the draft was saved during its own publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
 		"The draft was changed while it was being published, so the API Portal may hold an earlier copy. Review the draft and publish again.")
