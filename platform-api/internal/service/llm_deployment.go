@@ -293,32 +293,13 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, apperror.LLMProviderDeploymentValidationFailed.New("Deployment name is required.")
 	}
 
-	// Resolve the metadata this deployment runs with. The first deployment to a gateway
-	// seeds the association's metadata from this deployment. For an existing association
-	// the deploy request value overrides for this deployment; when the metadata field is
-	// omitted, the association's stored metadata is used. An existing association's
-	// metadata is never modified at deploy time.
-	//
-	// Resolved here but written further down, once the overrides it carries have been
-	// validated against the rendered provider: seeding an association with metadata a
-	// deploy then rejects leaves that value on the gateway for good — the association is
-	// never rewritten — so every later deploy that omits metadata inherits it and fails
-	// the same way.
-	//
 	// metadataProvided distinguishes an omitted metadata field from one explicitly set
 	// (even to empty), so a deploy can request empty metadata while the association
 	// keeps its creation-time value.
 	metadataProvided := req.Metadata != nil
-	deployMetaJSON, err := marshalDeploymentMetadata(metadata)
+	requestMetadata := metadata
+	deployMetaJSON, err := marshalDeploymentMetadata(requestMetadata)
 	if err != nil {
-		return nil, err
-	}
-	storedMetaJSON, err := s.providerRepo.GatewayAssociationMetadata(provider.UUID, gatewayID, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read gateway association: %w", err)
-	}
-	effectiveMetaJSON := repository.EffectiveDeploymentMetadata(deployMetaJSON, metadataProvided, storedMetaJSON)
-	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
 		return nil, err
 	}
 
@@ -337,18 +318,41 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if !ok {
 		return nil, fmt.Errorf("artifact %s did not render as an LLM provider definition", provider.UUID)
 	}
+	// Validate what the request itself carries, before the association can be seeded
+	// with it below. A first deployment seeds the association from this request and an
+	// association is never rewritten, so metadata that seeds and is then rejected stays
+	// on the gateway for good, and every later deploy that omits metadata inherits it
+	// and fails the same way. A request that omitted the field carries nothing, so this
+	// does nothing; when it did carry something, it is exactly what the effective
+	// metadata below resolves to, and re-applying it is setting the same values twice.
+	if err := s.applyUpstreamOverrides(providerDeployment, requestMetadata, orgUUID); err != nil {
+		return nil, err
+	}
+
+	// Ensure a gateway association exists for the target gateway, and resolve the
+	// metadata this deployment runs with. The first deployment to a gateway creates the
+	// association and seeds its metadata from this deployment. For an existing
+	// association the deploy request value overrides for this deployment; when the
+	// metadata field is omitted, the association's stored metadata is used. An existing
+	// association's metadata is never modified at deploy time.
+	//
+	// One call does both, so a deployment racing another onto the same gateway renders
+	// with whatever metadata the association actually ended up holding.
+	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(
+		provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+	}
+	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
+		return nil, err
+	}
+
 	// Customized for this deployment before it is translated, exactly as an API's
 	// endpoint and vhosts are: the build is a snapshot of the provider's definition,
 	// and what a single gateway authenticates with is a property of the deployment
 	// rather than of that snapshot.
 	if err := s.applyUpstreamOverrides(providerDeployment, metadata, orgUUID); err != nil {
 		return nil, err
-	}
-
-	// The metadata is good, so the association can now hold it.
-	if _, err := s.providerRepo.EnsureGatewayAssociation(
-		provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided); err != nil {
-		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
 	}
 
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
