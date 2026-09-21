@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, Chip, Form, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { alpha, Box, Chip, Form, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -140,6 +140,10 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
                     width: CARD_WIDTH,
                     '& > *': { width: '100%' },
                     ...(disabled && {
+                      borderColor: alpha(
+                        theme.palette.text.primary,
+                        theme.palette.mode === 'dark' ? 0.7 : 0.35,
+                      ),
                       cursor: 'default',
                       pointerEvents: 'none',
                     }),
