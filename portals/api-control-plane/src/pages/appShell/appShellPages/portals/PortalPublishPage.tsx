@@ -106,6 +106,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage',
     defaultMessage: 'Landing Page',
   },
+  draftMissing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing',
+    defaultMessage: 'Unable to save the draft. Your changes are still on this page. Try again.',
+  },
   draftSaved: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved',
     defaultMessage: 'Draft saved.',
@@ -251,7 +255,7 @@ export function PortalPublishPage() {
 
   const validateOpenApi = useValidateOpenApiSpec();
   const saveDraftMutation = useSaveApiPublicationDraft();
-  const saveDefinitionMutation = useSaveApiPublicationDraftDefinition();
+  const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
   const publishMutation = usePublishRestApiToApiPortal();
   const unpublishMutation = useUnpublishRestApiFromApiPortal();
   const deprecateMutation = useDeprecateRestApiOnApiPortal();
@@ -381,6 +385,25 @@ export function PortalPublishPage() {
     return result.spec;
   };
 
+  /**
+   * The definition save 404s when the draft is gone (published from another
+   * tab or user in the moment since the details were saved). The server's own
+   * text doesn't tell the user what to do, so that case gets a clearer one; the
+   * mutation opts out of the global snackbar, so every other failure is reported
+   * here with the server's message.
+   */
+  const reportingMissingDraft = async <T,>(call: Promise<T>): Promise<T> => {
+    try {
+      return await call;
+    } catch (error) {
+      if (isApiError(error)) {
+        const missing = error.code === 'DRAFT_NOT_FOUND';
+        notify(missing ? intl.formatMessage(messages.draftMissing) : error.message, 'error');
+      }
+      throw error;
+    }
+  };
+
   /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
   const saveDraft = async (): Promise<boolean> => {
     if (formInvalid) {
@@ -397,12 +420,14 @@ export function PortalPublishPage() {
       apiId: apiHandler,
       body: draftFormValuesToInput(values),
     });
-    await saveDefinitionMutation.mutateAsync({
-      apiPortalId,
-      apiType: REST_API_TYPE,
-      apiId: apiHandler,
-      body: definitionDocument,
-    });
+    await reportingMissingDraft(
+      saveDefinitionMutation.mutateAsync({
+        apiPortalId,
+        apiType: REST_API_TYPE,
+        apiId: apiHandler,
+        body: definitionDocument,
+      }),
+    );
     return true;
   };
 

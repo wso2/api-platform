@@ -214,6 +214,24 @@ describe('PortalPublishPage', () => {
     expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
   });
 
+  it('explains a missing draft once, without retrying, when the definition save 404s', async () => {
+    servePublicationState();
+    const draftRequests = recorder();
+    server.use(
+      failure('put', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND', { message: 'raw server text' }),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(await screen.findByText(/Unable to save the draft/)).toBeInTheDocument();
+    expect(screen.queryByText('raw server text')).not.toBeInTheDocument();
+    expect(draftRequests.count()).toBe(1);
+  });
+
   it('Save Draft writes the details before the definition', async () => {
     servePublicationState();
     const draftRequests = recorder();

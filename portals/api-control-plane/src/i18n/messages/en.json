@@ -2090,6 +2090,9 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
     "defaultMessage": "Deprecated on {portalName}."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing": {
+    "defaultMessage": "Unable to save the draft. Your changes are still on this page. Try again."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
     "defaultMessage": "Draft saved."
   },
