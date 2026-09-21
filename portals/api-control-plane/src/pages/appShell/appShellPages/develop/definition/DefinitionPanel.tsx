@@ -167,10 +167,6 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.discard',
     defaultMessage: 'Discard',
   },
-  fileTooLarge: {
-    id: 'develop.definition.DefinitionPanel.fileTooLarge',
-    defaultMessage: 'The specification exceeds the maximum allowed size (5 MB).',
-  },
   fileReadError: {
     id: 'develop.definition.DefinitionPanel.fileReadError',
     defaultMessage: 'Failed to read the selected file.',

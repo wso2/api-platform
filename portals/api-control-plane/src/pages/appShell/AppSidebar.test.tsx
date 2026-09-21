@@ -99,7 +99,7 @@ describe('AppSidebar submenus', () => {
 
     await user.click(screen.getByRole('button', { name: /^Develop$/ }));
 
-    for (const label of ['Policies', 'Resources', 'Documents']) {
+    for (const label of ['Policies', 'Definition', 'Documents']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });

@@ -42,7 +42,7 @@ type ApproachKey = 'contract' | 'scratch';
 const messages = defineMessages({
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
-    defaultMessage: 'Import from a URL or a file.',
+    defaultMessage: 'Import an API contract from a URL or a file.',
   },
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
@@ -71,11 +71,11 @@ const messages = defineMessages({
   },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
-    defaultMessage: 'Set the backend endpoint, edit the definition, or continue in API Designer.',
+    defaultMessage: 'Begin with a blank API and fill in the details.',
   },
   scratchTitle: {
     id: 'api.create.defineApi.scratch.title',
-    defaultMessage: 'Design from scratch',
+    defaultMessage: 'Start from scratch',
   },
 });
 

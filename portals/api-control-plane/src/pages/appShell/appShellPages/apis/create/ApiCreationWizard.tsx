@@ -35,6 +35,8 @@ import {
 } from './components/ApiCreationProgress';
 import { API_TYPES } from './uiConfig';
 import { ApiDesignerBanner } from './components/ApiDesignerBanner';
+import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
+import type { ApiError } from '@/api/core/errors';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
 
@@ -108,6 +110,8 @@ export const ApiCreationWizard = () => {
   }, [sourceDraft]);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
+  const [serverErrors, setServerErrors] = useState<CreateApiFormErrors | null>(null);
+  const [upstreamEdited, setUpstreamEdited] = useState(false);
 
   /**
    * The chosen type's own name, translated. `apiType` is already the entry from
@@ -156,6 +160,8 @@ export const ApiCreationWizard = () => {
     if (sourceDraft === null) return;
     setPrefilledData(sourceDraft);
     setSubmittedValues(null);
+    setServerErrors(null);
+    setUpstreamEdited(false);
     setStep('configure');
   };
 
@@ -184,7 +190,7 @@ export const ApiCreationWizard = () => {
       return;
     }
 
-    // Both "from contract" and "design from scratch" carry a spec file in the
+    // Both "from contract" and "start from scratch" carry a spec file in the
     // draft: contract passes the imported spec, scratch passes the skeleton
     // (or whatever the user edited). Both submit via import-openapi.
     const formData = new FormData();
@@ -203,7 +209,15 @@ export const ApiCreationWizard = () => {
     if (mainUrl) {
       formData.append('upstream', JSON.stringify({ main: { url: mainUrl } }));
     }
-    importOpenApiMutation.mutate(formData);
+    importOpenApiMutation.mutate(formData, {
+      onError: (error) => {
+        const formErrors = toCreateApiFormErrors(error as ApiError);
+        if (formErrors) {
+          setCreationStarted(false);
+          setServerErrors(formErrors);
+        }
+      },
+    });
   };
 
   const onGeneralFormSumit = async (finalData: GeneralApiCreationFormState) => {
@@ -348,6 +362,9 @@ export const ApiCreationWizard = () => {
                     initialValues={submittedValues ?? prefilledData}
                     onSubmit={onGeneralFormSumit}
                     onBack={() => setStep('source')}
+                    serverErrors={serverErrors ?? undefined}
+                    initialUpstreamEdited={upstreamEdited}
+                    onUpstreamEdited={() => setUpstreamEdited(true)}
                   />
                 </Box>
               )}

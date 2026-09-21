@@ -297,10 +297,6 @@ const messages = defineMessages({
     id: 'api.create.fromContract.source.url',
     defaultMessage: 'URL',
   },
-  specOversized: {
-    id: 'api.create.fromContract.spec.oversized',
-    defaultMessage: 'That file is too large to validate in the browser.',
-  },
   specUnsupportedSource: {
     id: 'api.create.fromContract.spec.unsupportedSource',
     defaultMessage: 'Importing from this source is not available yet.',
@@ -844,7 +840,6 @@ export type FetchedContract = {
 
 /** Why a fetch produced nothing to preview. */
 export type ContractFetchFailure =
-  | 'oversized'
   | 'unreachable'
   | 'unreadable'
   /** The source has no fetching behind it yet, GitHub, SwaggerHub. */
@@ -1470,9 +1465,10 @@ export const ContractSourceForm = ({
           return;
         }
 
-        // FE warning check: missingTitle, missingVersion, noServers, externalRefs.
-        // Structural errors (noPaths, noOperations, badPathKeys) are handled by BE.
-        const warnings: SpecIssue[] = collectSpecWarnings(result.contract.spec, result.contract.rawText);
+        // FE warning check: missingTitle, missingVersion, noServers.
+        // Structural errors (noPaths, noOperations, badPathKeys) and external
+        // $refs are handled by BE.
+        const warnings: SpecIssue[] = collectSpecWarnings(result.contract.spec);
 
         if (!current) return;
         setFetching(false);
@@ -1554,8 +1550,6 @@ export const ContractSourceForm = ({
   /** Why the last fetch came back empty, as a sentence; `null` when it didn't. */
   const fetchErrorText = (() => {
     switch (fetchError?.status) {
-      case 'oversized':
-        return <FormattedMessage {...messages.specOversized} />;
       case 'unreachable':
         return <FormattedMessage {...messages.specUnreachable} />;
       case 'unreadable':

@@ -16,10 +16,18 @@
  * under the License.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resetHttpClient } from '@/api/core/http';
+import { accepts } from '@/test/msw';
+import { server } from '@/test/server';
 import { fireEvent, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { ContractSourceForm, fetchContractForPreview } from './ContractSourceForm';
+
+beforeEach(() => {
+  resetHttpClient();
+  server.use(accepts('post', '/rest-apis/validate-openapi', { isValid: true, errors: [] }));
+});
 
 const yamlFile = (name: string) =>
   new File(['openapi: 3.0.0'], name, { type: 'application/x-yaml' });
@@ -221,29 +229,6 @@ describe('ContractSourceForm — automatic fetch', () => {
 describe('fetchContractForPreview — URL source', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  it('rejects an oversized document on its declared length, before reading the body', async () => {
-    const text = vi.fn(() => Promise.resolve('openapi: 3.0.0'));
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        headers: new Headers({ 'content-length': String(64 * 1024 * 1024) }),
-        ok: true,
-        text,
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    await expect(
-      fetchContractForPreview({
-        apiTypeKey: 'rest',
-        sourceKey: 'url',
-        url: 'https://example.com/huge.yaml',
-      }),
-    ).resolves.toEqual({ status: 'oversized' });
-
-    // The whole point: the body is never materialised in the tab.
-    expect(text).not.toHaveBeenCalled();
   });
 
   it('gives the request a deadline so a stalled host cannot hang the Fetch button', async () => {
