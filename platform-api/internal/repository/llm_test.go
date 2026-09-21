@@ -309,3 +309,25 @@ func TestLLMProviderTemplateRepo_CreateImportedVersion_DecidesLatestFromFamily(t
 		t.Errorf("family has %d is_latest rows, want exactly 1", latestCount)
 	}
 }
+
+// The deploy path resolves the metadata a deployment runs with before the association is
+// written, so it can reject bad metadata without persisting it. Both sides go through
+// this one function, and this pins the rule so they cannot drift apart.
+func TestEffectiveDeploymentMetadata(t *testing.T) {
+	cases := map[string]struct {
+		deploy   string
+		provided bool
+		stored   string
+		want     string
+	}{
+		"request wins over what is stored": {`{"a":1}`, true, `{"b":2}`, `{"a":1}`},
+		"explicitly empty wins too":        {"", true, `{"b":2}`, ""},
+		"omitted falls back to stored":     {`{"a":1}`, false, `{"b":2}`, `{"b":2}`},
+		"omitted with nothing stored":      {`{"a":1}`, false, "", ""},
+	}
+	for name, c := range cases {
+		if got := EffectiveDeploymentMetadata(c.deploy, c.provided, c.stored); got != c.want {
+			t.Errorf("%s: got %q, want %q", name, got, c.want)
+		}
+	}
+}

@@ -293,12 +293,17 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, apperror.LLMProviderDeploymentValidationFailed.New("Deployment name is required.")
 	}
 
-	// Ensure a gateway association exists for the target gateway before deploying, and
-	// resolve the deployment metadata. The first deployment to a gateway creates the
-	// association and seeds its metadata from this deployment. For an existing
-	// association the deploy request value overrides for this deployment; when the
-	// metadata field is omitted, the association's stored metadata is used. An existing
-	// association's metadata is never modified at deploy time.
+	// Resolve the metadata this deployment runs with. The first deployment to a gateway
+	// seeds the association's metadata from this deployment. For an existing association
+	// the deploy request value overrides for this deployment; when the metadata field is
+	// omitted, the association's stored metadata is used. An existing association's
+	// metadata is never modified at deploy time.
+	//
+	// Resolved here but written further down, once the overrides it carries have been
+	// validated against the rendered provider: seeding an association with metadata a
+	// deploy then rejects leaves that value on the gateway for good — the association is
+	// never rewritten — so every later deploy that omits metadata inherits it and fails
+	// the same way.
 	//
 	// metadataProvided distinguishes an omitted metadata field from one explicitly set
 	// (even to empty), so a deploy can request empty metadata while the association
@@ -308,10 +313,11 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
+	storedMetaJSON, err := s.providerRepo.GatewayAssociationMetadata(provider.UUID, gatewayID, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+		return nil, fmt.Errorf("failed to read gateway association: %w", err)
 	}
+	effectiveMetaJSON := repository.EffectiveDeploymentMetadata(deployMetaJSON, metadataProvided, storedMetaJSON)
 	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
 		return nil, err
 	}
@@ -338,6 +344,13 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if err := s.applyUpstreamOverrides(providerDeployment, metadata, orgUUID); err != nil {
 		return nil, err
 	}
+
+	// The metadata is good, so the association can now hold it.
+	if _, err := s.providerRepo.EnsureGatewayAssociation(
+		provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided); err != nil {
+		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+	}
+
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
 	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 	if err := gatewaytranslator.Translate(
@@ -796,6 +809,16 @@ func (s *LLMProviderDeploymentService) cleanupRotatedCredential(
 		return
 	}
 	current, _ := metadata[constants.MetadataKeyUpstreamAuthValue].(string)
+	if strings.TrimSpace(current) == "" {
+		// Nothing replaced it, so nothing was rotated. A deploy that carries no
+		// credential of its own is not a removal: it runs on the provider's own, and a
+		// client that knows nothing about per-deployment credentials sends metadata
+		// like that on every redeploy. Releasing here would destroy a secret nobody
+		// asked to remove, and because the value is write-only no client could resend
+		// it to get it back. Left in place it is merely unreferenced, which the
+		// organization's secrets page can clear.
+		return
+	}
 	s.secretService.cleanupRotatedSecret(orgUUID, previousCredential, current, actor, s.slogger)
 }
 

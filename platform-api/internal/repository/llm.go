@@ -806,15 +806,20 @@ func loadArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID stri
 //   - Association exists, metadata omitted → fall back to the association's stored metadata.
 //
 // It returns the metadata to persist on the deployment record. An empty string means "no metadata".
+// EffectiveDeploymentMetadata resolves which metadata a deploy runs with: the request's
+// own when it supplied the field, otherwise whatever the gateway association already
+// stored. Exported so a caller can resolve it — and validate it — before the association
+// is written, and still resolve it exactly as the write would.
+func EffectiveDeploymentMetadata(deployMetadata string, metadataProvided bool, stored string) string {
+	if metadataProvided {
+		return deployMetadata
+	}
+	return stored
+}
+
 func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error) {
 	effectiveMetadata := func(existing []byte) string {
-		if metadataProvided {
-			return deployMetadata
-		}
-		if len(existing) > 0 {
-			return string(existing)
-		}
-		return ""
+		return EffectiveDeploymentMetadata(deployMetadata, metadataProvided, string(existing))
 	}
 
 	existing, found, err := readArtifactGatewayAssociation(db, artifactUUID, gatewayUUID, orgUUID)
@@ -1025,6 +1030,17 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 // ensureArtifactGatewayAssociation for the full semantics.
 func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error) {
 	return ensureArtifactGatewayAssociation(r.db, providerUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
+}
+
+// GatewayAssociationMetadata reports the metadata already stored on this provider's
+// association with a gateway, without creating one. It is what lets a deploy resolve the
+// metadata it will run with, and reject it, before anything is written.
+func (r *LLMProviderRepo) GatewayAssociationMetadata(providerUUID, gatewayUUID, orgUUID string) (string, error) {
+	existing, _, err := readArtifactGatewayAssociation(r.db, providerUUID, gatewayUUID, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	return string(existing), nil
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {

@@ -272,6 +272,9 @@ type LLMProviderRepository interface {
 	// EnsureGatewayAssociation creates a gateway association for the provider if one
 	// does not already exist and resolves the metadata to use for the deployment.
 	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+	// GatewayAssociationMetadata reports the metadata an association already stores,
+	// without creating one.
+	GatewayAssociationMetadata(providerUUID, gatewayUUID, orgUUID string) (string, error)
 }
 
 // APIKeyRepository defines the interface for API key persistence

@@ -312,6 +312,35 @@ func TestRotatedCredential_ReleasesNothingWhenTheCredentialIsUnchanged(t *testin
 	}
 }
 
+// A deploy that carries no credential of its own is not a removal. Clients that know
+// nothing about per-deployment credentials send metadata on every redeploy (the AI
+// Workspace sends the gateway host), and the value is write-only, so treating that as a
+// rotation would destroy a secret nobody asked to remove and nobody could resend.
+func TestRotatedCredential_ReleasesNothingWhenTheDeploymentCarriesNoCredential(t *testing.T) {
+	repo := newMockRepo()
+	released := ""
+	repo.findRefsAndSoftDeleteFn = func(_, handle, _ string) ([]model.SecretReference, error) {
+		released = handle
+		return nil, nil
+	}
+	svc := &LLMProviderDeploymentService{
+		secretService: NewSecretService(repo, nil, nil),
+		slogger:       slog.Default(),
+	}
+
+	for name, metadata := range map[string]map[string]interface{}{
+		"other metadata only": {"host": "gw.example.com"},
+		"empty metadata":      {},
+		"blank credential":    {constants.MetadataKeyUpstreamAuthValue: "  "},
+	} {
+		released = ""
+		svc.cleanupRotatedCredential("org-1", `{{ secret "in-use-key" }}`, metadata, "someone")
+		if released != "" {
+			t.Errorf("%s: released %q, want the credential left in place", name, released)
+		}
+	}
+}
+
 // A first deployment has nothing to rotate away from.
 func TestRotatedCredential_ReleasesNothingOnAFirstDeployment(t *testing.T) {
 	repo := newMockRepo()
