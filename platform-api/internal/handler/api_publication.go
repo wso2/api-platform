@@ -247,13 +247,13 @@ func validateRestDefinition(contentType string, data []byte) error {
 	}
 	sd, err := service.LoadSpecDocument([]byte(trimmed))
 	if err != nil {
-		return apperror.APIPublicationValidationFailed.New("definition is not a valid OpenAPI 3.x document: " + err.Error())
+		return apperror.APIPublicationValidationFailed.New("The definition could not be parsed as an OpenAPI 3.x document.").WithLogMessage(err.Error())
 	}
 	result := service.ValidateSpec(sd)
 	if result.IsValid {
 		return nil
 	}
-	msg := "definition is not a valid OpenAPI 3.x document"
+	msg := "The definition is not a valid OpenAPI 3.x document"
 	if len(result.Errors) > 0 {
 		msg += ": " + result.Errors[0].Message
 		if len(result.Errors) > 1 {

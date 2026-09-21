@@ -243,7 +243,7 @@ var (
 	// the portal's own raw error text; falls back to "the conflict is
 	// resolved" (this entry's original, fixed wording) for anything else.
 	APIPublicationPortalConflict = def(CodeAPIPublicationPortalConflict, http.StatusConflict,
-		"The API Portal rejected this request and will keep rejecting it until %s.")
+		"The API Portal cannot accept this request until %s.")
 	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
 		"The API Portal could not be reached. Please try again.")
 	// APIPublicationStateConflict: the action is not valid for the listing's
