@@ -206,6 +206,24 @@ describe('PortalPublishPage', () => {
     expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
   });
 
+  it('explains a missing draft once, without retrying, when the definition save 404s', async () => {
+    servePublicationState();
+    const draftRequests = recorder();
+    server.use(
+      failure('put', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND', { message: 'raw server text' }),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(await screen.findByText(/Unable to save the draft/)).toBeInTheDocument();
+    expect(screen.queryByText('raw server text')).not.toBeInTheDocument();
+    expect(draftRequests.count()).toBe(1);
+  });
+
   it('Save Draft writes the details before the definition', async () => {
     servePublicationState();
     const draftRequests = recorder();
@@ -554,6 +572,25 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
   });
 
+  it('does not report success when the API was already unpublished elsewhere, and refreshes to Publish', async () => {
+    servePublicationState({ publication: aPublication() });
+    const message = 'This API is already unpublished from this API Portal. No changes were made.';
+    server.use(failure('post', UNPUBLISH_PATH, 409, 'PUBLICATION_STATE_CONFLICT', { message }));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
+    server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
+    await confirmInDialog(user);
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.queryByText('Unpublished from acme-portal.')).not.toBeInTheDocument();
+  });
+
   it('goes back to Publish once the API has been deprecated', async () => {
     servePublicationState({ publication: aPublication() });
     server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' })));
@@ -637,7 +674,7 @@ describe('PortalPublishPage', () => {
         within(dialog).getByText(
           action === 'Unpublish'
             ? `This removes the API "${API_NAME}" from acme-portal. You can publish it again later.`
-            : `This marks the API "${API_NAME}" as deprecated on acme-portal. It stays visible there.`,
+            : `The API "${API_NAME}" will be marked as deprecated on acme-portal. It will remain listed.`,
         ),
       ).toBeInTheDocument();
       expect(confirm).toBeDisabled();
@@ -813,5 +850,25 @@ describe('PortalPublishPage', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
     expect(screen.getByRole('tab', { name: 'API Details' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('says the user lacks permission when the draft cannot be read (403)', async () => {
+    servePublicationState();
+    server.use(failure('get', DRAFT_PATH, 403, 'FORBIDDEN'));
+
+    renderPage();
+
+    expect(await screen.findByText('You don’t have permission')).toBeInTheDocument();
+    expect(screen.queryByText(/Unable to load the publish details/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic message when loading fails for a reason other than permission', async () => {
+    servePublicationState();
+    server.use(failure('get', DRAFT_PATH, 500, 'INTERNAL_ERROR'));
+
+    renderPage();
+
+    expect(await screen.findByText(/Unable to load the publish details/)).toBeInTheDocument();
+    expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
   });
 });

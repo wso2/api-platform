@@ -39,11 +39,12 @@ import { isApiError, isErrorCode } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useNotifications } from '@/components/Notifications';
-import { ErrorState, LoadingState } from '@/components/StateViews';
+import { LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
+import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { SpecificationTab } from './components/SpecificationTab';
 import {
@@ -61,7 +62,7 @@ const MIN_PAGE_HEIGHT = 420;
 const messages = defineMessages({
   back: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back',
-    defaultMessage: 'Back to Available Portals',
+    defaultMessage: 'Back to API portals',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title',
@@ -79,11 +80,11 @@ const messages = defineMessages({
   },
   errorMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage',
-    defaultMessage: 'Unable to load this portal’s draft and publication state',
+    defaultMessage: 'Unable to load the publish details.',
   },
   definitionNotAnObject: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject',
-    defaultMessage: 'The definition must be an object, not a list or a single value.',
+    defaultMessage: 'The definition must be a JSON or YAML object.',
   },
   tabDetails: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails',
@@ -104,6 +105,10 @@ const messages = defineMessages({
   tabLandingPage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage',
     defaultMessage: 'Landing Page',
+  },
+  draftMissing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing',
+    defaultMessage: 'Unable to save the draft. Your changes are still on this page. Try again.',
   },
   draftSaved: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved',
@@ -147,7 +152,7 @@ const messages = defineMessages({
   deprecateConfirmMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage',
     defaultMessage:
-      'This marks the API "{name}" as deprecated on {portalName}. It stays visible there.',
+      'The API "{name}" will be marked as deprecated on {portalName}. It will remain listed.',
   },
 });
 
@@ -249,7 +254,7 @@ export function PortalPublishPage() {
   const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
 
   const saveDraftMutation = useSaveApiPublicationDraft();
-  const saveDefinitionMutation = useSaveApiPublicationDraftDefinition();
+  const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
   const publishMutation = usePublishRestApiToApiPortal();
   const unpublishMutation = useUnpublishRestApiFromApiPortal();
   const deprecateMutation = useDeprecateRestApiOnApiPortal();
@@ -319,7 +324,12 @@ export function PortalPublishPage() {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
   if (unexpectedError || !apiQuery.data) {
-    return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
+    return (
+      <PublicationLoadError
+        error={unexpectedError}
+        fallbackMessage={intl.formatMessage(messages.errorMessage)}
+      />
+    );
   }
 
   const api = apiQuery.data;
@@ -361,6 +371,25 @@ export function PortalPublishPage() {
     return result.spec;
   };
 
+  /**
+   * The definition save 404s when the draft is gone (published from another
+   * tab or user in the moment since the details were saved). The server's own
+   * text doesn't tell the user what to do, so that case gets a clearer one; the
+   * mutation opts out of the global snackbar, so every other failure is reported
+   * here with the server's message.
+   */
+  const reportingMissingDraft = async <T,>(call: Promise<T>): Promise<T> => {
+    try {
+      return await call;
+    } catch (error) {
+      if (isApiError(error)) {
+        const missing = error.code === 'DRAFT_NOT_FOUND';
+        notify(missing ? intl.formatMessage(messages.draftMissing) : error.message, 'error');
+      }
+      throw error;
+    }
+  };
+
   /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
   const saveDraft = async (): Promise<boolean> => {
     if (formInvalid) {
@@ -377,12 +406,14 @@ export function PortalPublishPage() {
       apiId: apiHandler,
       body: draftFormValuesToInput(values),
     });
-    await saveDefinitionMutation.mutateAsync({
-      apiPortalId,
-      apiType: REST_API_TYPE,
-      apiId: apiHandler,
-      body: definitionDocument,
-    });
+    await reportingMissingDraft(
+      saveDefinitionMutation.mutateAsync({
+        apiPortalId,
+        apiType: REST_API_TYPE,
+        apiId: apiHandler,
+        body: definitionDocument,
+      }),
+    );
     return true;
   };
 

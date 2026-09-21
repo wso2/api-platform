@@ -19,6 +19,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
+import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
 import {
   deprecateRestApiOnApiPortal,
@@ -160,7 +161,9 @@ export const useSaveApiPublicationDraft = (overrides: { orgId?: string } = {}) =
   });
 };
 
-export const useSaveApiPublicationDraftDefinition = (overrides: { orgId?: string } = {}) => {
+export const useSaveApiPublicationDraftDefinition = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
   const { orgId } = useApiScope(overrides);
   const invalidate = useInvalidateApiPublications(orgId);
 
@@ -169,6 +172,7 @@ export const useSaveApiPublicationDraftDefinition = (overrides: { orgId?: string
     ApiError,
     { apiPortalId: string; apiType: string; apiId: string; body: DraftDefinitionDocument }
   >({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: ({ apiPortalId, apiType, apiId, body }) =>
       saveApiPublicationDraftDefinition(apiPortalId, apiType, apiId, body, { orgId }),
     onSuccess: () => invalidate(),

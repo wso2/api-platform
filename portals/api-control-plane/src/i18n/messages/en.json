@@ -2068,7 +2068,7 @@
     "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
-    "defaultMessage": "Back to Available Portals"
+    "defaultMessage": "Back to API portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmAction": {
     "defaultMessage": "Confirm",
@@ -2079,10 +2079,10 @@
     "description": "Label for the type-to-confirm field. {name} is the API name; do not translate it."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject": {
-    "defaultMessage": "The definition must be an object, not a list or a single value."
+    "defaultMessage": "The definition must be a JSON or YAML object."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage": {
-    "defaultMessage": "This marks the API \"{name}\" as deprecated on {portalName}. It stays visible there."
+    "defaultMessage": "The API \"{name}\" will be marked as deprecated on {portalName}. It will remain listed."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmTitle": {
     "defaultMessage": "Deprecate this API?"
@@ -2090,11 +2090,14 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
     "defaultMessage": "Deprecated on {portalName}."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing": {
+    "defaultMessage": "Unable to save the draft. Your changes are still on this page. Try again."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
     "defaultMessage": "Draft saved."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
-    "defaultMessage": "Unable to load this portal’s draft and publication state"
+    "defaultMessage": "Unable to load the publish details."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading": {
     "defaultMessage": "Loading publish details"
@@ -2158,6 +2161,12 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
     "defaultMessage": "Go To Publish",
     "description": "Card action opening the publish flow for this API on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage": {
+    "defaultMessage": "You don’t have permission to publish APIs to API portals. Contact your organization admin to request access."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenTitle": {
+    "defaultMessage": "You don’t have permission"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
     "defaultMessage": "Deprecate"
