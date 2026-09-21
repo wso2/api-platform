@@ -175,8 +175,10 @@ export default function AppLayout() {
           <Box id={APP_FOOTER_ID}>
             <Footer>
               <Footer.Copyright>© {new Date().getFullYear()} WSO2 LLC.</Footer.Copyright>
-              {/* Need to show the version on the on prem deployement, but not on the cloud deployment. Dynamic switch is to be implemented. */}
-              {/* <Footer.Version>{runtimeConfig.environmentName}</Footer.Version> */}
+              {/* Show the environment label only for pinned on-prem builds. */}
+              {runtimeConfig.deploymentMode === 'onprem' && (
+                <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
+              )}
               <Footer.Link href={runtimeConfig.termsOfUseLink}>
                 <FormattedMessage
                   id="appLayout.footer.termsOfUse"

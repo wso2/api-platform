@@ -2654,6 +2654,9 @@
   "appShell.header.project.select": {
     "defaultMessage": "Select Project"
   },
+  "appShell.header.signOut": {
+    "defaultMessage": "Sign out"
+  },
   "appShell.header.title": {
     "defaultMessage": "API Platform"
   },

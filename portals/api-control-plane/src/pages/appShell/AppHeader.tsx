@@ -103,7 +103,14 @@ export function AppHeader() {
           <UserMenu.Trigger name={userName} />
           <UserMenu.Header name={userName} email={userEmail} />
           <UserMenu.Divider />
-          <UserMenu.Item icon={<LogOut />} label="Sign out" onClick={auth.logout} />
+          <UserMenu.Item
+            icon={<LogOut />}
+            label={intl.formatMessage({
+              id: 'appShell.header.signOut',
+              defaultMessage: 'Sign out',
+            })}
+            onClick={auth.logout}
+          />
         </UserMenu>
       </Header.Actions>
     </Header>
