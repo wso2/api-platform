@@ -18,9 +18,23 @@
 
 // Upstream credential redaction for management API responses.
 //
-// An upstream `auth.value` is write-only: accepted on create/update and never
-// returned by the management API on a read, for any role. The corresponding
-// `value` properties in management-openapi.yaml are marked `writeOnly: true`.
+// An upstream credential is write-only: accepted on create/update and never
+// returned by the management API on a read, for any role. A credential reaches
+// an auth block through one of two mechanisms, and both must be cleared:
+//
+//   - `value`, the deprecated api-key form. The corresponding properties in
+//     management-openapi.yaml are marked `writeOnly: true`.
+//   - `policyParams`, the free-form bucket. For "oauth2" and "other" it is the
+//     only credential mechanism there is — it carries `clientSecret`,
+//     `bearerToken` and whatever else the named policy expects. For "api-key"
+//     it replaces the deprecated header/value pair.
+//
+// `policyParams` is dropped whole rather than scrubbed key by key. Its contents
+// are defined by whichever policy consumes it, so there is no closed set of
+// credential-bearing names to match on, and a denylist that misses one discloses
+// it. Dropping the bucket costs nothing on update: an auth block that carries no
+// credential inherits the stored one (see pkg/utils/credential_inheritance.go),
+// which is what keeps read-modify-write working.
 //
 // These functions operate on the re-materialised configuration produced by each
 // rematerialize*Config round-trip — a response-bound copy — never on a
@@ -76,15 +90,24 @@ func buildDeploymentListItem(log *slog.Logger, cfg *models.StoredConfig) (any, e
 	}
 }
 
+// redactAuthCredential clears both credential mechanisms from one auth block.
+// Every redaction path below funnels through it, so a newly added auth-bearing
+// field cannot end up with a partial redaction written somewhere else.
+//
+// nil, not empty: both fields carry omitempty, so each is absent from the
+// response rather than present-but-blank.
+func redactAuthCredential(value **string, policyParams **map[string]interface{}) {
+	*value = nil
+	*policyParams = nil
+}
+
 // redactLLMProviderCredentials clears the upstream credential from an LLM
 // provider configuration bound for a response body.
 func redactLLMProviderCredentials(cfg *api.LLMProviderConfiguration) {
 	if cfg == nil || cfg.Spec.Upstream.Auth == nil {
 		return
 	}
-	// nil, not empty string: `value` carries omitempty, so the field is absent
-	// from the response rather than present-but-blank.
-	cfg.Spec.Upstream.Auth.Value = nil
+	redactAuthCredential(&cfg.Spec.Upstream.Auth.Value, &cfg.Spec.Upstream.Auth.PolicyParams)
 }
 
 // redactLLMProxyCredentials clears the upstream credentials from an LLM proxy
@@ -96,13 +119,13 @@ func redactLLMProxyCredentials(cfg *api.LLMProxyConfiguration) {
 		return
 	}
 	if cfg.Spec.Provider != nil && cfg.Spec.Provider.Auth != nil {
-		cfg.Spec.Provider.Auth.Value = nil
+		redactAuthCredential(&cfg.Spec.Provider.Auth.Value, &cfg.Spec.Provider.Auth.PolicyParams)
 	}
 	if cfg.Spec.AdditionalProviders != nil {
 		additional := *cfg.Spec.AdditionalProviders
 		for i := range additional {
 			if additional[i].Auth != nil {
-				additional[i].Auth.Value = nil
+				redactAuthCredential(&additional[i].Auth.Value, &additional[i].Auth.PolicyParams)
 			}
 		}
 	}
@@ -110,7 +133,7 @@ func redactLLMProxyCredentials(cfg *api.LLMProxyConfiguration) {
 		entries := *cfg.Spec.Providers
 		for i := range entries {
 			if entries[i].Auth != nil {
-				entries[i].Auth.Value = nil
+				redactAuthCredential(&entries[i].Auth.Value, &entries[i].Auth.PolicyParams)
 			}
 		}
 	}
@@ -122,7 +145,7 @@ func redactMCPProxyCredentials(cfg *api.MCPProxyConfiguration) {
 	if cfg == nil || cfg.Spec.Upstream.Auth == nil {
 		return
 	}
-	cfg.Spec.Upstream.Auth.Value = nil
+	redactAuthCredential(&cfg.Spec.Upstream.Auth.Value, &cfg.Spec.Upstream.Auth.PolicyParams)
 }
 
 // redactAgentCredentials clears the upstream credential from an Agent
@@ -131,5 +154,5 @@ func redactAgentCredentials(cfg *api.AgentConfiguration) {
 	if cfg == nil || cfg.Spec.Upstream.Auth == nil {
 		return
 	}
-	cfg.Spec.Upstream.Auth.Value = nil
+	redactAuthCredential(&cfg.Spec.Upstream.Auth.Value, &cfg.Spec.Upstream.Auth.PolicyParams)
 }

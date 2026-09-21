@@ -2557,7 +2557,7 @@ func TestValidateLLMProviderTemplate_ProviderFieldsErrorsAreKeyed(t *testing.T) 
 
 // TestLLMValidator_ProviderShapeRejections covers the four ways a provider
 // shape can be malformed. Each must be rejected with a message naming the
-// problem rather than one shape silently winning (FR-000c, FR-000d, FR-000e).
+// problem rather than one shape silently winning.
 func TestLLMValidator_ProviderShapeRejections(t *testing.T) {
 	validator := NewLLMValidator()
 
@@ -2635,7 +2635,7 @@ func TestLLMValidator_ProviderShapeRejections(t *testing.T) {
 
 // TestLLMValidator_AliasUniquenessIncludesPrimary: the primary carries an alias
 // now, so it takes part in the same uniqueness rule as every additional
-// provider (FR-004).
+// provider.
 func TestLLMValidator_AliasUniquenessIncludesPrimary(t *testing.T) {
 	validator := NewLLMValidator()
 
@@ -2661,4 +2661,62 @@ func TestLLMValidator_AliasUniquenessIncludesPrimary(t *testing.T) {
 	if !strings.Contains(strings.Join(joined, " | "), "duplicate upstream name 'shared-name'") {
 		t.Errorf("expected a duplicate upstream name error, got %v", joined)
 	}
+}
+
+// TestValidateLLMProxy_CanonicalErrorsNameTheAuthoredEntry guards the field
+// paths reported for a canonical provider list. Normalisation moves the primary
+// to the front, so an error raised against it must still name the position the
+// author actually wrote — otherwise the message points at a different provider
+// and sends them to the wrong line.
+func TestValidateLLMProxy_CanonicalErrorsNameTheAuthoredEntry(t *testing.T) {
+	validator := NewLLMValidator()
+
+	proxyWithProviders := func(entries []api.LLMProxyProviderEntry) api.LLMProxyConfiguration {
+		return api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
+			Metadata:   api.Metadata{Name: "openai-proxy"},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "my-proxy",
+				Version:     "v1.0",
+				Providers:   &entries,
+			},
+		}
+	}
+
+	t.Run("primary authored last is reported at its own index", func(t *testing.T) {
+		// The primary sits third as authored but leads after normalisation. Its
+		// id is invalid, so the error must name index 2, not index 0.
+		errs := validator.Validate(proxyWithProviders([]api.LLMProxyProviderEntry{
+			{Id: "anthropic", Alias: stringPtr("claude")},
+			{Id: "gemini"},
+			{Id: "Not A Valid Id", IsPrimary: true},
+		}))
+
+		assertHasFieldError(t, errs, "spec.providers[2].id")
+		for _, err := range errs {
+			assert.NotEqual(t, "spec.providers[0].id", err.Field,
+				"the error must not be attributed to the entry the primary displaced")
+		}
+	})
+
+	t.Run("non-primary entries keep their authored index", func(t *testing.T) {
+		errs := validator.Validate(proxyWithProviders([]api.LLMProxyProviderEntry{
+			{Id: "openai", IsPrimary: true},
+			{Id: "anthropic", Alias: stringPtr("not a valid alias")},
+		}))
+
+		assertHasFieldError(t, errs, "spec.providers[1].alias")
+	})
+
+	t.Run("legacy shape still names provider and additionalProviders", func(t *testing.T) {
+		proxy := validProxyWithAuth(nil)
+		proxy.Spec.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{
+			{Id: "anthropic", As: stringPtr("not a valid alias")},
+		}
+
+		errs := validator.Validate(proxy)
+
+		assertHasFieldError(t, errs, "spec.additionalProviders[0].as")
+	})
 }

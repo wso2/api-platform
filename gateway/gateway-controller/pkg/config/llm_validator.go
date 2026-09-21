@@ -793,7 +793,7 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 	// Normalise whichever provider shape arrived before validating anything
 	// about providers. The shape rejections — both shapes at once, a canonical
 	// list with no primary or several, an empty list — come from here, so the
-	// two shapes cannot drift apart (FR-000c, FR-000d, FR-000e).
+	// two shapes cannot drift apart.
 	attachments, shapeErr := models.NormaliseLLMProxyAttachments(*spec)
 	if shapeErr != nil {
 		field := "spec.provider"
@@ -805,16 +805,19 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 	}
 
 	// Field paths still name the shape the author actually wrote, so an error
-	// points at a field they can find.
+	// points at a field they can find. The index comes from the attachment's
+	// source position rather than its position after normalisation: the primary
+	// is moved to the front, so a canonical list whose primary was authored
+	// third would otherwise report an error against the wrong entry.
 	usingCanonical := spec.Providers != nil
-	fieldPrefixFor := func(i int) string {
+	fieldPrefixFor := func(sourceIndex int) string {
 		if usingCanonical {
-			return fmt.Sprintf("spec.providers[%d]", i)
+			return fmt.Sprintf("spec.providers[%d]", sourceIndex)
 		}
-		if i == 0 {
+		if sourceIndex == 0 {
 			return "spec.provider"
 		}
-		return fmt.Sprintf("spec.additionalProviders[%d]", i-1)
+		return fmt.Sprintf("spec.additionalProviders[%d]", sourceIndex-1)
 	}
 	aliasField := "as"
 	if usingCanonical {
@@ -823,10 +826,10 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 
 	// Effective names must be unique across the primary and every additional
 	// provider together — the primary carries an alias now, so it takes part in
-	// the same uniqueness rule (FR-004).
+	// the same uniqueness rule.
 	seen := map[string]bool{}
 	for i, attachment := range attachments {
-		fieldPrefix := fieldPrefixFor(i)
+		fieldPrefix := fieldPrefixFor(attachment.SourceIndex)
 
 		if attachment.Id == "" {
 			errors = append(errors, ValidationError{

@@ -3027,10 +3027,10 @@ func primaryUpstreamDefinition(result *api.RestAPI, name string) *api.UpstreamDe
 // provider, the primary included, must have a named upstream definition so any
 // policy that selects it by name can route to it. Before this feature the
 // primary only got one when it carried a transformer, which made routing depend
-// on translation (FR-008).
+// on translation.
 //
 // The default cluster is asserted alongside it: a named definition makes a
-// provider addressable, it does not replace the default (FR-010).
+// provider addressable, it does not replace the default.
 func TestLLMProviderTransformer_PrimaryIsAlwaysAddressable(t *testing.T) {
 	proxyWith := func(transformer *api.LLMProxyTransformer) *api.LLMProxyConfiguration {
 		return &api.LLMProxyConfiguration{
@@ -3067,7 +3067,7 @@ func TestLLMProviderTransformer_PrimaryIsAlwaysAddressable(t *testing.T) {
 			require.Len(t, def.Upstreams, 1)
 			assert.Equal(t, "http://127.0.0.1:8080", def.Upstreams[0].Url)
 
-			// FR-010: the default cluster still points at the primary.
+			// The default cluster still points at the primary.
 			require.NotNil(t, result.Spec.Upstream.Main.Url)
 			assert.Equal(t, "http://127.0.0.1:8080/openai-provider", *result.Spec.Upstream.Main.Url,
 				"a named definition must not replace the default cluster")
@@ -3075,7 +3075,7 @@ func TestLLMProviderTransformer_PrimaryIsAlwaysAddressable(t *testing.T) {
 	}
 }
 
-// TestLLMProviderTransformer_SingleProviderUnaffected guards FR-013: adding a
+// TestLLMProviderTransformer_SingleProviderUnaffected guards that adding a
 // definition for the primary must not disturb a single-provider proxy's routing
 // — its default cluster is still the provider, and nothing routes by name.
 func TestLLMProviderTransformer_SingleProviderUnaffected(t *testing.T) {

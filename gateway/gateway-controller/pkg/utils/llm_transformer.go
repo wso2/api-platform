@@ -145,7 +145,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 	// Step 0: Normalise whichever provider shape arrived into one attachment
 	// list, primary first. Nothing below this line looks at the raw shapes, so
-	// the canonical and legacy forms cannot diverge (FR-000b).
+	// the canonical and legacy forms cannot diverge.
 	attachments, err := models.NormaliseLLMProxyAttachments(proxy.Spec)
 	if err != nil {
 		return nil, err
@@ -170,9 +170,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// The template that drives extraction is a property of the PROXY, not of
 	// whichever provider happens to be primary: it describes the wire format
 	// clients send, so promoting a different provider must not move the model
-	// and token locations every attached policy reads (FR-007, FR-008). A proxy
+	// and token locations every attached policy reads. A proxy
 	// that declares no inbound interface falls back to the primary provider's
-	// own template, which is what every existing proxy does (FR-009).
+	// own template, which is what every existing proxy does.
 	templateHandle := providerConfig.Spec.Template
 	declaredInbound := false
 	if proxy.Spec.InboundTemplate != nil && strings.TrimSpace(*proxy.Spec.InboundTemplate) != "" {
@@ -978,7 +978,7 @@ func (t *LLMProviderTransformer) proxyInternalLoopbackMarkerPolicy() (*api.Polic
 //
 // includeDefault carries the primary provider's semantics: its condition is
 // also true when no provider was selected, so the primary's transformer runs on
-// an unrouted request and stands down when another provider was chosen (FR-003).
+// an unrouted request and stands down when another provider was chosen.
 func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string,
 	includeDefault bool) (*api.Policy, error) {
 	if transformer == nil {

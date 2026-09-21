@@ -35,6 +35,14 @@ type LLMProxyAttachment struct {
 	Auth        *api.LLMUpstreamAuth
 	Transformer *api.LLMProxyTransformer
 	IsPrimary   bool
+
+	// SourceIndex is the position this attachment occupied in the configuration
+	// as it was authored, before normalisation moved the primary to the front.
+	// Validation reports field paths with it, so an error about the third entry
+	// a user wrote names the third entry rather than wherever it was reordered
+	// to. In the legacy shape it is 0 for the primary and 1-based for each
+	// additional provider, which matches how those field paths are built.
+	SourceIndex int
 }
 
 // EffectiveName is the logical upstream name policies use to select this
@@ -85,14 +93,14 @@ func NormaliseLLMProxyAttachments(spec api.LLMProxyConfigData) ([]LLMProxyAttach
 		}
 
 		attachments := make([]LLMProxyAttachment, 0, len(entries))
-		for _, entry := range entries {
+		for i, entry := range entries {
 			if entry.IsPrimary {
-				attachments = append(attachments, attachmentFromEntry(entry))
+				attachments = append(attachments, attachmentFromEntry(entry, i))
 			}
 		}
-		for _, entry := range entries {
+		for i, entry := range entries {
 			if !entry.IsPrimary {
-				attachments = append(attachments, attachmentFromEntry(entry))
+				attachments = append(attachments, attachmentFromEntry(entry, i))
 			}
 		}
 		return attachments, nil
@@ -108,14 +116,16 @@ func NormaliseLLMProxyAttachments(spec api.LLMProxyConfigData) ([]LLMProxyAttach
 		Auth:        spec.Provider.Auth,
 		Transformer: spec.Provider.Transformer,
 		IsPrimary:   true,
+		SourceIndex: 0,
 	}}
 	if spec.AdditionalProviders != nil {
-		for _, additional := range *spec.AdditionalProviders {
+		for i, additional := range *spec.AdditionalProviders {
 			attachments = append(attachments, LLMProxyAttachment{
 				Id:          additional.Id,
 				Alias:       additional.As,
 				Auth:        additional.Auth,
 				Transformer: additional.Transformer,
+				SourceIndex: i + 1,
 			})
 		}
 	}
@@ -134,12 +144,13 @@ func PrimaryLLMProxyAttachment(spec api.LLMProxyConfigData) (LLMProxyAttachment,
 	return attachments[0], nil
 }
 
-func attachmentFromEntry(entry api.LLMProxyProviderEntry) LLMProxyAttachment {
+func attachmentFromEntry(entry api.LLMProxyProviderEntry, sourceIndex int) LLMProxyAttachment {
 	return LLMProxyAttachment{
 		Id:          entry.Id,
 		Alias:       entry.Alias,
 		Auth:        entry.Auth,
 		Transformer: entry.Transformer,
 		IsPrimary:   entry.IsPrimary,
+		SourceIndex: sourceIndex,
 	}
 }

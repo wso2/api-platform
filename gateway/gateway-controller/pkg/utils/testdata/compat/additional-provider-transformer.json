@@ -1,6 +1,6 @@
 {
   "apiVersion": "gateway.api-platform.wso2.com/v1",
-  "kind": "LLMProxy",
+  "kind": "LlmProxy",
   "metadata": {
     "name": "compat-additional-transformer"
   },

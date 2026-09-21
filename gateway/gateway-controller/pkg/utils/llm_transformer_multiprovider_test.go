@@ -118,7 +118,7 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 	result, err := transformer.Transform(proxy, &api.RestAPI{})
 	require.NoError(t, err)
 	// Every attached provider is addressable by name, primary first, so a policy
-	// that selects one can route to it (FR-008, FR-009).
+	// that selects one can route to it.
 	require.NotNil(t, result.Spec.UpstreamDefinitions)
 	require.Len(t, *result.Spec.UpstreamDefinitions, 2)
 	assert.Equal(t, "openai-provider", (*result.Spec.UpstreamDefinitions)[0].Name,
@@ -484,7 +484,7 @@ func firstRequestHeaderValue(t *testing.T, params *map[string]interface{}) strin
 // `provider` plus `additionalProviders` must transform to identical output —
 // same upstreams, same execution conditions, same transformers, same
 // credentials. A difference means the two shapes are being carried separately
-// rather than normalised (FR-000b).
+// rather than normalised.
 func TestLLMProviderTransformer_ShapeEquivalence(t *testing.T) {
 	transformerPolicy := func() *api.LLMProxyTransformer {
 		return &api.LLMProxyTransformer{
@@ -556,8 +556,8 @@ func TestLLMProviderTransformer_ShapeEquivalence(t *testing.T) {
 
 // TestLLMProviderTransformer_PrimaryIdentityAndDefaultAlias covers the two
 // rules that make the canonical entry uniform: the proxy's provider identity
-// comes from the entry marked primary (FR-000f), and an entry with no alias
-// resolves to its id (FR-002).
+// comes from the entry marked primary, and an entry with no alias resolves to
+// its id.
 func TestLLMProviderTransformer_PrimaryIdentityAndDefaultAlias(t *testing.T) {
 	spec := api.LLMProxyConfigData{
 		DisplayName: "identity",
@@ -588,7 +588,7 @@ func TestLLMProviderTransformer_PrimaryIdentityAndDefaultAlias(t *testing.T) {
 // a primary provider may carry a transformer, and it is attached under the
 // primary's own execution condition — true when no provider was selected or
 // when the primary was selected by name, false when another provider was
-// (FR-001, FR-003).
+// conditions.
 func TestLLMProviderTransformer_PrimaryTransformerIsConditional(t *testing.T) {
 	transformerTransformer, _ := newCompatEnvironment(t)
 
@@ -737,7 +737,7 @@ func requestModelParam(t *testing.T, result *api.RestAPI) string {
 // TestLLMProviderTransformer_ExtractionFollowsInboundInterface is User Story 2:
 // template params derive from the proxy's declared inbound interface, do not
 // move when the primary provider changes, and fall back to the primary's own
-// template when no inbound interface is declared (FR-007, FR-008, FR-009).
+// template when no inbound interface is declared.
 func TestLLMProviderTransformer_ExtractionFollowsInboundInterface(t *testing.T) {
 	proxyWith := func(primaryID string, inbound *string) *api.LLMProxyConfiguration {
 		return &api.LLMProxyConfiguration{
@@ -797,7 +797,7 @@ func TestLLMProviderTransformer_ExtractionFollowsInboundInterface(t *testing.T) 
 	})
 }
 
-// TestLLMProxy_InboundTemplateRoundTrips is the guard for FR-011: a field that
+// TestLLMProxy_InboundTemplateRoundTrips is the guard that a field which
 // is accepted on the way in and dropped on the way out would pass every other
 // test in this file. The deployment artefact is JSON and YAML, and normalisation
 // must not lose the declaration either.
@@ -840,26 +840,26 @@ func TestLLMProxy_InboundTemplateRoundTrips(t *testing.T) {
 	assert.NotNil(t, attachments[0].Transformer, "the primary's transformer must survive normalisation")
 }
 
-// TestLLMProxy_AttributionFollowsTheEffectiveModel covers FR-012: the model a
-// request is attributed to for cost, rate limiting and analytics must be the
-// model that actually served it.
+// TestLLMProxy_AttributionFollowsTheEffectiveModel: the model a request is
+// attributed to for cost, rate limiting and analytics must be the model that
+// actually served it.
 //
 // The gateway does not resolve models itself — it merges extraction locations
 // from the inbound interface template into every attached policy, and those
 // locations read the wire. Two paths matter:
 //
-//   - responseModel reads the translated response, and `003` FR-012 makes every
-//     transformer report the effective model there. Attribution therefore
-//     follows the effective model by construction.
-//   - requestModel reads the client's payload. Since `003`'s payload-first rule
-//     (FR-005, FR-006), the client's model IS the effective model whenever the
-//     client names one, so the two agree. When the client names none, the
+//   - responseModel reads the translated response, and every transformer reports
+//     the model that served the request there. Attribution therefore follows the
+//     effective model by construction.
+//   - requestModel reads the client's payload. Because the transformers resolve
+//     the model payload-first, the client's model IS the effective model whenever
+//     the client names one, so the two agree. When the client names none, the
 //     transformer falls back to its configured model and requestModel extracts
 //     nothing — an absent value, never a wrong one.
 //
-// The configured model can no longer override a client-named model, which is
-// what `003`'s revision removed; the misattribution this requirement was written
-// against is therefore not reachable, and no gateway-side mechanism is needed.
+// A configured model can no longer override a client-named one, so the
+// misattribution this test was written against is not reachable and no
+// gateway-side mechanism is needed.
 func TestLLMProxy_AttributionFollowsTheEffectiveModel(t *testing.T) {
 	transformer := newInboundTemplateEnvironment(t)
 	proxy := &api.LLMProxyConfiguration{
@@ -999,12 +999,12 @@ func TestLLMProviderTransformer_EverySelectableProviderIsAddressable(t *testing.
 	}
 
 	// And the default cluster is still the primary, so the fall-through path
-	// (nothing selected) is unaffected by any of the above (FR-010).
+	// (nothing selected) is unaffected by any of the above.
 	require.NotNil(t, result.Spec.Upstream.Main.Url)
 	assert.Equal(t, "http://127.0.0.1:8080/openai-provider", *result.Spec.Upstream.Main.Url)
 }
 
-// TestLLMProviderTransformer_AllTransformersNoRoutingChange guards FR-012/BC-2:
+// TestLLMProviderTransformer_AllTransformersNoRoutingChange guards that
 // a proxy whose selectable providers all carry transformers routed correctly
 // before this fix, and must route identically after it. The upstream names the
 // router emits are unchanged; only the primary's definition is added.
