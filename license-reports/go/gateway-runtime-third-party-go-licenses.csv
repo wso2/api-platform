@@ -15,6 +15,11 @@ github.com/google/cel-go,https://github.com/google/cel-go/blob/v0.26.1/LICENSE,A
 github.com/google/cel-go,https://github.com/google/cel-go/blob/v0.26.1/LICENSE,BSD-3-Clause
 github.com/google/uuid,https://github.com/google/uuid/blob/v1.6.0/LICENSE,BSD-3-Clause
 github.com/grpc-ecosystem/grpc-gateway/v2,https://github.com/grpc-ecosystem/grpc-gateway/blob/v2.29.0/LICENSE,BSD-3-Clause
+github.com/klauspost/compress,https://github.com/klauspost/compress/blob/v1.19.2/LICENSE,MIT
+github.com/klauspost/compress,https://github.com/klauspost/compress/blob/v1.19.2/LICENSE,Apache-2.0
+github.com/klauspost/compress,https://github.com/klauspost/compress/blob/v1.19.2/LICENSE,BSD-3-Clause
+github.com/klauspost/compress/internal/snapref,https://github.com/klauspost/compress/blob/v1.19.2/internal/snapref/LICENSE,BSD-3-Clause
+github.com/klauspost/compress/zstd/internal/xxhash,https://github.com/klauspost/compress/blob/v1.19.2/zstd/internal/xxhash/LICENSE.txt,MIT
 github.com/knadh/koanf/maps,https://github.com/knadh/koanf/blob/maps/v0.1.2/maps/LICENSE,MIT
 github.com/knadh/koanf/parsers/toml/v2,https://github.com/knadh/koanf/blob/parsers/toml/v2.2.0/parsers/toml/LICENSE,MIT
 github.com/knadh/koanf/providers/confmap,https://github.com/knadh/koanf/blob/providers/confmap/v1.0.0/providers/confmap/LICENSE,MIT
