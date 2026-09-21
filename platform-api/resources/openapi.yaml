@@ -1379,6 +1379,546 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  # --- API Publication: rollup across portals ---------------------------------
+
+  /api-publications:
+    get:
+      summary: List API publications across API Portals
+      description: Retrieves every API Portal whose registration has completed — id, name, description and URL — each annotated with this API's publication status and whether a draft exists. Portals still being provisioned, or whose provisioning failed, are not listed.
+      operationId: listApiPublications
+      security:
+        - OAuth2Security:
+            - ap:api_publication:read
+      tags:
+        - API Publications
+      parameters:
+        - $ref: '#/components/parameters/apiType-Q'
+        - $ref: '#/components/parameters/apiHandle-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSummaryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- API Publication: the live publication -----------------------------------
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get API publication
+      description: Retrieves the live listing's details, subscription plans and documents. 404 when the API is not published to this portal.
+      operationId: getApiPublication
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/definition:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get published definition
+      description: Retrieves the definition stored in this publication. 404 when the publication has none.
+      operationId: getApiPublicationDefinition
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationDefinitionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/landing-page:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get published landing page
+      description: Retrieves the landing page stored in this publication, as Markdown. 404 when the publication has none.
+      operationId: getApiPublicationLandingPage
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationLandingPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/thumbnail:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get published thumbnail
+      description: Retrieves the thumbnail stored in this publication, as raw image bytes. 404 when the publication has none.
+      operationId: getApiPublicationThumbnail
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationThumbnailImageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- API Publication: the per-portal draft -----------------------------------
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get publication draft
+      description: Retrieves the draft's details, subscription plans and documents. 404 when no draft has been saved.
+      operationId: getApiPublicationDraft
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationDraftDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Save publication draft
+      description: Replaces the draft's details, subscription plans and documents, creating the draft on first save. Every plan handle and document handle must exist in the organization.
+      operationId: saveApiPublicationDraft
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationDraftDetailsInput'
+      responses:
+        '200':
+          description: Draft saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationDraftDetails'
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/definition:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get draft definition
+      description: Retrieves the definition stored in this draft. 404 when the draft has not stored one.
+      operationId: getApiPublicationDraftDefinition
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationDefinitionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Save draft definition
+      description: Replaces the draft definition. Requires the draft to exist.
+      operationId: saveApiPublicationDraftDefinition
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        description: >-
+          The definition as raw bytes. The request's Content-Type selects the stored serialization
+          and must match the contract the API's type uses; no other media type is accepted.
+        content:
+          application/json:
+            schema:
+              type: string
+              format: binary
+          application/x-yaml:
+            schema:
+              type: string
+              format: binary
+          application/graphql:
+            schema:
+              type: string
+              format: binary
+          application/xml:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: Definition saved
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/landing-page:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get draft landing page
+      description: Retrieves the landing page stored in this draft, as Markdown. 404 when the draft has not stored one.
+      operationId: getApiPublicationDraftLandingPage
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationLandingPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Save draft landing page
+      description: Replaces the draft landing page. Content is Markdown; embedded raw HTML is stripped before storage. Requires the draft to exist.
+      operationId: saveApiPublicationDraftLandingPage
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        description: The landing page as raw Markdown.
+        content:
+          text/markdown:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: Landing page saved
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/thumbnail:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get draft thumbnail
+      description: Retrieves the thumbnail stored in this draft, as raw image bytes. 404 when the draft has not stored one.
+      operationId: getApiPublicationDraftThumbnail
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationThumbnailImageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Upload draft thumbnail
+      description: Uploads or replaces the draft thumbnail. Accepts PNG and JPEG, determined by sniffing the uploaded bytes rather than the declared type or file name. Requires the draft to exist.
+      operationId: saveApiPublicationDraftThumbnail
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        description: >-
+          The thumbnail image. Accepted content is sniffed from the uploaded bytes (PNG or JPEG
+          only) rather than trusted from the declared type or file name.
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '204':
+          description: Thumbnail saved
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- API Publication: lifecycle actions, per API type -------------------------
+
+  /api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Publish REST API to API Portal
+      description: |
+        Publishes the current draft. Takes no request body: details, plans, documents, definition,
+        landing page and thumbnail all come from the draft alone — publish never reads the API's
+        own content or the current publication to fill a gap. Requires a draft to exist.
+
+        The content is pushed to the API Portal before anything is written locally, so a failed
+        call leaves the draft intact and can simply be repeated.
+
+        Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+      operationId: publishRestApiToApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:rest_api:publish
+            - ap:api_portal:rest_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '201':
+          description: Listing created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '400':
+          $ref: '#/components/responses/PublicationTypeUnsupported'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/rest-api/{apiId}/unpublish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Unpublish REST API from API Portal
+      description: |
+        Removes the listing from the API Portal, along with its subscriptions and API keys, then
+        writes locally: if no draft exists, the publication is demoted into the draft in place; if
+        one exists, the publication is deleted and the existing draft is kept. A draft always
+        survives. Valid only when currently published or deprecated.
+      operationId: unpublishRestApiFromApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:rest_api:unpublish
+            - ap:api_portal:rest_api:manage
+      tags:
+        - API Publications
+      responses:
+        '204':
+          description: Listing removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/rest-api/{apiId}/deprecate:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Deprecate REST API on API Portal
+      description: Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+      operationId: deprecateRestApiOnApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:rest_api:deprecate
+            - ap:api_portal:rest_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing deprecated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
   /llm-provider-templates:
     post:
       summary: Create a new LLM provider template family
@@ -5866,9 +6406,18 @@ components:
             ap:api_key:read: Read API keys owned by the current user
             ap:api_portal:create: Create an API Portal
             ap:api_portal:delete: Delete an API Portal
+            ap:api_portal:draft:manage: Read and write an API's draft for one portal
+            ap:api_portal:draft:read: Read an API's draft for one portal — the private workspace prepared before publishing
+            ap:api_portal:draft:update: Edit an API's draft for one portal
             ap:api_portal:manage: Full access to API Portals
+            ap:api_portal:publication:read: Read an API's live listing on one portal
             ap:api_portal:read: Read API Portals
+            ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
+            ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
+            ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
+            ap:api_portal:rest_api:unpublish: Remove a REST API's live listing from a portal
             ap:api_portal:update: Update an API Portal
+            ap:api_publication:read: Read an API's publication status across every portal
             ap:application:api_key:create: Create an application API key
             ap:application:api_key:delete: Delete an application API key
             ap:application:api_key:manage: Full access to application API keys
@@ -7966,7 +8515,23 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
+          description: >-
+            Optional metadata for the deployment. Supported keys are `endpointUrl`,
+            `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes
+            `endpointUrl` too, which replaces the backend it routes to, and
+            `upstreamAuthValue` — the credential that deployment authenticates to the
+            provider's upstream with, so one provider can run on several gateways
+            against different accounts with the same vendor. It must be given as a
+            `{{ secret "handle" }}` reference naming a secret of this organization,
+            never the credential itself. Like the provider's own `auth.value` it is
+            write-only: it is never returned by any read of a deployment, so replacing
+            it means giving a new one rather than editing what came back. Omitting it
+            leaves the provider's own credential in place.
+
+
+            `upstreamAuthHeader` names the header that credential is sent in. It is read
+            only alongside `upstreamAuthValue`, and only where the upstream authenticates
+            with an api-key — basic and bearer send `Authorization` by definition.
 
     BuildRequest:
       type: object
@@ -8091,15 +8656,14 @@ components:
           type: string
           nullable: true
           description: |
-            Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
-            has one: `base: build` runs the build it names, and `base: current` stores what
-            it renders as a build and runs that.
+            Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+            LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+            it names, and `base: current` stores what it renders as a build and runs that.
 
-            Null for artifact kinds that have no builds — MCP proxy, LLM and event API
-            deployments — including one promoted from another deployment, which reuses that
-            deployment's rendered artifact. Also null once the build it ran has been pruned.
-            Null means only that no build can be named; the deployment keeps its own
-            rendered artifact either way.
+            Null for artifact kinds that have no builds, and for a deployment promoted from
+            another, which reuses that deployment's rendered artifact. Also null once the
+            build it ran has been pruned. Null means only that no build can be named; the
+            deployment keeps its own rendered artifact either way.
           example: "2026-01-31-2"
         metadata:
           type: object
@@ -10034,6 +10598,192 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    PublicationDetailsCore:
+      type: object
+      properties:
+        displayName:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        labels:
+          type: array
+          items:
+            type: string
+          description: API Portal label handles controlling which portal views show this listing. Not validated here — an unknown handle is rejected by the portal at publish time.
+        agentVisibility:
+          type: string
+          enum: [VISIBLE, HIDDEN]
+        endpoints:
+          type: object
+          description: Author-entered; not derived from the API.
+          additionalProperties: false
+          properties:
+            productionUrl:
+              type: string
+              format: uri
+            sandboxUrl:
+              type: string
+              format: uri
+        owners:
+          type: object
+          description: Contacts published alongside the listing. Author-entered; omitting them on a publish clears the portal's own values.
+          additionalProperties: false
+          properties:
+            businessOwner:
+              type: string
+            businessOwnerEmail:
+              type: string
+              format: email
+            technicalOwner:
+              type: string
+            technicalOwnerEmail:
+              type: string
+              format: email
+
+    PublicationAuditFields:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        createdBy:
+          type: string
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: >-
+            When this record last changed in any way — the latest across its details, definition,
+            landing page and thumbnail, which are saved through separate calls. The same value the
+            portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt
+            on a publication.
+        updatedBy:
+          type: string
+          readOnly: true
+          description: Who made that most recent change.
+
+    SubscriptionPlanIdList:
+      type: array
+      items:
+        type: string
+        description: Subscription plan handle from GET /subscription-plans, not the database UUID.
+
+    DocIdList:
+      type: array
+      items:
+        type: string
+        description: Document handle from GET /apis/{apiType}/{apiId}/docs, not the database UUID.
+
+    PublicationDraftDetailsInput:
+      allOf:
+        - $ref: '#/components/schemas/PublicationDetailsCore'
+        - type: object
+          required:
+            - displayName
+            - version
+          properties:
+            subscriptionPlanIds:
+              $ref: '#/components/schemas/SubscriptionPlanIdList'
+            docIds:
+              $ref: '#/components/schemas/DocIdList'
+
+    PublicationDraftDetails:
+      allOf:
+        - $ref: '#/components/schemas/PublicationDraftDetailsInput'
+        - $ref: '#/components/schemas/PublicationAuditFields'
+        - type: object
+          properties:
+            hasThumbnail:
+              type: boolean
+              readOnly: true
+              description: Whether this draft stores a thumbnail of its own.
+            hasLandingPage:
+              type: boolean
+              readOnly: true
+              description: Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name.
+
+    Publication:
+      allOf:
+        - $ref: '#/components/schemas/PublicationDetailsCore'
+        - $ref: '#/components/schemas/PublicationAuditFields'
+        - type: object
+          properties:
+            apiPortalId:
+              type: string
+              description: The API Portal's handle.
+            apiPortalName:
+              type: string
+            status:
+              type: string
+              enum: [PUBLISHED, DEPRECATED]
+            subscriptionPlanIds:
+              $ref: '#/components/schemas/SubscriptionPlanIdList'
+            docIds:
+              $ref: '#/components/schemas/DocIdList'
+            hasThumbnail:
+              type: boolean
+              readOnly: true
+              description: Whether this publication stores a thumbnail.
+            hasLandingPage:
+              type: boolean
+              readOnly: true
+              description: Whether this publication stores a landing page.
+
+    PublicationSummaryItem:
+      type: object
+      properties:
+        apiPortalId:
+          type: string
+          description: The API Portal's handle.
+        apiPortalName:
+          type: string
+          description: The API Portal's display name.
+        apiPortalDescription:
+          type: string
+          nullable: true
+          description: The API Portal's own description, as set at registration.
+        apiPortalUrl:
+          type: string
+          nullable: true
+          description: The API Portal's URL, as set at registration.
+        status:
+          type: string
+          enum: [NOT_PUBLISHED, PUBLISHED, DEPRECATED]
+          description: NOT_PUBLISHED covers both never published and unpublished since.
+        draftUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: The draft's own updatedAt; null when no draft exists.
+        publicationUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: The publication's own updatedAt; null when not published.
+
+    PublicationSummaryResponse:
+      type: object
+      required:
+        - list
+        - pagination
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationSummaryItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
     ApiPortalMetadata:
       title: API Portal metadata
       type: object
@@ -10334,6 +11084,104 @@ components:
             message: No gateway connections are currently available.
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
+    PublicationBadRequest:
+      description: The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PUBLICATION_VALIDATION_FAILED
+            message: The request could not be validated.
+            errors:
+              - field: "subscriptionPlanIds[0]"
+                message: does not exist in the organization's subscription plan catalog
+    PublicationTypeUnsupported:
+      description: This API type has no projection onto the API Portal's own API types, so no listing can be created for it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PUBLICATION_TYPE_UNSUPPORTED
+            message: APIs of this type cannot be published to an API Portal.
+    PublicationConflict:
+      description: >-
+        Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid
+        for the publication's current status (unpublish needs a published or deprecated listing,
+        deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a
+        publish of it was in flight (the API Portal may already hold the earlier copy while the
+        local listing is unchanged; review the draft and publish again to bring them in line),
+        or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
+        change — another API already holds this handle or display name and version, or the listing
+        still has subscriptions or active API keys and so cannot be removed. A portal conflict does
+        not clear on retry: the operator renames, removes the consumers, or deprecates instead. A
+        state conflict clears once the publication is in a status that allows the action. No local
+        state was changed by any of these; only a draft-changed conflict can leave the API Portal
+        ahead of it until the next publish.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PUBLICATION_PORTAL_CONFLICT
+            message: The API Portal rejected this change.
+    PortalUnavailable:
+      description: The API Portal could not be reached, or failed while handling the request, after in-call retries. No local state was changed and the call is safe to repeat.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PUBLICATION_PORTAL_UNAVAILABLE
+            message: The API Portal could not be reached. Try again later.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
+    PublicationDefinitionResponse:
+      description: >-
+        The definition's raw content. Content-Type matches the serialization it was stored in:
+        application/json or application/x-yaml for an OpenAPI or AsyncAPI contract,
+        application/graphql for GraphQL SDL, application/xml for WSDL.
+      content:
+        application/json:
+          schema:
+            type: string
+            format: binary
+        application/x-yaml:
+          schema:
+            type: string
+            format: binary
+        application/graphql:
+          schema:
+            type: string
+            format: binary
+        application/xml:
+          schema:
+            type: string
+            format: binary
+    PublicationLandingPageResponse:
+      description: The landing page's raw Markdown content.
+      content:
+        text/markdown:
+          schema:
+            type: string
+            format: binary
+    PublicationThumbnailImageResponse:
+      description: The thumbnail's raw image bytes. Content-Type is the stored image's own type — only the two accepted on upload can occur.
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+        image/jpeg:
+          schema:
+            type: string
+            format: binary
+
   examples:
     CopiedTemplateVersion:
       summary: New version created by copying openai-v3-0
@@ -10575,6 +11423,50 @@ components:
         type: string
         example: payment
 
+    apiType:
+      name: apiType
+      in: path
+      required: true
+      description: >-
+        The API's type, required alongside apiId because a handle is unique only within its own
+        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        so a type contributed by a plugin is accepted only on a build that includes it. An
+        unrecognised value returns 404.
+      schema:
+        type: string
+        example: rest-api
+
+    apiHandle:
+      name: apiId
+      in: path
+      required: true
+      description: The API's handle, unique per organization within its own type.
+      schema:
+        type: string
+        example: my-api-handle
+
+    apiType-Q:
+      name: apiType
+      in: query
+      required: true
+      description: >-
+        The API's type, required alongside apiId because a handle is unique only within its own
+        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        so a type contributed by a plugin is accepted only on a build that includes it. An
+        unrecognised value returns 404.
+      schema:
+        type: string
+        example: rest-api
+
+    apiHandle-Q:
+      name: apiId
+      in: query
+      required: true
+      description: The API's handle, unique per organization within its own type.
+      schema:
+        type: string
+        example: my-api-handle
+
     apiPortalId:
       name: apiPortalId
       in: path
@@ -10601,6 +11493,8 @@ tags:
     description: API management operations
   - name: REST API Deployments
     description: API deployment artifact management and lifecycle operations
+  - name: API Publications
+    description: Publishing, unpublishing and deprecating an API on an API Portal, and the per-portal draft and live listing that feed those actions
   - name: API Portals
     description: API Portal registration and management
   - name: Gateways

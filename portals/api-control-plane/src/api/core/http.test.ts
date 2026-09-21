@@ -289,6 +289,45 @@ describe('successful responses', () => {
   });
 });
 
+describe('text responses', () => {
+  const yamlDocument = 'openapi: 3.0.3\ninfo:\n  title: Pizza Shack\n';
+
+  it('returns a stored document exactly as sent, with its content type, instead of parsing it', async () => {
+    server.use(recording('get', '/documents/spec', () =>
+      new HttpResponse(yamlDocument, { headers: { 'Content-Type': 'application/yaml' } })
+    ));
+
+    await expect(http.getText('/documents/spec')).resolves.toEqual({
+      text: yamlDocument,
+      contentType: 'application/yaml',
+    });
+  });
+
+  it('leaves a JSON document as text too, so the caller reads every serialization the same way', async () => {
+    server.use(recording('get', '/documents/spec', ok({ openapi: '3.0.3' })));
+
+    const { text, contentType } = await http.getText('/documents/spec');
+
+    expect(typeof text).toBe('string');
+    expect(JSON.parse(text)).toEqual({ openapi: '3.0.3' });
+    expect(contentType).toContain('application/json');
+  });
+
+  it('still rejects with an ApiError carrying the stable code when the server answers an error', async () => {
+    server.use(recording('get', '/documents/spec', () =>
+      HttpResponse.json(
+        { status: 'error', code: 'DRAFT_NOT_FOUND', message: 'No draft.' },
+        { status: 404 }
+      )
+    ));
+
+    const error = await rejection(http.getText('/documents/spec'));
+
+    expect(error.isNotFound).toBe(true);
+    expect(error.code).toBe('DRAFT_NOT_FOUND');
+  });
+});
+
 describe('failure responses', () => {
   const failWith = (status: number, body: JsonBodyType) =>
     server.use(

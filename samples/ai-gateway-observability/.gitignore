@@ -1,0 +1,6 @@
+# The gateway distribution downloaded and extracted by setup.sh. The zip is already
+# covered by the repository's root .gitignore; the extracted directory is not, and it
+# holds generated secrets (listener key, AES key, api-platform.env) that must never be
+# committed. ./teardown.sh --clean removes both.
+wso2apip-ai-gateway-*/
+wso2apip-ai-gateway-*.zip

@@ -22,6 +22,8 @@ import {
   Alert,
   Box,
   Button,
+  ButtonGroup,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -35,15 +37,17 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Download, Pencil, Plus, Upload } from '@wso2/oxygen-ui-icons-react';
+import { Braces, Download, Pencil, Plus, Upload } from '@wso2/oxygen-ui-icons-react';
 import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { ApiError } from '@/api/core/errors';
 import {
   usePutRestApiOpenApi,
+  useRestApi,
   useRestApiOpenApi,
   useValidateOpenApiSpec,
   type OpenAPIContent,
@@ -52,9 +56,22 @@ import {
 import { MonitorIllustration } from '@/components/illustrations/MonitorIllustration';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { useFormatters } from '@/i18n/useFormatters';
 import { OperationsList } from './OperationsList';
 
 const messages = defineMessages({
+  title: {
+    id: 'develop.definition.DefinitionPanel.title',
+    defaultMessage: 'Definition',
+  },
+  resourceCount: {
+    id: 'develop.definition.DefinitionPanel.resourceCount',
+    defaultMessage: '{count, plural, one {# resource} other {# resources}}',
+  },
+  lastUpdated: {
+    id: 'develop.definition.DefinitionPanel.lastUpdated',
+    defaultMessage: 'Last updated {relative}',
+  },
   loading: {
     id: 'develop.definition.DefinitionPanel.loading',
     defaultMessage: 'Loading API definition',
@@ -194,6 +211,14 @@ const messages = defineMessages({
     defaultMessage: 'Description (optional)',
     description: 'Placeholder for the description input in the Add resource form.',
   },
+  pathLabel: {
+    id: 'develop.definition.DefinitionPanel.pathLabel',
+    defaultMessage: 'Path',
+  },
+  descriptionLabel: {
+    id: 'develop.definition.DefinitionPanel.descriptionLabel',
+    defaultMessage: 'Description',
+  },
   methodLabel: {
     id: 'develop.definition.DefinitionPanel.methodLabel',
     defaultMessage: 'Method',
@@ -209,7 +234,16 @@ type HttpMethod = (typeof HTTP_METHODS)[number];
 
 type OpenApiSpec = Record<string, unknown>;
 
-const SUPPORTED_METHODS = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options', 'trace'] as const;
+const SUPPORTED_METHODS = [
+  'get',
+  'post',
+  'put',
+  'delete',
+  'patch',
+  'head',
+  'options',
+  'trace',
+] as const;
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>
   typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -230,7 +264,13 @@ function extractOperations(spec: OpenApiSpec): Operation[] {
       const op = asRecord(item[method]);
       if (!op) return [];
       const name = asText(op.description);
-      return [{ name, ...(asText(op.description) !== undefined ? { description: asText(op.description) } : {}), request: { method: method.toUpperCase() as Operation['request']['method'], path } }];
+      return [
+        {
+          name,
+          ...(asText(op.description) !== undefined ? { description: asText(op.description) } : {}),
+          request: { method: method.toUpperCase() as Operation['request']['method'], path },
+        },
+      ];
     });
   });
 }
@@ -261,15 +301,16 @@ function filenameFromUrl(urlStr: string): string {
   }
 }
 
-
 export function DefinitionPanel() {
   const intl = useIntl();
+  const { relativeTime } = useFormatters();
   const { params } = useConsoleScope();
   const restApiId = params.apiHandler;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openApiQuery = useRestApiOpenApi(restApiId);
+  const apiQuery = useRestApi(restApiId);
   const putOpenApi = usePutRestApiOpenApi();
   const validateSpec = useValidateOpenApiSpec();
 
@@ -336,6 +377,14 @@ export function DefinitionPanel() {
     [parsedSpec],
   );
 
+  const definitionVersion = useMemo(() => {
+    if (!parsedSpec) return 'OpenAPI';
+    const openApiVersion = asText(parsedSpec.openapi);
+    if (openApiVersion) return `OpenAPI ${openApiVersion}`;
+    const swaggerVersion = asText(parsedSpec.swagger);
+    return swaggerVersion ? `Swagger ${swaggerVersion}` : 'OpenAPI';
+  }, [parsedSpec]);
+
   const savedInCurrentFormat = useMemo(() => {
     if (!savedContent) return savedContent;
     if (format === 'json') {
@@ -389,16 +438,18 @@ export function DefinitionPanel() {
   };
 
   const applyFileContent = (file: File) => {
-    void file.text().then((text) => {
-      const parsedSpec = parseSpec(text);
-      setEditorText(parsedSpec ? yaml.dump(parsedSpec) : text);
-      setPendingFileName(file.name.replace(/\.json$/i, '.yaml'));
-      setFormat('yaml');
-      setIsEditing(true);
-    })
-    .catch(() => {
-      setFetchError(intl.formatMessage(messages.fileReadError));
-    });
+    void file
+      .text()
+      .then((text) => {
+        const parsedSpec = parseSpec(text);
+        setEditorText(parsedSpec ? yaml.dump(parsedSpec) : text);
+        setPendingFileName(file.name.replace(/\.json$/i, '.yaml'));
+        setFormat('yaml');
+        setIsEditing(true);
+      })
+      .catch(() => {
+        setFetchError(intl.formatMessage(messages.fileReadError));
+      });
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -476,7 +527,9 @@ export function DefinitionPanel() {
       try {
         const parsed = yaml.load(savedContent) as Record<string, unknown>;
         content = JSON.stringify(parsed, null, 2);
-      } catch { /* keep as-is */ }
+      } catch {
+        /* keep as-is */
+      }
     }
 
     const blob = new Blob([content], { type: mimeType });
@@ -528,7 +581,7 @@ export function DefinitionPanel() {
     if (!raw) return;
     const path = raw.startsWith('/') ? raw : `/${raw}`;
     const spec: OpenApiSpec = parseSpec(editorText) ?? {};
-    const paths = ((spec.paths as Record<string, Record<string, unknown>>) ?? {});
+    const paths = (spec.paths as Record<string, Record<string, unknown>>) ?? {};
     const lm = newMethod.toLowerCase();
     if (!paths[path]) paths[path] = {};
     if (!(paths[path] as Record<string, unknown>)[lm]) {
@@ -592,35 +645,37 @@ export function DefinitionPanel() {
           <Box sx={{ mt: 1 }}>
             <FormControl fullWidth>
               <FormLabel>{intl.formatMessage(messages.dialogImportLabel)}</FormLabel>
-              <Stack alignItems="center" direction="row" spacing={1.5} sx={{ mt: 1 }}>
-                <TextField
-                  fullWidth
-                  onChange={(e) => {
-                    setSpecUrl(e.target.value);
-                    setFetchError(null);
-                  }}
-                  placeholder={intl.formatMessage(messages.dialogUrlPlaceholder)}
-                  size="small"
-                  value={specUrl}
-                />
-                <Button
-                  disabled={isFetchingSpec || !specUrl.trim()}
-                  onClick={() => void handleFetchSpec()}
-                  size="small"
-                  sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                  variant="outlined"
-                >
-                  {isFetchingSpec
-                    ? intl.formatMessage(messages.dialogFetching)
-                    : intl.formatMessage(messages.dialogFetch)}
-                </Button>
-                <Divider flexItem orientation="vertical">
-                  {intl.formatMessage(messages.orDivider)}
-                </Divider>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <Stack alignItems="center" direction={{ sm: 'row', xs: 'column' }} spacing={1.5}>
+                  <TextField
+                    fullWidth
+                    onChange={(e) => {
+                      setSpecUrl(e.target.value);
+                      setFetchError(null);
+                    }}
+                    placeholder={intl.formatMessage(messages.dialogUrlPlaceholder)}
+                    size="small"
+                    value={specUrl}
+                  />
+                  <Button
+                    disabled={isFetchingSpec || !specUrl.trim()}
+                    onClick={() => void handleFetchSpec()}
+                    size="small"
+                    sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                    variant="outlined"
+                  >
+                    {isFetchingSpec
+                      ? intl.formatMessage(messages.dialogFetching)
+                      : intl.formatMessage(messages.dialogFetch)}
+                  </Button>
+                </Stack>
+
+                <Divider>{intl.formatMessage(messages.orDivider)}</Divider>
+
                 <Button
                   onClick={() => fileInputRef.current?.click()}
                   size="small"
-                  sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                  sx={{ alignSelf: 'flex-start', whiteSpace: 'nowrap' }}
                   variant="outlined"
                 >
                   {intl.formatMessage(messages.dialogUpload)}
@@ -660,37 +715,45 @@ export function DefinitionPanel() {
                 ))}
               </Select>
             </FormControl>
-            <TextField
-              autoFocus
-              fullWidth
-              label="Path"
-              onChange={(e) => {
-                const val = e.target.value;
-                setNewPath(val && !val.startsWith('/') ? `/${val}` : val);
-              }}
-              placeholder={intl.formatMessage(messages.addResourcePathPlaceholder)}
-              value={newPath}
-            />
-            <TextField
-              fullWidth
-              label="Description"
-              multiline
-              onChange={(e) => setNewDescription(e.target.value)}
-              placeholder={intl.formatMessage(messages.addResourceDescriptionPlaceholder)}
-              rows={2}
-              value={newDescription}
-            />
+            <FormControl fullWidth>
+              <FormLabel htmlFor="resource-path">
+                {intl.formatMessage(messages.pathLabel)}
+              </FormLabel>
+              <TextField
+                autoFocus
+                fullWidth
+                id="resource-path"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewPath(val && !val.startsWith('/') ? `/${val}` : val);
+                }}
+                placeholder={intl.formatMessage(messages.addResourcePathPlaceholder)}
+                sx={{ mt: 0.75 }}
+                value={newPath}
+              />
+            </FormControl>
+            <FormControl fullWidth>
+              <FormLabel htmlFor="resource-description">
+                {intl.formatMessage(messages.descriptionLabel)}
+              </FormLabel>
+              <TextField
+                fullWidth
+                id="resource-description"
+                multiline
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder={intl.formatMessage(messages.addResourceDescriptionPlaceholder)}
+                rows={2}
+                sx={{ mt: 0.75 }}
+                value={newDescription}
+              />
+            </FormControl>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button color="secondary" onClick={closeAddModal} variant="outlined">
             {intl.formatMessage(messages.addResourceCancel)}
           </Button>
-          <Button
-            disabled={!newPath.trim()}
-            onClick={handleAddOperation}
-            variant="contained"
-          >
+          <Button disabled={!newPath.trim()} onClick={handleAddOperation} variant="contained">
             {intl.formatMessage(messages.addResourceConfirm)}
           </Button>
         </DialogActions>
@@ -698,25 +761,75 @@ export function DefinitionPanel() {
 
       {hasSpec || editorText ? (
         <Stack spacing={2}>
-          {/* Action bar */}
-          <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
-            <Button
-              disabled={isSaving}
-              onClick={() => setDialogOpen(true)}
-              startIcon={<Upload size={16} />}
-              variant="outlined"
-            >
-              {intl.formatMessage(messages.updateOpenApi)}
-            </Button>
-            {hasSpec && (
+          {/* Definition summary and primary actions. */}
+          <Stack
+            direction={{ md: 'row', xs: 'column' }}
+            spacing={2}
+            sx={{ alignItems: { md: 'flex-end', xs: 'stretch' }, justifyContent: 'space-between' }}
+          >
+            <Stack spacing={1}>
+              <Typography sx={{ fontWeight: 700 }} variant="h1">
+                {intl.formatMessage(messages.title)}
+              </Typography>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                sx={{ alignItems: 'center', color: 'text.secondary', flexWrap: 'wrap' }}
+              >
+                <Chip label={definitionVersion} size="small" variant="outlined" />
+                <Typography variant="body2">
+                  {intl.formatMessage(messages.resourceCount, {
+                    count: extractedOperations.length,
+                  })}
+                </Typography>
+                {apiQuery.data?.updatedAt ? (
+                  <>
+                    <Typography aria-hidden variant="body2">
+                      •
+                    </Typography>
+                    <Typography variant="body2">
+                      {intl.formatMessage(messages.lastUpdated, {
+                        relative: relativeTime(apiQuery.data.updatedAt),
+                      })}
+                    </Typography>
+                  </>
+                ) : null}
+              </Stack>
+            </Stack>
+
+            <Stack direction={{ sm: 'row', xs: 'column' }} spacing={1}>
               <Button
-                onClick={handleDownload}
-                startIcon={<Download size={16} />}
+                onClick={() => setShowSource(!showSource)}
+                startIcon={<Braces size={16} />}
+                sx={{ textTransform: 'none' }}
                 variant="outlined"
               >
-                {intl.formatMessage(messages.downloadLabel)}
+                {showSource ? 'View Resources' : 'View Definition'}
               </Button>
-            )}
+              <ButtonGroup aria-label="Definition file actions" variant="outlined">
+                <Tooltip title={intl.formatMessage(messages.updateOpenApi)}>
+                  <Button
+                    aria-label={intl.formatMessage(messages.updateOpenApi)}
+                    disabled={isSaving}
+                    onClick={() => setDialogOpen(true)}
+                    sx={{ minWidth: 40, px: 1 }}
+                  >
+                    <Upload size={18} />
+                  </Button>
+                </Tooltip>
+                {hasSpec ? (
+                  <Tooltip title={intl.formatMessage(messages.downloadLabel)}>
+                    <Button
+                      aria-label={intl.formatMessage(messages.downloadLabel)}
+                      onClick={handleDownload}
+                      sx={{ minWidth: 40, px: 1 }}
+                    >
+                      <Download size={18} />
+                    </Button>
+                  </Tooltip>
+                ) : null}
+              </ButtonGroup>
+            </Stack>
           </Stack>
 
           {/* Single panel with Spec / Operations toggle */}
@@ -732,8 +845,7 @@ export function DefinitionPanel() {
               overflow: 'hidden',
             }}
           >
-
-            {/* Panel header: View toggle (left) | YAML/JSON toggle + Edit or Add Resource (right) */}
+            {/* Panel header: source controls or the existing Add Resource action. */}
             <Box
               sx={{
                 alignItems: 'center',
@@ -741,22 +853,12 @@ export function DefinitionPanel() {
                 borderColor: 'divider',
                 display: 'flex',
                 flexShrink: 0,
-                justifyContent: 'space-between',
+                justifyContent: 'flex-end',
                 px: 2,
                 py: 1,
               }}
             >
-              {/* Left: View Resources / View Definition toggle button */}
-              <Button
-                onClick={() => setShowSource(!showSource)}
-                size="small"
-                variant="outlined"
-                sx={{ textTransform: 'none' }}
-              >
-                {showSource ? 'View Resources' : 'View Definition'}
-              </Button>
-
-              {/* Right: YAML/JSON toggle + Edit button (source view) OR Add Resource button (operations view) */}
+              {/* YAML/JSON toggle + Edit button (source view) OR Add Resource button (operations view) */}
               {showSource ? (
                 <Stack alignItems="center" direction="row" spacing={1}>
                   <ToggleButtonGroup
@@ -796,7 +898,6 @@ export function DefinitionPanel() {
                 </Button>
               )}
             </Box>
-
 
             {/* Panel content */}
             <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>

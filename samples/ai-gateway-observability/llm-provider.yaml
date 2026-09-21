@@ -1,0 +1,21 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: mock-openai-provider
+spec:
+  displayName: Mock OpenAI Provider
+  version: v1.0
+  template: openai
+  context: /openai/latest
+  upstream:
+    # WireMock stands in for api.openai.com — see wiremock/mappings/.
+    url: http://mock-llm-openai:8080/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: Bearer local-mock-key
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /chat/completions
+        methods: [POST]

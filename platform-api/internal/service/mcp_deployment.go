@@ -396,7 +396,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	}
 
 	// Return deployment response
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -408,6 +408,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		deployment.UpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // extractEndpointURLOverride reads and validates the optional "endpointUrl" override from
@@ -519,7 +520,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		}
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -531,6 +532,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		&newUpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // restoreMCPProxyDeployment restores a previously undeployed MCP proxy deployment
@@ -601,7 +603,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, targetDeployment.GatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
@@ -613,6 +615,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		&updatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, targetDeployment.BuildID)
 }
 
 // getMCPProxyDeployment retrieves a specific MCP proxy deployment
@@ -635,7 +638,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 		return nil, apperror.DeploymentNotFound.New()
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -647,6 +650,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 		deployment.UpdatedAt,
 		deployment.StatusReason,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // getMCPProxyDeployments retrieves all deployments for an MCP proxy
@@ -699,6 +703,9 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 			d.UpdatedAt,
 			d.StatusReason,
 		)
+		if err == nil && mapped != nil {
+			mapped.BuildId = d.BuildID
+		}
 		if err != nil {
 			return nil, err
 		}

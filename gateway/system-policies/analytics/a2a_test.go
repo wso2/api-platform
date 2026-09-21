@@ -504,9 +504,11 @@ func TestA2ABlockFieldNamesArePinned(t *testing.T) {
 				PayloadType: "task", ResponseTaskID: "task-9", ResponseContextID: "ctx-9",
 				TaskState: "TASK_STATE_COMPLETED",
 			},
-			// The published model is one flat object, so the two identifiers that
+			// The collector's model is one flat object, so the two identifiers that
 			// share a name with a request field carry a `response` prefix. The
 			// other seven have no request-side counterpart and keep bare names.
+			// A publisher whose schema nests the two directions drops the prefix;
+			// this wire keeps it.
 			want: []string{
 				"errorCode", "isError", "isStreaming", "payloadType",
 				"responseContextId", "responseTaskId", "streamDurationMs",

@@ -1,0 +1,7 @@
+# Copied into the extracted distribution by setup.sh. Passes the Moesif
+# Application ID to the policy engine, which the shipped config.toml reads
+# from this environment variable.
+services:
+  gateway-runtime:
+    environment:
+      - APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID=${MOESIF_APPLICATION_ID}
