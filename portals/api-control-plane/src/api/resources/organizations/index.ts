@@ -36,6 +36,7 @@ export type { OrganizationListFilters } from './organizations.hooks';
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
+  useBootstrapOrganization,
   useOrganization,
   useOrganizationOptions,
   useOrganizations,
