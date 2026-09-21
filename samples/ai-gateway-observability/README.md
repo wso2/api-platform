@@ -26,7 +26,7 @@ On Windows, run these from a WSL2 shell with Docker Desktop's WSL integration en
 4. Starts the gateway together with Prometheus, Grafana, Jaeger and the OTel collector.
 5. Waits for the gateway to report healthy, then puts the mock on its network.
 6. Registers two proxies, `assistant-proxy` and `support-proxy`, each with an inbound
-   API key. Only the provider behind `support-proxy` has a token budget.
+   API key. Only the provider behind `support-proxy` has a token rate limit.
 
 Credentials, certificates and the environment file the stack needs are generated in
 step 4, so there is nothing to configure beforehand.
@@ -61,7 +61,7 @@ values, and six charts.
 - *Responses by status class*: how many requests succeeded (2xx) against how many were
   rejected (4xx) or failed (5xx).
 - *Policy rejections by policy*: requests the gateway blocked, and which rule blocked
-  them. Bad keys throughout, the token budget from part-way through the run.
+  them. Bad keys throughout, the token rate limit from part-way through the run.
 - *Upstream failures*: requests the model backend itself failed.
 
 **In Jaeger**, open a trace to see one request broken into its steps. The charts show

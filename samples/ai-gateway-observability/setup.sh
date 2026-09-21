@@ -26,7 +26,7 @@ JAEGER_URL="http://localhost:16686"
 PROMETHEUS_URL="http://localhost:9092"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROVIDER_YAMLS=("${SCRIPT_DIR}/llm-provider.yaml" "${SCRIPT_DIR}/llm-provider-budgeted.yaml")
+PROVIDER_YAMLS=("${SCRIPT_DIR}/llm-provider.yaml" "${SCRIPT_DIR}/llm-provider-ratelimited.yaml")
 PROXY_YAMLS=("${SCRIPT_DIR}/llm-proxy-assistant.yaml" "${SCRIPT_DIR}/llm-proxy-support.yaml")
 DASHBOARD_JSON="${SCRIPT_DIR}/observability/ai-gateway-overview.json"
 COMPOSE_OVERRIDE="${SCRIPT_DIR}/observability/docker-compose.override.yaml"
@@ -214,7 +214,7 @@ success "Connected ${MOCK_CONTAINER} to network ${GATEWAY_NETWORK}."
 # ---------------------------------------------------------------------------
 # Step 9 - Deploy providers and proxies
 #
-# Two providers share the mock upstream: one plain, one with a token budget. Under
+# Two providers share the mock upstream: one plain, one with a token rate limit. Under
 # load /support starts returning 429 while /assistant keeps serving.
 # ---------------------------------------------------------------------------
 for PROVIDER_YAML in "${PROVIDER_YAMLS[@]}"; do
@@ -267,7 +267,7 @@ echo ""
 echo " Proxy endpoints:"
 echo "   Assistant : http://localhost:8080/assistant/chat/completions"
 echo "               api_key: ${ASSISTANT_API_KEY}"
-echo "   Support   : http://localhost:8080/support/chat/completions   (token budget)"
+echo "   Support   : http://localhost:8080/support/chat/completions   (token rate limit)"
 echo "               api_key: ${SUPPORT_API_KEY}"
 echo ""
 echo " Observability:"

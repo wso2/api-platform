@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generates about a minute of mixed traffic through both proxies so the dashboard
 # has something real to show: steady successes, a slow tail, upstream failures,
-# rejected keys, and — once the support proxy's token budget runs out — 429s.
+# rejected keys, and — once the support proxy hits its token rate limit — 429s.
 #
 #   ./load.sh          # default 60 seconds
 #   ./load.sh 120      # run for 120 seconds
@@ -58,7 +58,7 @@ echo "════════════════════════�
 echo " Generating traffic for ${DURATION}s"
 echo "══════════════════════════════════════════════════"
 info "Assistant : ${ASSISTANT_URL}"
-info "Support   : ${SUPPORT_URL}   (token budget — expect 429s part-way through)"
+info "Support   : ${SUPPORT_URL}   (token rate limit — expect 429s part-way through)"
 echo ""
 
 END=$(( $(date +%s) + DURATION ))
@@ -89,7 +89,7 @@ echo " Done — ${TOTAL} requests"
 echo "══════════════════════════════════════════════════"
 printf '  2xx  success           %4d\n' "${COUNT_2XX}"
 printf '  401  key rejected      %4d\n' "${COUNT_401}"
-printf '  429  token budget spent%4d\n' "${COUNT_429}"
+printf '  429  token limit hit   %4d\n' "${COUNT_429}"
 printf '  5xx  upstream failure  %4d\n' "${COUNT_5XX}"
 [[ "${COUNT_OTHER}" -gt 0 ]] && printf '  other                  %4d\n' "${COUNT_OTHER}"
 echo ""

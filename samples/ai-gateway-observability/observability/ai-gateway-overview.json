@@ -175,7 +175,7 @@
     },
     {
       "datasource": "Prometheus",
-      "description": "Requests stopped by a policy before reaching the model - a rejected API key, an exhausted token budget.",
+      "description": "Requests stopped by a policy before reaching the model - a rejected API key, an exceeded token rate limit.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -310,7 +310,7 @@
     },
     {
       "datasource": "Prometheus",
-      "description": "Time inside the policy engine only \u2014 checking the key, checking the budget. Microseconds. It deliberately excludes the wait on the model; that lives in the end-to-end panel above.",
+      "description": "Time inside the policy engine only \u2014 checking the key, checking the token limit. Microseconds. It deliberately excludes the wait on the model; that lives in the end-to-end panel above.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -562,7 +562,7 @@
     },
     {
       "datasource": "Prometheus",
-      "description": "Which policy did the rejecting: api-key-auth for bad keys, token-based-ratelimit once the support proxy's budget is spent.",
+      "description": "Which policy did the rejecting: api-key-auth for bad keys, token-based-ratelimit once the support proxy exceeds its token limit.",
       "fieldConfig": {
         "defaults": {
           "color": {

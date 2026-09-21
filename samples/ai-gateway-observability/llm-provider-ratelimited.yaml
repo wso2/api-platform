@@ -1,15 +1,15 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProvider
 metadata:
-  name: mock-openai-provider-budgeted
+  name: mock-openai-provider-ratelimited
 spec:
-  displayName: Mock OpenAI Provider (token budget)
+  displayName: Mock OpenAI Provider (token rate limit)
   version: v1.0
   template: openai
-  context: /openai/budgeted
+  context: /openai/ratelimited
   upstream:
     # Same mock backend as llm-provider.yaml — the only difference is the token
-    # budget below. The support proxy points here so that, part-way through
+    # rate limit below. The support proxy points here so that, part-way through
     # load.sh, it starts returning 429 while the assistant proxy keeps serving.
     # That contrast is what makes the per-proxy panels worth looking at.
     url: http://mock-llm-openai:8080/v1

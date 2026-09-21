@@ -7,8 +7,8 @@ spec:
   version: v1.0
   context: /support
   provider:
-    # The budgeted provider — this proxy runs out of tokens under load.
-    id: mock-openai-provider-budgeted
+    # The rate-limited provider — this proxy runs out of tokens under load.
+    id: mock-openai-provider-ratelimited
   policies:
     - name: api-key-auth
       version: v1
