@@ -17,33 +17,31 @@
 
 package dto
 
-// The published Agent analytics model — the external contract a downstream consumer
-// (Moesif, the analytics pipeline, AI Workspace) reads off an Agent event.
+// The A2A analytics model the collector assembles for one Agent event and hands to the
+// publishers.
 //
-// The envelope is keyed by domain (agentAnalytics.a2a) so a later Agent analytics
-// domain can be added as a sibling of `a2a`. Inside that section every dimension is
-// one flat level: there is no `request` or `response` object. Only the two response
-// identifiers that would collide with a request field are renamed, to responseTaskId
-// and responseContextId; a consumer derives effectiveTaskId = responseTaskId ?? taskId
-// itself, so no effective-id field is published.
+// This is an in-process carrier, not a wire shape. It once was one — it travelled to
+// Moesif as a free-form metadata envelope keyed by domain, `agentAnalytics.a2a`, so that
+// a later Agent analytics domain could be added as a sibling of `a2a`. Moesif now has an
+// A2A event schema of its own, so the publisher maps these fields onto that schema's
+// block and the envelope has no reader left; it was removed rather than kept as a
+// second, unread shape of the same event.
+//
+// What the struct tags still describe is the one place this type is serialized whole:
+// the debug/log sinks. The publisher that matters translates field by field, and the
+// mapping — including where these names differ from Moesif's — lives with it in
+// publishers/moesif_a2a.go.
 //
 // The Go type keeps the two directions as embedded field groups, which JSON flattens.
 // That is a decode concern: each group is exactly what one side of the pipeline
 // serializes, so a policy-supplied block cannot reach a field the kernel owns.
 //
-// Every shape-dependent field is optional and omitted when it was not carried; there is
-// deliberately no schema-version property. Generic facts — API and Agent identity,
-// organization, project, environment, consumer and credential identity, correlation id,
-// HTTP status, sizes, latencies — stay outside this envelope.
+// Every shape-dependent field is optional and omitted when it was not carried. Generic
+// facts — API and Agent identity, organization, project, environment, consumer and
+// credential identity, correlation id, HTTP status, sizes, latencies — stay outside it,
+// on the event itself.
 
-// AgentAnalytics is the published analytics envelope for one Agent event.
-type AgentAnalytics struct {
-	// A2A is a pointer so an Agent event that produced no A2A dimensions publishes
-	// an empty envelope rather than an object full of zero values.
-	A2A *A2AAnalytics `json:"a2a,omitempty"`
-}
-
-// A2AAnalytics is the A2A section of the envelope, published as one flat object.
+// A2AAnalytics is the A2A dimensions of one Agent event, as one flat object.
 //
 // The dimensions safe to group by are drawn from closed sets: the operation from the
 // protocol version's operation table (or `unknown`), the transport from a two-valued
@@ -69,6 +67,16 @@ type A2AAnalytics struct {
 
 	A2ARequestAnalytics
 	A2AResponseAnalytics
+
+	// Terminal reports whether the observed task state is one the task cannot leave.
+	// It is derived from TaskState rather than reported separately, and it is what
+	// separates a task that finished from one still running: a consumer counting
+	// completed work off taskState alone has to carry A2A's own knowledge of which
+	// states are final, which drifts from the protocol the moment a state is added.
+	//
+	// A pointer because absent and false are different answers — no task state was
+	// observed at all, versus a task observed to still be in flight.
+	Terminal *bool `json:"terminal,omitempty"`
 
 	// Outcome is SUCCESS, FAILURE or UNKNOWN, derived from the A2A result rather
 	// than the HTTP status. FailureOrigin names the answerable layer and is
