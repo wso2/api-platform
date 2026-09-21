@@ -22,11 +22,12 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { REST_API_TYPE, useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
-import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useExtensions } from '@/extensions';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
+import { PublicationLoadError } from './components/PublicationLoadError';
 
 const messages = defineMessages({
   title: {
@@ -116,7 +117,12 @@ export function ApiPortalPublicationsList() {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
   if (publicationsQuery.error) {
-    return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
+    return (
+      <PublicationLoadError
+        error={publicationsQuery.error}
+        fallbackMessage={intl.formatMessage(messages.errorMessage)}
+      />
+    );
   }
 
   const publications = publicationsQuery.data?.list ?? [];

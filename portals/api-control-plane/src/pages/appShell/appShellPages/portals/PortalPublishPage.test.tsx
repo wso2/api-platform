@@ -796,4 +796,24 @@ describe('PortalPublishPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
     expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
   });
+
+  it('says the user lacks permission when the draft cannot be read (403)', async () => {
+    servePublicationState();
+    server.use(failure('get', DRAFT_PATH, 403, 'FORBIDDEN'));
+
+    renderPage();
+
+    expect(await screen.findByText('You don’t have permission')).toBeInTheDocument();
+    expect(screen.queryByText(/Unable to load this portal/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic message when loading fails for a reason other than permission', async () => {
+    servePublicationState();
+    server.use(failure('get', DRAFT_PATH, 500, 'INTERNAL_ERROR'));
+
+    renderPage();
+
+    expect(await screen.findByText(/Unable to load this portal/)).toBeInTheDocument();
+    expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
+  });
 });

@@ -39,11 +39,12 @@ import { isApiError } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useNotifications } from '@/components/Notifications';
-import { ErrorState, LoadingState } from '@/components/StateViews';
+import { LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
+import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { SpecificationTab } from './components/SpecificationTab';
 import {
@@ -321,7 +322,12 @@ export function PortalPublishPage() {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
   if (unexpectedError || !apiQuery.data) {
-    return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
+    return (
+      <PublicationLoadError
+        error={unexpectedError}
+        fallbackMessage={intl.formatMessage(messages.errorMessage)}
+      />
+    );
   }
 
   const api = apiQuery.data;

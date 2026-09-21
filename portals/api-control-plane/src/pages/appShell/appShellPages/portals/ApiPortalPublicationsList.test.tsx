@@ -26,6 +26,7 @@ import {
   aPublicationSummary,
   aRestApi,
   collection,
+  failure,
   recorder,
   type PublicationSummaryFixture,
   type Recorder,
@@ -211,5 +212,23 @@ describe('ApiPortalPublicationsList', () => {
 
     await screen.findByText('No Portals Available');
     expect(screen.queryByPlaceholderText('Search portals')).not.toBeInTheDocument();
+  });
+
+  it('says the user lacks permission when the portals cannot be listed (403)', async () => {
+    server.use(failure('get', '/api-publications', 403, 'FORBIDDEN'));
+
+    renderPage();
+
+    expect(await screen.findByText('You don’t have permission')).toBeInTheDocument();
+    expect(screen.queryByText('Unable to load portals')).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic message for a failure that is not a permission problem', async () => {
+    server.use(failure('get', '/api-publications', 500, 'INTERNAL_ERROR'));
+
+    renderPage();
+
+    expect(await screen.findByText('Unable to load portals')).toBeInTheDocument();
+    expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
   });
 });

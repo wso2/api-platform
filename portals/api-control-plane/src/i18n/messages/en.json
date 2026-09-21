@@ -2159,6 +2159,12 @@
     "defaultMessage": "Go To Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage": {
+    "defaultMessage": "Your account isn’t allowed to publish APIs to API portals. Ask an organization admin to grant you access."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenTitle": {
+    "defaultMessage": "You don’t have permission"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
     "defaultMessage": "Deprecate"
   },
