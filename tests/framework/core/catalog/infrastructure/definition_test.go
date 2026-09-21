@@ -19,6 +19,7 @@
 package infrastructure
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,6 +31,10 @@ func TestRedisDefinition(t *testing.T) {
 	require.NotEqual(t, "redis", RedisPassword)
 	require.Equal(t, RedisPassword, definition.Env[RedisPasswordEnv])
 	require.Equal(t, definition.Env[RedisPasswordEnv], definition.Cmd[2])
+	values, err := definition.Provisions(context.Background(), nil, "platform-gateway")
+	require.NoError(t, err)
+	require.Equal(t, RedisPassword, values["APIP_GW_REDIS__PASSWORD"])
+	require.Equal(t, RedisPassword, values["APIP_GW_VECTOR__DB__PROVIDER__PASSWORD"])
 	require.Equal(t, "tcp", definition.Endpoints[0].Scheme)
 	require.Equal(t, 6379, definition.Endpoints[0].Port)
 }

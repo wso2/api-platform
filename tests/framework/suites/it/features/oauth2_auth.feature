@@ -35,7 +35,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-happy" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-happy" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -57,7 +57,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-password" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-password" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -77,7 +77,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-post-auth" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-post-auth" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -98,7 +98,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-custom-header" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-custom-header" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -121,7 +121,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-static" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-static" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -143,7 +143,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-cache" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-cache" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -164,7 +164,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-invalid-client" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-invalid-client" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -183,7 +183,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-unreachable" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-unreachable" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -202,7 +202,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-malformed" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-malformed" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -221,7 +221,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-params" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-params" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -242,7 +242,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-headers" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-headers" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -263,7 +263,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-sibling" and store it as "apiVersion"
     And I generate a unique API context from "/oauth2-sibling" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -286,7 +286,7 @@ Feature: OAuth2 upstream authentication
     And I generate a unique API version from "oauth2-llm-provider" and store it as "providerVersion"
     And I generate a unique API context from "/oauth2-llm-provider" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion} |
       | name                          | ${CTX:providerName}               |
       | displayName                   | ${CTX:providerDisplayName}        |
       | version                       | ${CTX:providerVersion}            |

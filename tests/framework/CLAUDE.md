@@ -100,6 +100,12 @@ Before adding a helper, step, or dependency:
   structured override, or dotted paths such as `spec.displayName` for a
   focused override. Values may contain JSON objects or arrays when a nested
   policy, operation, upstream, or endpoint must be configured.
+- For Platform Gateway resource templates, supply `apiVersion` as
+  `${CTX:gatewaySpecVersion}`. The Platform Gateway binding publishes that
+  scenario-scoped value before steps run, selecting the resource contract for
+  the Gateway release under test. Do not hard-code a release-specific Gateway
+  resource API version in a feature table unless the scenario is intentionally
+  testing an invalid version.
 - For a negative case that must omit fields from the final resource document,
   continue to use the canonical template step and provide a complete `spec`
   override containing only the fields the case requires. Supply harmless values
@@ -134,6 +140,29 @@ Before adding a helper, step, or dependency:
 - A product-specific binding must retrieve the relevant version from that
   context and support every product version declared as supported by the
   framework.
+- Platform Gateway bindings publish `${CTX:gatewaySpecVersion}` for resource
+  templates. It resolves to `gateway.api-platform.wso2.com/v1alpha1` for
+  Gateway `1.1.0` and `gateway.api-platform.wso2.com/v1` for Gateway `1.2.0`
+  and current source builds. Keep that mapping in the Platform Gateway step
+  package; templates and feature files must consume the context value instead
+  of duplicating release checks.
+- Platform Gateway bindings publish `${CTX:gatewayMCPUpstreamPath}` for
+  testbench MCP fixtures. It is empty for Gateway `1.1.0` and older, which
+  append the request's `/mcp` path to the upstream URL, and `/mcp` for Gateway
+  `1.2.0` and current source builds. Use it where a scenario configures the
+  testbench MCP upstream instead of embedding a release check in a feature.
+- Gateway `1.1.0` and older represent LLM operation policies as
+  `spec.policies`; Gateway `1.2.0` and newer use `spec.operationPolicies`.
+  The Platform Gateway template binding translates the compatible policy shape
+  and the LLM-provider assertion binding selects the returned field. Feature
+  files must describe the attached-policy behavior, not either representation.
+- Gateway `1.1.0` semantic-cache configuration uses the legacy root Redis keys;
+  the semantic-AI overlay and Redis provisioner must keep those keys and the
+  per-topology password available alongside the current vector-store keys.
+  Gateway-version-specific semantic-cache behavior must be isolated in a
+  runner selector: the cross-authenticated-caller isolation scenario is gated
+  to Gateway `>=1.2.0`, where that contract exists. Do not weaken the
+  isolation assertion to make an older Gateway pass.
 - Keep version-specific response or request handling in the relevant product
   step package. Do not make generic JSON assertions silently accept multiple
   data types or response shapes.
@@ -426,6 +455,25 @@ duplicating it.
 - Create a new block or overlay only when an existing configuration cannot
   express the required behavior. A new block provisions another component
   topology and must be justified.
+- A runner may declare a Platform Gateway release boundary in `tags` with
+  `gateway-version<operator>major.minor.patch`, using one of `>`, `>=`, `<`,
+  `<=`, `=`, or `==`. An optional Godog expression follows exactly one `;`,
+  for example `gateway-version>1.2.0;~@known-issue`. The framework validates
+  and evaluates the release selector before Godog, removes it from the Godog
+  expression, and reports incompatible runners as skipped.
+- Use a Gateway-version selector only for a real release capability boundary.
+  It belongs at runner scope, not in feature tags or scenario steps. Keep
+  release-specific configuration in a dedicated block rather than changing a
+  shared block overlay. Malformed selectors, a missing Godog expression after
+  `;`, or more than one `;` are configuration errors and must not be worked
+  around with looser tags.
+- Use `defaults.components.platform-gateway.dbCompatibility` for Gateway database
+  support boundaries shared by matrix blocks, for example
+  `sqlserver: "gateway-version>=1.2.0"`. Its values use the same strict selector
+  syntax as runner tags. The framework excludes incompatible database variants
+  before boot and reports the skip; an explicitly selected incompatible variant is
+  a configuration error. Do not duplicate a shared database compatibility rule in
+  every block or encode it in scenario tags.
 
 ### Infrastructure level
 

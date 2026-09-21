@@ -176,6 +176,8 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 		s.sendAuthenticated)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until status (\d+)$`,
 		s.sendAuthenticatedUntilStatus)
+	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until the response body contains "([^"]*)"$`,
+		s.sendAuthenticatedUntilBodyContains)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until the top-level JSON response array field "([^"]*)" has (\d+) items?$`,
 		s.sendAuthenticatedUntilJSONArrayLength)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" with header "([^"]*)" set to "([^"]*)"$`,
@@ -1315,6 +1317,45 @@ func (s *Steps) sendAuthenticatedUntilStatus(ctx context.Context, method, path, 
 	}
 	if !result {
 		return fmt.Errorf("API Portal %s %s never answered %d (last %d)", method, path, want, last)
+	}
+	return nil
+}
+
+// sendAuthenticatedUntilBodyContains waits for a read to expose a value written
+// by an earlier request. It deliberately accepts only GET: retrying a mutation
+// would repeat its side effects rather than wait for its committed state to become
+// observable.
+func (s *Steps) sendAuthenticatedUntilBodyContains(ctx context.Context, method, path, role, want string) error {
+	if !strings.EqualFold(strings.TrimSpace(method), http.MethodGet) {
+		return fmt.Errorf("API Portal response-body readiness requires GET, got %q", method)
+	}
+	want, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	if want == "" {
+		return fmt.Errorf("API Portal response-body readiness requires a non-empty value")
+	}
+
+	last := "no response"
+	result, err := retry.Until(ctx, retry.Options{Interval: time.Second},
+		func(ctx context.Context) (bool, error) {
+			if err := s.sendPortal(ctx, http.MethodGet, path, role, nil); err != nil {
+				last = err.Error()
+				return false, retry.Transient(err)
+			}
+			response, err := httpx.Published(ctx)
+			if err != nil {
+				return false, err
+			}
+			last = response.Describe()
+			return response.StatusCode == http.StatusOK && strings.Contains(string(response.Body), want), nil
+		}, func(matched bool) bool { return matched })
+	if err != nil {
+		return fmt.Errorf("waiting for API Portal GET %s to expose %q (last %s): %w", path, want, last, err)
+	}
+	if !result {
+		return fmt.Errorf("API Portal GET %s never exposed %q (last %s)", path, want, last)
 	}
 	return nil
 }

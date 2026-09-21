@@ -29,7 +29,7 @@ Feature: Data-plane to control-plane push is suppressed when deployment sync is 
   Scenario: An LLM provider template is not pushed when sync is disabled
     Given I generate a unique resource name from "nosync-tmpl" and store it as "templateName"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:templateName}               |
       | displayName        | ${CTX:templateName}               |
       | spec.requestModel  | {"location":"payload","identifier":"$.model"} |
@@ -47,7 +47,7 @@ Feature: Data-plane to control-plane push is suppressed when deployment sync is 
     And I generate a unique API version from "nosync-chain-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/nosync-chain-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:templateName}               |
       | displayName        | ${CTX:templateName}               |
       | spec.requestModel  | {"location":"payload","identifier":"$.model"} |
@@ -55,7 +55,7 @@ Feature: Data-plane to control-plane push is suppressed when deployment sync is 
     Then the response should be successful
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -65,7 +65,7 @@ Feature: Data-plane to control-plane push is suppressed when deployment sync is 
     Then the response should be successful
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -81,7 +81,7 @@ Feature: Data-plane to control-plane push is suppressed when deployment sync is 
     And I generate a unique API version from "nosync-mcp" and store it as "mcpVersion"
     And I generate a unique API context from "/nosync-mcp" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -97,7 +97,7 @@ Feature: Data-plane to control-plane push is suppressed when deployment sync is 
     And I generate a unique API version from "nosync-rest" and store it as "apiVersion"
     And I generate a unique API context from "/nosync-rest" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | ${CTX:apiDisplayName}              |
       | spec.version           | ${CTX:apiVersion}                  |

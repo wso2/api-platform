@@ -189,7 +189,7 @@ func observability(service string, next http.Handler) http.Handler {
 			"path", r.URL.Path,
 		)
 		log.Debug("testbench request received",
-			"query", r.URL.RawQuery,
+			"has_query", r.URL.RawQuery != "",
 			"remote_addr", r.RemoteAddr,
 			"user_agent", r.UserAgent(),
 			"content_type", r.Header.Get("Content-Type"),
@@ -211,10 +211,8 @@ func observability(service string, next http.Handler) http.Handler {
 			if info.truncated {
 				attrs = append(attrs, "request_body_truncated", true)
 			}
-			if q := r.URL.RawQuery; q != "" {
-				attrs = append(attrs, "query", q)
-			}
-			if reason := excerpt(rec.failure); reason != "" {
+			attrs = append(attrs, "has_query", r.URL.RawQuery != "")
+			if reason := safeFailureExcerpt(rec); reason != "" {
 				attrs = append(attrs, "reason", reason)
 			}
 
@@ -259,6 +257,17 @@ func excerpt(b []byte) string {
 		s = s[:maxLoggedBodyBytes] + "…(truncated)"
 	}
 	return strings.ReplaceAll(strings.ReplaceAll(s, "\n", " "), "\r", "")
+}
+
+// safeFailureExcerpt keeps useful plain-text failure messages while suppressing response
+// bodies that may reflect request headers, query parameters, or credentials. The testbench's
+// echo and backend services intentionally return JSON reflections, so there is no reliable
+// generic sanitizer for those bodies.
+func safeFailureExcerpt(r *responseRecorder) string {
+	if r == nil || strings.HasPrefix(strings.ToLower(r.Header().Get("Content-Type")), "application/json") {
+		return ""
+	}
+	return excerpt(r.failure)
 }
 
 // Fail writes an error response and logs why, with this request's service, correlation id,

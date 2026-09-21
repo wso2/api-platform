@@ -46,13 +46,82 @@ import (
 
 // API base paths, kept in sync with the gateway's OpenAPI documents.
 const (
-	ManagementBasePath = "/api/management/v1"
-	adminBasePath      = "/api/admin/v1"
+	ManagementBasePath    = "/api/management/v1"
+	managementBasePathV11 = "/api/management/v0.9"
+	adminBasePath         = "/api/admin/v1"
+	adminBasePathV11      = "/api/admin/v0.9"
+	gatewaySpecVersion    = "gateway.api-platform.wso2.com/v1"
+	gatewaySpecVersionV11 = "gateway.api-platform.wso2.com/v1alpha1"
 )
+
+// ManagementBasePathForVersion returns the management API base path for a Gateway release.
+func ManagementBasePathForVersion(version string) string {
+	if usesLegacyGatewayContract(version) {
+		return managementBasePathV11
+	}
+	return ManagementBasePath
+}
+
+func adminBasePathForVersion(version string) string {
+	if usesLegacyGatewayContract(version) {
+		return adminBasePathV11
+	}
+	return adminBasePath
+}
+
+func gatewaySpecVersionForVersion(version string) string {
+	if usesLegacyGatewayContract(version) {
+		return gatewaySpecVersionV11
+	}
+	return gatewaySpecVersion
+}
+
+// gatewayMCPUpstreamPathForVersion returns the path configured on the MCP testbench upstream.
+// Gateway 1.1 and older append the requested MCP path themselves; later releases forward to the configured path.
+func gatewayMCPUpstreamPathForVersion(version string) string {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	version, _, _ = strings.Cut(version, "-")
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return "/mcp"
+	}
+	major, majorErr := strconv.Atoi(parts[0])
+	minor, minorErr := strconv.Atoi(parts[1])
+	patch, patchErr := strconv.Atoi(parts[2])
+	if majorErr != nil || minorErr != nil || patchErr != nil || major < 0 || minor < 0 || patch < 0 {
+		return "/mcp"
+	}
+	if major < 1 || (major == 1 && (minor < 1 || (minor == 1 && patch == 0))) {
+		return ""
+	}
+	return "/mcp"
+}
+
+func gatewayVersion(topo *frameworkruntime.Topology) string {
+	version, err := topo.ComponentVersion("platform-gateway")
+	if err != nil {
+		return ""
+	}
+	return version
+}
+
+func gatewayAdminBasePath(topo *frameworkruntime.Topology) string {
+	return adminBasePathForVersion(gatewayVersion(topo))
+}
+
+func gatewayManagementBasePath(topo *frameworkruntime.Topology) string {
+	return ManagementBasePathForVersion(gatewayVersion(topo))
+}
 
 // Context keys this suite publishes.
 const (
 	keyLastAPIName = "lastApiName"
+	// keyGatewaySpecVersion is the resource apiVersion for the selected Gateway release.
+	// Feature tables use ${CTX:gatewaySpecVersion} rather than hard-coding a release contract.
+	keyGatewaySpecVersion = "gatewaySpecVersion"
+	// keyGatewayMCPUpstreamPath is the path configured on the MCP testbench upstream.
+	// Gateway 1.1 and older append /mcp to that URL; later releases do not.
+	keyGatewayMCPUpstreamPath = "gatewayMCPUpstreamPath"
 
 	// Request-shaping state set by one step and read by the next. It lives in the SCENARIO
 	// scope rather than on the Gateway struct because one Gateway serves a whole block, and
@@ -131,16 +200,17 @@ type configDumpSchema uint8
 
 const (
 	configDumpCurrent configDumpSchema = iota
-	configDumpV12
+	configDumpLegacyRouteKey
 )
 
 // configDumpSchemaFor selects the policy-engine config-dump relationship used by a Gateway
-// release. The released Gateway 1.2.0 stores each policy chain under its route key; the
-// checked-out 1.2.0-SNAPSHOT and later builds link route metadata to a chain through chain_key.
+// release. Legacy Gateway releases and the released Gateway 1.2.0 store each policy chain
+// under its route key; the checked-out 1.2.0-SNAPSHOT and later builds link route metadata to
+// a chain through chain_key.
 func configDumpSchemaFor(version string) configDumpSchema {
 	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
-	if version == "1.2.0" {
-		return configDumpV12
+	if usesLegacyGatewayContract(version) || version == "1.2.0" {
+		return configDumpLegacyRouteKey
 	}
 	return configDumpCurrent
 }
@@ -189,7 +259,7 @@ func (c policyChain) containsPolicy(name string) bool {
 
 func (d configDump) containsPolicy(schema configDumpSchema, routePath, policyName string) bool {
 	switch schema {
-	case configDumpV12:
+	case configDumpLegacyRouteKey:
 		for _, chain := range d.PolicyChains.PolicyChains {
 			if routeKeyPath(chain.RouteKey) == routePath && chain.containsPolicy(policyName) {
 				return true
@@ -835,7 +905,7 @@ func (g *Gateway) managementURL(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return base + ManagementBasePath + path, nil
+	return base + gatewayManagementBasePath(g.topo) + path, nil
 }
 
 func (g *Gateway) adminURL(path string) (string, error) {
@@ -843,7 +913,7 @@ func (g *Gateway) adminURL(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return base + adminBasePath + path, nil
+	return base + gatewayAdminBasePath(g.topo) + path, nil
 }
 
 func (g *Gateway) adminURLAt(ordinalWord, path string) (string, error) {
@@ -855,7 +925,7 @@ func (g *Gateway) adminURLAt(ordinalWord, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return base + adminBasePath + path, nil
+	return base + gatewayAdminBasePath(g.topo) + path, nil
 }
 
 // apiNameFrom extracts metadata.name from an API definition.
@@ -879,6 +949,12 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	g.registerRawHTTPSteps(sc)
 	// Request state is runner-scoped, so clear it before each scenario.
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+		if err := tcontext.Set(ctx, keyGatewaySpecVersion, gatewaySpecVersionForVersion(gatewayVersion(g.topo))); err != nil {
+			return ctx, err
+		}
+		if err := tcontext.Set(ctx, keyGatewayMCPUpstreamPath, gatewayMCPUpstreamPathForVersion(gatewayVersion(g.topo))); err != nil {
+			return ctx, err
+		}
 		if err := g.resetRequest(ctx); err != nil {
 			return ctx, err
 		}
@@ -982,6 +1058,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.sendUntilQuotaRemaining)
 
 	sc.Step(`^the response body should contain template literal:$`, g.responseBodyContainsTemplateLiteral)
+	sc.Step(`^the LLM provider response should handle the configured secret safely:$`,
+		g.llmProviderResponseHandlesSecret)
 	sc.Step(`^the stored (RestApi|LlmProvider|LlmProxy|Mcp) configuration for "([^"]*)" should contain:$`,
 		func(ctx context.Context, kind, handle string, literal *godog.DocString) error {
 			return g.assertStoredConfiguration(ctx, kind, handle, literal, true)
@@ -1402,7 +1480,7 @@ func (g *Gateway) serviceURL(ctx context.Context, service, path string) (string,
 		}
 		resolved = "/" + g.topo.Block.PartitionKey() + resolved
 	}
-	return base + spec.basePath + resolved, nil
+	return base + g.serviceBasePath(service, spec.basePath) + resolved, nil
 }
 
 // serviceUpstreamURL resolves a service address for a request originating inside the
@@ -1434,7 +1512,18 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 		}
 		resolved = "/" + g.topo.Block.PartitionKey() + resolved
 	}
-	return base + spec.basePath + resolved, nil
+	return base + g.serviceBasePath(service, spec.basePath) + resolved, nil
+}
+
+func (g *Gateway) serviceBasePath(service, defaultPath string) string {
+	switch service {
+	case "gateway-controller":
+		return gatewayManagementBasePath(g.topo)
+	case "gateway-controller-admin":
+		return gatewayAdminBasePath(g.topo)
+	default:
+		return defaultPath
+	}
 }
 
 // resolveServiceURLAndStore resolves a testbench service's URL and stores it in local scope, for
@@ -1854,16 +1943,23 @@ func (g *Gateway) resetAnalyticsCollector(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
-		Method: http.MethodPost, URL: url, Headers: g.scenarioHeaders(ctx),
-	}, 0, 0)
-	if err != nil {
-		return err
-	}
-	if !resp.Succeeded() {
-		return fmt.Errorf("resetting the analytics collector failed: %s", resp.Describe())
-	}
-	return nil
+	return retry.Await(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
+		resp, err := g.funnel.Client().Do(ctx, httpx.Request{
+			Method: http.MethodPost, URL: url, Headers: g.scenarioHeaders(ctx),
+		}, 0, 0)
+		if err != nil {
+			// Reset is idempotent. A connection reset can happen after the mock has
+			// cleared the partition but before the response reaches the client, so
+			// retry only transport failures and never assertions or non-2xx responses.
+			return nil, retry.Transient(err)
+		}
+		if !resp.Succeeded() {
+			return resp, fmt.Errorf("resetting the analytics collector failed: %s", resp.Describe())
+		}
+		return resp, nil
+	}, func(resp *httpx.Response) bool {
+		return resp != nil && resp.Succeeded()
+	}, "resetting the analytics collector")
 }
 
 func (g *Gateway) analyticsEventCount(ctx context.Context) (int, error) {

@@ -200,6 +200,19 @@ func TestObservabilityEmitsAnAccessLinePerRequest(t *testing.T) {
 	require.NotEmpty(t, rec.Header().Get(RequestIDHeader))
 }
 
+func TestObservabilityDoesNotLogQueryValues(t *testing.T) {
+	h := observability("jwks", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	secret := "expected-secret-must-not-be-logged"
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/token?expected_secret="+secret, nil))
+
+	require.Contains(t, out, `"has_query":true`)
+	require.NotContains(t, out, secret)
+	require.NotContains(t, out, `"query"`)
+}
+
 // A caller-supplied correlation id is honoured rather than replaced, which is what lets a
 // suite step name the exact request it is asserting about.
 func TestObservabilityHonoursAnInboundRequestID(t *testing.T) {
@@ -223,6 +236,18 @@ func TestObservabilityRecordsTheRejectionReason(t *testing.T) {
 	require.Contains(t, out, `"msg":"testbench request rejected"`)
 	require.Contains(t, out, "malformed batch payload")
 	require.Contains(t, out, `"status":400`)
+}
+
+func TestObservabilityOmitsJSONFailureBodies(t *testing.T) {
+	h := observability("echo", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"secret":"must-not-be-logged"}`))
+	})))
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/status/400", nil))
+
+	require.NotContains(t, out, "must-not-be-logged")
+	require.NotContains(t, out, `"reason"`)
 }
 
 // A 5xx is surfaced at error level even though the mock returned it deliberately: a suite

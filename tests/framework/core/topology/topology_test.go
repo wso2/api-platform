@@ -1232,6 +1232,34 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 		"gateway-version must switch a source-build gateway to versioned mode")
 }
 
+func TestGatewayVersionSelectionUsesMatchingConfigProfile(t *testing.T) {
+	definition := &components.Definition{
+		Name: "platform-gateway",
+		Compose: &components.ComposeSpec{Env: map[string]string{
+			"PG_CONTROLLER_IMAGE": "gateway-controller:current",
+			"PG_RUNTIME_IMAGE":    "gateway-runtime:current",
+		}},
+		Config: &components.ConfigInjection{
+			BaseConfigPath: "gateway/configs/config.toml",
+			Versioned: map[string]components.ConfigProfile{
+				"1.1.0": {BaseConfigPath: "resources/1.1.0/config.toml"},
+			},
+		},
+	}
+	suite := &Resolved{Blocks: []ResolvedBlock{{
+		Name:       "gateway-core",
+		Components: []ResolvedComponent{{Def: definition}},
+	}}}
+
+	selected, err := (Selection{GatewayVersion: "1.1.0"}).Apply(suite)
+	require.NoError(t, err)
+	require.Equal(t, "resources/1.1.0/config.toml", selected.Blocks[0].Components[0].Def.Config.BaseConfigPath)
+	require.Equal(t, "gateway/configs/config.toml", definition.Config.BaseConfigPath)
+
+	_, err = (Selection{GatewayVersion: "1.2.0"}).Apply(suite)
+	require.ErrorContains(t, err, `no profile for version "1.2.0"`)
+}
+
 func TestGatewayVersionRunnerTags(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -1320,6 +1348,120 @@ func TestGatewayVersionSelectionFiltersRunnersAndReportsSkips(t *testing.T) {
 			require.Equal(t, []SkippedRunner{{Block: "gateway", Runner: tc.wantSkip, Reason: tc.wantReason}}, selected.SkippedRunners)
 		})
 	}
+}
+
+func TestGatewayDatabaseCompatibility(t *testing.T) {
+	constraint, err := parseGatewayVersionConstraint("gateway-version>=1.2.0")
+	require.NoError(t, err)
+	compatibility := GatewayDBCompatibility{components.SQLServer: constraint}
+	platformGateway := &components.Definition{
+		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"},
+	}
+
+	newSuite := func() *Resolved {
+		block := func(name string, db components.DBType) ResolvedBlock {
+			return ResolvedBlock{
+				Name: name, Source: "gateway-core", DB: db,
+				Components: []ResolvedComponent{{
+					Def: platformGateway, BuildFromSource: true, DB: db, DBCompatibility: compatibility,
+				}},
+				Runners: []Runner{{Name: "runner", Features: []string{"features/example.feature"}}},
+			}
+		}
+		return &Resolved{Blocks: []ResolvedBlock{
+			block("gateway-core/sqlite", components.SQLite),
+			block("gateway-core/sqlserver", components.SQLServer),
+		}}
+	}
+
+	t.Run("an older release skips only its unsupported database variant", func(t *testing.T) {
+		selected, err := (Selection{GatewayVersion: "1.1.0"}).Apply(newSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"gateway-core/sqlite"}, selected.BlockNames())
+		require.Equal(t, []SkippedBlock{{
+			Block:  "gateway-core/sqlserver",
+			Reason: "Gateway version 1.1.0 does not satisfy platform-gateway dbCompatibility for sqlserver (gateway-version>=1.2.0)",
+		}}, selected.SkippedBlocks)
+	})
+
+	t.Run("a supported release retains every variant", func(t *testing.T) {
+		selected, err := (Selection{GatewayVersion: "1.2.0"}).Apply(newSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"gateway-core/sqlite", "gateway-core/sqlserver"}, selected.BlockNames())
+		require.Empty(t, selected.SkippedBlocks)
+	})
+
+	t.Run("a source build retains every variant", func(t *testing.T) {
+		selected, err := Selection{}.Apply(newSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"gateway-core/sqlite", "gateway-core/sqlserver"}, selected.BlockNames())
+		require.Empty(t, selected.SkippedBlocks)
+	})
+
+	t.Run("an explicitly selected unsupported variant fails clearly", func(t *testing.T) {
+		_, err := (Selection{
+			GatewayVersion: "1.1.0",
+			Blocks:         []string{"gateway-core/sqlserver"},
+		}).Apply(newSuite())
+		require.ErrorContains(t, err, `selected block "gateway-core/sqlserver" is incompatible`)
+		require.ErrorContains(t, err, "Gateway version 1.1.0")
+	})
+}
+
+func TestGatewayDatabaseCompatibilityParsingAndValidation(t *testing.T) {
+	t.Run("parses a strict engine constraint", func(t *testing.T) {
+		var defaults ComponentDefaults
+		require.NoError(t, yaml.Unmarshal([]byte(`
+dbCompatibility:
+  sqlserver: "gateway-version>=1.2.0"
+`), &defaults))
+		require.Equal(t, "gateway-version>=1.2.0", defaults.DBCompatibility[components.SQLServer].String())
+	})
+
+	for _, tc := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "unknown engine",
+			src:  "dbCompatibility: {mysql: gateway-version>=1.2.0}",
+			want: `unknown database engine "mysql"`,
+		},
+		{
+			name: "malformed selector",
+			src:  "dbCompatibility: {sqlserver: gateway-version>=1.2}",
+			want: "must be a release SemVer",
+		},
+		{
+			name: "empty mapping",
+			src:  "dbCompatibility: {}",
+			want: "dbCompatibility is empty",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var defaults ComponentDefaults
+			err := yaml.Unmarshal([]byte(tc.src), &defaults)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+
+	t.Run("only platform gateway may declare a Gateway compatibility rule", func(t *testing.T) {
+		_, err := load(t, `
+suite: s
+defaults:
+  components:
+    gateway-controller:
+      db: sqlite
+      dbCompatibility:
+        sqlserver: "gateway-version>=1.2.0"
+blocks:
+  - name: b
+    components: [{name: gateway-controller}]
+    runners: [{name: r, features: [f.feature]}]
+`)
+		require.ErrorContains(t, err, "only platform-gateway supports Gateway database compatibility")
+	})
 }
 
 func TestGatewayVersionSelectionRejectsAnAllIncompatibleSelection(t *testing.T) {

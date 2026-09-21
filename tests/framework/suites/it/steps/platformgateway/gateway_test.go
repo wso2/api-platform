@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
 )
 
 func TestServiceUpstreamURLPreservesServiceBasePath(t *testing.T) {
@@ -55,6 +57,42 @@ func TestServiceUpstreamURLPreservesServiceBasePath(t *testing.T) {
 	require.Equal(t, "http://platform-gateway:9090/api/management/v1/secrets", got)
 }
 
+func TestAdminBasePathForVersion(t *testing.T) {
+	for _, tt := range []struct {
+		version string
+		want    string
+	}{
+		{version: "1.0.0", want: adminBasePathV11},
+		{version: "1.1.0", want: adminBasePathV11},
+		{version: "v1.1.0", want: adminBasePathV11},
+		{version: "1.2.0", want: adminBasePath},
+		{version: "1.2.0-SNAPSHOT", want: adminBasePath},
+		{version: "", want: adminBasePath},
+	} {
+		t.Run(tt.version, func(t *testing.T) {
+			require.Equal(t, tt.want, adminBasePathForVersion(tt.version))
+		})
+	}
+}
+
+func TestManagementBasePathForVersion(t *testing.T) {
+	for _, tt := range []struct {
+		version string
+		want    string
+	}{
+		{version: "1.0.0", want: managementBasePathV11},
+		{version: "1.1.0", want: managementBasePathV11},
+		{version: "v1.1.0", want: managementBasePathV11},
+		{version: "1.2.0", want: ManagementBasePath},
+		{version: "1.2.0-SNAPSHOT", want: ManagementBasePath},
+		{version: "", want: ManagementBasePath},
+	} {
+		t.Run(tt.version, func(t *testing.T) {
+			require.Equal(t, tt.want, ManagementBasePathForVersion(tt.version))
+		})
+	}
+}
+
 func TestConfigDumpContainsPolicy(t *testing.T) {
 	const routePath = "/orders/v1/test"
 
@@ -66,10 +104,32 @@ func TestConfigDumpContainsPolicy(t *testing.T) {
 		want       bool
 	}{
 		{
+			name:    "gateway 1.0 links a policy chain directly to its route key",
+			version: "1.0.0",
+			body: `{
+				"policy_chains":{"policy_chains":[
+					{"route_key":"GET|/orders/v1/test|localhost","policies":[{"name":"set-headers"}]}
+				]}
+			}`,
+			policyName: "set-headers",
+			want:       true,
+		},
+		{
 			name:    "gateway 1.2 links a policy chain directly to its route key",
 			version: "1.2.0",
 			body: `{
 				"route_metadata":{"routes":[{"route_key":"GET|/orders/v1/test|localhost"}]},
+				"policy_chains":{"policy_chains":[
+					{"route_key":"GET|/orders/v1/test|localhost","policies":[{"name":"set-headers"}]}
+				]}
+			}`,
+			policyName: "set-headers",
+			want:       true,
+		},
+		{
+			name:    "gateway 1.1 links a policy chain directly to its route key",
+			version: "1.1.0",
+			body: `{
 				"policy_chains":{"policy_chains":[
 					{"route_key":"GET|/orders/v1/test|localhost","policies":[{"name":"set-headers"}]}
 				]}
@@ -200,6 +260,205 @@ func TestGatewayMetadataAndParsingHelpers(t *testing.T) {
 	}
 }
 
+func TestGatewaySpecVersionForVersion(t *testing.T) {
+	require.Equal(t, gatewaySpecVersionV11, gatewaySpecVersionForVersion("1.0.0"))
+	require.Equal(t, gatewaySpecVersionV11, gatewaySpecVersionForVersion("1.1.0"))
+	require.Equal(t, gatewaySpecVersionV11, gatewaySpecVersionForVersion("v1.1.0"))
+	require.Equal(t, gatewaySpecVersion, gatewaySpecVersionForVersion("1.2.0"))
+	require.Equal(t, gatewaySpecVersion, gatewaySpecVersionForVersion("1.2.0-SNAPSHOT"))
+	require.Equal(t, gatewaySpecVersion, gatewaySpecVersionForVersion(""))
+}
+
+func TestLegacyRestAPIUpstreamDefinitionMovesBasePathIntoURLs(t *testing.T) {
+	definition := `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: sandbox-api
+spec:
+  upstreamDefinitions:
+    - name: sandbox-upstream
+      basePath: /sandbox
+      upstreams:
+        - url: http://testbench:3000
+        - url: http://testbench:3001/first
+`
+
+	got, err := legacyRestAPIUpstreamDefinition(definition)
+	require.NoError(t, err)
+	require.NotContains(t, got, "basePath:")
+	require.Contains(t, got, "url: http://testbench:3000/sandbox")
+	require.Contains(t, got, "url: http://testbench:3001/sandbox/first")
+}
+
+func TestUsesLegacyUpstreamPath(t *testing.T) {
+	for _, tt := range []struct {
+		version string
+		want    bool
+	}{
+		{version: "1.0.0", want: true},
+		{version: "v1.1.0", want: true},
+		{version: "1.1.1", want: false},
+		{version: "1.2.0", want: false},
+		{version: "", want: false},
+	} {
+		t.Run(tt.version, func(t *testing.T) {
+			require.Equal(t, tt.want, usesLegacyUpstreamPath(tt.version))
+		})
+	}
+}
+
+func TestLegacyLLMProviderPolicyDefinition(t *testing.T) {
+	const modernDefinition = `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: provider
+spec:
+  operationPolicies:
+    - name: set-headers
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              headers:
+                - name: x-custom-header
+                  value: test-value
+`
+
+	definition, err := legacyLLMPolicyDefinition(modernDefinition)
+	require.NoError(t, err)
+	require.Contains(t, definition, "policies:")
+	require.NotContains(t, definition, "operationPolicies:")
+	require.Contains(t, definition, "x-custom-header")
+
+	_, err = legacyLLMPolicyDefinition(strings.Replace(modernDefinition,
+		"version: v1", "version: v1\n      executionCondition: request.headers['x-test'] == 'enabled'", 1))
+	require.ErrorContains(t, err, "does not support spec.operationPolicies[].executionCondition")
+
+	_, err = legacyLLMPolicyDefinition(strings.Replace(modernDefinition,
+		"spec:\n", "spec:\n  policies: []\n", 1))
+	require.ErrorContains(t, err, "cannot set both spec.operationPolicies and spec.policies")
+}
+
+func TestLegacySemanticCacheDefinitionRemovesUnsupportedParameter(t *testing.T) {
+	definition := `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: cache
+spec:
+  operations:
+    - method: POST
+      path: /chat
+      policies:
+        - name: semantic-cache
+          version: v1
+          params:
+            similarityThreshold: 0.9
+            cacheUnauthenticated: true
+            jsonPath: $.messages[0].content
+        - name: set-headers
+          version: v1
+          params:
+            header: value
+`
+
+	got, err := legacySemanticCacheDefinition(definition)
+	require.NoError(t, err)
+	require.NotContains(t, got, "cacheUnauthenticated")
+	require.Contains(t, got, "similarityThreshold: 0.9")
+	require.Contains(t, got, "jsonPath: $.messages[0].content")
+	require.Contains(t, got, "name: set-headers")
+}
+
+func TestLegacySemanticCacheDefinitionPreservesDefinitionWithoutUnsupportedParameter(t *testing.T) {
+	definition := `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: cache
+spec:
+  operations:
+    - method: POST
+      path: /chat
+      policies:
+        - name: semantic-cache
+          version: v1
+          params:
+            similarityThreshold: 0.9
+`
+
+	got, err := legacySemanticCacheDefinition(definition)
+	require.NoError(t, err)
+	require.Equal(t, definition, got)
+}
+
+func TestLLMPolicyContractForVersion(t *testing.T) {
+	for _, tt := range []struct {
+		version string
+		want    string
+	}{
+		{version: "1.0.0", want: "spec.policies"},
+		{version: "v1.1.0", want: "spec.policies"},
+		{version: "1.1.1", want: "spec.operationPolicies"},
+		{version: "1.2.0", want: "spec.operationPolicies"},
+		{version: "invalid", want: "spec.operationPolicies"},
+	} {
+		t.Run(tt.version, func(t *testing.T) {
+			require.Equal(t, tt.want, llmPolicyFieldForVersion(tt.version))
+		})
+	}
+}
+
+func TestLegacyLLMPolicyDefinitionSupportsProviderAndProxy(t *testing.T) {
+	for _, kind := range []struct {
+		name string
+		want bool
+	}{
+		{name: "LLM provider", want: true},
+		{name: "LLM proxy", want: true},
+		{name: "REST API", want: false},
+	} {
+		t.Run(kind.name, func(t *testing.T) {
+			require.Equal(t, kind.want, usesLegacyLLMResource(kind.name, "1.1.0"))
+			require.False(t, usesLegacyLLMResource(kind.name, "1.2.0"))
+		})
+	}
+}
+
+func TestGatewayMCPUpstreamPathForVersion(t *testing.T) {
+	require.Empty(t, gatewayMCPUpstreamPathForVersion("1.0.0"))
+	require.Empty(t, gatewayMCPUpstreamPathForVersion("1.1.0"))
+	require.Empty(t, gatewayMCPUpstreamPathForVersion("v1.1.0"))
+	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.1.1"))
+	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.2.0"))
+	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.2.0-SNAPSHOT"))
+	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.1.-1"))
+	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("invalid"))
+	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion(""))
+}
+
+func TestGatewaySpecVersionExpandsFromScenarioContext(t *testing.T) {
+	ctx := tcontext.WithLocal(
+		tcontext.WithShared(context.Background(), tcontext.NewShared("block")),
+		tcontext.NewLocal("runner"),
+	)
+	require.NoError(t, tcontext.Set(ctx, keyGatewaySpecVersion, gatewaySpecVersionForVersion("1.1.0")))
+	actual, err := stepscommon.Expand(ctx, "${CTX:gatewaySpecVersion}")
+	require.NoError(t, err)
+	require.Equal(t, gatewaySpecVersionV11, actual)
+}
+
+func TestGatewayMCPUpstreamPathExpandsFromScenarioContext(t *testing.T) {
+	ctx := tcontext.WithLocal(
+		tcontext.WithShared(context.Background(), tcontext.NewShared("block")),
+		tcontext.NewLocal("runner"),
+	)
+	require.NoError(t, tcontext.Set(ctx, keyGatewayMCPUpstreamPath, gatewayMCPUpstreamPathForVersion("1.1.0")))
+	actual, err := stepscommon.Expand(ctx, "http://testbench:3009${CTX:gatewayMCPUpstreamPath}")
+	require.NoError(t, err)
+	require.Equal(t, "http://testbench:3009", actual)
+}
+
 func TestGatewayHTTPAndMCPParsing(t *testing.T) {
 	status, err := parseHTTPStatusLine("HTTP/1.1 408 Request Timeout\r\n")
 	require.NoError(t, err)
@@ -261,9 +520,14 @@ func TestAssertAPICreationSucceeded(t *testing.T) {
 			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
 		},
 		{
-			name:     "legacy status",
-			version:  "1.1.0",
+			name:     "pre-resource-status legacy response",
+			version:  "1.0.0",
 			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":"success"}`)},
+		},
+		{
+			name:     "1.1 resource status",
+			version:  "1.1.0",
+			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
 		},
 		{
 			name:     "missing resource status field",

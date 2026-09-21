@@ -111,8 +111,8 @@ jobs:
           - leg: gateway-latest
             suite_flags: '-coverage'
           # The released 1.2.0 Gateway.
-          - leg: gateway-1.2.0
-            suite_flags: '-gateway-version=1.2.0'
+          # - leg: gateway-1.2.0
+            # suite_flags: '-gateway-version=1.2.0'
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

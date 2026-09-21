@@ -1,4 +1,4 @@
-# AWS Bedrock Guardrail configuration required by Gateway 1.2.x.
+# AWS Bedrock Guardrail configuration required by legacy Gateway releases.
 awsbedrock_guardrail_region = "us-east-1"
 awsbedrock_guardrail_id = "test-guardrail-id"
 awsbedrock_guardrail_version = "DRAFT"

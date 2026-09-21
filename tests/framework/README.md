@@ -157,6 +157,23 @@ before Godog and is removed from the expression Godog receives; incompatible run
 as skipped. Use this only for a genuine Gateway release compatibility boundary. Keep versioned
 configuration in a dedicated block rather than changing a shared block's overlay.
 
+Database support boundaries belong in the suite default for `platform-gateway`, rather than in
+each matrix block. For example, Gateway 1.1.0 cannot run SQL Server while 1.2.0 and source builds
+can:
+
+```yaml
+defaults:
+  components:
+    platform-gateway:
+      db: sqlite
+      dbCompatibility:
+        sqlserver: "gateway-version>=1.2.0"
+```
+
+The selector uses the same strict Gateway-version syntax as runner tags. Incompatible matrix
+variants are reported as skipped before their topology boots. Explicitly selecting an incompatible
+variant, such as `-blocks gateway-core/sqlserver -gateway-version 1.1.0`, is a configuration error.
+
 ### Docker environment
 
 Nothing here configures docker. The container library reads the environment; on CI
