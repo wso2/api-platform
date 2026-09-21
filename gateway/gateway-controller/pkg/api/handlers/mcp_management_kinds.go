@@ -30,6 +30,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -86,7 +87,7 @@ type kindOps struct {
 	List func() ([]listedResource, error)
 
 	// Keys is non-nil only for kinds that bear API keys (RestApi, LlmProvider,
-	// LlmProxy). The four api-key tools refuse any kind whose block is nil,
+	// LlmProxy, Agent). The four api-key tools refuse any kind whose block is nil,
 	// which is also what keeps a nil dereference impossible when the api-key
 	// service was never wired.
 	Keys *keyOps
@@ -109,12 +110,12 @@ type keyOps struct {
 }
 
 // apiKeyOps builds the api-key adapter for one kind. APIKeyService takes Kind as
-// a plain string, so all three key-bearing kinds are this one parameterised
+// a plain string, so all four key-bearing kinds are this one parameterised
 // block — there is no per-kind api-key code.
 //
 // Kind is always passed explicitly. The REST handlers omit it on three of five
 // operations and lean on the service defaulting to RestApi; that implicit
-// contract is not inherited here, and it would be wrong for the other two kinds.
+// contract is not inherited here, and it would be wrong for the other three kinds.
 func (h *McpHandler) apiKeyOps(kind string) *keyOps {
 	if h.apiKeyService == nil {
 		return nil
@@ -243,6 +244,7 @@ func (h *McpHandler) keyBearingKinds() []string {
 // "rest_api", "REST-API" and "RestApi" all settle on one value before reaching
 // any service or database query.
 var kindAliases = map[string]string{
+	"agent":               models.KindAgent,
 	"restapi":             models.KindRestApi,
 	"api":                 models.KindRestApi,
 	"mcp":                 models.KindMcp,
@@ -321,6 +323,7 @@ func readManifestEnvelope(manifest []byte) (manifestEnvelope, error) {
 func (h *McpHandler) buildKindRegistry() map[string]*kindOps {
 	registry := make(map[string]*kindOps)
 	for _, ops := range []*kindOps{
+		h.agentOps(),
 		h.restAPIOps(),
 		h.mcpProxyOps(),
 		h.llmProxyOps(),
@@ -608,8 +611,7 @@ func (h *McpHandler) llmProviderOps() *kindOps {
 			if err != nil {
 				return nil, err
 			}
-			return buildResourceResponseFromStored(
-				result.StoredConfig.SourceConfiguration, result.StoredConfig), nil
+			return h.llmProviderBody(log, result.StoredConfig)
 		},
 
 		Update: func(handle string, manifest []byte, correlationID string, log *slog.Logger) (any, error) {
@@ -623,8 +625,7 @@ func (h *McpHandler) llmProviderOps() *kindOps {
 			if err != nil {
 				return nil, err
 			}
-			return buildResourceResponseFromStored(
-				result.StoredConfig.SourceConfiguration, result.StoredConfig), nil
+			return h.llmProviderBody(log, result.StoredConfig)
 		},
 
 		Delete: func(handle, correlationID string, log *slog.Logger) error {
@@ -641,15 +642,18 @@ func (h *McpHandler) llmProviderOps() *kindOps {
 			if err != nil {
 				return nil, err
 			}
-			return buildResourceResponseFromStored(cfg.SourceConfiguration, cfg), nil
+			return h.llmProviderBody(h.logger, cfg)
 		},
 
 		List: func() ([]listedResource, error) {
 			configs := h.llmDeploymentService.ListLLMProviders(api.ListLLMProvidersParams{})
 			rows := make([]listedResource, 0, len(configs))
 			for _, cfg := range configs {
-				rows = append(rows, storedConfigRow(cfg,
-					buildResourceResponseFromStored(cfg.SourceConfiguration, cfg)))
+				body, err := h.llmProviderBody(h.logger, cfg)
+				if err != nil {
+					return nil, err
+				}
+				rows = append(rows, storedConfigRow(cfg, body))
 			}
 			return rows, nil
 		},
@@ -716,6 +720,82 @@ func (h *McpHandler) llmProviderTemplateOps() *kindOps {
 					Version:     derefString(tmpl.Configuration.Spec.Version),
 					Resource:    buildTemplateResourceResponse(tmpl),
 				})
+			}
+			return rows, nil
+		},
+	}
+}
+
+// agentOps defines the MCP operations for Agent (A2A) configurations.
+// Agent is routable: it is deployed/undeployed via wso2_apip_gw_deploy_api /
+// wso2_apip_gw_undeploy_api. It supports API keys like RestApi and LlmProvider do.
+func (h *McpHandler) agentOps() *kindOps {
+	return &kindOps{
+		Kind:       models.KindAgent,
+		Routable:   true,
+		Collection: "/agents",
+		Keys:       h.apiKeyOps(models.KindAgent),
+
+		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
+			result, err := h.agentService.Create(agent.CreateParams{
+				Body:          manifest,
+				ContentType:   mcpManifestContentType,
+				Origin:        models.OriginGatewayAPI,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return h.agentBody(log, result.StoredConfig)
+		},
+
+		Update: func(handle string, manifest []byte, correlationID string, log *slog.Logger) (any, error) {
+			result, err := h.agentService.Update(agent.UpdateParams{
+				Handle:        handle,
+				Body:          manifest,
+				ContentType:   mcpManifestContentType,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return h.agentBody(log, result.Config)
+		},
+
+		Delete: func(handle, correlationID string, log *slog.Logger) error {
+			_, err := h.agentService.Delete(agent.DeleteParams{
+				Handle:        handle,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+
+		Get: func(handle string) (any, error) {
+			result, err := h.agentService.GetByHandle(handle)
+			if err != nil {
+				return nil, err
+			}
+			return h.agentBody(h.logger, result.Config)
+		},
+
+		List: func() ([]listedResource, error) {
+			result, err := h.agentService.List(api.ListAgentsParams{})
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]listedResource, 0, len(result.Items))
+			for _, cfg := range result.Items {
+				body, err := h.agentBody(h.logger, cfg)
+				if err != nil {
+					return nil, err
+				}
+				rows = append(rows, storedConfigRow(cfg, body))
 			}
 			return rows, nil
 		},
@@ -828,6 +908,28 @@ func (h *McpHandler) llmProxyBody(log *slog.Logger, cfg *models.StoredConfig) (a
 		return nil, fmt.Errorf("failed to read stored LLM proxy configuration")
 	}
 	return buildResourceResponseFromStored(proxy, cfg), nil
+}
+
+// llmProviderBody is the LLM provider counterpart of mcpProxyBody.
+func (h *McpHandler) llmProviderBody(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
+	prov, err := rematerializeLLMProviderConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stored LLM provider configuration")
+	}
+	return buildResourceResponseFromStored(prov, cfg), nil
+}
+
+// agentBody is the Agent counterpart of mcpProxyBody. It mirrors the REST
+// handler's buildAgentResponse: the upstream credential is redacted
+func (h *McpHandler) agentBody(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
+	agentConfig, err := rematerializeAgentConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stored agent configuration")
+	}
+	if resolved, err := cfg.GetContext(); err == nil && resolved != "" {
+		agentConfig.Spec.Context = &resolved
+	}
+	return buildResourceResponseFromStored(agentConfig, cfg), nil
 }
 
 // notifyUndeploy forwards a delete to the control plane exactly as the
