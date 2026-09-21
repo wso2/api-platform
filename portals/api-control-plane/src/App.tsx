@@ -80,8 +80,8 @@ export type AppProps = {
 export default function App({ brandLogo, extensions = [] }: AppProps) {
   return (
     <I18nProvider>
-      <BrandLogoProvider brandLogo={brandLogo}>
-        <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
+      <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
+        <BrandLogoProvider brandLogo={brandLogo}>
           <NotificationProvider>
             <AppQueryProvider>
               <ErrorBoundary>
@@ -96,8 +96,8 @@ export default function App({ brandLogo, extensions = [] }: AppProps) {
               </ErrorBoundary>
             </AppQueryProvider>
           </NotificationProvider>
-        </OxygenUIThemeProvider>
-      </BrandLogoProvider>
+        </BrandLogoProvider>
+      </OxygenUIThemeProvider>
     </I18nProvider>
   );
 }

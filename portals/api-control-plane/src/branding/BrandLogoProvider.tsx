@@ -18,8 +18,8 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
-import onPremLogoDark from '@/assets/icons/logos/onprem/apiplatform_white.svg';
-import onPremLogoLight from '@/assets/icons/logos/onprem/apiplatform_black.svg';
+import onPremLogoDark from '@/assets/icons/logos/apiplatform_white.svg';
+import onPremLogoLight from '@/assets/icons/logos/apiplatform_black.svg';
 
 /**
  * Brand logo sources per color scheme, in the shape `ColorSchemeImage`'s `src`
