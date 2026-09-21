@@ -265,7 +265,7 @@ var ValidThrottleLimitUnits = map[string]bool{
 const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
 
 // API document type and handle constants for the singleton doc types
-// Currenlty only the OpenAPI definition is a singleton doc type
+// Currently only the OpenAPI definition is a singleton doc type
 const (
 	DocumentTypeDefinition   = "DEFINITION"
 	DocumentHandleDefinition = "api-definition"

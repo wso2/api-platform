@@ -83,7 +83,7 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 		})
 		if handleErr != nil {
 			s.slogger.Error("Failed to generate document handle", "displayName", doc.DisplayName, "error", handleErr)
-			return "", apperror.Internal.Wrap(handleErr, "failed to generate document handle")
+			return "", apperror.Internal.Wrap(handleErr).WithLogMessage("failed to generate document handle")
 		}
 		doc.Handle = handle
 	}
@@ -95,7 +95,6 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 
 	if err := s.auditRepo.Record("CREATE", doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.CreatedBy); err != nil {
 		s.slogger.Error("Failed to record audit entry for document create", "artifactUUID", doc.ArtifactUUID, "error", err)
-		return "", err
 	}
 	return doc.Handle, nil
 }
@@ -113,7 +112,7 @@ func (s *APIDocumentService) GetDocument(artifactUUID, orgId string) (*dto.APIDo
 	}
 
 	if doc == nil {
-		return nil, apperror.NotFound.New("API definition not found")
+		return nil, apperror.NotFound.New()
 	}
 
 	return &dto.APIDocumentContent{
@@ -166,7 +165,7 @@ func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest, orgId s
 			})
 			if handleErr != nil {
 				s.slogger.Error("Failed to generate document handle", "displayName", doc.DisplayName, "error", handleErr)
-				return apperror.Internal.Wrap(handleErr, "failed to generate document handle")
+				return apperror.Internal.Wrap(handleErr).WithLogMessage("failed to generate document handle")
 			}
 			doc.Handle = handle
 		}
@@ -182,9 +181,6 @@ func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest, orgId s
 		action = "UPDATE"
 	}
 	if err := s.auditRepo.Record(action, doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.UpdatedBy); err != nil {
-		// Log but do not return: the document is already committed. Returning here
-		// would trigger the handler's operation rollback without un-committing the
-		// document, leaving operations and spec inconsistent.
 		s.slogger.Error("Failed to record audit entry for document upsert", "artifactUUID", doc.ArtifactUUID, "error", err)
 	}
 	return nil

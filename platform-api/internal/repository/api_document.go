@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	// "github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -42,7 +41,6 @@ func NewDocumentRepo(db *database.DB) DocumentRepository {
 
 // CreateDocument inserts a new document row.
 func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
-
 	if doc.ID == "" {
 		doc.ID = uuid.New().String()
 	}
@@ -114,10 +112,6 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 }
 
 // UpsertDocument inserts or updates a document for the given (artifact_uuid, handle) pair.
-// It uses an update-first strategy to avoid a TOCTOU race:
-//  1. Attempt an UPDATE. If it touches a row, we're done.
-//  2. If no row existed, INSERT.
-//  3. If the INSERT loses a concurrent race (unique-constraint violation), retry the UPDATE.
 func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	updateQuery := r.db.Rebind(`

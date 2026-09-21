@@ -409,7 +409,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		Content:		  specContent,
 	}
 
-	_, docErr := h.apiDocumentService.CreateDocument(docReq,orgId, createdBy, artifactUUID)
+	_, docErr := h.apiDocumentService.CreateDocument(docReq, orgId, createdBy, artifactUUID)
 	if docErr != nil {
 		h.slogger.Error("Failed to persist OpenAPI spec document; rolling back API", 
 			"apiId", artifactUUID, "error", docErr)
@@ -417,7 +417,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 			h.slogger.Error("Rollback after document creation failure also failed", 
 				"apiId", artifactUUID, "error", rollbackErr)
 		}
-		return apperror.Internal.Wrap(docErr, "failed to persist API specification")
+		return apperror.Internal.Wrap(docErr).WithLogMessage("failed to persist API specification")
 	}
 
 	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
@@ -506,6 +506,12 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return serviceError(err, "failed to fetch API "+restApiId+" to sync operations from spec")
 	}
 
+	// Resolve artifact UUID
+	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to resolve API "+restApiId+" in org "+orgId)
+	}
+
 	operationsUpdated := false
 	if existingAPI.ReadOnly != nil && *existingAPI.ReadOnly {
 		// Read-only API: validate the spec but do not update operations.
@@ -522,19 +528,15 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		if err != nil {
 			return err
 		}
-		updatedAPI := *existingAPI
-		updatedAPI.Operations = &syncedOps
-		_, err = h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy)
-		if err != nil {
-			return serviceError(err, "failed to update operations for API "+restApiId+" after spec change")
+		if len(syncedOps) > 0 {
+			updatedAPI := *existingAPI
+			updatedAPI.Operations = &syncedOps
+			_, err = h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy)
+			if err != nil {
+				return serviceError(err, "failed to update operations for API "+restApiId+" after spec change")
+			}
+			operationsUpdated = true
 		}
-		operationsUpdated = true
-	}
-
-	// Resolve artifact UUID
-	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
-	if err != nil {
-		return serviceError(err, "failed to resolve API "+restApiId+" in org "+orgId)
 	}
 
 	// Update document
