@@ -1877,11 +1877,17 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		require.True(t, ok, "virtual host %q missing gateway-ready route", vh.Name)
 		assert.Equal(t, constants.GatewayReadyPath, readyRoute.GetMatch().GetPath())
 		assert.Equal(t, uint32(200), readyRoute.GetDirectResponse().GetStatus())
+		require.NotNil(t, readyRoute.GetTracing(), "gateway-ready must have a route-level tracing override")
+		require.NotNil(t, readyRoute.GetTracing().GetOverallSampling(), "gateway-ready must override overall sampling")
+		assert.Equal(t, uint32(0), readyRoute.GetTracing().GetOverallSampling().GetNumerator(), "gateway-ready tracing must be disabled")
 
 		healthyRoute, ok := byName["gateway-healthy"]
 		require.True(t, ok, "virtual host %q missing gateway-healthy route", vh.Name)
 		assert.Equal(t, constants.GatewayHealthyPath, healthyRoute.GetMatch().GetPath())
 		assert.Equal(t, uint32(200), healthyRoute.GetDirectResponse().GetStatus())
+		require.NotNil(t, healthyRoute.GetTracing(), "gateway-healthy must have a route-level tracing override")
+		require.NotNil(t, healthyRoute.GetTracing().GetOverallSampling(), "gateway-healthy must override overall sampling")
+		assert.Equal(t, uint32(0), healthyRoute.GetTracing().GetOverallSampling().GetNumerator(), "gateway-healthy tracing must be disabled")
 
 		require.NotEqual(t, -1, catchAllIdx, "virtual host %q missing no-api-found catch-all", vh.Name)
 		assert.Less(t, readyIdx, catchAllIdx,
@@ -2330,6 +2336,38 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		assert.NotNil(t, socketAddr)
 		assert.Equal(t, uint32(9099), socketAddr.GetPortValue())
 	})
+}
+
+func TestTranslator_CreateFileAccessLog_WithPathFiltering(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs = config.AccessLogsConfig{
+		Enabled:    true,
+		Format:     "text",
+		TextFormat: "[rtr] %REQ(:METHOD)% %REQ(:PATH)%\n",
+	}
+	cfg := testConfig()
+	cfg.Collector.IgnorePathPrefixes = []string{"/health"}
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createFileAccessLog()
+	require.NoError(t, err)
+	require.NotNil(t, accessLog)
+	require.NotNil(t, accessLog.Filter, "stdout access log must use the shared path filter")
+
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "gateway health-check path must be suppressed from stdout access logs")
+
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path":                 "/upstream",
+		envoyOriginalPathHeader: "/health/live",
+	}), "configured ignore_path_prefix must be suppressed from stdout access logs")
+
+	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path":                 "/orders",
+		envoyOriginalPathHeader: "/orders",
+	}), "non-ignored request must still be logged")
 }
 
 func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
