@@ -383,6 +383,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
+	llmProviderDeploymentService.SetSecretService(secretService)
 	llmProxyService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)

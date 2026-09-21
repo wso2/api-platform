@@ -32,8 +32,14 @@ export type GatewayRowProps = {
   /** Used only to label the scope of this gateway's drawers, e.g. "Development · EU Gateway". */
   environmentName: string;
   busy: boolean;
-  onRetry: () => void;
-  /** Puts a suspended deployment back on the gateway, unchanged. */
+  /**
+   * Whether this artifact's deployment has a backend URL of its own to show. An
+   * LLM provider's upstream belongs to the provider rather than to the deployment,
+   * so there is nothing per-gateway to read and the row leaves it out instead of
+   * offering an empty field.
+   */
+  showEndpointUrl?: boolean;
+  /** Stops what this gateway is serving. */
   onStop: () => void;
 };
 
@@ -41,7 +47,7 @@ const GatewayRow: FC<GatewayRowProps> = ({
   gateway,
   environmentName,
   busy,
-  onRetry,
+  showEndpointUrl = true,
   onStop,
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -49,29 +55,21 @@ const GatewayRow: FC<GatewayRowProps> = ({
   const tone = gatewayStatusTone(gateway.status);
   const scopeLabel = `${environmentName} · ${gateway.name}`;
 
-  // What the one action button does depends on what the gateway is doing:
+  // Stopping is the only thing a gateway row does. Getting an artifact back onto a
+  // gateway — after a failure or after being stopped — is a deploy, and a deploy goes
+  // through the dialog, or through a promotion from the environment before this one.
+  // A row-level retry looked like a third way to ship something and was not: it put
+  // back whatever that gateway last held, which is the one build the environment may
+  // since have moved off.
   //
-  //  - failed — deploy its build again, which makes a new deployment;
-  //  - serving — stop it.
-  //
-  // A stopped gateway offers nothing here. Putting one back is a deploy, which
-  // goes through the deploy dialog so it joins the build the environment is on —
-  // reviving its old deployment from this row would put that old build back
-  // while the rest of the environment had moved on.
-  //
-  // Nothing to do while a deployment is still settling, or where there is none.
-  const action: 'retry' | 'stop' = gateway.status === 'FAILED' ? 'retry' : 'stop';
-  const actionLabel = action === 'stop' ? 'Stop deployment' : 'Retry';
+  // Nothing to stop while a deployment is still settling, or where there is none.
   const actionDisabled =
     busy ||
     gateway.status === 'NOT_DEPLOYED' ||
     gateway.status === 'UNDEPLOYED' ||
     gateway.status === 'DEPLOYING' ||
     gateway.status === 'UNDEPLOYING' ||
-    // Retrying re-deploys the build, so it needs no deployment; stopping acts on
-    // the deployment itself.
-    (action !== 'retry' && !gateway.deploymentId);
-  const handleActionClick = action === 'retry' ? onRetry : onStop;
+    !gateway.deploymentId;
 
   return (
     <Card>
@@ -133,22 +131,24 @@ const GatewayRow: FC<GatewayRowProps> = ({
                   </Box>
                 ) : null}
 
-                <ActionRow
-                  label="Endpoint URL"
-                  icon={<Eye size={14} />}
-                  onClick={() => setEndpointUrlOpen(true)}
-                />
+                {showEndpointUrl ? (
+                  <ActionRow
+                    label="Endpoint URL"
+                    icon={<Eye size={14} />}
+                    onClick={() => setEndpointUrlOpen(true)}
+                  />
+                ) : null}
               </>
             ) : null}
 
             <Button
               fullWidth
               variant="outlined"
-              color={action === 'stop' ? 'error' : 'primary'}
+              color="error"
               disabled={actionDisabled}
-              onClick={handleActionClick}
+              onClick={onStop}
             >
-              {actionLabel}
+              Stop deployment
             </Button>
           </Box>
         </Collapse>
