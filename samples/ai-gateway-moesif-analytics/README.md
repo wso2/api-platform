@@ -73,8 +73,7 @@ what makes the cost comparison worth looking at.
 ./load.sh
 ```
 
-Repeats a fixed ten-request cycle for 60 seconds, so the ratios are identical on
-every run:
+Repeats a fixed ten-request cycle for 60 seconds:
 
 | Requests | Proxy | Outcome |
 |----------|-------|---------|
@@ -85,8 +84,8 @@ every run:
 
 Pass a duration in seconds to change the run length: `./load.sh <seconds>`.
 
-It prints the token totals per model when it finishes. Moesif should report the
-same numbers. Open <https://www.moesif.com> to compare.
+It prints the token totals per model when it finishes. Open
+<https://www.moesif.com> to compare, selecting the time range you want.
 
 ## What to look for in Moesif
 
@@ -98,7 +97,7 @@ a run:
 
 | Panel | What this sample puts in it |
 |-------|-----------------------------|
-| Token Usage, Estimated Cost | the run totals, which should match what `./load.sh` printed |
+| Token Usage, Estimated Cost | token totals and estimated spend for the selected time range |
 | AI API Details | token usage and request count, per proxy |
 | Traffic Share by Provider and Model | how requests divide between `gpt-4o-mini` and `gpt-4.1` |
 | Cost Trend per Provider | spend accumulating across runs |

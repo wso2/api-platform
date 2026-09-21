@@ -109,6 +109,8 @@ assert_tokens() {
 
   if [[ -z "${total}" ]]; then
     fail "${label}: no usage.total_tokens in the response. Gateway returned: ${body:0:200}"
+  elif [[ ! "${total}" =~ ^[0-9]+$ ]]; then
+    fail "${label}: usage.total_tokens was not a number: ${total}"
   elif (( total <= 0 )); then
     fail "${label}: usage.total_tokens was ${total}."
   elif [[ "${model}" != "${expected_model}" ]]; then

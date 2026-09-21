@@ -92,7 +92,7 @@ register_api_key() {
     -X POST "${GATEWAY_MGMT_URL}/llm-proxies/${proxy_name}/api-keys" \
     -H "Content-Type: application/json" \
     -H "${AUTH_HEADER}" \
-    -d "{\"apiKey\": \"${api_key}\"}")
+    -d "$(jq -nc --arg k "${api_key}" '{apiKey: $k}')")
   detail=$(cat "${body}"); rm -f "${body}"
 
   case "${status}" in
