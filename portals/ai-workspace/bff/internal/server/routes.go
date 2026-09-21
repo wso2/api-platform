@@ -73,6 +73,9 @@ func (s *Server) routes() http.Handler {
 	if s.cloudProxy != nil {
 		mux.HandleFunc(s.path(paths.Proxy)+"/cloud/", s.handleCloudProxy)
 	}
+	if s.billingProxy != nil {
+		mux.HandleFunc(s.path(paths.Proxy)+"/billing/", s.handleBillingProxy)
+	}
 	mux.HandleFunc(s.path(paths.Proxy)+"/", s.handleProxy)
 
 	// SPA static files + client-side routing fallback (must be last). The prefix is

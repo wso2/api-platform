@@ -84,6 +84,7 @@ import { LLMProvidersProvider } from './contexts/llmProvider';
 import React, { useRef, useState, type ReactNode } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
+import { ProductActivation } from './hooks/ProductActivation';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
 import {
@@ -266,6 +267,7 @@ function ProtectedAppShell() {
 
   return (
     <PostSignInInit>
+      <ProductActivation />
       <RoleProvider>
         <AIWorkspaceSnackbarProvider>
           <AppShellProvider userName={userName} userEmail={userEmail}>
