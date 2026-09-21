@@ -11,15 +11,26 @@ import { useMemo, useState } from 'react';
 import { PageContent, Typography } from '@wso2/oxygen-ui';
 
 import type { CloudHostPort } from './hostPort';
-import ManagedPortalDetail from './ManagedPortalDetail';
+import ManagedPortalCreate from './ManagedPortalCreate';
+import ManagedPortalEdit from './ManagedPortalEdit';
 import ManagedPortalsList from './ManagedPortalsList';
 import { PortalFeatureProvider } from './portContext';
 import { createRealPortalPort, resolveApiBase } from './realPort';
+import type { ManagedPortal } from './types';
 
 export type ManagedPortalsPageProps = {
   /** Host capabilities supplied by the mounting console; kept as a prop so the feature stays host-agnostic. */
   port: CloudHostPort;
 };
+
+/**
+ * Sub-view state. Kept as a discriminated union so `editingPortal` cannot be set
+ * without an edit view, and vice versa - no react-router in this feature package.
+ */
+type PageView =
+  | { kind: 'list' }
+  | { kind: 'create' }
+  | { kind: 'edit'; portal: ManagedPortal };
 
 export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
   // Fail closed when the platform-api base is missing; tests / storybook build the mock port directly.
@@ -28,15 +39,14 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
     return base ? createRealPortalPort(base, port.orgHandle) : null;
   }, [port.orgHandle]);
 
-  // Local state (no URL param) keeps react-router out of this feature package; refresh loses the selection.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<PageView>({ kind: 'list' });
 
   if (!portalPort) {
     return (
       <PageContent fullWidth>
-        <Typography variant="h5">API Portals</Typography>
+        <Typography variant="h5">Portals</Typography>
         <Typography color="error" sx={{ mt: 2 }}>
-          API Portals is not available: platform-api base URL is not
+          Portals is not available: platform-api base URL is not
           configured. Set window.__RUNTIME_CONFIG__.platformApiBaseUrl (or
           window.config.platformApiBaseUrl) on the host to enable this feature.
         </Typography>
@@ -44,12 +54,19 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
     );
   }
 
+  const goToList = () => setView({ kind: 'list' });
+
   return (
     <PortalFeatureProvider value={{ port: portalPort, host: port }}>
-      {selectedId ? (
-        <ManagedPortalDetail id={selectedId} onBack={() => setSelectedId(null)} />
+      {view.kind === 'create' ? (
+        <ManagedPortalCreate onCancel={goToList} onCreated={goToList} />
+      ) : view.kind === 'edit' ? (
+        <ManagedPortalEdit portal={view.portal} onCancel={goToList} onSaved={goToList} />
       ) : (
-        <ManagedPortalsList onSelect={setSelectedId} />
+        <ManagedPortalsList
+          onCreate={() => setView({ kind: 'create' })}
+          onEdit={(portal) => setView({ kind: 'edit', portal })}
+        />
       )}
     </PortalFeatureProvider>
   );
