@@ -117,6 +117,8 @@ describe('extractOperations', () => {
     ).toEqual([
       { name: 'listOrders', request: { method: 'GET', path: '/orders' } },
       { name: 'Place an order', request: { method: 'POST', path: '/orders' } },
+      { name: 'headOrders', request: { method: 'HEAD', path: '/orders' } },
+      { name: 'OPTIONS /orders', request: { method: 'OPTIONS', path: '/orders' } },
     ]);
   });
 

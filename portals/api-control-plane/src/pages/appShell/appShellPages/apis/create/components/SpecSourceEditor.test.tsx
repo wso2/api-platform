@@ -70,11 +70,11 @@ const openEditor = async (onSave = vi.fn(), spec: Record<string, unknown> = VALI
 };
 
 describe('SpecSourceEditor', () => {
-  it('adopts an edited definition, with the warnings its own re-check raised', async () => {
+  it('adopts an edited definition and passes the spec and raw text to the caller', async () => {
     const { onSave, user } = await openEditor();
 
-    // Same document, minus the servers block — still importable, but the
-    // re-check has something new to say about it.
+    // Same document, minus the servers block — still importable; the component
+    // passes the parsed spec and the raw text string through without blocking.
     await retype(
       JSON.stringify({
         ...VALID_SPEC,
@@ -85,9 +85,9 @@ describe('SpecSourceEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(onSave).toHaveBeenCalledTimes(1);
-    const [spec, warnings] = onSave.mock.calls[0];
+    const [spec, rawText] = onSave.mock.calls[0];
     expect(spec.info).toEqual({ title: 'Renamed API', version: '2.0.0' });
-    expect(warnings.map((warning: { code: string }) => warning.code)).toContain('noServers');
+    expect(typeof rawText).toBe('string');
 
     // Saving closes the editor and hands the document back to the pane.
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
@@ -105,13 +105,14 @@ describe('SpecSourceEditor', () => {
     expect(await editor()).toBeInTheDocument();
   });
 
-  it('refuses to save a document the wizard could not use, naming what is wrong', async () => {
-    const { onSave, user } = await openEditor();
-
-    // Parses fine, but declares no operation — an error, not a warning.
-    await retype(
-      JSON.stringify({ openapi: '3.0.3', info: { title: 'A', version: '1' }, paths: {} }),
+  it('refuses to save when backend validation fails, naming what is wrong', async () => {
+    const onBeforeSave = vi.fn().mockResolvedValue(['declares no GET, POST, PUT, PATCH or DELETE operation']);
+    const onSave = vi.fn();
+    const { user } = renderWithProviders(
+      <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSave} spec={VALID_SPEC} />,
     );
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(

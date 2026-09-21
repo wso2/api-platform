@@ -20,7 +20,7 @@
 export const PLACEHOLDER_UPSTREAM_URL = 'https://example.com';
 
 /**
- * The definition "design from scratch" starts with a wildcard resource and
+ * The definition "start from scratch" starts with a wildcard resource and
  * the four operations most APIs begin with. It is a document the
  * user goes on to edit (by hand, or by asking the AI to refine it), so its
  * text is content rather than UI copy and deliberately does not go through

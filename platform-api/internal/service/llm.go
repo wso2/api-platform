@@ -3452,10 +3452,10 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 }
 
 // openAPISpecFetchLimit returns the configured maximum size for a template OpenAPI spec
-// fetch, or 0 (which the fetcher treats as its safe built-in default) when unset.
+// fetch, falling back to DefaultOpenAPISpecMaxBytes when unset.
 func openAPISpecFetchLimit(cfg *config.Server) int64 {
 	if cfg == nil {
-		return 0
+		return constants.DefaultOpenAPISpecMaxBytes
 	}
 	return cfg.OpenAPISpecMaxFetchBytes
 }
