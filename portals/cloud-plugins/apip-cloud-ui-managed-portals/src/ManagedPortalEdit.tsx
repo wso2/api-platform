@@ -54,10 +54,15 @@ export default function ManagedPortalEdit({ portalId, onCancel, onSaved }: Manag
     );
   }
 
+  // Error and not-found are terminal for this view; without the back button the
+  // user has no way back to the list except reloading the whole feature.
   if (error) {
     return (
       <PageContent fullWidth>
-        <Typography variant="body2" color="error">
+        <Button size="small" startIcon={<ChevronLeft size={18} />} onClick={onCancel}>
+          Back to list
+        </Button>
+        <Typography variant="body2" color="error" sx={{ mt: 2 }}>
           {error.message}
         </Typography>
       </PageContent>
@@ -67,7 +72,10 @@ export default function ManagedPortalEdit({ portalId, onCancel, onSaved }: Manag
   if (!portal) {
     return (
       <PageContent fullWidth>
-        <Typography variant="body2" color="text.secondary">
+        <Button size="small" startIcon={<ChevronLeft size={18} />} onClick={onCancel}>
+          Back to list
+        </Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
           Portal not found.
         </Typography>
       </PageContent>
