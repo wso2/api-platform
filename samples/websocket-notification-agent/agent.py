@@ -48,17 +48,23 @@ async def handle_notification(notification, tools_session, gemini_tools, gemini)
 
     print(f"[agent] {symbol} {change_percent}% at ${price} -- threshold crossed, asking Gemini...")
 
-    response = await gemini.aio.models.generate_content(
-        model=MODEL,
-        contents=(
-            f"A stock notification just fired.\nSymbol: {symbol}\n"
-            f"Price: ${price}\nChange: {change_percent}%\n\n"
-            "Decide which single tool to call to handle it."
-        ),
-        config=genai_types.GenerateContentConfig(
-            tools=[genai_types.Tool(function_declarations=gemini_tools)]
-        ),
-    )
+    try:
+        response = await gemini.aio.models.generate_content(
+            model=MODEL,
+            contents=(
+                f"A stock notification just fired.\nSymbol: {symbol}\n"
+                f"Price: ${price}\nChange: {change_percent}%\n\n"
+                "Decide which single tool to call to handle it."
+            ),
+            config=genai_types.GenerateContentConfig(
+                tools=[genai_types.Tool(function_declarations=gemini_tools)]
+            ),
+        )
+    except Exception as err:
+        # A busy or slow model shouldn't end the run. Skip this tick and
+        # carry on with the next one.
+        print(f"[agent] LLM call failed, skipping this tick: {type(err).__name__}")
+        return
 
     for part in response.candidates[0].content.parts:
         if not part.function_call:
