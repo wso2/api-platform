@@ -191,6 +191,9 @@
   "api.create.defineApi.scratch.endpoint.preview.title": {
     "defaultMessage": "Ready to connect"
   },
+  "api.create.defineApi.scratch.endpoint.sampleUrl": {
+    "defaultMessage": "Try with Sample URL"
+  },
   "api.create.defineApi.scratch.title": {
     "defaultMessage": "Start from scratch"
   },
@@ -1057,8 +1060,35 @@
     "defaultMessage": "2 days ago",
     "description": "Temporary relative update time for demo document data."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.close": {
+    "defaultMessage": "Close endpoint editor"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.drawerTitle": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.edit": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointLabel": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
+    "defaultMessage": "Enter a valid endpoint URL."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
+    "defaultMessage": "Save"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saveError": {
+    "defaultMessage": "Unable to update the backend endpoint."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saved": {
+    "defaultMessage": "Backend endpoint updated."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.title": {
     "defaultMessage": "Endpoints"
