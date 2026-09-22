@@ -28,6 +28,17 @@ import (
 var (
 	// ErrNotFound is returned when an Agent is not found.
 	ErrNotFound = errors.New("agent not found")
+
+	// ErrDeploymentIDMismatch is returned when an undeploy names a deployment
+	// other than the one the stored Agent belongs to. The event describes a
+	// deployment this gateway never applied, so acting on it would undeploy the
+	// wrong revision.
+	ErrDeploymentIDMismatch = errors.New("agent deployment ID mismatch")
+
+	// ErrUndeployStale is returned when an undeploy loses the timestamp-guarded
+	// upsert to a newer write. Nothing was persisted and no event was published,
+	// so the caller must not acknowledge it as applied.
+	ErrUndeployStale = errors.New("agent undeploy is stale")
 )
 
 // ValidationError wraps configuration validation errors.
