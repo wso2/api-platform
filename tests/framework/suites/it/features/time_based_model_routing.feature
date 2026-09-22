@@ -31,7 +31,7 @@ Feature: Time-based model routing
     And I generate a unique resource name from "gateway-controller-policy-proxy" and store it as "proxyName"
     And I generate a unique API context from "/gateway-controller-policy-proxy" and store it as "proxyContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}              |
       | displayName        | Gateway-Controller-Policy-Provider |
       | version            | v1.0                              |
@@ -41,7 +41,7 @@ Feature: Time-based model routing
       | accessControl.mode | allow_all                         |
     Then the response status code should be 201
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion     | gateway.api-platform.wso2.com/v1                                                                                                                                                                                                                                                  |
+      | apiVersion     | ${CTX:gatewaySpecVersion}                                                                                                                                                                                                                                                  |
       | name           | ${CTX:proxyName}                                                                                                                                                                                                                                                                   |
       | displayName    | Gateway-Controller-Policy-Proxy                                                                                                                                                                                                                                                     |
       | version        | v1.0                                                                                                                                                                                                                                                                                 |

@@ -31,7 +31,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -56,7 +56,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -81,7 +81,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -106,7 +106,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -130,7 +130,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "spec": {
           "displayName": "No Name Secret",
@@ -148,7 +148,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -168,7 +168,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -186,7 +186,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -210,7 +210,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -239,7 +239,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -273,7 +273,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -291,7 +291,7 @@ Feature: Secret management operations
     When I send a "PUT" request to the "gateway-controller" service at "/secrets/${CTX:secretName}" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -315,7 +315,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -333,7 +333,7 @@ Feature: Secret management operations
     When I send a "PUT" request to the "gateway-controller" service at "/secrets/${CTX:secretName}" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -356,7 +356,7 @@ Feature: Secret management operations
     When I send a "PUT" request to the "gateway-controller" service at "/secrets/non-existent-secret-12345" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "non-existent-secret-12345"
@@ -377,7 +377,7 @@ Feature: Secret management operations
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"

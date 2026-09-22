@@ -31,7 +31,7 @@ Feature: Advanced rate limit multi-quota policies and state persistence
     And I generate a unique API version from "arl-multi-dim" and store it as "apiVersion"
     And I generate a unique API context from "/arl-multi-dim" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -63,7 +63,7 @@ Feature: Advanced rate limit multi-quota policies and state persistence
     And I generate a unique API version from "arl-multi-limit" and store it as "apiVersion"
     And I generate a unique API context from "/arl-multi-limit" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -81,7 +81,7 @@ Feature: Advanced rate limit multi-quota policies and state persistence
     And the response body should contain "Rate limit exceeded"
 
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -108,7 +108,7 @@ Feature: Advanced rate limit multi-quota policies and state persistence
     And I generate a unique API version from "arl-update-preserves" and store it as "apiVersion"
     And I generate a unique API context from "/arl-update-preserves" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -125,7 +125,7 @@ Feature: Advanced rate limit multi-quota policies and state persistence
     Then the response status code should be 429
 
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |

@@ -34,7 +34,7 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-basic" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-basic" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1                                    |
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                    |
       | name                   | ${CTX:templateName}                                                 |
       | displayName            | ${CTX:templateDisplayName}                                          |
       | spec.promptTokens      | {"location":"payload","identifier":"$.json.usage.prompt_tokens"}     |
@@ -44,7 +44,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -86,7 +86,7 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-multi" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-multi" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1                                        |
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                        |
       | name                   | ${CTX:templateName}                                                     |
       | displayName            | ${CTX:templateDisplayName}                                              |
       | spec.promptTokens      | {"location":"payload","identifier":"$.json.usage.prompt_tokens"}         |
@@ -95,7 +95,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -131,7 +131,7 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-gzip" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-gzip" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1                                |
+      | apiVersion         | ${CTX:gatewaySpecVersion}                                |
       | name               | ${CTX:templateName}                                             |
       | displayName        | ${CTX:templateDisplayName}                                      |
       | spec.totalTokens   | {"location":"payload","identifier":"$.args.total_tokens[0]"}     |
@@ -140,7 +140,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -188,14 +188,14 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-headers" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-headers" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1                                     |
+      | apiVersion         | ${CTX:gatewaySpecVersion}                                     |
       | name               | ${CTX:templateName}                                                  |
       | displayName        | ${CTX:templateDisplayName}                                           |
       | spec.totalTokens   | {"location":"payload","identifier":"$.json.usage.total_tokens"}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -233,21 +233,21 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-iso-b" and store it as "providerVersionB"
     And I generate a unique API context from "/tbrl-iso-b" and store it as "providerContextB"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion       | gateway.api-platform.wso2.com/v1                                  |
+      | apiVersion       | ${CTX:gatewaySpecVersion}                                  |
       | name             | ${CTX:templateNameA}                                              |
       | displayName      | ${CTX:templateDisplayNameA}                                       |
       | spec.totalTokens | {"location":"payload","identifier":"$.json.usage.total_tokens"}    |
     Then the response status code should be 201
 
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion       | gateway.api-platform.wso2.com/v1                                  |
+      | apiVersion       | ${CTX:gatewaySpecVersion}                                  |
       | name             | ${CTX:templateNameB}                                              |
       | displayName      | ${CTX:templateDisplayNameB}                                       |
       | spec.totalTokens | {"location":"payload","identifier":"$.json.usage.total_tokens"}    |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerNameA}              |
       | displayName            | ${CTX:providerDisplayNameA}       |
       | version                | ${CTX:providerVersionA}           |
@@ -260,7 +260,7 @@ Feature: Token-based rate limiting for LLM providers
     And I send a "GET" request to "${CTX:providerContextA}/chat/completions" until status 200
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerNameB}              |
       | displayName            | ${CTX:providerDisplayNameB}       |
       | version                | ${CTX:providerVersionB}           |
@@ -310,7 +310,7 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-detail" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-detail" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                                        |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                        |
       | name                  | ${CTX:templateName}                                                     |
       | displayName           | ${CTX:templateDisplayName}                                              |
       | spec.promptTokens     | {"location":"payload","identifier":"$.json.usage.prompt_tokens"}         |
@@ -319,7 +319,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -364,14 +364,14 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-window" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-window" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion       | gateway.api-platform.wso2.com/v1                                  |
+      | apiVersion       | ${CTX:gatewaySpecVersion}                                  |
       | name             | ${CTX:templateName}                                               |
       | displayName      | ${CTX:templateDisplayName}                                        |
       | spec.totalTokens | {"location":"payload","identifier":"$.json.usage.total_tokens"}    |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -413,14 +413,14 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-zero" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-zero" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion       | gateway.api-platform.wso2.com/v1                                  |
+      | apiVersion       | ${CTX:gatewaySpecVersion}                                  |
       | name             | ${CTX:templateName}                                               |
       | displayName      | ${CTX:templateDisplayName}                                        |
       | spec.totalTokens | {"location":"payload","identifier":"$.json.usage.total_tokens"}    |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -470,14 +470,14 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-header-cost" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-header-cost" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion       | gateway.api-platform.wso2.com/v1                                |
+      | apiVersion       | ${CTX:gatewaySpecVersion}                                |
       | name             | ${CTX:templateName}                                             |
       | displayName      | ${CTX:templateDisplayName}                                      |
       | spec.totalTokens | {"location":"header","identifier":"X-Token-Cost"}                 |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -518,14 +518,14 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-recreate" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-recreate" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion       | gateway.api-platform.wso2.com/v1                                 |
+      | apiVersion       | ${CTX:gatewaySpecVersion}                                 |
       | name             | ${CTX:templateName}                                              |
       | displayName      | ${CTX:templateDisplayName}                                       |
       | spec.totalTokens | {"location":"payload","identifier":"$.json.usage.total_tokens"}   |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -554,7 +554,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response should be successful
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -596,14 +596,14 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-shared-beta" and store it as "providerVersionBeta"
     And I generate a unique API context from "/tbrl-shared-beta" and store it as "providerContextBeta"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion       | gateway.api-platform.wso2.com/v1                                 |
+      | apiVersion       | ${CTX:gatewaySpecVersion}                                 |
       | name             | ${CTX:templateName}                                              |
       | displayName      | ${CTX:templateDisplayName}                                       |
       | spec.totalTokens | {"location":"payload","identifier":"$.json.usage.total_tokens"}   |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerNameAlpha}          |
       | displayName            | ${CTX:providerDisplayNameAlpha}   |
       | version                | ${CTX:providerVersionAlpha}       |
@@ -616,7 +616,7 @@ Feature: Token-based rate limiting for LLM providers
     And I send a "GET" request to "${CTX:providerContextAlpha}/chat/completions" until status 200
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerNameBeta}           |
       | displayName            | ${CTX:providerDisplayNameBeta}    |
       | version                | ${CTX:providerVersionBeta}        |
@@ -662,7 +662,7 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-empty-both" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-empty-both" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                                        |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                        |
       | name                  | ${CTX:templateName}                                                     |
       | displayName           | ${CTX:templateDisplayName}                                              |
       | spec.promptTokens     | {"location":"payload","identifier":"$.json.usage.prompt_tokens"}         |
@@ -671,7 +671,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -706,7 +706,7 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-prompt-only" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-prompt-only" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                                        |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                        |
       | name                  | ${CTX:templateName}                                                     |
       | displayName           | ${CTX:templateDisplayName}                                              |
       | spec.promptTokens     | {"location":"payload","identifier":"$.json.usage.prompt_tokens"}         |
@@ -715,7 +715,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
@@ -750,7 +750,7 @@ Feature: Token-based rate limiting for LLM providers
     And I generate a unique API version from "tbrl-completion-only" and store it as "providerVersion"
     And I generate a unique API context from "/tbrl-completion-only" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                                        |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                        |
       | name                  | ${CTX:templateName}                                                     |
       | displayName           | ${CTX:templateDisplayName}                                              |
       | spec.promptTokens     | {"location":"payload","identifier":"$.json.usage.prompt_tokens"}         |
@@ -759,7 +759,7 @@ Feature: Token-based rate limiting for LLM providers
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:providerName}               |
       | displayName            | ${CTX:providerDisplayName}        |
       | version                | ${CTX:providerVersion}            |
