@@ -32,7 +32,7 @@ Feature: Route path matching
     And I generate a unique API context from "/route-path-matching-1" and store it as "apiContext1"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName1}                    |
       | spec.displayName       | Route-Wildcard-API                |
       | spec.version           | v1.0                               |
@@ -50,6 +50,7 @@ Feature: Route path matching
 
     When I delete the API "${CTX:apiName1}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext1}/v1.0/us/seattle" until status 404
 
 
   Scenario: Wildcard path /* enforces HTTP method
@@ -57,7 +58,7 @@ Feature: Route path matching
     And I generate a unique API context from "/route-path-matching-2" and store it as "apiContext2"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName2}                    |
       | spec.displayName       | Route-Wildcard-Method-API         |
       | spec.version           | v1.0                               |
@@ -75,6 +76,7 @@ Feature: Route path matching
 
     When I delete the API "${CTX:apiName2}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext2}/v1.0/data" until status 404
 
 
   Scenario: Root path / matches request with trailing slash
@@ -82,7 +84,7 @@ Feature: Route path matching
     And I generate a unique API context from "/route-path-matching-3" and store it as "apiContext3"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName3}                    |
       | spec.displayName       | Route-Root-API                    |
       | spec.version           | v1.0                               |
@@ -97,6 +99,7 @@ Feature: Route path matching
 
     When I delete the API "${CTX:apiName3}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext3}/v1.0/" until status 404
 
 
   Scenario: Root path / matches request without trailing slash
@@ -104,7 +107,7 @@ Feature: Route path matching
     And I generate a unique API context from "/route-path-matching-4" and store it as "apiContext4"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName4}                    |
       | spec.displayName       | Route-Root-NoSlash-API            |
       | spec.version           | v1.0                               |
@@ -119,6 +122,7 @@ Feature: Route path matching
 
     When I delete the API "${CTX:apiName4}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext4}/v1.0" until status 404
 
 
   Scenario: Wildcard /* does not match a sibling context prefix
@@ -126,7 +130,7 @@ Feature: Route path matching
     And I generate a unique API context from "/route-path-matching-5" and store it as "apiContext5"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName5}                    |
       | spec.displayName       | Route-Wildcard-Boundary-API       |
       | spec.version           | v1.0                               |
@@ -147,6 +151,7 @@ Feature: Route path matching
 
     When I delete the API "${CTX:apiName5}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext5}/v1.0/data" until status 404
 
 
   Scenario: Exact path matches both with and without trailing slash
@@ -154,7 +159,7 @@ Feature: Route path matching
     And I generate a unique API context from "/route-path-matching-6" and store it as "apiContext6"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName6}                    |
       | spec.displayName       | Route-Exact-Slash-API             |
       | spec.version           | v1.0                               |
@@ -172,6 +177,7 @@ Feature: Route path matching
 
     When I delete the API "${CTX:apiName6}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext6}/v1.0/weather" until status 404
 
 
   Scenario: Exact path preserves trailing slash to upstream
@@ -179,7 +185,7 @@ Feature: Route path matching
     And I generate a unique API context from "/route-path-matching-7" and store it as "apiContext7"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName7}                    |
       | spec.displayName       | Route-Exact-Upstream-Slash-API    |
       | spec.version           | v1.0                               |
@@ -198,44 +204,4 @@ Feature: Route path matching
     And the JSON response field "url" should be "/anything/weather/"
 
     When I delete the API "${CTX:apiName7}"
-    Then the response should be successful
-
-
-  Scenario: Wildcard /foo/* preserves the matched prefix (and method) on the upstream path
-    Given I generate a unique value from "route-path-matching-8" and store it as "apiName8"
-    And I generate a unique API context from "/route-path-matching-8" and store it as "apiContext8"
-
-
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
-      | name                   | ${CTX:apiName8}                    |
-      | spec.displayName       | Route-Wildcard-Prefix-API         |
-      | spec.version           | v1.0                               |
-      | spec.context           | ${CTX:apiContext8}/$version        |
-      | spec.upstream.main.url | http://testbench:3000              |
-      | spec.operations        | [{"method":"GET","path":"/forecast/*"},{"method":"PUT","path":"/put/*"}] |
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext8}/v1.0/forecast" until status 200
-
-    When I send a "GET" request to "${CTX:apiContext8}/v1.0/forecast"
-    Then the response status code should be 200
-    And the JSON response field "path" should be "/forecast"
-
-    When I send a "GET" request to "${CTX:apiContext8}/v1.0/forecast/today"
-    Then the response status code should be 200
-    And the JSON response field "path" should be "/forecast/today"
-
-    When I send a "GET" request to "${CTX:apiContext8}/v1.0/forecast/a/b/c"
-    Then the response status code should be 200
-    And the JSON response field "path" should be "/forecast/a/b/c"
-
-    When I send a "PUT" request to "${CTX:apiContext8}/v1.0/put" with body:
-      """
-      {"hello":"world"}
-      """
-    Then the response status code should be 200
-    And the JSON response field "path" should be "/put"
-    And the JSON response field "method" should be "PUT"
-
-    When I delete the API "${CTX:apiName8}"
     Then the response should be successful

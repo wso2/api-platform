@@ -36,7 +36,7 @@ Feature: Startup database bootstrap
     Given I generate a unique resource name from "startup-db-rest-api" and store it as "resourceName1_3"
     Given I generate a unique API context from "/startup-db-rest" and store it as "resourceContext1_3"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:resourceName1_1}           |
       | displayName        | Startup DB LLM Provider           |
       | version            | v1.0                              |
@@ -48,7 +48,7 @@ Feature: Startup database bootstrap
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:resourceName1_2}            |
       | displayName | Startup DB LLM Proxy             |
       | version     | v1.0                              |
@@ -57,19 +57,19 @@ Feature: Startup database bootstrap
     Then the response status should be 201
 
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion   | gateway.api-platform.wso2.com/v1 |
+      | apiVersion   | ${CTX:gatewaySpecVersion} |
       | name         | ${CTX:mcpName}                   |
       | displayName  | Startup DB MCP                   |
       | version      | v1.0                              |
       | context      | ${CTX:mcpContext}                 |
       | specVersion  | 2025-06-18                        |
-      | spec.upstream.url | http://testbench:3009/mcp        |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
     And the response should be valid JSON
     And the resource creation response should indicate successful deployment
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:resourceName1_3}           |
       | spec.displayName      | Startup DB Rest API              |
       | spec.version          | v1.0                              |

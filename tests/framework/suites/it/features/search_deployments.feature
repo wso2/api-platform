@@ -32,7 +32,7 @@ Feature: Deployment search
     Given I generate a unique value from "search-api-2" and store it as "resourceName1_2"
     Given I generate a unique API context from "/search-two" and store it as "resourceContext1_2"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion}        |
       | name                    | ${CTX:resourceName1_1}            |
       | spec.displayName        | Search-API-One                     |
       | spec.version            | v1.0                               |
@@ -41,7 +41,7 @@ Feature: Deployment search
       | spec.operations         | [{"method":"GET","path":"/test"}] |
     Then the response should be successful
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion}        |
       | name                    | ${CTX:resourceName1_2}            |
       | spec.displayName        | Search-API-Two                     |
       | spec.version            | v2.0                               |
@@ -64,7 +64,7 @@ Feature: Deployment search
     Given I generate a unique value from "displayname-search-api" and store it as "resourceName2_1"
     Given I generate a unique API context from "/displayname-search" and store it as "resourceContext2_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion}        |
       | name                    | ${CTX:resourceName2_1}            |
       | spec.displayName        | UniqueDisplayName                  |
       | spec.version            | v1.0                               |
@@ -84,7 +84,7 @@ Feature: Deployment search
     Given I generate a unique value from "version-search-api" and store it as "resourceName3_1"
     Given I generate a unique API context from "/version-search" and store it as "resourceContext3_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion}        |
       | name                    | ${CTX:resourceName3_1}            |
       | spec.displayName        | Version-Search-API                 |
       | spec.version            | v3.0.0                             |
@@ -104,7 +104,7 @@ Feature: Deployment search
     Given I generate a unique value from "context-search-api" and store it as "resourceName4_1"
     Given I generate a unique API context from "/unique-context-path" and store it as "resourceContext4_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion}        |
       | name                    | ${CTX:resourceName4_1}            |
       | spec.displayName        | Context-Search-API                 |
       | spec.version            | v1.0                               |
@@ -124,7 +124,7 @@ Feature: Deployment search
     Given I generate a unique value from "status-search-api" and store it as "resourceName5_1"
     Given I generate a unique API context from "/status-search" and store it as "resourceContext5_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion}        |
       | name                    | ${CTX:resourceName5_1}            |
       | spec.displayName        | Status-Search-API                  |
       | spec.version            | v1.0                               |
@@ -145,7 +145,7 @@ Feature: Deployment search
     Given I generate a unique value from "multi-filter-api" and store it as "resourceName6_1"
     Given I generate a unique API context from "/multi-filter" and store it as "resourceContext6_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion}        |
       | name                    | ${CTX:resourceName6_1}            |
       | spec.displayName        | MultiFilterAPI                      |
       | spec.version            | v5.0                               |
@@ -172,7 +172,7 @@ Feature: Deployment search
     Given I generate a unique value from "search-mcp-v1.0" and store it as "mcpName1"
     And I generate a unique API context from "/search-mcp" and store it as "mcpContext1"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion    | ${CTX:gatewaySpecVersion}        |
       | name          | ${CTX:mcpName1}                  |
       | displayName   | SearchMCP                         |
       | version       | v1.0                              |
@@ -193,7 +193,7 @@ Feature: Deployment search
     Given I generate a unique value from "displayname-mcp-v1.0" and store it as "mcpName2"
     And I generate a unique API context from "/displayname-mcp" and store it as "mcpContext2"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion   | gateway.api-platform.wso2.com/v1 |
+      | apiVersion   | ${CTX:gatewaySpecVersion}        |
       | name         | ${CTX:mcpName2}                  |
       | displayName  | UniqueMCPDisplayName             |
       | version      | v1.0                              |
@@ -213,7 +213,7 @@ Feature: Deployment search
     Given I generate a unique value from "version-mcp-v2.0" and store it as "mcpName3"
     And I generate a unique API context from "/version-mcp" and store it as "mcpContext3"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion   | gateway.api-platform.wso2.com/v1 |
+      | apiVersion   | ${CTX:gatewaySpecVersion}        |
       | name         | ${CTX:mcpName3}                  |
       | displayName  | VersionMCP                         |
       | version      | v2.0                              |

@@ -1014,6 +1014,12 @@ func (u *Steps) seedAPIListingFixtures(ctx context.Context) error {
 		_ = u.deletePortalArtifact(ctx, "mcp-servers", mcpID)
 		return fmt.Errorf("registering API listing MCP server %q for cleanup: %w", mcpID, err)
 	}
+	if err := u.waitForPortalCards(ctx, "/apis", restID, graphqlID); err != nil {
+		return err
+	}
+	if err := u.waitForPortalCards(ctx, "/mcps", mcpID); err != nil {
+		return err
+	}
 	for key, value := range map[string]string{
 		keyAPIPortalListingREST: restName, keyAPIPortalListingGraphQL: graphqlName, keyAPIPortalListingMCP: mcpName,
 	} {
@@ -1154,6 +1160,12 @@ func (u *Steps) seedMCPListingFixtures(ctx context.Context) error {
 	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalAPI, ID: restID, Actor: u.topo.Admin.Username}); err != nil {
 		_ = u.deletePortalArtifact(ctx, "apis", restID)
 		return fmt.Errorf("registering MCP listing REST API %q for cleanup: %w", restID, err)
+	}
+	if err := u.waitForPortalCards(ctx, "/mcps", firstID, secondID); err != nil {
+		return err
+	}
+	if err := u.waitForPortalCards(ctx, "/apis", restID); err != nil {
+		return err
 	}
 	for key, value := range map[string]string{
 		keyAPIPortalMCPListingFirst: firstName, keyAPIPortalMCPListingSecond: secondName, keyAPIPortalMCPListingREST: restName,
@@ -1897,6 +1909,30 @@ func (u *Steps) searchAPIListing(ctx context.Context, query, mustContain, mustNo
 	return u.searchPortalListing(ctx, "/apis", query, mustContain, mustNotContain)
 }
 
+// waitForPortalCards waits for the portal's read-only listing to expose each
+// scenario-owned artifact after its management API accepts creation.
+func (u *Steps) waitForPortalCards(ctx context.Context, path string, ids ...string) error {
+	page, err := u.page(ctx)
+	if err != nil {
+		return err
+	}
+	if err := u.openAPIPortalPath(ctx, path); err != nil {
+		return err
+	}
+	return retry.Await(ctx, retry.Options{}, func(ctx context.Context) (bool, error) {
+		for _, id := range ids {
+			count, err := page.Locator("#apiCard-" + id).Count()
+			if err != nil {
+				return false, retry.Transient(err)
+			}
+			if count == 0 {
+				return false, nil
+			}
+		}
+		return true, nil
+	}, func(ready bool) bool { return ready }, fmt.Sprintf("waiting for API Portal listing %q to expose seeded artifacts", path))
+}
+
 func (u *Steps) searchPortalListing(ctx context.Context, path, query, mustContain, mustNotContain string) error {
 	page, err := u.page(ctx)
 	if err != nil {
@@ -1914,6 +1950,15 @@ func (u *Steps) searchPortalListing(ctx context.Context, path, query, mustContai
 	if err := u.expect.Page(page).ToHaveURL(regexp.MustCompile(`[?&]query=`)); err != nil {
 		return err
 	}
+	if err := retry.Await(ctx, retry.Options{}, func(context.Context) (bool, error) {
+		texts, err := page.Locator(".api-card").AllTextContents()
+		if err != nil {
+			return false, retry.Transient(err)
+		}
+		return portalListingMatches(texts, mustContain, mustNotContain), nil
+	}, func(ready bool) bool { return ready }, fmt.Sprintf("waiting for filtered API Portal listing %q", query)); err != nil {
+		return err
+	}
 	texts, err := page.Locator(".api-card").AllTextContents()
 	if err != nil {
 		return fmt.Errorf("reading filtered API listing cards: %w", err)
@@ -1925,6 +1970,16 @@ func (u *Steps) searchPortalListing(ctx context.Context, path, query, mustContai
 		return fmt.Errorf("filtered API listing unexpectedly showed %q", mustNotContain)
 	}
 	return nil
+}
+
+func portalListingMatches(texts []string, mustContain, mustNotContain string) bool {
+	hasRequired := mustContain == "" || slices.ContainsFunc(texts, func(text string) bool {
+		return strings.Contains(text, mustContain)
+	})
+	hasExcluded := mustNotContain != "" && slices.ContainsFunc(texts, func(text string) bool {
+		return strings.Contains(text, mustNotContain)
+	})
+	return hasRequired && !hasExcluded
 }
 
 func (u *Steps) seededRESTAPIID(ctx context.Context) (string, error) {
@@ -2415,8 +2470,15 @@ func (u *Steps) openAPIPortal(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := page.Goto(base + "/api-portal"); err != nil {
+	if _, err := page.Goto(base+"/api-portal", playwright.PageGotoOptions{
+		// The portal is an SPA. Waiting for every asset's load event makes the
+		// navigation unnecessarily sensitive to unrelated concurrent requests.
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	}); err != nil {
 		return fmt.Errorf("opening API Portal: %w", err)
+	}
+	if err := u.expect.Locator(page.Locator("body")).ToBeVisible(); err != nil {
+		return fmt.Errorf("API Portal shell was not ready: %w", err)
 	}
 	return nil
 }

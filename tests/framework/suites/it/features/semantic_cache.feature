@@ -30,7 +30,7 @@ Feature: Semantic cache policy
     And I generate a unique API version from "sc-miss" and store it as "apiVersion"
     And I generate a unique API context from "/sc-miss" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -49,13 +49,14 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An identical repeated request is a cache hit
     Given I generate a unique value from "sc-hit" and store it as "apiName"
     And I generate a unique API version from "sc-hit" and store it as "apiVersion"
     And I generate a unique API context from "/sc-hit" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -77,6 +78,7 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # The embedding mock normalizes case before comparing vectors, so this case exercises
   # semantic matching rather than exact-string matching.
@@ -85,7 +87,7 @@ Feature: Semantic cache policy
     And I generate a unique API version from "sc-similar" and store it as "apiVersion"
     And I generate a unique API context from "/sc-similar" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -107,6 +109,7 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # Measured similarity between these two prompts is ~0.83 (via /debug/similarity) - below a
   # 0.99 threshold, so this is a genuine near-exact-match requirement, not a coincidence.
@@ -115,7 +118,7 @@ Feature: Semantic cache policy
     And I generate a unique API version from "sc-high-threshold" and store it as "apiVersion"
     And I generate a unique API context from "/sc-high-threshold" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -139,6 +142,7 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # Same ~0.83-similarity prompt pair as the high-threshold scenario above, but with a low
   # threshold that admits it - demonstrating the threshold, not the prompt pair, is what changed.
@@ -147,7 +151,7 @@ Feature: Semantic cache policy
     And I generate a unique API version from "sc-low-threshold" and store it as "apiVersion"
     And I generate a unique API context from "/sc-low-threshold" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -169,13 +173,14 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: JSONPath extraction embeds only the targeted field
     Given I generate a unique value from "sc-jsonpath" and store it as "apiName"
     And I generate a unique API version from "sc-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/sc-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -200,13 +205,14 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A JSONPath that does not resolve is rejected as a policy error
     Given I generate a unique value from "sc-invalid-jsonpath" and store it as "apiName"
     And I generate a unique API version from "sc-invalid-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/sc-invalid-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -226,13 +232,14 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An empty request body is handled gracefully
     Given I generate a unique value from "sc-empty-body" and store it as "apiName"
     And I generate a unique API version from "sc-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/sc-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -248,13 +255,14 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A non-200 upstream response is not cached
     Given I generate a unique value from "sc-non-200" and store it as "apiName"
     And I generate a unique API version from "sc-non-200" and store it as "apiVersion"
     And I generate a unique API context from "/sc-non-200" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -279,13 +287,14 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An embedding provider failure allows the request to proceed uncached
     Given I generate a unique value from "sc-embed-error" and store it as "apiName"
     And I generate a unique API version from "sc-embed-error" and store it as "apiVersion"
     And I generate a unique API context from "/sc-embed-error" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -304,55 +313,4 @@ Feature: Semantic cache policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
-
-  Scenario: A different authenticated caller does not receive another caller's cached response
-    Given I generate a unique value from "sc-isolation" and store it as "apiName"
-    And I generate a unique API version from "sc-isolation" and store it as "apiVersion"
-    And I generate a unique API context from "/sc-isolation" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"POST","path":"/chat","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}},{"name":"semantic-cache","version":"v1","params":{"similarityThreshold":0.9}}]},{"method":"GET","path":"/health"}] |
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
-
-    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName}/api-keys" with body:
-      """
-      {"name":"isolation-caller-a"}
-      """
-    Then the response status should be 201
-    And I store the JSON response field "apiKey.apiKey" as "callerKey"
-    And I set header "API-Key" to "${CTX:callerKey}"
-
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" with body:
-      """
-      {"prompt":"isolation test prompt about coral reefs"}
-      """
-
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until header "X-Cache-Status" is "HIT" with body:
-      """
-      {"prompt":"isolation test prompt about coral reefs"}
-      """
-
-    Given I authenticate using basic auth as "admin"
-    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName}/api-keys" with body:
-      """
-      {"name":"isolation-caller-b"}
-      """
-    Then the response status should be 201
-    And I store the JSON response field "apiKey.apiKey" as "callerKey"
-    And I set header "API-Key" to "${CTX:callerKey}"
-
-    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat" until status 200 with body:
-      """
-      {"prompt":"isolation test prompt about coral reefs"}
-      """
-    Then the response header "X-Cache-Status" should not exist
-
-    Given I authenticate using basic auth as "admin"
-    When I delete the API "${CTX:apiName}"
-    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

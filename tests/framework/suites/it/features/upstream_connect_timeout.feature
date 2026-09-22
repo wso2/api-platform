@@ -30,7 +30,7 @@ Feature: Upstream and downstream timeouts
     Given I generate a unique value from "timeout-rest-api" and store it as "apiName1"
     And I generate a unique API context from "/timeout-rest-api" and store it as "apiContext1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1                                                                      |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}                                                                      |
       | name                          | ${CTX:apiName1}                                                                                     |
       | spec.displayName              | Timeout API                                                                                            |
       | spec.version                  | v1.0                                                                                                   |
@@ -47,7 +47,7 @@ Feature: Upstream and downstream timeouts
     Given I generate a unique value from "timeout-global-api" and store it as "apiName2"
     And I generate a unique API context from "/timeout-global-api" and store it as "apiContext2"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1                                                                     |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}                                                                     |
       | name                          | ${CTX:apiName2}                                                                                     |
       | spec.displayName              | Global Timeout API                                                                                   |
       | spec.version                  | v1.0                                                                                                  |
@@ -64,7 +64,7 @@ Feature: Upstream and downstream timeouts
     Given I generate a unique value from "headers-timeout-api" and store it as "apiName3"
     And I generate a unique API context from "/headers-timeout-api" and store it as "apiContext3"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1                                                        |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}                                                        |
       | name                          | ${CTX:apiName3}                                                                        |
       | spec.displayName              | Headers Timeout API                                                                      |
       | spec.version                  | v1.0                                                                                     |
@@ -84,7 +84,7 @@ Feature: Upstream and downstream timeouts
     Given I generate a unique resource name from "llm-connect-timeout-provider" and store it as "providerName4"
     And I generate a unique API context from "/llm-connect-timeout" and store it as "providerContext4"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1                                      |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}                                      |
       | name                          | ${CTX:providerName4}                                                  |
       | displayName                   | LLM Connect Timeout Provider                                           |
       | version                       | v1.0                                                                   |
@@ -102,7 +102,7 @@ Feature: Upstream and downstream timeouts
     Given I generate a unique resource name from "mcp-connect-timeout" and store it as "mcpName5"
     And I generate a unique API context from "/mcp-connect-timeout" and store it as "mcpContext5"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1                                                                                         |
+      | apiVersion                 | ${CTX:gatewaySpecVersion}                                                                                         |
       | name                       | ${CTX:mcpName5}                                                                                                          |
       | displayName                | MCP Connect Timeout                                                                                                     |
       | version                    | v1.0                                                                                                                     |

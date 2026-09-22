@@ -63,6 +63,11 @@ func (u *Steps) opensGenAIApplications(ctx context.Context) error {
 // createsGenAIApplication creates a new GenAI application with the given name from the
 // current project's GenAI Applications list.
 func (u *Steps) createsGenAIApplication(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	if err := u.opensGenAIApplications(ctx); err != nil {
 		return err
 	}
@@ -111,6 +116,11 @@ func (u *Steps) onGenAIApplicationOverview(ctx context.Context) error {
 // deletesGenAIApplication opens the delete confirmation for the named application's card on
 // the GenAI Applications list and confirms it.
 func (u *Steps) deletesGenAIApplication(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

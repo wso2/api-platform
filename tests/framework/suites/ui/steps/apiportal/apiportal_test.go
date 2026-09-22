@@ -56,3 +56,29 @@ func TestAPIPortalResponseBodyMatch(t *testing.T) {
 		t.Fatalf("apiPortalResponseBodyMatch() negative assertion returned an error: %v", err)
 	}
 }
+
+func TestPortalListingMatches(t *testing.T) {
+	tests := []struct {
+		name           string
+		texts          []string
+		mustContain    string
+		mustNotContain string
+		want           bool
+	}{
+		{name: "required value present", texts: []string{"REST API", "GraphQL API"}, mustContain: "GraphQL", want: true},
+		{name: "required value absent", texts: []string{"REST API"}, mustContain: "GraphQL", want: false},
+		{name: "excluded value absent", texts: []string{"REST API"}, mustNotContain: "GraphQL", want: true},
+		{name: "excluded value present", texts: []string{"REST API", "GraphQL API"}, mustNotContain: "GraphQL", want: false},
+		{name: "required present and excluded absent", texts: []string{"REST API", "GraphQL API"}, mustContain: "GraphQL", mustNotContain: "MCP", want: true},
+		{name: "required present while excluded present", texts: []string{"REST API", "GraphQL API", "MCP Server"}, mustContain: "GraphQL", mustNotContain: "MCP", want: false},
+		{name: "both expectations empty", texts: nil, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := portalListingMatches(tt.texts, tt.mustContain, tt.mustNotContain); got != tt.want {
+				t.Fatalf("portalListingMatches() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

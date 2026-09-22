@@ -31,7 +31,7 @@ Feature: Semantic tool filtering policy
     And I generate a unique API version from "stf-rank" and store it as "providerVersion"
     And I generate a unique API context from "/stf-rank" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}                |
       | displayName              | ${CTX:providerDisplayName}         |
       | version                  | ${CTX:providerVersion}              |
@@ -73,7 +73,7 @@ Feature: Semantic tool filtering policy
     And I generate a unique API version from "stf-mistral" and store it as "providerVersion"
     And I generate a unique API context from "/stf-mistral" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}                |
       | displayName              | ${CTX:providerDisplayName}         |
       | version                  | ${CTX:providerVersion}              |
