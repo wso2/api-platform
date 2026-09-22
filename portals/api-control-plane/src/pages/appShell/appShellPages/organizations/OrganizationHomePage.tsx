@@ -50,6 +50,7 @@ import {
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
+import { useApiPortals } from '@/api/resources/apiPortals';
 import { useOrganization } from '@/api/resources/organizations';
 import { useGateways } from '@/api/resources/gateways';
 import { useDeleteProject, type Project } from '@/api/resources/projects';
@@ -284,6 +285,7 @@ export function OrganizationHomePage() {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const organizationQuery = useOrganization(orgHandle);
   const gatewaysQuery = useGateways({ limit: 100 });
+  const portalsQuery = useApiPortals();
   const deleteProjectMutation = useDeleteProject();
   const restApiCountsQuery = useRestApiCounts(projects.map((project) => project.id));
   const currentOrganization = organizationQuery.data || organization || organizations[0];
@@ -396,7 +398,11 @@ export function OrganizationHomePage() {
               action={intl.formatMessage(messages.developerPortalAction)}
               description={intl.formatMessage(messages.developerPortalDescription)}
               icon={<PanelTop size={22} />}
-              metric={intl.formatNumber(0)}
+              metric={
+                portalsQuery.isPending || portalsQuery.error
+                  ? '—'
+                  : intl.formatNumber(portalsQuery.data?.pagination.total ?? 0)
+              }
               onAction={() => navigate(routes.managedApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
             />
