@@ -19,6 +19,7 @@
 import { useEffect, useRef } from 'react';
 
 import { useBootstrapOrganization, useOrganization } from '../api/resources/organizations';
+import { ErrorCode, isErrorCode } from '../api/core/errors';
 import { runtimeConfig } from '../config/runtime';
 import { useAuth } from '../contexts/auth/AuthProvider';
 
@@ -52,11 +53,16 @@ export function OrganizationBootstrap() {
   const existing = useOrganization(isAuthenticated ? handle : undefined);
   const bootstrap = useBootstrapOrganization();
   const started = useRef(false);
+  const refetchExisting = existing.refetch;
 
   useEffect(() => {
     if (!isAuthenticated || !handle || started.current) return;
     if (existing.isPending || existing.data) return;
-    if (!existing.error) return;
+    // Not-found is the only answer that means "register it". Anything else — an
+    // expired session, a denial, the platform being unreachable — says nothing about
+    // whether the organization exists, and registering on those would turn a
+    // transient failure into a write attempt.
+    if (!isErrorCode(existing.error, ErrorCode.NOT_FOUND)) return;
 
     started.current = true;
     bootstrap.mutate(
@@ -66,14 +72,29 @@ export function OrganizationBootstrap() {
         region: runtimeConfig.defaultOrgRegion,
       },
       {
-        // Allow a later attempt. A conflict means the other route won, which the
-        // refetched lookup will confirm; anything else may still be in flight.
-        onError: () => {
+        onError: (error) => {
+          // A conflict is the other route having won, which is success. Re-read so
+          // the rest of the console sees the organization, and leave `started` set so
+          // this does not register again.
+          if (isErrorCode(error, ErrorCode.CONFLICT)) {
+            void refetchExisting();
+            return;
+          }
+          // Anything else may be transient; allow a later attempt.
           started.current = false;
         },
       },
     );
-  }, [bootstrap, displayName, existing.data, existing.error, existing.isPending, handle, isAuthenticated]);
+  }, [
+    bootstrap,
+    displayName,
+    existing.data,
+    existing.error,
+    existing.isPending,
+    handle,
+    isAuthenticated,
+    refetchExisting,
+  ]);
 
   return null;
 }

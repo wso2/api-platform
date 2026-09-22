@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { BILLING_PROXY_ENABLED } from '../config.env';
 import { useAppAuth } from '../contexts/AppAuthContext';
@@ -25,6 +25,10 @@ import { BILLING_API_BASE_URL } from '../paths';
 // Product code this workspace activates on first login. Must match the billing
 // product whose subscription drives APIP gateway provisioning.
 const PRODUCT = 'api-platform';
+
+/** How many times to re-try a failed activation, and how long to wait between tries. */
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 5000;
 
 /**
  * Performs billing first-login activation once the user is authenticated.
@@ -49,20 +53,50 @@ const PRODUCT = 'api-platform';
  */
 export function ProductActivation() {
   const { isAuthenticated } = useAppAuth();
-  const activated = useRef(false);
+  const done = useRef(false);
+  // Drives the retry: the effect re-runs when this changes, which a ref alone could
+  // not do. `fetch` resolves for a 500 as readily as for a 200, so the response has
+  // to be inspected — a silent failure here costs the organization its gateway.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!BILLING_PROXY_ENABLED || !isAuthenticated || activated.current) {
-      return;
+    if (!BILLING_PROXY_ENABLED || !isAuthenticated || done.current) {
+      return undefined;
     }
-    activated.current = true;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const retryOrGiveUp = () => {
+      if (cancelled || attempt + 1 >= MAX_ATTEMPTS) return;
+      timer = setTimeout(() => {
+        if (!cancelled) setAttempt((previous) => previous + 1);
+      }, RETRY_DELAY_MS);
+    };
+
     void fetch(`${BILLING_API_BASE_URL}/organization?product=${PRODUCT}`, {
       credentials: 'include',
-    }).catch(() => {
-      // Best-effort: activation must not block the workspace. Allow a later retry.
-      activated.current = false;
-    });
-  }, [isAuthenticated]);
+    }).then(
+      (response) => {
+        if (cancelled) return;
+        if (response.ok) {
+          done.current = true;
+          return;
+        }
+        retryOrGiveUp();
+      },
+      () => {
+        retryOrGiveUp();
+      },
+    );
+
+    // Best-effort throughout: activation must never block the workspace, so a run of
+    // attempts that all fail is left alone rather than surfaced.
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [attempt, isAuthenticated]);
 
   return null;
 }
