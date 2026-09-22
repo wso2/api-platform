@@ -165,12 +165,11 @@ describe('GeneralCreateApiForm — initial values', () => {
   });
 
   it('leaves a restored base path alone when the display name is edited afterwards', async () => {
-    const { user } = renderForm({
-      context: '/public/orders',
-      displayName: 'Orders API',
-      id: 'orders-v2',
-      version: '2.1',
-    });
+    const { user } = renderForm(
+      { context: '/public/orders', displayName: 'Orders API', id: 'orders-v2', version: '2.1' },
+      undefined,
+      { initialBasePathEdited: true, initialIdentifierEdited: true },
+    );
 
     await user.type(screen.getByLabelText(/^Name/), ' v2');
 
