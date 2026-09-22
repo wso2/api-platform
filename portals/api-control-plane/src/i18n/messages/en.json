@@ -1943,7 +1943,7 @@
     "defaultMessage": "Publish APIs so consumers can discover them and request access."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalTitle": {
-    "defaultMessage": "Developer portals"
+    "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
     "defaultMessage": "Connect a gateway"
