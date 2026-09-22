@@ -60,6 +60,15 @@ const (
 	AttrMCPBodyCapabilityAction = "mcp.body.capability.action"
 	AttrMCPBodyCapabilityName   = "mcp.body.capability.name"
 	AttrMCPBodyProtocolVersion  = "mcp.body.protocol.version"
+
+	// AttrMCPBodyTaskID is the task a tasks/* operation addresses, from params.taskId.
+	// The Tasks extension has a modern client mirror it into Mcp-Name, so a policy needs the
+	// body value to check that header against.
+	//
+	// Kept apart from AttrMCPBodyCapabilityName deliberately: a task id is a handle to one
+	// in-flight operation, not a capability an operator writes rules against, and the policies
+	// that match on a capability name must not start matching on task ids.
+	AttrMCPBodyTaskID = "mcp.body.task.id"
 	// AttrMCPBodyJSONRPCID carries the id as a JSON *token*, not a display string: 7 for a
 	// number and "7" with its quotes for a string. A consumer echoes it into an error
 	// envelope verbatim; unwrapping it would lose the type a client correlates on.
@@ -193,6 +202,10 @@ const mcpMetaClientInfoKey = "io.modelcontextprotocol/clientInfo"
 // rather than by name — see capabilityName.
 const mcpCapabilityTypeResource = "resource"
 
+// mcpCapabilityTypeTask is named because the Tasks extension identifies its operations by
+// params.taskId, which is published on its own key rather than as a capability name.
+const mcpCapabilityTypeTask = "task"
+
 // mcpCapabilityTypes maps a method's family segment to the singular capability type.
 //
 // Singular is chosen deliberately: the MCP policies are split between a plural and a
@@ -202,6 +215,7 @@ var mcpCapabilityTypes = map[string]string{
 	"tools":         "tool",
 	"resources":     mcpCapabilityTypeResource,
 	"prompts":       "prompt",
+	"tasks":         mcpCapabilityTypeTask,
 	"completion":    "completion",
 	"logging":       "logging",
 	"notifications": "notification",
@@ -348,6 +362,9 @@ type mcpParams struct {
 	Name string `json:"name"`
 	URI  string `json:"uri"`
 
+	// The task a tasks/* operation addresses. Governed, since Mcp-Name is checked against it.
+	TaskID string `json:"taskId"`
+
 	// Where a legacy initialize states what modern requests put in _meta.
 	ClientInfo      *mcpClientInfo `json:"clientInfo"`
 	ProtocolVersion string         `json:"protocolVersion"`
@@ -374,6 +391,7 @@ type mcpClientInfo struct {
 type governedParams struct {
 	Name            string `json:"name"`
 	URI             string `json:"uri"`
+	TaskID          string `json:"taskId"`
 	ProtocolVersion string `json:"protocolVersion"`
 }
 
@@ -491,6 +509,13 @@ func (e *mcpEnvelope) addAttributes(attrs map[string]string) string {
 
 			if name := capabilityName(capType, params); name != "" {
 				add(AttrMCPBodyCapabilityName, name)
+			}
+
+			// Only for the family that defines it. params.taskId elsewhere addresses
+			// nothing, and publishing it would invent a task for an operation that
+			// names none.
+			if capType == mcpCapabilityTypeTask {
+				add(AttrMCPBodyTaskID, params.TaskID)
 			}
 		}
 	}

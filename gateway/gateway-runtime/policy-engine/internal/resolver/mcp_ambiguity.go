@@ -30,9 +30,17 @@ import (
 // ambiguous — see hasAmbiguousMembers.
 var (
 	mcpEnvelopeMembers = []string{"method", "id", "params"}
-	mcpParamsMembers   = []string{"name", "uri", "clientInfo", "protocolVersion", "requestState", "_meta"}
-	mcpMetaMembers     = []string{mcpMetaProtocolVersionKey, mcpMetaClientInfoKey}
+	mcpParamsMembers   = []string{"name", "uri", "taskId", "protocolVersion", "requestState", "_meta"}
+	mcpMetaMembers     = []string{mcpMetaProtocolVersionKey}
 )
+
+// clientInfo is deliberately absent from both lists. An ambiguous member suppresses every fact,
+// which makes the consuming policies treat the request as ungovernable - a heavy answer, and the
+// right one where the divergent member decides the operation, the capability or the era. The
+// client's self-reported identity decides none of them: it is published as telemetry, no policy
+// governs on it, and two spellings of it can only disagree about who is calling, never about what
+// the server will execute. Rejecting on it would fail a request the gateway can govern perfectly.
+// This mirrors the wrong-type rule in params(), where clientInfo is tolerated for the same reason.
 
 // hasAmbiguousMembers reports whether the body names any member this resolver reads more
 // than once. It must run before the unmarshal, which is where the duplicate is lost.

@@ -91,6 +91,50 @@ func TestMCPPrepare_EveryRouteReadsTheBody(t *testing.T) {
 	}
 }
 
+// A task id is published on its own key, never as the capability name: the policies that match
+// a capability name against operator rules must not start matching one task's handle. It is
+// published only for the family that defines it, so params.taskId elsewhere names nothing.
+func TestMCPResolve_ATaskIDIsPublishedApartFromTheCapabilityName(t *testing.T) {
+	prepared := prepareMCP(t, nil)
+
+	for _, method := range []string{"tasks/get", "tasks/update", "tasks/cancel"} {
+		t.Run(method, func(t *testing.T) {
+			res := resolveMCP(t, prepared, `{"jsonrpc":"2.0","id":1,"method":"`+method+
+				`","params":{"taskId":"786512e2-9e0d-44bd-8f29-789f320fe840"}}`)
+			assert.Equal(t, "786512e2-9e0d-44bd-8f29-789f320fe840", res.Attributes[AttrMCPBodyTaskID])
+			assert.NotContains(t, res.Attributes, AttrMCPBodyCapabilityName,
+				"a task id is a handle to one operation, not a capability an operator writes rules against")
+			assert.Equal(t, "task", res.Attributes[AttrMCPBodyCapabilityType])
+		})
+	}
+
+	t.Run("params.taskId on another family names nothing", func(t *testing.T) {
+		res := resolveMCP(t, prepared, `{"jsonrpc":"2.0","id":1,"method":"tools/call",`+
+			`"params":{"name":"get_weather","taskId":"t-1"}}`)
+		assert.NotContains(t, res.Attributes, AttrMCPBodyTaskID)
+		assert.Equal(t, "get_weather", res.Attributes[AttrMCPBodyCapabilityName])
+	})
+
+	t.Run("a task call naming no task publishes no id", func(t *testing.T) {
+		res := resolveMCP(t, prepared, `{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{}}`)
+		assert.NotContains(t, res.Attributes, AttrMCPBodyTaskID)
+	})
+
+	t.Run("a wrong-typed task id makes the body unusable", func(t *testing.T) {
+		res := resolveMCP(t, prepared, `{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{"taskId":5}}`)
+		assert.Equal(t, MCPBodyInvalidMemberType, res.Attributes[AttrMCPBodyUnusable])
+	})
+
+	t.Run("a task id named twice is ambiguous", func(t *testing.T) {
+		res := resolveMCP(t, prepared, `{"jsonrpc":"2.0","id":1,"method":"tasks/get",`+
+			`"params":{"taskId":"t-1","TaskId":"t-2"}}`)
+		assert.Equal(t, MCPBodyAmbiguous, res.Attributes[AttrMCPBodyUnusable])
+	})
+
+	// A span attribute is indexed per distinct value, and a task id is unique per task.
+	assert.False(t, IsSpanSafeAttribute(AttrMCPBodyTaskID))
+}
+
 // The other half of the unusable rule. A wrong type in a member no published fact is read
 // from leaves every fact readable, so the body is not unusable: rejecting it would refuse
 // requests the server itself accepts, and the telemetry member is simply dropped.
@@ -116,6 +160,42 @@ func TestMCPResolve_AWrongTypedTelemetryMemberLeavesTheFactsReadable(t *testing.
 			assert.Equal(t, "get_weather", res.Attributes[AttrMCPBodyCapabilityName])
 		})
 	}
+}
+
+// Telemetry that disagrees with itself is still telemetry. An ambiguous member suppresses every
+// fact, so reserving that answer for the members a decision is read from is what keeps a governable
+// request governable - the duplicate-member twin of the wrong-type rule above.
+func TestMCPResolve_ADuplicateClientInfoLeavesTheFactsReadable(t *testing.T) {
+	prepared := prepareMCP(t, nil)
+	for _, tc := range []struct{ name, body string }{
+		{
+			name: "params.clientInfo in two letter cases",
+			body: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_weather",` +
+				`"clientInfo":{"name":"a"},"ClientInfo":{"name":"b"}}}`,
+		},
+		{
+			name: "the _meta clientInfo key in two letter cases",
+			body: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_weather",` +
+				`"_meta":{"io.modelcontextprotocol/clientInfo":{"name":"a"},` +
+				`"IO.MODELCONTEXTPROTOCOL/CLIENTINFO":{"name":"b"}}}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := resolveMCP(t, prepared, tc.body)
+			assert.NotContains(t, res.Attributes, AttrMCPBodyUnusable,
+				"a member no decision is read from cannot make the body ungovernable")
+			assert.Equal(t, "tools/call", res.Attributes[AttrMCPBodyMethod])
+			assert.Equal(t, "get_weather", res.Attributes[AttrMCPBodyCapabilityName])
+		})
+	}
+
+	// The era is read from _meta, so two spellings of it still suppress the facts.
+	t.Run("the _meta protocol version is still ambiguous", func(t *testing.T) {
+		res := resolveMCP(t, prepared, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x",`+
+			`"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",`+
+			`"IO.MODELCONTEXTPROTOCOL/PROTOCOLVERSION":"2025-06-18"}}}`)
+		assert.Equal(t, MCPBodyAmbiguous, res.Attributes[AttrMCPBodyUnusable])
+	})
 }
 
 // A modern request must publish the same facts as a legacy one. The mirrored headers are
@@ -711,12 +791,6 @@ func TestMCPResolve_AmbiguousMembersPublishNothing(t *testing.T) {
 				`{"io.modelcontextprotocol/ProtocolVersion":"2026-07-28"}}}`,
 		},
 		{
-			name: "duplicate client info inside params._meta",
-			body: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x","_meta":` +
-				`{"io.modelcontextprotocol/clientInfo":{"name":"a"},` +
-				`"io.modelcontextprotocol/clientInfo":{"name":"b"}}}}`,
-		},
-		{
 			// Unicode simple folding: "ſ" (U+017F LATIN SMALL LETTER LONG S) folds to "s",
 			// so encoding/json accepts "paramſ" as "params". A byte-comparing backend does
 			// not — the same divergence as a case variant, but far harder to spot.
@@ -986,18 +1060,16 @@ func TestMCPResolve_LegacyInitializeProtocolVersion(t *testing.T) {
 	})
 }
 
-// Every member this resolver reads has to be in the ambiguity list, or the gateway and the
-// backend can disagree about which spelling won.
-func TestMCPResolve_AmbiguousClientMembersAreUnusable(t *testing.T) {
+// Every member a decision is read from has to be in the ambiguity list, or the gateway and the
+// backend can disagree about which spelling won. The legacy protocolVersion is one: it states the
+// era. The client's identity is not, and is covered by
+// TestMCPResolve_ADuplicateClientInfoLeavesTheFactsReadable.
+func TestMCPResolve_AnAmbiguousLegacyProtocolVersionIsUnusable(t *testing.T) {
 	prepared := prepareMCP(t, nil)
 
-	for _, body := range []string{
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"a"},"ClientInfo":{"name":"b"}}}`,
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","ProtocolVersion":"2026-07-28"}}`,
-	} {
-		attrs := resolveMCP(t, prepared, body).Attributes
-		assert.Equal(t, MCPBodyAmbiguous, attrs[AttrMCPBodyUnusable], "body: %s", body)
-	}
+	attrs := resolveMCP(t, prepared,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","ProtocolVersion":"2026-07-28"}}`).Attributes
+	assert.Equal(t, MCPBodyAmbiguous, attrs[AttrMCPBodyUnusable])
 }
 
 // A member of the wrong shape is one bad fact, not a bad body: the rest still reads.
