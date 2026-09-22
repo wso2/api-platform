@@ -111,6 +111,8 @@ export const ApiCreationWizard = () => {
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
   const [serverErrors, setServerErrors] = useState<CreateApiFormErrors | null>(null);
+  const [identifierEdited, setIdentifierEdited] = useState(false);
+  const [basePathEdited, setBasePathEdited] = useState(false);
   const [upstreamEdited, setUpstreamEdited] = useState(false);
 
   /**
@@ -161,6 +163,8 @@ export const ApiCreationWizard = () => {
     setPrefilledData(sourceDraft);
     setSubmittedValues(null);
     setServerErrors(null);
+    setIdentifierEdited(false);
+    setBasePathEdited(false);
     setUpstreamEdited(false);
     setStep('configure');
   };
@@ -363,6 +367,10 @@ export const ApiCreationWizard = () => {
                     onSubmit={onGeneralFormSumit}
                     onBack={() => setStep('source')}
                     serverErrors={serverErrors ?? undefined}
+                    initialIdentifierEdited={identifierEdited}
+                    onIdentifierEdited={setIdentifierEdited}
+                    initialBasePathEdited={basePathEdited}
+                    onBasePathEdited={setBasePathEdited}
                     initialUpstreamEdited={upstreamEdited}
                     onUpstreamEdited={() => setUpstreamEdited(true)}
                   />

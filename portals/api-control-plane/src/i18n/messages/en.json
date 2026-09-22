@@ -2839,6 +2839,18 @@
   "develop.definition.DefinitionPanel.save": {
     "defaultMessage": "Save"
   },
+  "develop.definition.DefinitionPanel.confirmSave.title": {
+    "defaultMessage": "Update API"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.definitionBody": {
+    "defaultMessage": "Are you sure you want to save the updated API Definition?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.resourcesBody": {
+    "defaultMessage": "Are you sure you want to save the updated resources?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.action": {
+    "defaultMessage": "Save"
+  },
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
     "defaultMessage": "Failed to save the specification. Fix the following issues:",
     "description": "Heading above spec validation errors shown when Save is clicked."
