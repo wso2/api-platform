@@ -1955,10 +1955,7 @@ func (u *Steps) searchPortalListing(ctx context.Context, path, query, mustContai
 		if err != nil {
 			return false, retry.Transient(err)
 		}
-		if mustContain == "" {
-			return true, nil
-		}
-		return slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(text, mustContain) }), nil
+		return portalListingMatches(texts, mustContain, mustNotContain), nil
 	}, func(ready bool) bool { return ready }, fmt.Sprintf("waiting for filtered API Portal listing %q", query)); err != nil {
 		return err
 	}
@@ -1973,6 +1970,16 @@ func (u *Steps) searchPortalListing(ctx context.Context, path, query, mustContai
 		return fmt.Errorf("filtered API listing unexpectedly showed %q", mustNotContain)
 	}
 	return nil
+}
+
+func portalListingMatches(texts []string, mustContain, mustNotContain string) bool {
+	hasRequired := mustContain == "" || slices.ContainsFunc(texts, func(text string) bool {
+		return strings.Contains(text, mustContain)
+	})
+	hasExcluded := mustNotContain != "" && slices.ContainsFunc(texts, func(text string) bool {
+		return strings.Contains(text, mustNotContain)
+	})
+	return hasRequired && !hasExcluded
 }
 
 func (u *Steps) seededRESTAPIID(ctx context.Context) (string, error) {
