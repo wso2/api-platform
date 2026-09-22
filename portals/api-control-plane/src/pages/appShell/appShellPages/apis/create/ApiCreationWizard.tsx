@@ -116,7 +116,8 @@ export const ApiCreationWizard = () => {
    * renders it, and it has to survive being returned to.
    */
   const [serverErrors, setServerErrors] = useState<CreateApiFormErrors | null>(null);
-  /** Tracks whether the user has taken over the backend URL across form remounts. */
+  const [identifierEdited, setIdentifierEdited] = useState(false);
+  const [basePathEdited, setBasePathEdited] = useState(false);
   const [upstreamEdited, setUpstreamEdited] = useState(false);
 
   /**
@@ -167,6 +168,8 @@ export const ApiCreationWizard = () => {
     setPrefilledData(sourceDraft);
     setSubmittedValues(null);
     setServerErrors(null);
+    setIdentifierEdited(false);
+    setBasePathEdited(false);
     setUpstreamEdited(false);
     setStep('configure');
   };
@@ -374,6 +377,10 @@ export const ApiCreationWizard = () => {
                     onSubmit={onGeneralFormSumit}
                     onBack={() => setStep('source')}
                     serverErrors={serverErrors ?? undefined}
+                    initialIdentifierEdited={identifierEdited}
+                    onIdentifierEdited={setIdentifierEdited}
+                    initialBasePathEdited={basePathEdited}
+                    onBasePathEdited={setBasePathEdited}
                     initialUpstreamEdited={upstreamEdited}
                     onUpstreamEdited={() => setUpstreamEdited(true)}
                   />

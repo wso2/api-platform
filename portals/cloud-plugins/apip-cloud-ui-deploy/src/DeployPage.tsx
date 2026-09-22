@@ -93,20 +93,7 @@ const DeployPage: FC<DeployPageProps> = ({
   };
 
   return (
-    <PageContent
-      fullWidth
-      sx={{
-        boxSizing: 'border-box',
-        display: 'flex',
-        flexDirection: 'column',
-        width: { xs: 'calc(100dvw - 64px)', md: 'calc(100dvw - 250px)' },
-        maxWidth: { xs: 'calc(100dvw - 64px)', md: 'calc(100dvw - 250px)' },
-        height: '100%',
-        minWidth: 0,
-        minHeight: 0,
-        overflow: 'hidden',
-      }}
-    >
+    <>
       <PageTitle sx={{ mb: 2, flexShrink: 0 }}>
         <PageTitle.Header>Deploy</PageTitle.Header>
       </PageTitle>
@@ -206,7 +193,7 @@ const DeployPage: FC<DeployPageProps> = ({
         onClose={() => setDialog(null)}
         onConfirm={handleConfirm}
       />
-    </PageContent>
+    </>
   );
 };
 

@@ -20,13 +20,18 @@ import { useState, type FC } from 'react';
 import {
   Box,
   Button,
-  Chip,
-  Collapse,
+  Card,
+  CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   IconButton,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronUp, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Clock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { relativeTime } from '../utils/time';
 import type { Build } from '../types';
 
@@ -39,16 +44,8 @@ export type ProviderBuildsCardProps = {
   onDeleteBuild: (buildId: string) => void;
 };
 
-const sectionLabelSx = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: 'text.secondary',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.04em',
-};
-
 /**
- * The provider's builds, collapsed to a single line until asked for.
+ * The provider's builds, shown alongside its environments.
  *
  * Deleting is the only thing there is to do with them here — deploying a build is done
  * from an environment — and that is housekeeping, needed once the provider is at its
@@ -65,111 +62,108 @@ const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
   onDeleteBuild,
 }) => {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
-
-  if (builds.length === 0) return null;
 
   return (
-    <Box sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
-      <Box
-        role="button"
-        tabIndex={0}
-        onClick={() => setExpanded((prev) => !prev)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') setExpanded((prev) => !prev);
-        }}
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0.75,
-          px: 2,
-          py: 1.25,
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
-        <Typography sx={sectionLabelSx}>Builds</Typography>
-        <Chip label={builds.length} size="small" sx={{ height: 18, fontSize: 11 }} />
-        <Box sx={{ flexGrow: 1 }} />
-        {!expanded ? (
-          <Typography variant="caption" color="text.secondary" noWrap>
-            Latest {builds[0].buildId}
-          </Typography>
-        ) : null}
-        <Box sx={{ display: 'flex', color: 'text.secondary' }}>
-          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </Box>
-      </Box>
+    <Card
+      // variant="outlined"
+      sx={{
+        flex: { md: '0 0 300px' },
+        width: { xs: '100%', md: 300 },
+        alignSelf: 'flex-start',
+      }}
+    >
+      <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+        <Typography sx={{ fontSize: 16, fontWeight: 600 }}>Build Area</Typography>
+        <Divider sx={{ my: 2 }} />
 
-      <Collapse in={expanded}>
-        <Box sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
-          {builds.map((build) => {
-            const blockedReason = undeletableBuilds[build.buildId];
-            const confirming = pendingDelete === build.buildId;
-            return (
-              <Box
-                key={build.buildId}
-                sx={{
-                  px: 2,
-                  py: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  borderTop: '1px solid',
-                  borderColor: 'divider',
-                  '&:first-of-type': { borderTop: 'none' },
-                }}
-              >
-                <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13 }} noWrap>
-                    {build.buildId}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" noWrap display="block">
-                    {build.createdAt ? relativeTime(build.createdAt) : ''}
-                    {build.description ? ` · ${build.description}` : ''}
-                  </Typography>
-                </Box>
-                {confirming ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Delete?
-                    </Typography>
-                    <Button
-                      size="small"
-                      color="error"
-                      variant="contained"
-                      disabled={busy}
-                      onClick={() => {
-                        setPendingDelete(null);
-                        onDeleteBuild(build.buildId);
-                      }}
-                    >
-                      Delete
-                    </Button>
-                    <Button size="small" disabled={busy} onClick={() => setPendingDelete(null)}>
-                      Cancel
-                    </Button>
-                  </Box>
-                ) : (
-                  <Tooltip title={blockedReason || 'Delete this build'}>
-                    <span>
-                      <IconButton
-                        size="small"
-                        aria-label={`Delete build ${build.buildId}`}
-                        disabled={busy || Boolean(blockedReason)}
-                        onClick={() => setPendingDelete(build.buildId)}
-                      >
-                        <Trash2 size={15} />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                )}
-              </Box>
-            );
-          })}
-        </Box>
-      </Collapse>
-    </Box>
+        {builds.length === 0 ? (
+          <Card variant="outlined">
+            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+              <Typography variant="body2" color="text.disabled">
+                No builds yet.
+              </Typography>
+            </CardContent>
+          </Card>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {builds.map((build) => {
+              const blockedReason = undeletableBuilds[build.buildId];
+              return (
+                <Card key={build.buildId} variant="outlined">
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                      <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                          {build.buildId}
+                        </Typography>
+                        {build.description ? (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {build.description}
+                          </Typography>
+                        ) : null}
+                        {build.createdAt ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                            <Clock size={13} />
+                            <Typography variant="caption" color="text.secondary">
+                              {relativeTime(build.createdAt)}
+                            </Typography>
+                          </Box>
+                        ) : null}
+                      </Box>
+                      <Tooltip title={blockedReason || 'Delete this build'}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            aria-label={`Delete build ${build.buildId}`}
+                            disabled={busy || Boolean(blockedReason)}
+                            onClick={() => setPendingDelete(build.buildId)}
+                          >
+                            <Trash2 size={15} />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Box>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Box>
+        )}
+      </CardContent>
+
+      <Dialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)}>
+        <DialogTitle>Delete this build?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary" variant="body2">
+            This action permanently deletes the build and cannot be undone.
+          </Typography>
+          <Typography sx={{ mt: 1.5 }} variant="body2">
+            Build ID:{' '}
+            <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+              {pendingDelete}
+            </Box>
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={busy}
+            onClick={() => {
+              if (!pendingDelete) return;
+              const buildId = pendingDelete;
+              setPendingDelete(null);
+              onDeleteBuild(buildId);
+            }}
+          >
+            Delete
+          </Button>
+          <Button disabled={busy} onClick={() => setPendingDelete(null)}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Card>
   );
 };
 

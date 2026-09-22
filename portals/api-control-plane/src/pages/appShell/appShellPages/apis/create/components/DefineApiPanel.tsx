@@ -18,6 +18,7 @@
 
 import {
   Box,
+  Button,
   Divider,
   FormControl,
   FormLabel,
@@ -26,7 +27,7 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import { FileCode2, Link as LinkIcon, Pencil } from '@wso2/oxygen-ui-icons-react';
+import { FileCode2, Link as LinkIcon, Pencil, Zap } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -69,6 +70,10 @@ const messages = defineMessages({
     id: 'api.create.defineApi.scratch.endpoint.preview.title',
     defaultMessage: 'Ready to connect',
   },
+  sampleUrl: {
+    id: 'api.create.defineApi.scratch.endpoint.sampleUrl',
+    defaultMessage: 'Try with Sample URL',
+  },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
     defaultMessage: 'Begin with a blank API and fill in the details.',
@@ -93,6 +98,21 @@ type ApproachTabProps = {
   onClick: () => void;
   title: ReactNode;
 };
+
+const SAMPLE_BACKEND_URL = 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books';
+
+const SampleLink = ({ onClick }: { onClick: () => void }) => (
+  <Button
+    onClick={onClick}
+    size="small"
+    startIcon={<Zap size={16} />}
+    sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
+    type="button"
+    variant="text"
+  >
+    <FormattedMessage {...messages.sampleUrl} />
+  </Button>
+);
 
 const ApproachTab = ({ active, description, icon, onClick, title }: ApproachTabProps) => (
   <Box
@@ -150,7 +170,7 @@ export const DefineApiPanel = ({
 }: DefineApiPanelProps) => {
   const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('scratch');
-  const [endpointUrl, setEndpointUrl] = useState(PLACEHOLDER_UPSTREAM_URL);
+  const [endpointUrl, setEndpointUrl] = useState('');
   const [contract, setContract] = useState<FetchedContract | null>(null);
 
   const selectApproach = (next: ApproachKey) => {
@@ -158,13 +178,16 @@ export const DefineApiPanel = ({
     onApproachChange?.(next);
   };
 
-  const scratchDraft = useMemo((): ApiCreationWizardDraftState => {
+  const scratchDraft = useMemo((): ApiCreationWizardDraftState | null => {
+    const upstreamUrl = endpointUrl.trim();
+    if (!upstreamUrl) return null;
+
     const details = extractApiDetails(DEFAULT_API_SKELETON);
     const scratchRawText = JSON.stringify(DEFAULT_API_SKELETON, null, 2);
     return {
       ...details,
       upstream: {
-        main: { url: endpointUrl.trim() || PLACEHOLDER_UPSTREAM_URL },
+        main: { url: upstreamUrl },
       },
       contractImport: {
         specFile: new File([scratchRawText], 'api_definition.json', { type: 'application/json' }),
@@ -272,6 +295,7 @@ export const DefineApiPanel = ({
                   <OutlinedInput
                     id="backend-endpoint"
                     onChange={(event) => setEndpointUrl(event.target.value)}
+                    placeholder={PLACEHOLDER_UPSTREAM_URL}
                     startAdornment={
                       <InputAdornment position="start">
                         <LinkIcon size={18} />
@@ -280,6 +304,7 @@ export const DefineApiPanel = ({
                     sx={{ mt: 0.75 }}
                     value={endpointUrl}
                   />
+                  <SampleLink onClick={() => setEndpointUrl(SAMPLE_BACKEND_URL)} />
                 </FormControl>
               </Stack>
             </Box>

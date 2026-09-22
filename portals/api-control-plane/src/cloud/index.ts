@@ -15,13 +15,23 @@
  * specific language governing permissions and limitations
  * under the License.
  *
- * Injection seam for cloud-only extensions. `main.tsx` imports
- * `cloudExtensions` from here unconditionally, so this file must always
- * exist and export a valid (possibly empty) array — this is what lets a
- * downstream build overlay just this one file/directory with real cloud
- * features, without ever touching App.tsx/main.tsx/extensions.tsx.
+ * Injection seam for cloud-only extensions and branding. `main.tsx` imports
+ * `cloudExtensions` and `cloudBrandLogo` from here unconditionally, so this
+ * file must always exist and export both — this is what lets a downstream
+ * build overlay just this one file/directory with the real cloud host module
+ * (`portals/cloud-plugins/apip-cloud-ui/src/hosts/api-control-plane.tsx`),
+ * without ever touching App.tsx/main.tsx/extensions.tsx.
  */
 
+import type { BrandLogo } from '../branding/BrandLogoProvider';
 import type { ApiControlPlaneExtension } from '../extensions';
 
 export const cloudExtensions: ApiControlPlaneExtension[] = [];
+
+/**
+ * Placeholder for the cloud console's own brand logo. This portal ships no
+ * cloud artwork — the cloud UI owns its logo files and exports them from its
+ * host module, which replaces this stub. Left `undefined`, `App` falls back to
+ * the portal's on-prem logo (`defaultBrandLogo`).
+ */
+export const cloudBrandLogo: BrandLogo | undefined = undefined;

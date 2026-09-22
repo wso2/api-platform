@@ -20,6 +20,7 @@ import {
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
+import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import {
   PAGE_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
@@ -29,6 +30,14 @@ import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
+import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
+import cloudLogoLight from '../assets/logos/apiplatform_black.svg';
+
+/** Cloud console branding used by the host header and login page. */
+export const cloudBrandLogo: BrandLogo = {
+  dark: cloudLogoDark,
+  light: cloudLogoLight,
+};
 
 /**
  * The kinds of gateway this host manages. Module scope, not a literal at the

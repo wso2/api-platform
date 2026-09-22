@@ -191,6 +191,9 @@
   "api.create.defineApi.scratch.endpoint.preview.title": {
     "defaultMessage": "Ready to connect"
   },
+  "api.create.defineApi.scratch.endpoint.sampleUrl": {
+    "defaultMessage": "Try with Sample URL"
+  },
   "api.create.defineApi.scratch.title": {
     "defaultMessage": "Start from scratch"
   },
@@ -671,6 +674,38 @@
     "defaultMessage": "Open {name}",
     "description": "Accessible name of a card or row that opens what it describes."
   },
+  "apiControlPlane.navigation.usePageTitle.admin": {
+    "defaultMessage": "Admin",
+    "description": "Browser tab title for the API admin page."
+  },
+  "apiControlPlane.navigation.usePageTitle.alerts": {
+    "defaultMessage": "Alerts",
+    "description": "Browser tab title for the API observability alerts page."
+  },
+  "apiControlPlane.navigation.usePageTitle.apiEdit": {
+    "defaultMessage": "Edit API",
+    "description": "Browser tab title for the page editing an API's basic information."
+  },
+  "apiControlPlane.navigation.usePageTitle.apis": {
+    "defaultMessage": "APIs",
+    "description": "Browser tab title for the API listing page."
+  },
+  "apiControlPlane.navigation.usePageTitle.lifecycle": {
+    "defaultMessage": "Lifecycle",
+    "description": "Browser tab title for the API lifecycle page."
+  },
+  "apiControlPlane.navigation.usePageTitle.monetize": {
+    "defaultMessage": "Monetize",
+    "description": "Browser tab title for the API monetization page."
+  },
+  "apiControlPlane.navigation.usePageTitle.newApi": {
+    "defaultMessage": "Create API",
+    "description": "Browser tab title for the API creation wizard."
+  },
+  "apiControlPlane.navigation.usePageTitle.settings": {
+    "defaultMessage": "Settings",
+    "description": "Browser tab title for any Settings tab."
+  },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
@@ -1061,8 +1096,35 @@
     "defaultMessage": "2 days ago",
     "description": "Temporary relative update time for demo document data."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.close": {
+    "defaultMessage": "Close endpoint editor"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.drawerTitle": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.edit": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointLabel": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
+    "defaultMessage": "Enter a valid endpoint URL."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
+    "defaultMessage": "Save"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saveError": {
+    "defaultMessage": "Unable to update the backend endpoint."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saved": {
+    "defaultMessage": "Backend endpoint updated."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.title": {
     "defaultMessage": "Endpoints"
@@ -1917,7 +1979,7 @@
     "defaultMessage": "Publish APIs so consumers can discover them and request access."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalTitle": {
-    "defaultMessage": "Developer portals"
+    "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
     "defaultMessage": "Connect a gateway"
@@ -2280,6 +2342,10 @@
     "defaultMessage": "Loading organization",
     "description": "Shown while the signed-in user's organizations are being fetched."
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.provisioning": {
+    "defaultMessage": "Setting up your organization",
+    "description": "Shown on first sign-in while the organization is still being created."
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.ServerErrorPage.message": {
     "defaultMessage": "The console could not complete the request. Try again shortly."
   },
@@ -2437,6 +2503,10 @@
   "apiControlPlane.pages.auth.LoginPage.productName": {
     "defaultMessage": "<emphasis>API</emphasis> Platform",
     "description": "Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight."
+  },
+  "apiControlPlane.pages.auth.LoginPage.redirecting": {
+    "defaultMessage": "Signing you in",
+    "description": "Shown while the browser is being handed over to the identity provider."
   },
   "apiControlPlane.pages.auth.LoginPage.sessionExpired": {
     "defaultMessage": "Your session has expired. Sign in again to continue."
@@ -2926,8 +2996,8 @@
   "appShell.header.api.select": {
     "defaultMessage": "Select API"
   },
-  "appShell.header.notifications": {
-    "defaultMessage": "Notifications"
+  "appShell.header.brand.aria": {
+    "defaultMessage": "Go to organization overview"
   },
   "appShell.header.org.aria": {
     "defaultMessage": "Organizations"
@@ -2964,6 +3034,9 @@
   },
   "appShell.header.project.select": {
     "defaultMessage": "Select Project"
+  },
+  "appShell.header.signOut": {
+    "defaultMessage": "Sign out"
   },
   "appShell.header.title": {
     "defaultMessage": "API Platform"
@@ -3105,6 +3178,18 @@
     "defaultMessage": "{count, plural, one {# resource} other {# resources}}"
   },
   "develop.definition.DefinitionPanel.save": {
+    "defaultMessage": "Save"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.title": {
+    "defaultMessage": "Update API"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.definitionBody": {
+    "defaultMessage": "Are you sure you want to save the updated API Definition?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.resourcesBody": {
+    "defaultMessage": "Are you sure you want to save the updated resources?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.action": {
     "defaultMessage": "Save"
   },
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
