@@ -538,3 +538,43 @@ func TestExchangedTokenUsable(t *testing.T) {
 		})
 	}
 }
+
+// TestSessionReportsExchangedScopesWithCachingDisabled is the concrete case the
+// "use this request's own result" change fixes.
+//
+// With cache_enabled = false, doExchange never writes Exchanged onto the stored
+// session — there is nothing to cache. Reading the scopes back out of the store
+// therefore found an empty ExchangedToken and fell through to the LOGIN token's
+// scopes, so the UI gated on permissions the Platform API does not use. The same
+// path is reachable with caching ON, since the store write is best-effort and only
+// logs on failure.
+func TestSessionReportsExchangedScopesWithCachingDisabled(t *testing.T) {
+	h := newExchangeHarness(t, func(c *config.TokenExchangeConfig) { c.CacheEnabled = false })
+	subject := h.subjectSession(t)
+
+	req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
+	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	rec := httptest.NewRecorder()
+	h.server.handleSession(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var got struct {
+		User struct {
+			Scopes []string `json:"scopes"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, s := range got.User.Scopes {
+		if s == "login-scope" {
+			t.Fatalf("scopes = %v — reported the login token's scopes, which the Platform API "+
+				"does not authorize against in exchange mode", got.User.Scopes)
+		}
+	}
+	if len(got.User.Scopes) != 2 {
+		t.Errorf("scopes = %v, want the two granted by the exchange", got.User.Scopes)
+	}
+}

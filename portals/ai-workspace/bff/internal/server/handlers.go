@@ -117,15 +117,25 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// Not fatal: the session is genuinely authenticated, and the next proxied request
 	// surfaces the failure with the right status.
+	//
+	// The result is carried into userFromToken rather than read back from the stored
+	// session, which is not merely a saved lookup: doExchange's write to the store is
+	// best-effort and only logs on failure, so re-reading can miss the token that was
+	// just minted and report the LOGIN token's scopes instead — the exact substitution
+	// exchange mode exists to prevent.
+	var exchanged *auth.Result
 	if s.exchanger != nil {
-		if _, err := s.exchangedToken(r.Context(), jwt); err != nil {
+		res, err := s.exchangedToken(r.Context(), jwt)
+		if err != nil {
 			slog.Warn("token exchange failed while hydrating session", "err", err)
+		} else {
+			exchanged = res
 		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
-		"user":          s.userFromToken(r.Context(), jwt),
+		"user":          s.userFromToken(r.Context(), jwt, exchanged),
 		"accessToken":   jwt,
 	})
 }
@@ -296,10 +306,15 @@ func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
 // self-contained in the JWT. For OIDC the stored entry holds the richer User
 // (which merged id_token claims at login); we fall back to decoding the access
 // token if that entry is gone (e.g. after a BFF restart).
-func (s *Server) userFromToken(ctx context.Context, jwt string) session.User {
+//
+// exchanged is the result of this request's own exchange, or nil when there was
+// none (no exchanger configured, or the exchange failed). It takes precedence over
+// whatever the stored session happens to hold, which may be older or — if the
+// best-effort cache write failed — absent.
+func (s *Server) userFromToken(ctx context.Context, jwt string, exchanged *auth.Result) session.User {
 	if s.oidc != nil {
 		if sess, ok, _ := s.store.Get(ctx, jwt); ok {
-			return s.withExchangedScopes(sess.User, sess.Exchanged)
+			return s.withExchangedScopes(sess.User, exchanged, sess.Exchanged)
 		}
 		return s.oidc.UserFromAccessToken(jwt)
 	}
@@ -315,11 +330,18 @@ func (s *Server) userFromToken(ctx context.Context, jwt string) session.User {
 // not exchanged yet, and blanking scopes would show nothing as permitted for a fully
 // authorized session. Once a session has exchanged, its scopes are copied verbatim —
 // including a legitimately empty set — since that's what the Platform API authorizes.
-func (s *Server) withExchangedScopes(u session.User, ex session.ExchangedToken) session.User {
-	if s.exchanger == nil || ex.Token == "" {
+func (s *Server) withExchangedScopes(u session.User, fresh *auth.Result, cached session.ExchangedToken) session.User {
+	if s.exchanger == nil {
 		return u
 	}
-	u.Scopes = ex.Scopes
+	if fresh != nil {
+		u.Scopes = fresh.Scopes
+		return u
+	}
+	if cached.Token == "" {
+		return u
+	}
+	u.Scopes = cached.Scopes
 	return u
 }
 

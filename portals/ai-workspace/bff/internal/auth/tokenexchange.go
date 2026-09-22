@@ -23,11 +23,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"ai-workspace-bff/internal/config"
@@ -54,8 +57,20 @@ const (
 	maxExchangeResponseBytes = 1 << 20
 
 	// All attempts share the exchangeTimeout budget above.
-	exchangeMaxAttempts  = 3
-	exchangeRetryBackoff = 400 * time.Millisecond
+	exchangeMaxAttempts      = 3
+	exchangeRetryBaseBackoff = 400 * time.Millisecond
+	exchangeRetryMaxBackoff  = 2 * time.Second
+
+	// unavailableCooldown is how long a confirmed-unreachable IDP is assumed to
+	// still be unreachable. Within the window every exchange fails immediately
+	// instead of spending the full exchangeTimeout budget rediscovering it.
+	//
+	// Without this, a wedged token endpoint makes the portal look wedged: the SPA
+	// fires a burst of API calls per page load, each of which blocks for up to
+	// exchangeTimeout before returning 502, and each of which adds load to the
+	// component that is already failing. The window is deliberately short — it is
+	// there to collapse a storm, not to keep a recovered IDP shut out.
+	unavailableCooldown = 3 * time.Second
 )
 
 // ErrExchangeUnavailable means the IDP could not be reached or failed server-side;
@@ -78,6 +93,18 @@ type Exchanger struct {
 	cfg             config.TokenExchangeConfig
 	endpoint        string
 	requestedScopes []string
+
+	// mu guards the upstream-health state below, which is shared by every session:
+	// the token endpoint is one upstream, so what one request learns about it is
+	// true for all of them.
+	mu               sync.Mutex
+	unavailableUntil time.Time
+
+	// warnedScopeSets remembers which unrequested-scope sets have already been
+	// reported, so an over-provisioned application is logged once per distinct set
+	// rather than on every exchange — a warning repeated per request is noise that
+	// teaches people to filter the channel it arrives on.
+	warnedScopeSets map[string]struct{}
 }
 
 // NewExchanger builds an Exchanger for an already-validated config. endpoint is the
@@ -88,6 +115,7 @@ func NewExchanger(client *http.Client, cfg config.TokenExchangeConfig, endpoint 
 		cfg:             cfg,
 		endpoint:        endpoint,
 		requestedScopes: strings.Fields(cfg.Scopes),
+		warnedScopeSets: make(map[string]struct{}),
 	}
 }
 
@@ -107,10 +135,32 @@ func (e *Exchanger) CacheEnabled() bool         { return e.cfg.CacheEnabled }
 func (e *Exchanger) MinValidity() time.Duration { return e.cfg.MinValidity }
 
 // ConfigFingerprint identifies the settings that determine what the IDP mints, so a
-// cached token is not reused after they change. Credentials are excluded: they
-// authenticate the BFF without altering the issued token.
+// cached token is not reused after they change.
+//
+// Every field that alters the request belongs here, including the ones that shape it
+// rather than name the target: turning on org_param, or switching subject_token_type
+// while migrating IDPs, changes what comes back just as surely as changing audience
+// does. A field left out is not a cosmetic omission — it means sessions holding a
+// token minted under the old configuration keep using it until it expires, so the
+// change appears to work for new logins and not for existing ones. ClientID is
+// included because a different application can carry different grants; ClientSecret
+// is not, because it authenticates the BFF without altering the issued token.
+//
+// TestConfigFingerprintCoversEveryRequestAffectingField walks the config struct and
+// fails if a newly added field is neither reflected here nor explicitly declared
+// irrelevant, so this cannot quietly drift again.
 func (e *Exchanger) ConfigFingerprint() string {
-	return strings.Join([]string{e.cfg.GrantType, e.cfg.Audience, e.cfg.Resource, e.cfg.Scopes}, "\x1f")
+	return strings.Join([]string{
+		e.cfg.GrantType,
+		e.endpoint, // the resolved endpoint, which may differ from cfg.TokenEndpoint
+		e.cfg.ClientID,
+		e.cfg.Audience,
+		e.cfg.Resource,
+		e.cfg.Scopes,
+		e.cfg.SubjectTokenType,
+		e.cfg.RequestedTokenType,
+		e.cfg.OrgParam,
+	}, "\x1f")
 }
 
 // Result is one completed exchange. A zero Expiry means the IDP supplied no lifetime,
@@ -146,6 +196,9 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken, orgHandle string
 	if subjectToken == "" {
 		return nil, fmt.Errorf("%w: no subject token", ErrExchangeRejected)
 	}
+	if err := e.upstreamDown(); err != nil {
+		return nil, err
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, exchangeTimeout)
 	defer cancel()
@@ -155,17 +208,25 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken, orgHandle string
 		var res *Result
 		res, err = e.exchangeOnce(ctx, subjectToken, orgHandle)
 		if err == nil {
+			e.noteUpstreamHealthy()
 			if attempt > 1 {
 				slog.Info("token exchange succeeded after retrying a transient identity provider failure",
 					"attempts", attempt)
 			}
 			return res, nil
 		}
-		if !errors.Is(err, ErrExchangeUnavailable) || attempt == exchangeMaxAttempts {
+		if errors.Is(err, ErrExchangeUnavailable) {
+			e.noteUpstreamUnavailable()
+		}
+
+		var failure *exchangeFailure
+		retryable := errors.As(err, &failure) && failure.retryable
+		if !retryable || attempt == exchangeMaxAttempts {
 			return nil, err
 		}
+
 		// Report the real failure rather than a context error on deadline.
-		timer := time.NewTimer(exchangeRetryBackoff)
+		timer := time.NewTimer(retryDelay(attempt, failure.retryAfter))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -175,41 +236,110 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken, orgHandle string
 	}
 }
 
+// exchangeFailure carries retry guidance alongside the sentinel the caller
+// switches on. Whether a failure is worth retrying is decided where it is
+// classified — the retry loop cannot tell a wedged endpoint (retry) from a
+// rejected audience (retrying a configuration mistake only wastes the request's
+// deadline) from a rate limit (retrying actively makes it worse).
+type exchangeFailure struct {
+	err        error
+	retryable  bool
+	retryAfter time.Duration
+}
+
+func (f *exchangeFailure) Error() string { return f.err.Error() }
+func (f *exchangeFailure) Unwrap() error { return f.err }
+
+func transient(retryAfter time.Duration, format string, args ...any) error {
+	return &exchangeFailure{err: fmt.Errorf(format, args...), retryable: true, retryAfter: retryAfter}
+}
+
+func permanent(format string, args ...any) error {
+	return &exchangeFailure{err: fmt.Errorf(format, args...)}
+}
+
+// retryDelay backs off exponentially with jitter, never below what the IDP asked
+// for via Retry-After.
+//
+// The jitter is the point, not a refinement: a fixed delay means every session
+// that failed in the same instant retries in the same instant, so a blip that
+// affected many sessions returns as a synchronized burst against the endpoint
+// that is already struggling — the same stampede go-network-service-hardening.md
+// directive 4 forbids for poll loops, arriving by way of retries instead.
+func retryDelay(attempt int, retryAfter time.Duration) time.Duration {
+	delay := exchangeRetryBaseBackoff << (attempt - 1)
+	if delay > exchangeRetryMaxBackoff {
+		delay = exchangeRetryMaxBackoff
+	}
+	if retryAfter > delay {
+		delay = retryAfter
+	}
+	// Full jitter over the upper half, so delays spread without collapsing to zero.
+	return delay/2 + rand.N(delay/2+1)
+}
+
+// upstreamDown fails fast while the token endpoint is known to be unreachable.
+func (e *Exchanger) upstreamDown() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if time.Now().Before(e.unavailableUntil) {
+		return transient(0, "%w: identity provider was unreachable moments ago", ErrExchangeUnavailable)
+	}
+	return nil
+}
+
+func (e *Exchanger) noteUpstreamUnavailable() {
+	e.mu.Lock()
+	e.unavailableUntil = time.Now().Add(unavailableCooldown)
+	e.mu.Unlock()
+}
+
+// noteUpstreamHealthy reopens the gate immediately on the first success, so a
+// recovered IDP is not kept out for the remainder of the cooldown.
+func (e *Exchanger) noteUpstreamHealthy() {
+	e.mu.Lock()
+	e.unavailableUntil = time.Time{}
+	e.mu.Unlock()
+}
+
 // exchangeOnce performs a single exchange request.
 func (e *Exchanger) exchangeOnce(ctx context.Context, subjectToken, orgHandle string) (*Result, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.endpoint,
 		strings.NewReader(e.buildForm(subjectToken, orgHandle).Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrExchangeUnavailable, err)
+		// A request that cannot be built is a malformed endpoint, not a blip: it
+		// will fail identically on every attempt, so retrying only burns the
+		// caller's deadline before returning the same error.
+		return nil, permanent("%w: %v", ErrExchangeUnavailable, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
 	res, err := e.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrExchangeUnavailable, err)
+		return nil, transient(0, "%w: %v", ErrExchangeUnavailable, err)
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxExchangeResponseBytes))
 	if err != nil {
-		return nil, fmt.Errorf("%w: reading response: %v", ErrExchangeUnavailable, err)
+		return nil, transient(0, "%w: reading response: %v", ErrExchangeUnavailable, err)
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, e.classifyError(res.StatusCode, body, subjectToken)
+		return nil, e.classifyError(res.StatusCode, body, subjectToken, res.Header)
 	}
 
 	var tok exchangeResponse
 	if err := json.Unmarshal(body, &tok); err != nil {
-		return nil, fmt.Errorf("%w: decoding response: %v", ErrExchangeUnavailable, err)
+		return nil, transient(0, "%w: decoding response: %v", ErrExchangeUnavailable, err)
 	}
 	if tok.AccessToken == "" {
-		return nil, fmt.Errorf("%w: response carried no access_token", ErrExchangeUnavailable)
+		return nil, transient(0, "%w: response carried no access_token", ErrExchangeUnavailable)
 	}
 	// issued_token_type is an RFC 8693 field; Entra's OBO response has none.
 	if e.cfg.GrantType == config.GrantTokenExchange {
 		if err := validateIssuedTokenType(tok.IssuedTokenType); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrExchangeRejected, err)
+			return nil, permanent("%w: %v", ErrExchangeRejected, err)
 		}
 	}
 
@@ -270,13 +400,52 @@ func (e *Exchanger) setOrgParam(form url.Values, orgHandle string) {
 	}
 }
 
+// subjectTokenVerdicts are the error codes that are a verdict on the subject token
+// or on this user specifically — the only failures that mean "this session can never
+// produce an upstream token", which is what callers act on by destroying it.
+//
+// invalid_request is here despite its generic name: RFC 8693 §2.2.2 requires it as
+// the code when "the subject_token or actor_token are invalid for any reason, or are
+// unacceptable based on policy", so for this grant it is the bad-subject-token code.
+// It is unavoidably ambiguous — a genuinely malformed request produces it too — and
+// the ambiguity is the RFC's, not ours. The codes that are unambiguously about the
+// request are classified below instead.
+var subjectTokenVerdicts = map[string]bool{
+	"invalid_request":      true, // RFC 8693 §2.2.2: the subject token is invalid or refused by policy
+	"invalid_grant":        true, // the subject token is expired, revoked or untrusted
+	"access_denied":        true, // policy refused this subject
+	"consent_required":     true, // needs an interactive login this flow cannot perform
+	"interaction_required": true,
+	"login_required":       true,
+}
+
+// configFaults are the codes that describe the request the BFF sent rather than the
+// token it carried. That request is built entirely from [auth.oidc.token_exchange]
+// and is byte-identical for every user, so one of these means the deployment is
+// misconfigured — not that anyone's credentials are bad.
+//
+// They must not be rejections. Treating them as such turns a single mistyped
+// audience into a platform-wide logout that users cannot recover from on their own:
+// the eager exchange in the OIDC callback fails the same way, so logging back in
+// fails too. Classified unavailable, the session survives, the user sees a 502, and
+// everyone resumes the moment the configuration is corrected. They are not retried
+// either — a configuration mistake does not fix itself within one request's deadline.
+var configFaults = map[string]bool{
+	"invalid_target":         true, // RFC 8693 §2.2.2: audience/resource not accepted
+	"invalid_client":         true, // client_id/client_secret rejected
+	"unauthorized_client":    true, // this client may not use this grant
+	"unsupported_grant_type": true,
+	"invalid_scope":          true,
+}
+
 // classifyError logs the IDP's reason and returns a sentinel. The reason stays
 // internal: whether the subject or the target was refused maps out the deployment's
 // trust configuration.
-func (e *Exchanger) classifyError(status int, body []byte, subjectToken string) error {
+func (e *Exchanger) classifyError(status int, body []byte, subjectToken string, header http.Header) error {
 	var ee exchangeError
 	_ = json.Unmarshal(body, &ee)
 
+	retryAfter := parseRetryAfter(header)
 	attrs := []any{"status", status, "grant_type", e.cfg.GrantType, "endpoint", e.endpoint}
 	if ee.Code != "" {
 		attrs = append(attrs, "idp_error", ee.Code)
@@ -284,31 +453,75 @@ func (e *Exchanger) classifyError(status int, body []byte, subjectToken string) 
 	if ee.Description != "" {
 		attrs = append(attrs, "idp_error_description", e.redactSecrets(ee.Description, subjectToken))
 	}
+	if retryAfter > 0 {
+		attrs = append(attrs, "retry_after", retryAfter)
+	}
 
-	// 408/429 mean "not now", like a 5xx: a rejection here would destroy a live
-	// session over a timeout or a rate limit.
-	if status >= http.StatusInternalServerError ||
-		status == http.StatusRequestTimeout || status == http.StatusTooManyRequests {
+	// A rate limit is the one failure where retrying is actively harmful: every
+	// retry spends more of the budget the IDP just said we had exhausted. Fail this
+	// request (the session survives) and let the next one find out.
+	if status == http.StatusTooManyRequests {
+		slog.Warn("token exchange failed: identity provider is rate limiting the BFF — "+
+			"not retried, to avoid deepening the limit", attrs...)
+		return permanent("%w: rate limited", ErrExchangeUnavailable)
+	}
+	// 408 means "not now", like a 5xx: a rejection here would destroy a live
+	// session over a timeout.
+	if status >= http.StatusInternalServerError || status == http.StatusRequestTimeout {
 		slog.Error("token exchange failed: identity provider error", attrs...)
-		return fmt.Errorf("%w: status %d", ErrExchangeUnavailable, status)
+		return transient(retryAfter, "%w: status %d", ErrExchangeUnavailable, status)
 	}
 	// A failed key-set fetch is the IDP's own upstream problem, not a verdict on
-	// this token, despite the 4xx code.
+	// this token, despite the 4xx code and despite arriving as invalid_grant.
 	if isTransientKeyFetchFailure(ee.Description) {
 		slog.Warn("token exchange failed: identity provider could not reach the subject token's "+
 			"issuer key set — treating as transient, the session is kept", attrs...)
-		return fmt.Errorf("%w: identity provider key-set fetch failed", ErrExchangeUnavailable)
+		return transient(retryAfter, "%w: identity provider key-set fetch failed", ErrExchangeUnavailable)
 	}
-	// RFC 8693 §2.2.2. An operator must fix this, so it is not a per-user warning.
 	if ee.Code == "invalid_target" {
-		slog.Error("token exchange rejected: audience/resource not accepted by the IDP — "+
+		// Called out separately only because the fix is specific enough to name.
+		slog.Error("token exchange failed: audience/resource not accepted by the IDP — "+
 			"register it on the exchanging application, or correct "+
-			"[auth.oidc.token_exchange] audience / resource",
+			"[auth.oidc.token_exchange] audience / resource. Sessions are being kept "+
+			"and requests answered 502 until this is corrected",
 			append(attrs, "configured_audience", e.cfg.Audience, "configured_resource", e.cfg.Resource)...)
-		return fmt.Errorf("%w: invalid_target", ErrExchangeRejected)
+		return permanent("%w: invalid_target", ErrExchangeUnavailable)
 	}
-	slog.Warn("token exchange rejected", attrs...)
-	return fmt.Errorf("%w: %s", ErrExchangeRejected, ee.Code)
+	if configFaults[ee.Code] {
+		slog.Error("token exchange failed: the identity provider refused the request the BFF sent, "+
+			"which is built from [auth.oidc.token_exchange] and is identical for every user — "+
+			"this is a configuration fault, not a credential one. Sessions are being kept "+
+			"and requests answered 502 until it is corrected", attrs...)
+		return permanent("%w: %s", ErrExchangeUnavailable, ee.Code)
+	}
+	if subjectTokenVerdicts[ee.Code] {
+		slog.Warn("token exchange rejected: the identity provider refused this subject token", attrs...)
+		return permanent("%w: %s", ErrExchangeRejected, ee.Code)
+	}
+	// An unrecognised code is more likely a deployment problem than a verdict on one
+	// user's token, and guessing "rejected" is the expensive direction to be wrong in:
+	// it logs people out. Keep the session and surface a 502.
+	slog.Error("token exchange failed with an unrecognised error code — treating it as a "+
+		"configuration fault and keeping sessions; if this is in fact a per-user rejection, "+
+		"add the code to subjectTokenVerdicts", attrs...)
+	return permanent("%w: %s", ErrExchangeUnavailable, ee.Code)
+}
+
+// parseRetryAfter reads the RFC 9110 Retry-After header in either form.
+func parseRetryAfter(header http.Header) time.Duration {
+	raw := header.Get("Retry-After")
+	if raw == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && secs > 0 {
+		return time.Duration(secs) * time.Second
+	}
+	if when, err := http.ParseTime(raw); err == nil {
+		if d := time.Until(when); d > 0 {
+			return d
+		}
+	}
+	return 0
 }
 
 // grantedScopes prefers the response's scope, which RFC 8693 §2.2.1 makes REQUIRED
@@ -331,12 +544,27 @@ func (e *Exchanger) grantedScopes(granted string, claims map[string]any) []strin
 			extra = append(extra, s)
 		}
 	}
-	if len(extra) > 0 {
+	if len(extra) > 0 && e.shouldWarnScopes(extra) {
 		slog.Warn("token exchange returned scopes that were not requested — "+
 			"the exchanging application may be over-provisioned at the IDP",
 			"unrequested_scopes", extra)
 	}
 	return scopes
+}
+
+// shouldWarnScopes reports whether this set of unrequested scopes is new. The
+// condition it reports is a property of the IDP application, not of the request, so
+// it is the same on every exchange — logging it per request would bury the one line
+// an operator needs under thousands of identical ones.
+func (e *Exchanger) shouldWarnScopes(extra []string) bool {
+	key := strings.Join(extra, " ")
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, seen := e.warnedScopeSets[key]; seen {
+		return false
+	}
+	e.warnedScopeSets[key] = struct{}{}
+	return true
 }
 
 // jwtLikeToken is a backstop only: a token need not be a JWT, so shape cannot be
