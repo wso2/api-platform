@@ -30,7 +30,7 @@ Feature: API configuration with policies
     Given I generate a unique value from "no-policy-api" and store it as "resourceName1_1"
     Given I generate a unique API context from "/no-policy" and store it as "resourceContext1_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName1_1}             |
       | spec.displayName       | No-Policy-Api                       |
       | spec.version           | v1.0                                |
@@ -47,7 +47,7 @@ Feature: API configuration with policies
     Given I generate a unique value from "operation-policy-api" and store it as "resourceName2_1"
     Given I generate a unique API context from "/op-policy" and store it as "resourceContext2_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName2_1}             |
       | spec.displayName       | Operation-Policy-Api                |
       | spec.version           | v1.0                                |
@@ -63,7 +63,7 @@ Feature: API configuration with policies
     Given I generate a unique value from "api-level-policy-api" and store it as "resourceName3_1"
     Given I generate a unique API context from "/api-policy" and store it as "resourceContext3_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName3_1}             |
       | spec.displayName       | Api-Level-Policy-Api                |
       | spec.version           | v1.0                                |
@@ -80,7 +80,7 @@ Feature: API configuration with policies
     Given I generate a unique value from "update-add-policy-api" and store it as "resourceName4_1"
     Given I generate a unique API context from "/update-policy" and store it as "resourceContext4_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName4_1}             |
       | spec.displayName       | Update-Add-Policy-Api              |
       | spec.version           | v1.0                                |
@@ -89,7 +89,7 @@ Feature: API configuration with policies
       | spec.operations        | [{"method":"GET","path":"/test"}] |
     Then the response should be successful
     When I update API "${CTX:resourceName4_1}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName4_1}             |
       | spec.displayName       | Update-Add-Policy-Api              |
       | spec.version           | v1.0                                |
@@ -105,7 +105,7 @@ Feature: API configuration with policies
     Given I generate a unique value from "update-remove-policy-api" and store it as "resourceName5_1"
     Given I generate a unique API context from "/update-remove" and store it as "resourceContext5_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName5_1}             |
       | spec.displayName       | Update-Remove-Policy-Api            |
       | spec.version           | v1.0                                |
@@ -115,7 +115,7 @@ Feature: API configuration with policies
       | spec.operations        | [{"method":"GET","path":"/test"}] |
     Then the response should be successful
     When I update API "${CTX:resourceName5_1}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName5_1}             |
       | spec.displayName       | Update-Remove-Policy-Api            |
       | spec.version           | v1.0                                |
@@ -123,61 +123,65 @@ Feature: API configuration with policies
       | spec.upstream.main.url | http://testbench:3000               |
       | spec.operations        | [{"method":"GET","path":"/test"}] |
     Then the response should be successful
+    And I send a "GET" request to "${CTX:resourceContext5_1}/test" until status 200
     When I delete the API "${CTX:resourceName5_1}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:resourceContext5_1}/test" until status 404
 
   Scenario: Deploy API with API-level policy using empty version resolves to latest
     Given I generate a unique value from "empty-version-api-level-api" and store it as "resourceName6_1"
     Given I generate a unique API context from "/empty-version-api" and store it as "resourceContext6_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName6_1}             |
       | spec.displayName       | Empty-Version-Api-Level-Api        |
       | spec.version           | v1.0                                |
-      | spec.context           | ${CTX:resourceContext6_1}           |
+      | spec.context           | ${CTX:resourceContext6_1}/$version  |
       | spec.upstream.main.url | http://testbench:3000/api/v1        |
       | spec.policies          | [{"name":"cors","params":{"allowedOrigins":["http://example.com"],"allowedMethods":["GET"],"allowedHeaders":["Content-Type"]}}] |
       | spec.operations        | [{"method":"GET","path":"/{country_code}/{city}"}] |
     Then the response should be successful
     And the response should be valid JSON
     And the resource creation response should indicate successful deployment
-    And I send a "GET" request to "${CTX:resourceContext6_1}/us/seattle" until status 200
+    And I send a "GET" request to "${CTX:resourceContext6_1}/v1.0/us/seattle" until status 200
     When I set header "Origin" to "http://example.com"
-    And I send a "GET" request to "${CTX:resourceContext6_1}/us/seattle"
+    And I send a "GET" request to "${CTX:resourceContext6_1}/v1.0/us/seattle"
     Then the response status code should be 200
     And the response header "Access-Control-Allow-Origin" should be "http://example.com"
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:resourceName6_1}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:resourceContext6_1}/v1.0/us/seattle" until status 404
 
   Scenario: Deploy API with operation-level policy using empty version resolves to latest
     Given I generate a unique value from "empty-version-op-level-api" and store it as "resourceName7_1"
     Given I generate a unique API context from "/empty-version-op" and store it as "resourceContext7_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName7_1}             |
       | spec.displayName       | Empty-Version-Op-Level-Api          |
       | spec.version           | v1.0                                |
-      | spec.context           | ${CTX:resourceContext7_1}           |
+      | spec.context           | ${CTX:resourceContext7_1}/$version  |
       | spec.upstream.main.url | http://testbench:3000/api/v1        |
       | spec.operations        | [{"method":"GET","path":"/{country_code}/{city}","policies":[{"name":"cors","params":{"allowedOrigins":["http://example.com"],"allowedMethods":["GET"],"allowedHeaders":["Content-Type"]}}]}] |
     Then the response should be successful
     And the response should be valid JSON
     And the resource creation response should indicate successful deployment
-    And I send a "GET" request to "${CTX:resourceContext7_1}/us/seattle" until status 200
+    And I send a "GET" request to "${CTX:resourceContext7_1}/v1.0/us/seattle" until status 200
     When I set header "Origin" to "http://example.com"
-    And I send a "GET" request to "${CTX:resourceContext7_1}/us/seattle"
+    And I send a "GET" request to "${CTX:resourceContext7_1}/v1.0/us/seattle"
     Then the response status code should be 200
     And the response header "Access-Control-Allow-Origin" should be "http://example.com"
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:resourceName7_1}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:resourceContext7_1}/v1.0/us/seattle" until status 404
 
   Scenario: Deploy API with different HTTP methods
     Given I generate a unique value from "http-methods-api" and store it as "resourceName8_1"
     Given I generate a unique API context from "/methods" and store it as "resourceContext8_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:resourceName8_1}             |
       | spec.displayName       | Http-Methods-Api                    |
       | spec.version           | v1.0                                |

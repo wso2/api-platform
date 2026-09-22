@@ -31,7 +31,7 @@ Feature: Content length guardrail policy
     And I generate a unique API version from "clg-valid" and store it as "apiVersion"
     And I generate a unique API context from "/clg-valid" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -49,13 +49,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Request below the configured minimum length is blocked
     Given I generate a unique value from "clg-below-min" and store it as "apiName"
     And I generate a unique API version from "clg-below-min" and store it as "apiVersion"
     And I generate a unique API context from "/clg-below-min" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -75,13 +76,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Request above the configured maximum length is blocked
     Given I generate a unique value from "clg-above-max" and store it as "apiName"
     And I generate a unique API version from "clg-above-max" and store it as "apiVersion"
     And I generate a unique API context from "/clg-above-max" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -100,13 +102,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Empty request body is blocked
     Given I generate a unique value from "clg-empty-body" and store it as "apiName"
     And I generate a unique API version from "clg-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/clg-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -124,13 +127,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Request exactly at the minimum boundary is allowed
     Given I generate a unique value from "clg-min-boundary" and store it as "apiName"
     And I generate a unique API version from "clg-min-boundary" and store it as "apiVersion"
     And I generate a unique API context from "/clg-min-boundary" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -148,13 +152,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Request exactly at the maximum boundary is allowed
     Given I generate a unique value from "clg-max-boundary" and store it as "apiName"
     And I generate a unique API version from "clg-max-boundary" and store it as "apiVersion"
     And I generate a unique API context from "/clg-max-boundary" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -172,13 +177,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath-extracted field within range is allowed
     Given I generate a unique value from "clg-jsonpath-valid" and store it as "apiName"
     And I generate a unique API version from "clg-jsonpath-valid" and store it as "apiVersion"
     And I generate a unique API context from "/clg-jsonpath-valid" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -196,13 +202,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath-extracted field outside range is blocked
     Given I generate a unique value from "clg-jsonpath-invalid" and store it as "apiName"
     And I generate a unique API version from "clg-jsonpath-invalid" and store it as "apiVersion"
     And I generate a unique API context from "/clg-jsonpath-invalid" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -221,13 +228,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Nested JSONPath-extracted field within range is allowed
     Given I generate a unique value from "clg-nested-jsonpath" and store it as "apiName"
     And I generate a unique API version from "clg-nested-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/clg-nested-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -245,13 +253,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath extraction of a missing field is blocked
     Given I generate a unique value from "clg-missing-field" and store it as "apiName"
     And I generate a unique API version from "clg-missing-field" and store it as "apiVersion"
     And I generate a unique API context from "/clg-missing-field" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -270,13 +279,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted range blocks content that falls inside the excluded window
     Given I generate a unique value from "clg-inverted-excluded" and store it as "apiName"
     And I generate a unique API version from "clg-inverted-excluded" and store it as "apiVersion"
     And I generate a unique API context from "/clg-inverted-excluded" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -296,13 +306,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted range allows content that falls outside the excluded window
     Given I generate a unique value from "clg-inverted-allowed" and store it as "apiName"
     And I generate a unique API version from "clg-inverted-allowed" and store it as "apiVersion"
     And I generate a unique API context from "/clg-inverted-allowed" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -320,13 +331,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response includes the assessment detail when showAssessment is enabled
     Given I generate a unique value from "clg-show-assessment" and store it as "apiName"
     And I generate a unique API version from "clg-show-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/clg-show-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -347,13 +359,14 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response omits the assessment detail when showAssessment is disabled
     Given I generate a unique value from "clg-no-assessment" and store it as "apiName"
     And I generate a unique API version from "clg-no-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/clg-no-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -373,3 +386,4 @@ Feature: Content length guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

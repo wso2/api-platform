@@ -37,13 +37,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-global" and store it as "providerVersion"
     And I generate a unique API context from "/gplr-global" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion} |
       | name                    | ${CTX:providerName}               |
       | displayName             | ${CTX:providerDisplayName}        |
       | version                 | ${CTX:providerVersion}            |
@@ -68,6 +68,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
 
   Scenario: operationPolicies keeps independent rate-limit buckets per resource
     # Exhausting /chat/completions does NOT affect /embeddings - it has its own bucket.
@@ -78,13 +79,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-op" and store it as "providerVersion"
     And I generate a unique API context from "/gplr-op" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}               |
       | displayName              | ${CTX:providerDisplayName}        |
       | version                  | ${CTX:providerVersion}            |
@@ -107,6 +108,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
 
   Scenario: globalPolicies and operationPolicies coexist - per-resource cap blocks one resource without affecting another
     # /chat/completions is blocked by its tighter per-resource bucket; /embeddings is isolated
@@ -118,13 +120,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-combined" and store it as "providerVersion"
     And I generate a unique API context from "/gplr-combined" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}               |
       | displayName              | ${CTX:providerDisplayName}        |
       | version                  | ${CTX:providerVersion}            |
@@ -154,6 +156,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
 
   Scenario: deprecated policies field still enforces independent per-resource rate limits
     Given I generate a unique resource name from "gplr-legacy-template" and store it as "templateName"
@@ -163,13 +166,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-legacy" and store it as "providerVersion"
     And I generate a unique API context from "/gplr-legacy" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}               |
       | displayName              | ${CTX:providerDisplayName}        |
       | version                  | ${CTX:providerVersion}            |
@@ -192,6 +195,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
 
   Scenario: advanced-ratelimit globalPolicies with keyExtraction=apiname shares one bucket across all provider resources
     # All operations share ONE counter. Exhausting /chat/completions also limits /embeddings
@@ -203,13 +207,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-adv-gl" and store it as "providerVersion"
     And I generate a unique API context from "/gplr-adv-gl" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}               |
       | displayName              | ${CTX:providerDisplayName}        |
       | version                  | ${CTX:providerVersion}            |
@@ -233,6 +237,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
 
   Scenario: advanced-ratelimit operationPolicies without keyExtraction keeps independent buckets per provider resource
     # Default key is routename, so each operation gets its own isolated counter. Exhausting
@@ -244,13 +249,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-adv-op" and store it as "providerVersion"
     And I generate a unique API context from "/gplr-adv-op" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}               |
       | displayName              | ${CTX:providerDisplayName}        |
       | version                  | ${CTX:providerVersion}            |
@@ -273,6 +278,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
 
   Scenario: advanced-ratelimit globalPolicies with keyExtraction=apiname shares one bucket across all proxy resources
     # The proxy exposes multiple operations; the shared apiname counter spans all of them.
@@ -287,13 +293,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-adv-gl-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/gplr-adv-gl-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:backendName}                |
       | displayName        | ${CTX:backendDisplayName}         |
       | version            | ${CTX:backendVersion}             |
@@ -304,7 +310,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion          | gateway.api-platform.wso2.com/v1 |
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
       | name                | ${CTX:proxyName}                  |
       | displayName         | ${CTX:proxyDisplayName}           |
       | version             | ${CTX:proxyVersion}               |
@@ -326,9 +332,11 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:backendName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:backendContext}/chat/completions" until status 404
 
   Scenario: advanced-ratelimit operationPolicies without keyExtraction keeps independent buckets per proxy resource
     # Default routename key gives each operation its own isolated counter. Exhausting
@@ -344,13 +352,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-adv-op-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/gplr-adv-op-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:backendName}                |
       | displayName        | ${CTX:backendDisplayName}         |
       | version            | ${CTX:backendVersion}             |
@@ -361,7 +369,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:proxyName}                  |
       | displayName            | ${CTX:proxyDisplayName}           |
       | version                | ${CTX:proxyVersion}               |
@@ -381,9 +389,11 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:backendName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:backendContext}/chat/completions" until status 404
 
   Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on provider - global bucket exhausted by rejected operation traffic
     # Operation policy (3/hr) fires before global (5/hr) for /chat/completions. Global still
@@ -396,13 +406,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-mix" and store it as "providerVersion"
     And I generate a unique API context from "/gplr-mix" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:providerName}               |
       | displayName              | ${CTX:providerDisplayName}        |
       | version                  | ${CTX:providerVersion}            |
@@ -428,6 +438,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
 
   Scenario: mixed advanced-ratelimit global and basic-ratelimit operation on proxy - global bucket exhausted by rejected operation traffic
     # Same as the provider case above, but the policies are attached to the proxy instead.
@@ -442,13 +453,13 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     And I generate a unique API version from "gplr-mix-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/gplr-mix-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:backendName}                |
       | displayName        | ${CTX:backendDisplayName}         |
       | version            | ${CTX:backendVersion}             |
@@ -459,7 +470,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:proxyName}                  |
       | displayName            | ${CTX:proxyDisplayName}           |
       | version                | ${CTX:proxyVersion}               |
@@ -482,6 +493,8 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
 
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:backendName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:backendContext}/chat/completions" until status 404

@@ -1,0 +1,40 @@
+# Database and administrator configuration for Gateway 1.1.0.
+
+[controller.storage.postgres]
+host     = ""
+port     = 5432
+database = ""
+user     = ""
+password = ""
+sslmode  = "disable"
+
+# Test administrator credentials.
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username        = "admin"
+password        = "admin"
+password_hashed = false
+roles           = ["admin"]
+
+[[controller.auth.basic.users]]
+username        = "consumer"
+password        = "consumer"
+password_hashed = false
+roles           = ["consumer"]
+
+[[controller.auth.basic.users]]
+username        = "developer"
+password        = "developer"
+password_hashed = false
+roles           = ["developer"]
+
+[controller.admin_server.config_dump]
+enabled = true
+
+[policy_engine.admin.config_dump]
+enabled = true
+
+[api_key]
+api_keys_per_user_per_api = 3

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -110,7 +111,11 @@ func assertSuccessfulAPIResponse(response *httpx.Response, version, operation st
 func usesResourceStatus(version string) bool {
 	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
 	parts := strings.SplitN(version, ".", 3)
-	return len(parts) >= 2 && parts[0] == "1" && parts[1] == "2"
+	if len(parts) < 2 || parts[0] != "1" {
+		return false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	return err == nil && minor >= 1
 }
 
 func assertResourceStatus(value any, version, operation string, response *httpx.Response) error {

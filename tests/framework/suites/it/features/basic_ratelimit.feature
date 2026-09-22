@@ -31,7 +31,7 @@ Feature: Basic rate limiting policy
     And I generate a unique API version from "brl-basic" and store it as "apiVersion"
     And I generate a unique API context from "/brl-basic" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -50,13 +50,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Rate limit headers are returned on a successful response
     Given I generate a unique value from "brl-headers" and store it as "apiName"
     And I generate a unique API version from "brl-headers" and store it as "apiVersion"
     And I generate a unique API context from "/brl-headers" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -74,13 +75,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Multiple limits enforce the most restrictive one
     Given I generate a unique value from "brl-multi-limit" and store it as "apiName"
     And I generate a unique API version from "brl-multi-limit" and store it as "apiVersion"
     And I generate a unique API context from "/brl-multi-limit" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -99,13 +101,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Each route enforces its own quota
     Given I generate a unique value from "brl-per-route" and store it as "apiName"
     And I generate a unique API version from "brl-per-route" and store it as "apiVersion"
     And I generate a unique API context from "/brl-per-route" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -129,13 +132,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A 429 response includes a Retry-After header
     Given I generate a unique value from "brl-retry-after" and store it as "apiName"
     And I generate a unique API version from "brl-retry-after" and store it as "apiVersion"
     And I generate a unique API context from "/brl-retry-after" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -154,13 +158,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A route without its own policy is not throttled when no API-level policy exists
     Given I generate a unique value from "brl-route-isolation" and store it as "apiName"
     And I generate a unique API version from "brl-route-isolation" and store it as "apiVersion"
     And I generate a unique API context from "/brl-route-isolation" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -182,13 +187,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: An API-level policy scopes a shared bucket across sibling operations
     Given I generate a unique value from "brl-scope" and store it as "apiName"
     And I generate a unique API version from "brl-scope" and store it as "apiVersion"
     And I generate a unique API context from "/brl-scope" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -219,13 +225,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An API-level quota is shared across operations without route-level policies
     Given I generate a unique value from "brl-api-shared" and store it as "apiName"
     And I generate a unique API version from "brl-api-shared" and store it as "apiVersion"
     And I generate a unique API context from "/brl-api-shared" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -248,13 +255,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A lower API-level limit still blocks a route with a higher route-level limit
     Given I generate a unique value from "brl-additive" and store it as "apiName"
     And I generate a unique API version from "brl-additive" and store it as "apiVersion"
     And I generate a unique API context from "/brl-additive" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -274,13 +282,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Mixed attachment returns the scope-correct limit header on a 429
     Given I generate a unique value from "brl-mixed-headers" and store it as "apiName"
     And I generate a unique API version from "brl-mixed-headers" and store it as "apiVersion"
     And I generate a unique API context from "/brl-mixed-headers" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -304,13 +313,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Updating an API adds then removes a route-level policy for the same route
     Given I generate a unique value from "brl-update-route" and store it as "apiName"
     And I generate a unique API version from "brl-update-route" and store it as "apiVersion"
     And I generate a unique API context from "/brl-update-route" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -325,7 +335,7 @@ Feature: Basic rate limiting policy
     Then the response status code should be 200
 
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -342,7 +352,7 @@ Feature: Basic rate limiting policy
     Then the response status code should be 429
 
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -358,13 +368,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An API-level quota is consumed across routes when one route also has a route-level policy
     Given I generate a unique value from "brl-reading-list" and store it as "apiName"
     And I generate a unique API version from "brl-reading-list" and store it as "apiVersion"
     And I generate a unique API context from "/brl-reading-list" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -393,13 +404,14 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/authors" until status 404
 
   Scenario: Route-level traffic on one operation also consumes the API-level bucket used by a sibling operation
     Given I generate a unique value from "brl-books-siblings" and store it as "apiName"
     And I generate a unique API version from "brl-books-siblings" and store it as "apiVersion"
     And I generate a unique API context from "/brl-books-siblings" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -420,3 +432,4 @@ Feature: Basic rate limiting policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/books" until status 404

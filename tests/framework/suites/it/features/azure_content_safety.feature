@@ -30,7 +30,7 @@ Feature: Azure Content Safety content moderation policy
     And I generate a unique API version from "acs-safe-request" and store it as "apiVersion"
     And I generate a unique API context from "/acs-safe-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -47,13 +47,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Request with hate speech is blocked
     Given I generate a unique value from "acs-hate-block" and store it as "apiName"
     And I generate a unique API version from "acs-hate-block" and store it as "apiVersion"
     And I generate a unique API context from "/acs-hate-block" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -72,13 +73,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Request with violence is blocked
     Given I generate a unique value from "acs-violence-block" and store it as "apiName"
     And I generate a unique API version from "acs-violence-block" and store it as "apiVersion"
     And I generate a unique API context from "/acs-violence-block" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -97,13 +99,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Request violation with detailed assessment
     Given I generate a unique value from "acs-assessment" and store it as "apiName"
     And I generate a unique API version from "acs-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/acs-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -123,13 +126,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Response with violating content is blocked
     Given I generate a unique value from "acs-response-block" and store it as "apiName"
     And I generate a unique API version from "acs-response-block" and store it as "apiVersion"
     And I generate a unique API context from "/acs-response-block" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -153,13 +157,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A disabled category allows content that would otherwise violate it
     Given I generate a unique value from "acs-disabled-category" and store it as "apiName"
     And I generate a unique API version from "acs-disabled-category" and store it as "apiVersion"
     And I generate a unique API context from "/acs-disabled-category" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -177,13 +182,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Multiple categories enabled with different thresholds each enforce independently
     Given I generate a unique value from "acs-multi-category" and store it as "apiName"
     And I generate a unique API version from "acs-multi-category" and store it as "apiVersion"
     And I generate a unique API context from "/acs-multi-category" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -218,13 +224,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: JSONPath extraction validates only the targeted field
     Given I generate a unique value from "acs-jsonpath" and store it as "apiName"
     And I generate a unique API version from "acs-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/acs-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -250,13 +257,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A nested JSONPath extraction is validated
     Given I generate a unique value from "acs-nested-jsonpath" and store it as "apiName"
     And I generate a unique API version from "acs-nested-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/acs-nested-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -282,13 +290,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Request and response phases each validate their own content independently
     Given I generate a unique value from "acs-both-phases" and store it as "apiName"
     And I generate a unique API version from "acs-both-phases" and store it as "apiVersion"
     And I generate a unique API context from "/acs-both-phases" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -319,13 +328,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An empty request body is handled gracefully
     Given I generate a unique value from "acs-empty-body" and store it as "apiName"
     And I generate a unique API version from "acs-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/acs-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -341,13 +351,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: passthroughOnError allows the request through despite a content safety API failure
     Given I generate a unique value from "acs-passthrough" and store it as "apiName"
     And I generate a unique API version from "acs-passthrough" and store it as "apiVersion"
     And I generate a unique API context from "/acs-passthrough" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -365,13 +376,14 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A blocked response carries the complete error structure
     Given I generate a unique value from "acs-error-structure" and store it as "apiName"
     And I generate a unique API version from "acs-error-structure" and store it as "apiVersion"
     And I generate a unique API context from "/acs-error-structure" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -392,3 +404,4 @@ Feature: Azure Content Safety content moderation policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

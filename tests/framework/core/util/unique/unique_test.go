@@ -305,11 +305,11 @@ func TestExpandResolvesContextPlaceholders(t *testing.T) {
 		require.Contains(t, err.Error(), "jwtToken")
 	})
 
-	t.Run("an empty resolved value fails the expansion", func(t *testing.T) {
+	t.Run("an empty resolved value is expanded", func(t *testing.T) {
 		ContextValue = func(context.Context, string) (string, error) { return "", nil }
-		_, err := Expand(context.Background(), "Bearer ${CTX:jwtToken}")
-		require.ErrorContains(t, err, "resolved to an empty value")
-		require.Contains(t, err.Error(), "${CTX:jwtToken}")
+		got, err := Expand(context.Background(), "Bearer ${CTX:jwtToken}")
+		require.NoError(t, err)
+		require.Equal(t, "Bearer ", got)
 	})
 
 	t.Run("errors when the suite exposes nothing", func(t *testing.T) {

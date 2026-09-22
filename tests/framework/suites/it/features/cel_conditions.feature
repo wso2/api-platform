@@ -31,7 +31,7 @@ Feature: CEL policy execution conditions
     And I generate a unique API version from "cel-method" and store it as "apiVersion"
     And I generate a unique API context from "/cel-method" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -54,13 +54,14 @@ Feature: CEL policy execution conditions
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Policy executes on multiple methods using the in operator
     Given I generate a unique value from "cel-multi-method" and store it as "apiName"
     And I generate a unique API version from "cel-multi-method" and store it as "apiVersion"
     And I generate a unique API context from "/cel-multi-method" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -90,13 +91,14 @@ Feature: CEL policy execution conditions
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Policy executes only when a specific header is present
     Given I generate a unique value from "cel-header-presence" and store it as "apiName"
     And I generate a unique API version from "cel-header-presence" and store it as "apiVersion"
     And I generate a unique API context from "/cel-header-presence" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -119,13 +121,14 @@ Feature: CEL policy execution conditions
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Policy executes based on a header value
     Given I generate a unique value from "cel-header-value" and store it as "apiName"
     And I generate a unique API version from "cel-header-value" and store it as "apiVersion"
     And I generate a unique API context from "/cel-header-value" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -149,13 +152,14 @@ Feature: CEL policy execution conditions
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Policy executes based on a path prefix
     Given I generate a unique value from "cel-path-prefix" and store it as "apiName"
     And I generate a unique API version from "cel-path-prefix" and store it as "apiVersion"
     And I generate a unique API context from "/cel-path-prefix" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -175,13 +179,14 @@ Feature: CEL policy execution conditions
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Policy executes only when combined method and header conditions both hold
     Given I generate a unique value from "cel-combined" and store it as "apiName"
     And I generate a unique API version from "cel-combined" and store it as "apiVersion"
     And I generate a unique API context from "/cel-combined" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -214,3 +219,4 @@ Feature: CEL policy execution conditions
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

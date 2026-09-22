@@ -21,6 +21,7 @@ package platformgateway
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -64,6 +65,47 @@ func (g *Gateway) responseBodyContainsTemplateLiteral(ctx context.Context, liter
 		return nil
 	}
 	return fmt.Errorf("response body does not contain expected template literal %q: %s", expected, resp.Describe())
+}
+
+// llmProviderResponseHandlesSecret verifies the gateway-version-specific
+// response contract for a templated upstream secret without exposing its
+// resolved value.
+func (g *Gateway) llmProviderResponseHandlesSecret(ctx context.Context, literal *godog.DocString) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	expanded, err := stepscommon.Expand(ctx, literal.Content)
+	if err != nil {
+		return err
+	}
+	expected := strings.TrimSpace(expanded)
+	if expected == "" {
+		return fmt.Errorf("expected secret template literal is empty")
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal(resp.Body, &document); err != nil {
+		return fmt.Errorf("parse LLM provider response: %w (%s)", err, resp.Describe())
+	}
+	value, present := traverseJSON(document, "spec.upstream.auth.value")
+	if usesLegacyLLMContract(gatewayVersion(g.topo)) {
+		if !containsLiteralOrJSONEscaped(resp.Text(), expected) {
+			return fmt.Errorf("Gateway 1.1 response does not preserve the configured secret template literal %q: %s", expected, resp.Describe())
+		}
+		if !present || !strings.Contains(fmt.Sprint(value), expected) {
+			return fmt.Errorf("Gateway 1.1 response does not preserve the configured secret template at spec.upstream.auth.value: %s", resp.Describe())
+		}
+		return nil
+	}
+
+	if containsLiteralOrJSONEscaped(resp.Text(), expected) {
+		return fmt.Errorf("response exposes the configured secret template literal %q: %s", expected, resp.Describe())
+	}
+	if present {
+		return fmt.Errorf("response exposes spec.upstream.auth.value: %s", resp.Describe())
+	}
+	return nil
 }
 
 // containsLiteralOrJSONEscaped reports whether haystack contains needle either verbatim or
