@@ -459,6 +459,7 @@ export default function AppLayout(): JSX.Element {
           selectedProjectId={selectedProjectId}
           setSelectedProjectId={setSelectedProjectId}
           onLogout={onLogout}
+          port={port}
         />
       </AppShell.Navbar>
 

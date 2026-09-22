@@ -24,5 +24,18 @@
  */
 
 import type { AIWorkspaceCloudEntry } from '../extensions';
+import { AI_WORKSPACE_HEADER_ACTIONS_SLOT } from '../extensions';
+import { TrialStatusFeature } from '../../../cloud-plugins/apip-cloud-ui-trial-status/src';
+import { createElement } from 'react';
 
-export const cloudExtensions: AIWorkspaceCloudEntry[] = [];
+/** Development registration for the endpoint-backed cloud trial header. */
+export const cloudExtensions: AIWorkspaceCloudEntry[] = import.meta.env.DEV
+  ? [
+      {
+        id: 'trial-status-preview',
+        slot: AI_WORKSPACE_HEADER_ACTIONS_SLOT,
+        order: 10,
+        render: () => createElement(TrialStatusFeature),
+      },
+    ]
+  : [];

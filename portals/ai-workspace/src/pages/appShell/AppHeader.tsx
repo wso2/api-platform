@@ -38,6 +38,12 @@ import {
   getProjectSlug,
 } from "../../utils/projectRouting";
 import ProjectQuickSelector from "./ProjectQuickSelector";
+import {
+  AI_WORKSPACE_HEADER_ACTIONS_SLOT,
+  type AIWorkspaceHeaderAction,
+} from "../../extensions";
+import type { AIWorkspaceHostPort } from "../../hostPort";
+import { useSlot } from "../../slots";
 
 type SelectableOrg = {
   id: string;
@@ -75,6 +81,7 @@ type Props = {
   setSelectedProjectId: (v: string) => void;
 
   onLogout?: () => void;
+  port: AIWorkspaceHostPort;
 };
 
 export default function AppHeader(props: Props) {
@@ -101,7 +108,11 @@ export default function AppHeader(props: Props) {
     setSelectedProjectId,
 
     onLogout,
+    port,
   } = props;
+  const headerActions = useSlot<AIWorkspaceHeaderAction>(
+    AI_WORKSPACE_HEADER_ACTIONS_SLOT,
+  );
 
   const userForMenu = useMemo(
     () => ({
@@ -305,6 +316,10 @@ export default function AppHeader(props: Props) {
       <Header.Spacer />
 
       <Header.Actions>
+        {headerActions.map((action) => (
+          <React.Fragment key={action.id}>{action.render(port)}</React.Fragment>
+        ))}
+
         <ColorSchemeToggle />
 
         <Divider
