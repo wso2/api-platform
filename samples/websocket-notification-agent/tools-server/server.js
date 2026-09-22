@@ -9,6 +9,8 @@ const http = require('http');
 
 const PORT = process.env.PORT || 8091;
 
+const MAX_BODY_BYTES = 1024 * 1024;
+
 const TOOLS = [
   {
     name: 'log_watch',
@@ -76,16 +78,34 @@ const server = http.createServer((req, res) => {
   }
 
   let body = '';
+  let received = 0;
   req.on('data', (chunk) => {
+    received += chunk.length;
+    if (received > MAX_BODY_BYTES) {
+      respond(res, 413, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Request body too large' } });
+      req.destroy();
+      return;
+    }
     body += chunk;
   });
 
   req.on('end', () => {
+    if (res.writableEnded) {
+      return;
+    }
+
     let request;
     try {
       request = JSON.parse(body || '{}');
     } catch (err) {
       respond(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+      return;
+    }
+
+    // JSON.parse accepts null, arrays and bare values. Destructuring those
+    // would throw outside this handler and take the process down.
+    if (request === null || typeof request !== 'object' || Array.isArray(request)) {
+      respond(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } });
       return;
     }
 

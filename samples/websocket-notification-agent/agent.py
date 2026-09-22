@@ -7,7 +7,9 @@ import asyncio
 import json
 import os
 import sys
+from urllib.parse import urlparse
 
+import httpx2
 import websockets
 from google import genai
 from google.genai import types as genai_types
@@ -30,6 +32,10 @@ LLM_API_KEY = os.environ["LLM_API_KEY"]
 MODEL = os.environ.get("MODEL", "gemini-3.6-flash")
 THRESHOLD = float(os.environ.get("THRESHOLD", "1.5"))
 
+if urlparse(STOCK_WS_URL).scheme != "wss":
+    print("[agent] STOCK_WS_URL must use wss://, so the access token is encrypted in transit.", file=sys.stderr)
+    sys.exit(1)
+
 
 async def handle_notification(notification, tools_session, gemini_tools, gemini):
     symbol = notification["symbol"]
@@ -42,7 +48,7 @@ async def handle_notification(notification, tools_session, gemini_tools, gemini)
 
     print(f"[agent] {symbol} {change_percent}% at ${price} -- threshold crossed, asking Gemini...")
 
-    response = gemini.models.generate_content(
+    response = await gemini.aio.models.generate_content(
         model=MODEL,
         contents=(
             f"A stock notification just fired.\nSymbol: {symbol}\n"
@@ -79,7 +85,11 @@ async def run_agent():
     )
     gemini = genai.Client(api_key="placeholder", http_options=http_options)
 
-    async with streamable_http_client(MCP_URL) as (read, write):
+    # The MCP proxy is on the same gateway, so it needs the same verify=False.
+    # This client takes it directly; the timeouts match the MCP transport's own.
+    mcp_http_client = httpx2.AsyncClient(timeout=httpx2.Timeout(30, read=300), verify=False)
+
+    async with mcp_http_client, streamable_http_client(MCP_URL, http_client=mcp_http_client) as (read, write):
         async with ClientSession(read, write) as tools_session:
             await tools_session.initialize()
             tools = await tools_session.list_tools()
@@ -94,7 +104,17 @@ async def run_agent():
             async with websockets.connect(STOCK_WS_URL, additional_headers=ws_headers) as ws:
                 print(f"[agent] connected to {STOCK_WS_URL}")
                 async for message in ws:
-                    notification = json.loads(message)
+                    try:
+                        notification = json.loads(message)
+                        symbol = notification["symbol"]
+                        price = notification["price"]
+                        change_percent = notification["change_percent"]
+                    except (json.JSONDecodeError, TypeError, KeyError) as err:
+                        # One malformed message shouldn't end the run: log it and
+                        # keep consuming. The contents are not printed, since a
+                        # notification can carry data not meant for the log.
+                        print(f"[agent] skipping malformed notification: {type(err).__name__}")
+                        continue
                     await handle_notification(notification, tools_session, gemini_tools, gemini)
 
 
