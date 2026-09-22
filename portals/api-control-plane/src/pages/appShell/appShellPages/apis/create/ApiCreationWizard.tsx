@@ -368,9 +368,9 @@ export const ApiCreationWizard = () => {
                     onBack={() => setStep('source')}
                     serverErrors={serverErrors ?? undefined}
                     initialIdentifierEdited={identifierEdited}
-                    onIdentifierEdited={() => setIdentifierEdited(true)}
+                    onIdentifierEdited={setIdentifierEdited}
                     initialBasePathEdited={basePathEdited}
-                    onBasePathEdited={() => setBasePathEdited(true)}
+                    onBasePathEdited={setBasePathEdited}
                     initialUpstreamEdited={upstreamEdited}
                     onUpstreamEdited={() => setUpstreamEdited(true)}
                   />

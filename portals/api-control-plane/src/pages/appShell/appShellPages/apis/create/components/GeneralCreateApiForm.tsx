@@ -53,12 +53,12 @@ export type GeneralCreateApiFormProps = {
   initialValues?: ApiCreationWizardDraftState;
   /** Whether the user has manually edited the identifier, preserved across remounts. */
   initialIdentifierEdited?: boolean;
-  /** Reports the first manual edit of the identifier, so it survives the remount. */
-  onIdentifierEdited?: () => void;
+  /** Reports every edit-state change for the identifier so the parent stays in sync across remounts. */
+  onIdentifierEdited?: (edited: boolean) => void;
   /** Whether the user has manually edited the base path (context), preserved across remounts. */
   initialBasePathEdited?: boolean;
-  /** Reports the first manual edit of the base path, so it survives the remount. */
-  onBasePathEdited?: () => void;
+  /** Reports every edit-state change for the base path so the parent stays in sync across remounts. */
+  onBasePathEdited?: (edited: boolean) => void;
   /** Whether the user has edited the backend URL, preserved across remounts. */
   initialUpstreamEdited?: boolean;
   /** Reports the first edit of the backend URL, so it survives the remount. */
@@ -462,7 +462,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
     // An emptied field goes back to following the display name.
     const edited = id.trim() !== '';
     setIdentifierEdited(edited);
-    if (edited) props.onIdentifierEdited?.();
+    props.onIdentifierEdited?.(edited);
     setFormState((current) => ({
       ...current,
       id,
@@ -481,7 +481,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   const handleBasePathChange = (context: string) => {
     const edited = context.trim() !== '';
     setBasePathEdited(edited);
-    if (edited) props.onBasePathEdited?.();
+    props.onBasePathEdited?.(edited);
     setField('context', context);
   };
 
