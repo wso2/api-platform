@@ -27,6 +27,7 @@ export function CompliancePage() {
   return (
     <AppPage>
       <ScopeGate
+        graphqlTo={routes.graphqlApiInsightsCompliance}
         prompt="Compliance is assessed per API."
         requires="api"
         to={routes.apiInsightsCompliance}

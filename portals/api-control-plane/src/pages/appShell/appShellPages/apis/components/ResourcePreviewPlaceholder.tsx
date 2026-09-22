@@ -20,7 +20,7 @@ import { alpha, Box, Stack, Typography, type Theme } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
-import { MethodBadge, methodPalette } from '@/components/SwaggerOperationsView';
+import { methodPalette } from '@/components/SwaggerOperationsView';
 import { hairline } from '@/theme/receipes';
 
 const messages = defineMessages({
@@ -34,23 +34,35 @@ const messages = defineMessages({
   },
 });
 
-/**
- * A row in the mock listing. The methods a definition almost always starts
- * with, so the pane reads as a list of operations before it holds any.
- *
- * `ghost` is the tail of the list fading out — it says "and more below" without
- * pretending to know what.
- */
-type PlaceholderRow = {
-  ghost?: boolean;
-  method: string;
+/** The solid badge fill, the row's tinted background, and its 1px rule. */
+export type PlaceholderRowTone = {
+  badge: string;
+  bg: string;
+  border: string;
 };
 
-const PLACEHOLDER_ROWS: PlaceholderRow[] = [
-  { method: 'GET' },
-  { method: 'POST' },
-  { method: 'PUT' },
-  { ghost: true, method: 'DELETE' },
+/**
+ * A row in the mock listing — the entry points a definition almost always
+ * starts with, so the pane reads as a list of them before it holds any real
+ * one. `tone` is resolved against the theme rather than baked in as a plain
+ * object, so a caller using theme-dependent colours (an Oxygen palette token)
+ * works the same as REST's fixed, theme-independent Swagger verb colours.
+ *
+ * `ghost` is the tail of the list fading out — it says "and more below"
+ * without pretending to know what.
+ */
+export type PlaceholderRow = {
+  ghost?: boolean;
+  label: string;
+  tone: (theme: Theme) => PlaceholderRowTone;
+};
+
+/** REST's own default rows: the HTTP verbs a contract almost always starts with. */
+const REST_PLACEHOLDER_ROWS: PlaceholderRow[] = [
+  { label: 'GET', tone: () => methodPalette('GET') },
+  { label: 'POST', tone: () => methodPalette('POST') },
+  { label: 'PUT', tone: () => methodPalette('PUT') },
+  { ghost: true, label: 'DELETE', tone: () => methodPalette('DELETE') },
 ];
 
 /** Bounded so the copy underneath stays on two lines at the pane's width. */
@@ -59,6 +71,10 @@ const CONTENT_MAX_WIDTH = 320;
 /** Widths of the two bars standing in for a path and a summary. */
 const BAR_SHORT_WIDTH = '22%';
 const BAR_LONG_WIDTH = '56%';
+
+/** Fits the longest REST verb, "OPTIONS" — `minWidth`, so a longer label (a GraphQL operation kind) still grows past it. */
+const BADGE_WIDTH = 64;
+const BADGE_HEIGHT = 30;
 
 /**
  * One of the two bars standing in for a row's text. Paper-coloured rather than
@@ -76,6 +92,8 @@ const barSx = (width: string) => (theme: Theme) => ({
 export type ResourcePreviewPlaceholderProps = {
   /** Overrides the default explanation under the title. */
   description?: string;
+  /** Overrides the default REST GET/POST/PUT/DELETE mock rows. */
+  rows?: PlaceholderRow[];
   /** Hook for tests; also the element's `data-testid`. */
   testId?: string;
   /** Overrides the default heading over the explanation. */
@@ -94,6 +112,7 @@ export type ResourcePreviewPlaceholderProps = {
  */
 export const ResourcePreviewPlaceholder = ({
   description,
+  rows = REST_PLACEHOLDER_ROWS,
   testId = 'resource-preview-placeholder',
   title,
 }: ResourcePreviewPlaceholderProps) => {
@@ -133,13 +152,13 @@ export const ResourcePreviewPlaceholder = ({
         }}
       >
         <Stack aria-hidden spacing={1} sx={{ mb: { sm: 4, xs: 3 }, width: '100%' }}>
-          {PLACEHOLDER_ROWS.map((row) => (
+          {rows.map((row) => (
             <Stack
               direction="row"
-              key={row.method}
+              key={row.label}
               spacing={1.2}
               sx={(theme) => {
-                const tone = methodPalette(row.method);
+                const tone = row.tone(theme);
 
                 return {
                   alignItems: 'center',
@@ -156,7 +175,26 @@ export const ResourcePreviewPlaceholder = ({
                 };
               }}
             >
-              <MethodBadge method={row.method} />
+              <Box
+                sx={(theme) => ({
+                  alignItems: 'center',
+                  bgcolor: row.tone(theme).badge,
+                  borderRadius: 0.5,
+                  color: 'common.white',
+                  display: 'inline-flex',
+                  flexShrink: 0,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  height: BADGE_HEIGHT,
+                  justifyContent: 'center',
+                  letterSpacing: 0.35,
+                  minWidth: BADGE_WIDTH,
+                  px: 1.25,
+                  textTransform: 'uppercase',
+                })}
+              >
+                {row.label}
+              </Box>
               <Stack
                 direction="row"
                 spacing={1}

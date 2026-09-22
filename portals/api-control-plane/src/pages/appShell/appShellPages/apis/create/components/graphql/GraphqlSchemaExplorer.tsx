@@ -21,6 +21,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  alpha,
   Box,
   Chip,
   IconButton,
@@ -28,18 +29,24 @@ import {
   MenuItem,
   OutlinedInput,
   Select,
-  Skeleton,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
   Typography,
+  type Theme,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, Download, Search } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import {
+  ResourcePreviewPlaceholder,
+  type PlaceholderRow,
+  type PlaceholderRowTone,
+} from '@/pages/appShell/appShellPages/apis/components/ResourcePreviewPlaceholder';
 import { hairline } from '@/theme/receipes';
+import { PANE_HEIGHT } from '../ApiResourcesPreview';
 import {
   formatSdl,
   parseGraphQLSdl,
@@ -48,6 +55,7 @@ import {
   type GraphQLTypeKind,
   type GraphQLTypeSummary,
 } from '../../utils/graphqlSchema';
+import type { GraphqlResolutionFailure } from './graphqlSourceTypes';
 
 const messages = defineMessages({
   allKinds: {
@@ -81,6 +89,16 @@ const messages = defineMessages({
   invalidSdl: {
     id: 'api.create.graphql.schemaExplorer.invalidSdl',
     defaultMessage: 'This schema could not be parsed: {reason}',
+  },
+  resolutionFailedGeneric: {
+    id: 'api.create.graphql.schemaExplorer.resolutionFailed.generic',
+    defaultMessage: 'Schema could not be resolved.',
+  },
+  sdlErrorWithLocation: {
+    id: 'api.create.graphql.schemaExplorer.resolutionFailed.sdlErrorWithLocation',
+    defaultMessage: 'Line {line}, column {column}: {message}',
+    description:
+      '{line}/{column} are 1-based positions in the SDL the user submitted; {message} is the parser\'s own error text.',
   },
   mutationHint: {
     id: 'api.create.graphql.schemaExplorer.section.mutationHint',
@@ -215,34 +233,25 @@ const KIND_LABELS: Record<GraphQLTypeKind, string> = {
   UNION: 'UNION',
 };
 
-/**
- * One color per named-type kind, same reasoning as `OPERATION_COLOR`: each
- * kind of schema construct gets its own tone instead of every badge reading as
- * the same neutral gray chip. Only 5 distinct tones are available (see
- * `SchemaChipColor`) for 6 kinds, so the two "terminal value" kinds —
- * `ENUM` (a closed set of literal values) and `SCALAR` (a primitive) — share
- * the neutral `default` gray, while the four structural kinds each get their
- * own color.
- */
-const KIND_COLOR: Record<GraphQLTypeKind, SchemaChipColor> = {
-  ENUM: 'default',
-  INPUT_OBJECT: 'info',
-  INTERFACE: 'error',
-  OBJECT: 'primary',
-  SCALAR: 'default',
-  UNION: 'success',
+/** A `SchemaChipColor` resolved against the theme, for `ResourcePreviewPlaceholder`'s row tones. */
+const paletteTone = (theme: Theme, color: SchemaChipColor): PlaceholderRowTone => {
+  const hex = color === 'default' ? theme.palette.text.secondary : theme.palette[color].main;
+  return { badge: hex, bg: alpha(hex, 0.14), border: hex };
 };
 
 /**
- * Rows for the empty state's skeleton preview — a hint at the shape a
- * resolved schema takes (labelled kind + a field-length placeholder bar),
- * not a fake schema of its own. Colors reuse `OPERATION_COLOR`/`KIND_COLOR`
- * directly so the preview never drifts out of sync with the real badges.
+ * Rows for the empty state's mock listing — a hint at the shape a resolved
+ * schema takes (an operation badge + two placeholder bars), styled like
+ * REST's own `ResourcePreviewPlaceholder` empty state so both creation
+ * wizards' source steps read as the same control. Colors reuse
+ * `OPERATION_COLOR` so the preview never drifts out of sync with the real
+ * badges — only the three root operations get a badge here, matching the
+ * explorer now that individual types no longer carry their own kind chip.
  */
-const SKELETON_ROWS: { color: SchemaChipColor; label: string; width: string }[] = [
-  { color: OPERATION_COLOR.query, label: 'QUERY', width: '70%' },
-  { color: OPERATION_COLOR.mutation, label: 'MUTATION', width: '55%' },
-  { color: KIND_COLOR.OBJECT, label: 'OBJECT', width: '40%' },
+const SCHEMA_PLACEHOLDER_ROWS: PlaceholderRow[] = [
+  { label: 'QUERY', tone: (theme) => paletteTone(theme, OPERATION_COLOR.query) },
+  { label: 'MUTATION', tone: (theme) => paletteTone(theme, OPERATION_COLOR.mutation) },
+  { ghost: true, label: 'SUBSCRIPTION', tone: (theme) => paletteTone(theme, OPERATION_COLOR.subscription) },
 ];
 
 const TypeRow = ({ type }: { type: GraphQLTypeSummary }) => {
@@ -253,12 +262,17 @@ const TypeRow = ({ type }: { type: GraphQLTypeSummary }) => {
     <Accordion disableGutters sx={(theme) => ({ border: hairline(theme), borderColor: 'divider' })}>
       <AccordionSummary expandIcon={<ChevronDown size={18} />}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
-          <Chip
-            color={KIND_COLOR[type.kind]}
-            label={KIND_LABELS[type.kind]}
-            size="small"
-            sx={{ fontFamily: 'monospace', fontWeight: 700, minWidth: 74 }}
-          />
+          {/* No chip here — only the root Query/Mutation/Subscription
+              operations carry a colored chip; a type's kind is plain,
+              muted text (still available to filter on via the Kind
+              select above). */}
+          <Typography
+            color="text.secondary"
+            sx={{ flexShrink: 0, fontFamily: 'monospace', fontWeight: 700, minWidth: 74 }}
+            variant="caption"
+          >
+            {KIND_LABELS[type.kind]}
+          </Typography>
           <Typography sx={{ fontFamily: 'monospace', fontWeight: 700 }} variant="body2">
             {type.name}
           </Typography>
@@ -291,6 +305,12 @@ export type GraphqlSchemaExplorerProps = {
   sdl?: string;
   /** e.g. "Imported from https://…" / "Fetched by introspection from https://…". */
   sourceDescription?: string;
+  /**
+   * The source step's last validation failure, if any — shown here instead
+   * of the generic "Schema will show here" empty state once a check has
+   * actually been attempted and failed.
+   */
+  error?: GraphqlResolutionFailure | null;
 };
 
 /**
@@ -302,7 +322,7 @@ export type GraphqlSchemaExplorerProps = {
  * Presentational only — no data fetching of its own — so it is reusable
  * wherever else a resolved SDL needs to be shown.
  */
-export const GraphqlSchemaExplorer = ({ sdl, sourceDescription }: GraphqlSchemaExplorerProps) => {
+export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: GraphqlSchemaExplorerProps) => {
   const intl = useIntl();
   const [view, setView] = useState<'explorer' | 'sdl'>('explorer');
   const [search, setSearch] = useState('');
@@ -338,9 +358,10 @@ export const GraphqlSchemaExplorer = ({ sdl, sourceDescription }: GraphqlSchemaE
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
+        height: PANE_HEIGHT,
         minHeight: 0,
         minWidth: 0,
+        overflow: 'hidden',
         width: '100%',
       }}
     >
@@ -359,17 +380,6 @@ export const GraphqlSchemaExplorer = ({ sdl, sourceDescription }: GraphqlSchemaE
             spacing={1.5}
             sx={{ alignItems: 'center', flexShrink: 0 }}
           >
-            {view === 'sdl' ? (
-              <Tooltip title={intl.formatMessage(messages.download)}>
-                <IconButton
-                  aria-label={intl.formatMessage(messages.download)}
-                  onClick={downloadSdl}
-                  size="small"
-                >
-                  <Download size={18} />
-                </IconButton>
-              </Tooltip>
-            ) : null}
             <ToggleButtonGroup
               exclusive
               onChange={(_event, next: 'explorer' | 'sdl' | null) => {
@@ -385,6 +395,17 @@ export const GraphqlSchemaExplorer = ({ sdl, sourceDescription }: GraphqlSchemaE
                 <FormattedMessage {...messages.sdlView} />
               </ToggleButton>
             </ToggleButtonGroup>
+            {view === 'sdl' ? (
+              <Tooltip title={intl.formatMessage(messages.download)}>
+                <IconButton
+                  aria-label={intl.formatMessage(messages.download)}
+                  onClick={downloadSdl}
+                  size="small"
+                >
+                  <Download size={18} />
+                </IconButton>
+              </Tooltip>
+            ) : null}
           </Stack>
         ) : null}
       </Stack>
@@ -402,49 +423,33 @@ export const GraphqlSchemaExplorer = ({ sdl, sourceDescription }: GraphqlSchemaE
       ) : null}
 
       <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, mt: 1.5, overflow: 'auto' }}>
-        {sdl === undefined ? (
-          <Stack
-            sx={(theme) => ({
-              alignItems: 'center',
-              border: hairline(theme),
-              borderColor: 'divider',
-              borderRadius: 2,
-              height: '100%',
-              justifyContent: 'center',
-              px: 3,
-              textAlign: 'center',
-            })}
-          >
-            <Stack spacing={1.5} sx={{ mb: 3, width: '100%', maxWidth: 280 }}>
-              {SKELETON_ROWS.map((row, index) => (
-                <Stack
-                  direction="row"
-                  key={row.label}
-                  spacing={1.5}
-                  sx={{ alignItems: 'center', opacity: 1 - index * 0.3 }}
-                >
-                  <Chip
-                    color={row.color}
-                    label={row.label}
-                    size="small"
-                    sx={{ flexShrink: 0, fontFamily: 'monospace', fontWeight: 700 }}
-                  />
-                  <Skeleton
-                    height={20}
-                    sx={{ borderRadius: 1 }}
-                    variant="rectangular"
-                    width={row.width}
-                  />
-                </Stack>
-              ))}
-            </Stack>
-            <Typography sx={{ fontWeight: 700 }} variant="body1">
-              <FormattedMessage {...messages.emptyTitle} />
-            </Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-              <FormattedMessage {...messages.emptyBody} />
-            </Typography>
+        {sdl === undefined && error ? (
+          <Stack spacing={1.5}>
+            {error.sdlErrors && error.sdlErrors.length > 0 ? (
+              error.sdlErrors.map((issue, index) => (
+                <Alert key={index} severity="error">
+                  {issue.line !== undefined && issue.column !== undefined ? (
+                    <FormattedMessage
+                      {...messages.sdlErrorWithLocation}
+                      values={{ column: issue.column, line: issue.line, message: issue.message }}
+                    />
+                  ) : (
+                    issue.message
+                  )}
+                </Alert>
+              ))
+            ) : (
+              <Alert severity="error">
+                {error.message ?? intl.formatMessage(messages.resolutionFailedGeneric)}
+              </Alert>
+            )}
           </Stack>
+        ) : sdl === undefined ? (
+          <ResourcePreviewPlaceholder
+            description={intl.formatMessage(messages.emptyBody)}
+            rows={SCHEMA_PLACEHOLDER_ROWS}
+            title={intl.formatMessage(messages.emptyTitle)}
+          />
         ) : parsed && 'error' in parsed ? (
           <Alert severity="error">
             <FormattedMessage {...messages.invalidSdl} values={{ reason: parsed.error }} />
@@ -460,7 +465,10 @@ export const GraphqlSchemaExplorer = ({ sdl, sourceDescription }: GraphqlSchemaE
               fontSize: theme.typography.body2.fontSize,
               m: 0,
               maxWidth: '100%',
-              overflow: 'auto',
+              // Horizontal only: the surrounding content box (below) is the
+              // single vertical scroll owner, the same one-scrollbar contract
+              // `ApiResourcesPreview`'s own raw-text view keeps.
+              overflowX: 'auto',
               p: 2,
               whiteSpace: 'pre',
             })}

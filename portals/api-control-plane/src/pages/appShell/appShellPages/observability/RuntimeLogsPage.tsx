@@ -28,6 +28,7 @@ export function RuntimeLogsPage() {
   return (
     <AppPage>
       <ScopeGate
+        graphqlTo={routes.graphqlApiObservabilityLogs}
         prompt="Runtime logs are streamed per API."
         requires="api"
         to={routes.apiObservabilityLogs}

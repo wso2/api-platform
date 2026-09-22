@@ -136,4 +136,10 @@ describe('toCreateGraphQLApiBody — identity and optional fields', () => {
     expect(body.metadata.kind).toBe('GraphQLApi');
     expect(body.metadata.projectId).toBe('retail');
   });
+
+  it('trims the version', () => {
+    const body = toCreateGraphQLApiBody({ ...baseState, version: '  2.0  ' }, scope);
+
+    expect(body.metadata.version).toBe('2.0');
+  });
 });
