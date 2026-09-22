@@ -17,6 +17,7 @@
  */
 
 import {
+  alpha,
   Box,
   Card,
   Divider,
@@ -29,12 +30,11 @@ import { Compass, Pencil } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
-import { hairline } from '@/theme/receipes';
 import type { GraphqlCreationWizardDraftState } from '../../types';
 import { GraphqlIntrospectionForm } from './GraphqlIntrospectionForm';
 import { GraphqlSchemaExplorer } from './GraphqlSchemaExplorer';
 import { GraphqlUrlUploadForm } from './GraphqlUrlUploadForm';
-import type { GraphqlResolvedSchema } from './graphqlSourceTypes';
+import type { GraphqlResolutionFailure, GraphqlResolvedSchema } from './graphqlSourceTypes';
 
 type ApproachKey = 'schema' | 'scratch';
 
@@ -142,11 +142,13 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
   const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('schema');
   const [resolved, setResolved] = useState<GraphqlResolvedSchema | null>(null);
+  const [failure, setFailure] = useState<GraphqlResolutionFailure | null>(null);
 
   const handleApproachChange = (next: ApproachKey | null) => {
     if (next === null) return;
     setApproach(next);
     setResolved(null);
+    setFailure(null);
   };
 
   const sourceDescription = (() => {
@@ -188,27 +190,35 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
 
   return (
     <Stack spacing={3}>
-      <Card variant="outlined">
+      {/* One surface for the whole step: the two approaches sit flush on top of
+          the panels they open, like tabs on their own body, rather than
+          floating above as separate cards — mirrors `DefineApiPanel`'s own
+          selected-approach border treatment. */}
+      <Card sx={{ border: 0, overflow: 'visible' }} variant="outlined">
         <ToggleButtonGroup
           aria-label={intl.formatMessage(messages.schemaLabel)}
           exclusive
           fullWidth
           onChange={(_event, next: ApproachKey | null) => handleApproachChange(next)}
           sx={(theme) => ({
+            p: 0,
             '& .MuiToggleButtonGroup-grouped': {
-              border: 0,
-              borderRadius: 0,
+              border: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
+              borderBottom: 0,
+              borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
               justifyContent: 'flex-start',
               p: 2,
               textTransform: 'none',
               '&:not(:first-of-type)': {
-                border: hairline(theme),
-                borderBottom: 0,
-                borderColor: 'divider',
-                borderRight: 0,
-                borderTop: 0,
+                borderLeft: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
+                marginLeft: 0,
               },
-              '&.Mui-selected': { bgcolor: 'action.selected' },
+              '&.Mui-selected, &.Mui-selected:hover': {
+                bgcolor: 'action.selected',
+                border: `1px solid ${theme.palette.primary.main}`,
+                borderBottom: 0,
+                borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
+              },
             },
           })}
           value={approach}
@@ -248,8 +258,6 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
           })}
         </ToggleButtonGroup>
 
-        <Divider />
-
         <Stack
           direction={{ lg: 'row', xs: 'column' }}
           divider={
@@ -262,17 +270,40 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
               }}
             />
           }
+          sx={(theme) => ({
+            border: 1,
+            borderColor: 'primary.main',
+            borderRadius: `0 0 ${theme.shape.borderRadius}px ${theme.shape.borderRadius}px`,
+            borderTop: 0,
+            position: 'relative',
+            // Covers the shared top border seam with the selected column's own
+            // color, so the primary-colored outline reads as wrapping only
+            // that column rather than the whole row.
+            '&::before': {
+              bgcolor: 'primary.main',
+              content: '""',
+              height: '1px',
+              left: approach === 'schema' ? '50%' : 0,
+              position: 'absolute',
+              top: 0,
+              width: '50%',
+            },
+          })}
         >
           <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
             {approach === 'schema' ? (
-              <GraphqlUrlUploadForm onResolved={setResolved} />
+              <GraphqlUrlUploadForm onResolved={setResolved} onValidationFailed={setFailure} />
             ) : (
-              <GraphqlIntrospectionForm onResolved={setResolved} />
+              <GraphqlIntrospectionForm onResolved={setResolved} onValidationFailed={setFailure} />
             )}
           </Box>
 
-          <Box sx={{ display: 'flex', flex: 1, minHeight: 420, minWidth: 0, p: 3 }}>
-            <GraphqlSchemaExplorer sdl={resolved?.sdl} sourceDescription={sourceDescription} />
+          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+            <GraphqlSchemaExplorer
+              error={failure}
+              sdl={resolved?.sdl}
+              sourceDescription={sourceDescription}
+            />
           </Box>
         </Stack>
       </Card>

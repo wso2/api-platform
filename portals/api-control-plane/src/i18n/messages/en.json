@@ -519,11 +519,8 @@
   "api.create.graphql.configureForm.context.error.pattern": {
     "defaultMessage": "Start with / and use only letters, numbers, hyphens, dots and slashes."
   },
-  "api.create.graphql.configureForm.context.error.required": {
-    "defaultMessage": "Enter a context."
-  },
   "api.create.graphql.configureForm.context.helper": {
-    "defaultMessage": "Built from the identifier and version. All operations are served from this single path."
+    "defaultMessage": "Built from the identifier and version. All operations are served from this single path. Optional — leave it as generated, or clear it to let the server pick one."
   },
   "api.create.graphql.configureForm.context.label": {
     "defaultMessage": "Context"
@@ -567,6 +564,13 @@
   },
   "api.create.graphql.configureForm.identifier.status.checking": {
     "defaultMessage": "Checking whether this identifier is free…"
+  },
+  "api.create.graphql.configureForm.identifier.status.unavailable": {
+    "defaultMessage": "This identifier is already in use."
+  },
+  "api.create.graphql.configureForm.identifier.status.unavailableIcon": {
+    "defaultMessage": "Identifier is already in use",
+    "description": "Accessible label for the warning icon shown beside a taken identifier."
   },
   "api.create.graphql.configureForm.name.error.required": {
     "defaultMessage": "Enter a name."
@@ -646,7 +650,7 @@
     "defaultMessage": "Imported from {url}"
   },
   "api.create.graphql.introspection.action.check": {
-    "defaultMessage": "Check"
+    "defaultMessage": "Fetch"
   },
   "api.create.graphql.introspection.disabledHint": {
     "defaultMessage": "If introspection is disabled on the endpoint, the schema stays empty."
@@ -684,6 +688,13 @@
   "api.create.graphql.schemaExplorer.invalidSdl": {
     "defaultMessage": "This schema could not be parsed: {reason}"
   },
+  "api.create.graphql.schemaExplorer.resolutionFailed.generic": {
+    "defaultMessage": "Schema could not be resolved."
+  },
+  "api.create.graphql.schemaExplorer.resolutionFailed.sdlErrorWithLocation": {
+    "defaultMessage": "Line {line}, column {column}: {message}",
+    "description": "{line}/{column} are 1-based positions in the SDL the user submitted; {message} is the parser's own error text."
+  },
   "api.create.graphql.schemaExplorer.search.placeholder": {
     "defaultMessage": "Search types and fields"
   },
@@ -711,27 +722,21 @@
   "api.create.graphql.schemaExplorer.view.sdl": {
     "defaultMessage": "SDL"
   },
-  "api.create.graphql.urlUpload.action.fetch": {
-    "defaultMessage": "Fetch Schema"
-  },
   "api.create.graphql.urlUpload.action.sampleUrl": {
-    "defaultMessage": "Try with Sample Endpoint"
-  },
-  "api.create.graphql.urlUpload.file.remove": {
-    "defaultMessage": "Remove {fileName}",
-    "description": "Accessible name for the button that discards the chosen file."
-  },
-  "api.create.graphql.urlUpload.file.required": {
-    "defaultMessage": "Select a schema file to continue."
-  },
-  "api.create.graphql.urlUpload.file.title": {
-    "defaultMessage": "Upload a schema file"
+    "defaultMessage": "Try with Sample Schema"
   },
   "api.create.graphql.urlUpload.source.file": {
     "defaultMessage": "Upload"
   },
+  "api.create.graphql.urlUpload.source.label": {
+    "defaultMessage": "Import the schema from"
+  },
   "api.create.graphql.urlUpload.source.url": {
     "defaultMessage": "URL"
+  },
+  "api.create.graphql.urlUpload.status.validating": {
+    "defaultMessage": "Validating schema…",
+    "description": "Shown while a URL/file just supplied is being checked, which starts on its own."
   },
   "api.create.graphql.urlUpload.unresolved": {
     "defaultMessage": "That schema could not be resolved. Check it is valid GraphQL SDL."
@@ -741,6 +746,9 @@
   },
   "api.create.graphql.urlUpload.url.label": {
     "defaultMessage": "Schema URL"
+  },
+  "api.create.graphql.urlUpload.url.placeholder": {
+    "defaultMessage": "Enter URL for GraphQL Schema here"
   },
   "api.create.graphql.urlUpload.url.required": {
     "defaultMessage": "Enter the URL of the SDL file."
@@ -2388,6 +2396,51 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.title": {
     "defaultMessage": "Edit API"
   },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlCompliancePage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlCompliancePage.feature": {
+    "defaultMessage": "Compliance reporting for this API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.action": {
+    "defaultMessage": "Open Moesif Insights",
+    "description": "Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.cloudFeature": {
+    "defaultMessage": "API insights",
+    "description": "Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.panelDescription": {
+    "defaultMessage": "Track usage trends, request activity, latency, and customer behavior from your Moesif analytics workspace."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.panelTitle": {
+    "defaultMessage": "Your API insights live in Moesif"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.subHeader": {
+    "defaultMessage": "Usage analytics and traffic insights."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.title": {
+    "defaultMessage": "Insights"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.header": {
+    "defaultMessage": "Observability"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.subHeader": {
+    "defaultMessage": "Runtime logs for {graphqlApiHandler}.",
+    "description": "{graphqlApiHandler} is the API handle, user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityMetricsPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityMetricsPage.feature": {
+    "defaultMessage": "Observability metrics for this API"
+  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.breadcrumb.apis": {
     "defaultMessage": "APIs"
   },
@@ -2590,6 +2643,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointSucceeded": {
     "defaultMessage": "Endpoint URL copied to clipboard."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.endpointLabel": {
+    "defaultMessage": "Endpoint URL",
+    "description": "Accessible name of the read-only field holding the gateway invoke URL under test."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.gatewayLabel": {
     "defaultMessage": "Gateway"

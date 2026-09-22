@@ -28,8 +28,8 @@ import {
   Gauge,
   Home,
   Layers,
-  Megaphone,
   Network,
+  PanelTop,
   Rocket,
   ScrollText,
   Settings,
@@ -105,13 +105,20 @@ const orgLevelTo =
  * scoped URL. Returning `undefined` — the old behaviour, paired with a filter
  * that hid the item — meant an org-level page offered no route into any
  * API-level feature at all.
+ *
+ * `graphqlBuild`, when given, is resolved instead while a GraphQL API is in
+ * scope — mirrors `subItem`'s own `graphqlTo` branch. Omit it for a REST-only
+ * item with no GraphQL sibling page.
  */
 const apiLevelTo =
-  (build: ApiPathBuilder): NavigationDefinition['to'] =>
-  ({ params }) =>
-    params.orgHandle
-      ? build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null)
-      : undefined;
+  (build: ApiPathBuilder, graphqlBuild?: ApiPathBuilder): NavigationDefinition['to'] =>
+  ({ params }) => {
+    if (!params.orgHandle) return undefined;
+    if (graphqlBuild && params.graphqlApiHandler) {
+      return graphqlBuild(params.orgHandle, params.projectHandler ?? null, params.graphqlApiHandler);
+    }
+    return build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null);
+  };
 
 /** One entry in a submenu: its own id, label, icon and page. */
 type SubItem = {
@@ -412,8 +419,11 @@ export const navigationRegistry: NavigationDefinition[] = [
     order: 50,
     icon: <Rocket />,
     isVisible: apiCapability(({ canDeploy }) => canDeploy),
-    to: apiLevelTo(routes.apiDeploy),
-    match: matchRoutes(...apiScopedPaths(routes.apiDeploy)),
+    to: apiLevelTo(routes.apiDeploy, routes.graphqlApiDeploy),
+    match: matchRoutes(
+      ...apiScopedPaths(routes.apiDeploy),
+      routes.graphqlApiDeploy(':orgHandle', ':projectHandler', ':graphqlApiHandler'),
+    ),
   },
   {
     // No capability gate, unlike its neighbours: `hasUsageInsights` is false for
@@ -430,12 +440,14 @@ export const navigationRegistry: NavigationDefinition[] = [
         id: 'insights-api',
         label: 'API Insights',
         to: routes.apiInsightsApi,
+        graphqlTo: routes.graphqlApiInsightsApi,
       },
       {
         icon: <FileCheck />,
         id: 'insights-compliance',
         label: 'Compliance',
         to: routes.apiInsightsCompliance,
+        graphqlTo: routes.graphqlApiInsightsCompliance,
       },
     ]),
   },
@@ -451,12 +463,14 @@ export const navigationRegistry: NavigationDefinition[] = [
         id: 'observability-metrics',
         label: 'Metrics',
         to: routes.apiObservabilityMetrics,
+        graphqlTo: routes.graphqlApiObservabilityMetrics,
       },
       {
         icon: <ScrollText />,
         id: 'observability-logs',
         label: 'Logs',
         to: routes.apiObservabilityLogs,
+        graphqlTo: routes.graphqlApiObservabilityLogs,
       },
     ]),
   },
@@ -468,13 +482,18 @@ export const navigationRegistry: NavigationDefinition[] = [
     id: 'publish',
     label: 'Publish',
     group: CLUSTER.api,
-    order: 55,
-    icon: <Megaphone />,
-    to: apiLevelTo(routes.apiPortals),
-    match: matchRoutes(
-      ...apiScopedPaths(routes.apiPortals),
-      routes.apiPortalPublish(),
-    ),
+    order: 80,
+    icon: <PanelTop />,
+    // The GraphQL API-level page is `GraphqlPublishPage`, not a new "Portals"
+    // page of its own: `PortalsPage` (REST's `apiPortals` target) is a bare,
+    // contextless "coming soon" with no per-API content, and
+    // `GraphqlPublishPage` is that same placeholder for a GraphQL API (see
+    // its own doc comment) — reusing it is the more faithful match.
+    ...adaptive([
+      { level: 'api', to: routes.apiPortals, graphqlTo: routes.graphqlApiPublish },
+      { level: 'project', to: routes.projectPortals },
+      { level: 'organization', to: routes.organizationPortals },
+    ]),
   },
   {
     // The one page with no scope requirement at all, hence its own cluster.

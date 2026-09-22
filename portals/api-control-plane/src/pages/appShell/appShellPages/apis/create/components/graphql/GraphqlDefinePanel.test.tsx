@@ -65,7 +65,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     const { onDraftChange, user } = renderPanel();
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
 
     await screen.findByText('Query', { exact: false });
 
@@ -92,7 +92,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
 
     await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
     await user.type(screen.getByLabelText(/Backend endpoint/i), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
     await screen.findByText('Query', { exact: false });
 
@@ -111,7 +111,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     const { onDraftChange, user } = renderPanel();
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
     await screen.findByText('Query', { exact: false });
 
     await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
@@ -124,7 +124,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     const { user } = renderPanel();
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
     await screen.findByText('Query', { exact: false });
 
     await user.click(screen.getByRole('button', { name: 'SDL' }));
@@ -150,7 +150,7 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
     const { onDraftChange, user } = renderPanel();
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
     await screen.findByText('Query', { exact: false });
 
     expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ displayName: 'Raw' }));
@@ -164,7 +164,6 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
     const file = new File([SAMPLE_SDL], 'countries-schema.graphql');
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(fileInput, file);
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
     await screen.findByText('Query', { exact: false });
 
     expect(onDraftChange).toHaveBeenLastCalledWith(
@@ -178,7 +177,7 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
 
     await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
     await user.type(screen.getByLabelText(/Backend endpoint/i), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
     await screen.findByText('Query', { exact: false });
 
     expect(onDraftChange).toHaveBeenLastCalledWith(

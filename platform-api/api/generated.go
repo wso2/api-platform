@@ -876,10 +876,14 @@ type CreateGatewayRequestFunctionalityType string
 
 // CreateGraphQLAPIRequest defines model for CreateGraphQLAPIRequest.
 type CreateGraphQLAPIRequest struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `binding:"required" json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -1490,10 +1494,14 @@ type GatewayTokenListResponse struct {
 
 // GraphQLAPI defines model for GraphQLAPI.
 type GraphQLAPI struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `binding:"required" json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -1596,10 +1604,14 @@ type GraphQLAPISchemaSource string
 
 // GraphQLAPIDetail defines model for GraphQLAPIDetail.
 type GraphQLAPIDetail struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `binding:"required" json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -1694,6 +1706,18 @@ type GraphQLAPISDLResponse struct {
 
 // GraphQLIntrospectionMode defines model for GraphQLIntrospectionMode.
 type GraphQLIntrospectionMode string
+
+// GraphQLSdlValidationIssue defines model for GraphQLSdlValidationIssue.
+type GraphQLSdlValidationIssue struct {
+	// Column 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+	Column *int `json:"column,omitempty" yaml:"column,omitempty"`
+
+	// Line 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+	Line *int `json:"line,omitempty" yaml:"line,omitempty"`
+
+	// Message The parser's own error message for this issue.
+	Message string `binding:"required" json:"message" yaml:"message"`
+}
 
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
@@ -3144,6 +3168,16 @@ type ValidateGraphQLSchemaResponse struct {
 
 	// Sdl The resolved SDL text when `resolved` is `true`; empty otherwise.
 	Sdl string `binding:"required" json:"sdl" yaml:"sdl"`
+
+	// SdlErrors Set only when `resolved` is `false` and the failure was a parse
+	// error on SDL text the caller effectively authored: `schemaSource`
+	// `inline`/`file` always, and `url` once its fetch itself succeeded.
+	// Unlike `message`, these are safe to show verbatim — they describe
+	// the caller's own document, not a network outcome. Never set for a
+	// `url` fetch failure or an `introspection` failure, since revealing
+	// those could map internal topology (`error-handling.md`,
+	// `ssrf-prevention.md`).
+	SdlErrors *[]GraphQLSdlValidationIssue `json:"sdlErrors,omitempty" yaml:"sdlErrors,omitempty"`
 }
 
 // ApiId defines model for apiId.

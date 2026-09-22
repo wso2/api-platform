@@ -154,6 +154,26 @@ const GraphqlPublishPage = lazy(() =>
     default: m.GraphqlPublishPage,
   })),
 );
+const GraphqlInsightsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/insights/GraphqlInsightsPage').then((m) => ({
+    default: m.GraphqlInsightsPage,
+  })),
+);
+const GraphqlCompliancePage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/insights/GraphqlCompliancePage').then(
+    (m) => ({ default: m.GraphqlCompliancePage }),
+  ),
+);
+const GraphqlObservabilityMetricsPage = lazy(() =>
+  import(
+    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityMetricsPage'
+  ).then((m) => ({ default: m.GraphqlObservabilityMetricsPage })),
+);
+const GraphqlObservabilityLogsPage = lazy(() =>
+  import(
+    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityLogsPage'
+  ).then((m) => ({ default: m.GraphqlObservabilityLogsPage })),
+);
 const AlertsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/AlertsPage').then((m) => ({
     default: m.AlertsPage,
@@ -370,9 +390,11 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {/*
             GraphQL API pages live under a distinct `graphql-apis` segment (see
             `graphqlApiPath`), so `ConsoleScopeProvider`'s REST-only api-scope
-            matching never fires for them. They have no sidebar entry and are
-            only ever reached with a concrete id, so — like the create/edit
-            pages above — each takes only its fully-scoped path, no alias.
+            matching never fires for them. GraphQL has no scope-less alias at
+            all (a sidebar item reaches one of these via its own `graphqlTo`
+            once a GraphQL API is already in scope — see
+            `navigationRegistry.tsx`), so — like the create/edit pages above —
+            each takes only its fully-scoped path.
           */}
           <Route path={routes.graphqlApi()} element={<GraphqlApiDetailPage />} />
           <Route path={routes.graphqlApiEdit()} element={<GraphqlApiEditPage />} />
@@ -387,6 +409,19 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             element={<GraphqlDevelopDocumentsPage />}
           />
           <Route path={routes.graphqlApiPublish()} element={<GraphqlPublishPage />} />
+          <Route path={routes.graphqlApiInsightsApi()} element={<GraphqlInsightsPage />} />
+          <Route
+            path={routes.graphqlApiInsightsCompliance()}
+            element={<GraphqlCompliancePage />}
+          />
+          <Route
+            path={routes.graphqlApiObservabilityMetrics()}
+            element={<GraphqlObservabilityMetricsPage />}
+          />
+          <Route
+            path={routes.graphqlApiObservabilityLogs()}
+            element={<GraphqlObservabilityLogsPage />}
+          />
           {/*
             Test, Observability and Manage are sidebar parents with no page of
             their own — only their children are routed. Out of API scope a parent

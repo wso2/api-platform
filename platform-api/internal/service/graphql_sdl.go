@@ -18,30 +18,51 @@
 package service
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
+
+	"github.com/wso2/api-platform/platform-api/api"
 )
 
 // validateGraphQLSDL parses and validates a directly-supplied GraphQL SDL
-// document. It rejects malformed SDL and SDL with no Query type. The
-// returned error is for internal logging only — callers must map it to the
-// generic GraphQLAPISchemaResolveFailed client response rather than
-// surfacing the raw parser message (error-handling.md directive 1: a
-// GraphQL parser's error output can be as internals-revealing as a raw DB
-// error).
-func validateGraphQLSDL(sdl string) error {
+// document, returning every issue found — nil when the SDL is valid. It
+// rejects malformed SDL and SDL with no Query type.
+//
+// Unlike a schemaSource url/introspection failure, these issues are safe to
+// return to the caller verbatim (see ValidateGraphQLSchemaResponse.sdlErrors'
+// doc comment in openapi.yaml): they describe the caller's own submitted
+// text, not an upstream/network failure whose detail could map internal
+// topology (error-handling.md, ssrf-prevention.md).
+func validateGraphQLSDL(sdl string) []api.GraphQLSdlValidationIssue {
 	if strings.TrimSpace(sdl) == "" {
-		return fmt.Errorf("SDL must not be empty")
+		return []api.GraphQLSdlValidationIssue{{Message: "SDL must not be empty"}}
 	}
 	schema, err := gqlparser.LoadSchema(&ast.Source{Name: "schema.graphql", Input: sdl})
 	if err != nil {
-		return fmt.Errorf("invalid GraphQL SDL: %w", err)
+		return sdlIssuesFromError(err)
 	}
 	if schema.Query == nil {
-		return fmt.Errorf("GraphQL SDL must define a Query type")
+		return []api.GraphQLSdlValidationIssue{{Message: "GraphQL SDL must define a Query type"}}
 	}
 	return nil
+}
+
+// sdlIssuesFromError extracts the line/column gqlparser anchors its error to,
+// when it can. Schema loading fails fast on the first problem found, so
+// there is always exactly one issue here, never a batch.
+func sdlIssuesFromError(err error) []api.GraphQLSdlValidationIssue {
+	var gqlErr *gqlerror.Error
+	if errors.As(err, &gqlErr) {
+		issue := api.GraphQLSdlValidationIssue{Message: gqlErr.Message}
+		if len(gqlErr.Locations) > 0 {
+			line, column := gqlErr.Locations[0].Line, gqlErr.Locations[0].Column
+			issue.Line, issue.Column = &line, &column
+		}
+		return []api.GraphQLSdlValidationIssue{issue}
+	}
+	return []api.GraphQLSdlValidationIssue{{Message: err.Error()}}
 }

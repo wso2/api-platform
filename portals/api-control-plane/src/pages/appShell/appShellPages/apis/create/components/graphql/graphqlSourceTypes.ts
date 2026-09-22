@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type { GraphQLSdlValidationIssue } from '@/api/resources/graphqlApis';
 import type { GraphqlSchemaSource } from '../../types';
 
 /**
@@ -34,4 +35,20 @@ export type GraphqlResolvedSchema = {
   sdlFile?: File;
   /** Only set when `schemaSource` is `'introspection'` — the endpoint that was queried. */
   endpointUrl?: string;
+};
+
+/**
+ * What either half of the source step reports when `/graphql-apis/validate-schema`
+ * comes back with `resolved: false` — fed to `GraphqlSchemaExplorer` so it can
+ * show the actual reason instead of the generic empty state.
+ *
+ * `sdlErrors` (line/column-anchored parser detail) is only ever present for a
+ * `schemaSource` of `inline`/`file`/`url` — never `introspection`, and never a
+ * `url` fetch failure — see `ValidateGraphQLSchemaResponse.sdlErrors`'s own
+ * doc comment in openapi.yaml for why that split matters. `message` is the
+ * generic fallback, always present when `sdlErrors` is not.
+ */
+export type GraphqlResolutionFailure = {
+  message?: string;
+  sdlErrors?: GraphQLSdlValidationIssue[];
 };

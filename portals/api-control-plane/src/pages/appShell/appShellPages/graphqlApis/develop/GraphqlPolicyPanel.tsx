@@ -32,7 +32,7 @@ import { getDraggedPolicy } from '../../develop/policies/policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from '../../develop/policies/PolicyConfigDrawer';
 import { SaveBar } from '../../develop/SaveBar';
 import { useDirtyTracking } from '../../develop/useDirtyTracking';
-import { reorderPolicies } from '../../apis/utils/developEdit';
+import { reorderPolicies, withMajorPolicyVersion } from '../../apis/utils/developEdit';
 
 const messages = defineMessages({
   heading: {
@@ -147,7 +147,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
         body: {
           metadata: {
             ...api,
-            policies: apiPolicies,
+            policies: apiPolicies.map(withMajorPolicyVersion),
             // `GraphQLAPIDetail` (the GET shape `api` comes from) doesn't echo
             // back the `schemaSource`/`sdlUrl`/`sdl` the API was originally
             // created with, so there's nothing faithful to resupply here. The

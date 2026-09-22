@@ -271,8 +271,11 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := validateGraphQLSDL(sdl); err != nil {
-		return "", fmt.Errorf("derived schema failed validation: %w", err)
+	if issues := validateGraphQLSDL(sdl); len(issues) > 0 {
+		// Internal-only: the caller (resolveSchema's introspection branch)
+		// discards this and reports the same sterile GraphQLAPISchemaResolveFailed
+		// message as any other introspection failure — never these issues.
+		return "", fmt.Errorf("derived schema failed validation: %v", issues)
 	}
 	return sdl, nil
 }

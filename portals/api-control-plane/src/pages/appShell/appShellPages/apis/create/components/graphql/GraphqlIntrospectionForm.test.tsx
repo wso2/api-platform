@@ -47,7 +47,7 @@ describe('GraphqlIntrospectionForm — validation', () => {
   it('requires an endpoint before checking', async () => {
     const { onResolved, user } = renderForm();
 
-    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
     expect(
       await screen.findByText('Enter the GraphQL endpoint to introspect.'),
@@ -78,7 +78,7 @@ describe('GraphqlIntrospectionForm — a successful check', () => {
     const { onResolved, user } = renderForm();
 
     await user.type(screen.getByLabelText(/Backend endpoint/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
     await waitFor(() =>
       expect(onResolved).toHaveBeenCalledWith({
@@ -101,7 +101,7 @@ describe('GraphqlIntrospectionForm — a failed check', () => {
     const { onResolved, user } = renderForm();
 
     await user.type(screen.getByLabelText(/Backend endpoint/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
     expect(
       await screen.findByText(
@@ -118,7 +118,7 @@ describe('GraphqlIntrospectionForm — a failed check', () => {
     const { onResolved, user } = renderForm();
 
     await user.type(screen.getByLabelText(/Backend endpoint/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
     await waitFor(() => expect(onResolved).toHaveBeenLastCalledWith(null));
     expect(
@@ -133,7 +133,7 @@ describe('GraphqlIntrospectionForm — a failed check', () => {
     const { onResolved, user } = renderForm();
 
     await user.type(screen.getByLabelText(/Backend endpoint/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
     await waitFor(() =>
       expect(onResolved).toHaveBeenLastCalledWith({
         endpointUrl: 'https://backend.example.com/graphql',
@@ -141,12 +141,12 @@ describe('GraphqlIntrospectionForm — a failed check', () => {
         sdl: 'type Query { a: String }',
       }),
     );
-    expect(screen.getByRole('button', { name: 'Check' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Fetch' })).toBeDisabled();
 
     await user.type(screen.getByLabelText(/Backend endpoint/), '2');
 
     expect(onResolved).toHaveBeenLastCalledWith(null);
     expect(screen.queryByText(/types in this schema/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Check' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Fetch' })).toBeEnabled();
   });
 });

@@ -67,15 +67,16 @@ export type ScopeGateProps = {
    */
   to: ApiPathBuilder;
   /**
-   * This page's GraphQL-API equivalent, for the (currently two) pages that
-   * have one — `routes.graphqlApiDeploy` for `DeployPage`,
-   * `routes.graphqlApiTestConsole` for `ApiConsolePage`. The API picker lists
-   * every API regardless (REST and GraphQL are both "an API" from here), so
-   * when the page itself has no GraphQL-specific implementation yet
-   * (Develop/Insights/Observability/Manage/Admin/curl/chat), picking a
-   * GraphQL API falls back to that API's own Overview page — a real,
-   * always-existing destination — rather than building a REST-shaped URL a
-   * GraphQL API was never meant to answer.
+   * This page's GraphQL-API equivalent, for a page that has one —
+   * `routes.graphqlApiDeploy` for `DeployPage`, `routes.graphqlApiTestConsole`
+   * for `ApiConsolePage`, `routes.graphqlApiInsightsApi`/`InsightsCompliance`
+   * for Insights, `routes.graphqlApiObservabilityMetrics`/`Logs` for
+   * Observability. The API picker lists every API regardless (REST and
+   * GraphQL are both "an API" from here), so when the page itself has no
+   * GraphQL-specific implementation yet (Develop/Manage/Admin/curl/chat),
+   * picking a GraphQL API falls back to that API's own Overview page — a
+   * real, always-existing destination — rather than building a REST-shaped
+   * URL a GraphQL API was never meant to answer.
    */
   graphqlTo?: ApiPathBuilder;
 };

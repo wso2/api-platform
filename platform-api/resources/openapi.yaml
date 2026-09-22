@@ -7917,7 +7917,6 @@ components:
       title: GraphQL API object
       required:
         - displayName
-        - context
         - version
         - projectId
         - upstream
@@ -7945,9 +7944,13 @@ components:
           minLength: 1
           type: string
           description: |
-            Base path for the single GraphQL endpoint. Suggested (not enforced)
-            convention: end the path with `/graphql`, matching how most standalone
-            GraphQL servers name their single endpoint — this is not validated.
+            Base path for the single GraphQL endpoint. Optional: when omitted
+            (or blank) on create/update, the server derives one from the API's
+            handle and version (`/{handle}/{version}/graphql`) instead of
+            rejecting the request. Suggested (not enforced) convention when
+            supplied explicitly: end the path with `/graphql`, matching how
+            most standalone GraphQL servers name their single endpoint — this
+            is not validated.
           example: /countries/graphql
         version:
           maxLength: 30
@@ -8096,7 +8099,6 @@ components:
       title: GraphQL API detail (without sdl)
       required:
         - displayName
-        - context
         - version
         - projectId
         - upstream
@@ -8124,9 +8126,13 @@ components:
           minLength: 1
           type: string
           description: |
-            Base path for the single GraphQL endpoint. Suggested (not enforced)
-            convention: end the path with `/graphql`, matching how most standalone
-            GraphQL servers name their single endpoint — this is not validated.
+            Base path for the single GraphQL endpoint. Optional: when omitted
+            (or blank) on create/update, the server derives one from the API's
+            handle and version (`/{handle}/{version}/graphql`) instead of
+            rejecting the request. Suggested (not enforced) convention when
+            supplied explicitly: end the path with `/graphql`, matching how
+            most standalone GraphQL servers name their single endpoint — this
+            is not validated.
           example: /countries/graphql
         version:
           maxLength: 30
@@ -8235,7 +8241,6 @@ components:
         - type: object
           required:
             - displayName
-            - context
             - version
             - projectId
             - upstream
@@ -8408,6 +8413,38 @@ components:
             the same sterile message `GraphQLAPISchemaResolveFailed` uses
             elsewhere (`error-handling.md`).
           example: The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.
+        sdlErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQLSdlValidationIssue'
+          description: |
+            Set only when `resolved` is `false` and the failure was a parse
+            error on SDL text the caller effectively authored: `schemaSource`
+            `inline`/`file` always, and `url` once its fetch itself succeeded.
+            Unlike `message`, these are safe to show verbatim — they describe
+            the caller's own document, not a network outcome. Never set for a
+            `url` fetch failure or an `introspection` failure, since revealing
+            those could map internal topology (`error-handling.md`,
+            `ssrf-prevention.md`).
+
+    GraphQLSdlValidationIssue:
+      title: GraphQL SDL validation issue
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The parser's own error message for this issue.
+          example: "Unexpected Name \"this\""
+        line:
+          type: integer
+          description: 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+          example: 3
+        column:
+          type: integer
+          description: 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+          example: 12
 
     TimeUnit:
       type: string

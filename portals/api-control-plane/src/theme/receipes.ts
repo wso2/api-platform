@@ -227,3 +227,36 @@ export const segmentedSwitchSx = (theme: Theme) => {
     },
   } as const;
 };
+
+/**
+ * Rounded "pill" tab group for switching between a handful of mutually
+ * exclusive input sources — the REST/WebSocket and GraphQL creation wizards'
+ * URL/Upload (and, for REST, GitHub/SwaggerHub) source picker. One definition
+ * so every source toggle across those wizards reads as the same control
+ * instead of drifting into its own button styling.
+ */
+export const pillToggleGroupSx = (theme: Theme) =>
+  ({
+    alignSelf: 'flex-start',
+    bgcolor: 'action.hover',
+    border: hairline(theme),
+    borderColor: 'divider',
+    borderRadius: 2,
+    gap: 0.5,
+    p: 0.5,
+    '& .MuiToggleButtonGroup-grouped': {
+      border: 0,
+      borderRadius: 1.5,
+      color: 'text.secondary',
+      fontWeight: 600,
+      m: 0,
+      px: 2,
+      py: 0.75,
+      textTransform: 'none',
+      '&.Mui-selected': {
+        bgcolor: 'primary.main',
+        color: 'primary.contrastText',
+        '&:hover': { bgcolor: 'primary.dark' },
+      },
+    },
+  }) as const;

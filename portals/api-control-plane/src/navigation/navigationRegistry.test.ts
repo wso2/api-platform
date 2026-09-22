@@ -182,6 +182,28 @@ describe('API-level items', () => {
     expect(matcherFor('overview')(`${PROJECT}/apis/deploy`)).toBe(true);
     expect(matcherFor('deploy')(`${PROJECT}/apis/deploy`)).toBe(false);
   });
+
+  // Pins the fix for a real bug: Deploy had no `graphqlTo` at all, so opening
+  // it from a GraphQL API resolved through the REST-only `apiLevelTo`, which
+  // ignores `graphqlApiHandler` and falls back to REST's scope-less alias —
+  // a page for a completely different (and unrelated) API, not this one.
+  it('links to the GraphQL API deploy page, not REST’s scope-less alias', () => {
+    expect(definitionFor('deploy').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/deploy`);
+    expect(matcherFor('deploy')(`${GRAPHQL_API}/deploy`)).toBe(true);
+  });
+});
+
+// Pins the fix for a real gap: Portals had no `graphqlTo` on its 'api' tier,
+// so a GraphQL API fell through to the project-level Portals page instead of
+// its own — inconsistent with every other API-level item once one exists.
+describe('Portals resolves to the GraphQL API-level page', () => {
+  it('links to GraphqlPublishPage once a GraphQL API is open, not the project Portals page', () => {
+    expect(definitionFor('portals').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/publish`);
+  });
+
+  it('stays active on the GraphQL publish page', () => {
+    expect(matcherFor('portals')(`${GRAPHQL_API}/publish`)).toBe(true);
+  });
 });
 
 /*

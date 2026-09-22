@@ -26,6 +26,7 @@ import { FormattedMessage } from 'react-intl';
 export function RuntimeLogsPage() {
   return (
     <ScopeGate
+      graphqlTo={routes.graphqlApiObservabilityLogs}
       prompt="Runtime logs are streamed per API."
       requires="api"
       to={routes.apiObservabilityLogs}
