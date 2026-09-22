@@ -24,23 +24,15 @@ package handler
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
-	"github.com/wso2/api-platform/platform-api/internal/middleware"
-	"github.com/wso2/api-platform/platform-api/internal/repository"
-	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/vault"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -56,63 +48,14 @@ const (
 // setupAgentProxyEnv builds the full Agent proxy stack over a fresh SQLite DB,
 // with one organization and one project seeded in each of two organizations so
 // tenant isolation can be asserted against a real second tenant.
+//
+// The Agent Card fetch tests need the same stack with their own server
+// configuration and a handle on the vault, so the construction itself lives in
+// newAgentProxyTestEnv (agent_proxy_card_fetch_integration_test.go).
 func setupAgentProxyEnv(t *testing.T) (http.Handler, *database.DB) {
 	t.Helper()
-
-	dbPath := filepath.Join(t.TempDir(), "agent-proxy-it.db")
-	sqlDB, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	t.Cleanup(func() { sqlDB.Close() })
-	db := &database.DB{DB: sqlDB}
-
-	schema, err := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
-	if err != nil {
-		t.Fatalf("read schema: %v", err)
-	}
-	if _, err := db.Exec(string(schema)); err != nil {
-		t.Fatalf("apply schema: %v", err)
-	}
-
-	for _, org := range []string{agentProxyOrg, agentProxyOtherOrg} {
-		if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
-			VALUES (?, ?, ?, 'default', ?, datetime('now'), datetime('now'))`, org, org, org, "idp-"+org); err != nil {
-			t.Fatalf("seed organization %s: %v", org, err)
-		}
-		if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, description, organization_uuid, created_at, updated_at)
-			VALUES (?, ?, 'Default Project', '', ?, datetime('now'), datetime('now'))`,
-			"project-"+org, agentProxyProject, org); err != nil {
-			t.Fatalf("seed project for %s: %v", org, err)
-		}
-	}
-
-	identity := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
-	registry := repository.NewArtifactTableRegistry()
-
-	// A real SecretService, so {{ secret "..." }} references in an upstream auth
-	// block are resolved against real rows rather than skipped.
-	v, err := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
-	if err != nil {
-		t.Fatalf("create vault: %v", err)
-	}
-	secretSvc := service.NewSecretService(repository.NewSecretRepo(db), v, identity)
-
-	svc := service.NewAgentProxyService(
-		repository.NewAgentProxyRepo(db),
-		repository.NewProjectRepo(db),
-		repository.NewDeploymentRepo(db, registry),
-		repository.NewGatewayRepo(db),
-		nil, // gatewayEventsService — deletion broadcast is Section 10
-		slog.Default(),
-		noopAudit{},
-		&config.Server{},
-		identity,
-	).WithSecretService(secretSvc)
-
-	mux := http.NewServeMux()
-	NewAgentProxyHandler(svc, identity, slog.Default()).RegisterRoutes(mux)
-	return middleware.NewTestContextMiddleware(mux), db
+	env := newAgentProxyTestEnv(t, &config.Server{})
+	return env.handler, env.db
 }
 
 // callAgentProxy issues one request as agentProxyActor in agentProxyOrg.

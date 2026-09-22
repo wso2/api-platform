@@ -20,11 +20,13 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -68,6 +70,11 @@ type AgentProxyService struct {
 	identity             *IdentityService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+
+	// cardCache holds display-fetch results for the stored-handle form only.
+	// It is never consulted by the builder, the importer or the deployment
+	// path — those read stored configuration.
+	cardCache *agentCardCache
 }
 
 // NewAgentProxyService creates a new AgentProxyService instance.
@@ -75,6 +82,11 @@ func NewAgentProxyService(repo repository.AgentProxyRepository, projectRepo repo
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository,
 	cfg *config.Server, identity *IdentityService) *AgentProxyService {
+	var cardCacheCfg config.AgentCardCache
+	if cfg != nil {
+		cardCacheCfg = cfg.AgentCardCache
+	}
+
 	return &AgentProxyService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
@@ -85,6 +97,7 @@ func NewAgentProxyService(repo repository.AgentProxyRepository, projectRepo repo
 		identity:             identity,
 		cfg:                  cfg,
 		slogger:              slogger,
+		cardCache:            newAgentCardCache(cardCacheCfg),
 	}
 }
 
@@ -302,6 +315,12 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 		)
 	}
 
+	// upstream.url, upstream.auth or the card mode may have changed, so a cached
+	// display fetch describes an Agent proxy that no longer exists in that shape.
+	// Dropping it here rather than letting it lapse means a fixed upstream shows a
+	// card immediately instead of a full negative TTL later.
+	s.cardCache.invalidate(orgUUID, existing.UUID)
+
 	_ = s.auditRepo.Record("UPDATE", existing.UUID, agentProxyAuditResource, orgUUID, updatedBy)
 	return s.Get(orgUUID, handle)
 }
@@ -332,8 +351,231 @@ func (s *AgentProxyService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to delete agent proxy: %w", err)
 	}
 
+	s.cardCache.invalidate(orgUUID, m.UUID)
+
 	_ = s.auditRepo.Record("DELETE", m.UUID, agentProxyAuditResource, orgUUID, deletedBy)
 	return nil
+}
+
+// AgentCardFetchResult is one Agent Card fetch outcome, plus the cache metadata
+// the handler renders as response headers.
+//
+// Freshness travels in headers and is deliberately never injected into the card
+// itself: the document is free-form and is returned exactly as the upstream
+// supplied it, so an added fetchedAt or cached field would be indistinguishable
+// from a real card field — and would change the bytes a future Agent Card
+// signing implementation signs.
+type AgentCardFetchResult struct {
+	// Card is the upstream's response body, verbatim. It is nil when the fetch
+	// failed; the result is still returned in that case so the handler can
+	// report Age on a cached failure.
+	Card []byte
+	// Age is how long ago the upstream was actually contacted. Zero means this
+	// request contacted it.
+	Age time.Duration
+	// MaxAge is the configured positive TTL, meaningful only when Cacheable.
+	MaxAge time.Duration
+	// Cacheable reports whether this form of the request participates in the
+	// cache at all. The direct-URL form is an authoring action and never does.
+	Cacheable bool
+}
+
+// FetchAgentCard retrieves an Agent Card from an upstream agent, for preview
+// during authoring or for display on a saved Agent proxy's page.
+//
+// Two disjoint forms, already separated by dto.DecodeAgentCardFetchRequest:
+//   - direct URL, optionally with supplied credentials — previewing an endpoint
+//     that has not been saved yet. Never cached: it is an authoring action, and
+//     there is no stored resource to key a cache entry on.
+//   - stored handle alone — the display path for a passthrough public card,
+//     which is not stored anywhere and so has to be fetched to be shown. Uses
+//     the Agent proxy's own endpoint and its own stored credentials, and goes
+//     through the display cache.
+//
+// **Nothing here is persisted.** The result is transient page state: it is not
+// saved as managed card content, it does not touch stored configuration, and it
+// does not touch deployment state or deployment status. Saving a fetched card as
+// managed content is a separate, explicit create/replace call.
+//
+// noCache comes from a request Cache-Control: no-cache header and forces a live
+// fetch, refreshing the cached entry. Per RFC 9110 it affects freshness only.
+//
+// A failure to reach the upstream is reported as 503
+// AGENT_PROXY_UPSTREAM_UNREACHABLE rather than 500 or 404: the Agent proxy
+// exists and the control plane is healthy, and a client needs to tell those
+// apart to render the right state. It is also **not** a statement about the
+// deployed gateway — the control plane and the gateway sit in different network
+// positions, so a deployed Agent proxy can be serving its passthrough card
+// correctly while the control plane cannot reach the upstream at all.
+func (s *AgentProxyService) FetchAgentCard(orgUUID string, req *dto.AgentCardFetchRequest, noCache bool) (*AgentCardFetchResult, error) {
+	if req == nil {
+		return nil, apperror.ValidationFailed.New("A request body is required.")
+	}
+	if req.IsStored() {
+		return s.fetchStoredAgentCard(orgUUID, req.AgentProxyID, noCache)
+	}
+	return s.fetchAgentCardFromURL(req)
+}
+
+// fetchAgentCardFromURL serves the direct-URL form. It borrows nothing from any
+// stored Agent proxy — not an endpoint, not a credential — so an unsaved
+// endpoint preview has to carry its own auth, and no cache entry can be keyed
+// on it.
+func (s *AgentProxyService) fetchAgentCardFromURL(req *dto.AgentCardFetchRequest) (*AgentCardFetchResult, error) {
+	if err := utils.ValidateURL(req.URL); err != nil {
+		// The cause names the syntactic problem only; the URL is the caller's own
+		// input and is not echoed back.
+		return nil, apperror.ValidationFailed.Wrap(err, "The supplied url is not a valid URL.")
+	}
+
+	headerName, headerValue := suppliedAgentCardAuthHeader(req.Auth)
+	card, err := utils.FetchAgentCard(context.Background(), req.URL, headerName, headerValue, s.agentCardMaxFetchBytes())
+	if err != nil {
+		return &AgentCardFetchResult{}, agentCardFetchFailure(err)
+	}
+	return &AgentCardFetchResult{Card: card}, nil
+}
+
+// fetchStoredAgentCard serves the stored-handle form: the Agent proxy's own
+// endpoint and its own stored credentials, through the display cache.
+func (s *AgentProxyService) fetchStoredAgentCard(orgUUID, handle string, noCache bool) (*AgentCardFetchResult, error) {
+	// Authorization runs before the cache is consulted: the handle is resolved
+	// inside the caller's own organization first, so a cache hit answers a
+	// foreign or unknown handle exactly as a miss would — with a 404 — and is
+	// never a way past a check a miss would have had to pass.
+	m, err := s.load(orgUUID, handle)
+	if err != nil {
+		return nil, err
+	}
+	// Agent Card discovery is an A2A concept. A future protocol must not be sent
+	// down it, and the check reads the persisted column rather than anything in
+	// the stored document — so it happens before any credential is resolved.
+	if m.Protocol != model.AgentProxyProtocolA2A {
+		return nil, apperror.ValidationFailed.New(fmt.Sprintf(
+			"Agent Card discovery is an A2A operation. This Agent proxy speaks %q.", string(m.Protocol)))
+	}
+
+	key := agentCardCacheKey{orgUUID: orgUUID, proxyUUID: m.UUID}
+	maxAge := s.cardCache.positiveTTL()
+	// Snapshotted before the fetch, so an invalidation that lands while the
+	// upstream is being contacted discards this result instead of reinstating it.
+	generation := s.cardCache.begin(key)
+
+	if !noCache {
+		if entry, age, ok := s.cardCache.get(key); ok {
+			result := &AgentCardFetchResult{Age: age, MaxAge: maxAge, Cacheable: true}
+			if entry.failure != nil {
+				// A cached failure is still a 503 carrying a positive Age, which is
+				// what lets a client say how long the upstream has been unreachable.
+				return result, apperror.AgentProxyUpstreamUnreachable.New(entry.failure.message).
+					WithLogMessage("served a cached Agent Card fetch failure")
+			}
+			result.Card = entry.card
+			return result, nil
+		}
+	}
+
+	upstream := m.Configuration.Upstream.Main
+	if upstream == nil || strings.TrimSpace(upstream.URL) == "" {
+		// An upstream given by ref names a definition the gateway resolves, not an
+		// address the control plane holds — so there is nothing here to fetch. That
+		// is a property of the stored configuration rather than a transient
+		// upstream problem, so it is a 400 and is not cached as a failure.
+		return nil, apperror.ValidationFailed.New(
+			"This Agent proxy's upstream is configured by reference, so the control plane " +
+				"cannot fetch its Agent Card. Supply a url to preview a card directly.")
+	}
+
+	headerName, headerValue, err := s.resolveStoredAgentCardAuth(orgUUID, upstream.Auth)
+	if err != nil {
+		return nil, err
+	}
+
+	card, err := utils.FetchAgentCard(context.Background(), upstream.URL, headerName, headerValue, s.agentCardMaxFetchBytes())
+	if err != nil {
+		failure := agentCardFetchFailure(err)
+		// The cause carries the upstream URL and status; it goes to the log line
+		// only. The message stored in the cache is the sterile client-facing one.
+		s.slogger.Warn("Agent Card display fetch failed",
+			"agentProxyUUID", m.UUID, "organizationUUID", orgUUID, "error", err)
+		s.cardCache.storeFailure(key, generation, failure.Message)
+		return &AgentCardFetchResult{MaxAge: maxAge, Cacheable: true}, failure
+	}
+
+	s.cardCache.storeCard(key, generation, card)
+	return &AgentCardFetchResult{Card: card, MaxAge: maxAge, Cacheable: true}, nil
+}
+
+// resolveStoredAgentCardAuth turns a stored upstream auth block into the header
+// the fetch sends.
+//
+// The stored value is normally a {{ secret "handle" }} placeholder rather than
+// the credential itself, so it is resolved through the secret store here. The
+// handle never reaches the caller and never reaches the standard log line
+// either: a failure returns apperror.Internal's fixed message, with the cause
+// confined to the internal-only detail.
+func (s *AgentProxyService) resolveStoredAgentCardAuth(orgUUID string, auth *model.UpstreamAuth) (string, string, error) {
+	if auth == nil || auth.Type == string(api.None) || auth.Header == "" {
+		return "", "", nil
+	}
+	if handle := extractSecretHandle(auth.Value); handle != "" {
+		if s.secretService == nil {
+			return "", "", apperror.Internal.New().
+				WithLogMessage("cannot resolve stored Agent proxy upstream credential: secret service unavailable")
+		}
+		decrypted, err := s.secretService.Decrypt(orgUUID, handle)
+		if err != nil {
+			return "", "", apperror.Internal.Wrap(err).
+				WithLogMessage("failed to resolve stored Agent proxy upstream auth secret")
+		}
+		return auth.Header, decrypted, nil
+	}
+	return auth.Header, auth.Value, nil
+}
+
+// suppliedAgentCardAuth turns a caller-supplied direct-fetch auth block into the
+// header the fetch sends. Nothing here is stored or resolved through the secret
+// store: the value is the caller's own credential, used for this request alone.
+func suppliedAgentCardAuthHeader(auth *api.UpstreamAuth) (string, string) {
+	if auth == nil || auth.Type == nil || *auth.Type == api.None {
+		return "", ""
+	}
+	if auth.Header == nil || auth.Value == nil {
+		return "", ""
+	}
+	return *auth.Header, *auth.Value
+}
+
+// agentCardFetchFailure maps a fetch failure onto the single 503 the contract
+// declares, choosing a sterile sentence that names the reason class.
+//
+// None of the three messages carries the upstream URL, the credential or any
+// part of the upstream's own response — only the shape of what went wrong, which
+// is what a "card unavailable" display state needs in order to say something
+// more useful than "failed". The detail travels in the wrapped cause, for the
+// internal log line.
+func agentCardFetchFailure(err error) *apperror.Error {
+	switch {
+	case errors.Is(err, utils.ErrAgentCardUnauthorized):
+		return apperror.AgentProxyUpstreamUnreachable.Wrap(err,
+			"The upstream agent rejected the credentials the control plane presented for its Agent Card.")
+	case errors.Is(err, utils.ErrAgentCardUnusable):
+		return apperror.AgentProxyUpstreamUnreachable.Wrap(err,
+			"The upstream agent did not return a usable Agent Card.")
+	default:
+		return apperror.AgentProxyUpstreamUnreachable.Wrap(err,
+			"The control plane could not reach the upstream agent to retrieve its Agent Card.")
+	}
+}
+
+// agentCardMaxFetchBytes is the configured ceiling on a fetched card body. Zero
+// or less defers to the fetcher's own default, matching how the OpenAPI spec and
+// MCP response ceilings are configured.
+func (s *AgentProxyService) agentCardMaxFetchBytes() int64 {
+	if s.cfg == nil {
+		return 0
+	}
+	return s.cfg.AgentCardMaxFetchBytes
 }
 
 // load fetches one Agent proxy by handle within the organization, mapping a

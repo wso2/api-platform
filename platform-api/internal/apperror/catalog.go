@@ -157,6 +157,14 @@ var (
 var (
 	AgentProxyNotFound = def(CodeAgentProxyNotFound, http.StatusNotFound, "The specified Agent proxy could not be found.")
 	AgentProxyExists   = def(CodeAgentProxyExists, http.StatusConflict, "An Agent proxy with this ID already exists.")
+	// AgentProxyUpstreamUnreachable is deliberately a 503 rather than a 500 or a
+	// 404: the Agent proxy exists and the control plane is healthy — it simply
+	// could not reach the upstream to read its Agent Card. Collapsing it into
+	// 500 would leave a client unable to tell a down agent from a broken control
+	// plane, which is exactly the distinction the card-unavailable display state
+	// is built on. The call site supplies a sterile reason sentence; the upstream
+	// URL, its credentials and its raw body never appear in it.
+	AgentProxyUpstreamUnreachable = def(CodeAgentProxyUpstreamUnreachable, http.StatusServiceUnavailable, "%s")
 )
 
 // Organization / project / application entries.

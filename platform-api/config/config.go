@@ -111,16 +111,56 @@ type Server struct {
 	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
 	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
 	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
+	// AgentCardMaxFetchBytes bounds the body read from an upstream agent's Agent Card
+	// endpoint (internal/utils/agent_card.go). <= 0 falls back to the fetcher's built-in
+	// 1 MiB default, which is the contract's per-card ceiling — mirroring
+	// OpenAPISpecMaxFetchBytes's own zero-means-default convention.
+	AgentCardMaxFetchBytes int64 `koanf:"agent_card_max_fetch_bytes"`
 
-	Database    Database         `koanf:"database"`
-	Auth        Auth             `koanf:"auth"`
-	Deployments Deployments      `koanf:"deployments"`
-	Listeners   ServerListeners  `koanf:"server"`
-	Security    Security         `koanf:"security"`
-	Gateway     Gateway          `koanf:"gateway"`
-	EventHub    EventHub         `koanf:"event_hub"`
-	Webhook     Webhook          `koanf:"webhook"`
-	HTTPClient  HTTPClientConfig `koanf:"http_client"`
+	Database       Database         `koanf:"database"`
+	Auth           Auth             `koanf:"auth"`
+	Deployments    Deployments      `koanf:"deployments"`
+	Listeners      ServerListeners  `koanf:"server"`
+	Security       Security         `koanf:"security"`
+	Gateway        Gateway          `koanf:"gateway"`
+	EventHub       EventHub         `koanf:"event_hub"`
+	Webhook        Webhook          `koanf:"webhook"`
+	HTTPClient     HTTPClientConfig `koanf:"http_client"`
+	AgentCardCache AgentCardCache   `koanf:"agent_card_cache"`
+}
+
+// AgentCardCache configures the in-process cache sitting in front of the
+// stored-handle Agent Card display fetch (POST /agent-proxies/fetch-agent-card
+// with an agentProxyId).
+//
+// The public Agent Card of a passthrough Agent proxy is not stored, so the
+// control plane fetches it from the upstream every time that page is viewed.
+// Without a cache that is one outbound request per page view per viewer, which
+// is load the upstream never agreed to carry. Failures are cached too, at a
+// shorter TTL: caching only successes would leave a down upstream re-contacted
+// on every single view — the exact load the cache exists to remove.
+//
+// The cache is per replica and holds nothing durable: two replicas may report
+// different Age values for the same Agent proxy, and a restart empties it. It
+// is display-only and never a source of truth — builders, importers and the
+// deployment path all read stored configuration, never a cached card.
+type AgentCardCache struct {
+	// PositiveTTL is how long a successfully fetched card is served from cache.
+	// Zero disables caching of successes entirely; every call then fetches, and
+	// the response reports Cache-Control: max-age=0.
+	PositiveTTL time.Duration `koanf:"positive_ttl"`
+	// NegativeTTL is how long a fetch failure is served from cache. Zero disables
+	// caching of failures, which re-contacts an unreachable upstream on every view.
+	NegativeTTL time.Duration `koanf:"negative_ttl"`
+	// MaxEntries caps how many Agent proxies may hold a cached result at once.
+	// The least recently used entry is evicted at the cap. Zero or less means
+	// the cache holds nothing.
+	MaxEntries int `koanf:"max_entries"`
+	// MaxBytes caps the total encoded size of the cached cards. A single card may
+	// be up to 1 MiB, so an unbounded map keyed per Agent proxy is a memory
+	// exhaustion vector for an organization with many passthrough Agent proxies.
+	// Zero or less means the cache holds nothing.
+	MaxBytes int64 `koanf:"max_bytes"`
 }
 
 // HTTPClientConfig configures the single shared outbound *http.Client used by every

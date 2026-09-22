@@ -204,5 +204,16 @@ func defaultConfig() *Server {
 				AllowedSchemes: []string{"http", "https"},
 			},
 		},
+		// Short enough that an operator fixing a broken upstream sees the result
+		// within about a minute without hunting for a flush, long enough that a
+		// page opened repeatedly does not re-contact the upstream each time. The
+		// negative TTL is deliberately much shorter: a recovered upstream should
+		// come back quickly, and a failure costs nothing to re-establish.
+		AgentCardCache: AgentCardCache{
+			PositiveTTL: 60 * time.Second,
+			NegativeTTL: 10 * time.Second,
+			MaxEntries:  512,
+			MaxBytes:    32 << 20, // 32 MiB — 512 entries cannot all be 1 MiB cards
+		},
 	}
 }

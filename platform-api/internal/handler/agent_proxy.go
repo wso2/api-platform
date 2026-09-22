@@ -19,10 +19,12 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -42,6 +44,11 @@ import (
 // public and a protected one, so the ceiling leaves room for two of them plus
 // the rest of the document — and nothing beyond that is read into memory.
 const agentProxyMaxBodyBytes = 4 << 20 // 4 MiB
+
+// agentCardFetchMaxBodyBytes bounds an Agent Card fetch request body. The body
+// carries at most a URL and a credential, so the ceiling is small on purpose —
+// it is not a card, and nothing about this operation justifies reading more.
+const agentCardFetchMaxBodyBytes = 16 << 10 // 16 KiB
 
 // AgentProxyHandler serves the Agent proxy CRUD operations.
 //
@@ -69,6 +76,7 @@ func NewAgentProxyHandler(service *service.AgentProxyService, identity *service.
 func (h *AgentProxyHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/agent-proxies", middleware.MapErrors(h.slogger, h.CreateAgentProxy))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/agent-proxies", middleware.MapErrors(h.slogger, h.ListAgentProxies))
+	mux.HandleFunc("POST "+constants.APIBasePath+"/agent-proxies/fetch-agent-card", middleware.MapErrors(h.slogger, h.FetchAgentCard))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/agent-proxies/{agentProxyId}", middleware.MapErrors(h.slogger, h.GetAgentProxy))
 	mux.HandleFunc("PUT "+constants.APIBasePath+"/agent-proxies/{agentProxyId}", middleware.MapErrors(h.slogger, h.UpdateAgentProxy))
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/agent-proxies/{agentProxyId}", middleware.MapErrors(h.slogger, h.DeleteAgentProxy))
@@ -200,6 +208,124 @@ func (h *AgentProxyHandler) DeleteAgentProxy(w http.ResponseWriter, r *http.Requ
 
 	w.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+// FetchAgentCard handles POST /api/v0.9/agent-proxies/fetch-agent-card
+//
+// The route is registered ahead of no item route of the same shape — there is no
+// POST on /agent-proxies/{agentProxyId} — but "fetch-agent-card" is reserved as
+// an Agent proxy handle all the same, so a GET/PUT/DELETE on this path can never
+// be shadowed by a resource that named itself after the discovery route.
+func (h *AgentProxyHandler) FetchAgentCard(w http.ResponseWriter, r *http.Request) error {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	req, err := decodeAgentCardFetchBody(w, r)
+	if err != nil {
+		return err
+	}
+
+	result, err := h.service.FetchAgentCard(orgID, req, requestsNoCache(r))
+	if err != nil {
+		// Age is written before the error is handed to the mapper: a cached 503
+		// carries one too, which is what lets a client say how long the upstream
+		// has been unreachable rather than only that it is. No Cache-Control
+		// accompanies it — a failure is held for the negative TTL, not the
+		// positive one the success path reports, and stating the wrong number
+		// would be worse than stating none.
+		writeAgentCardAge(w, result)
+		return h.mapServiceError(err)
+	}
+
+	writeAgentCardAge(w, result)
+	writeAgentCardCacheControl(w, result)
+	// The card is written through verbatim rather than re-encoded. It is
+	// free-form by contract and is returned exactly as the upstream supplied it,
+	// because re-serializing it would change the bytes a future Agent Card
+	// signing implementation signs.
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Card)
+	return nil
+}
+
+// decodeAgentCardFetchBody reads a bounded request body and decodes it into one
+// of the two disjoint fetch forms.
+//
+// The body is read in full before decoding for the same reason the Agent proxy
+// body is: which form this is has to be decided from the keys present, which the
+// generated union type cannot see — a null url decodes to the same nil pointer
+// an omitted one does, and the contract rejects the first and accepts the second.
+func decodeAgentCardFetchBody(w http.ResponseWriter, r *http.Request) (*dto.AgentCardFetchRequest, error) {
+	if err := requireJSONContentType(r); err != nil {
+		return nil, err
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, agentCardFetchMaxBodyBytes)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			return nil, apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
+		}
+		return nil, apperror.ValidationFailed.Wrap(err, "The request body could not be read.")
+	}
+	if len(body) == 0 {
+		return nil, apperror.ValidationFailed.New("A request body is required.")
+	}
+
+	req, err := dto.DecodeAgentCardFetchRequest(body)
+	if err != nil {
+		// DecodeAgentCardFetchRequest phrases every failure in terms of the
+		// caller's own payload, so its message is the client-facing one.
+		return nil, apperror.ValidationFailed.Wrap(err, err.Error())
+	}
+	return req, nil
+}
+
+// requestsNoCache reports whether the caller asked for a live upstream fetch.
+//
+// This is the authoring UI's explicit "refresh" and the only cache bypass there
+// is. Per RFC 9110 it governs freshness alone: it never changes what is stored,
+// and it is not a way to reach an Agent proxy the caller could not otherwise
+// read — the organization check runs either way.
+func requestsNoCache(r *http.Request) bool {
+	for _, value := range r.Header.Values("Cache-Control") {
+		for _, directive := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(directive), "no-cache") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// writeAgentCardAge reports how long ago the upstream was actually contacted.
+//
+// Freshness travels in headers and never in the body: the card is free-form, so
+// an added `cached` or `fetchedAt` field would be indistinguishable from a real
+// card field — and re-serializing the document to insert one would change the
+// bytes a future Agent Card signing implementation signs.
+//
+// Only the stored-handle form participates in the cache, so the direct-URL form
+// gets no header at all rather than an Age that would misdescribe it.
+func writeAgentCardAge(w http.ResponseWriter, result *service.AgentCardFetchResult) {
+	if result == nil || !result.Cacheable {
+		return
+	}
+	w.Header().Set("Age", strconv.FormatInt(int64(result.Age.Seconds()), 10))
+}
+
+// writeAgentCardCacheControl reports how long a *fetched card* stays fresh. It
+// belongs on the success path only: a failure is held for the negative TTL, and
+// reporting the positive one beside a 503 would tell the client the wrong
+// number.
+func writeAgentCardCacheControl(w http.ResponseWriter, result *service.AgentCardFetchResult) {
+	if result == nil || !result.Cacheable {
+		return
+	}
+	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", int64(result.MaxAge.Seconds())))
 }
 
 // decodeAgentProxyBody reads a bounded request body and decodes it into the

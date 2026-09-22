@@ -119,8 +119,9 @@ const (
 
 // Agent proxy domain codes.
 const (
-	CodeAgentProxyNotFound = "AGENT_PROXY_NOT_FOUND"
-	CodeAgentProxyExists   = "AGENT_PROXY_EXISTS"
+	CodeAgentProxyNotFound            = "AGENT_PROXY_NOT_FOUND"
+	CodeAgentProxyExists              = "AGENT_PROXY_EXISTS"
+	CodeAgentProxyUpstreamUnreachable = "AGENT_PROXY_UPSTREAM_UNREACHABLE"
 )
 
 // Organization domain codes.
