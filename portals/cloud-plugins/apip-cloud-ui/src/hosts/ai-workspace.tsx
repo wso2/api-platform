@@ -21,7 +21,10 @@ import {
   ProjectPipelinesFeature,
 } from "@wso2-enterprise/apip-cloud-ui-pipelines";
 import type { BrandLogo } from "../../../../ai-workspace/src/branding/BrandLogoProvider";
-import { DeployFeature, ProviderDeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
+import {
+  DeployFeature,
+  ProviderDeployFeature,
+} from "@wso2-enterprise/apip-cloud-ui-deploy";
 import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
@@ -137,96 +140,83 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
         },
       ],
     }),
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'gateways',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'gateways',
-        slot: AI_WORKSPACE_GATEWAYS_SLOT,
-        // Nav placement: between Environments (50) and Pipelines (60). The
-        // override carries it (rather than a second sidebar entry) so the
-        // gateways route keeps rendering here, while `hides` suppresses the
-        // built-in nav item that would otherwise appear higher up in its own
-        // category. Without `hides` both entries would show.
-        order: 55,
-        path: 'gateways',
-        label: 'AI Gateways',
-        icon: <Network size={20} />,
-        hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
-        render: (port) => <GatewaysFeature gatewayTypes={AI_GATEWAY_TYPES} port={port} />,
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'insights',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'insights',
-        slot: AI_WORKSPACE_INSIGHTS_SLOT,
-        order: 0,
-        // Same Moesif ai-overview URL at org and project — no project_id filter.
-        render: (port) => (
-          <InsightsFeature port={port} embedProfile="ai-workspace" />
-        ),
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'deploy',
-    version: '0.1.0',
-    // Registered once per artifact kind, each replacing that kind's built-in page
-    // at its own route, so environments are what the AI Workspace shows for MCP
-    // servers, LLM proxies and LLM providers alike.
-    //
-    // Two features, because the two kinds of artifact are deployed differently.
-    // MCP servers and LLM proxies belong to a PROJECT, so they are deployed through
-    // that project's pipeline: environments in promotion order, promoting between
-    // them. LLM providers belong to the ORGANIZATION — `llm_providers` has no
-    // project — so no pipeline can apply to them, and they are deployed straight to
-    // any of the organization's environments.
-    //
-    // The artifact's handle comes from the route rather than the Port: these pages
-    // are scoped to one artifact and the portal reads it off the URL (see
-    // ArtifactDeployRoute in the host's App.tsx), which is why render takes it.
-    extensions: [
-      {
-        id: 'mcp-deploy',
-        // Inert: a page override replaces one route's body, so there is nothing to
-        // order it against.
-        order: 0,
-        slot: AI_WORKSPACE_MCP_DEPLOY_SLOT,
-        render: (port, artifactHandle) => (
-          <DeployFeature port={port} kind="Mcp" artifactHandle={artifactHandle} />
-        ),
-      },
-      {
-        id: 'llm-proxy-deploy',
-        // Inert: a page override replaces one route's body, so there is nothing to
-        // order it against.
-        order: 0,
-        slot: AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
-        render: (port, artifactHandle) => (
-          <DeployFeature port={port} kind="LlmProxy" artifactHandle={artifactHandle} />
-        ),
-      },
-      {
-        id: 'llm-provider-deploy',
-        // Inert: a page override replaces one route's body, so there is nothing to
-        // order it against.
-        order: 0,
-        slot: AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
-        render: (port, artifactHandle) => (
-          <ProviderDeployFeature port={port} artifactHandle={artifactHandle} />
-        ),
-      },
-    ],
-  }),
-];
+    defineCloudPlugin({
+      id: "insights",
+      version: "0.1.0",
+      extensions: [
+        {
+          id: "insights",
+          slot: AI_WORKSPACE_INSIGHTS_SLOT,
+          order: 0,
+          // Same Moesif ai-overview URL at org and project — no project_id filter.
+          render: (port) => (
+            <InsightsFeature port={port} embedProfile="ai-workspace" />
+          ),
+        },
+      ],
+    }),
+    defineCloudPlugin({
+      id: "deploy",
+      version: "0.1.0",
+      // Registered once per artifact kind, each replacing that kind's built-in page
+      // at its own route, so environments are what the AI Workspace shows for MCP
+      // servers, LLM proxies and LLM providers alike.
+      //
+      // Two features, because the two kinds of artifact are deployed differently.
+      // MCP servers and LLM proxies belong to a PROJECT, so they are deployed through
+      // that project's pipeline: environments in promotion order, promoting between
+      // them. LLM providers belong to the ORGANIZATION — `llm_providers` has no
+      // project — so no pipeline can apply to them, and they are deployed straight to
+      // any of the organization's environments.
+      //
+      // The artifact's handle comes from the route rather than the Port: these pages
+      // are scoped to one artifact and the portal reads it off the URL (see
+      // ArtifactDeployRoute in the host's App.tsx), which is why render takes it.
+      extensions: [
+        {
+          id: "mcp-deploy",
+          // Inert: a page override replaces one route's body, so there is nothing to
+          // order it against.
+          order: 0,
+          slot: AI_WORKSPACE_MCP_DEPLOY_SLOT,
+          render: (port, artifactHandle) => (
+            <DeployFeature
+              port={port}
+              kind="Mcp"
+              artifactHandle={artifactHandle}
+            />
+          ),
+        },
+        {
+          id: "llm-proxy-deploy",
+          // Inert: a page override replaces one route's body, so there is nothing to
+          // order it against.
+          order: 0,
+          slot: AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
+          render: (port, artifactHandle) => (
+            <DeployFeature
+              port={port}
+              kind="LlmProxy"
+              artifactHandle={artifactHandle}
+            />
+          ),
+        },
+        {
+          id: "llm-provider-deploy",
+          // Inert: a page override replaces one route's body, so there is nothing to
+          // order it against.
+          order: 0,
+          slot: AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
+          render: (port, artifactHandle) => (
+            <ProviderDeployFeature
+              port={port}
+              artifactHandle={artifactHandle}
+            />
+          ),
+        },
+      ],
+    }),
+  ];
 
 /** Omit Insights when Moesif is not configured so InsightsRoute keeps the built-in page. */
 export const cloudExtensions = getCloudExtensions(
