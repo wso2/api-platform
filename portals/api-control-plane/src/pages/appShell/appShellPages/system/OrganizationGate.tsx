@@ -131,7 +131,7 @@ export function OrganizationGate({ children }: { children: ReactNode }) {
     void refetch();
   }, [refetch]);
 
-  if (isPending) {
+  if (hasOrganizationClaim && isPending) {
     return (
       <GateScreen
         body={<FormattedMessage {...messages.provisioningBody} />}

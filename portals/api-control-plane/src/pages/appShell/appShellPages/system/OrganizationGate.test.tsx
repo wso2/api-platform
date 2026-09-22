@@ -20,7 +20,14 @@ import { HttpResponse, http as mswHttp } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetHttpClient } from '@/api/core/http';
-import { anOrganization, apiUrl, collection, recorder, type Recorder } from '@/test/msw';
+import {
+  anOrganization,
+  apiUrl,
+  collection,
+  neverResponds,
+  recorder,
+  type Recorder,
+} from '@/test/msw';
 import { makeAuthState } from '@/test/mockAuthState';
 import { server } from '@/test/server';
 import { act, renderWithProviders, screen, waitFor } from '@/test/utils';
@@ -92,6 +99,14 @@ describe('OrganizationGate', () => {
 
   it('lets the console through when the session carries no organization claim', async () => {
     server.use(collection('/organizations', []));
+
+    renderGate(makeAuthState());
+
+    expect(await screen.findByText('console body')).toBeInTheDocument();
+  });
+
+  it('does not hold back a session with no organization claim while the list is in flight', async () => {
+    server.use(neverResponds('get', '/organizations'));
 
     renderGate(makeAuthState());
 
