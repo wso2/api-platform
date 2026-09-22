@@ -28,6 +28,7 @@ import {
   SessionExpiredPage,
   UnauthorizedPage,
 } from '@/pages/appShell/appShellPages/system/SystemPages';
+import { OrganizationGate } from '@/pages/appShell/appShellPages/system/OrganizationGate';
 import { ConsoleScopeProvider } from '@/scope/ConsoleScopeProvider';
 import AppLayout from '@/pages/appShell/AppLayout';
 import {
@@ -312,9 +313,11 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
       <Route element={<ProtectedRoute />}>
         <Route
           element={
-            <ConsoleScopeProvider>
-              <AppLayout />
-            </ConsoleScopeProvider>
+            <OrganizationGate>
+              <ConsoleScopeProvider>
+                <AppLayout />
+              </ConsoleScopeProvider>
+            </OrganizationGate>
           }
         >
           <Route path="/" element={<OrganizationRedirectPage />} />

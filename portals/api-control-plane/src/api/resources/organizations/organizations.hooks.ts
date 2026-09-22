@@ -43,9 +43,23 @@ import { organizationKeys, organizationQueries } from './organizations.queries';
 /** Everything a caller may vary on the list request. */
 export type OrganizationListFilters = ListOrganizationsQuery;
 
+export type OrganizationListOptions = {
+  pollWhileEmptyMs?: number | false;
+};
+
 /** Organizations the signed-in user can reach. Drives the org switcher. */
-export const useOrganizations = (filters: OrganizationListFilters = {}) =>
-  useQuery(organizationQueries.list(filters));
+export const useOrganizations = (
+  filters: OrganizationListFilters = {},
+  { pollWhileEmptyMs = false }: OrganizationListOptions = {}
+) =>
+  useQuery({
+    ...organizationQueries.list(filters),
+    refetchInterval: (query) => {
+      if (pollWhileEmptyMs === false) return false;
+      const found = query.state.data?.list?.length ?? 0;
+      return found === 0 ? pollWhileEmptyMs : false;
+    },
+  });
 
 /** A single organization by id. */
 export const useOrganization = (organizationId: string | undefined) =>

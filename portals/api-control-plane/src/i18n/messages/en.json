@@ -2090,6 +2090,30 @@
   "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.title": {
     "defaultMessage": "Page not found"
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationGate.loadingTitle": {
+    "defaultMessage": "Loading your organization",
+    "description": "Shown while the signed-in user's organizations are being fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationGate.logout": {
+    "defaultMessage": "Log out",
+    "description": "Button that ends the session. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationGate.provisioningBody": {
+    "defaultMessage": "This only happens once, and it will only take a moment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationGate.provisioningTitle": {
+    "defaultMessage": "Setting up your organization"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationGate.retry": {
+    "defaultMessage": "Try again",
+    "description": "Button that re-checks whether the organization is ready. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationGate.timeoutBody": {
+    "defaultMessage": "Your organization is still being set up. Try again in a moment, or sign out and back in."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationGate.timeoutTitle": {
+    "defaultMessage": "This is taking longer than expected"
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyDescription": {
     "defaultMessage": "Your account is authenticated, but it is not associated with an organization."
   },
