@@ -2963,6 +2963,16 @@
   "gateways.detail.GetStarted.k8s.chartIntro": {
     "defaultMessage": "Run this command to install the gateway chart with control plane configurations:"
   },
+  "gateways.detail.GetStarted.moesif.loading": {
+    "defaultMessage": "Loading Moesif analytics configuration…"
+  },
+  "gateways.detail.GetStarted.moesif.unavailable": {
+    "defaultMessage": "To configure analytics, add your existing Moesif key as MOESIF_KEY='<your-moesif-key>' to the keys.env file after creating it with the command below."
+  },
+  "gateways.detail.GetStarted.moesif.fetchFailed": {
+    "defaultMessage": "Could not load Moesif analytics configuration. Gateway setup commands below omit the Moesif key; add MOESIF_KEY manually if you need analytics.",
+    "description": "Shown when the cloud collector-key request fails for a reason other than the key being unavailable for the org."
+  },
   "gateways.detail.GetStarted.prerequisite.curl": {
     "defaultMessage": "cURL installed"
   },
