@@ -2523,7 +2523,7 @@
     "defaultMessage": "Filter APIs by {type}"
   },
   "apiControlPlane.projects.ProjectStatistics.statusSummary": {
-    "defaultMessage": "{published} published · {created} created"
+    "defaultMessage": "{created} created"
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",

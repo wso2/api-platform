@@ -50,7 +50,7 @@ const messages = defineMessages({
   },
   statusSummary: {
     id: 'apiControlPlane.projects.ProjectStatistics.statusSummary',
-    defaultMessage: '{published} published · {created} created',
+    defaultMessage: '{created} created',
   },
 });
 
@@ -138,7 +138,9 @@ export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectS
   const apis = apisQuery.data?.list;
   const countType = (type: ApiTypeFilter) =>
     apis?.filter((api) => matchesApiType(api.kind, type)).length;
-  const published = apis?.filter((api) => api.lifeCycleStatus === 'PUBLISHED').length;
+  // "Published" would need a per-API scan of the api_publications table today
+  // (rest_apis.lifecycle_status is a legacy column no publish path writes),
+  // so the summary shows only the created count until a server-side aggregate lands.
   const created = apis?.filter((api) => api.lifeCycleStatus === 'CREATED').length;
   const selectType = (type: ApiTypeFilter) =>
     onTypeFilterChange(selectedType === type ? null : type);
@@ -168,11 +170,11 @@ export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectS
                 <FormattedNumber value={total} />
               </Typography>
             )}
-            {published === undefined || created === undefined ? (
+            {created === undefined ? (
               <Skeleton height={20} width={112} />
             ) : (
               <Typography color="text.secondary" variant="caption">
-                <FormattedMessage {...messages.statusSummary} values={{ created, published }} />
+                <FormattedMessage {...messages.statusSummary} values={{ created }} />
               </Typography>
             )}
           </Stack>
