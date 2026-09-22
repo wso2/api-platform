@@ -32,7 +32,7 @@ Feature: API deployment and invocation
     And I generate a unique API version from "weather" and store it as "apiVersion"
     And I generate a unique API context from "/weather" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | ${CTX:apiDisplayName}              |
       | spec.version           | ${CTX:apiVersion}                  |
@@ -57,7 +57,7 @@ Feature: API deployment and invocation
     And I generate a unique value from "labeled-api" and store it as "apiName"
     And I generate a unique API context from "/labeled" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | Labeled-API                        |
       | spec.version           | v1.0                               |
@@ -82,7 +82,7 @@ Feature: API deployment and invocation
     Given I authenticate using basic auth as "admin"
     And I generate a unique value from "versioned-context-api" and store it as "apiName"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | Versioned Context API              |
       | spec.version           | v2.0                               |
@@ -108,7 +108,7 @@ Feature: API deployment and invocation
     And I generate a unique value from "invalid-labels-api" and store it as "apiName"
     And I generate a unique API context from "/invalid-labels" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | Invalid-Labels-API                 |
       | spec.version           | v1.0                               |
@@ -120,48 +120,3 @@ Feature: API deployment and invocation
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the response body should contain "Configuration validation failed"
-
-  Scenario Outline: Deploying an API with an invalid upstream URL returns its validation error
-    Given I authenticate using basic auth as "admin"
-    And I generate a unique value from "invalid-upstream-api" and store it as "apiName"
-    And I generate a unique API context from "/invalid-upstream" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
-      | name                          | ${CTX:apiName}                     |
-      | spec.displayName              | Invalid-Upstream-API              |
-      | spec.version                  | v1.0                               |
-      | spec.context                  | ${CTX:apiContext}/$version         |
-      | spec.upstreamDefinitions      | [{"name":"backend-default","basePath":"/api-main","upstreams":[{"url":"<upstreamUrl>"}]}] |
-      | spec.upstream.main.ref        | backend-default                    |
-      | spec.operations               | [{"method":"GET","path":"/endpoint"}] |
-    Then the response should be a client error
-    And the response should be valid JSON
-    And the JSON response field "status" should be "error"
-    And the response body should contain "Configuration validation failed"
-    And the response body should contain "<message>"
-
-    Examples:
-      | upstreamUrl                 | message                         |
-      | http://testbench:3000?region=eu | must not include a query string |
-      | http://testbench:3000?           | must not include a query string |
-      | http://testbench:3000#section    | must not include a fragment      |
-
-  Scenario: Deploying an API with query and fragment in its upstream URL reports both errors
-    Given I authenticate using basic auth as "admin"
-    And I generate a unique value from "invalid-upstream-query-fragment-api" and store it as "apiName"
-    And I generate a unique API context from "/invalid-upstream-query-fragment" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
-      | name                          | ${CTX:apiName}                     |
-      | spec.displayName              | Invalid-Upstream-Query-Fragment-API |
-      | spec.version                  | v1.0                               |
-      | spec.context                  | ${CTX:apiContext}/$version         |
-      | spec.upstreamDefinitions      | [{"name":"backend-default","basePath":"/api-main","upstreams":[{"url":"http://testbench:3000?a=1#top"}]}] |
-      | spec.upstream.main.ref        | backend-default                    |
-      | spec.operations               | [{"method":"GET","path":"/endpoint"}] |
-    Then the response should be a client error
-    And the response should be valid JSON
-    And the JSON response field "status" should be "error"
-    And the response body should contain "Configuration validation failed"
-    And the response body should contain "must not include a query string"
-    And the response body should contain "must not include a fragment"

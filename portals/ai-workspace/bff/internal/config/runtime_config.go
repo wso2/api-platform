@@ -95,5 +95,12 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 	// prefix the BFF actually strips.
 	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
 
+	// Whether the BFF has a billing upstream, as a bare boolean — the URL itself is
+	// never browser-safe. The SPA only needs to know that the same-origin
+	// <base>/proxy/billing route exists before it calls it.
+	if cfg.ControlPlane.BillingURL != "" {
+		out[runtimeKey("billing_proxy_enabled")] = "true"
+	}
+
 	return out
 }

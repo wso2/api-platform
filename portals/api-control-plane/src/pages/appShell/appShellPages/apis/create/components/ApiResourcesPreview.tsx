@@ -72,6 +72,8 @@ const detectFormat = (rawText: string | undefined): SpecFormat =>
   rawText !== undefined && rawText.trimStart().startsWith('{') ? 'json' : 'yaml';
 
 export type ApiResourcesPreviewProps = {
+  /** Optional fixed pane height for layouts that must align with an adjacent state. */
+  height?: number | string;
   /**
    * Called with the serialized spec text before the editor save is committed.
    * Return a non-empty array to block the save and display the messages inline;
@@ -115,7 +117,15 @@ export type ApiResourcesPreviewProps = {
  * Right-hand pane of the contract step: the resources of the fetched
  * definition, or an empty state saying that is what will land here.
  */
-export const ApiResourcesPreview = ({ onBeforeSave, onEditingChange, onSpecChange, rawText, spec, warnings }: ApiResourcesPreviewProps) => {
+export const ApiResourcesPreview = ({
+  height = PANE_HEIGHT,
+  onBeforeSave,
+  onEditingChange,
+  onSpecChange,
+  rawText,
+  spec,
+  warnings,
+}: ApiResourcesPreviewProps) => {
   const intl = useIntl();
   const [showSource, setShowSource] = useState(false);
   const hasContract = spec !== undefined;
@@ -145,7 +155,7 @@ export const ApiResourcesPreview = ({ onBeforeSave, onEditingChange, onSpecChang
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: PANE_HEIGHT,
+        height,
         // Keep the title fixed; `minHeight: 0` lets the content area shrink.
         minHeight: 0,
         overflow: 'hidden',
@@ -225,7 +235,13 @@ export const ApiResourcesPreview = ({ onBeforeSave, onEditingChange, onSpecChang
       >
         {/* Editable source view: SpecSourceEditor owns format toggle + save bar. */}
         {hasContract && showSource && editable ? (
-          <SpecSourceEditor onBeforeSave={onBeforeSave} onEditingChange={onEditingChange} onSave={onSpecChange} rawText={rawText} spec={spec} />
+          <SpecSourceEditor
+            onBeforeSave={onBeforeSave}
+            onEditingChange={onEditingChange}
+            onSave={onSpecChange}
+            rawText={rawText}
+            spec={spec}
+          />
         ) : null}
 
         {/* Read-only source view: Monaco editor, format toggled in the header above. */}

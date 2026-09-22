@@ -15,11 +15,11 @@
 # limitations under the License.
 # --------------------------------------------------------------------
 
-@gateway-controller-policies
-Feature: Gateway-controller policy build
-  As a gateway-controller contributor
-  I want the gateway to be built with the checked-out policy sources
-  So that policy behavior is verified through the gateway data plane
+@time-based-model-routing
+Feature: Time-based model routing
+  As an API consumer
+  I want requests to use the model configured for the current time
+  So that model selection follows the proxy's routing schedule
 
   Background:
     Given the gateway services are running

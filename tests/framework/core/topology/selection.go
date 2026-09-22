@@ -137,7 +137,11 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			for j := range block.Components {
 				component := &block.Components[j]
 				if component.Def != nil && component.Def.Name == "platform-gateway" {
-					component.Def = component.Def.WithImageVersion(version)
+					var err error
+					component.Def, err = component.Def.WithReleaseVersion(version)
+					if err != nil {
+						return nil, fmt.Errorf("topology: block %q: %w", block.Name, err)
+					}
 					component.Version = version
 					component.BuildFromSource = false
 				}
@@ -172,6 +176,28 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			}
 			continue
 		}
+
+		skipped, err := selectGatewayDatabaseCompatibility(&block)
+		if err != nil {
+			return nil, err
+		}
+		if skipped != nil {
+			if include[block.Name] {
+				return nil, fmt.Errorf("topology: selected block %q is incompatible: %s", block.Name, skipped.Reason)
+			}
+			out.SkippedBlocks = append(out.SkippedBlocks, *skipped)
+			continue
+		}
+
+		runners, skippedRunners, err := selectGatewayVersionRunners(&block)
+		if err != nil {
+			return nil, err
+		}
+		out.SkippedRunners = append(out.SkippedRunners, skippedRunners...)
+		if len(block.Runners) > 0 && len(runners) == 0 {
+			continue
+		}
+		block.Runners = runners
 
 		skipExternalBlock := false
 		for j := range block.Components {
@@ -250,6 +276,22 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	}
 
 	if len(out.Blocks) == 0 {
+		if len(out.SkippedBlocks) > 0 {
+			reasons := make([]string, 0, len(out.SkippedBlocks))
+			for _, skipped := range out.SkippedBlocks {
+				reasons = append(reasons, fmt.Sprintf("%s: %s", skipped.Block, skipped.Reason))
+			}
+			sort.Strings(reasons)
+			return nil, fmt.Errorf("topology: the selection has no compatible blocks (%s)", strings.Join(reasons, "; "))
+		}
+		if len(out.SkippedRunners) > 0 {
+			reasons := make([]string, 0, len(out.SkippedRunners))
+			for _, skipped := range out.SkippedRunners {
+				reasons = append(reasons, fmt.Sprintf("%s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason))
+			}
+			sort.Strings(reasons)
+			return nil, fmt.Errorf("topology: the selection has no compatible runners (%s)", strings.Join(reasons, "; "))
+		}
 		return nil, fmt.Errorf("topology: the selection matched no blocks, so the run would test nothing")
 	}
 
@@ -279,13 +321,48 @@ func cloneBlock(block ResolvedBlock) ResolvedBlock {
 			out.Components[i].ExternalParameters[key] = value
 		}
 		out.Components[i].StagedFiles = maps.Clone(component.StagedFiles)
+		out.Components[i].DBCompatibility = maps.Clone(component.DBCompatibility)
 	}
 	out.Runners = make([]Runner, len(block.Runners))
 	for i, runner := range block.Runners {
 		out.Runners[i] = runner
 		out.Runners[i].Features = append([]string(nil), runner.Features...)
+		if runner.GatewayVersion != nil {
+			constraint := *runner.GatewayVersion
+			out.Runners[i].GatewayVersion = &constraint
+		}
 	}
 	return out
+}
+
+// selectGatewayDatabaseCompatibility excludes a Gateway database variant when its
+// configured release boundary does not include the Gateway selected for this block.
+func selectGatewayDatabaseCompatibility(block *ResolvedBlock) (*SkippedBlock, error) {
+	if block == nil {
+		return nil, fmt.Errorf("topology: resolved block is required")
+	}
+	for _, component := range block.Components {
+		if component.Def == nil || component.Def.Name != "platform-gateway" {
+			continue
+		}
+		constraint, restricted := component.DBCompatibility[component.DB]
+		if !restricted {
+			return nil, nil
+		}
+		target, err := gatewayVersionFor(block)
+		if err != nil {
+			return nil, err
+		}
+		if target.matches(constraint) {
+			return nil, nil
+		}
+		return &SkippedBlock{
+			Block: block.Name,
+			Reason: fmt.Sprintf("Gateway version %s does not satisfy platform-gateway dbCompatibility for %s (%s)",
+				target, component.DB, constraint),
+		}, nil
+	}
+	return nil, nil
 }
 
 // PrintList writes a human-readable summary without starting components.
@@ -318,6 +395,12 @@ func PrintList(resolved *Resolved, out *os.File) {
 				totalFeatures++
 			}
 		}
+		_, _ = fmt.Fprintln(out)
+	}
+	for _, skipped := range resolved.SkippedBlocks {
+		_, _ = fmt.Fprintf(out, "skipped block %s: %s\n", skipped.Block, skipped.Reason)
+	}
+	if len(resolved.SkippedBlocks) > 0 {
 		_, _ = fmt.Fprintln(out)
 	}
 

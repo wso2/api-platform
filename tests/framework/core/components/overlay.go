@@ -121,6 +121,29 @@ func Assemble(inj *ConfigInjection, repoRoot string, blockOverlay string, vars V
 	return MergeWithVars(vars, resolve(repoRoot, inj.BaseConfigPath), overlays...)
 }
 
+// ForVersion returns the configuration injection for version. A component that
+// declares versioned profiles must select one for every explicitly requested version.
+func (inj *ConfigInjection) ForVersion(version string) (*ConfigInjection, error) {
+	if inj == nil {
+		return nil, errors.New("config injection is required")
+	}
+	version = strings.TrimSpace(version)
+	if version == "" || len(inj.Versioned) == 0 {
+		return inj, nil
+	}
+	profile, ok := inj.Versioned[version]
+	if !ok {
+		return nil, fmt.Errorf("config injection has no profile for version %q", version)
+	}
+
+	out := *inj
+	out.BaseConfigPath = profile.BaseConfigPath
+	out.SharedOverlayPath = profile.SharedOverlayPath
+	out.ExtraOverlays = append([]string(nil), inj.ExtraOverlays...)
+	out.Versioned = maps.Clone(inj.Versioned)
+	return &out, nil
+}
+
 // MergeTrees deep-merges maps in order without modifying the inputs.
 func MergeTrees(base map[string]any, overlays ...map[string]any) (map[string]any, error) {
 	var errs mergeErrors

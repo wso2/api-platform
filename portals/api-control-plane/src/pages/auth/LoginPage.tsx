@@ -57,6 +57,7 @@ import { defineMessages, FormattedMessage, type MessageDescriptor, useIntl } fro
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { useBrandLogo } from '@/branding/BrandLogoProvider';
+import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -77,6 +78,11 @@ const messages = defineMessages({
   browserUnsupported: {
     id: 'apiControlPlane.pages.auth.LoginPage.browserUnsupported',
     defaultMessage: 'This console is optimized for Google Chrome and Mozilla Firefox.',
+  },
+  redirecting: {
+    id: 'apiControlPlane.pages.auth.LoginPage.redirecting',
+    defaultMessage: 'Signing you in',
+    description: 'Shown while the browser is being handed over to the identity provider.',
   },
   continueToConsole: {
     id: 'apiControlPlane.pages.auth.LoginPage.continueToConsole',
@@ -321,6 +327,14 @@ export function LoginPage() {
   }, [auth, from, shouldAutoRedirect]);
 
   if (auth.isAuthenticated) return <Navigate to={from} replace />;
+
+  // Hand-over to the identity provider is already under way, so the sign-in card
+  // below would only appear for the instant before the browser leaves — which reads
+  // as the console asking for credentials it is not going to take. Show that
+  // something is happening instead, as the AI Workspace does.
+  if (shouldAutoRedirect) {
+    return <LoadingState fullScreen label={intl.formatMessage(messages.redirecting)} />;
+  }
 
   const message = auth.status === 'expired' ? messages.sessionExpired : messages.continueToConsole;
 

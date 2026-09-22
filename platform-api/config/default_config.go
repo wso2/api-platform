@@ -26,6 +26,7 @@ import (
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
 	return &Server{
+		OpenAPISpecMaxFetchBytes: constants.DefaultOpenAPISpecMaxBytes,
 		Logging: Logging{
 			Level:  "info",
 			Format: "text",

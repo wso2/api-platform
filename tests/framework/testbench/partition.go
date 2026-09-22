@@ -38,13 +38,26 @@ func PartitionRouter(inner http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key, rest, err := splitPartition(r.URL.Path)
 		if err != nil {
+			// A partitioned service addressed without its /<block> prefix answers 400 with no
+			// clue as to why. Name the path and the reason: a suite step that forgot the
+			// prefix, or a key past the length bound, looks identical from the client side.
+			ServiceLogger(r.Context()).Warn("testbench rejected a partition path",
+				"raw_path", r.URL.Path, "max_key_len", maxPartitionKeyLen, "error", err)
 			http.Error(w, "invalid partition path", http.StatusBadRequest)
 			return
+		}
+		if info, ok := requestInfoFrom(r.Context()); ok {
+			// Recorded on the shared holder so the access line carries the partition; a
+			// context value set here cannot travel back out to the outer middleware.
+			info.partition = key
 		}
 
 		scoped := r.Clone(context.WithValue(r.Context(), partitionCtxKey{}, key))
 		scoped.URL.Path = rest
 		scoped.URL.RawPath = ""
+		// ServiceLogger already carries the partition now that it is recorded above.
+		ServiceLogger(scoped.Context()).Debug("testbench routed a partitioned request",
+			"route_path", rest, "raw_path", r.URL.Path)
 		inner.ServeHTTP(w, scoped)
 	})
 }

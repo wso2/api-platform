@@ -30,7 +30,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-safe-request" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-safe-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -53,7 +53,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-block-request" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-block-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -80,7 +80,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -107,7 +107,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-safe-response" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-safe-response" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -127,7 +127,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -159,7 +159,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-pii-masking" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-pii-masking" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -185,7 +185,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-pii-redaction" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-pii-redaction" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -210,7 +210,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-both-phases" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-both-phases" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -233,7 +233,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -255,7 +255,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-passthrough" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-passthrough" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -279,7 +279,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-nested-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-nested-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -311,7 +311,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-invalid-path" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-invalid-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -338,7 +338,7 @@ Feature: AWS Bedrock guardrail policy
     And I generate a unique API version from "bedrock-error-structure" and store it as "apiVersion"
     And I generate a unique API context from "/bedrock-error-structure" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |

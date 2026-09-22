@@ -16,31 +16,24 @@
  * under the License.
  */
 
-import { FormattedMessage } from 'react-intl';
-
-import { ComingSoon } from '@/components/ComingSoon';
-import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 import { ApiPortalPublicationsList } from './ApiPortalPublicationsList';
 
 /**
- * Mounted at all three scope levels (see `AppRoutes.tsx`). Only the API level
- * has a real page today — publishing an API to a portal is inherently
- * API-scoped. Portal registration/management at the organization and project
- * levels is a separate, not-yet-built feature.
+ * Mounted under `apiScopedPaths(routes.apiPortals)` so out of API scope the
+ * gate walks the user down to a project and API before rendering the list.
+ * Publishing an API is inherently API-scoped, and the org-level portal registry
+ * is a separate feature registered by the cloud plugin as "Portals".
  */
 export function PortalsPage() {
-  const { isApiScope } = useConsoleScope();
-
-  if (isApiScope) return <ApiPortalPublicationsList />;
-
   return (
-    <ComingSoon
-      feature={
-        <FormattedMessage
-          id="apiControlPlane.pages.appShell.appShellPages.portals.PortalsPage.feature"
-          defaultMessage="Portals"
-        />
-      }
-    />
+    <ScopeGate
+      prompt="Publish an API to a portal at the API level."
+      requires="api"
+      to={routes.apiPortals}
+    >
+      <ApiPortalPublicationsList />
+    </ScopeGate>
   );
 }

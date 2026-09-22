@@ -118,6 +118,6 @@ Feature: API Portal artifact uploads
     Then the response status code should be 201
     When I send an authenticated API Portal "PUT" artifact upload "labels-update-empty" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until the top-level JSON response array field "labels" has 0 items
     Then the response status code should be 200
     And the JSON response array field "labels" should have 0 items

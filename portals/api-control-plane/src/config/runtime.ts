@@ -49,6 +49,12 @@ export type RuntimeConfig = {
    */
   billingProxyEnabled: boolean;
   /**
+   * Region recorded on an organization this console registers. Only read when the
+   * platform does not have the organization yet, which the provisioning flow
+   * normally gets to first.
+   */
+  defaultOrgRegion: string;
+  /**
    * Set when the BFF has a "cloud" named upstream configured (cloud only).
    * When true, cloud Insights extensions may call it via the same-origin
    * proxy (/proxy/cloud/...) — the browser never learns the real cloud URL.
@@ -108,6 +114,8 @@ type LegacyWindowConfig = Partial<{
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  DEFAULT_ORG_REGION: string;
+  defaultOrgRegion: string;
   CLOUD_PROXY_ENABLED: string;
   cloudProxyEnabled: boolean | string;
   MOESIF_APP_URL: string;
@@ -237,6 +245,11 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().billingProxyEnabled ||
       import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
+  defaultOrgRegion:
+    fromWindow().DEFAULT_ORG_REGION ||
+    fromWindow().defaultOrgRegion ||
+    import.meta.env.VITE_DEFAULT_ORG_REGION ||
+    'us',
   cloudProxyEnabled: readBoolean(
     fromWindow().CLOUD_PROXY_ENABLED ||
       fromWindow().cloudProxyEnabled ||

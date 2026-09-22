@@ -26,6 +26,7 @@ import { ErrorBoundary } from './components/errors/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './contexts/auth/AuthProvider';
+import { OrganizationBootstrap } from './hooks/OrganizationBootstrap';
 import { ProductActivation } from './hooks/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
 import { BrandLogoProvider, type BrandLogo } from './branding/BrandLogoProvider';

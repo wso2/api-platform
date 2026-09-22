@@ -125,7 +125,7 @@ describe('submenu children follow API scope', () => {
 
   it('leaves items without children untouched', () => {
     const items = itemsAt(atApi(), routes.api(ORG, PROJECT, API));
-    const leaves = ['overview', 'gateways', 'deploy', 'portals'];
+    const leaves = ['overview', 'gateways', 'deploy', 'publish'];
 
     for (const id of leaves) {
       expect(items.find((item) => item.id === id)?.children).toBeUndefined();

@@ -31,7 +31,7 @@ Feature: Host rewrite routing
     Given I generate a unique value from "host-rewrite-1" and store it as "apiName1"
     And I generate a unique API context from "/host-rewrite-1" and store it as "apiContext1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                              |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                      |
       | name                  | ${CTX:apiName1}                                               |
       | spec.displayName      | Host Rewrite Basic                                           |
       | spec.version          | v1.0                                                          |
@@ -50,7 +50,7 @@ Feature: Host rewrite routing
     Given I generate a unique value from "host-rewrite-2" and store it as "apiName2"
     And I generate a unique API context from "/host-rewrite-2" and store it as "apiContext2"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                              |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                      |
       | name                  | ${CTX:apiName2}                                               |
       | spec.displayName      | Host Rewrite With Port                                       |
       | spec.version          | v1.0                                                          |
@@ -69,7 +69,7 @@ Feature: Host rewrite routing
     Given I generate a unique value from "host-rewrite-3" and store it as "apiName3"
     And I generate a unique API context from "/host-rewrite-3" and store it as "apiContext3"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                              |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                      |
       | name                  | ${CTX:apiName3}                                               |
       | spec.displayName      | Host Rewrite API Level                                        |
       | spec.version          | v1.0                                                          |
@@ -92,7 +92,7 @@ Feature: Host rewrite routing
     Given I generate a unique value from "host-rewrite-4" and store it as "apiName4"
     And I generate a unique API context from "/host-rewrite-4" and store it as "apiContext4"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                              |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                      |
       | name                  | ${CTX:apiName4}                                               |
       | spec.displayName      | Host Rewrite No Manual                                       |
       | spec.version          | v1.0                                                          |
@@ -110,7 +110,7 @@ Feature: Host rewrite routing
     Given I generate a unique value from "host-rewrite-5" and store it as "apiName5"
     And I generate a unique API context from "/host-rewrite-5" and store it as "apiContext5"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                              |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                      |
       | name                  | ${CTX:apiName5}                                               |
       | spec.displayName      | Host Rewrite Override                                         |
       | spec.version          | v1.0                                                          |
@@ -133,7 +133,7 @@ Feature: Host rewrite routing
     Given I generate a unique value from "host-rewrite-6" and store it as "apiName6"
     And I generate a unique API context from "/host-rewrite-6" and store it as "apiContext6"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                              |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                      |
       | name                  | ${CTX:apiName6}                                               |
       | spec.displayName      | Host Rewrite HTTP Methods                                     |
       | spec.version          | v1.0                                                          |

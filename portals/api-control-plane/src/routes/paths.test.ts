@@ -35,7 +35,6 @@ const PROJECT_LEVEL: [string, ProjectPathBuilder][] = [
 
 const API_LEVEL: [string, ApiPathBuilder][] = [
   ['apiDevelopPolicies', routes.apiDevelopPolicies],
-  ['apiDevelopRouting', routes.apiDevelopRouting],
   ['apiDevelopDocuments', routes.apiDevelopDocuments],
   ['apiTestConsole', routes.apiTestConsole],
   ['apiTestCurl', routes.apiTestCurl],

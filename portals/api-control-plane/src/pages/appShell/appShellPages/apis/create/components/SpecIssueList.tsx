@@ -22,10 +22,6 @@ import { defineMessages, FormattedMessage, type MessageDescriptor } from 'react-
 import type { SpecIssue, SpecIssueCode } from '../utils/specValidation';
 
 const messages = defineMessages({
-  externalRefs: {
-    id: 'api.create.specIssue.externalRefs',
-    defaultMessage: 'This definition references files outside itself, which are not read: {detail}',
-  },
   missingTitle: {
     id: 'api.create.specIssue.missingTitle',
     defaultMessage: 'No title in this definition — name the API on the next step.',
@@ -41,7 +37,6 @@ const messages = defineMessages({
 });
 
 const MESSAGE_FOR: Record<SpecIssueCode, MessageDescriptor> = {
-  externalRefs: messages.externalRefs,
   missingTitle: messages.missingTitle,
   missingVersion: messages.missingVersion,
   noServers: messages.noServers,

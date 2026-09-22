@@ -63,8 +63,6 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 import ExploreMoreCard from './components/ExploreMoreCard';
 
-const DOCS_BASE = 'https://wso2.com/api-platform/docs';
-
 const messages = defineMessages({
   apiAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.apiAction',
@@ -98,7 +96,7 @@ const messages = defineMessages({
   },
   developerPortalTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalTitle',
-    defaultMessage: 'Developer portals',
+    defaultMessage: 'Portals',
   },
   deleteAriaLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteAriaLabel',
@@ -399,7 +397,7 @@ export function OrganizationHomePage() {
               description={intl.formatMessage(messages.developerPortalDescription)}
               icon={<PanelTop size={22} />}
               metric={intl.formatNumber(0)}
-              onAction={() => window.open(`${DOCS_BASE}/cloud/dev-portal/`, '_blank', 'noopener')}
+              onAction={() => navigate(routes.managedApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
             />
           </Grid>

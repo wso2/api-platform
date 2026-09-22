@@ -48,13 +48,13 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-shallow" and store it as "providerVersion"
     And I generate a unique API context from "/pps-shallow" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -100,13 +100,13 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-advrl" and store it as "providerVersion"
     And I generate a unique API context from "/pps-advrl" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -198,13 +198,13 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-nested" and store it as "providerVersion"
     And I generate a unique API context from "/pps-nested" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -297,13 +297,13 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-method" and store it as "providerVersion"
     And I generate a unique API context from "/pps-method" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -411,13 +411,13 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-methodspec" and store it as "providerVersion"
     And I generate a unique API context from "/pps-methodspec" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -521,13 +521,13 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-narrow" and store it as "providerVersion"
     And I generate a unique API context from "/pps-narrow" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -602,14 +602,14 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-proxyspec-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/pps-proxyspec-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     # Backing provider (no policies, just forwards to the echo backend)
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -621,7 +621,7 @@ Feature: LLM policy path and method specificity
 
     # Proxy carrying the overlapping-path advanced-ratelimit policy
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:proxyName}                  |
       | displayName            | ${CTX:proxyDisplayName}           |
       | version                | ${CTX:proxyVersion}               |
@@ -696,13 +696,13 @@ Feature: LLM policy path and method specificity
     And I generate a unique API version from "pps-twoblocks" and store it as "providerVersion"
     And I generate a unique API context from "/pps-twoblocks" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |

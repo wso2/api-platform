@@ -30,7 +30,7 @@ Feature: LLM provider template management
   Scenario: Complete template lifecycle - create, retrieve, update, and delete
     Given I generate a unique resource name from "lptm-lifecycle" and store it as "templateName"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:templateName}               |
       | displayName           | OpenAI                              |
       | spec.promptTokens     | {"location":"payload","identifier":"$.usage.prompt_tokens"}     |
@@ -53,7 +53,7 @@ Feature: LLM provider template management
     And the JSON response field "spec.promptTokens.identifier" should be "$.usage.prompt_tokens"
 
     When I update LLM provider template "${CTX:templateName}" from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:templateName}               |
       | displayName           | OpenAI Updated                     |
       | spec.promptTokens     | {"location":"payload","identifier":"$.usage.promptTokens"}      |
@@ -86,7 +86,7 @@ Feature: LLM provider template management
   Scenario: Create template with minimal required fields
     Given I generate a unique resource name from "lptm-minimal" and store it as "templateName"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | Minimal Template                   |
     Then the response status code should be 201
@@ -117,7 +117,7 @@ Feature: LLM provider template management
   Scenario: Update non-existent LLM provider template returns 404
     Given I generate a unique resource name from "lptm-nonexistent-update" and store it as "templateName"
     When I update LLM provider template "${CTX:templateName}" from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | Should Not Work                    |
     Then the response status code should be 404
@@ -158,7 +158,7 @@ Feature: LLM provider template management
   Scenario: Create template with header-based token tracking
     Given I generate a unique resource name from "lptm-header-tokens" and store it as "templateName"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:templateName}              |
       | displayName           | Header Tokens Template              |
       | spec.promptTokens     | {"location":"header","identifier":"x-prompt-tokens"}     |

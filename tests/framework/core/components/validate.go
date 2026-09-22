@@ -184,32 +184,47 @@ func (d *Definition) validateEndpoints() error {
 }
 
 func (d *Definition) validateHealth() error {
-	if d.Health == nil {
-		return nil
-	}
 	var errs errorList
-	h := d.Health
+	validate := func(h *HealthCheck, profile string) {
+		if h == nil {
+			return
+		}
+		checkLabel := "health check"
+		fieldLabel := "health"
+		if profile != "" {
+			checkLabel = profile
+			fieldLabel = profile
+		}
 
-	if h.Endpoint == "" {
-		errs.addf("%s: health check has no endpoint", d)
-	} else if _, ok := d.Endpoint(h.Endpoint); !ok {
-		errs.addf("%s: health check references unknown endpoint %q", d, h.Endpoint)
+		if h.Endpoint == "" {
+			errs.addf("%s: %s has no endpoint", d, checkLabel)
+		} else if _, ok := d.Endpoint(h.Endpoint); !ok {
+			errs.addf("%s: %s references unknown endpoint %q", d, checkLabel, h.Endpoint)
+		}
+		if h.Path != "" && !strings.HasPrefix(h.Path, "/") {
+			errs.addf("%s: %s path %q must start with /", d, fieldLabel, h.Path)
+		}
+		if h.ExpectStatus < 100 || h.ExpectStatus > 599 {
+			errs.addf("%s: %s expectStatus %d is not a valid HTTP status", d, fieldLabel, h.ExpectStatus)
+		}
+		if h.Timeout <= 0 {
+			errs.addf("%s: %s timeout must be positive", d, fieldLabel)
+		}
+		if h.Interval <= 0 {
+			errs.addf("%s: %s interval must be positive", d, fieldLabel)
+		}
+		if h.Timeout > 0 && h.Interval > 0 && h.Interval > h.Timeout {
+			errs.addf("%s: %s interval (%s) exceeds its timeout (%s), so it would probe at most once",
+				d, fieldLabel, h.Interval, h.Timeout)
+		}
 	}
-	if h.Path != "" && !strings.HasPrefix(h.Path, "/") {
-		errs.addf("%s: health path %q must start with /", d, h.Path)
-	}
-	if h.ExpectStatus < 100 || h.ExpectStatus > 599 {
-		errs.addf("%s: health expectStatus %d is not a valid HTTP status", d, h.ExpectStatus)
-	}
-	if h.Timeout <= 0 {
-		errs.addf("%s: health timeout must be positive", d)
-	}
-	if h.Interval <= 0 {
-		errs.addf("%s: health interval must be positive", d)
-	}
-	if h.Timeout > 0 && h.Interval > 0 && h.Interval > h.Timeout {
-		errs.addf("%s: health interval (%s) exceeds its timeout (%s), so it would probe at most once",
-			d, h.Interval, h.Timeout)
+
+	validate(d.Health, "")
+	for version, health := range d.VersionedHealth {
+		if strings.TrimSpace(version) == "" {
+			errs.addf("%s: has an empty versioned health profile key", d)
+		}
+		validate(&health, fmt.Sprintf("health profile %q", version))
 	}
 	return errs.err()
 }
@@ -231,6 +246,14 @@ func (d *Definition) validateConfig() error {
 	}
 	if c.Format != TOML {
 		errs.addf("%s: unsupported config format %q", d, c.Format)
+	}
+	for version, profile := range c.Versioned {
+		if strings.TrimSpace(version) == "" {
+			errs.addf("%s: config has an empty versioned profile key", d)
+		}
+		if strings.TrimSpace(profile.BaseConfigPath) == "" {
+			errs.addf("%s: config profile %q has no baseConfigPath", d, version)
+		}
 	}
 	return errs.err()
 }

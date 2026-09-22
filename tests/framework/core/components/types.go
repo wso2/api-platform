@@ -272,6 +272,17 @@ type ConfigInjection struct {
 	ContainerPath string
 	// Format is the merge syntax.
 	Format ConfigFormat
+	// Versioned contains exact released-version configuration profiles. When a
+	// component using versioned profiles is assigned an image version, it must
+	// select one of these profiles instead of using the source-tree defaults.
+	Versioned map[string]ConfigProfile
+}
+
+// ConfigProfile replaces the base and shared configuration layers for a released image.
+// Extra and block-specific overlays retain their usual precedence.
+type ConfigProfile struct {
+	BaseConfigPath    string
+	SharedOverlayPath string
 }
 
 // FileMount describes a file copied into a container before startup.
@@ -312,6 +323,9 @@ type Definition struct {
 
 	// Health is the application-level readiness gate. Nil disables this gate.
 	Health *HealthCheck
+	// VersionedHealth replaces Health for released image versions whose readiness
+	// contract differs from the source-build contract.
+	VersionedHealth map[string]HealthCheck
 
 	// Config describes configuration assembly, if the component has any.
 	Config *ConfigInjection
@@ -367,6 +381,40 @@ func (d *Definition) WithImageVersion(version string) *Definition {
 		out.Compose = &compose
 	}
 	return &out
+}
+
+// WithConfigVersion returns a copy configured for the supplied released image version.
+func (d *Definition) WithConfigVersion(version string) (*Definition, error) {
+	if d == nil || d.Config == nil || strings.TrimSpace(version) == "" {
+		return d, nil
+	}
+	config, err := d.Config.ForVersion(version)
+	if err != nil {
+		return nil, fmt.Errorf("component %q: %w", d.Name, err)
+	}
+	if config == d.Config {
+		return d, nil
+	}
+	out := *d
+	out.Config = config
+	return &out, nil
+}
+
+// WithReleaseVersion returns a copy whose image, configuration, and readiness
+// contracts match the supplied released image version.
+func (d *Definition) WithReleaseVersion(version string) (*Definition, error) {
+	updated := d.WithImageVersion(version)
+	updated, err := updated.WithConfigVersion(version)
+	if err != nil || updated == nil || strings.TrimSpace(version) == "" {
+		return updated, err
+	}
+	health, ok := updated.VersionedHealth[strings.TrimSpace(version)]
+	if !ok {
+		return updated, nil
+	}
+	out := *updated
+	out.Health = &health
+	return &out, nil
 }
 
 // WithStagedFiles returns a copy with block-scoped sources for declared staged files.

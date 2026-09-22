@@ -88,9 +88,6 @@
   "api.create.ApiCreationWizard.stepCount": {
     "defaultMessage": "Step {current} of 3"
   },
-  "api.create.ApiCreationWizard.title": {
-    "defaultMessage": "Create an API"
-  },
   "api.create.ApiTypeSelector.badge.available": {
     "defaultMessage": "Available",
     "description": "Badge on an API type that can be selected now."
@@ -170,34 +167,35 @@
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
   },
-  "api.create.defineApi.changeSource": {
-    "defaultMessage": "Change source",
-    "description": "Back button label in the contract import view."
-  },
-  "api.create.defineApi.continue": {
-    "defaultMessage": "Continue",
-    "description": "Button that advances the wizard from the contract view to the next step."
-  },
   "api.create.defineApi.contract.description": {
     "defaultMessage": "Import an API contract from a URL or a file."
   },
-  "api.create.defineApi.contract.heading": {
-    "defaultMessage": "Point us at your contract"
-  },
-  "api.create.defineApi.contract.subheading": {
-    "defaultMessage": "Import OpenAPI or Swagger definition"
-  },
   "api.create.defineApi.contract.title": {
-    "defaultMessage": "Start with a Contract"
+    "defaultMessage": "Start with a contract"
   },
   "api.create.defineApi.scratch.description": {
     "defaultMessage": "Begin with a blank API and fill in the details."
   },
-  "api.create.defineApi.scratch.hasEndpoint": {
-    "defaultMessage": "I have an endpoint URL"
+  "api.create.defineApi.scratch.endpoint.description": {
+    "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you publish."
+  },
+  "api.create.defineApi.scratch.endpoint.heading": {
+    "defaultMessage": "Backend endpoint"
+  },
+  "api.create.defineApi.scratch.endpoint.label": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "api.create.defineApi.scratch.endpoint.preview.description": {
+    "defaultMessage": "Every API resource will route to the backend endpoint you provide."
+  },
+  "api.create.defineApi.scratch.endpoint.preview.title": {
+    "defaultMessage": "Ready to connect"
+  },
+  "api.create.defineApi.scratch.endpoint.sampleUrl": {
+    "defaultMessage": "Try with Sample URL"
   },
   "api.create.defineApi.scratch.title": {
-    "defaultMessage": "Start from Scratch"
+    "defaultMessage": "Start from scratch"
   },
   "api.create.fromContract.action.clearUrl": {
     "defaultMessage": "Clear URL",
@@ -276,9 +274,6 @@
   "api.create.fromContract.spec.invalidByBackend": {
     "defaultMessage": "The specification is not a valid OpenAPI document:",
     "description": "Heading above the list of backend validation errors."
-  },
-  "api.create.fromContract.spec.oversized": {
-    "defaultMessage": "That file is too large to validate in the browser."
   },
   "api.create.fromContract.spec.unreachable": {
     "defaultMessage": "That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests."
@@ -514,9 +509,6 @@
   },
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
-  },
-  "api.create.specIssue.externalRefs": {
-    "defaultMessage": "This definition references files outside itself, which are not read: {detail}"
   },
   "api.create.specIssue.missingTitle": {
     "defaultMessage": "No title in this definition — name the API on the next step."
@@ -780,6 +772,19 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.action": {
+    "defaultMessage": "Open API Designer",
+    "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.body": {
+    "defaultMessage": "Design, edit, and validate OpenAPI 3.x APIs directly in VS Code. Includes Spectral governance checks and AI-readiness assessment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.docs": {
+    "defaultMessage": "How to get started"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.title": {
+    "defaultMessage": "API Designer"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.action": {
     "defaultMessage": "Open API Designer",
@@ -1087,8 +1092,35 @@
     "defaultMessage": "2 days ago",
     "description": "Temporary relative update time for demo document data."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.close": {
+    "defaultMessage": "Close endpoint editor"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.drawerTitle": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.edit": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointLabel": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
+    "defaultMessage": "Enter a valid endpoint URL."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
+    "defaultMessage": "Save"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saveError": {
+    "defaultMessage": "Unable to update the backend endpoint."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saved": {
+    "defaultMessage": "Backend endpoint updated."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.title": {
     "defaultMessage": "Endpoints"
@@ -1943,7 +1975,7 @@
     "defaultMessage": "Publish APIs so consumers can discover them and request access."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalTitle": {
-    "defaultMessage": "Developer portals"
+    "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
     "defaultMessage": "Connect a gateway"
@@ -2306,6 +2338,10 @@
     "defaultMessage": "Loading organization",
     "description": "Shown while the signed-in user's organizations are being fetched."
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.provisioning": {
+    "defaultMessage": "Setting up your organization",
+    "description": "Shown on first sign-in while the organization is still being created."
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.ServerErrorPage.message": {
     "defaultMessage": "The console could not complete the request. Try again shortly."
   },
@@ -2428,6 +2464,10 @@
   "apiControlPlane.pages.auth.LoginPage.productName": {
     "defaultMessage": "<emphasis>API</emphasis> Platform",
     "description": "Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight."
+  },
+  "apiControlPlane.pages.auth.LoginPage.redirecting": {
+    "defaultMessage": "Signing you in",
+    "description": "Shown while the browser is being handed over to the identity provider."
   },
   "apiControlPlane.pages.auth.LoginPage.sessionExpired": {
     "defaultMessage": "Your session has expired. Sign in again to continue."
@@ -2714,6 +2754,9 @@
   "develop.definition.DefinitionPanel.addResourceTitle": {
     "defaultMessage": "Add Resource"
   },
+  "develop.definition.DefinitionPanel.descriptionLabel": {
+    "defaultMessage": "Description"
+  },
   "develop.definition.DefinitionPanel.dialogCancel": {
     "defaultMessage": "Cancel"
   },
@@ -2763,12 +2806,12 @@
   "develop.definition.DefinitionPanel.fileReadError": {
     "defaultMessage": "Failed to read the selected file."
   },
-  "develop.definition.DefinitionPanel.fileTooLarge": {
-    "defaultMessage": "The specification exceeds the maximum allowed size (5 MB)."
-  },
   "develop.definition.DefinitionPanel.formatLabel": {
     "defaultMessage": "Source format",
     "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
+  "develop.definition.DefinitionPanel.lastUpdated": {
+    "defaultMessage": "Last updated {relative}"
   },
   "develop.definition.DefinitionPanel.loadError": {
     "defaultMessage": "Unable to load the API definition."
@@ -2784,8 +2827,14 @@
     "defaultMessage": "Or",
     "description": "Separator between the URL input and the file upload button."
   },
+  "develop.definition.DefinitionPanel.pathLabel": {
+    "defaultMessage": "Path"
+  },
   "develop.definition.DefinitionPanel.reset": {
     "defaultMessage": "Reset"
+  },
+  "develop.definition.DefinitionPanel.resourceCount": {
+    "defaultMessage": "{count, plural, one {# resource} other {# resources}}"
   },
   "develop.definition.DefinitionPanel.save": {
     "defaultMessage": "Save"
@@ -2797,6 +2846,9 @@
   "develop.definition.DefinitionPanel.saveValidationUnavailable": {
     "defaultMessage": "Spec validation is currently unavailable. Please try again.",
     "description": "Error shown when the validation service itself fails (network/auth error)."
+  },
+  "develop.definition.DefinitionPanel.title": {
+    "defaultMessage": "Definition"
   },
   "develop.definition.DefinitionPanel.updateOpenApi": {
     "defaultMessage": "Import Definition"
