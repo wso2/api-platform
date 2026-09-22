@@ -779,6 +779,7 @@ Feature: MCP proxy behavior under attached policies
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
+      | spec.gatewayurl   | https://mcp-e2e-gatewayurl.example.com:7777 |
       | spec.vhost        | ${CTX:vhostName}.example.com       |
       | spec.upstream.url | http://testbench:3009/mcp          |
       | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
@@ -817,6 +818,7 @@ Feature: MCP proxy behavior under attached policies
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
+      | spec.gatewayurl   | https://mcp-e2e-gatewayurl.example.com:7777 |
       | spec.vhost        | ${CTX:vhostName}.example.com       |
       | spec.upstream.url | http://testbench:3009/mcp          |
       | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}},{"name":"mcp-authz","version":"v1","params":{"tools":[{"name":"add","scopes":{"anyOf":["add-scope"]}}]}}] |
