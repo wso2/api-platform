@@ -5,6 +5,7 @@
 # using your own deployed resources' URLs and credentials.
 import asyncio
 import json
+import math
 import os
 import sys
 from urllib.parse import urlparse
@@ -30,10 +31,24 @@ MCP_URL = os.environ["MCP_URL"]
 LLM_URL = os.environ["LLM_URL"]
 LLM_API_KEY = os.environ["LLM_API_KEY"]
 MODEL = os.environ.get("MODEL", "gemini-3.6-flash")
-THRESHOLD = float(os.environ.get("THRESHOLD", "1.5"))
+try:
+    THRESHOLD = float(os.environ.get("THRESHOLD", "1.5"))
+    if not math.isfinite(THRESHOLD) or THRESHOLD < 0:
+        raise ValueError
+except ValueError:
+    print("[agent] THRESHOLD must be a finite, non-negative number.", file=sys.stderr)
+    sys.exit(1)
 
 if urlparse(STOCK_WS_URL).scheme != "wss":
     print("[agent] STOCK_WS_URL must use wss://, so the access token is encrypted in transit.", file=sys.stderr)
+    sys.exit(1)
+
+if urlparse(LLM_URL).scheme != "https":
+    print("[agent] LLM_URL must use https://, so the API key is encrypted in transit.", file=sys.stderr)
+    sys.exit(1)
+
+if urlparse(MCP_URL).scheme != "https":
+    print("[agent] MCP_URL must use https://, so tool calls and results are encrypted in transit.", file=sys.stderr)
     sys.exit(1)
 
 
@@ -112,10 +127,10 @@ async def run_agent():
                 async for message in ws:
                     try:
                         notification = json.loads(message)
-                        symbol = notification["symbol"]
-                        price = notification["price"]
-                        change_percent = notification["change_percent"]
-                    except (json.JSONDecodeError, TypeError, KeyError) as err:
+                        notification["symbol"] = str(notification["symbol"])
+                        notification["price"] = float(notification["price"])
+                        notification["change_percent"] = float(notification["change_percent"])
+                    except (json.JSONDecodeError, TypeError, KeyError, ValueError) as err:
                         # One malformed message shouldn't end the run: log it and
                         # keep consuming. The contents are not printed, since a
                         # notification can carry data not meant for the log.
