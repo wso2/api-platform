@@ -43,20 +43,20 @@ import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { PortalPublishPage } from './PortalPublishPage';
 
 // Monaco does not run in jsdom; a textarea stands in for it.
-vi.mock('../apis/create/components/SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
-    format,
+vi.mock('@/components/CodeEditor/CodeEditor', () => ({
+  CodeEditor: ({
+    ariaLabel,
     onChange,
     readOnly,
     value,
   }: {
-    format: string;
+    ariaLabel?: string;
     onChange?: (next: string) => void;
     readOnly?: boolean;
     value: string;
   }) => (
     <textarea
-      aria-label={`definition (${format})`}
+      aria-label={ariaLabel}
       onChange={(event) => onChange?.(event.target.value)}
       readOnly={readOnly}
       value={value}
@@ -129,9 +129,7 @@ function servePublicationState({
 } = {}) {
   server.use(
     resource('/rest-apis/:restApiId', api),
-    draft
-      ? resource(DRAFT_PATH, draft)
-      : failure('get', DRAFT_PATH, 404, 'DRAFT_NOT_FOUND'),
+    draft ? resource(DRAFT_PATH, draft) : failure('get', DRAFT_PATH, 404, 'DRAFT_NOT_FOUND'),
     failure('get', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND', {
       record: definitionRecorders.draftDefinition,
     }),
@@ -151,9 +149,13 @@ function servePublicationState({
 
 /** A stored definition served as text in the given serialization, as the backend returns it. */
 const definitionText = (path: string, text: string, contentType: string) =>
-  mswHttp.get(apiUrl(path), () => new HttpResponse(text, { headers: { 'Content-Type': contentType } }));
+  mswHttp.get(
+    apiUrl(path),
+    () => new HttpResponse(text, { headers: { 'Content-Type': contentType } }),
+  );
 
-const YAML_DEFINITION = 'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n';
+const YAML_DEFINITION =
+  'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n';
 
 beforeEach(() => {
   requests = recorder();
@@ -229,9 +231,13 @@ describe('PortalPublishPage', () => {
   it('does not query publication/definition or the API’s own spec once a draft definition is found', async () => {
     const definitionRecorders = servePublicationState({ draft: aPublicationDraftDetails() });
     server.use(
-      resource(DRAFT_DEFINITION_PATH, { openapi: '3.0.3', paths: {} }, {
-        record: definitionRecorders.draftDefinition,
-      }),
+      resource(
+        DRAFT_DEFINITION_PATH,
+        { openapi: '3.0.3', paths: {} },
+        {
+          record: definitionRecorders.draftDefinition,
+        },
+      ),
     );
 
     renderPage();
@@ -275,19 +281,23 @@ describe('PortalPublishPage', () => {
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('tab', { name: 'Specification' }));
 
-    expect(await screen.findByRole('textbox', { name: 'definition (yaml)' })).toHaveValue(YAML_DEFINITION);
+    expect(await screen.findByRole('textbox', { name: 'API definition (YAML)' })).toHaveValue(
+      YAML_DEFINITION,
+    );
     expect(screen.getByRole('button', { name: 'YAML' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('shows a definition saved as JSON in JSON, pretty-printed', async () => {
     servePublicationState({ draft: aPublicationDraftDetails() });
-    server.use(definitionText(DRAFT_DEFINITION_PATH, '{"openapi":"3.0.3","paths":{}}', 'application/json'));
+    server.use(
+      definitionText(DRAFT_DEFINITION_PATH, '{"openapi":"3.0.3","paths":{}}', 'application/json'),
+    );
 
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('tab', { name: 'Specification' }));
 
-    expect(await screen.findByRole('textbox', { name: 'definition (json)' })).toHaveValue(
+    expect(await screen.findByRole('textbox', { name: 'API definition (JSON)' })).toHaveValue(
       '{\n  "openapi": "3.0.3",\n  "paths": {}\n}',
     );
   });
@@ -327,7 +337,10 @@ describe('PortalPublishPage', () => {
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('tab', { name: 'Specification' }));
     await user.click(await screen.findByRole('button', { name: 'Edit' }));
-    await user.type(await screen.findByRole('textbox', { name: 'definition (yaml)' }), '\n  bad: [[');
+    await user.type(
+      await screen.findByRole('textbox', { name: 'API definition (YAML)' }),
+      '\n  bad: [[',
+    );
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     expect(await screen.findByText(/This is not valid YAML:/)).toBeInTheDocument();
@@ -336,7 +349,13 @@ describe('PortalPublishPage', () => {
 
   it('still opens with a definition that was saved as JSON', async () => {
     servePublicationState({ draft: aPublicationDraftDetails() });
-    server.use(definitionText(DRAFT_DEFINITION_PATH, JSON.stringify({ openapi: '3.0.3', paths: {} }), 'application/json'));
+    server.use(
+      definitionText(
+        DRAFT_DEFINITION_PATH,
+        JSON.stringify({ openapi: '3.0.3', paths: {} }),
+        'application/json',
+      ),
+    );
     const definitionRequests = recorder();
     server.use(
       accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
@@ -356,7 +375,8 @@ describe('PortalPublishPage', () => {
     servePublicationState();
     server.use(
       resource(API_OPENAPI_PATH, {
-        content: 'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n',
+        content:
+          'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n',
       }),
     );
     const definitionRequests = recorder();
@@ -419,7 +439,9 @@ describe('PortalPublishPage', () => {
 
   it('Deprecate asks for confirmation, then marks the live listing deprecated', async () => {
     servePublicationState({ publication: aPublication() });
-    server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' }), { record: requests }));
+    server.use(
+      accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' }), { record: requests }),
+    );
 
     const { user } = renderPage();
 
@@ -446,7 +468,10 @@ describe('PortalPublishPage', () => {
 
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
-    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
+    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('Deprecate is disabled once already deprecated, while Unpublish stays available', async () => {
@@ -456,8 +481,14 @@ describe('PortalPublishPage', () => {
 
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
-    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('menuitem', { name: 'Unpublish' })).not.toHaveAttribute('aria-disabled', 'true');
+    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('menuitem', { name: 'Unpublish' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('goes back to Publish once the API has been unpublished', async () => {
@@ -586,7 +617,9 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
     await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }),
+    );
 
     expect(await screen.findByRole('button', { name: 'Unpublish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
@@ -632,30 +665,36 @@ describe('PortalPublishPage', () => {
 
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
-    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
+    expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it.each([
     ['409 PUBLICATION_PORTAL_CONFLICT', 409, 'PUBLICATION_PORTAL_CONFLICT'],
     ['503 PUBLICATION_PORTAL_UNAVAILABLE', 503, 'PUBLICATION_PORTAL_UNAVAILABLE'],
-  ])('keeps the actions unchanged on %s, since the listing itself did not change', async (_label, status, code) => {
-    servePublicationState({ publication: aPublication() });
+  ])(
+    'keeps the actions unchanged on %s, since the listing itself did not change',
+    async (_label, status, code) => {
+      servePublicationState({ publication: aPublication() });
 
-    const { user } = renderPage();
+      const { user } = renderPage();
 
-    await screen.findByDisplayValue('Loan Management Service');
-    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
-    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+      await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
 
-    server.use(failure('post', UNPUBLISH_PATH, status, code, { record: requests }));
-    await confirmInDialog(user);
+      server.use(failure('post', UNPUBLISH_PATH, status, code, { record: requests }));
+      await confirmInDialog(user);
 
-    await waitFor(() => expect(requests.count()).toBe(1));
-    // The re-read still finds it live, so Unpublish stays armed and usable.
-    expect(await screen.findByRole('button', { name: 'Unpublish' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
-  });
+      await waitFor(() => expect(requests.count()).toBe(1));
+      // The re-read still finds it live, so Unpublish stays armed and usable.
+      expect(await screen.findByRole('button', { name: 'Unpublish' })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
+    },
+  );
 
   it('stays usable after Save Draft fails with 413', async () => {
     servePublicationState();

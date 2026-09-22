@@ -108,7 +108,9 @@ describe('SpecSourceEditor', () => {
   });
 
   it('refuses to save when backend validation fails, naming what is wrong', async () => {
-    const onBeforeSave = vi.fn().mockResolvedValue(['declares no GET, POST, PUT, PATCH or DELETE operation']);
+    const onBeforeSave = vi
+      .fn()
+      .mockResolvedValue(['declares no GET, POST, PUT, PATCH or DELETE operation']);
     const onSave = vi.fn();
     const { user } = renderWithProviders(
       <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSave} spec={VALID_SPEC} />,
@@ -117,7 +119,9 @@ describe('SpecSourceEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(await screen.findByText('paths: declares no operation')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/declares no GET, POST, PUT, PATCH or DELETE operation/),
+    ).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
     // The editor stays open over the text that needs fixing.
     expect(await editor()).toBeInTheDocument();

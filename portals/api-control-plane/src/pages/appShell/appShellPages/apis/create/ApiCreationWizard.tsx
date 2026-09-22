@@ -36,7 +36,6 @@ import {
 } from './components/ApiCreationProgress';
 import { API_TYPES } from './uiConfig';
 import { ApiDesignerBanner } from './components/ApiDesignerBanner';
-import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
 import type { ApiError } from '@/api/core/errors';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
@@ -111,9 +110,12 @@ export const ApiCreationWizard = () => {
   }, [sourceDraft]);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
+  /**
+   * Why the last attempt was rejected, when the form is where it belongs.
+   * Cleared on the next submission, not on the way back — the form is what
+   * renders it, and it has to survive being returned to.
+   */
   const [serverErrors, setServerErrors] = useState<CreateApiFormErrors | null>(null);
-  const [upstreamEdited, setUpstreamEdited] = useState(false);
-
   /** Tracks whether the user has taken over the backend URL across form remounts. */
   const [upstreamEdited, setUpstreamEdited] = useState(false);
 
@@ -186,14 +188,11 @@ export const ApiCreationWizard = () => {
   const [submittedValues, setSubmittedValues] = useState<GeneralApiCreationFormState | null>(null);
   /** Whether the progress screen stands in for the form. */
   const [creationStarted, setCreationStarted] = useState(false);
-  /**
-   * Why the last attempt was rejected, when the form is where it belongs.
-   * Cleared on the next submission, not on the way back — the form is what
-   * renders it, and it has to survive being returned to.
-   */
-  const [formErrors, setFormErrors] = useState<CreateApiFormErrors | null>(null);
 
   const createApi = (values: GeneralApiCreationFormState) => {
+    // A fresh attempt supersedes the previous rejection, so nothing stale is
+    // left pinned to an input the user has since corrected.
+    setServerErrors(null);
     const projectId = activeScope.projectHandler;
     if (!projectId || !values.contractImport?.specFile) {
       // Nothing to create against — the wizard is mounted outside a project,

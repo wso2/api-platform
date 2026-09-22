@@ -39,11 +39,12 @@ describe('SwaggerOperationsView', () => {
     expect(screen.getByText('GET')).toBeInTheDocument();
     expect(screen.getByText('POST')).toBeInTheDocument();
     expect(screen.getAllByText('/books')).toHaveLength(2);
-    // The third column carries the operation's name; the description is not
-    // shown here, so a row stays one line whatever the document says.
-    expect(screen.getByText('listBooks')).toBeInTheDocument();
+    // The third column says what the operation is for: its own description
+    // when the document carries one, and its name when it does not. Either way
+    // the row stays one line — the column is `noWrap`.
+    expect(screen.getByText('List all the reading list books')).toBeInTheDocument();
     expect(screen.getByText('addBook')).toBeInTheDocument();
-    expect(screen.queryByText('List all the reading list books')).not.toBeInTheDocument();
+    expect(screen.queryByText('listBooks')).not.toBeInTheDocument();
   });
 
   it('renders an empty state when the API has no operations', () => {

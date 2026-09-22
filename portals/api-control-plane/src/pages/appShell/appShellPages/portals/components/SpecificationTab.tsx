@@ -25,14 +25,23 @@ import { LoadingState } from '@/components/StateViews';
 import { hairline } from '@/theme/receipes';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../../apis/create/utils/specText';
 
-/** Same lazy split as `SpecSourceEditor` — Monaco is the heaviest thing this app loads. */
-const SpecCodeEditor = lazy(() =>
-  import('../../apis/create/components/SpecCodeEditor').then((module) => ({
-    default: module.SpecCodeEditor,
-  })),
+/**
+ * Same lazy split as `SpecSourceEditor`, and deliberately the same module:
+ * Monaco is the heaviest thing this app loads, and one shared chunk beats two
+ * copies of its wiring. Keep this a `lazy()`/`import()` — a static import
+ * would put the whole editor back into this page's chunk.
+ */
+const CodeEditor = lazy(() =>
+  import('@/components/CodeEditor/CodeEditor').then((module) => ({ default: module.CodeEditor })),
 );
 
 const messages = defineMessages({
+  editorLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel',
+    defaultMessage: 'API definition ({format})',
+    description:
+      'Accessible name for the editor holding the definition\u2019s own text. {format} is JSON or YAML.',
+  },
   editorLoading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading',
     defaultMessage: 'Loading editor',
@@ -77,7 +86,14 @@ export type SpecificationTabProps = {
  * the API Definition page, and the definition is saved with the rest of the
  * draft, so there is no Save here.
  */
-export function SpecificationTab({ disabled, format, onChange, onFormatChange, parseError, text }: SpecificationTabProps) {
+export function SpecificationTab({
+  disabled,
+  format,
+  onChange,
+  onFormatChange,
+  parseError,
+  text,
+}: SpecificationTabProps) {
   const intl = useIntl();
   const [isEditing, setIsEditing] = useState(false);
 
@@ -111,7 +127,14 @@ export function SpecificationTab({ disabled, format, onChange, onFormatChange, p
         alignItems="center"
         direction="row"
         spacing={1}
-        sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, justifyContent: 'flex-end', px: 2, py: 1 }}
+        sx={{
+          borderBottom: 1,
+          borderColor: 'divider',
+          flexShrink: 0,
+          justifyContent: 'flex-end',
+          px: 2,
+          py: 1,
+        }}
       >
         <ToggleButtonGroup
           aria-label={intl.formatMessage(messages.formatLabel)}
@@ -149,7 +172,13 @@ export function SpecificationTab({ disabled, format, onChange, onFormatChange, p
       )}
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <Suspense fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}>
-          <SpecCodeEditor format={format} onChange={onChange} readOnly={disabled || !editable} value={text} />
+          <CodeEditor
+            ariaLabel={intl.formatMessage(messages.editorLabel, { format: FORMAT_LABELS[format] })}
+            language={format}
+            onChange={onChange}
+            readOnly={disabled || !editable}
+            value={text}
+          />
         </Suspense>
       </Box>
     </Box>

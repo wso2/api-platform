@@ -24,20 +24,20 @@ import type { SpecFormat } from '../../apis/create/utils/specText';
 import { SpecificationTab } from './SpecificationTab';
 
 // Monaco does not run in jsdom; a textarea stands in for it.
-vi.mock('../../apis/create/components/SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
-    format,
+vi.mock('@/components/CodeEditor/CodeEditor', () => ({
+  CodeEditor: ({
+    ariaLabel,
     onChange,
     readOnly,
     value,
   }: {
-    format: string;
+    ariaLabel?: string;
     onChange?: (next: string) => void;
     readOnly?: boolean;
     value: string;
   }) => (
     <textarea
-      aria-label={`definition (${format})`}
+      aria-label={ariaLabel}
       onChange={(event) => onChange?.(event.target.value)}
       readOnly={readOnly}
       value={value}
@@ -73,51 +73,57 @@ describe('SpecificationTab', () => {
   it('opens an existing definition read-only until Edit is clicked', async () => {
     const { user } = renderWithProviders(<Harness initialText={JSON_DEFINITION} />);
 
-    const editor = await screen.findByRole('textbox', { name: 'definition (json)' });
+    const editor = await screen.findByRole('textbox', { name: 'API definition (JSON)' });
     expect(editor).toHaveAttribute('readonly');
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
 
-    expect(screen.getByRole('textbox', { name: 'definition (json)' })).not.toHaveAttribute('readonly');
+    expect(screen.getByRole('textbox', { name: 'API definition (JSON)' })).not.toHaveAttribute(
+      'readonly',
+    );
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
   it('is editable straight away, with no Edit button, when there is no definition yet', async () => {
     renderWithProviders(<Harness initialText="" />);
 
-    const editor = await screen.findByRole('textbox', { name: 'definition (json)' });
+    const editor = await screen.findByRole('textbox', { name: 'API definition (JSON)' });
     expect(editor).not.toHaveAttribute('readonly');
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
   it('switches a definition to YAML and back, re-printing it in the chosen format', async () => {
     const { user } = renderWithProviders(<Harness initialText={JSON_DEFINITION} />);
-    await screen.findByRole('textbox', { name: 'definition (json)' });
+    await screen.findByRole('textbox', { name: 'API definition (JSON)' });
 
     await user.click(screen.getByRole('button', { name: 'YAML' }));
 
-    const yamlEditor = await screen.findByRole('textbox', { name: 'definition (yaml)' });
-    expect(yamlEditor).toHaveValue("openapi: 3.0.3\ninfo:\n  title: Loans\n");
+    const yamlEditor = await screen.findByRole('textbox', { name: 'API definition (YAML)' });
+    expect(yamlEditor).toHaveValue('openapi: 3.0.3\ninfo:\n  title: Loans\n');
     expect(screen.getByRole('button', { name: 'YAML' })).toHaveAttribute('aria-pressed', 'true');
 
     await user.click(screen.getByRole('button', { name: 'JSON' }));
 
-    expect(await screen.findByRole('textbox', { name: 'definition (json)' })).toHaveValue(JSON_DEFINITION);
+    expect(await screen.findByRole('textbox', { name: 'API definition (JSON)' })).toHaveValue(
+      JSON_DEFINITION,
+    );
   });
 
   it('only changes the language when the text cannot be read, leaving it untouched', async () => {
     const broken = '{ "openapi": ';
     const { user } = renderWithProviders(<Harness initialText={broken} />);
-    await screen.findByRole('textbox', { name: 'definition (json)' });
+    await screen.findByRole('textbox', { name: 'API definition (JSON)' });
 
     await user.click(screen.getByRole('button', { name: 'YAML' }));
 
-    expect(await screen.findByRole('textbox', { name: 'definition (yaml)' })).toHaveValue(broken);
+    expect(await screen.findByRole('textbox', { name: 'API definition (YAML)' })).toHaveValue(
+      broken,
+    );
   });
 
   it('offers no import, download or resources view', async () => {
     renderWithProviders(<Harness initialText={JSON_DEFINITION} />);
-    await screen.findByRole('textbox', { name: 'definition (json)' });
+    await screen.findByRole('textbox', { name: 'API definition (JSON)' });
 
     for (const name of [/import/i, /download/i, /upload/i, /resources/i, /add resource/i]) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
@@ -126,11 +132,19 @@ describe('SpecificationTab', () => {
 
   it('names the format and the parser’s complaint, and stays editable so it can be fixed', async () => {
     renderWithProviders(
-      <Harness initialFormat="yaml" initialText="openapi: [" parseError="unexpected end of the stream" />,
+      <Harness
+        initialFormat="yaml"
+        initialText="openapi: ["
+        parseError="unexpected end of the stream"
+      />,
     );
 
-    expect(await screen.findByText('This is not valid YAML: unexpected end of the stream')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'definition (yaml)' })).not.toHaveAttribute('readonly');
+    expect(
+      await screen.findByText('This is not valid YAML: unexpected end of the stream'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'API definition (YAML)' })).not.toHaveAttribute(
+      'readonly',
+    );
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 });
