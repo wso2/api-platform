@@ -29,7 +29,6 @@ import {
   Home,
   Layers,
   Megaphone,
-  MessagesSquare,
   Network,
   Rocket,
   ScrollText,

@@ -89,6 +89,7 @@ export default function App({ brandLogo, extensions = [] }: AppProps) {
                 <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
                   <AuthProvider>
                     <ProductActivation />
+                    <OrganizationBootstrap />
                     <ExtensionsProvider extensions={extensions}>
                       <AppRoutes extensions={extensions} />
                     </ExtensionsProvider>
