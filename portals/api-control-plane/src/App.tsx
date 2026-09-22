@@ -26,6 +26,7 @@ import { ErrorBoundary } from './components/errors/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './contexts/auth/AuthProvider';
+import { OrganizationBootstrap } from './hooks/OrganizationBootstrap';
 import { ProductActivation } from './hooks/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
 import { ExtensionsProvider, type ApiControlPlaneExtension } from './extensions';
@@ -84,6 +85,7 @@ export default function App({ extensions = [] }: AppProps) {
               <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
                 <AuthProvider>
                   <ProductActivation />
+                  <OrganizationBootstrap />
                   <ExtensionsProvider extensions={extensions}>
                     <AppRoutes extensions={extensions} />
                   </ExtensionsProvider>

@@ -2306,6 +2306,10 @@
     "defaultMessage": "Loading organization",
     "description": "Shown while the signed-in user's organizations are being fetched."
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.provisioning": {
+    "defaultMessage": "Setting up your organization",
+    "description": "Shown on first sign-in while the organization is still being created."
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.ServerErrorPage.message": {
     "defaultMessage": "The console could not complete the request. Try again shortly."
   },
@@ -2428,6 +2432,10 @@
   "apiControlPlane.pages.auth.LoginPage.productName": {
     "defaultMessage": "<emphasis>API</emphasis> Platform",
     "description": "Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight."
+  },
+  "apiControlPlane.pages.auth.LoginPage.redirecting": {
+    "defaultMessage": "Signing you in",
+    "description": "Shown while the browser is being handed over to the identity provider."
   },
   "apiControlPlane.pages.auth.LoginPage.sessionExpired": {
     "defaultMessage": "Your session has expired. Sign in again to continue."
