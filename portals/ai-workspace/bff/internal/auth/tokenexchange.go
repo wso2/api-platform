@@ -137,7 +137,12 @@ type exchangeError struct {
 
 // Exchange trades subjectToken for a Platform API token. subjectToken is a live
 // credential and is never logged. Only ErrExchangeUnavailable is retried.
-func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (*Result, error) {
+//
+// orgHandle is the org currently selected in the SPA; it is forwarded on the wire
+// only when [auth.oidc.token_exchange] org_param is configured (see buildForm) —
+// for an IDP that mints org-scoped scopes for the same user. Pass "" when no org
+// is selected yet, or when org-scoped exchange isn't configured.
+func (e *Exchanger) Exchange(ctx context.Context, subjectToken, orgHandle string) (*Result, error) {
 	if subjectToken == "" {
 		return nil, fmt.Errorf("%w: no subject token", ErrExchangeRejected)
 	}
@@ -148,7 +153,7 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (*Result,
 	var err error
 	for attempt := 1; ; attempt++ {
 		var res *Result
-		res, err = e.exchangeOnce(ctx, subjectToken)
+		res, err = e.exchangeOnce(ctx, subjectToken, orgHandle)
 		if err == nil {
 			if attempt > 1 {
 				slog.Info("token exchange succeeded after retrying a transient identity provider failure",
@@ -171,9 +176,9 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (*Result,
 }
 
 // exchangeOnce performs a single exchange request.
-func (e *Exchanger) exchangeOnce(ctx context.Context, subjectToken string) (*Result, error) {
+func (e *Exchanger) exchangeOnce(ctx context.Context, subjectToken, orgHandle string) (*Result, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.endpoint,
-		strings.NewReader(e.buildForm(subjectToken).Encode()))
+		strings.NewReader(e.buildForm(subjectToken, orgHandle).Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrExchangeUnavailable, err)
 	}
@@ -216,7 +221,7 @@ func (e *Exchanger) exchangeOnce(ctx context.Context, subjectToken string) (*Res
 	}, nil
 }
 
-func (e *Exchanger) buildForm(subjectToken string) url.Values {
+func (e *Exchanger) buildForm(subjectToken, orgHandle string) url.Values {
 	form := url.Values{
 		"client_id":     {e.cfg.ClientID},
 		"client_secret": {e.cfg.ClientSecret},
@@ -232,6 +237,7 @@ func (e *Exchanger) buildForm(subjectToken string) url.Values {
 		if e.cfg.Scopes != "" {
 			form.Set("scope", e.cfg.Scopes)
 		}
+		e.setOrgParam(form, orgHandle)
 		return form
 	}
 
@@ -250,7 +256,18 @@ func (e *Exchanger) buildForm(subjectToken string) url.Values {
 	if e.cfg.Scopes != "" {
 		form.Set("scope", e.cfg.Scopes)
 	}
+	e.setOrgParam(form, orgHandle)
 	return form
+}
+
+// setOrgParam adds the org-scoping field an operator has named via org_param,
+// carrying the literal org handle — no templating, matching the wire shape a real
+// IDP-backed deployment of this exchange uses. A no-op when org-scoped exchange
+// isn't configured, or no org is selected yet.
+func (e *Exchanger) setOrgParam(form url.Values, orgHandle string) {
+	if e.cfg.OrgParam != "" && orgHandle != "" {
+		form.Set(e.cfg.OrgParam, orgHandle)
+	}
 }
 
 // classifyError logs the IDP's reason and returns a sentinel. The reason stays

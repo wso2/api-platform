@@ -288,6 +288,18 @@ min_validity = "0s"
 `,
 			wantSub: "min_validity must be positive",
 		},
+		{
+			// An org_param that shadows a parameter buildForm already sets would
+			// silently overwrite it instead of adding a new field.
+			name: "org_param collides with a reserved field",
+			body: oidcBase + `
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+audience = "platform-api"
+org_param = "scope"
+`,
+			wantSub: "collides with a parameter the exchange request already sets",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := loadWithAuth(t, tc.body)

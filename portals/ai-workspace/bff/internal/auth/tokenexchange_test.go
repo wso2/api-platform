@@ -102,7 +102,7 @@ func TestExchangeSendsRFC8693Form(t *testing.T) {
 	})
 
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	if _, err := e.Exchange(context.Background(), "subject-token"); err != nil {
+	if _, err := e.Exchange(context.Background(), "subject-token", ""); err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
 
@@ -132,6 +132,72 @@ func TestExchangeSendsRFC8693Form(t *testing.T) {
 	}
 }
 
+// TestExchangeOrgParam pins the org-scoping wire shape: a literal extra form field,
+// present only when both org_param is configured and an org handle was actually
+// passed in — confirmed against a real deployment's token-exchange traffic.
+func TestExchangeOrgParam(t *testing.T) {
+	t.Run("sent when configured and an org is selected", func(t *testing.T) {
+		srv := newExchangeServer(t, http.StatusOK, map[string]any{
+			"access_token": "issued-token", "issued_token_type": TokenTypeAccessToken, "token_type": "Bearer", "expires_in": 3600,
+		})
+		cfg := baseCfg()
+		cfg.OrgParam = "orgHandle"
+		e := NewExchanger(srv.Client(), cfg, srv.URL)
+		if _, err := e.Exchange(context.Background(), "subject-token", "org-a"); err != nil {
+			t.Fatalf("Exchange: %v", err)
+		}
+		if got := srv.lastForm.Get("orgHandle"); got != "org-a" {
+			t.Errorf("form[orgHandle] = %q, want %q", got, "org-a")
+		}
+	})
+
+	t.Run("absent when not configured, even with an org selected", func(t *testing.T) {
+		srv := newExchangeServer(t, http.StatusOK, map[string]any{
+			"access_token": "issued-token", "issued_token_type": TokenTypeAccessToken, "token_type": "Bearer", "expires_in": 3600,
+		})
+		e := NewExchanger(srv.Client(), baseCfg(), srv.URL) // OrgParam left empty
+		if _, err := e.Exchange(context.Background(), "subject-token", "org-a"); err != nil {
+			t.Fatalf("Exchange: %v", err)
+		}
+		if _, present := srv.lastForm["orgHandle"]; present {
+			t.Error("no org field must be sent when org_param isn't configured")
+		}
+	})
+
+	t.Run("absent when configured but no org is selected", func(t *testing.T) {
+		srv := newExchangeServer(t, http.StatusOK, map[string]any{
+			"access_token": "issued-token", "issued_token_type": TokenTypeAccessToken, "token_type": "Bearer", "expires_in": 3600,
+		})
+		cfg := baseCfg()
+		cfg.OrgParam = "orgHandle"
+		e := NewExchanger(srv.Client(), cfg, srv.URL)
+		if _, err := e.Exchange(context.Background(), "subject-token", ""); err != nil {
+			t.Fatalf("Exchange: %v", err)
+		}
+		if _, present := srv.lastForm["orgHandle"]; present {
+			t.Error("the org field must not be sent with an empty org handle")
+		}
+	})
+
+	t.Run("also sent for the jwt_bearer grant", func(t *testing.T) {
+		srv := newExchangeServer(t, http.StatusOK, map[string]any{
+			"access_token": "issued-token", "token_type": "Bearer", "expires_in": 3600,
+		})
+		cfg := baseCfg()
+		cfg.GrantType = config.GrantJWTBearer
+		cfg.Audience = ""
+		cfg.Scopes = "api://platform/.default"
+		cfg.OrgParam = "orgHandle"
+		e := NewExchanger(srv.Client(), cfg, srv.URL)
+		if _, err := e.Exchange(context.Background(), "subject-token", "org-a"); err != nil {
+			t.Fatalf("Exchange: %v", err)
+		}
+		if got := srv.lastForm.Get("orgHandle"); got != "org-a" {
+			t.Errorf("form[orgHandle] = %q, want %q", got, "org-a")
+		}
+	})
+}
+
 // TestExchangeSendsJWTBearerForm pins Entra's on-behalf-of shape, which is a different
 // specification and not a dialect of RFC 8693 — the subject travels as `assertion`,
 // and there is no subject_token/audience at all.
@@ -148,7 +214,7 @@ func TestExchangeSendsJWTBearerForm(t *testing.T) {
 	cfg.Scopes = "api://platform/.default"
 
 	e := NewExchanger(srv.Client(), cfg, srv.URL)
-	if _, err := e.Exchange(context.Background(), "subject-token"); err != nil {
+	if _, err := e.Exchange(context.Background(), "subject-token", ""); err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
 
@@ -186,7 +252,7 @@ func TestExchangeSendsResourceWhenConfigured(t *testing.T) {
 	cfg.Resource = "https://platform-api.example.com"
 
 	e := NewExchanger(srv.Client(), cfg, srv.URL)
-	if _, err := e.Exchange(context.Background(), "subject-token"); err != nil {
+	if _, err := e.Exchange(context.Background(), "subject-token", ""); err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
 	if got := srv.lastForm.Get("resource"); got != "https://platform-api.example.com" {
@@ -209,7 +275,7 @@ func TestExchangeExpiryFromExpiresIn(t *testing.T) {
 	})
 
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	res, err := e.Exchange(context.Background(), "subject-token")
+	res, err := e.Exchange(context.Background(), "subject-token", "")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -229,7 +295,7 @@ func TestExchangeExpiryFallsBackToExpClaim(t *testing.T) {
 	})
 
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	res, err := e.Exchange(context.Background(), "subject-token")
+	res, err := e.Exchange(context.Background(), "subject-token", "")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -255,7 +321,7 @@ func TestExchangeScopesPreferResponseOverClaim(t *testing.T) {
 	})
 
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	res, err := e.Exchange(context.Background(), "subject-token")
+	res, err := e.Exchange(context.Background(), "subject-token", "")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -275,7 +341,7 @@ func TestExchangeScopesFallBackToTokenClaim(t *testing.T) {
 	})
 
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	res, err := e.Exchange(context.Background(), "subject-token")
+	res, err := e.Exchange(context.Background(), "subject-token", "")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -307,7 +373,7 @@ func TestExchangeRejectsUnusableIssuedTokenType(t *testing.T) {
 				"expires_in":        600,
 			})
 			e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-			_, err := e.Exchange(context.Background(), "subject-token")
+			_, err := e.Exchange(context.Background(), "subject-token", "")
 			if tc.wantError {
 				if !errors.Is(err, ErrExchangeRejected) {
 					t.Errorf("err = %v, want ErrExchangeRejected", err)
@@ -336,7 +402,7 @@ func TestExchangeJWTBearerToleratesMissingIssuedTokenType(t *testing.T) {
 	cfg.Scopes = "api://platform/.default"
 
 	e := NewExchanger(srv.Client(), cfg, srv.URL)
-	if _, err := e.Exchange(context.Background(), "subject-token"); err != nil {
+	if _, err := e.Exchange(context.Background(), "subject-token", ""); err != nil {
 		t.Errorf("jwt_bearer must not require issued_token_type: %v", err)
 	}
 }
@@ -365,7 +431,7 @@ func TestExchangeErrorClassification(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newExchangeServer(t, tc.status, tc.body)
 			e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-			_, err := e.Exchange(context.Background(), "subject-token")
+			_, err := e.Exchange(context.Background(), "subject-token", "")
 			if !errors.Is(err, tc.wantErr) {
 				t.Errorf("err = %v, want %v", err, tc.wantErr)
 			}
@@ -381,7 +447,7 @@ func TestExchangeRejectsEmptyAccessToken(t *testing.T) {
 		"token_type":        "Bearer",
 	})
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	if _, err := e.Exchange(context.Background(), "subject-token"); !errors.Is(err, ErrExchangeUnavailable) {
+	if _, err := e.Exchange(context.Background(), "subject-token", ""); !errors.Is(err, ErrExchangeUnavailable) {
 		t.Errorf("err = %v, want ErrExchangeUnavailable", err)
 	}
 }
@@ -392,7 +458,7 @@ func TestExchangeRejectsEmptyAccessToken(t *testing.T) {
 func TestExchangeRejectsEmptySubjectToken(t *testing.T) {
 	srv := newExchangeServer(t, http.StatusOK, nil)
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	if _, err := e.Exchange(context.Background(), ""); !errors.Is(err, ErrExchangeRejected) {
+	if _, err := e.Exchange(context.Background(), "", ""); !errors.Is(err, ErrExchangeRejected) {
 		t.Errorf("err = %v, want ErrExchangeRejected", err)
 	}
 	if srv.calls != 0 {
@@ -438,7 +504,7 @@ func TestExchangeErrorsDoNotContainTokens(t *testing.T) {
 	const secret = "super-secret-subject-token"
 	srv := newExchangeServer(t, http.StatusBadRequest, map[string]string{"error": "invalid_request"})
 	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	_, err := e.Exchange(context.Background(), secret)
+	_, err := e.Exchange(context.Background(), secret, "")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -472,7 +538,7 @@ func TestExchangeRetriesTransientKeyFetchFailure(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	res, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	res, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}), "")
 	if err != nil {
 		t.Fatalf("expected the exchange to succeed after retrying, got %v", err)
 	}
@@ -493,7 +559,7 @@ func TestExchangeTransientKeyFetchFailureIsUnavailable(t *testing.T) {
 	})
 
 	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}), "")
 	if !errors.Is(err, ErrExchangeUnavailable) {
 		t.Fatalf("error = %v, want ErrExchangeUnavailable (session must survive a transient IDP fault)", err)
 	}
@@ -513,7 +579,7 @@ func TestExchangeDoesNotRetryRejection(t *testing.T) {
 	})
 
 	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}), "")
 	if !errors.Is(err, ErrExchangeRejected) {
 		t.Fatalf("error = %v, want ErrExchangeRejected", err)
 	}
@@ -554,7 +620,7 @@ func TestExchangeTransientHTTPStatuses(t *testing.T) {
 		http.StatusInternalServerError, http.StatusBadGateway} {
 		srv := newExchangeServer(t, status, map[string]any{"error": "temporarily_unavailable"})
 		ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-		_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+		_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}), "")
 		if !errors.Is(err, ErrExchangeUnavailable) {
 			t.Errorf("status %d: error = %v, want ErrExchangeUnavailable", status, err)
 		}
@@ -562,7 +628,7 @@ func TestExchangeTransientHTTPStatuses(t *testing.T) {
 	// The neighbouring 4xx must still be a rejection — the split has to stay narrow.
 	srv := newExchangeServer(t, http.StatusBadRequest, map[string]any{"error": "invalid_grant"})
 	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	if _, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"})); !errors.Is(err, ErrExchangeRejected) {
+	if _, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}), ""); !errors.Is(err, ErrExchangeRejected) {
 		t.Errorf("status 400: error = %v, want ErrExchangeRejected", err)
 	}
 }
@@ -584,7 +650,7 @@ func TestExchangeErrorDescriptionIsRedacted(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	ex := NewExchanger(srv.Client(), cfg, srv.URL)
-	if _, err := ex.Exchange(context.Background(), subject); !errors.Is(err, ErrExchangeRejected) {
+	if _, err := ex.Exchange(context.Background(), subject, ""); !errors.Is(err, ErrExchangeRejected) {
 		t.Fatalf("error = %v, want ErrExchangeRejected", err)
 	}
 
@@ -616,7 +682,7 @@ func TestExchangeRedactsOpaqueSubjectToken(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	ex := NewExchanger(srv.Client(), baseCfg(), srv.URL)
-	if _, err := ex.Exchange(context.Background(), opaque); !errors.Is(err, ErrExchangeRejected) {
+	if _, err := ex.Exchange(context.Background(), opaque, ""); !errors.Is(err, ErrExchangeRejected) {
 		t.Fatalf("error = %v, want ErrExchangeRejected", err)
 	}
 	if out := logged.String(); strings.Contains(out, opaque) {
@@ -640,7 +706,7 @@ func TestExchangeDoesNotFollowRedirects(t *testing.T) {
 	t.Cleanup(idp.Close)
 
 	ex := NewExchanger(idp.Client(), baseCfg(), idp.URL)
-	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}))
+	_, err := ex.Exchange(context.Background(), jwtWithClaims(t, map[string]any{"sub": "u1"}), "")
 	if err == nil {
 		t.Fatal("a redirected exchange must fail, not silently succeed against another host")
 	}

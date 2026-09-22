@@ -28,7 +28,7 @@ import React, {
 import { logger } from '../utils/logger';
 import { getProjects, createDefaultProject } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
-import { useChoreoUser } from './ChoreoUserContext';
+import { usePlatformUser } from './PlatformUserContext';
 import { useAppAuth } from './AppAuthContext';
 import { registerOrganization, getOrganizationById } from '../apis/platformApis';
 import type { PlatformOrganization } from '../apis/platformApis';
@@ -87,7 +87,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   userName: initialUserName,
   userEmail: initialUserEmail,
 }) => {
-  const { setIsTokenExchanged, getOrganizations } = useChoreoUser();
+  const { setIsTokenExchanged, getOrganizations, exchangeOrgToken } = usePlatformUser();
   const { user } = useAppAuth();
 
   const isInitializedRef = useRef(false);
@@ -213,6 +213,10 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           setIsOrganizationsLoading(false);
         }
 
+        if (!(await exchangeOrgToken(resolvedOrg.handle))) {
+          setError('Failed to authorize for this organization. Please contact your administrator.');
+          return;
+        }
         setIsTokenExchanged(true);
         await fetchProjectsForOrg();
         return;
@@ -232,6 +236,10 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       }
       setOrganizations(orgs);
       setCurrentOrganizationState(orgs[0]);
+      if (!(await exchangeOrgToken(orgs[0].handle))) {
+        setError('Failed to authorize for this organization. Please contact your administrator.');
+        return;
+      }
       setIsTokenExchanged(true);
       await fetchProjectsForOrg();
     } catch (err: any) {
@@ -241,17 +249,21 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
+  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged, exchangeOrgToken]);
 
   const switchOrganization = useCallback(
     async (organization: Organization) => {
       if (organization.handle === currentOrganization?.handle) {
         return;
       }
+      if (!(await exchangeOrgToken(organization.handle))) {
+        setError('Failed to switch organization');
+        return;
+      }
       setCurrentOrganizationState(organization);
       await fetchProjectsForOrg();
     },
-    [currentOrganization?.handle, fetchProjectsForOrg]
+    [currentOrganization?.handle, fetchProjectsForOrg, exchangeOrgToken]
   );
 
   useEffect(() => {

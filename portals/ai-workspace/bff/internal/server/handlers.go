@@ -25,6 +25,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"ai-workspace-bff/internal/auth"
@@ -310,10 +311,12 @@ func (s *Server) userFromToken(ctx context.Context, jwt string) session.User {
 // scopes run with [auth.authorization] mode = "scope" instead of mirroring a grant
 // table across two services.
 //
-// An empty set is left alone: a freshly restored session has not exchanged yet, and
-// blanking scopes would show nothing as permitted for a fully authorized session.
+// A zero ExchangedToken (Token == "") is left alone: a freshly restored session has
+// not exchanged yet, and blanking scopes would show nothing as permitted for a fully
+// authorized session. Once a session has exchanged, its scopes are copied verbatim —
+// including a legitimately empty set — since that's what the Platform API authorizes.
 func (s *Server) withExchangedScopes(u session.User, ex session.ExchangedToken) session.User {
-	if s.exchanger == nil || len(ex.Scopes) == 0 {
+	if s.exchanger == nil || ex.Token == "" {
 		return u
 	}
 	u.Scopes = ex.Scopes
@@ -399,12 +402,44 @@ func (s *Server) doRefresh(ctx context.Context, jwt string) (*session.Session, e
 	// session lifetime, not slide forward on every refresh (which would let an
 	// active session live indefinitely and disagree with the cookie's MaxAge).
 	updated.AbsoluteExpiry = cur.AbsoluteExpiry
-	if err := s.store.Put(ctx, updated); err != nil {
-		return nil, err
+
+	var putErr error
+	s.withSessionLock(jwt, func() {
+		if putErr = s.store.Put(ctx, updated); putErr != nil {
+			return
+		}
+		// Drop the old entry now that the token rotated. Locked against doExchange
+		// so a concurrent exchange can't read the old entry before this delete and
+		// write it back after — which would resurrect it under the rotated-out key.
+		_ = s.store.Delete(ctx, jwt)
+	})
+	if putErr != nil {
+		return nil, putErr
 	}
-	// Drop the old entry now that the token rotated.
-	_ = s.store.Delete(ctx, jwt)
 	return updated, nil
+}
+
+// withSessionLock serializes fn against any other call for the same token,
+// coordinating doExchange's cache write with doRefresh's rekey/delete so a
+// stale session can never be reinserted after refresh removes it. This is
+// separate from the single-flight locks above, which only dedupe concurrent
+// callers of the *same* operation.
+func (s *Server) withSessionLock(token string, fn func()) {
+	s.sessionMu.Lock()
+	mu, ok := s.sessionLocks[token]
+	if !ok {
+		mu = &sync.Mutex{}
+		s.sessionLocks[token] = mu
+	}
+	s.sessionMu.Unlock()
+
+	mu.Lock()
+	fn()
+	mu.Unlock()
+
+	s.sessionMu.Lock()
+	delete(s.sessionLocks, token)
+	s.sessionMu.Unlock()
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
@@ -473,32 +508,41 @@ func (s *Server) upstreamToken(ctx context.Context, subjectToken string) (string
 }
 
 // exchangedToken returns a cached exchanged token when one is still usable, and
-// performs an exchange otherwise.
+// performs an exchange otherwise. The org it exchanges/validates against is read
+// from the session's OrgHandle — set only by handleSwitchOrg — not passed in here,
+// so every call site (proxy, session hydration) automatically follows whatever org
+// is currently selected without threading it through each of them individually.
 func (s *Server) exchangedToken(ctx context.Context, subjectToken string) (*auth.Result, error) {
 	fingerprint := s.exchanger.ConfigFingerprint()
 
-	if s.exchanger.CacheEnabled() {
-		if sess, ok, _ := s.store.Get(ctx, subjectToken); ok {
-			if sess.Exchanged.Usable(time.Now(), s.exchanger.MinValidity(), fingerprint) {
-				return &auth.Result{
-					AccessToken: sess.Exchanged.Token,
-					Expiry:      sess.Exchanged.Expiry,
-					Scopes:      sess.Exchanged.Scopes,
-				}, nil
-			}
+	sess, ok, _ := s.store.Get(ctx, subjectToken)
+	var orgHandle string
+	if ok {
+		orgHandle = sess.OrgHandle
+		if s.exchanger.CacheEnabled() && sess.Exchanged.Usable(time.Now(), s.exchanger.MinValidity(), fingerprint, orgHandle) {
+			return &auth.Result{
+				AccessToken: sess.Exchanged.Token,
+				Expiry:      sess.Exchanged.Expiry,
+				Scopes:      sess.Exchanged.Scopes,
+			}, nil
 		}
 	}
-	return s.exchangeSingleFlight(ctx, subjectToken, fingerprint)
+	return s.exchangeSingleFlight(ctx, subjectToken, fingerprint, orgHandle)
 }
 
-// exchangeSingleFlight performs one exchange per subject token at a time, mirroring
-// refreshByToken's structure.
-func (s *Server) exchangeSingleFlight(ctx context.Context, subjectToken, fingerprint string) (*auth.Result, error) {
+// exchangeSingleFlight performs one exchange per (subject token, org) pair at a
+// time, mirroring refreshByToken's structure. Keying on the pair rather than the
+// subject token alone matters once org-scoped exchange is in play: a quick
+// double-switch between two orgs must not let the second caller's request
+// coalesce onto the first org's in-flight result.
+func (s *Server) exchangeSingleFlight(ctx context.Context, subjectToken, fingerprint, orgHandle string) (*auth.Result, error) {
+	key := subjectToken + "\x1f" + orgHandle
+
 	s.exchangeMu.Lock()
-	mu := s.exchangeLocks[subjectToken]
+	mu := s.exchangeLocks[key]
 	if mu == nil {
 		mu = &exchangeLock{}
-		s.exchangeLocks[subjectToken] = mu
+		s.exchangeLocks[key] = mu
 	}
 	s.exchangeMu.Unlock()
 
@@ -509,21 +553,21 @@ func (s *Server) exchangeSingleFlight(ctx context.Context, subjectToken, fingerp
 		return mu.result, mu.err
 	}
 
-	mu.result, mu.err = s.doExchange(ctx, subjectToken, fingerprint)
+	mu.result, mu.err = s.doExchange(ctx, subjectToken, fingerprint, orgHandle)
 	mu.done = true
 
 	// The owner drops the entry on every exit path; waiters hold the pointer and read
 	// the cached result above even after it is gone.
 	s.exchangeMu.Lock()
-	delete(s.exchangeLocks, subjectToken)
+	delete(s.exchangeLocks, key)
 	s.exchangeMu.Unlock()
 
 	return mu.result, mu.err
 }
 
 // doExchange performs the exchange and caches the result on the session record.
-func (s *Server) doExchange(ctx context.Context, subjectToken, fingerprint string) (*auth.Result, error) {
-	res, err := s.exchanger.Exchange(ctx, subjectToken)
+func (s *Server) doExchange(ctx context.Context, subjectToken, fingerprint, orgHandle string) (*auth.Result, error) {
+	res, err := s.exchanger.Exchange(ctx, subjectToken, orgHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -538,19 +582,23 @@ func (s *Server) doExchange(ctx context.Context, subjectToken, fingerprint strin
 		return res, nil
 	}
 
-	// Best-effort: a missing entry (BFF restarted mid-session) only costs a
-	// re-exchange next request, so it must not fail this one.
-	if sess, ok, _ := s.store.Get(ctx, subjectToken); ok {
-		sess.Exchanged = session.ExchangedToken{
-			Token:             res.AccessToken,
-			Expiry:            res.Expiry,
-			Scopes:            res.Scopes,
-			ConfigFingerprint: fingerprint,
+	// Best-effort: a missing entry (BFF restarted mid-session, or one just rotated
+	// out from under us — see withSessionLock) only costs a re-exchange next
+	// request, so it must not fail this one.
+	s.withSessionLock(subjectToken, func() {
+		if sess, ok, _ := s.store.Get(ctx, subjectToken); ok {
+			sess.Exchanged = session.ExchangedToken{
+				Token:             res.AccessToken,
+				Expiry:            res.Expiry,
+				Scopes:            res.Scopes,
+				ConfigFingerprint: fingerprint,
+				OrgHandle:         orgHandle,
+			}
+			if err := s.store.Put(ctx, sess); err != nil {
+				slog.Warn("failed to cache exchanged token on the session", "err", err)
+			}
 		}
-		if err := s.store.Put(ctx, sess); err != nil {
-			slog.Warn("failed to cache exchanged token on the session", "err", err)
-		}
-	}
+	})
 	return res, nil
 }
 
@@ -570,4 +618,74 @@ func (s *Server) writeExchangeError(w http.ResponseWriter, r *http.Request, err 
 		return
 	}
 	writeErrorJSON(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "upstream temporarily unavailable")
+}
+
+const maxSwitchOrgBodyBytes = 1 << 10 // an org handle is tiny; ample headroom
+
+type switchOrgRequest struct {
+	Org string `json:"org"`
+}
+
+// handleSwitchOrg (POST <base>/api/session/org) — re-exchange for the org the SPA
+// just selected, so an IDP that mints org-scoped scopes (see [auth.oidc.token_exchange]
+// org_param) issues a token for that org rather than whatever was last cached.
+//
+// Unlike writeExchangeError, a rejection here must not destroy the session: "you are
+// not a member of that org" is an expected, recoverable outcome of switching, not a
+// reason to log the user out of the org they were already in.
+func (s *Server) handleSwitchOrg(w http.ResponseWriter, r *http.Request) {
+	if s.exchanger == nil {
+		writeErrorJSON(w, http.StatusBadRequest, "ORG_SCOPING_DISABLED", "token exchange is not enabled")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxSwitchOrgBodyBytes)
+	var req switchOrgRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Org == "" {
+		writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST", "org is required")
+		return
+	}
+
+	jwt, ok := s.tokenFromCookie(r)
+	if !ok {
+		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
+		return
+	}
+
+	var previousOrg string
+	var sessionErr error
+	s.withSessionLock(jwt, func() {
+		sess, found, _ := s.store.Get(r.Context(), jwt)
+		if !found {
+			sessionErr = errors.New("session not found")
+			return
+		}
+		previousOrg = sess.OrgHandle
+		sess.OrgHandle = req.Org
+		sessionErr = s.store.Put(r.Context(), sess)
+	})
+	if sessionErr != nil {
+		writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
+		return
+	}
+
+	res, err := s.exchangedToken(r.Context(), jwt)
+	if err != nil {
+		// Roll back to the org the session was actually still authorized for, so
+		// proxied calls right after a rejected switch keep working rather than
+		// repeatedly retrying the exchange against an org that just failed.
+		s.withSessionLock(jwt, func() {
+			if sess, found, _ := s.store.Get(r.Context(), jwt); found {
+				sess.OrgHandle = previousOrg
+				_ = s.store.Put(r.Context(), sess)
+			}
+		})
+		if errors.Is(err, auth.ErrExchangeRejected) {
+			writeErrorJSON(w, http.StatusForbidden, "ORG_SWITCH_REJECTED", "unable to switch to that organization")
+			return
+		}
+		writeErrorJSON(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "upstream temporarily unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"scopes": res.Scopes})
 }

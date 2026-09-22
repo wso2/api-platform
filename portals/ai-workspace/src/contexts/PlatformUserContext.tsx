@@ -17,11 +17,12 @@
  */
 
 // ============================================================================
-// ChoreoUserContext — Platform API (standalone) version
+// PlatformUserContext — Platform API (standalone) version
 // ----------------------------------------------------------------------------
 // Asgardeo authentication has been removed. All org data comes from the
-// Platform API (https://localhost:9243/api/v0.9).
-// Token exchange and IDP-specific logic are no-ops.
+// Platform API (https://localhost:9243/api/v0.9). exchangeOrgToken calls the
+// BFF's org-scoped token exchange (see internal/server/handlers.go
+// handleSwitchOrg); the rest of the IDP-specific surface stays a no-op.
 // ============================================================================
 
 import React, {
@@ -33,12 +34,15 @@ import React, {
 } from 'react';
 import { logger } from '../utils/logger';
 import type { Organization, ValidateUserResponse } from '../utils/types';
-import { PLATFORM_API_BASE_URL } from '../paths';
+import { PLATFORM_API_BASE_URL, BASE_PATH } from '../paths';
+import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { handleUnauthorizedResponse } from '../auth/logout';
+
+const BFF_SWITCH_ORG_URL = `${BASE_PATH}/api/session/org`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface ChoreoUserContextType {
+export interface PlatformUserContextType {
   isTokenExchanged: boolean;
   setIsTokenExchanged: React.Dispatch<React.SetStateAction<boolean>>;
   isOrgAdmin: boolean;
@@ -57,7 +61,7 @@ export interface ChoreoUserContextType {
   getIsOrgAdmin: (orgHandle: string) => Promise<boolean>;
 }
 
-const ChoreoUserContext = createContext<ChoreoUserContextType | null>(null);
+const PlatformUserContext = createContext<PlatformUserContextType | null>(null);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -100,7 +104,7 @@ async function fetchPlatformOrganization(): Promise<Organization[]> {
 
     if (!res.ok) {
       if (res.status === 404) {
-        logger.warn('[ChoreoUserContext] No organization found — register one at /register-org');
+        logger.warn('[PlatformUserContext] No organization found — register one at /register-org');
         return [];
       }
       const body = await res.json().catch(() => ({}));
@@ -124,27 +128,61 @@ async function fetchPlatformOrganization(): Promise<Organization[]> {
     offset = orgs.length;
   }
 
-  logger.info('[ChoreoUserContext] Loaded organizations:', orgs.map((o) => o.id));
+  logger.info('[PlatformUserContext] Loaded organizations:', orgs.map((o) => o.id));
   return orgs;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-export const ChoreoUserProvider: React.FC<{ children: ReactNode }> = ({
+export const PlatformUserProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [isTokenExchanged, setIsTokenExchanged] = useState(false);
   const [isOrgAdmin, setIsOrgAdmin] = useState(true);
 
-  // No token exchange needed — always return admin:true
-  const exchangeOrgToken = useCallback(async (_orgHandle: string): Promise<boolean> => {
-    logger.info('[ChoreoUserContext] exchangeOrgToken — no-op in platform mode');
-    return true;
-  }, []);
+  /**
+   * Ask the BFF to re-exchange the login token for the given org, so an IDP that
+   * mints org-scoped scopes issues a token for the org just selected rather than
+   * whatever was last cached (see internal/server/handlers.go handleSwitchOrg).
+   * A 400 (ORG_SCOPING_DISABLED) means the feature isn't configured for this
+   * deployment — that's success from the caller's point of view, since there is
+   * nothing to switch. Any other non-2xx (e.g. not a member of that org) is a
+   * real failure: the caller should not proceed with the switch.
+   */
+  const exchangeOrgToken = useCallback(async (orgHandle: string): Promise<boolean> => {
+    try {
+      const res = await fetch(BFF_SWITCH_ORG_URL, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          [CSRF_HEADER]: CSRF_VALUE,
+        },
+        body: JSON.stringify({ org: orgHandle }),
+      });
+      if (res.ok) {
+        setIsTokenExchanged(true);
+        return true;
+      }
+      if (res.status === 400) {
+        logger.info('[PlatformUserContext] org-scoped token exchange is not configured — skipping');
+        return true;
+      }
+      // A 401 here always means the BFF session itself is gone (unlike a proxied
+      // Platform API 401, which can carry other causes) — no code to filter on.
+      handleUnauthorizedResponse(res);
+      logger.error('[PlatformUserContext] org token exchange failed for org', orgHandle, 'status', res.status);
+      return false;
+    } catch (err) {
+      logger.error('[PlatformUserContext] org token exchange error:', err);
+      return false;
+    }
+  }, [setIsTokenExchanged]);
 
   // Not used in platform mode
   const validateUser = useCallback(async (): Promise<ValidateUserResponse> => {
-    logger.info('[ChoreoUserContext] validateUser — no-op in platform mode');
+    logger.info('[PlatformUserContext] validateUser — no-op in platform mode');
     return { organizations: [], idpId: '' };
   }, []);
 
@@ -159,7 +197,7 @@ export const ChoreoUserProvider: React.FC<{ children: ReactNode }> = ({
   }, []);
 
   return (
-    <ChoreoUserContext.Provider
+    <PlatformUserContext.Provider
       value={{
         isTokenExchanged,
         setIsTokenExchanged,
@@ -174,14 +212,14 @@ export const ChoreoUserProvider: React.FC<{ children: ReactNode }> = ({
       }}
     >
       {children}
-    </ChoreoUserContext.Provider>
+    </PlatformUserContext.Provider>
   );
 };
 
-export const useChoreoUser = (): ChoreoUserContextType => {
-  const ctx = useContext(ChoreoUserContext);
-  if (!ctx) throw new Error('useChoreoUser must be used within a ChoreoUserProvider');
+export const usePlatformUser = (): PlatformUserContextType => {
+  const ctx = useContext(PlatformUserContext);
+  if (!ctx) throw new Error('usePlatformUser must be used within a PlatformUserProvider');
   return ctx;
 };
 
-export default ChoreoUserContext;
+export default PlatformUserContext;

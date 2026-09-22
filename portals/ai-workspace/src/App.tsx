@@ -82,7 +82,7 @@ import EditExternalServer from './pages/appShell/appShellPages/externalServers/E
 import { MCPServerValidationProvider } from './contexts/MCP';
 import { LLMProvidersProvider } from './contexts/llmProvider';
 import React, { useRef, useState, type ReactNode } from 'react';
-import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
+import { PlatformUserProvider } from './contexts/PlatformUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
@@ -386,7 +386,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
   ));
 
   return (
-    <ChoreoUserProvider>
+    <PlatformUserProvider>
       <Routes>
         {/* OAuth callback — react-oidc-context processes the ?code= param here */}
         <Route path="/signin" element={<SigninCallbackRoute />} />
@@ -920,7 +920,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </ChoreoUserProvider>
+    </PlatformUserProvider>
   );
 }
 

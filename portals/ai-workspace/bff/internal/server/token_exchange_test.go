@@ -43,6 +43,7 @@ type exchangeTestHarness struct {
 	idpCalls    *atomic.Int32
 	idpStatus   func() (int, any)
 	upstreamGot *atomic.Value // last upstream Authorization header
+	idpLastForm *atomic.Value // last exchange request's PostForm, as url.Values
 }
 
 func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) *exchangeTestHarness {
@@ -51,6 +52,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 	h := &exchangeTestHarness{
 		idpCalls:    &atomic.Int32{},
 		upstreamGot: &atomic.Value{},
+		idpLastForm: &atomic.Value{},
 	}
 	h.upstreamGot.Store("")
 	h.idpStatus = func() (int, any) {
@@ -90,6 +92,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 			return
 		}
 		h.idpCalls.Add(1)
+		h.idpLastForm.Store(r.PostForm)
 		status, body := h.idpStatus()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -159,6 +162,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 		exchanger:     auth.NewExchanger(idp.Client(), teCfg, oidcClient.TokenEndpoint()),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
+		sessionLocks:  make(map[string]*sync.Mutex),
 	}
 	t.Cleanup(func() { _ = h.server.store.Close() })
 	return h
@@ -484,7 +488,7 @@ func TestRefreshDropsExchangedToken(t *testing.T) {
 	if rotated.Exchanged.Token != "" {
 		t.Errorf("a rotated session carried the previous exchanged token %q", rotated.Exchanged.Token)
 	}
-	if rotated.Exchanged.Usable(time.Now(), time.Minute, h.server.exchanger.ConfigFingerprint()) {
+	if rotated.Exchanged.Usable(time.Now(), time.Minute, h.server.exchanger.ConfigFingerprint(), "") {
 		t.Error("a zero ExchangedToken must never report itself usable")
 	}
 
@@ -505,25 +509,30 @@ func TestExchangedTokenUsable(t *testing.T) {
 	now := time.Now()
 
 	for _, tc := range []struct {
-		name string
-		tok  session.ExchangedToken
-		want bool
+		name      string
+		tok       session.ExchangedToken
+		orgHandle string
+		want      bool
 	}{
 		{"fresh", session.ExchangedToken{
-			Token: "t", Expiry: now.Add(time.Hour), ConfigFingerprint: fp}, true},
+			Token: "t", Expiry: now.Add(time.Hour), ConfigFingerprint: fp}, "", true},
 		{"empty token", session.ExchangedToken{
-			Expiry: now.Add(time.Hour), ConfigFingerprint: fp}, false},
+			Expiry: now.Add(time.Hour), ConfigFingerprint: fp}, "", false},
 		{"unknown expiry", session.ExchangedToken{
-			Token: "t", ConfigFingerprint: fp}, false},
+			Token: "t", ConfigFingerprint: fp}, "", false},
 		{"already expired", session.ExchangedToken{
-			Token: "t", Expiry: now.Add(-time.Minute), ConfigFingerprint: fp}, false},
+			Token: "t", Expiry: now.Add(-time.Minute), ConfigFingerprint: fp}, "", false},
 		{"inside the renewal window", session.ExchangedToken{
-			Token: "t", Expiry: now.Add(30 * time.Second), ConfigFingerprint: fp}, false},
+			Token: "t", Expiry: now.Add(30 * time.Second), ConfigFingerprint: fp}, "", false},
 		{"stale fingerprint", session.ExchangedToken{
-			Token: "t", Expiry: now.Add(time.Hour), ConfigFingerprint: "other"}, false},
+			Token: "t", Expiry: now.Add(time.Hour), ConfigFingerprint: "other"}, "", false},
+		{"org match", session.ExchangedToken{
+			Token: "t", Expiry: now.Add(time.Hour), ConfigFingerprint: fp, OrgHandle: "org-a"}, "org-a", true},
+		{"org mismatch", session.ExchangedToken{
+			Token: "t", Expiry: now.Add(time.Hour), ConfigFingerprint: fp, OrgHandle: "org-a"}, "org-b", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.tok.Usable(now, time.Minute, fp); got != tc.want {
+			if got := tc.tok.Usable(now, time.Minute, fp, tc.orgHandle); got != tc.want {
 				t.Errorf("Usable = %v, want %v", got, tc.want)
 			}
 		})

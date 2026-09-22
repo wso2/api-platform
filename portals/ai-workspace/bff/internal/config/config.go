@@ -246,6 +246,10 @@ type TokenExchangeConfig struct {
 	CacheEnabled bool          `koanf:"cache_enabled"`
 	MinValidity  time.Duration `koanf:"min_validity"`
 
+	// OrgParam names an extra form field sent with the exchange request, carrying
+	// the handle of the org currently selected
+	OrgParam string `koanf:"org_param"`
+
 	// There is deliberately no refresh-token option: RFC 8693 §2.2.1 advises against
 	// one when trading temporary credentials, and it would outlive the login session
 	// it derives from. The BFF re-exchanges from the subject token.
@@ -624,6 +628,14 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "[invalid URL]"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 // validateTokenExchange fails startup on a configuration that would break every
 // request after login. Aggressive precisely because the feature is fail-closed: a
 // misconfiguration takes the UI down, so an operator should see it at boot.
@@ -654,14 +666,19 @@ func (c *Config) validateTokenExchange() error {
 		u, err := url.Parse(te.TokenEndpoint)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be an absolute http:// or https:// URL, got %q",
-				te.TokenEndpoint)
+				redactURL(te.TokenEndpoint))
+		}
+
+		if u.User != nil {
+			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must not contain userinfo, got %q",
+				redactURL(te.TokenEndpoint))
 		}
 		// The POST body carries the client secret and subject token. Loopback is
 		// exempt: the request never reaches a network there.
 		if u.Scheme == "http" && !isLoopbackHost(u.Host) {
 			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be https:// "+
 				"(the client secret and subject token are sent in the request body), got %q",
-				te.TokenEndpoint)
+				redactURL(te.TokenEndpoint))
 		}
 	}
 
@@ -704,5 +721,20 @@ func (c *Config) validateTokenExchange() error {
 			te.MinValidity)
 	}
 
+	if te.OrgParam != "" && reservedExchangeFormParams[te.OrgParam] {
+		return fmt.Errorf("[auth.oidc.token_exchange] org_param %q collides with a parameter the exchange "+
+			"request already sets — choose a different field name", te.OrgParam)
+	}
+
 	return nil
+}
+
+// reservedExchangeFormParams are the form fields Exchanger.buildForm already sets
+// (see tokenexchange.go); org_param must name something else, or an operator typo
+// would silently overwrite a required parameter instead of adding a new one.
+var reservedExchangeFormParams = map[string]bool{
+	"client_id": true, "client_secret": true, "grant_type": true,
+	"subject_token": true, "subject_token_type": true, "requested_token_type": true,
+	"audience": true, "resource": true, "scope": true,
+	"assertion": true, "requested_token_use": true,
 }

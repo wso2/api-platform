@@ -62,6 +62,11 @@ type Session struct {
 	AbsoluteExpiry time.Time // hard cap
 	User           User
 	Exchanged      ExchangedToken
+	// OrgHandle is the org currently selected in the SPA, set only by the
+	// /api/session/org switch handler. Read on every exchange to decide which org
+	// to request/validate the cached token against; "" until first selected, or
+	// when org-scoped exchange isn't configured.
+	OrgHandle string
 }
 
 // ExchangedToken is a cached token-exchange result; the zero value is a cache miss.
@@ -74,16 +79,23 @@ type ExchangedToken struct {
 	Expiry            time.Time
 	Scopes            []string
 	ConfigFingerprint string
+	// OrgHandle is the org this token was actually minted for (see
+	// [auth.oidc.token_exchange] org_param); "" when org-scoped exchange isn't
+	// configured. Compared against the session's current OrgHandle in Usable, so a
+	// switch to a different org always forces a fresh exchange.
+	OrgHandle string
 }
 
 // Usable reports whether the cached token can still be forwarded upstream. An unknown
 // expiry is never usable: freshness cannot be checked, so reusing it would risk
-// forwarding an expired credential.
-func (e ExchangedToken) Usable(now time.Time, minValidity time.Duration, fingerprint string) bool {
+// forwarding an expired credential. orgHandle is the session's currently selected
+// org — a mismatch against the org this token was minted for is always a miss, even
+// if the token is otherwise still fresh.
+func (e ExchangedToken) Usable(now time.Time, minValidity time.Duration, fingerprint, orgHandle string) bool {
 	if e.Token == "" || e.Expiry.IsZero() {
 		return false
 	}
-	if e.ConfigFingerprint != fingerprint {
+	if e.ConfigFingerprint != fingerprint || e.OrgHandle != orgHandle {
 		return false
 	}
 	return now.Add(minValidity).Before(e.Expiry)

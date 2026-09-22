@@ -64,6 +64,14 @@ type Server struct {
 
 	exchangeMu    sync.Mutex
 	exchangeLocks map[string]*exchangeLock
+
+	// sessionMu/sessionLocks serialize the store read-modify-write in doExchange
+	// against the rekey/delete in doRefresh for the same token. Without this, the
+	// two can interleave — doExchange reads the session, doRefresh re-keys it and
+	// deletes the old entry, then doExchange writes it back under the now-deleted
+	// old key, resurrecting a stale session after its token has rotated out.
+	sessionMu    sync.Mutex
+	sessionLocks map[string]*sync.Mutex
 }
 
 // exchangeLock single-flights one session's exchange, so the burst of parallel calls
@@ -111,6 +119,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		proxy:         proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
+		sessionLocks:  make(map[string]*sync.Mutex),
 	}
 
 	if cfg.ControlPlane.CloudURL != "" {
