@@ -222,6 +222,9 @@ export function EndpointsPanel({ api }: Props) {
                 <FormattedMessage {...messages.endpointLabel} />
               </FormLabel>
               <OutlinedInput
+                aria-describedby={
+                  touched && !endpointValid ? 'overview-backend-endpoint-error' : undefined
+                }
                 autoFocus
                 id="overview-backend-endpoint"
                 onBlur={() => setTouched(true)}
@@ -230,7 +233,7 @@ export function EndpointsPanel({ api }: Props) {
                 value={endpointUrl}
               />
               {touched && !endpointValid ? (
-                <FormHelperText>
+                <FormHelperText id="overview-backend-endpoint-error">
                   <FormattedMessage {...messages.endpointRequired} />
                 </FormHelperText>
               ) : null}
