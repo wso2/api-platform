@@ -23,6 +23,9 @@ import {
   ButtonGroup,
   Card,
   CardContent,
+  Dialog,
+  DialogActions,
+  DialogTitle,
   Divider,
   Drawer,
   IconButton,
@@ -74,9 +77,7 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
   const [deployMenuAnchor, setDeployMenuAnchor] = useState<HTMLElement | null>(null);
   const [buildsDrawerOpen, setBuildsDrawerOpen] = useState(false);
   const [selectedDeployAction, setSelectedDeployAction] = useState<DeployAction>('deploy');
-  // Deleting a build cannot be undone, so the trash icon asks first rather than
-  // acting. Confirming inline keeps it out of a modal, which the All Builds drawer
-  // would otherwise have to stack one inside.
+  // Deleting a build cannot be undone, so the trash icon asks for confirmation first.
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const latestBuild = builds[0] ?? null;
   const visibleBuilds = builds.slice(0, VISIBLE_BUILD_COUNT);
@@ -105,7 +106,6 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       {items.map((build) => {
         const blockedReason = undeletableBuilds[build.buildId];
-        const confirming = pendingDelete === build.buildId;
         return (
           <Card key={build.buildId} variant="outlined">
             <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
@@ -139,45 +139,19 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
                     </Box>
                   ) : null}
                 </Box>
-                {confirming ? null : (
-                  <Tooltip title={blockedReason || 'Delete this build'}>
-                    <span>
-                      <IconButton
-                        size="small"
-                        aria-label={`Delete build ${build.buildId}`}
-                        disabled={busy || Boolean(blockedReason)}
-                        onClick={() => setPendingDelete(build.buildId)}
-                      >
-                        <Trash2 size={15} />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                )}
-              </Box>
-              {confirming ? (
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-                    Delete this build?
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                    <Button
+                <Tooltip title={blockedReason || 'Delete this build'}>
+                  <span>
+                    <IconButton
                       size="small"
-                      color="error"
-                      variant="contained"
-                      disabled={busy}
-                      onClick={() => {
-                        setPendingDelete(null);
-                        onDeleteBuild(build.buildId);
-                      }}
+                      aria-label={`Delete build ${build.buildId}`}
+                      disabled={busy || Boolean(blockedReason)}
+                      onClick={() => setPendingDelete(build.buildId)}
                     >
-                      Delete
-                    </Button>
-                    <Button size="small" disabled={busy} onClick={() => setPendingDelete(null)}>
-                      Cancel
-                    </Button>
-                  </Box>
-                </Box>
-              ) : null}
+                      <Trash2 size={15} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
             </CardContent>
           </Card>
         );
@@ -300,6 +274,28 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
           {renderBuilds(builds)}
         </Box>
       </Drawer>
+
+      <Dialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)}>
+        <DialogTitle>Delete this build?</DialogTitle>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={busy}
+            onClick={() => {
+              if (!pendingDelete) return;
+              const buildId = pendingDelete;
+              setPendingDelete(null);
+              onDeleteBuild(buildId);
+            }}
+          >
+            Delete
+          </Button>
+          <Button disabled={busy} onClick={() => setPendingDelete(null)}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 };
