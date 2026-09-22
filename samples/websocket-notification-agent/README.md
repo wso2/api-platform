@@ -40,7 +40,7 @@ This sample doesn't provision anything on its own. Follow the [companion guide](
 
 1. Deploy `tools-server` publicly, and create and deploy an MCP proxy in front of it.
 2. Set up an AI gateway, and create and deploy an LLM provider for Gemini.
-3. Publish the WebSocket API from the previous guide's sample, subscribe to it, and generate an access token.
+3. Publish the WebSocket API from the [previous guide's sample](https://github.com/wso2/api-platform/tree/main/samples/websocket-notification-system), subscribe to it, and generate an access token.
 
 Each of those steps tells you which environment variable below to collect the resulting URL or credential into.
 

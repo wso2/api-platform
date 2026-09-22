@@ -81,11 +81,12 @@ async def handle_notification(notification, tools_session, gemini_tools, gemini)
         print(f"[agent] LLM call failed, skipping this tick: {type(err).__name__}")
         return
 
-    if not response.candidates:
+    candidate = response.candidates[0] if response.candidates else None
+    if candidate is None or candidate.content is None or not candidate.content.parts:
         print("[agent] Gemini returned no tool candidate, skipping this tick.")
         return
 
-    for part in response.candidates[0].content.parts:
+    for part in candidate.content.parts:
         if not part.function_call:
             continue
         name = part.function_call.name
