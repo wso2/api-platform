@@ -8586,6 +8586,24 @@ components:
             ap:gateway_custom_policy:delete: Delete a gateway custom policy
             ap:gateway_custom_policy:manage: Full access to gateway custom policies
             ap:gateway_custom_policy:read: Read gateway custom policies
+            ap:graphql_api:api_key:create: Create an API key for a GraphQL API
+            ap:graphql_api:api_key:delete: Delete an API key of a GraphQL API
+            ap:graphql_api:api_key:manage: Full access to a GraphQL API's API keys
+            ap:graphql_api:api_key:update: Update an API key of a GraphQL API
+            ap:graphql_api:create: Create a GraphQL API
+            ap:graphql_api:delete: Delete a GraphQL API
+            ap:graphql_api:deployment:create: Deploy a GraphQL API
+            ap:graphql_api:deployment:delete: Delete a GraphQL API deployment
+            ap:graphql_api:deployment:manage: Full access to GraphQL API deployments
+            ap:graphql_api:deployment:read: Read GraphQL API deployments
+            ap:graphql_api:deployment:restore: Restore a GraphQL API deployment
+            ap:graphql_api:deployment:undeploy: Undeploy a GraphQL API deployment
+            ap:graphql_api:gateway:create: Add gateways to a GraphQL API
+            ap:graphql_api:gateway:manage: Full access to a GraphQL API's gateways
+            ap:graphql_api:gateway:read: Read a GraphQL API's gateways
+            ap:graphql_api:manage: Full access to GraphQL APIs
+            ap:graphql_api:read: Read GraphQL APIs
+            ap:graphql_api:update: Update a GraphQL API
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
@@ -10820,7 +10838,6 @@ components:
           type: integer
           description: 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
           example: 12
-
     TimeUnit:
       type: string
       description: Time unit for API key expiration duration
@@ -15153,6 +15170,10 @@ tags:
     description: API deployment artifact management and lifecycle operations
   - name: API Documents
     description: User-authored documents (how-to, support/public forum, other) attached to any API artifact
+  - name: GraphQL APIs
+    description: GraphQL API management operations
+  - name: GraphQL API Deployments
+    description: GraphQL API deployment artifact management and lifecycle operations
   - name: API Publications
     description: Publishing, unpublishing and deprecating an API on an API Portal, and the per-portal draft and live listing that feed those actions
   - name: API Portals
