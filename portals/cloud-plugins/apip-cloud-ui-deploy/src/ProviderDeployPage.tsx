@@ -66,9 +66,10 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
   onDeleteBuild,
 }) => {
   const [target, setTarget] = useState<Environment | null>(null);
-  // Nothing opens by default: the summary lines carry what the page is read for, and an
-  // environment opened for you is one you did not choose.
-  const [expandedEnvironments, setExpandedEnvironments] = useState<string[]>([]);
+  // Open the first environment initially so its gateway details are immediately visible.
+  const [expandedEnvironments, setExpandedEnvironments] = useState<string[]>(() =>
+    environments[0] ? [environments[0].name] : []
+  );
 
   // The dialog renders from the freshly loaded environment rather than the one
   // captured when it opened, so a background refresh keeps its gateway list and
@@ -86,47 +87,86 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
         </PageTitle.SubHeader>
       </PageTitle>
 
-      {/* Half width: it is a short list of short lines, and stretching it across the page
-          gave every build a line of empty space to sit in. */}
-      <Box sx={{ maxWidth: { xs: '100%', md: '50%' }, mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 3,
+          mt: 4,
+        }}
+      >
         <ProviderBuildsCard
           builds={builds}
           undeletableBuilds={undeletableBuildReasons(environments)}
           busy={busy}
           onDeleteBuild={onDeleteBuild}
         />
-      </Box>
 
-      {environments.length === 0 ? (
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <Typography variant="body1" gutterBottom>
-            No environments yet
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Add an environment to deploy this provider.
-          </Typography>
+        <Box sx={{ minWidth: 0, flex: 1, width: { xs: '100%', md: 'auto' } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Typography
+              sx={{
+                color: 'text.secondary',
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Environments
+            </Typography>
+            <Box
+              sx={{
+                minWidth: 28,
+                height: 24,
+                px: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 12,
+              }}
+            >
+              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                {environments.length}
+              </Typography>
+            </Box>
+          </Box>
+
+          {environments.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <Typography variant="body1" gutterBottom>
+                No environments yet
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Add an environment to deploy this provider.
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              {environments.map((environment) => (
+                <ProviderEnvironmentRow
+                  key={environment.name}
+                  environment={environment}
+                  expanded={expandedEnvironments.includes(environment.name)}
+                  onToggleExpand={(isExpanded) =>
+                    setExpandedEnvironments((previous) =>
+                      isExpanded
+                        ? [...previous, environment.name]
+                        : previous.filter((name) => name !== environment.name)
+                    )
+                  }
+                  busy={busy}
+                  onDeployClick={() => setTarget(environment)}
+                  onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
+                />
+              ))}
+            </Box>
+          )}
         </Box>
-      ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {environments.map((environment) => (
-            <ProviderEnvironmentRow
-              key={environment.name}
-              environment={environment}
-              expanded={expandedEnvironments.includes(environment.name)}
-              onToggleExpand={(isExpanded) =>
-                setExpandedEnvironments((previous) =>
-                  isExpanded
-                    ? [...previous, environment.name]
-                    : previous.filter((name) => name !== environment.name)
-                )
-              }
-              busy={busy}
-              onDeployClick={() => setTarget(environment)}
-              onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
-            />
-          ))}
-        </Box>
-      )}
+      </Box>
 
       <ProviderDeployDrawer
         open={openTarget !== null}
