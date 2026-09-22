@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 )
 
@@ -44,6 +45,45 @@ const (
 	graphQLSDLFileFormField  = "sdlFile"
 	graphQLMetadataFormField = "metadata"
 )
+
+// allowedSDLFileExtensions is the accepted-file-type allowlist for an
+// uploaded SDL document (file-access.md directive 6 — allowlist, never a
+// denylist), matching the same three extensions the upload UI offers.
+var allowedSDLFileExtensions = map[string]bool{
+	".graphql": true,
+	".gql":     true,
+	".json":    true,
+}
+
+// validateSDLFileName rejects a client-supplied filename outright rather
+// than silently sanitizing it, and checks its extension against the
+// allowlist above. The filename is never used to build a path —
+// ParseGraphQLAPIMultipartRequest discards it immediately after this check
+// and only the file's content ever reaches the caller — and Go's own
+// mime/multipart.Part.FileName() (what net/http.Request.FormFile reads)
+// already runs it through filepath.Base() before this function ever sees
+// it, so a forward-slash traversal attempt ("../../etc/passwd.graphql")
+// arrives here already reduced to a bare "passwd.graphql". The explicit
+// checks below are a second, cheap layer on top of that: a `/`/`\` survives
+// on some platforms' filepath.Base as a normal filename character (Go's
+// stripping is OS-separator-aware, not universal), and rejecting outright
+// on sight is more auditable than depending on that platform detail holding.
+// The null-byte case is caught earlier still, by the multipart header
+// parser itself, before FormFile ever returns.
+func validateSDLFileName(rawFilename string) error {
+	if strings.TrimSpace(rawFilename) == "" {
+		return fmt.Errorf("'%s' filename is required", graphQLSDLFileFormField)
+	}
+	if strings.ContainsRune(rawFilename, 0) ||
+		strings.ContainsAny(rawFilename, `/\`) ||
+		strings.Contains(rawFilename, "..") {
+		return fmt.Errorf("'%s' filename is not allowed", graphQLSDLFileFormField)
+	}
+	if ext := strings.ToLower(filepath.Ext(rawFilename)); !allowedSDLFileExtensions[ext] {
+		return fmt.Errorf("'%s' file type is not supported; accepted types: .graphql, .gql, .json", graphQLSDLFileFormField)
+	}
+	return nil
+}
 
 // ParseGraphQLAPIMultipartRequest extracts the JSON "metadata" field and the
 // optional "sdlFile" file part from a multipart/form-data GraphQL API
@@ -83,6 +123,10 @@ func ParseGraphQLAPIMultipartRequest(r *http.Request) (metadataJSON []byte, sdl 
 		return []byte(metadata), "", nil
 	}
 	defer f.Close()
+
+	if err := validateSDLFileName(fileHeader.Filename); err != nil {
+		return nil, "", err
+	}
 
 	if fileHeader.Size > maxGraphQLSDLUploadBytes {
 		return nil, "", fmt.Errorf("'%s' file exceeds the maximum allowed size of %d bytes", graphQLSDLFileFormField, maxGraphQLSDLUploadBytes)

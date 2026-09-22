@@ -110,18 +110,18 @@ export const API_TYPES: ApiType[] = [
     enabled: true,
   },
   {
-    key: 'websocket',
-    title: messages.webSocketTitle,
-    description: messages.webSocketDescription,
-    icon: <WebSocketIcon />,
-    enabled: false,
-  },
-  {
     key: 'graphql',
     title: messages.graphQlTitle,
     description: messages.graphQlDescription,
     icon: <GraphqlIcon />,
     enabled: true,
+  },
+  {
+    key: 'websocket',
+    title: messages.webSocketTitle,
+    description: messages.webSocketDescription,
+    icon: <WebSocketIcon />,
+    enabled: false,
   },
   {
     key: 'websub',

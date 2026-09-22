@@ -39,6 +39,7 @@ export type ListGraphQLApisQuery = QueryOf<'ListGraphQLAPIs'>;
 export type GraphQLApiSdlResponse = ResponseOf<'GetGraphQLAPISDL'>;
 export type ValidateGraphQLSchemaRequest = Schema<'ValidateGraphQLSchemaRequest'>;
 export type ValidateGraphQLSchemaResponse = Schema<'ValidateGraphQLSchemaResponse'>;
+export type GraphQLSdlValidationIssue = Schema<'GraphQLSdlValidationIssue'>;
 
 /**
  * JSON metadata for `POST /graphql-apis`, packed into the multipart body's

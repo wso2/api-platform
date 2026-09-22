@@ -59,12 +59,43 @@ describe('GraphqlSchemaExplorer — before anything has loaded', () => {
   // "Start with a schema" before importing, "Design from scratch" before
   // checking an endpoint, and a scratch endpoint where introspection is
   // disabled (which also never resolves an `sdl`).
-  it('shows a skeleton preview of the Query/Mutation/Object shape alongside the empty state', () => {
+  it('shows a skeleton preview of the Query/Mutation/Subscription shape alongside the empty state', () => {
     renderWithProviders(<GraphqlSchemaExplorer />);
 
     expect(screen.getByText('QUERY')).toBeInTheDocument();
     expect(screen.getByText('MUTATION')).toBeInTheDocument();
-    expect(screen.getByText('OBJECT')).toBeInTheDocument();
+    expect(screen.getByText('SUBSCRIPTION')).toBeInTheDocument();
+  });
+});
+
+// Pins the fix that lets the explorer show the backend's own reason a
+// validation attempt failed, instead of falling back to the same "Schema
+// will show here" empty state used before anything has even been attempted.
+describe('GraphqlSchemaExplorer — a failed validation attempt', () => {
+  it('shows each SDL error with its line and column, not the generic empty state', () => {
+    renderWithProviders(
+      <GraphqlSchemaExplorer
+        error={{ sdlErrors: [{ column: 12, line: 3, message: 'Unexpected Name "this"' }] }}
+      />,
+    );
+
+    expect(screen.getByText(/Line 3, column 12/)).toBeInTheDocument();
+    expect(screen.getByText(/Unexpected Name "this"/)).toBeInTheDocument();
+    expect(screen.queryByText('Schema will show here')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the generic message when no sdlErrors are given (a url/introspection failure)', () => {
+    renderWithProviders(
+      <GraphqlSchemaExplorer error={{ message: 'Introspection could not be completed.' }} />,
+    );
+
+    expect(screen.getByText('Introspection could not be completed.')).toBeInTheDocument();
+  });
+
+  it('shows a sterile fallback when neither sdlErrors nor a message is given', () => {
+    renderWithProviders(<GraphqlSchemaExplorer error={{}} />);
+
+    expect(screen.getByText('Schema could not be resolved.')).toBeInTheDocument();
   });
 });
 
@@ -119,20 +150,15 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
     expect(screen.getByText(/could not be parsed/)).toBeInTheDocument();
   });
 
-  it('gives Query, Mutation and each type kind their own chip color instead of a flat gray', () => {
+  it('gives Query and Mutation their own chip color, with no chip at all on a type’s kind label', () => {
     renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 
     expect(screen.getByText('Query').closest('.MuiChip-root')).toHaveClass('MuiChip-colorInfo');
     expect(screen.getByText('Mutation').closest('.MuiChip-root')).toHaveClass('MuiChip-colorSuccess');
-    // `Country` and `Review` are both OBJECT kind, so both their kind chips
-    // apply the same color — checking one of them is enough.
-    expect(screen.getAllByText('OBJECT')[0].closest('.MuiChip-root')).toHaveClass(
-      'MuiChip-colorPrimary',
-    );
-    // ENUM shares the neutral `default` gray with SCALAR — the two "terminal
-    // value" kinds — since only 5 tones are visually distinct in this theme
-    // for 6 kinds (see `SchemaChipColor`'s doc comment).
-    expect(screen.getByText('ENUM').closest('.MuiChip-root')).toHaveClass('MuiChip-colorDefault');
+    // A type's own kind (OBJECT/ENUM/…) is plain text now, not a colored
+    // chip — only the three root operations keep the chip treatment.
+    expect(screen.getAllByText('OBJECT')[0].closest('.MuiChip-root')).toBeNull();
+    expect(screen.getByText('ENUM').closest('.MuiChip-root')).toBeNull();
   });
 
   it('can switch back to Explorer after viewing SDL', async () => {

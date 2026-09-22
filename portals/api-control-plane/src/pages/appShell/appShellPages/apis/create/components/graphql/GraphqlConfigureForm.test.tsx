@@ -18,6 +18,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { collection } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
@@ -136,6 +137,148 @@ describe('GraphqlConfigureForm — client-side validation', () => {
         endpointUrl: 'https://backend.example.com/graphql',
         id: 'countries-api',
       }),
+    );
+  });
+
+  // The version field itself is required, even though the routing context it
+  // feeds is independently editable and doesn't have to carry a version
+  // segment (see `toContext` and the context field's own `contextEdited`
+  // override) — the two are deliberately decoupled.
+  it('requires a version, and blocks Create once it is cleared', async () => {
+    const onSubmit = vi.fn();
+    const { user } = renderWithProviders(
+      <GraphqlConfigureForm
+        initialValues={{ schemaSource: 'introspection' }}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+    await user.clear(screen.getByLabelText(/^Version/));
+    await user.tab();
+    await user.type(screen.getByLabelText(/Query and Mutation URL/), 'https://backend.example.com/graphql');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByText('Enter a version.')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // Unlike REST, a GraphQL API's context is optional — the server derives a
+  // default from the handle/version when it's left blank, so clearing the
+  // autofilled value here must not block Create.
+  it('does not require a context, and submits once it is cleared', async () => {
+    const onSubmit = vi.fn();
+    const { user } = renderWithProviders(
+      <GraphqlConfigureForm
+        initialValues={{ schemaSource: 'introspection' }}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+    await user.clear(screen.getByLabelText(/Context/));
+    await user.tab();
+    await user.type(screen.getByLabelText(/Query and Mutation URL/), 'https://backend.example.com/graphql');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(screen.queryByText('Enter a context.')).not.toBeInTheDocument();
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ context: '' }));
+  });
+
+  it('rejects a version with a disallowed character, but only once one is typed', async () => {
+    const onSubmit = vi.fn();
+    const { user } = renderWithProviders(
+      <GraphqlConfigureForm
+        initialValues={{ schemaSource: 'introspection' }}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Version/), '1.0/beta');
+    await user.tab();
+
+    expect(
+      await screen.findByText(
+        'Use letters, numbers, dots, hyphens and underscores — no spaces or slashes.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // The live availability check (`useGraphQLApiIdAvailability`) already runs
+  // for every identifier — including one autofilled from "Try with Sample
+  // Schema" deriving a display name, then a handle, from it — but a taken
+  // result used to fall through to the neutral helper text with nothing
+  // surfaced and nothing blocking Create, so the only place it showed up was
+  // the server's own rejection after a full round trip. This is the
+  // regression guard for showing and enforcing it beforehand instead.
+  it('flags an identifier a live check finds already taken, and blocks Create for it', async () => {
+    server.use(
+      collection('/graphql-apis', [{ id: 'countries-api' }], {
+        matches: (item, term) => (item as { id?: string }).id?.toLowerCase() === term,
+      }),
+    );
+    const onSubmit = vi.fn();
+    // The live check needs `ApiScopeProvider` (the API-layer, header-scoped
+    // context `useGraphQLApiIdAvailability` reads) — `renderForm`'s bare
+    // `ConsoleScopeContext` above doesn't supply it, so the query stays
+    // disabled and every other test in this file never resolves it either.
+    const { user } = renderWithProviders(
+      <ApiScopeProvider orgId="api-platform-demo" projectId="retail-apis">
+        <GraphqlConfigureForm
+          initialValues={{ schemaSource: 'introspection' }}
+          onBack={() => {}}
+          onSubmit={onSubmit}
+        />
+      </ApiScopeProvider>,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+    await user.type(screen.getByLabelText(/Query and Mutation URL/), 'https://backend.example.com/graphql');
+
+    expect(
+      await screen.findByText('This identifier is already in use.'),
+    ).toBeInTheDocument();
+
+    // Disabled outright — a confirmed-taken identifier isn't just flagged,
+    // it can't be submitted at all.
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('clears the taken-identifier warning once it is edited to a free one', async () => {
+    server.use(
+      collection('/graphql-apis', [{ id: 'countries-api' }], {
+        matches: (item, term) => (item as { id?: string }).id?.toLowerCase() === term,
+      }),
+    );
+    const { user } = renderWithProviders(
+      <ApiScopeProvider orgId="api-platform-demo" projectId="retail-apis">
+        <GraphqlConfigureForm
+          initialValues={{ schemaSource: 'introspection' }}
+          onBack={() => {}}
+          onSubmit={() => {}}
+        />
+      </ApiScopeProvider>,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+    await screen.findByText('This identifier is already in use.');
+
+    // The field's own label reads "Identifier *" (the required-field marker);
+    // a bare "Identifier" pattern would also match the "unavailable" icon's
+    // own accessible name ("Identifier is already in use").
+    await user.type(screen.getByLabelText(/^Identifier\s*\*/), '-v2');
+
+    await waitFor(() =>
+      expect(screen.queryByText('This identifier is already in use.')).not.toBeInTheDocument(),
     );
   });
 });

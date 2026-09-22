@@ -33,7 +33,7 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import { CircleCheck } from '@wso2/oxygen-ui-icons-react';
+import { CircleAlert, CircleCheck } from '@wso2/oxygen-ui-icons-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
@@ -74,14 +74,10 @@ const messages = defineMessages({
     id: 'api.create.graphql.configureForm.context.error.pattern',
     defaultMessage: 'Start with / and use only letters, numbers, hyphens, dots and slashes.',
   },
-  contextErrorRequired: {
-    id: 'api.create.graphql.configureForm.context.error.required',
-    defaultMessage: 'Enter a context.',
-  },
   contextHelper: {
     id: 'api.create.graphql.configureForm.context.helper',
     defaultMessage:
-      'Built from the identifier and version. All operations are served from this single path.',
+      'Built from the identifier and version. All operations are served from this single path. Optional — leave it as generated, or clear it to let the server pick one.',
   },
   contextLabel: {
     id: 'api.create.graphql.configureForm.context.label',
@@ -147,6 +143,15 @@ const messages = defineMessages({
   identifierStatusChecking: {
     id: 'api.create.graphql.configureForm.identifier.status.checking',
     defaultMessage: 'Checking whether this identifier is free…',
+  },
+  identifierStatusUnavailable: {
+    id: 'api.create.graphql.configureForm.identifier.status.unavailable',
+    defaultMessage: 'This identifier is already in use.',
+  },
+  identifierStatusUnavailableIcon: {
+    id: 'api.create.graphql.configureForm.identifier.status.unavailableIcon',
+    defaultMessage: 'Identifier is already in use',
+    description: 'Accessible label for the warning icon shown beside a taken identifier.',
   },
   nameErrorRequired: {
     id: 'api.create.graphql.configureForm.name.error.required',
@@ -286,9 +291,7 @@ const validate = (state: GraphqlApiCreationFormState): FieldErrors => {
   }
 
   const context = state.context.trim();
-  if (context === '' || context === '/') {
-    errors.context = messages.contextErrorRequired;
-  } else if (!CONTEXT_PATTERN.test(context)) {
+  if (context !== '' && !CONTEXT_PATTERN.test(context)) {
     errors.context = messages.contextErrorPattern;
   }
 
@@ -331,6 +334,10 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
   const availabilityAnswered =
     probeCandidate !== '' && probeSettled && availability.data !== undefined;
   const isAvailable = availabilityAnswered && availability.data === true;
+  // Known-taken, from this same live check REST's own create form defines
+  // but never wires up — surfaced inline (below) and blocks submission,
+  // rather than only being caught by the server's own rejection afterward.
+  const isUnavailable = availabilityAnswered && availability.data === false;
 
   const errorFor = (field: ValidatedField): MessageDescriptor | undefined =>
     touched[field] ? errors[field] : undefined;
@@ -402,7 +409,7 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
   const onFormSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (Object.keys(errors).length > 0) {
+    if (Object.keys(errors).length > 0 || isUnavailable) {
       setTouched({ context: true, displayName: true, id: true, targetUrl: true, version: true });
       return;
     }
@@ -471,7 +478,7 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
             </Grid>
 
             <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl error={Boolean(fieldErrors.id)} fullWidth required>
+              <FormControl error={Boolean(fieldErrors.id) || isUnavailable} fullWidth required>
                 <FormLabel htmlFor={INPUT_ID.id}>{identifierLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="graphqlIdentifier-error"
@@ -485,6 +492,15 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
                           sx={{ color: 'success.main', display: 'flex' }}
                         >
                           <CircleCheck size={18} />
+                        </Box>
+                      ) : null}
+                      {isUnavailable ? (
+                        <Box
+                          aria-label={intl.formatMessage(messages.identifierStatusUnavailableIcon)}
+                          role="img"
+                          sx={{ color: 'error.main', display: 'flex' }}
+                        >
+                          <CircleAlert size={18} />
                         </Box>
                       ) : null}
                     </InputAdornment>
@@ -502,6 +518,8 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
                   {fieldErrors.id ??
                     (isChecking ? (
                       <FormattedMessage {...messages.identifierStatusChecking} />
+                    ) : isUnavailable ? (
+                      <FormattedMessage {...messages.identifierStatusUnavailable} />
                     ) : isAvailable ? (
                       <FormattedMessage {...messages.identifierStatusAvailable} />
                     ) : (
@@ -529,7 +547,7 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
             </Grid>
           </Grid>
 
-          <FormControl error={Boolean(fieldErrors.context)} fullWidth required>
+          <FormControl error={Boolean(fieldErrors.context)} fullWidth>
             <FormLabel htmlFor={INPUT_ID.context}>{contextLabel}</FormLabel>
             <OutlinedInput
               aria-describedby="graphqlContext-error"
@@ -588,7 +606,7 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
           <Button onClick={props.onBack} type="button" variant="text">
             <FormattedMessage {...messages.back} />
           </Button>
-          <Button type="submit" variant="contained">
+          <Button disabled={isUnavailable} type="submit" variant="contained">
             <FormattedMessage {...messages.create} />
           </Button>
         </Stack>

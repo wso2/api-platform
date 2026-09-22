@@ -100,6 +100,20 @@ describe('GraphqlApiEditPage', () => {
     expect(await screen.findByText('API overview')).toBeInTheDocument();
   });
 
+  it('requires a version, and blocks the save once it is cleared', async () => {
+    server.use(resource('/graphql-apis/:graphqlApiId', api));
+    server.use(accepts('put', `/graphql-apis/${API}`, api, { record: requests }));
+
+    const { user } = renderPage();
+
+    const version = await screen.findByDisplayValue('1.0.0');
+    await user.clear(version);
+    await user.click(screen.getByRole('button', { name: /Save changes/ }));
+
+    expect(await screen.findByText('Enter a version.')).toBeInTheDocument();
+    expect(requests.count()).toBe(0);
+  });
+
   it('refuses a gateway-managed API, even when reached by URL', async () => {
     server.use(resource('/graphql-apis/:graphqlApiId', { ...api, readOnly: true }));
 

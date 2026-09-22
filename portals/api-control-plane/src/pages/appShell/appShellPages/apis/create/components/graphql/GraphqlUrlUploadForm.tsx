@@ -17,48 +17,45 @@
  */
 
 import {
-  Box,
   Button,
+  CircularProgress,
   FormControl,
   FormHelperText,
-  IconButton,
-  InputLabel,
+  FormLabel,
   OutlinedInput,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Upload, X, Zap } from '@wso2/oxygen-ui-icons-react';
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { Zap } from '@wso2/oxygen-ui-icons-react';
+import { useRef, useState, type FormEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import { pillToggleGroupSx } from '@/theme/receipes';
 import { useValidateGraphQLSchema } from '@/api/resources/graphqlApis';
 import { isValidUrl } from '../../../utils/developEdit';
-import type { GraphqlResolvedSchema } from './graphqlSourceTypes';
+import { FileDropzone, type FileDropzoneRejection, type FileFieldError } from '../FileDropzone';
+import type { GraphqlResolutionFailure, GraphqlResolvedSchema } from './graphqlSourceTypes';
 
 /** Extensions the upload tab accepts. */
 const FILE_EXTENSIONS = ['.graphql', '.gql', '.json'];
 
-/** SDL sample the "Try with Sample Endpoint" link fills the URL field with. */
+/** SDL sample the "Try with Sample Schema" link fills the URL field with. */
 const SAMPLE_SDL_URL = 'https://raw.githubusercontent.com/graphql/swapi-graphql/master/schema.graphql';
 
 const messages = defineMessages({
-  fetch: {
-    id: 'api.create.graphql.urlUpload.action.fetch',
-    defaultMessage: 'Fetch Schema',
-  },
-  fileRequired: {
-    id: 'api.create.graphql.urlUpload.file.required',
-    defaultMessage: 'Select a schema file to continue.',
-  },
   sampleUrl: {
     id: 'api.create.graphql.urlUpload.action.sampleUrl',
-    defaultMessage: 'Try with Sample Endpoint',
+    defaultMessage: 'Try with Sample Schema',
   },
   sourceFile: {
     id: 'api.create.graphql.urlUpload.source.file',
     defaultMessage: 'Upload',
+  },
+  sourceLabel: {
+    id: 'api.create.graphql.urlUpload.source.label',
+    defaultMessage: 'Import the schema from',
   },
   sourceUrl: {
     id: 'api.create.graphql.urlUpload.source.url',
@@ -76,18 +73,18 @@ const messages = defineMessages({
     id: 'api.create.graphql.urlUpload.url.label',
     defaultMessage: 'Schema URL',
   },
+  urlPlaceholder: {
+    id: 'api.create.graphql.urlUpload.url.placeholder',
+    defaultMessage: 'Enter URL for GraphQL Schema here',
+  },
   urlRequired: {
     id: 'api.create.graphql.urlUpload.url.required',
     defaultMessage: 'Enter the URL of the SDL file.',
   },
-  urlUploadRemove: {
-    id: 'api.create.graphql.urlUpload.file.remove',
-    defaultMessage: 'Remove {fileName}',
-    description: 'Accessible name for the button that discards the chosen file.',
-  },
-  urlUploadTitle: {
-    id: 'api.create.graphql.urlUpload.file.title',
-    defaultMessage: 'Upload a schema file',
+  validating: {
+    id: 'api.create.graphql.urlUpload.status.validating',
+    defaultMessage: 'Validating schema…',
+    description: 'Shown while a URL/file just supplied is being checked, which starts on its own.',
   },
 });
 
@@ -96,28 +93,55 @@ type SourceKey = 'url' | 'file';
 export type GraphqlUrlUploadFormProps = {
   /** Called with the resolved schema, or `null` once the inputs move on from it. */
   onResolved: (resolved: GraphqlResolvedSchema | null) => void;
+  /**
+   * Called with the last validation failure's detail, or `null` once cleared —
+   * lets `GraphqlSchemaExplorer` show the actual reason instead of its
+   * generic empty state. Optional so a caller with no explorer to feed
+   * (there is currently only one) isn't forced to wire it.
+   */
+  onValidationFailed?: (failure: GraphqlResolutionFailure | null) => void;
 };
 
 /**
  * "Start with a schema" side of the source step: import SDL from a URL (the
- * backend fetches it, SSRF-guarded) or upload a schema file, checked without
- * leaving the step via the dry-run `/graphql-apis/validate-schema` endpoint.
+ * backend fetches it, SSRF-guarded) or upload a schema file, checked via the
+ * dry-run `/graphql-apis/validate-schema` endpoint.
+ *
+ * Shares its source toggle styling (`pillToggleGroupSx`) and its upload
+ * dropzone (`FileDropzone`) with REST/WebSocket's `ContractSourceForm`, so
+ * every creation wizard's source step reads as the same control.
+ *
+ * Neither source needs a fetch button: leaving a valid URL field checks it
+ * (mirroring `ContractSourceForm`'s own URL source), and choosing a file is
+ * itself a finished selection, so it is checked the moment it is picked.
  */
-export const GraphqlUrlUploadForm = ({ onResolved }: GraphqlUrlUploadFormProps) => {
+export const GraphqlUrlUploadForm = ({
+  onResolved,
+  onValidationFailed,
+}: GraphqlUrlUploadFormProps) => {
   const intl = useIntl();
   const [source, setSource] = useState<SourceKey>('url');
   const [url, setUrl] = useState('');
   const [urlTouched, setUrlTouched] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState<'required' | null>(null);
+  const [fileError, setFileError] = useState<FileFieldError>(null);
   const validate = useValidateGraphQLSchema();
+  /**
+   * The URL a check has already been run for, so leaving and re-entering an
+   * unedited field doesn't re-check it. Cleared by `reset()` so a genuinely
+   * new attempt (a tab switch, an edit) always re-checks even an unchanged
+   * value.
+   */
+  const checkedUrlRef = useRef<string | null>(null);
 
   const trimmedUrl = url.trim();
   const urlInvalid = urlTouched && (trimmedUrl === '' || !isValidUrl(trimmedUrl));
 
   const reset = () => {
+    checkedUrlRef.current = null;
     validate.reset();
     onResolved(null);
+    onValidationFailed?.(null);
   };
 
   const handleSourceChange = (next: SourceKey | null) => {
@@ -126,85 +150,115 @@ export const GraphqlUrlUploadForm = ({ onResolved }: GraphqlUrlUploadFormProps) 
     reset();
   };
 
-  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
-    const next = event.target.files?.[0] ?? null;
-    event.target.value = ''; // lets the same file be picked again after removal
-    setFile(next);
-    setFileError(null);
-    reset();
-  };
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (source === 'url') {
-      setUrlTouched(true);
-      if (trimmedUrl === '' || !isValidUrl(trimmedUrl)) return;
-
-      validate.mutate(
-        { metadata: { schemaSource: 'url', sdlUrl: trimmedUrl } },
-        {
-          onSuccess: (result) =>
-            onResolved(
-              result.resolved
-                ? { schemaSource: 'url', sdl: result.sdl, sdlUrl: trimmedUrl }
-                : null,
-            ),
-          onError: () => onResolved(null),
-        },
-      );
-      return;
-    }
-
-    if (file === null) {
-      setFileError('required');
-      return;
-    }
+  const checkUrl = (target: string) => {
+    checkedUrlRef.current = target;
     validate.mutate(
-      { metadata: { schemaSource: 'file' }, sdlFile: file },
+      { metadata: { schemaSource: 'url', sdlUrl: target } },
       {
-        onSuccess: (result) =>
-          onResolved(result.resolved ? { schemaSource: 'file', sdl: result.sdl, sdlFile: file } : null),
-        onError: () => onResolved(null),
+        onSuccess: (result) => {
+          if (result.resolved) {
+            onResolved({ schemaSource: 'url', sdl: result.sdl, sdlUrl: target });
+            onValidationFailed?.(null);
+          } else {
+            onResolved(null);
+            onValidationFailed?.({ message: result.message, sdlErrors: result.sdlErrors });
+          }
+        },
+        onError: () => {
+          onResolved(null);
+          onValidationFailed?.(null);
+        },
       },
     );
   };
 
-  const resolved = validate.data?.resolved === true;
+  /** Leaving a valid URL is the whole gesture: it is checked then, rather than on a button afterwards. */
+  const commitUrl = () => {
+    setUrlTouched(true);
+    if (trimmedUrl === '' || !isValidUrl(trimmedUrl) || checkedUrlRef.current === trimmedUrl) return;
+    checkUrl(trimmedUrl);
+  };
+
+  /** Enter in the URL field checks it without having to leave the field first. */
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (source === 'url') commitUrl();
+  };
+
+  /** An accepted file is a finished selection, so it is checked straight away. */
+  const handleFileSelect = (next: File) => {
+    setFileError(null);
+    setFile(next);
+    reset();
+
+    validate.mutate(
+      { metadata: { schemaSource: 'file' }, sdlFile: next },
+      {
+        onSuccess: (result) => {
+          if (result.resolved) {
+            onResolved({ schemaSource: 'file', sdl: result.sdl, sdlFile: next });
+            onValidationFailed?.(null);
+          } else {
+            onResolved(null);
+            onValidationFailed?.({ message: result.message, sdlErrors: result.sdlErrors });
+          }
+        },
+        onError: () => {
+          onResolved(null);
+          onValidationFailed?.(null);
+        },
+      },
+    );
+  };
+
+  /** Rejects the current file using the provided reason. */
+  const handleFileReject = (reason: FileDropzoneRejection) => {
+    setFile(null);
+    setFileError(reason === 'unsupported' ? 'unsupported' : null);
+    reset();
+  };
+
   const failedToResolve = validate.isSuccess && validate.data.resolved === false;
 
   return (
+    // No fetch button: leaving a valid URL, or choosing a file, checks it —
+    // Enter in the URL field is this form's only other way to trigger that.
     <Stack component="form" noValidate onSubmit={handleSubmit} spacing={2}>
-      <ToggleButtonGroup
-        exclusive
-        onChange={(_event, next: SourceKey | null) => handleSourceChange(next)}
-        size="small"
-        value={source}
-      >
-        <ToggleButton sx={{ textTransform: 'none' }} value="url">
-          <FormattedMessage {...messages.sourceUrl} />
-        </ToggleButton>
-        <ToggleButton sx={{ textTransform: 'none' }} value="file">
-          <FormattedMessage {...messages.sourceFile} />
-        </ToggleButton>
-      </ToggleButtonGroup>
+      <FormControl>
+        <ToggleButtonGroup
+          aria-label={intl.formatMessage(messages.sourceLabel)}
+          exclusive
+          onChange={(_event, next: SourceKey | null) => handleSourceChange(next)}
+          sx={pillToggleGroupSx}
+          value={source}
+        >
+          <ToggleButton type="button" value="url">
+            <FormattedMessage {...messages.sourceUrl} />
+          </ToggleButton>
+          <ToggleButton type="button" value="file">
+            <FormattedMessage {...messages.sourceFile} />
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </FormControl>
 
       {source === 'url' ? (
         <Stack spacing={1}>
           <FormControl error={urlInvalid} fullWidth required>
-            <InputLabel htmlFor="graphqlSchemaUrl">{intl.formatMessage(messages.urlLabel)}</InputLabel>
+            <FormLabel htmlFor="graphqlSchemaUrl">{intl.formatMessage(messages.urlLabel)}</FormLabel>
             <OutlinedInput
+              aria-describedby="graphqlSchemaUrl-helper"
               id="graphqlSchemaUrl"
-              label={intl.formatMessage(messages.urlLabel)}
-              onBlur={() => setUrlTouched(true)}
+              onBlur={commitUrl}
               onChange={(event) => {
                 setUrl(event.target.value);
                 reset();
               }}
+              placeholder={intl.formatMessage(messages.urlPlaceholder)}
+              sx={{ mt: 0.75 }}
               value={url}
             />
             {urlInvalid ? (
-              <FormHelperText>
+              <FormHelperText id="graphqlSchemaUrl-helper">
                 <FormattedMessage
                   {...(trimmedUrl === '' ? messages.urlRequired : messages.urlInvalid)}
                 />
@@ -216,7 +270,12 @@ export const GraphqlUrlUploadForm = ({ onResolved }: GraphqlUrlUploadFormProps) 
               setUrl(SAMPLE_SDL_URL);
               setUrlTouched(false);
               reset();
+              checkUrl(SAMPLE_SDL_URL);
             }}
+            // Without this, the mousedown that starts the click first blurs
+            // the URL field — committing whatever it held before this button
+            // replaces it — and the sample would be checked twice.
+            onMouseDown={(event) => event.preventDefault()}
             size="small"
             startIcon={<Zap size={16} />}
             sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
@@ -227,65 +286,27 @@ export const GraphqlUrlUploadForm = ({ onResolved }: GraphqlUrlUploadFormProps) 
           </Button>
         </Stack>
       ) : (
-        <FormControl error={fileError !== null} fullWidth>
-          <Box
-            sx={(theme) => ({
-              alignItems: 'center',
-              border: `1px dashed ${theme.palette.divider}`,
-              borderRadius: 1,
-              display: 'flex',
-              justifyContent: 'space-between',
-              px: 2,
-              py: 1.5,
-            })}
-          >
-            <Typography color="text.secondary" noWrap sx={{ minWidth: 0 }} variant="body2">
-              {file?.name ?? intl.formatMessage(messages.urlUploadTitle)}
-            </Typography>
-            {file ? (
-              <IconButton
-                aria-label={intl.formatMessage(messages.urlUploadRemove, { fileName: file.name })}
-                onClick={() => setFile(null)}
-                size="small"
-              >
-                <X size={16} />
-              </IconButton>
-            ) : (
-              <Button component="label" size="small" startIcon={<Upload size={16} />}>
-                <FormattedMessage {...messages.sourceFile} />
-                <Box
-                  accept={FILE_EXTENSIONS.join(',')}
-                  component="input"
-                  onChange={handleFileSelect}
-                  sx={{ display: 'none' }}
-                  type="file"
-                />
-              </Button>
-            )}
-          </Box>
-          {fileError === 'required' ? (
-            <FormHelperText>
-              <FormattedMessage {...messages.fileRequired} />
-            </FormHelperText>
-          ) : null}
-        </FormControl>
+        <FileDropzone
+          error={fileError}
+          extensions={FILE_EXTENSIONS}
+          file={file}
+          onReject={handleFileReject}
+          onSelect={handleFileSelect}
+        />
       )}
 
-      {resolved ? null : failedToResolve ? (
+      {validate.isPending ? (
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <CircularProgress size={16} />
+          <Typography color="text.secondary" variant="body2">
+            <FormattedMessage {...messages.validating} />
+          </Typography>
+        </Stack>
+      ) : failedToResolve ? (
         <Typography color="error.main" variant="body2">
           <FormattedMessage {...messages.unresolved} />
         </Typography>
       ) : null}
-
-      <Button
-        disabled={resolved}
-        loading={validate.isPending}
-        sx={{ alignSelf: 'flex-start' }}
-        type="submit"
-        variant="contained"
-      >
-        <FormattedMessage {...messages.fetch} />
-      </Button>
     </Stack>
   );
 };

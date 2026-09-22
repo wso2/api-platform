@@ -22,7 +22,7 @@ import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { accepts, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { fireEvent, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GraphqlUrlUploadForm } from './GraphqlUrlUploadForm';
 
 const ORG = 'api-platform-demo';
@@ -44,13 +44,15 @@ const renderForm = (onResolved = vi.fn()) => {
 };
 
 describe('GraphqlUrlUploadForm — URL tab', () => {
-  it('requires a URL before submitting', async () => {
+  it('requires a URL once the field is left empty', async () => {
     const { onResolved, user } = renderForm();
 
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.click(screen.getByLabelText(/Schema URL/));
+    await user.tab();
 
     expect(await screen.findByText('Enter the URL of the SDL file.')).toBeInTheDocument();
     expect(onResolved).not.toHaveBeenCalled();
+    expect(requests.count()).toBe(0);
   });
 
   it('rejects a non-URL value once the field is touched', async () => {
@@ -62,7 +64,7 @@ describe('GraphqlUrlUploadForm — URL tab', () => {
     expect(await screen.findByText('Enter a valid HTTP or HTTPS URL.')).toBeInTheDocument();
   });
 
-  it('resolves a valid URL and reports the resolved schema', async () => {
+  it('checks a valid URL on its own once the field is left, with no fetch button', async () => {
     server.use(
       accepts(
         'post',
@@ -73,8 +75,10 @@ describe('GraphqlUrlUploadForm — URL tab', () => {
     );
     const { onResolved, user } = renderForm();
 
+    expect(screen.queryByRole('button', { name: 'Fetch Schema' })).not.toBeInTheDocument();
+
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
 
     await waitFor(() =>
       expect(onResolved).toHaveBeenCalledWith({
@@ -86,24 +90,36 @@ describe('GraphqlUrlUploadForm — URL tab', () => {
     expect(requests.count()).toBe(1);
   });
 
-  it('disables Fetch Schema once resolved, and re-enables it once the URL is edited', async () => {
+  it('does not re-check an unchanged URL on a second blur, but does after an edit', async () => {
     server.use(
-      accepts('post', '/graphql-apis/validate-schema', {
-        resolved: true,
-        sdl: 'type Query { hello: String }',
-      }),
+      accepts(
+        'post',
+        '/graphql-apis/validate-schema',
+        { resolved: true, sdl: 'type Query { hello: String }' },
+        { record: requests },
+      ),
     );
     const { onResolved, user } = renderForm();
+    const field = screen.getByLabelText(/Schema URL/);
 
-    await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.type(field, 'https://raw.example.com/schema.graphql');
+    await user.tab();
+    await waitFor(() => expect(requests.count()).toBe(1));
 
-    await waitFor(() => expect(onResolved).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: 'Fetch Schema' })).toBeDisabled();
+    // Leaving the field again with nothing edited must not re-check it.
+    await user.click(field);
+    await user.tab();
+    expect(requests.count()).toBe(1);
 
-    await user.type(screen.getByLabelText(/Schema URL/), '2');
-
-    expect(screen.getByRole('button', { name: 'Fetch Schema' })).toBeEnabled();
+    // Editing it invalidates the cached check, so leaving it again does re-check.
+    await user.type(field, '2');
+    await user.tab();
+    await waitFor(() => expect(requests.count()).toBe(2));
+    expect(onResolved).toHaveBeenLastCalledWith({
+      schemaSource: 'url',
+      sdl: 'type Query { hello: String }',
+      sdlUrl: 'https://raw.example.com/schema.graphql2',
+    });
   });
 
   it('shows the unresolved message and reports null when the server could not resolve the schema', async () => {
@@ -111,7 +127,7 @@ describe('GraphqlUrlUploadForm — URL tab', () => {
     const { onResolved, user } = renderForm();
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
 
     expect(
       await screen.findByText('That schema could not be resolved. Check it is valid GraphQL SDL.'),
@@ -126,7 +142,7 @@ describe('GraphqlUrlUploadForm — URL tab', () => {
     const { onResolved, user } = renderForm();
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
 
     await waitFor(() => expect(onResolved).toHaveBeenLastCalledWith(null));
     expect(
@@ -134,17 +150,19 @@ describe('GraphqlUrlUploadForm — URL tab', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('fills the URL field from the sample-endpoint link and resets any prior resolution', async () => {
+  it('fills the URL field from the sample-endpoint link and checks it immediately', async () => {
     server.use(
-      accepts('post', '/graphql-apis/validate-schema', {
-        resolved: true,
-        sdl: 'type Query { a: String }',
-      }),
+      accepts(
+        'post',
+        '/graphql-apis/validate-schema',
+        { resolved: true, sdl: 'type Query { a: String }' },
+        { record: requests },
+      ),
     );
     const { onResolved, user } = renderForm();
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
+    await user.tab();
     await waitFor(() =>
       expect(onResolved).toHaveBeenLastCalledWith({
         schemaSource: 'url',
@@ -153,14 +171,14 @@ describe('GraphqlUrlUploadForm — URL tab', () => {
       }),
     );
 
-    await user.click(screen.getByRole('button', { name: 'Try with Sample Endpoint' }));
+    await user.click(screen.getByRole('button', { name: 'Try with Sample Schema' }));
 
-    // Filling the sample URL resets the prior resolution rather than leaving
-    // a stale "resolved" result attached to a URL the user never fetched.
-    expect(onResolved).toHaveBeenLastCalledWith(null);
     expect(screen.getByLabelText(/Schema URL/)).toHaveValue(
       'https://raw.githubusercontent.com/graphql/swapi-graphql/master/schema.graphql',
     );
+    // No second, stale request for the URL it replaced — the click resets and
+    // checks the sample in one go rather than committing the old value first.
+    await waitFor(() => expect(requests.count()).toBe(2));
   });
 });
 
@@ -170,20 +188,16 @@ describe('GraphqlUrlUploadForm — Upload tab', () => {
     await user.click(screen.getByRole('button', { name: 'Upload' }));
   };
 
-  it('requires a file before submitting', async () => {
+  it('has no fetch button and does nothing until a file is chosen', async () => {
     const { user } = renderForm();
 
-    // Switching tabs itself reports null (clearing whatever the other tab had
-    // resolved) — the assertion that matters here is that submitting with no
-    // file never reaches the network, not that onResolved was never called.
     await switchToUploadTab(user);
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
 
-    expect(await screen.findByText('Select a schema file to continue.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Fetch Schema' })).not.toBeInTheDocument();
     expect(requests.count()).toBe(0);
   });
 
-  it('resolves an uploaded file and reports the resolved schema', async () => {
+  it('checks a chosen file immediately, with no fetch button', async () => {
     server.use(
       accepts(
         'post',
@@ -205,8 +219,6 @@ describe('GraphqlUrlUploadForm — Upload tab', () => {
     // Selecting a file shows its name and swaps the picker for a remove button.
     expect(screen.getByText('schema.graphql')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
-
     await waitFor(() =>
       expect(onResolved).toHaveBeenCalledWith({
         schemaSource: 'file',
@@ -217,19 +229,51 @@ describe('GraphqlUrlUploadForm — Upload tab', () => {
     expect(requests.count()).toBe(1);
   });
 
-  it('lets the chosen file be removed and re-requires a file before submitting again', async () => {
-    const { container, user } = renderForm();
+  it('lets the chosen file be removed, clearing whatever it had resolved', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/validate-schema', {
+        resolved: true,
+        sdl: 'type Query { hello: String }',
+      }),
+    );
+    const { container, onResolved, user } = renderForm();
 
     await switchToUploadTab(user);
     const file = new File(['type Query { hello: String }'], 'schema.graphql');
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(fileInput, file);
+    await waitFor(() =>
+      expect(onResolved).toHaveBeenLastCalledWith({
+        schemaSource: 'file',
+        sdl: 'type Query { hello: String }',
+        sdlFile: file,
+      }),
+    );
 
     await user.click(screen.getByRole('button', { name: 'Remove schema.graphql' }));
 
     expect(screen.queryByText('schema.graphql')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Fetch Schema' }));
-    expect(await screen.findByText('Select a schema file to continue.')).toBeInTheDocument();
+    expect(onResolved).toHaveBeenLastCalledWith(null);
+  });
+
+  it('rejects a file extension the shared dropzone does not accept, without checking it', async () => {
+    const { container, onResolved, user } = renderForm();
+
+    await switchToUploadTab(user);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    // `user.upload` honours the input's `accept` attribute and would refuse to
+    // hand the file over at all, so the change is fired directly — what a
+    // real drop, or an OS picker that ignores the filter, would still send.
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['not a schema'], 'notes.txt', { type: 'text/plain' })] },
+    });
+
+    expect(
+      await screen.findByText(/That file type is not supported\. Accepted types:/),
+    ).toBeInTheDocument();
+    // Switching to the tab, and the rejection itself, both report null —
+    // neither reaches the network, which is the behavior under test.
+    expect(onResolved).toHaveBeenLastCalledWith(null);
     expect(requests.count()).toBe(0);
   });
 });
