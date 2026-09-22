@@ -349,9 +349,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityMetrics), <MetricsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityLogs), <RuntimeLogsPage />)}
-          <Route path={routes.organizationPortals()} element={<PortalsPage />} />
-          <Route path={routes.projectPortals()} element={<PortalsPage />} />
-          <Route path={routes.apiPortals()} element={<PortalsPage />} />
+          {scopedRoutes(apiScopedPaths(routes.apiPortals), <PortalsPage />)}
           {/*
             Reached only from a portal card on the page above — like `apiEdit`,
             there is no sidebar link to it and so no scope-less alias to register.

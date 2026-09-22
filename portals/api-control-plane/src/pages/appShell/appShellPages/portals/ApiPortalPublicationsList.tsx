@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { REST_API_TYPE, useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { useExtensions } from '@/extensions';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
@@ -36,15 +37,15 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle',
-    defaultMessage: 'Choose the API portal to publish this API to.',
+    defaultMessage: 'Choose the Portal to publish this API to.',
   },
   searchPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder',
-    defaultMessage: 'Search API portals',
+    defaultMessage: 'Search portals',
   },
   noMatchesTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle',
-    defaultMessage: 'No matching API portals',
+    defaultMessage: 'No matching portals',
   },
   noMatchesDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesDescription',
@@ -52,26 +53,31 @@ const messages = defineMessages({
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.loading',
-    defaultMessage: 'Loading API portals',
+    defaultMessage: 'Loading portals',
   },
   errorMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.errorMessage',
-    defaultMessage: 'Unable to load API portals',
+    defaultMessage: 'Unable to load portals',
   },
   emptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle',
-    defaultMessage: 'No API portals available',
-    description: 'Shown when the organization has not registered any API Portal yet.',
+    defaultMessage: 'No Portals Available',
+    description: 'Shown when the organization has not registered any portal yet.',
   },
   emptyDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyDescription',
     defaultMessage:
-      'An organization admin needs to register an API portal before this API can be published.',
+      'Add a portal for this organization before publishing an API to it.',
+  },
+  emptyAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyAction',
+    defaultMessage: 'Add Portal',
+    description: 'Empty-state action opening the org-level Portals page. Verb phrase.',
   },
 });
 
 /**
- * Every API Portal registered in the organization, each annotated with this
+ * Every portal registered in the organization, each annotated with this
  * API's own publication status — the rollup from `GET /api-publications`.
  * Only REST APIs are published end to end today, so the API type is fixed.
  */
@@ -88,6 +94,12 @@ export function ApiPortalPublicationsList() {
 
   const [search, setSearch] = useState('');
   const publicationsQuery = useApiPublications(REST_API_TYPE, apiHandler, { limit: LIST_LIMIT });
+
+  // The empty-state "Add Portal" action points at the org-level portal registry,
+  // which lives in a cloud plugin. The OSS build has no such route, so guard on
+  // the extension being registered rather than emit a link that would 404.
+  const extensions = useExtensions();
+  const hasManagedPortalsExtension = extensions.some((ext) => ext.id === 'managed-api-portals');
 
   const openPublication = (publication: PublicationSummaryItem) => {
     if (!publication.apiPortalId) return;
@@ -130,7 +142,15 @@ export function ApiPortalPublicationsList() {
 
       {publications.length === 0 ? (
         <EmptyState
+          actionLabel={
+            hasManagedPortalsExtension ? intl.formatMessage(messages.emptyAction) : undefined
+          }
           description={intl.formatMessage(messages.emptyDescription)}
+          onAction={
+            hasManagedPortalsExtension
+              ? () => navigate(routes.managedApiPortals(orgHandle))
+              : undefined
+          }
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (

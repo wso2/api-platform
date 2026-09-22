@@ -7,7 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { BarChart3, Globe, Layers, ScrollText, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { BarChart3, Layers, PanelTop, ScrollText, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
@@ -221,8 +221,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
         order: 60,
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
-        label: 'API Portals',
-        icon: <Globe size={20} />,
+        label: 'Portals',
+        icon: <PanelTop size={20} />,
         level: 'organization',
       },
     ],
