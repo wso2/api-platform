@@ -193,16 +193,16 @@ describe('API-level items', () => {
   });
 });
 
-// Pins the fix for a real gap: Portals had no `graphqlTo` on its 'api' tier,
+// Pins the fix for a real gap: Publish had no `graphqlTo` on its 'api' tier,
 // so a GraphQL API fell through to the project-level Portals page instead of
 // its own — inconsistent with every other API-level item once one exists.
-describe('Portals resolves to the GraphQL API-level page', () => {
+describe('Publish resolves to the GraphQL API-level page', () => {
   it('links to GraphqlPublishPage once a GraphQL API is open, not the project Portals page', () => {
-    expect(definitionFor('portals').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/publish`);
+    expect(definitionFor('publish').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/publish`);
   });
 
   it('stays active on the GraphQL publish page', () => {
-    expect(matcherFor('portals')(`${GRAPHQL_API}/publish`)).toBe(true);
+    expect(matcherFor('publish')(`${GRAPHQL_API}/publish`)).toBe(true);
   });
 });
 

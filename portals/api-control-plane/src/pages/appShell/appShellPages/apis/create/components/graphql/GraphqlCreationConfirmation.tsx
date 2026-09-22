@@ -129,7 +129,7 @@ export const GraphqlCreationConfirmation = ({ api }: GraphqlCreationConfirmation
             <GraphqlIcon />
             <Chip label={intl.formatMessage(messages.typeChip)} size="small" />
           </Stack>
-          <CopyableField label={intl.formatMessage(messages.contextLabel)} value={api.context} />
+          <CopyableField label={intl.formatMessage(messages.contextLabel)} value={api.context ?? ''} />
           <CopyableField
             label={intl.formatMessage(messages.endpointLabel)}
             value={api.upstream.main.url ?? ''}

@@ -17,13 +17,13 @@
  */
 
 import { Box, Card, Grid, Stack, Typography } from '@wso2/oxygen-ui';
+import { Globe } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
 import type { GraphQLApiDetail } from '@/api/resources/graphqlApis';
 import type { Deployment } from '@/api/resources/graphqlApis/deployments';
 import { GraphqlSchemaExplorer } from '../../apis/create/components/graphql/GraphqlSchemaExplorer';
-import { EndpointsPanel } from '../../apis/overview/EndpointsPanel';
 import { InvokeUrlPanel } from '../../apis/overview/InvokeUrlPanel';
 import { GraphqlApiKeysPanel } from './GraphqlApiKeysPanel';
 import { GraphqlDeployedGatewaysPanel } from './GraphqlDeployedGatewaysPanel';
@@ -33,15 +33,48 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.schemaTitle',
     defaultMessage: 'Schema',
   },
+  endpointTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointTitle',
+    defaultMessage: 'Endpoint',
+  },
+  endpointNotConfigured: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointNotConfigured',
+    defaultMessage: 'No endpoint configured',
+  },
 });
+
+/**
+ * Read-only backend-endpoint display for a GraphQL API. `EndpointsPanel`
+ * (REST's Overview equivalent) grew inline editing backed by
+ * `useUpdateRestApi` and now takes a whole `RestApi`, so it's no longer the
+ * generic `{url}` component this page was written against — reusing it here
+ * would wire a REST-only mutation to a GraphQL API's id. Editing a GraphQL
+ * API's upstream endpoint has no equivalent flow yet, so this stays
+ * display-only until one exists.
+ */
+const EndpointPanel = ({ url }: { url?: string }) => (
+  <Card sx={{ p: 2 }}>
+    <Stack spacing={1.5}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Globe size={18} />
+        <Typography sx={{ fontWeight: 600 }} variant="subtitle2">
+          <FormattedMessage {...messages.endpointTitle} />
+        </Typography>
+      </Stack>
+      <Typography color={url ? 'text.primary' : 'text.secondary'} sx={{ wordBreak: 'break-all' }} variant="body2">
+        {url ?? <FormattedMessage {...messages.endpointNotConfigured} />}
+      </Typography>
+    </Stack>
+  </Card>
+);
 
 /**
  * Overview tab for a GraphQL API: schema explorer on the left, connectivity
  * details on the right — mirrors `apis/overview/OverviewTab.tsx`'s layout,
  * swapping the REST-only resources panel for the schema explorer already
  * built for the creation wizard, and API keys/deployed gateways for their
- * GraphQL-scoped forks. `EndpointsPanel` and `InvokeUrlPanel` are reused
- * unmodified — both are already generic over `{url}` / `{gateways, context}`.
+ * GraphQL-scoped forks. `InvokeUrlPanel` is reused unmodified — it's still
+ * generic over `{gateways, context}`.
  */
 export function GraphqlOverviewTab({
   api,
@@ -83,7 +116,7 @@ export function GraphqlOverviewTab({
               <GraphqlDeployedGatewaysPanel deployments={deployments} gateways={deployedGateways} />
             </>
           )}
-          <EndpointsPanel url={api.upstream?.main?.url} />
+          <EndpointPanel url={api.upstream?.main?.url} />
         </Stack>
       </Grid>
     </Grid>
