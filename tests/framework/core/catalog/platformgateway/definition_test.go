@@ -32,6 +32,7 @@ import (
 
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/components"
 )
 
 type policyRecordingRunner struct {
@@ -160,6 +161,53 @@ func TestPlatformGatewayVersionUpdatesBothServices(t *testing.T) {
 		definition.Compose.Env["PG_CONTROLLER_IMAGE"])
 	require.Equal(t, "ghcr.io/wso2/api-platform/gateway-runtime:legacy",
 		definition.Compose.Env["PG_RUNTIME_IMAGE"])
+}
+
+func TestPlatformGatewayReleasedConfigProfilesUseOfficialBases(t *testing.T) {
+	definition := PlatformGateway()
+	for version, want := range map[string]string{
+		"1.1.0": "tests/framework/core/catalog/platformgateway/resources/1.1.0/config.toml",
+		"1.2.0": "tests/framework/core/catalog/platformgateway/resources/1.2.0/config.toml",
+	} {
+		selected, err := definition.WithReleaseVersion(version)
+		require.NoError(t, err)
+		require.Equal(t, want, selected.Config.BaseConfigPath)
+		require.Equal(t,
+			"tests/framework/core/catalog/platformgateway/resources/"+version+"/gateway-controller-storage.toml",
+			selected.Config.SharedOverlayPath)
+	}
+
+	_, err := definition.WithReleaseVersion("1.3.0")
+	require.ErrorContains(t, err, `no profile for version "1.3.0"`)
+
+	runtimeDefinition := GatewayRuntime()
+	runtimeConfig, err := runtimeDefinition.WithReleaseVersion("1.1.0")
+	require.NoError(t, err)
+	require.Empty(t, runtimeConfig.Config.SharedOverlayPath)
+
+	legacy, err := definition.WithReleaseVersion("1.1.0")
+	require.NoError(t, err)
+	require.Equal(t, "/api/admin/v0.9/health", legacy.Health.Path)
+	current, err := definition.WithReleaseVersion("1.2.0")
+	require.NoError(t, err)
+	require.Equal(t, "/api/admin/v1/health", current.Health.Path)
+}
+
+func TestPlatformGatewayReleasedConfigProfilesAssembleVersionSpecificLayers(t *testing.T) {
+	root := unitRepoRoot(t)
+	for version, wantLiteralEnv := range map[string]bool{"1.1.0": false, "1.2.0": true} {
+		t.Run(version, func(t *testing.T) {
+			definition, err := PlatformGateway().WithConfigVersion(version)
+			require.NoError(t, err)
+			content, err := components.Assemble(definition.Config, root, "", components.Vars{components.VarBlock: "gateway"})
+			require.NoError(t, err)
+
+			config := string(content)
+			require.Contains(t, config, "username = 'consumer'")
+			require.Contains(t, config, "enabled = true")
+			require.Equal(t, wantLiteralEnv, strings.Contains(config, "{{ env"))
+		})
+	}
 }
 
 // TestComposeRuntimeBoundsItsShutdownDrain verifies the configured graceful shutdown period.

@@ -168,13 +168,13 @@
     "defaultMessage": "WebSub API"
   },
   "api.create.defineApi.contract.description": {
-    "defaultMessage": "Import from a URL or a file."
+    "defaultMessage": "Import an API contract from a URL or a file."
   },
   "api.create.defineApi.contract.title": {
     "defaultMessage": "Start with a contract"
   },
   "api.create.defineApi.scratch.description": {
-    "defaultMessage": "Set the backend endpoint, edit the definition, or continue in API Designer."
+    "defaultMessage": "Begin with a blank API and fill in the details."
   },
   "api.create.defineApi.scratch.endpoint.description": {
     "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you publish."
@@ -192,7 +192,7 @@
     "defaultMessage": "Ready to connect"
   },
   "api.create.defineApi.scratch.title": {
-    "defaultMessage": "Design from scratch"
+    "defaultMessage": "Start from scratch"
   },
   "api.create.fromContract.action.clearUrl": {
     "defaultMessage": "Clear URL",
@@ -271,9 +271,6 @@
   "api.create.fromContract.spec.invalidByBackend": {
     "defaultMessage": "The specification is not a valid OpenAPI document:",
     "description": "Heading above the list of backend validation errors."
-  },
-  "api.create.fromContract.spec.oversized": {
-    "defaultMessage": "That file is too large to validate in the browser."
   },
   "api.create.fromContract.spec.unreachable": {
     "defaultMessage": "That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests."
@@ -509,9 +506,6 @@
   },
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
-  },
-  "api.create.specIssue.externalRefs": {
-    "defaultMessage": "This definition references files outside itself, which are not read: {detail}"
   },
   "api.create.specIssue.missingTitle": {
     "defaultMessage": "No title in this definition — name the API on the next step."
@@ -3079,9 +3073,6 @@
   },
   "develop.definition.DefinitionPanel.fileReadError": {
     "defaultMessage": "Failed to read the selected file."
-  },
-  "develop.definition.DefinitionPanel.fileTooLarge": {
-    "defaultMessage": "The specification exceeds the maximum allowed size (5 MB)."
   },
   "develop.definition.DefinitionPanel.formatLabel": {
     "defaultMessage": "Source format",

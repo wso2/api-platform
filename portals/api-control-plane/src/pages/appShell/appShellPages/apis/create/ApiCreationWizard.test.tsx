@@ -51,11 +51,11 @@ vi.mock('./components/ApiTypeSelector', () => ({
   ),
 }));
 
-/** Both flows provide a spec file so creation reaches the network. */
-const specFile = () =>
-  new File([JSON.stringify({ openapi: '3.0.3' })], 'openapi.json', {
-    type: 'application/json',
-  });
+const STUB_SPEC_FILE = new File(
+  ['{"openapi":"3.0.3","info":{"title":"Orders API","version":"1.0.0"},"paths":{}}'],
+  'orders-api.json',
+  { type: 'application/json' },
+);
 
 vi.mock('./components/DefineApiPanel', () => ({
   DefineApiPanel: ({ onDraftChange }: { onDraftChange: (draft: unknown) => void }) => {
@@ -66,9 +66,9 @@ vi.mock('./components/DefineApiPanel', () => ({
         <button
           onClick={() =>
             onDraftChange({
-              contractImport: { specFile: specFile() },
               displayName: 'Orders API',
               version: '1.0',
+              contractImport: { specFile: STUB_SPEC_FILE },
             })
           }
           type="button"
@@ -83,6 +83,7 @@ vi.mock('./components/DefineApiPanel', () => ({
               displayName: 'Untitled API',
               upstream: { main: { url: 'https://example.com' } },
               version: '1.0',
+              contractImport: { specFile: STUB_SPEC_FILE },
             })
           }
           type="button"
@@ -100,9 +101,7 @@ const route = '/organizations/api-platform-demo/projects/retail-apis/apis/create
 beforeEach(() => {
   resetHttpClient();
   server.use(collection('/rest-apis', []));
-  // The configure step validates the spec before it creates anything; every
-  // test here is about what the create does, so validation always passes.
-  server.use(accepts('post', '/rest-apis/validate-openapi', { errors: [], isValid: true }));
+  server.use(accepts('post', '/rest-apis/validate-openapi', { isValid: true, errors: [] }));
 });
 
 /** Runs the wizard as far as a submitted create request. */
@@ -135,16 +134,7 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
 
   it('shows Step 3 without posting when Continue is clicked, then posts on Create', async () => {
     const createRequests = recorder();
-    server.use(
-      accepts(
-        'post',
-        '/rest-apis/import-openapi',
-        { id: 'orders-api' },
-        {
-          record: createRequests,
-        },
-      ),
-    );
+    server.use(accepts('post', '/rest-apis/import-openapi', { id: 'orders-api' }, { record: createRequests }));
     const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
 
     await user.click(screen.getByRole('button', { name: 'Choose REST' }));

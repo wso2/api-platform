@@ -302,10 +302,6 @@ const messages = defineMessages({
     id: 'api.create.fromContract.source.url',
     defaultMessage: 'URL',
   },
-  specOversized: {
-    id: 'api.create.fromContract.spec.oversized',
-    defaultMessage: 'That file is too large to validate in the browser.',
-  },
   specUnsupportedSource: {
     id: 'api.create.fromContract.spec.unsupportedSource',
     defaultMessage: 'Importing from this source is not available yet.',
@@ -609,9 +605,6 @@ type ContractFileControlProps = {
   onSelect: (file: File) => void;
 };
 
-/** Ceiling for in-browser parsing — a huge document would freeze the tab. */
-const MAX_CONTRACT_BYTES = 10 * 1024 * 1024;
-
 /** Bytes rendered as a locale-aware "13 kB" / "1.4 MB". */
 const formatFileSize = (intl: IntlShape, bytes: number): string => {
   const asUnit = (value: number, unit: 'kilobyte' | 'megabyte', fractionDigits: number) =>
@@ -852,7 +845,6 @@ export type FetchedContract = {
 
 /** Why a fetch produced nothing to preview. */
 export type ContractFetchFailure =
-  | 'oversized'
   | 'unreachable'
   | 'unreadable'
   /** The source has no fetching behind it yet, GitHub, SwaggerHub. */
@@ -932,20 +924,11 @@ const fetchDocumentFrom = async (
     if (!response.ok) {
       return { status: 'unreachable' };
     }
-    // Check length before reading; chunked responses are backstopped later.
-    const declaredBytes = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declaredBytes) && declaredBytes > MAX_CONTRACT_BYTES) {
-      return { status: 'oversized' };
-    }
     text = await response.text();
   } catch {
     // Network failure, a timeout, or the host refused the cross-origin read.
     // The reason is developer-facing, so it stays in the console, not the UI.
     return { status: 'unreachable' };
-  }
-  // Backstop for responses with no declared length.
-  if (text.length > MAX_CONTRACT_BYTES) {
-    return { status: 'oversized' };
   }
   const spec = parseContractText(text);
   return spec === null ? { status: 'unreadable' } : acceptSpec(text, spec, values);
@@ -972,9 +955,6 @@ export const fetchContractForPreview = async (
     case 'file': {
       if (values.file === undefined) {
         return { status: 'unreadable' };
-      }
-      if (values.file.size > MAX_CONTRACT_BYTES) {
-        return { status: 'oversized' };
       }
       try {
         const text = await readContractText(values.file);
@@ -1339,6 +1319,7 @@ export const ContractSourceForm = ({
 
   /** An accepted file is a finished selection, so it is read straight away. */
   const handleFileSelect = (next: File) => {
+    setFetched(null);
     setFileError(null);
     setFetchError(null);
     setFile(next);
@@ -1449,7 +1430,7 @@ export const ContractSourceForm = ({
    * on arrival instead of landing in the preview behind the current one.
    *
    * After the frontend parse succeeds the spec is sent to the backend
-   * validator (kin-openapi). Backend errors are shown as a separate Alert;
+   * validator (libopenapi). Backend errors are shown as a separate Alert;
    * the contract is only handed to the preview if both passes succeed.
    */
   useEffect(() => {
@@ -1469,6 +1450,7 @@ export const ContractSourceForm = ({
       if (result.status !== 'fetched') {
         setFetching(false);
         setFetchError(result);
+        setFetched(null);
         return;
       }
 
@@ -1488,15 +1470,14 @@ export const ContractSourceForm = ({
         if (!validation.isValid) {
           setFetching(false);
           setBackendValidationErrors(validation.errors);
+          setFetched(null);
           return;
         }
 
-        // FE warning check: missingTitle, missingVersion, noServers, externalRefs.
-        // Structural errors (noPaths, noOperations, badPathKeys) are handled by BE.
-        const warnings: SpecIssue[] = collectSpecWarnings(
-          result.contract.spec,
-          result.contract.rawText,
-        );
+        // FE warning check: missingTitle, missingVersion, noServers.
+        // Structural errors (noPaths, noOperations, badPathKeys) and external
+        // $refs are handled by BE.
+        const warnings: SpecIssue[] = collectSpecWarnings(result.contract.spec);
 
         if (!current) return;
         setFetching(false);
@@ -1578,8 +1559,6 @@ export const ContractSourceForm = ({
   /** Why the last fetch came back empty, as a sentence; `null` when it didn't. */
   const fetchErrorText = (() => {
     switch (fetchError?.status) {
-      case 'oversized':
-        return <FormattedMessage {...messages.specOversized} />;
       case 'unreachable':
         return <FormattedMessage {...messages.specUnreachable} />;
       case 'unreadable':

@@ -499,6 +499,63 @@ func TestCreate_UndeployedDeploymentState(t *testing.T) {
 	assert.Equal(t, models.StateUndeployed, result.StoredConfig.DesiredState)
 }
 
+// --- create from YAML (control-plane apply path) --------------------------
+
+func TestCreateFromYAML_PinsDeploymentIdentity(t *testing.T) {
+	h := newHarness(t, nil)
+
+	const artifactID = "6a4f1f9e-1f4a-4d7e-9b2c-2f3a5c8d1e70"
+	const deploymentID = "dep-42"
+	deployedAt := time.Now().Truncate(time.Millisecond)
+
+	result, err := h.service.CreateFromYAML(agentYAML(agentYAMLOpts{}), artifactID,
+		deploymentID, &deployedAt, "corr-1", discardLogger())
+	require.NoError(t, err)
+
+	// The control plane owns this artifact's identity, so the row has to land
+	// under the id it supplied rather than a freshly minted one.
+	stored := result.StoredConfig
+	assert.Equal(t, artifactID, stored.UUID)
+	assert.Equal(t, deploymentID, stored.DeploymentID)
+	require.NotNil(t, stored.DeployedAt)
+	assert.True(t, deployedAt.Equal(*stored.DeployedAt))
+
+	// Origin decides whether the artifact is pushed back to its own author.
+	assert.Equal(t, models.OriginControlPlane, stored.Origin)
+}
+
+func TestCreateFromYAML_RequiresDeploymentIdentity(t *testing.T) {
+	deployedAt := time.Now().Truncate(time.Millisecond)
+	var zero time.Time
+
+	tests := map[string]struct {
+		deploymentID string
+		deployedAt   *time.Time
+	}{
+		"empty deployment id": {deploymentID: "", deployedAt: &deployedAt},
+		"nil deployed at":     {deploymentID: "dep-42", deployedAt: nil},
+		"zero deployed at":    {deploymentID: "dep-42", deployedAt: &zero},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, nil)
+
+			_, err := h.service.CreateFromYAML(agentYAML(agentYAMLOpts{}), "",
+				tc.deploymentID, tc.deployedAt, "corr-1", discardLogger())
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "deploymentID and deployedAt")
+
+			// Rejected before Create runs, so nothing is stored or announced —
+			// a deployment with no identity must not converge the replicas.
+			assert.Empty(t, h.eventHub.actions())
+			configs, listErr := h.db.GetAllConfigsByKind(models.KindAgent)
+			require.NoError(t, listErr)
+			assert.Empty(t, configs)
+		})
+	}
+}
+
 // --- list / get ----------------------------------------------------------
 
 func TestListAndGet(t *testing.T) {

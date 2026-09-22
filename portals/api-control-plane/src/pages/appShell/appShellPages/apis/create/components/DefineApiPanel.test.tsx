@@ -23,11 +23,11 @@ import { DefineApiPanel } from './DefineApiPanel';
 
 vi.mock('swagger-ui-react', () => ({ default: () => null }));
 
-describe('DefineApiPanel — design from scratch', () => {
-  it('shows only the endpoint form after Design from scratch is selected', async () => {
+describe('DefineApiPanel — start from scratch', () => {
+  it('shows only the endpoint form after Start from scratch is selected', async () => {
     const { user } = renderWithProviders(<DefineApiPanel onDraftChange={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
 
     expect(screen.getByRole('heading', { name: 'Backend endpoint' })).toBeInTheDocument();
     expect(screen.getByLabelText('Endpoint URL')).toHaveValue('https://example.com');
@@ -38,7 +38,7 @@ describe('DefineApiPanel — design from scratch', () => {
   it('carries an edited endpoint into the scratch draft', async () => {
     const onDraftChange = vi.fn();
     const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
-    await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
 
     const endpoint = screen.getByLabelText('Endpoint URL');
     await user.clear(endpoint);

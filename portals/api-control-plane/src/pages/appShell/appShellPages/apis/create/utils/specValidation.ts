@@ -25,9 +25,7 @@ export type SpecIssueCode =
   /** `info.version` missing; the API would be created unversioned. */
   | 'missingVersion'
   /** No `servers`/`host`, so no upstream can be read off the document. */
-  | 'noServers'
-  /** `$ref`s pointing outside the document, which nothing here resolves. */
-  | 'externalRefs';
+  | 'noServers';
 
 export type SpecIssue = {
   /** The offending fragment, as data; never rendered as translated copy. */
@@ -68,23 +66,18 @@ export const readDialectFromSpec = (spec: Record<string, unknown>): SpecDialect 
   return null;
 };
 
-/** Regex that finds $ref values not starting with "#" — external document references. */
-const externalRefRE = /\$ref["']?\s*:\s*["']?([^"',\s\]}\n]+)/g;
-
 /**
  * Collects non-fatal warnings about a spec without blocking import.
  *
- * Checks: missingTitle, missingVersion, noServers, externalRefs.
+ * Checks: missingTitle, missingVersion, noServers.
+ * External $ref validation is handled by backend with proper library.
  * Structural issues (noPaths, noOperations, badPathKeys) are considered errors
  * and are left to backend validation, not raised here as warnings.
  *
- * @param spec   The parsed spec object.
- * @param rawText The original text (YAML or JSON). Used for external-ref scanning
- *               so comments and anchors don't affect the check.
+ * @param spec The parsed spec object.
  */
 export const collectSpecWarnings = (
   spec: Record<string, unknown>,
-  rawText?: string,
 ): SpecIssue[] => {
   const warnings: SpecIssue[] = [];
   const info = spec.info as Record<string, unknown> | undefined;
@@ -109,24 +102,5 @@ export const collectSpecWarnings = (
     }
   }
 
-  // externalRefs: scan raw text when available (preserves YAML comments/anchors);
-  // fall back to serialising the object.
-  const text = rawText ?? JSON.stringify(spec);
-  const externals: string[] = [];
-  const seen = new Set<string>();
-  let m: RegExpExecArray | null;
-  externalRefRE.lastIndex = 0;
-  while ((m = externalRefRE.exec(text)) !== null) {
-    const ref = m[1].trim().replace(/^["']|["']$/g, '');
-    if (ref && !ref.startsWith('#') && !seen.has(ref)) {
-      seen.add(ref);
-      externals.push(ref);
-    }
-  }
-  if (externals.length > 0) {
-    warnings.push({ code: 'externalRefs', severity: 'warning', detail: externals.join(', ') });
-  }
-
   return warnings;
 };
-

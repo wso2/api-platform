@@ -1,11 +1,16 @@
 package testbench
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"github.com/stretchr/testify/require"
+	"io"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -165,4 +170,180 @@ func TestRegistrySupportsConcurrentAccess(t *testing.T) {
 	if got := len(registry.Services()); got != 20 {
 		t.Fatalf("registered services = %d, want 20", got)
 	}
+}
+
+// captureLogs runs h against req with the default logger redirected, returning the emitted
+// JSON lines so a test can assert on what an operator would actually see.
+func captureLogs(t *testing.T, h http.Handler, req *http.Request) (string, *httptest.ResponseRecorder) {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return buf.String(), rec
+}
+
+// Every request leaves one access line carrying the fields needed to correlate it with a
+// suite step: service, correlation id, method, path, status, duration, and byte counts.
+func TestObservabilityEmitsAnAccessLinePerRequest(t *testing.T) {
+	h := observability("oauth2", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/debug/reset", strings.NewReader("{}")))
+
+	require.Contains(t, out, `"msg":"testbench request served"`)
+	for _, field := range []string{`"service":"oauth2"`, `"method":"POST"`, `"path":"/debug/reset"`,
+		`"status":204`, `"duration_ms"`, `"response_bytes"`, `"request_bytes"`, `"request_id"`} {
+		require.Contains(t, out, field)
+	}
+	// The id is echoed so a client can correlate from its own side.
+	require.NotEmpty(t, rec.Header().Get(RequestIDHeader))
+}
+
+func TestObservabilityDoesNotLogQueryValues(t *testing.T) {
+	h := observability("jwks", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	secret := "expected-secret-must-not-be-logged"
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/token?expected_secret="+secret, nil))
+
+	require.Contains(t, out, `"has_query":true`)
+	require.NotContains(t, out, secret)
+	require.NotContains(t, out, `"query"`)
+}
+
+// A caller-supplied correlation id is honoured rather than replaced, which is what lets a
+// suite step name the exact request it is asserting about.
+func TestObservabilityHonoursAnInboundRequestID(t *testing.T) {
+	h := observability("echo", limitBody(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil)
+	req.Header.Set(RequestIDHeader, "suite-step-42")
+
+	out, rec := captureLogs(t, h, req)
+	require.Equal(t, "suite-step-42", rec.Header().Get(RequestIDHeader))
+	require.Contains(t, out, `"request_id":"suite-step-42"`)
+}
+
+// The reason a mock rejected a request is the one thing an access line cannot infer, so the
+// error body is captured into the log rather than left only in the client's response.
+func TestObservabilityRecordsTheRejectionReason(t *testing.T) {
+	h := observability("analytics", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "analytics collector: malformed batch payload", http.StatusBadRequest)
+	})))
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/block/v1/events", nil))
+
+	require.Contains(t, out, `"msg":"testbench request rejected"`)
+	require.Contains(t, out, "malformed batch payload")
+	require.Contains(t, out, `"status":400`)
+}
+
+func TestObservabilityOmitsJSONFailureBodies(t *testing.T) {
+	h := observability("echo", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"secret":"must-not-be-logged"}`))
+	})))
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/status/400", nil))
+
+	require.NotContains(t, out, "must-not-be-logged")
+	require.NotContains(t, out, `"reason"`)
+}
+
+// A 5xx is surfaced at error level even though the mock returned it deliberately: a suite
+// chasing a failure should not have to grep INFO lines for it.
+func TestObservabilityLogsServerErrorsAtErrorLevel(t *testing.T) {
+	h := observability("backend", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "forced upstream failure", http.StatusBadGateway)
+	})))
+	out, _ := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/fail", nil))
+	require.Contains(t, out, `"level":"ERROR"`)
+	require.Contains(t, out, `"msg":"testbench request failed"`)
+}
+
+// Thirteen services share one process, so a panic in any handler must be contained and
+// reported with a stack rather than taking every concurrent block down with it.
+func TestObservabilityRecoversAndReportsAPanic(t *testing.T) {
+	h := observability("mcp", limitBody(PartitionRouter(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom in a mock")
+	}))))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panic-block/x", nil))
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Contains(t, out, `"msg":"testbench handler panicked"`)
+	require.Contains(t, out, "boom in a mock")
+	require.Contains(t, out, `"stack"`)
+	require.Contains(t, out, `"msg":"testbench request failed"`)
+	require.Contains(t, out, `"status":500`)
+	require.Contains(t, out, `"response_bytes"`)
+	require.Contains(t, out, `"partition":"panic-block"`)
+}
+
+func TestObservabilityAbortsAfterResponseStarted(t *testing.T) {
+	h := observability("echo", limitBody(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("before panic"))
+		w.(http.Flusher).Flush()
+		panic("boom after response")
+	})))
+	server := httptest.NewUnstartedServer(h)
+	server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	server.Start()
+	t.Cleanup(server.Close)
+
+	resp, err := server.Client().Get(server.URL)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.Error(t, readErr)
+	require.NotContains(t, string(body), "boom after response")
+	require.NotContains(t, string(body), "testbench handler panicked")
+}
+
+// The partition is what ties a log line to one block out of the fifty-plus sharing this
+// container, so it must appear on the access line and not only inside the router.
+func TestObservabilityReportsThePartitionOnce(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		WriteJSON(w, r, http.StatusOK, map[string]string{"path": r.URL.Path})
+	})
+	h := observability("capture", limitBody(NormalizeMethod(PartitionRouter(inner))))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), "get", "/myblock/test/captured", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, out, `"msg":"testbench request served"`)
+	require.Contains(t, out, `"partition":"myblock"`)
+	// A lowercase method is normalized, and that rewrite is itself recorded.
+	require.Contains(t, out, `"msg":"testbench normalized the request method"`)
+	// One partition attribute per line, not two.
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		require.LessOrEqual(t, strings.Count(line, `"partition":`), 1, "duplicated attribute in %s", line)
+	}
+}
+
+// A partitioned service addressed without its prefix answers a bare 400; the log is the only
+// place the cause is visible.
+func TestPartitionRouterLogsARejectedPath(t *testing.T) {
+	h := observability("capture", limitBody(PartitionRouter(http.NotFoundHandler())))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, out, `"msg":"testbench rejected a partition path"`)
+	require.Contains(t, out, `"raw_path":"/"`)
+}
+
+// Fail carries structured detail an access line cannot infer from the response alone.
+func TestFailLogsStructuredDetailAlongsideTheResponse(t *testing.T) {
+	h := observability("oauth2", limitBody(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Fail(w, r, http.StatusUnauthorized, "invalid client credentials",
+			"client_id", "test-client", "auth_style", "basic")
+	})))
+	out, rec := captureLogs(t, h, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/oauth2/token", nil))
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Contains(t, out, `"client_id":"test-client"`)
+	require.Contains(t, out, `"auth_style":"basic"`)
+	require.Contains(t, out, `"message":"invalid client credentials"`)
 }

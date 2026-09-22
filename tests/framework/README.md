@@ -136,6 +136,7 @@ go test -timeout 30m                                    # everything
 go test -blocks gateway-restart                         # one block
 go test -feature-tags "@request-rewrite"                # one feature, any block
 go test -blocks gateway-core -feature-tags "@metrics,@cors"          # ',' is OR
+go test -gateway-version 1.2.0 -blocks gateway-core/sqlite # one Gateway release
 ```
 
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
@@ -148,6 +149,30 @@ consumes any flag it recognises and forwards only the rest:
 
 `-blocks`, `-skip-blocks` and `-runner-parallel` have no builtin of that name and are forwarded
 to the binary as normal.
+
+Runner `tags` may begin with a framework Gateway-release selector, followed by `;` and an
+ordinary Godog expression: `gateway-version>1.2.0;~@known-issue`. The selector accepts only
+`>`, `>=`, `<`, `<=`, `=`, or `==` with a release `major.minor.patch` version. It is evaluated
+before Godog and is removed from the expression Godog receives; incompatible runners are logged
+as skipped. Use this only for a genuine Gateway release compatibility boundary. Keep versioned
+configuration in a dedicated block rather than changing a shared block's overlay.
+
+Database support boundaries belong in the suite default for `platform-gateway`, rather than in
+each matrix block. For example, Gateway 1.1.0 cannot run SQL Server while 1.2.0 and source builds
+can:
+
+```yaml
+defaults:
+  components:
+    platform-gateway:
+      db: sqlite
+      dbCompatibility:
+        sqlserver: "gateway-version>=1.2.0"
+```
+
+The selector uses the same strict Gateway-version syntax as runner tags. Incompatible matrix
+variants are reported as skipped before their topology boots. Explicitly selecting an incompatible
+variant, such as `-blocks gateway-core/sqlserver -gateway-version 1.1.0`, is a configuration error.
 
 ### Docker environment
 

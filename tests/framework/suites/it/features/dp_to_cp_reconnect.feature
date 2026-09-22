@@ -39,7 +39,7 @@ Feature: Rejected control-plane pushes are retried on gateway-controller reconne
     And I generate a unique API context from "/dp2cp-reject" and store it as "mcpContext"
     And I generate a unique value from "dp2cp-missing-project" and store it as "missingProjectHandle"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:mcpName}                    |
       | displayName           | ${CTX:mcpDisplayName}             |
       | version               | ${CTX:mcpVersion}                 |

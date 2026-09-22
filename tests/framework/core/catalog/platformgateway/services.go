@@ -64,12 +64,20 @@ func GatewayController() *components.Definition {
 			ExpectStatus: 200,
 			Timeout:      120 * time.Second, Interval: 2 * time.Second,
 		},
+		VersionedHealth: map[string]components.HealthCheck{
+			"1.1.0": {
+				Endpoint: "admin", Path: "/api/admin/v0.9/health",
+				ExpectStatus: 200,
+				Timeout:      120 * time.Second, Interval: 2 * time.Second,
+			},
+		},
 
 		Config: &components.ConfigInjection{
 			BaseConfigPath:    "gateway/configs/config.toml",
 			SharedOverlayPath: "tests/framework/core/catalog/overlays/gateway-controller-storage.toml",
 			ContainerPath:     "/etc/gateway-controller/config.toml",
 			Format:            components.TOML,
+			Versioned:         gatewayConfigProfiles(),
 		},
 
 		DB: &components.DBContract{
@@ -166,6 +174,7 @@ func GatewayRuntime() *components.Definition {
 			BaseConfigPath: "gateway/configs/config.toml",
 			ContainerPath:  "/etc/policy-engine/config.toml",
 			Format:         components.TOML,
+			Versioned:      gatewayRuntimeConfigProfiles(),
 		},
 
 		Wiring: components.TypedWiring[GatewayRuntimeWiring](),

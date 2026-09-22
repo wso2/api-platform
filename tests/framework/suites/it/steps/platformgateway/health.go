@@ -55,7 +55,7 @@ func (s *Steps) healthTargets() (map[string]string, error) {
 		return nil, err
 	}
 	return map[string]string{
-		"gateway-controller": controller + "/api/admin/v1/health",
+		"gateway-controller": controller + gatewayAdminBasePath(s.topo) + "/health",
 		"router":             envoy + "/ready",
 		"policy-engine":      engine + "/health",
 	}, nil
