@@ -141,6 +141,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rest-apis/validate-openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate an OpenAPI specification
+         * @description Validates an OpenAPI 3.x or Swagger 2.x specification without creating
+         *     or modifying any resource. Returns a structured result indicating whether
+         *     the spec is valid and, if not, the list of validation errors.
+         */
+        post: operations["ValidateOpenAPISpec"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rest-apis/import-openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a REST API from an OpenAPI specification
+         * @description Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
+         *     as a multipart file upload The backend extracts operations from the spec,
+         *     creates the API, and persists the raw spec as the API definition document.
+         */
+        post: operations["ImportOpenAPI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rest-apis/{restApiId}": {
         parameters: {
             query?: never;
@@ -167,6 +211,32 @@ export interface paths {
          *     in the JWT token.
          */
         delete: operations["DeleteRESTAPI"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rest-apis/{restApiId}/openapi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get API definition
+         * @description Returns the raw OpenAPI spec stored for this API as YAML. Returns 404 if no definition
+         *     has been uploaded yet. The `content` field carries the spec text.
+         */
+        get: operations["GetRESTAPISpec"];
+        /**
+         * Update API definition
+         * @description Replaces (or creates) the OpenAPI/Swagger spec stored for this API. Accepts a
+         *     multipart/form-data upload with a single `file` field containing the spec.
+         */
+        put: operations["UpdateRESTAPISpec"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -432,6 +502,343 @@ export interface paths {
          *     Access is validated against the organization in the JWT token.
          */
         post: operations["RestoreDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List API publications across API Portals
+         * @description Retrieves every API Portal whose registration has completed — id, name, description and URL — each annotated with this API's publication status and whether a draft exists. Portals still being provisioned, or whose provisioning failed, are not listed.
+         */
+        get: operations["listApiPublications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get API publication
+         * @description Retrieves the live listing's details, subscription plans and documents. 404 when the API is not published to this portal.
+         */
+        get: operations["getApiPublication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/definition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get published definition
+         * @description Retrieves the definition stored in this publication. 404 when the publication has none.
+         */
+        get: operations["getApiPublicationDefinition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/landing-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get published landing page
+         * @description Retrieves the landing page stored in this publication, as Markdown. 404 when the publication has none.
+         */
+        get: operations["getApiPublicationLandingPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get published thumbnail
+         * @description Retrieves the thumbnail stored in this publication, as raw image bytes. 404 when the publication has none.
+         */
+        get: operations["getApiPublicationThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get publication draft
+         * @description Retrieves the draft's details, subscription plans and documents. 404 when no draft has been saved.
+         */
+        get: operations["getApiPublicationDraft"];
+        /**
+         * Save publication draft
+         * @description Replaces the draft's details, subscription plans and documents, creating the draft on first save. Every plan handle and document handle must exist in the organization.
+         */
+        put: operations["saveApiPublicationDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/definition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get draft definition
+         * @description Retrieves the definition stored in this draft. 404 when the draft has not stored one.
+         */
+        get: operations["getApiPublicationDraftDefinition"];
+        /**
+         * Save draft definition
+         * @description Replaces the draft definition. Requires the draft to exist.
+         */
+        put: operations["saveApiPublicationDraftDefinition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/landing-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get draft landing page
+         * @description Retrieves the landing page stored in this draft, as Markdown. 404 when the draft has not stored one.
+         */
+        get: operations["getApiPublicationDraftLandingPage"];
+        /**
+         * Save draft landing page
+         * @description Replaces the draft landing page. Content is Markdown; embedded raw HTML is stripped before storage. Requires the draft to exist.
+         */
+        put: operations["saveApiPublicationDraftLandingPage"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get draft thumbnail
+         * @description Retrieves the thumbnail stored in this draft, as raw image bytes. 404 when the draft has not stored one.
+         */
+        get: operations["getApiPublicationDraftThumbnail"];
+        /**
+         * Upload draft thumbnail
+         * @description Uploads or replaces the draft thumbnail. Accepts PNG and JPEG, determined by sniffing the uploaded bytes rather than the declared type or file name. Requires the draft to exist.
+         */
+        put: operations["saveApiPublicationDraftThumbnail"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish REST API to API Portal
+         * @description Publishes the current draft. Takes no request body: details, plans, documents, definition,
+         *     landing page and thumbnail all come from the draft alone — publish never reads the API's
+         *     own content or the current publication to fill a gap. Requires a draft to exist.
+         *
+         *     The content is pushed to the API Portal before anything is written locally, so a failed
+         *     call leaves the draft intact and can simply be repeated.
+         *
+         *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+         */
+        post: operations["publishRestApiToApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/rest-api/{apiId}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpublish REST API from API Portal
+         * @description Removes the listing from the API Portal, along with its subscriptions and API keys, then
+         *     writes locally: if no draft exists, the publication is demoted into the draft in place; if
+         *     one exists, the publication is deleted and the existing draft is kept. A draft always
+         *     survives. Valid only when currently published or deprecated.
+         */
+        post: operations["unpublishRestApiFromApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/rest-api/{apiId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deprecate REST API on API Portal
+         * @description Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+         */
+        post: operations["deprecateRestApiOnApiPortal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2157,6 +2564,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api-portals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List API Portals
+         * @description Lists API Portals in the org resolved from the JWT token.
+         */
+        get: operations["ListApiPortals"];
+        put?: never;
+        /**
+         * Create an API Portal
+         * @description Registers a new API Portal in the caller's organization against an
+         *     existing portal URL. The URL is required. Organization ID is extracted
+         *     from the JWT token.
+         */
+        post: operations["CreateApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get API Portal by ID
+         * @description Reads a single API Portal by its handle. Access is validated against the org in the JWT token.
+         */
+        get: operations["GetApiPortal"];
+        /**
+         * Update API Portal
+         * @description Updates mutable fields on an API Portal. The server ignores any immutable
+         *     field appearing in the body. Access is validated against the org in the JWT token.
+         */
+        put: operations["UpdateApiPortal"];
+        post?: never;
+        /**
+         * Delete API Portal
+         * @description Deletes the API Portal registration and purges the encrypted shared key. The remote
+         *     portal instance is not touched; operators are responsible for its lifecycle. Access
+         *     is validated against the org in the JWT token.
+         */
+        delete: operations["DeleteApiPortal"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/api-keys": {
         parameters: {
             query?: never;
@@ -2806,7 +3270,7 @@ export interface components {
              * @example GET
              * @enum {string}
              */
-            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | "TRACE";
             /**
              * @description Resource path for the operation
              * @example /pet/{petId}
@@ -3286,12 +3750,16 @@ export interface components {
             /** @example Public GraphQL API for querying country/region reference data */
             description?: string;
             /**
-             * @description Base path for the single GraphQL endpoint. Suggested (not enforced)
-             *     convention: end the path with `/graphql`, matching how most standalone
-             *     GraphQL servers name their single endpoint — this is not validated.
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
              * @example /countries/graphql
              */
-            context: string;
+            context?: string;
             /** @example v1.0 */
             version: string;
             /** @example john.doe */
@@ -3431,12 +3899,16 @@ export interface components {
             /** @example Public GraphQL API for querying country/region reference data */
             description?: string;
             /**
-             * @description Base path for the single GraphQL endpoint. Suggested (not enforced)
-             *     convention: end the path with `/graphql`, matching how most standalone
-             *     GraphQL servers name their single endpoint — this is not validated.
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
              * @example /countries/graphql
              */
-            context: string;
+            context?: string;
             /** @example v1.0 */
             version: string;
             /** @example john.doe */
@@ -3662,6 +4134,65 @@ export interface components {
              * @example 12
              */
             column?: number;
+        };
+        ImportOpenAPIRequest: {
+            /**
+             * Format: binary
+             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             */
+            file: string;
+            /**
+             * @description Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+             * @example my-rest-api-handle
+             */
+            id?: string;
+            /**
+             * @description Human-readable name for the API
+             * @example PizzaShackAPI
+             */
+            displayName: string;
+            /** @example This is a simple API for Pizza Shack online pizza delivery store */
+            description?: string;
+            /** @example /pizza */
+            context: string;
+            /** @example 1.0.0 */
+            version: string;
+            /**
+             * @description Handle (URL-friendly slug) of the project this API belongs to
+             * @example default-project
+             */
+            projectId: string;
+            upstream: components["schemas"]["Upstream"];
+        };
+        OpenAPISpecFileRequest: {
+            /**
+             * Format: binary
+             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             */
+            file: string;
+        };
+        ValidateOpenAPIResponse: {
+            /** @description Whether the spec passed validation */
+            isValid: boolean;
+            /** @description Validation errors; empty when isValid is true */
+            errors: components["schemas"]["OpenAPIValidationError"][];
+            info?: components["schemas"]["OpenAPISpecInfo"];
+        };
+        OpenAPIValidationError: {
+            /** @description Human-readable description of the validation error */
+            message: string;
+            /** @description JSON Pointer path within the spec where the error was found */
+            path?: string;
+        };
+        OpenAPISpecInfo: {
+            /** @description Value of info.title from the spec */
+            title?: string;
+            /** @description Value of info.version from the spec */
+            version?: string;
+        };
+        OpenAPIContent: {
+            /** @description Raw spec content */
+            content?: string;
         };
         /**
          * @description Time unit for API key expiration duration
@@ -4062,7 +4593,11 @@ export interface components {
              * @example prod-gateway-01
              */
             gatewayId: string;
-            /** @description Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`. */
+            /**
+             * @description Optional metadata for the deployment. Supported keys are `endpointUrl`, `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes `endpointUrl` too, which replaces the backend it routes to, and `upstreamAuthValue` — the credential that deployment authenticates to the provider's upstream with, so one provider can run on several gateways against different accounts with the same vendor. It must be given as a `{{ secret "handle" }}` reference naming a secret of this organization, never the credential itself. Like the provider's own `auth.value` it is write-only: it is never returned by any read of a deployment, so replacing it means giving a new one rather than editing what came back. Omitting it leaves the provider's own credential in place.
+             *
+             *     `upstreamAuthHeader` names the header that credential is sent in. It is read only alongside `upstreamAuthValue`, and only where the upstream authenticates with an api-key — basic and bearer send `Authorization` by definition.
+             */
             metadata?: {
                 [key: string]: unknown;
             };
@@ -4156,15 +4691,14 @@ export interface components {
              */
             baseDeploymentId?: string | null;
             /**
-             * @description Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
-             *     has one: `base: build` runs the build it names, and `base: current` stores what
-             *     it renders as a build and runs that.
+             * @description Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+             *     LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+             *     it names, and `base: current` stores what it renders as a build and runs that.
              *
-             *     Null for artifact kinds that have no builds — MCP proxy, LLM and event API
-             *     deployments — including one promoted from another deployment, which reuses that
-             *     deployment's rendered artifact. Also null once the build it ran has been pruned.
-             *     Null means only that no build can be named; the deployment keeps its own
-             *     rendered artifact either way.
+             *     Null for artifact kinds that have no builds, and for a deployment promoted from
+             *     another, which reuses that deployment's rendered artifact. Also null once the
+             *     build it ran has been pruned. Null means only that no build can be named; the
+             *     deployment keeps its own rendered artifact either way.
              * @example 2026-01-31-2
              */
             buildId?: string | null;
@@ -5639,6 +6173,199 @@ export interface components {
             list: components["schemas"]["CustomPolicyResponse"][];
             pagination: components["schemas"]["Pagination"];
         };
+        PublicationDetailsCore: {
+            displayName?: string;
+            version?: string;
+            description?: string;
+            tags?: string[];
+            /** @description API Portal label handles controlling which portal views show this listing. Not validated here — an unknown handle is rejected by the portal at publish time. */
+            labels?: string[];
+            /** @enum {string} */
+            agentVisibility?: "VISIBLE" | "HIDDEN";
+            /** @description Author-entered; not derived from the API. */
+            endpoints?: {
+                /** Format: uri */
+                productionUrl?: string;
+                /** Format: uri */
+                sandboxUrl?: string;
+            };
+            /** @description Contacts published alongside the listing. Author-entered; omitting them on a publish clears the portal's own values. */
+            owners?: {
+                businessOwner?: string;
+                /** Format: email */
+                businessOwnerEmail?: string;
+                technicalOwner?: string;
+                /** Format: email */
+                technicalOwnerEmail?: string;
+            };
+        };
+        PublicationAuditFields: {
+            /** Format: date-time */
+            readonly createdAt?: string;
+            readonly createdBy?: string;
+            /**
+             * Format: date-time
+             * @description When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
+             */
+            readonly updatedAt?: string;
+            /** @description Who made that most recent change. */
+            readonly updatedBy?: string;
+        };
+        SubscriptionPlanIdList: string[];
+        DocIdList: string[];
+        PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
+            subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
+            docIds?: components["schemas"]["DocIdList"];
+        };
+        PublicationDraftDetails: components["schemas"]["PublicationDraftDetailsInput"] & components["schemas"]["PublicationAuditFields"] & {
+            /** @description Whether this draft stores a thumbnail of its own. */
+            readonly hasThumbnail?: boolean;
+            /** @description Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name. */
+            readonly hasLandingPage?: boolean;
+        };
+        Publication: components["schemas"]["PublicationDetailsCore"] & components["schemas"]["PublicationAuditFields"] & {
+            /** @description The API Portal's handle. */
+            apiPortalId?: string;
+            apiPortalName?: string;
+            /** @enum {string} */
+            status?: "PUBLISHED" | "DEPRECATED";
+            subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
+            docIds?: components["schemas"]["DocIdList"];
+            /** @description Whether this publication stores a thumbnail. */
+            readonly hasThumbnail?: boolean;
+            /** @description Whether this publication stores a landing page. */
+            readonly hasLandingPage?: boolean;
+        };
+        PublicationSummaryItem: {
+            /** @description The API Portal's handle. */
+            apiPortalId?: string;
+            /** @description The API Portal's display name. */
+            apiPortalName?: string;
+            /** @description The API Portal's own description, as set at registration. */
+            apiPortalDescription?: string | null;
+            /** @description The API Portal's URL, as set at registration. */
+            apiPortalUrl?: string | null;
+            /**
+             * @description NOT_PUBLISHED covers both never published and unpublished since.
+             * @enum {string}
+             */
+            status?: "NOT_PUBLISHED" | "PUBLISHED" | "DEPRECATED";
+            /**
+             * Format: date-time
+             * @description The draft's own updatedAt; null when no draft exists.
+             */
+            readonly draftUpdatedAt?: string | null;
+            /**
+             * Format: date-time
+             * @description The publication's own updatedAt; null when not published.
+             */
+            readonly publicationUpdatedAt?: string | null;
+        };
+        PublicationSummaryResponse: {
+            list: components["schemas"]["PublicationSummaryItem"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /**
+         * API Portal metadata
+         * @description Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+         */
+        ApiPortalMetadata: {
+            [key: string]: unknown;
+        };
+        /** API Portal detail */
+        ApiPortalResponse: {
+            /**
+             * @description Handle (URL-friendly slug) of the API Portal, primary identifier.
+             * @example acme-portal
+             */
+            readonly id: string;
+            /**
+             * @description Display name.
+             * @example Acme Developer Portal
+             */
+            name: string;
+            /**
+             * @description URL-friendly slug. Immutable after creation. Equal to `id`.
+             * @example acme-portal
+             */
+            readonly handle: string;
+            description?: string | null;
+            /**
+             * Format: uri
+             * @description Public URL of the API Portal. Operator-supplied.
+             * @example https://acme-portal.example.com
+             */
+            url: string;
+            metadata?: components["schemas"]["ApiPortalMetadata"];
+            /**
+             * Format: date-time
+             * @example 2026-08-13T10:30:00Z
+             */
+            readonly createdAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-13T10:30:00Z
+             */
+            readonly updatedAt: string;
+        };
+        /**
+         * API Portal list projection
+         * @description Lightweight projection returned in collection responses (excludes the metadata blob).
+         */
+        ApiPortalListItem: {
+            /** @example acme-portal */
+            id: string;
+            /** @example Acme Developer Portal */
+            name: string;
+            /** @example acme-portal */
+            handle: string;
+            description?: string | null;
+            /** Format: uri */
+            url: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** Create API Portal request */
+        CreateApiPortalRequest: {
+            name: string;
+            /** @description URL-friendly slug. Must be unique within the org. Immutable after creation. */
+            handle: string;
+            description?: string | null;
+            /**
+             * Format: uri
+             * @description Public HTTPS URL of the API Portal to register. Operator-supplied.
+             */
+            url: string;
+            /**
+             * @description The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on outbound publishing calls. The portal side stores only the sha256 hash of this value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here; never returned on any read.
+             * @example 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+             */
+            sharedKey: string;
+            metadata?: components["schemas"]["ApiPortalMetadata"];
+        };
+        /**
+         * Update API Portal request
+         * @description All fields optional. Only mutable fields are accepted, see field permissions in the design doc.
+         */
+        UpdateApiPortalRequest: {
+            name?: string;
+            description?: string | null;
+            /** Format: uri */
+            url?: string;
+            /** @description Rotate the shared key. When present, replaces the stored value. Same format as on Create. Write-only; never returned. */
+            sharedKey?: string;
+            metadata?: components["schemas"]["ApiPortalMetadata"];
+        };
+        /** API Portal list response */
+        ApiPortalListResponse: {
+            /**
+             * @description Number of items in the current response page.
+             * @example 2
+             */
+            count: number;
+            list: components["schemas"]["ApiPortalListItem"][];
+            pagination: components["schemas"]["Pagination"];
+        };
     };
     responses: {
         /** @description Unauthorized. Authentication credentials are missing or invalid. */
@@ -5743,6 +6470,22 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Payload Too Large. The uploaded file exceeds the maximum allowed size. */
+        PayloadTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "PAYLOAD_TOO_LARGE",
+                 *       "message": "The uploaded file exceeds the maximum allowed size."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Internal Server Error. */
         InternalServerError: {
             headers: {
@@ -5794,6 +6537,108 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling. */
+        PublicationBadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "PUBLICATION_VALIDATION_FAILED",
+                 *       "message": "The request could not be validated.",
+                 *       "errors": [
+                 *         {
+                 *           "field": "subscriptionPlanIds[0]",
+                 *           "message": "does not exist in the organization's subscription plan catalog"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description This API type has no projection onto the API Portal's own API types, so no listing can be created for it. */
+        PublicationTypeUnsupported: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "PUBLICATION_TYPE_UNSUPPORTED",
+                 *       "message": "APIs of this type cannot be published to an API Portal."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status (unpublish needs a published or deprecated listing, deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may already hold the earlier copy while the local listing is unchanged; review the draft and publish again to bring them in line), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change — another API already holds this handle or display name and version, or the listing still has subscriptions or active API keys and so cannot be removed. A portal conflict does not clear on retry: the operator renames, removes the consumers, or deprecates instead. A state conflict clears once the publication is in a status that allows the action. No local state was changed by any of these; only a draft-changed conflict can leave the API Portal ahead of it until the next publish. */
+        PublicationConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "PUBLICATION_PORTAL_CONFLICT",
+                 *       "message": "The API Portal rejected this change."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The API Portal could not be reached, or failed while handling the request, after in-call retries. No local state was changed and the call is safe to repeat. */
+        PortalUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "PUBLICATION_PORTAL_UNAVAILABLE",
+                 *       "message": "The API Portal could not be reached. Try again later.",
+                 *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The definition's raw content. Content-Type matches the serialization it was stored in: application/json or application/x-yaml for an OpenAPI or AsyncAPI contract, application/graphql for GraphQL SDL, application/xml for WSDL. */
+        PublicationDefinitionResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": string;
+                "application/x-yaml": string;
+                "application/graphql": string;
+                "application/xml": string;
+            };
+        };
+        /** @description The landing page's raw Markdown content. */
+        PublicationLandingPageResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "text/markdown": string;
+            };
+        };
+        /** @description The thumbnail's raw image bytes. Content-Type is the stored image's own type — only the two accepted on upload can occur. */
+        PublicationThumbnailImageResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "image/png": string;
+                "image/jpeg": string;
+            };
+        };
     };
     parameters: {
         /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project. */
@@ -5830,6 +6675,16 @@ export interface components {
         "sortOrder-Q": "asc" | "desc";
         /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
         "query-Q": string;
+        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+        apiType: string;
+        /** @description The API's handle, unique per organization within its own type. */
+        apiHandle: string;
+        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+        "apiType-Q": string;
+        /** @description The API's handle, unique per organization within its own type. */
+        "apiHandle-Q": string;
+        /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+        apiPortalId: string;
     };
     requestBodies: never;
     headers: {
@@ -6170,6 +7025,66 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    ValidateOpenAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["OpenAPISpecFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Validation result (valid or invalid — both return 200) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateOpenAPIResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ImportOpenAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ImportOpenAPIRequest"];
+            };
+        };
+        responses: {
+            /** @description API created successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPI"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     GetRESTAPI: {
         parameters: {
             query?: never;
@@ -6254,6 +7169,66 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetRESTAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API definition retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAPIContent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateRESTAPISpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["OpenAPISpecFileRequest"];
+            };
+        };
+        responses: {
+            /** @description API definition updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAPIContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -6743,6 +7718,499 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
+        };
+    };
+    listApiPublications: {
+        parameters: {
+            query: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType-Q"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle-Q"];
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt). */
+                sortBy?: components["parameters"]["sortBy-Q"];
+                /** @description Sort direction applied to `sortBy`. */
+                sortOrder?: components["parameters"]["sortOrder-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationSummaryResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublicationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["PublicationDefinitionResponse"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublicationLandingPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["PublicationLandingPageResponse"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublicationThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["PublicationThumbnailImageResponse"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublicationDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationDraftDetails"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    saveApiPublicationDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicationDraftDetailsInput"];
+            };
+        };
+        responses: {
+            /** @description Draft saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationDraftDetails"];
+                };
+            };
+            400: components["responses"]["PublicationBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublicationDraftDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["PublicationDefinitionResponse"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    saveApiPublicationDraftDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /** @description The definition as raw bytes. The request's Content-Type selects the stored serialization and must match the contract the API's type uses; no other media type is accepted. */
+        requestBody: {
+            content: {
+                "application/json": string;
+                "application/x-yaml": string;
+                "application/graphql": string;
+                "application/xml": string;
+            };
+        };
+        responses: {
+            /** @description Definition saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["PublicationBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublicationDraftLandingPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["PublicationLandingPageResponse"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    saveApiPublicationDraftLandingPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /** @description The landing page as raw Markdown. */
+        requestBody: {
+            content: {
+                "text/markdown": string;
+            };
+        };
+        responses: {
+            /** @description Landing page saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["PublicationBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getApiPublicationDraftThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["PublicationThumbnailImageResponse"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    saveApiPublicationDraftThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /** @description The thumbnail image. Accepted content is sniffed from the uploaded bytes (PNG or JPEG only) rather than trusted from the declared type or file name. */
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Thumbnail saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["PublicationBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    publishRestApiToApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            /** @description Listing created */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            400: components["responses"]["PublicationTypeUnsupported"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    unpublishRestApiFromApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    deprecateRestApiOnApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing deprecated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
         };
     };
     ListGraphQLAPIs: {
@@ -10388,6 +11856,157 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Subscription deleted (no content) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ListApiPortals: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt). */
+                sortBy?: components["parameters"]["sortBy-Q"];
+                /** @description Sort direction applied to `sortBy`. */
+                sortOrder?: components["parameters"]["sortOrder-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API Portals retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiPortalListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API Portal registration details */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApiPortalRequest"];
+            };
+        };
+        responses: {
+            /** @description API Portal created successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiPortalResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API Portal retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiPortalResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+            };
+            cookie?: never;
+        };
+        /** @description API Portal fields to update */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateApiPortalRequest"];
+            };
+        };
+        responses: {
+            /** @description API Portal updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiPortalResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API Portal deleted successfully */
             204: {
                 headers: {
                     [name: string]: unknown;

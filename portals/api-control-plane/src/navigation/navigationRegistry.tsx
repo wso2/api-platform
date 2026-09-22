@@ -377,18 +377,12 @@ export const navigationRegistry: NavigationDefinition[] = [
         graphqlTo: routes.graphqlApiDevelopPolicies,
       },
       {
+        // No GraphQL analog: a GraphQL API's schema is already shown on its
+        // Overview page, not as an OpenAPI/AsyncAPI-style definition doc.
         icon: <Braces />,
         id: 'develop-definition',
         label: 'Definition',
         to: routes.apiDevelopDefinition,
-      },
-      {
-        // No GraphQL analog: a GraphQL API has one endpoint, not a
-        // per-operation resource list.
-        icon: <List />,
-        id: 'develop-routing',
-        label: 'Resources',
-        to: routes.apiDevelopRouting,
         hideInGraphqlScope: true,
       },
       {

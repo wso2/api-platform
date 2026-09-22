@@ -2589,6 +2589,12 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlDeployedGatewaysPanel.title": {
     "defaultMessage": "Deployed gateways"
   },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointNotConfigured": {
+    "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointTitle": {
+    "defaultMessage": "Endpoint"
+  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.schemaTitle": {
     "defaultMessage": "Schema"
   },
