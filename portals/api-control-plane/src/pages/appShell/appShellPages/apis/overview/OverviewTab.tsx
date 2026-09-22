@@ -73,7 +73,7 @@ export function OverviewTab({
               <DeployedGatewaysPanel deployments={deployments} gateways={deployedGateways} />
             </>
           )}
-          <EndpointsPanel url={api.upstream?.main?.url} />
+          <EndpointsPanel api={api} />
         </Stack>
       </Grid>
     </Grid>
