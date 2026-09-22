@@ -685,6 +685,12 @@ func buildGatewayHealthRoutes() ([]*route.Route, error) {
 					},
 				},
 			},
+			Tracing: &route.Tracing{
+				OverallSampling: &typev3.FractionalPercent{
+					Numerator:   0,
+					Denominator: typev3.FractionalPercent_HUNDRED,
+				},
+			},
 			TypedPerFilterConfig: map[string]*anypb.Any{
 				constants.ExtProcFilterName: disabledAny,
 			},
@@ -2716,7 +2722,8 @@ func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 	}
 
 	return &accesslog.AccessLog{
-		Name: "envoy.access_loggers.file",
+		Name:   "envoy.access_loggers.file",
+		Filter: buildAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: fileAccessLogAny,
 		},
