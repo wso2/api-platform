@@ -130,7 +130,7 @@ describe('scope visibility', () => {
 
   // `hasUsageInsights`/`hasRuntimeLogs` are false for API_PROXY, the dominant
   // kind here, so gating on them would hide these on the APIs they are for.
-  it.each(['insights', 'observability', 'portals'])('%s is not capability-gated', (id) => {
+  it.each(['insights', 'observability', 'publish'])('%s is not capability-gated', (id) => {
     expect(definitionFor(id).isVisible).toBeUndefined();
   });
 });
