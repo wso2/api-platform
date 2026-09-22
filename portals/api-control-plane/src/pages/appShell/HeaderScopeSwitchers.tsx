@@ -131,6 +131,10 @@ export function HeaderScopeSwitchers() {
         ? [{ handler: params.apiHandler, name: component?.displayName || params.apiHandler }]
         : [];
 
+  // A single loaded organization is read-only; use the loaded list so the
+  // switcher is not locked while the real list is still loading.
+  const isSingleOrganization = organizations.length === 1;
+
   if (!params.orgHandle) return null;
 
   return (
@@ -138,6 +142,7 @@ export function HeaderScopeSwitchers() {
       <SearchableComplexSelect
             aria-label={intl.formatMessage({ id: 'appShell.header.org.aria', defaultMessage: 'Organizations' })}
             label={intl.formatMessage({ id: 'appShell.header.org.label', defaultMessage: 'Organizations' })}
+            readOnly={isSingleOrganization}
             value={params.orgHandle}
             selectedOption={orgOptions.filter((item) => item.handle === params.orgHandle).map(item => ({
               id: item.handle,

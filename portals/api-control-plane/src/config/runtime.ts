@@ -31,6 +31,13 @@ export type RuntimeConfig = {
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
    */
   defaultLocale: string;
+  /**
+   * "onprem" for self-hosted deployments, where the build version is useful;
+   * "cloud" for the continuously deployed hosted console.
+   *
+   * Defaults to "onprem"; the cloud console sets "cloud" explicitly.
+   */
+  deploymentMode: 'onprem' | 'cloud';
   environmentName: string;
   featureFlags: string[];
   apiPlatformHomePage: string;
@@ -115,6 +122,8 @@ type LegacyWindowConfig = Partial<{
   moesifAppUrl: string;
   DEFAULT_LOCALE: string;
   defaultLocale: string;
+  DEPLOYMENT_MODE: string;
+  deploymentMode: string;
   PLATFORM_API_BASE_URL: string;
   platformApiBaseUrl: string;
   PLATFORM_API_VERSION: string;
@@ -160,6 +169,9 @@ const fromWindow = (): LegacyWindowConfig => ({
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
+
+const readDeploymentMode = (value: string | undefined): RuntimeConfig['deploymentMode'] =>
+  value === 'cloud' ? 'cloud' : 'onprem';
 
 const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
   value === 'oidc' ? 'oidc' : 'basic';
@@ -209,6 +221,11 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().defaultLocale ||
     import.meta.env.VITE_DEFAULT_LOCALE ||
     '',
+  deploymentMode: readDeploymentMode(
+    fromWindow().DEPLOYMENT_MODE ||
+      fromWindow().deploymentMode ||
+      import.meta.env.VITE_DEPLOYMENT_MODE,
+  ),
   environmentName: fromWindow().environmentName || import.meta.env.VITE_ENVIRONMENT_NAME || 'local',
   featureFlags: splitCommaConfigList(
     fromWindow().FEATURE_FLAGS || import.meta.env.VITE_FEATURE_FLAGS,
@@ -236,7 +253,7 @@ export const runtimeConfig: RuntimeConfig = {
   cloudProxyEnabled: readBoolean(
     fromWindow().CLOUD_PROXY_ENABLED ||
       fromWindow().cloudProxyEnabled ||
-      import.meta.env.VITE_CLOUD_PROXY_ENABLED
+      import.meta.env.VITE_CLOUD_PROXY_ENABLED,
   ),
   moesifAppUrl:
     fromWindow().MOESIF_APP_URL ||

@@ -24,6 +24,7 @@ import {
   Button,
   Card,
   CardContent,
+  ColorSchemeImage,
   Divider,
   FormLabel,
   IconButton,
@@ -55,9 +56,11 @@ import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from
 import { defineMessages, FormattedMessage, type MessageDescriptor, useIntl } from 'react-intl';
 import { Navigate, useLocation } from 'react-router-dom';
 
+import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { hairline } from '../../theme/receipes';
 
 const messages = defineMessages({
@@ -202,6 +205,8 @@ const messages = defineMessages({
   },
 });
 
+const BRAND_LOGO_HEIGHT = 56;
+
 type LoginLocationState = {
   confirmationKey?: string;
   confirmationOrg?: string;
@@ -282,7 +287,10 @@ const featureIconSx = (theme: Theme) =>
 
 export function LoginPage() {
   const auth = useAuth();
+  const brandLogo = useBrandLogo();
   const intl = useIntl();
+
+  useDocumentTitle(intl.formatMessage(messages.title));
   const location = useLocation();
   const state = (location.state || {}) as LoginLocationState;
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -342,12 +350,6 @@ export function LoginPage() {
     </Box>
   );
 
-  const emphasis = (chunks: ReactNode) => (
-    <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
-      {chunks}
-    </Box>
-  );
-
   const link = (chunks: ReactNode) => (
     <Link href={runtimeConfig.apiPlatformHomePage} target="_blank">
       {chunks}
@@ -387,24 +389,15 @@ export function LoginPage() {
         }}
       >
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-          <Avatar
-            sx={(theme) => ({
-              bgcolor: alpha(theme.palette.primary.main, 0.1),
-              color: 'primary.main',
-              height: 56,
-              width: 56,
+          <ColorSchemeImage
+            alt={intl.formatMessage({
+              id: 'appShell.header.title',
+              defaultMessage: 'API Platform',
             })}
-          >
-            <Activity size={26} />
-          </Avatar>
-          <Box>
-            <Typography sx={{ fontWeight: 700, letterSpacing: '-0.5px' }} variant="h2">
-              <FormattedMessage {...messages.brandName} />
-            </Typography>
-            <Typography color="text.secondary" variant="subtitle1">
-              <FormattedMessage {...messages.productName} values={{ emphasis }} />
-            </Typography>
-          </Box>
+            height={BRAND_LOGO_HEIGHT}
+            src={brandLogo}
+            width="auto"
+          />
         </Stack>
 
         <Stack spacing={2.5} sx={{ maxWidth: 620 }}>
