@@ -18,10 +18,14 @@ package aiworkspace
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"net/http"
 
-	playwright "github.com/mxschmitt/playwright-go"
-
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 )
 
@@ -38,27 +42,37 @@ type providerListResponse struct {
 // exact provider/template relationship returned by creation. A successful POST and a browser
 // redirect are not sufficient: the template-delete guard reads this list independently.
 func (u *Steps) waitForProviderTemplateAssociation(ctx context.Context, providerID, templateID string) error {
-	page, base, token, err := u.platformAPI(ctx)
+	_, _, token, err := u.platformAPI(ctx)
+	if err != nil {
+		return err
+	}
+	base, err := u.topo.URL("platform-api", "https")
+	if err != nil {
+		return err
+	}
+	client, err := newPlatformAPIReadinessClient()
 	if err != nil {
 		return err
 	}
 	return retry.Await(ctx, retry.Options{}, func(context.Context) (bool, error) {
-		resp, err := page.Context().Request().Get(base+"/api/v0.9/llm-providers",
-			playwright.APIRequestContextGetOptions{
-				Headers:           map[string]string{"Authorization": "Bearer " + token},
-				IgnoreHttpsErrors: playwright.Bool(true),
-			})
+		resp, err := client.Do(ctx, httpx.Request{
+			Method: http.MethodGet,
+			URL:    base + "/api/v0.9/llm-providers",
+			Headers: map[string]string{
+				"Authorization": "Bearer " + token,
+			},
+		}, 0, 0)
 		if err != nil {
 			return false, retry.Transient(fmt.Errorf("reading providers: %w", err))
 		}
-		if resp.Status() >= 500 {
-			return false, retry.Transient(fmt.Errorf("provider list returned HTTP %d", resp.Status()))
+		if resp.StatusCode >= 500 {
+			return false, retry.Transient(fmt.Errorf("provider list returned HTTP %d", resp.StatusCode))
 		}
-		if resp.Status() != 200 {
-			return false, fmt.Errorf("provider list returned HTTP %d", resp.Status())
+		if resp.StatusCode != http.StatusOK {
+			return false, fmt.Errorf("provider list returned HTTP %d", resp.StatusCode)
 		}
 		var body providerListResponse
-		if err := resp.JSON(&body); err != nil {
+		if err := json.Unmarshal(resp.Body, &body); err != nil {
 			return false, fmt.Errorf("decoding provider list: %w", err)
 		}
 		for _, provider := range body.List {
@@ -69,4 +83,17 @@ func (u *Steps) waitForProviderTemplateAssociation(ctx context.Context, provider
 		return false, nil
 	}, func(found bool) bool { return found },
 		fmt.Sprintf("waiting for provider %q to reference template %q", providerID, templateID))
+}
+
+func newPlatformAPIReadinessClient() (*httpx.Client, error) {
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil || rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+	if ok := rootCAs.AppendCertsFromPEM(shared.ControlPlaneCrypto()["certs/cert.pem"]); !ok {
+		return nil, fmt.Errorf("loading the generated Platform API CA certificate")
+	}
+	return httpx.NewClient(httpx.Options{
+		TLSClientConfig: &tls.Config{RootCAs: rootCAs, ServerName: "platform-api"},
+	}), nil
 }

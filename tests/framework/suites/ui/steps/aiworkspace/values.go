@@ -91,5 +91,9 @@ func expandUIValue(ctx context.Context, value string) (string, error) {
 		last = match[1]
 	}
 	out.WriteString(value[last:])
-	return out.String(), nil
+	expanded := out.String()
+	if strings.Contains(expanded, unique.Placeholder) {
+		return "", fmt.Errorf("expanding UI value %q: malformed UNIQUE placeholder", value)
+	}
+	return expanded, nil
 }
