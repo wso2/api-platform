@@ -108,6 +108,22 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.save',
     defaultMessage: 'Save',
   },
+  confirmSaveTitle: {
+    id: 'develop.definition.DefinitionPanel.confirmSave.title',
+    defaultMessage: 'Update API',
+  },
+  confirmSaveDefinitionBody: {
+    id: 'develop.definition.DefinitionPanel.confirmSave.definitionBody',
+    defaultMessage: 'Are you sure you want to save the updated API Definition?',
+  },
+  confirmSaveResourcesBody: {
+    id: 'develop.definition.DefinitionPanel.confirmSave.resourcesBody',
+    defaultMessage: 'Are you sure you want to save the updated resources?',
+  },
+  confirmSaveAction: {
+    id: 'develop.definition.DefinitionPanel.confirmSave.action',
+    defaultMessage: 'Save',
+  },
   reset: {
     id: 'develop.definition.DefinitionPanel.reset',
     defaultMessage: 'Reset',
@@ -330,6 +346,7 @@ export function DefinitionPanel() {
   const [newDescription, setNewDescription] = useState('');
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   const [specUrl, setSpecUrl] = useState('');
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -679,6 +696,32 @@ export function DefinitionPanel() {
         </DialogActions>
       </Dialog>
 
+      {/* Save confirmation dialog */}
+      <Dialog fullWidth maxWidth="xs" onClose={() => setConfirmSaveOpen(false)} open={confirmSaveOpen}>
+        <DialogTitle>{intl.formatMessage(messages.confirmSaveTitle)}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {intl.formatMessage(
+              showSource ? messages.confirmSaveDefinitionBody : messages.confirmSaveResourcesBody,
+            )}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button color="secondary" onClick={() => setConfirmSaveOpen(false)} variant="outlined">
+            {intl.formatMessage(messages.dialogCancel)}
+          </Button>
+          <Button
+            onClick={() => {
+              setConfirmSaveOpen(false);
+              void handleSave();
+            }}
+            variant="contained"
+          >
+            {intl.formatMessage(messages.confirmSaveAction)}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Add Resource modal */}
       <Dialog fullWidth maxWidth="sm" onClose={closeAddModal} open={showAddModal}>
         <DialogTitle>{intl.formatMessage(messages.addResourceTitle)}</DialogTitle>
@@ -890,13 +933,7 @@ export function DefinitionPanel() {
                   <Editor
                     height="100%"
                     language={format}
-                    loading={
-                      <Box sx={{ bgcolor: '#1e1e1e', height: '100%', p: 2 }}>
-                        <Typography color="text.disabled" variant="body2">
-                          {intl.formatMessage(messages.editorLoading)}
-                        </Typography>
-                      </Box>
-                    }
+                    loading={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}
                     onChange={(value) => setEditorText(value ?? '')}
                     options={{
                       automaticLayout: true,
@@ -970,7 +1007,7 @@ export function DefinitionPanel() {
                   <Button
                     disabled={!isDirty || (!editorText.trim() && hasSpec)}
                     loading={isSaving}
-                    onClick={() => void handleSave()}
+                    onClick={() => setConfirmSaveOpen(true)}
                     size="small"
                     variant="contained"
                   >

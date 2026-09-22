@@ -31,7 +31,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-apiname" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-apiname" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -65,7 +65,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-header-user" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-header-user" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -101,7 +101,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-ip" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-ip" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -137,7 +137,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-composite" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-composite" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -176,7 +176,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-apiname-iso-b" and store it as "apiVersionB"
     And I generate a unique API context from "/arl-key-apiname-iso-b" and store it as "apiContextB"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiNameA}                  |
       | spec.displayName       | ${CTX:apiNameA}                  |
       | spec.version           | ${CTX:apiVersionA}               |
@@ -187,7 +187,7 @@ Feature: Advanced rate limit key extraction strategies
     And I send a "GET" request to "${CTX:apiContextA}/${CTX:apiVersionA}/health" until status 200
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiNameB}                  |
       | spec.displayName       | ${CTX:apiNameB}                  |
       | spec.version           | ${CTX:apiVersionB}               |
@@ -225,7 +225,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-constant" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-constant" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -262,7 +262,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-cel" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-cel" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -298,7 +298,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-cel-composite" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-cel-composite" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -330,7 +330,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-cel-cost" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-cel-cost" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -374,7 +374,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-global-inherit" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-global-inherit" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -412,7 +412,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-override" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-override" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -445,7 +445,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-missing-header" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-missing-header" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -470,7 +470,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-empty-global" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-empty-global" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -500,7 +500,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-mixed" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-mixed" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -533,7 +533,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-apiversion" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-apiversion" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -564,7 +564,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-ip-precedence" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-ip-precedence" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -598,7 +598,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-key-missing-composite" and store it as "apiVersion"
     And I generate a unique API context from "/arl-key-missing-composite" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -623,7 +623,7 @@ Feature: Advanced rate limit key extraction strategies
     And I generate a unique API version from "arl-refcount" and store it as "apiVersion"
     And I generate a unique API context from "/arl-refcount" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -642,7 +642,7 @@ Feature: Advanced rate limit key extraction strategies
     And the response header "X-RateLimit-Remaining" should be "5"
 
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |

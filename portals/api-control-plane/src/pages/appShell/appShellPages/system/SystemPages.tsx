@@ -17,6 +17,7 @@
  */
 
 import { Button, PageContent, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
+import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Navigate, useNavigate } from 'react-router-dom';
 
@@ -24,6 +25,7 @@ import { useOrganizations } from '@/api/resources/organizations';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useAuth } from '@/contexts/auth/AuthProvider';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 /**
  * Message ids are keyed by the *component*, not by this file: five unrelated
@@ -48,6 +50,11 @@ const organizationRedirectMessages = defineMessages({
   emptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyTitle',
     defaultMessage: 'No organizations found',
+  },
+  provisioning: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.provisioning',
+    defaultMessage: 'Setting up your organization',
+    description: 'Shown on first sign-in while the organization is still being created.',
   },
   emptyDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.emptyDescription',
@@ -125,9 +132,30 @@ const notFoundMessages = defineMessages({
   },
 });
 
+/** How long to keep waiting for a first organization to appear, and how often to look. */
+const PROVISIONING_ATTEMPTS = 20;
+const PROVISIONING_INTERVAL_MS = 3000;
+
 export function OrganizationRedirectPage() {
   const intl = useIntl();
   const organizationsQuery = useOrganizations();
+  const organization = organizationsQuery.data?.list?.[0];
+  const settled = organizationsQuery.isPending || Boolean(organization);
+  const [attempt, setAttempt] = useState(0);
+  const { refetch } = organizationsQuery;
+
+  // On a first sign-in the organization is still being created — by the provisioning
+  // flow, or by this console's own registration — and an empty list at that moment
+  // means "not yet", not "none". Reporting that as an empty state sent people to a
+  // dead end they could only escape by reloading, so wait for it to arrive instead.
+  useEffect(() => {
+    if (settled || attempt >= PROVISIONING_ATTEMPTS) return undefined;
+    const timer = setTimeout(() => {
+      setAttempt((previous) => previous + 1);
+      void refetch();
+    }, PROVISIONING_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [attempt, refetch, settled]);
 
   if (organizationsQuery.isPending) {
     return <LoadingState label={intl.formatMessage(organizationRedirectMessages.loading)} />;
@@ -142,9 +170,15 @@ export function OrganizationRedirectPage() {
     );
   }
 
-  const organization = organizationsQuery.data?.list?.[0];
-
   if (!organization) {
+    // Only once waiting has genuinely run out is an empty list worth reporting as one.
+    // The last attempt counts itself before its refetch answers, and `isPending` covers
+    // only the first load — so without the isFetching guard the empty state would flash
+    // while that final answer was still in flight, which is the very thing this wait
+    // exists to prevent.
+    if (attempt < PROVISIONING_ATTEMPTS || organizationsQuery.isFetching) {
+      return <LoadingState label={intl.formatMessage(organizationRedirectMessages.provisioning)} />;
+    }
     return (
       <EmptyState
         title={intl.formatMessage(organizationRedirectMessages.emptyTitle)}
@@ -159,6 +193,10 @@ export function OrganizationRedirectPage() {
 export function UnauthorizedPage() {
   const navigate = useNavigate();
   const auth = useAuth();
+  const intl = useIntl();
+
+  // Rendered outside the app shell, so `AppLayout` doesn't name this one.
+  useDocumentTitle(intl.formatMessage(unauthorizedMessages.title));
 
   return (
     <PageContent>
@@ -185,6 +223,10 @@ export function UnauthorizedPage() {
 export function SessionExpiredPage() {
   const navigate = useNavigate();
   const auth = useAuth();
+  const intl = useIntl();
+
+  // Rendered outside the app shell, so `AppLayout` doesn't name this one.
+  useDocumentTitle(intl.formatMessage(sessionExpiredMessages.title));
 
   return (
     <PageContent>
@@ -211,6 +253,8 @@ export function SessionExpiredPage() {
 
 export function ServerErrorPage() {
   const intl = useIntl();
+
+  useDocumentTitle(intl.formatMessage(serverErrorMessages.title));
 
   return (
     <PageContent>

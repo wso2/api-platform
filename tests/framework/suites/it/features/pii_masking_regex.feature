@@ -32,7 +32,7 @@ Feature: PII masking regex policy
     And I generate a unique API version from "pii-mask-email" and store it as "apiVersion"
     And I generate a unique API context from "/pii-mask-email" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -56,13 +56,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Mask phone numbers in request
     Given I generate a unique value from "pii-mask-phone" and store it as "apiName"
     And I generate a unique API version from "pii-mask-phone" and store it as "apiVersion"
     And I generate a unique API context from "/pii-mask-phone" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -86,13 +87,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Mask multiple PII entities in a single request
     Given I generate a unique value from "pii-mask-multi" and store it as "apiName"
     And I generate a unique API version from "pii-mask-multi" and store it as "apiVersion"
     And I generate a unique API context from "/pii-mask-multi" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -124,13 +126,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Redact email addresses permanently
     Given I generate a unique value from "pii-redact-email" and store it as "apiName"
     And I generate a unique API version from "pii-redact-email" and store it as "apiVersion"
     And I generate a unique API context from "/pii-redact-email" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -150,13 +153,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Redact SSN permanently
     Given I generate a unique value from "pii-redact-ssn" and store it as "apiName"
     And I generate a unique API version from "pii-redact-ssn" and store it as "apiVersion"
     And I generate a unique API context from "/pii-redact-ssn" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -176,13 +180,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Redact multiple PII types
     Given I generate a unique value from "pii-redact-multi" and store it as "apiName"
     And I generate a unique API version from "pii-redact-multi" and store it as "apiVersion"
     And I generate a unique API context from "/pii-redact-multi" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -203,13 +208,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Mask PII in a specific JSON field only
     Given I generate a unique value from "pii-mask-jsonpath" and store it as "apiName"
     And I generate a unique API version from "pii-mask-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/pii-mask-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -238,13 +244,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Mask PII in a nested JSON field
     Given I generate a unique value from "pii-mask-nested" and store it as "apiName"
     And I generate a unique API version from "pii-mask-nested" and store it as "apiVersion"
     And I generate a unique API context from "/pii-mask-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -273,13 +280,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Content without PII passes through unchanged
     Given I generate a unique value from "pii-no-pii" and store it as "apiName"
     And I generate a unique API version from "pii-no-pii" and store it as "apiVersion"
     And I generate a unique API context from "/pii-no-pii" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -298,13 +306,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Empty request body passes through
     Given I generate a unique value from "pii-empty-body" and store it as "apiName"
     And I generate a unique API version from "pii-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/pii-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -321,13 +330,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A JSONPath referencing a missing field is rejected
     Given I generate a unique value from "pii-invalid-jsonpath" and store it as "apiName"
     And I generate a unique API version from "pii-invalid-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/pii-invalid-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -347,13 +357,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Multiple emails in a single message are all masked
     Given I generate a unique value from "pii-mask-multi-emails" and store it as "apiName"
     And I generate a unique API version from "pii-mask-multi-emails" and store it as "apiVersion"
     And I generate a unique API context from "/pii-mask-multi-emails" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -381,13 +392,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Redact credit card numbers permanently
     Given I generate a unique value from "pii-redact-cc" and store it as "apiName"
     And I generate a unique API version from "pii-redact-cc" and store it as "apiVersion"
     And I generate a unique API context from "/pii-redact-cc" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -407,13 +419,14 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Comprehensive PII protection redacts every configured entity
     Given I generate a unique value from "pii-comprehensive" and store it as "apiName"
     And I generate a unique API version from "pii-comprehensive" and store it as "apiVersion"
     And I generate a unique API context from "/pii-comprehensive" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -436,3 +449,4 @@ Feature: PII masking regex policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

@@ -127,8 +127,10 @@ describe('ApiPortalPublicationsList', () => {
 
     renderPage();
 
-    expect(await screen.findByText('No API portals available')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Manage portals' })).not.toBeInTheDocument();
+    expect(await screen.findByText('No Portals Available')).toBeInTheDocument();
+    // No CTA when the managed-portals extension isn't registered (the empty-state
+    // link points at that extension's route, so a naked button would 404 in OSS).
+    expect(screen.queryByRole('button', { name: 'Add Portal' })).not.toBeInTheDocument();
   });
 
   it('opens the publish flow for the portal the card names', async () => {
@@ -191,15 +193,15 @@ describe('ApiPortalPublicationsList', () => {
     const { user } = renderPage();
 
     await screen.findByText('Partner Portal');
-    await user.type(screen.getByPlaceholderText('Search API portals'), 'partner');
+    await user.type(screen.getByPlaceholderText('Search portals'), 'partner');
 
     expect(screen.getByText('Partner Portal')).toBeInTheDocument();
     expect(screen.queryByText('Internal Portal')).not.toBeInTheDocument();
 
-    await user.clear(screen.getByPlaceholderText('Search API portals'));
-    await user.type(screen.getByPlaceholderText('Search API portals'), 'zzz');
+    await user.clear(screen.getByPlaceholderText('Search portals'));
+    await user.type(screen.getByPlaceholderText('Search portals'), 'zzz');
 
-    expect(await screen.findByText('No matching API portals')).toBeInTheDocument();
+    expect(await screen.findByText('No matching portals')).toBeInTheDocument();
   });
 
   it('does not offer a search when the organization has no portals', async () => {
@@ -207,7 +209,7 @@ describe('ApiPortalPublicationsList', () => {
 
     renderPage();
 
-    await screen.findByText('No API portals available');
-    expect(screen.queryByPlaceholderText('Search API portals')).not.toBeInTheDocument();
+    await screen.findByText('No Portals Available');
+    expect(screen.queryByPlaceholderText('Search portals')).not.toBeInTheDocument();
   });
 });

@@ -63,7 +63,7 @@ Feature: Policy engine admin API
     And I generate a unique API version from "policy-admin-route" and store it as "apiVersion"
     And I generate a unique API context from "/policy-admin-route" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -80,6 +80,7 @@ Feature: Policy engine admin API
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   @known-issue
   Scenario: Config dump reflects an API's deletion
@@ -87,7 +88,7 @@ Feature: Policy engine admin API
     And I generate a unique API version from "policy-admin-delete" and store it as "apiVersion"
     And I generate a unique API context from "/policy-admin-delete" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -110,7 +111,7 @@ Feature: Policy engine admin API
     And I generate a unique API version from "policy-admin-params" and store it as "apiVersion"
     And I generate a unique API context from "/policy-admin-params" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -126,6 +127,7 @@ Feature: Policy engine admin API
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A POST request to the config dump endpoint returns 405
     When I send a "POST" request to the "policy-engine" service at "/config_dump"
@@ -136,7 +138,7 @@ Feature: Policy engine admin API
     And I generate a unique API version from "policy-admin-xds-1" and store it as "api1Version"
     And I generate a unique API context from "/policy-admin-xds-1" and store it as "api1Context"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:api1Name}                   |
       | spec.displayName       | ${CTX:api1Name}                   |
       | spec.version           | ${CTX:api1Version}                |
@@ -149,7 +151,7 @@ Feature: Policy engine admin API
     And I generate a unique API version from "policy-admin-xds-2" and store it as "api2Version"
     And I generate a unique API context from "/policy-admin-xds-2" and store it as "api2Context"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:api2Name}                   |
       | spec.displayName       | ${CTX:api2Name}                   |
       | spec.version           | ${CTX:api2Version}                |
@@ -168,15 +170,17 @@ Feature: Policy engine admin API
 
     When I delete the API "${CTX:api1Name}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:api1Context}/${CTX:api1Version}/health" until status 404
     When I delete the API "${CTX:api2Name}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:api2Context}/${CTX:api2Version}/health" until status 404
 
   Scenario: An API update syncs via xDS
     Given I generate a unique value from "policy-admin-xds-update" and store it as "apiName"
     And I generate a unique API version from "policy-admin-xds-update" and store it as "apiVersion"
     And I generate a unique API context from "/policy-admin-xds-update" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -190,7 +194,7 @@ Feature: Policy engine admin API
     Then the config dump should contain route with base path "${CTX:apiContext}/${CTX:apiVersion}"
 
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -207,3 +211,4 @@ Feature: Policy engine admin API
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

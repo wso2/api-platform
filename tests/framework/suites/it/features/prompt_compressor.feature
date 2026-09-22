@@ -30,7 +30,7 @@ Feature: Prompt compressor policy
     And I generate a unique API version from "pc-deploy" and store it as "apiVersion"
     And I generate a unique API context from "/pc-deploy" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1                                                                                                       |
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                       |
       | name                   | ${CTX:apiName}                                                                                                                          |
       | spec.displayName       | ${CTX:apiName}                                                                                                                          |
       | spec.version           | ${CTX:apiVersion}                                                                                                                       |
@@ -42,13 +42,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Deterministic compression produces exact expected output
     Given I generate a unique value from "pc-deterministic" and store it as "apiName"
     And I generate a unique API version from "pc-deterministic" and store it as "apiVersion"
     And I generate a unique API context from "/pc-deterministic" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -67,13 +68,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Compress a long prompt using ratio mode
     Given I generate a unique value from "pc-ratio" and store it as "apiName"
     And I generate a unique API version from "pc-ratio" and store it as "apiVersion"
     And I generate a unique API context from "/pc-ratio" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -95,13 +97,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Short prompt remains unchanged in ratio mode when no compression is needed
     Given I generate a unique value from "pc-ratio-short" and store it as "apiName"
     And I generate a unique API version from "pc-ratio-short" and store it as "apiVersion"
     And I generate a unique API context from "/pc-ratio-short" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -120,13 +123,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A ratio value of 1.0 or greater skips compression
     Given I generate a unique value from "pc-ratio-one" and store it as "apiName"
     And I generate a unique API version from "pc-ratio-one" and store it as "apiVersion"
     And I generate a unique API context from "/pc-ratio-one" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -146,13 +150,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Compress using token mode with a target below the estimated count
     Given I generate a unique value from "pc-token" and store it as "apiName"
     And I generate a unique API version from "pc-token" and store it as "apiVersion"
     And I generate a unique API context from "/pc-token" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -172,13 +177,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Token mode with a target at or above the estimated count skips compression
     Given I generate a unique value from "pc-token-skip" and store it as "apiName"
     And I generate a unique API version from "pc-token-skip" and store it as "apiVersion"
     And I generate a unique API context from "/pc-token-skip" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -197,13 +203,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A custom jsonPath targets a flat field
     Given I generate a unique value from "pc-jsonpath-flat" and store it as "apiName"
     And I generate a unique API version from "pc-jsonpath-flat" and store it as "apiVersion"
     And I generate a unique API context from "/pc-jsonpath-flat" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -224,13 +231,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A nested jsonPath is compressed while sibling fields are preserved
     Given I generate a unique value from "pc-jsonpath-nested" and store it as "apiName"
     And I generate a unique API version from "pc-jsonpath-nested" and store it as "apiVersion"
     And I generate a unique API context from "/pc-jsonpath-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -251,13 +259,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A negative array index jsonPath targets the last message
     Given I generate a unique value from "pc-jsonpath-neg" and store it as "apiName"
     And I generate a unique API version from "pc-jsonpath-neg" and store it as "apiVersion"
     And I generate a unique API context from "/pc-jsonpath-neg" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -278,13 +287,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A jsonPath pointing to a non-string value is left untouched
     Given I generate a unique value from "pc-jsonpath-nonstring" and store it as "apiName"
     And I generate a unique API version from "pc-jsonpath-nonstring" and store it as "apiVersion"
     And I generate a unique API context from "/pc-jsonpath-nonstring" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -303,13 +313,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A jsonPath pointing to a missing field passes the request through unchanged
     Given I generate a unique value from "pc-jsonpath-missing" and store it as "apiName"
     And I generate a unique API version from "pc-jsonpath-missing" and store it as "apiVersion"
     And I generate a unique API context from "/pc-jsonpath-missing" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -328,13 +339,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Only the tagged region is compressed, untagged text is preserved
     Given I generate a unique value from "pc-tags" and store it as "apiName"
     And I generate a unique API version from "pc-tags" and store it as "apiVersion"
     And I generate a unique API context from "/pc-tags" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -358,13 +370,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Multiple tagged regions in one prompt are each compressed
     Given I generate a unique value from "pc-multi-tags" and store it as "apiName"
     And I generate a unique API version from "pc-multi-tags" and store it as "apiVersion"
     And I generate a unique API context from "/pc-multi-tags" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -388,13 +401,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An unpaired closing tag is stripped
     Given I generate a unique value from "pc-orphan-tag" and store it as "apiName"
     And I generate a unique API version from "pc-orphan-tag" and store it as "apiVersion"
     And I generate a unique API context from "/pc-orphan-tag" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -413,13 +427,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Multiple rules evaluate and the smallest matching limit applies
     Given I generate a unique value from "pc-multi-rule" and store it as "apiName"
     And I generate a unique API version from "pc-multi-rule" and store it as "apiVersion"
     And I generate a unique API context from "/pc-multi-rule" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -441,13 +456,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Multiple rules evaluate and the fallback rule applies for long input
     Given I generate a unique value from "pc-multi-rule-fallback" and store it as "apiName"
     And I generate a unique API version from "pc-multi-rule-fallback" and store it as "apiVersion"
     And I generate a unique API context from "/pc-multi-rule-fallback" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -469,13 +485,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Invalid rules are dropped while valid rules still apply
     Given I generate a unique value from "pc-invalid-rules" and store it as "apiName"
     And I generate a unique API version from "pc-invalid-rules" and store it as "apiVersion"
     And I generate a unique API context from "/pc-invalid-rules" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -495,13 +512,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An empty request body passes through unchanged
     Given I generate a unique value from "pc-empty-body" and store it as "apiName"
     And I generate a unique API version from "pc-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/pc-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -518,13 +536,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A non-JSON request body passes through unchanged
     Given I generate a unique value from "pc-non-json" and store it as "apiName"
     And I generate a unique API version from "pc-non-json" and store it as "apiVersion"
     And I generate a unique API context from "/pc-non-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -543,13 +562,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An invalid JSON request body passes through unchanged
     Given I generate a unique value from "pc-invalid-json" and store it as "apiName"
     And I generate a unique API version from "pc-invalid-json" and store it as "apiVersion"
     And I generate a unique API context from "/pc-invalid-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -567,13 +587,14 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Verify policy config dump shows prompt-compressor for deployed route
     Given I generate a unique value from "pc-config-dump" and store it as "apiName"
     And I generate a unique API version from "pc-config-dump" and store it as "apiVersion"
     And I generate a unique API context from "/pc-config-dump" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1                                                                                                              |
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                              |
       | name                   | ${CTX:apiName}                                                                                                                                 |
       | spec.displayName       | ${CTX:apiName}                                                                                                                                 |
       | spec.version           | ${CTX:apiVersion}                                                                                                                              |
@@ -590,6 +611,7 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Lifecycle operations add, update, and remove the policy
     Given I generate a unique value from "pc-lifecycle" and store it as "apiName"
@@ -597,7 +619,7 @@ Feature: Prompt compressor policy
     And I generate a unique API context from "/pc-lifecycle" and store it as "apiContext"
     # Phase 1: deploy without the policy
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -616,7 +638,7 @@ Feature: Prompt compressor policy
 
     # Phase 2: add the policy (aggressive ratio 0.30)
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -637,7 +659,7 @@ Feature: Prompt compressor policy
 
     # Phase 3: update the policy (high ratio 0.95 -> skip compression)
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -658,7 +680,7 @@ Feature: Prompt compressor policy
 
     # Phase 4: remove the policy entirely
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -678,3 +700,4 @@ Feature: Prompt compressor policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

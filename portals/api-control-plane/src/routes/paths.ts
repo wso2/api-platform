@@ -215,13 +215,14 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
-  organizationPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals`,
-  projectPortals: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
-    projectPath(orgHandle, projectHandler, 'portals'),
+  // Org-level portal registry lives in the cloud-plugin sidebar; this builder is
+  // the well-known link the built-in Publish page uses for its "register a portal"
+  // empty-state so the core does not encode the plugin's routePath literal.
+  managedApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/managed-api-portals`,
   apiPortals: (
     orgHandle = ':orgHandle',
-    projectHandler = ':projectHandler',
-    apiHandler = ':apiHandler',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'portals'),
   // Reached only from the Portals page's own card — like `apiEdit`/`newApi`,
   // there is no sidebar link to it and so no scope-less alias to register.

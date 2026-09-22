@@ -566,6 +566,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/mcp_policies.feature
+      - name: mcp-gateway-url-precedence
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_gateway_url_precedence.feature
       - name: jwt-auth
         features:
           - features/jwt_auth.feature

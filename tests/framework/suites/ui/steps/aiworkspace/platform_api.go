@@ -124,28 +124,52 @@ func (u *Steps) createSecretDirectly(ctx context.Context, handle, value string) 
 // deletesProviderDirectly removes a provider through platform-api's own API, bypassing the
 // UI — for tearing down a provider mid-scenario without navigating back to it.
 func (u *Steps) deletesProviderDirectly(ctx context.Context, name string) error {
+	name, err := expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, base, token, err := u.platformAPI(ctx)
 	if err != nil {
 		return err
 	}
 	id := toProviderID(name)
-	resp, err := page.Context().Request().Delete(base+"/api/v0.9/llm-providers/"+id,
-		playwright.APIRequestContextDeleteOptions{
-			Headers:           map[string]string{"Authorization": "Bearer " + token},
-			IgnoreHttpsErrors: playwright.Bool(true),
-		})
-	if err != nil {
-		return fmt.Errorf("deleting provider %q: %w", name, err)
+	if v, ok := tcontext.Get(ctx, keyLatestProviderID); ok {
+		if latestID, ok := v.(string); ok && latestID != "" {
+			id = latestID
+		}
 	}
-	if status := resp.Status(); status != 200 && status != 204 && status != 404 {
-		body, _ := resp.Text()
-		return fmt.Errorf("deleting provider %q returned %d: %s", name, status, body)
+	if err := u.deleteProviderIDWithClient(ctx, page, base, token, id, name); err != nil {
+		return err
 	}
 	reg, err := cleanup.Of(ctx)
 	if err != nil {
 		return err
 	}
 	reg.Deregister(cleanup.KindLLMProvider, id)
+	return nil
+}
+
+func (u *Steps) deleteProviderID(ctx context.Context, id string) error {
+	page, base, token, err := u.platformAPI(ctx)
+	if err != nil {
+		return err
+	}
+	return u.deleteProviderIDWithClient(ctx, page, base, token, id, id)
+}
+
+func (u *Steps) deleteProviderIDWithClient(_ context.Context, page playwright.Page, base, token, id, label string) error {
+	resp, err := page.Context().Request().Delete(base+"/api/v0.9/llm-providers/"+id,
+		playwright.APIRequestContextDeleteOptions{
+			Headers:           map[string]string{"Authorization": "Bearer " + token},
+			IgnoreHttpsErrors: playwright.Bool(true),
+		})
+	if err != nil {
+		return fmt.Errorf("deleting provider %q: %w", label, err)
+	}
+	if status := resp.Status(); status != 200 && status != 204 && status != 404 {
+		body, _ := resp.Text()
+		return fmt.Errorf("deleting provider %q returned %d: %s", label, status, body)
+	}
 	return nil
 }
 

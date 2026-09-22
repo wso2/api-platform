@@ -31,6 +31,13 @@ export type RuntimeConfig = {
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
    */
   defaultLocale: string;
+  /**
+   * "onprem" for self-hosted deployments, where the build version is useful;
+   * "cloud" for the continuously deployed hosted console.
+   *
+   * Defaults to "onprem"; the cloud console sets "cloud" explicitly.
+   */
+  deploymentMode: 'onprem' | 'cloud';
   environmentName: string;
   featureFlags: string[];
   apiPlatformHomePage: string;
@@ -41,6 +48,12 @@ export type RuntimeConfig = {
    * (/proxy/billing/...) — the browser never learns the real billing URL.
    */
   billingProxyEnabled: boolean;
+  /**
+   * Region recorded on an organization this console registers. Only read when the
+   * platform does not have the organization yet, which the provisioning flow
+   * normally gets to first.
+   */
+  defaultOrgRegion: string;
   /**
    * Set when the BFF has a "cloud" named upstream configured (cloud only).
    * When true, cloud Insights extensions may call it via the same-origin
@@ -101,12 +114,16 @@ type LegacyWindowConfig = Partial<{
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  DEFAULT_ORG_REGION: string;
+  defaultOrgRegion: string;
   CLOUD_PROXY_ENABLED: string;
   cloudProxyEnabled: boolean | string;
   MOESIF_APP_URL: string;
   moesifAppUrl: string;
   DEFAULT_LOCALE: string;
   defaultLocale: string;
+  DEPLOYMENT_MODE: string;
+  deploymentMode: string;
   PLATFORM_API_BASE_URL: string;
   platformApiBaseUrl: string;
   PLATFORM_API_VERSION: string;
@@ -152,6 +169,9 @@ const fromWindow = (): LegacyWindowConfig => ({
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
+
+const readDeploymentMode = (value: string | undefined): RuntimeConfig['deploymentMode'] =>
+  value === 'cloud' ? 'cloud' : 'onprem';
 
 const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
   value === 'oidc' ? 'oidc' : 'basic';
@@ -201,6 +221,11 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().defaultLocale ||
     import.meta.env.VITE_DEFAULT_LOCALE ||
     '',
+  deploymentMode: readDeploymentMode(
+    fromWindow().DEPLOYMENT_MODE ||
+      fromWindow().deploymentMode ||
+      import.meta.env.VITE_DEPLOYMENT_MODE,
+  ),
   environmentName: fromWindow().environmentName || import.meta.env.VITE_ENVIRONMENT_NAME || 'local',
   featureFlags: splitCommaConfigList(
     fromWindow().FEATURE_FLAGS || import.meta.env.VITE_FEATURE_FLAGS,
@@ -220,10 +245,15 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().billingProxyEnabled ||
       import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
+  defaultOrgRegion:
+    fromWindow().DEFAULT_ORG_REGION ||
+    fromWindow().defaultOrgRegion ||
+    import.meta.env.VITE_DEFAULT_ORG_REGION ||
+    'us',
   cloudProxyEnabled: readBoolean(
     fromWindow().CLOUD_PROXY_ENABLED ||
       fromWindow().cloudProxyEnabled ||
-      import.meta.env.VITE_CLOUD_PROXY_ENABLED
+      import.meta.env.VITE_CLOUD_PROXY_ENABLED,
   ),
   moesifAppUrl:
     fromWindow().MOESIF_APP_URL ||

@@ -31,7 +31,7 @@ Feature: Word count guardrail policy
     And I generate a unique API version from "wcg-max" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-max" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -55,13 +55,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Request below the minimum word count is blocked
     Given I generate a unique value from "wcg-min" and store it as "apiName"
     And I generate a unique API version from "wcg-min" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-min" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -85,13 +86,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath-extracted field word count is enforced
     Given I generate a unique value from "wcg-jsonpath" and store it as "apiName"
     And I generate a unique API version from "wcg-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -123,13 +125,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted range blocks content that falls inside the excluded window
     Given I generate a unique value from "wcg-invert" and store it as "apiName"
     And I generate a unique API version from "wcg-invert" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-invert" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -159,13 +162,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response includes the assessment detail when showAssessment is enabled
     Given I generate a unique value from "wcg-assessment" and store it as "apiName"
     And I generate a unique API version from "wcg-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -185,13 +189,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Empty request body is blocked
     Given I generate a unique value from "wcg-empty" and store it as "apiName"
     And I generate a unique API version from "wcg-empty" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -208,13 +213,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Word counts exactly at the boundaries are accepted
     Given I generate a unique value from "wcg-boundary" and store it as "apiName"
     And I generate a unique API version from "wcg-boundary" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-boundary" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -250,13 +256,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A request-only word count policy still declares a response threshold without enforcing it
     Given I generate a unique value from "wcg-combined" and store it as "apiName"
     And I generate a unique API version from "wcg-combined" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-combined" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -280,13 +287,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Nested JSONPath-extracted field word count is enforced
     Given I generate a unique value from "wcg-nested" and store it as "apiName"
     And I generate a unique API version from "wcg-nested" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -323,13 +331,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath extraction of a missing field is blocked
     Given I generate a unique value from "wcg-invalid-path" and store it as "apiName"
     And I generate a unique API version from "wcg-invalid-path" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-invalid-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -352,13 +361,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Punctuation and hyphenation do not distort the word count
     Given I generate a unique value from "wcg-punctuation" and store it as "apiName"
     And I generate a unique API version from "wcg-punctuation" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-punctuation" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -384,13 +394,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Plain-text content is word-counted the same as JSON content
     Given I generate a unique value from "wcg-plaintext" and store it as "apiName"
     And I generate a unique API version from "wcg-plaintext" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-plaintext" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -416,13 +427,14 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response carries the complete guardrail error contract
     Given I generate a unique value from "wcg-error-structure" and store it as "apiName"
     And I generate a unique API version from "wcg-error-structure" and store it as "apiVersion"
     And I generate a unique API context from "/wcg-error-structure" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -446,3 +458,4 @@ Feature: Word count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

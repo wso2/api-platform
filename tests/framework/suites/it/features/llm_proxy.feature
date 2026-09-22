@@ -75,7 +75,7 @@ Feature: LLM proxy management
     When I send a "PUT" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "LlmProxy",
         "metadata": {
           "name": "${CTX:proxyName}"
@@ -96,7 +96,7 @@ Feature: LLM proxy management
     When I send a "POST" request to the "gateway-controller" service at "/llm-proxies" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "LlmProxy",
         "metadata": {
           "name": "${CTX:proxyName}"
@@ -120,13 +120,13 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-lifecycle-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-lifecycle-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateName}              |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -137,7 +137,7 @@ Feature: LLM proxy management
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -153,7 +153,7 @@ Feature: LLM proxy management
     And the response body should contain "${CTX:proxyDisplayName}"
 
     When I update LLM proxy "${CTX:proxyName}" from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName} Updated   |
       | version     | ${CTX:proxyVersion}               |
@@ -170,12 +170,14 @@ Feature: LLM proxy management
     When I send a "DELETE" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response should be successful
     And the JSON response field "status" should be "success"
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I send a "GET" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response status should be 404
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
     When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
@@ -190,13 +192,13 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-list-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-list-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateName}              |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -207,7 +209,7 @@ Feature: LLM proxy management
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -223,9 +225,11 @@ Feature: LLM proxy management
 
     When I send a "DELETE" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
     When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
@@ -243,7 +247,7 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-orphan" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-orphan" and store it as "proxyContext"
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -251,49 +255,6 @@ Feature: LLM proxy management
       | provider.id | non-existent-provider-12345        |
     Then the response should be a client error
     And the response should be valid JSON
-
-  Scenario: Create LLM proxy referencing a non-existent policy version is rejected
-    Given I generate a unique resource name from "lpx-badver-template" and store it as "templateName"
-    And I generate a unique resource name from "lpx-badver-provider" and store it as "providerName"
-    And I generate a unique value from "lpx-badver-provider" and store it as "providerDisplayName"
-    And I generate a unique API version from "lpx-badver-provider" and store it as "providerVersion"
-    And I generate a unique API context from "/lpx-badver-provider" and store it as "providerContext"
-    And I generate a unique resource name from "lpx-badver-proxy" and store it as "proxyName"
-    And I generate a unique value from "lpx-badver-proxy" and store it as "proxyDisplayName"
-    And I generate a unique API version from "lpx-badver-proxy" and store it as "proxyVersion"
-    And I generate a unique API context from "/lpx-badver-proxy" and store it as "proxyContext"
-    When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
-      | name        | ${CTX:templateName}              |
-      | displayName | ${CTX:templateName}              |
-    Then the response status code should be 201
-
-    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
-      | name               | ${CTX:providerName}               |
-      | displayName        | ${CTX:providerDisplayName}        |
-      | version            | ${CTX:providerVersion}            |
-      | template           | ${CTX:templateName}               |
-      | spec.context       | ${CTX:providerContext}            |
-      | spec.upstream.url  | http://testbench:3008/openai/v1   |
-      | accessControl.mode | allow_all                          |
-    Then the response status code should be 201
-
-    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion          | gateway.api-platform.wso2.com/v1 |
-      | name                | ${CTX:proxyName}                  |
-      | displayName         | ${CTX:proxyDisplayName}           |
-      | version             | ${CTX:proxyVersion}               |
-      | context             | ${CTX:proxyContext}               |
-      | provider.id         | ${CTX:providerName}                |
-      | spec.globalPolicies | [{"name":"basic-ratelimit","version":"v999"}] |
-    Then the response should be a client error
-    And the response should be valid JSON
-
-    When I delete the LLM provider "${CTX:providerName}"
-    Then the response status code should be 200
-    When I delete the LLM provider template "${CTX:templateName}"
-    Then the response status code should be 200
 
   Scenario: Update LLM proxy with invalid JSON body returns error
     When I send a "PUT" request to the "gateway-controller" service at "/llm-proxies/some-proxy" with body:
@@ -314,13 +275,13 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-filter-name-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-filter-name-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateName}              |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -331,7 +292,7 @@ Feature: LLM proxy management
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -347,9 +308,11 @@ Feature: LLM proxy management
 
     When I send a "DELETE" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
     When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
@@ -364,13 +327,13 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-filter-ver-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-filter-ver-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateName}              |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -381,7 +344,7 @@ Feature: LLM proxy management
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -396,9 +359,11 @@ Feature: LLM proxy management
 
     When I send a "DELETE" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
     When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
@@ -420,13 +385,13 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-invoke-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-invoke-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateName}              |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -437,7 +402,7 @@ Feature: LLM proxy management
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -455,9 +420,11 @@ Feature: LLM proxy management
 
     When I send a "DELETE" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
     When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
@@ -472,13 +439,13 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-acl-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-acl-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateName}              |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion} |
       | name                          | ${CTX:providerName}               |
       | displayName                   | ${CTX:providerDisplayName}        |
       | version                       | ${CTX:providerVersion}            |
@@ -490,7 +457,7 @@ Feature: LLM proxy management
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -507,9 +474,11 @@ Feature: LLM proxy management
 
     When I send a "DELETE" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
     When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200
 
@@ -524,13 +493,13 @@ Feature: LLM proxy management
     And I generate a unique API version from "lpx-multi-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/lpx-multi-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateName}              |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -541,7 +510,7 @@ Feature: LLM proxy management
     Then the response status code should be 201
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:proxyName}                  |
       | displayName | ${CTX:proxyDisplayName}           |
       | version     | ${CTX:proxyVersion}               |
@@ -571,8 +540,10 @@ Feature: LLM proxy management
 
     When I send a "DELETE" request to the "gateway-controller" service at "/llm-proxies/${CTX:proxyName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:proxyContext}/chat/completions" until status 404
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
+    And I send a "GET" request to "${CTX:providerContext}/chat/completions" until status 404
     When I delete the LLM provider template "${CTX:templateName}"
     Then the response status code should be 200

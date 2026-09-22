@@ -64,6 +64,9 @@ func (u *Steps) newAppPage(ctx playwright.BrowserContext) (playwright.Page, erro
 
 // Register wires AI Workspace-specific steps into the scenario context.
 func (u *Steps) Register(sc *godog.ScenarioContext) {
+	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+		return withUIExpansionState(ctx), nil
+	})
 	sc.Step(`^the user opens the workspace$`, u.openWorkspace)
 	sc.Step(`^the browser has no runtime configuration$`, u.withoutRuntimeConfiguration)
 	sc.Step(`^the runtime configuration fallback is active$`, u.runtimeConfigurationFallbackIsActive)
