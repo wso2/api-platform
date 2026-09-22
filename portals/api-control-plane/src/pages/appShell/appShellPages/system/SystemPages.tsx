@@ -171,7 +171,11 @@ export function OrganizationRedirectPage() {
 
   if (!organization) {
     // Only once waiting has genuinely run out is an empty list worth reporting as one.
-    if (attempt < PROVISIONING_ATTEMPTS) {
+    // The last attempt counts itself before its refetch answers, and `isPending` covers
+    // only the first load — so without the isFetching guard the empty state would flash
+    // while that final answer was still in flight, which is the very thing this wait
+    // exists to prevent.
+    if (attempt < PROVISIONING_ATTEMPTS || organizationsQuery.isFetching) {
       return <LoadingState label={intl.formatMessage(organizationRedirectMessages.provisioning)} />;
     }
     return (
