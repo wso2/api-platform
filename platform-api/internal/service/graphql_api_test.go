@@ -235,7 +235,7 @@ func TestGraphQLCreate_WithSDL_Success(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -305,7 +305,7 @@ func TestGraphQLCreate_WithIntrospection_Success(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Introspected API",
-		Context:     "/introspected",
+		Context:     graphQLStrPtr("/introspected"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Upstream: api.Upstream{
@@ -357,7 +357,7 @@ func TestGraphQLCreate_IntrospectionFailure_SucceedsWithEmptySchema(t *testing.T
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Unreachable Introspection API",
-		Context:     "/unreachable",
+		Context:     graphQLStrPtr("/unreachable"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
@@ -391,12 +391,12 @@ func TestGraphQLCreate_SchemaResolveFailure_IdenticalShapeRegardlessOfCause(t *t
 	defer introspectionServer.Close()
 
 	malformedSDLReq := &api.CreateGraphQLAPIRequest{
-		DisplayName: "Broken API", Context: "/broken", Version: "v1.0", ProjectId: "project-uuid",
+		DisplayName: "Broken API", Context: graphQLStrPtr("/broken"), Version: "v1.0", ProjectId: "project-uuid",
 		Sdl:      graphQLStrPtr("this is not { valid SDL at all"),
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 	introspectionFailureReq := &api.CreateGraphQLAPIRequest{
-		DisplayName: "Unreachable API", Context: "/unreachable", Version: "v1.0", ProjectId: "project-uuid",
+		DisplayName: "Unreachable API", Context: graphQLStrPtr("/unreachable"), Version: "v1.0", ProjectId: "project-uuid",
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(introspectionServer.URL)}},
 	}
 
@@ -425,7 +425,7 @@ func TestGraphQLCreate_DuplicateHandle_Conflict(t *testing.T) {
 	req := &api.CreateGraphQLAPIRequest{
 		Id:          graphQLStrPtr("countries-graphql-api"),
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -783,7 +783,7 @@ func TestGraphQLCreate_MalformedSDL_SucceedsWithEmptySchema(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Broken API",
-		Context:     "/broken",
+		Context:     graphQLStrPtr("/broken"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr("this is not { valid SDL at all"),
@@ -817,7 +817,7 @@ func TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema(t *testing.T) 
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "No Query Root API",
-		Context:     "/no-query-root",
+		Context:     graphQLStrPtr("/no-query-root"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr("type Mutation { addCountry(name: String!): String }"),
@@ -856,7 +856,7 @@ func TestGraphQLCreate_SDLTakesPrecedenceOverIntrospection(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "SDL Precedence API",
-		Context:     "/sdl-precedence",
+		Context:     graphQLStrPtr("/sdl-precedence"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -888,7 +888,7 @@ func TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Both SDL Sources API",
-		Context:     "/both-sdl-sources",
+		Context:     graphQLStrPtr("/both-sdl-sources"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -923,7 +923,7 @@ func TestGraphQLCreate_SDLUrlFetchFailure_SucceedsWithEmptySchema(t *testing.T) 
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "SDL URL Blocked API",
-		Context:     "/sdl-url-blocked",
+		Context:     graphQLStrPtr("/sdl-url-blocked"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
@@ -964,7 +964,7 @@ func TestGraphQLCreate_SDLUrlFetchFailure_DoesNotFallBackToIntrospection(t *test
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "SDL URL Blocked With Upstream API",
-		Context:     "/sdl-url-blocked-with-upstream",
+		Context:     graphQLStrPtr("/sdl-url-blocked-with-upstream"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
@@ -1002,7 +1002,7 @@ func TestGraphQLCreate_MissingSDLAndUpstream_ValidationFailed(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "No Schema Source API",
-		Context:     "/no-schema",
+		Context:     graphQLStrPtr("/no-schema"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		// Neither Sdl nor Upstream.Main.Url supplied.
@@ -1120,6 +1120,34 @@ func TestGraphQLValidateSchema_ResolutionFailure_ReturnsUnresolved(t *testing.T)
 	}
 }
 
+// TestGraphQLValidateSchema_InlineSDLFailure_ReturnsLineAnchoredErrors pins the
+// fix that lets the console show gqlparser's own parse errors in the schema
+// panel instead of a generic "could not derive a schema" message: an inline
+// SDL failure is safe to detail precisely, since it describes text the caller
+// submitted themselves, not an upstream/network outcome.
+func TestGraphQLValidateSchema_InlineSDLFailure_ReturnsLineAnchoredErrors(t *testing.T) {
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	req := api.ValidateGraphQLSchemaRequest{
+		Sdl: graphQLStrPtr("type Query { countries: [Country "), // unterminated brace
+	}
+
+	resolution, err := svc.ValidateSchema(req)
+	if err != nil {
+		t.Fatalf("expected no error for a resolution-quality failure, got: %v", err)
+	}
+	if len(resolution.SDLErrors) == 0 {
+		t.Fatal("expected at least one SDL error for the malformed inline SDL")
+	}
+	issue := resolution.SDLErrors[0]
+	if issue.Message == "" {
+		t.Error("expected a non-empty parser message")
+	}
+	if issue.Line == nil || *issue.Line == 0 {
+		t.Errorf("expected a non-zero line number, got %v", issue.Line)
+	}
+}
+
 // TestGraphQLValidateSchema_StructuralMismatch_ValidationFailed guards the
 // structural side of resolveSchema still applying to ValidateSchema — a
 // schemaSource/field mismatch is a real error, not a soft "unresolved"
@@ -1157,15 +1185,18 @@ func TestGraphQLValidateSchema_NoFieldsSupplied_ValidationFailed(t *testing.T) {
 	}
 }
 
-// TestGraphQLCreate_MissingContext_ValidationFailed covers the
-// displayName/version/context required-fields check with context specifically
-// omitted, matching the test-scenarios sheet's "context omitted" case.
-func TestGraphQLCreate_MissingContext_ValidationFailed(t *testing.T) {
+// TestGraphQLCreate_MissingContext_DerivesDefault covers context being
+// optional, unlike REST: unlike displayName/version (still required), an
+// omitted context succeeds and the service derives one from the handle and
+// version — mirroring the create wizard's own default (`toContext` in
+// GraphqlConfigureForm.tsx) — rather than rejecting the request.
+func TestGraphQLCreate_MissingContext_DerivesDefault(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
 
 	req := &api.CreateGraphQLAPIRequest{
+		Id:          graphQLStrPtr("countries-graphql-api"),
 		DisplayName: "Countries GraphQL API",
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
@@ -1173,15 +1204,15 @@ func TestGraphQLCreate_MissingContext_ValidationFailed(t *testing.T) {
 		// Context omitted.
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error when context is omitted")
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("expected omitted context to succeed with a derived default, got error: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeCommonValidationFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeCommonValidationFailed, code)
+	if resp.Context == nil || *resp.Context != "/countries-graphql-api/v1.0/graphql" {
+		t.Errorf("expected a derived context, got %v", resp.Context)
 	}
-	if repo.created != nil {
-		t.Error("expected no repository write when a required field is missing")
+	if repo.created == nil || repo.created.Configuration.Context == nil || *repo.created.Configuration.Context == "" {
+		t.Error("expected the derived context to be persisted, not left empty")
 	}
 }
 
@@ -1193,7 +1224,7 @@ func TestGraphQLCreate_ProjectRefNotFound_CrossOrgProject(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -1237,7 +1268,7 @@ func TestGraphQLUpdate_Success(t *testing.T) {
 }`
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API v2",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.1",
 		Sdl:         graphQLStrPtr(updatedSDL),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1291,7 +1322,7 @@ func TestGraphQLUpdate_IDMismatch_400(t *testing.T) {
 	req := &api.GraphQLAPI{
 		Id:          graphQLStrPtr("a-different-handle"),
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1364,7 +1395,7 @@ func TestGraphQLUpdate_ReIntrospect_RefreshesSchema(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
@@ -1409,7 +1440,7 @@ func TestGraphQLUpdate_ReIntrospectFails_PreservesExistingSchema(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
@@ -1449,7 +1480,7 @@ func TestGraphQLUpdate_MalformedSDL_PreservesExistingSchema(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr("this is not { valid SDL at all"),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1484,7 +1515,7 @@ func TestGraphQLUpdate_SDLWithNoQueryRoot_PreservesExistingSchema(t *testing.T) 
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr("type Mutation { addCountry(name: String!): String }"),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1523,7 +1554,7 @@ func TestGraphQLUpdate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
 		SdlUrl:      graphQLStrPtr("https://example.com/schema.graphql"),
@@ -1560,7 +1591,7 @@ func TestGraphQLUpdate_SDLUrlFetchFailure_PreservesExistingSchema(t *testing.T) 
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
 	}
@@ -1593,7 +1624,7 @@ func TestGraphQLUpdate_DPOriginated_Blocked(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},

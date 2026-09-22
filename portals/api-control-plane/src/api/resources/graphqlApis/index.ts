@@ -32,6 +32,7 @@ export type {
   GraphQLApiListItem,
   GraphQLApiListResponse,
   GraphQLApiSdlResponse,
+  GraphQLSdlValidationIssue,
   UpdateGraphQLApiBody,
   ValidateGraphQLSchemaBody,
   ValidateGraphQLSchemaRequest,

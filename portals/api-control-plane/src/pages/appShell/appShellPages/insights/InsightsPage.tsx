@@ -72,7 +72,12 @@ function InsightsPageContent() {
   // (same signal that gates those sidebar extensions).
   if (runtimeConfig.cloudProxyEnabled) {
     return (
-      <ScopeGate prompt="Insights are reported per API." requires="api" to={routes.apiInsightsApi}>
+      <ScopeGate
+        graphqlTo={routes.graphqlApiInsightsApi}
+        prompt="Insights are reported per API."
+        requires="api"
+        to={routes.apiInsightsApi}
+      >
         <ComingSoon feature={<FormattedMessage {...messages.cloudFeature} />} />
       </ScopeGate>
     );

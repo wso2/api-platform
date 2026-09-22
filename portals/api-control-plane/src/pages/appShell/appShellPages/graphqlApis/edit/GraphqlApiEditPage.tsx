@@ -96,7 +96,7 @@ const toUpdateBody = (api: GraphQLApiDetail, values: GraphqlApiBasicInfoFormValu
     description: values.description,
     displayName: values.displayName,
     schemaSource: 'introspection' as const,
-    version: values.version,
+    version: values.version.trim(),
   },
 });
 

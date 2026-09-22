@@ -22,11 +22,12 @@ import {
   Chip,
   FormControl,
   IconButton,
+  InputAdornment,
   MenuItem,
   Select,
   Stack,
+  TextField,
   Tooltip,
-  Typography,
 } from '@wso2/oxygen-ui';
 import { Copy } from '@wso2/oxygen-ui-icons-react';
 import { createGraphiQLFetcher, createLocalStorage } from '@graphiql/toolkit';
@@ -64,6 +65,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointSucceeded',
     defaultMessage: 'Endpoint URL copied to clipboard.',
   },
+  endpointLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.endpointLabel',
+    defaultMessage: 'Endpoint URL',
+    description: 'Accessible name of the read-only field holding the gateway invoke URL under test.',
+  },
   gatewayLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.gatewayLabel',
     defaultMessage: 'Gateway',
@@ -80,6 +86,47 @@ const messages = defineMessages({
 
 const GRAPHIQL_HEIGHT = 'calc(100vh - 280px)';
 const GRAPHIQL_MIN_HEIGHT = 560;
+
+/**
+ * GraphiQL derives a tab's title from its operation name — `operationName ||
+ * fuzzyExtractOperationName(query) || '<untitled>'` (`@graphiql/react`'s
+ * `tabs.ts`); there is no separate "tab title" prop, and that extractor
+ * ignores every line starting with `#`. So GraphiQL's own built-in welcome
+ * comment (reproduced below, verbatim except for the keyboard-shortcuts
+ * section — those lines interpolate an OS-aware Cmd/Ctrl label via a helper
+ * this project doesn't depend on directly) is kept as-is, with a real,
+ * non-comment `query Schema { ... }` appended after it: the comment lines
+ * stay invisible to the title extractor, so the tab still reads "Schema"
+ * instead of GraphiQL's own default "<untitled>", while the user still sees
+ * the original explanation and example on first load. `__typename` is a
+ * placeholder field valid against any schema, so this loads with no
+ * syntax/validation error before the user replaces it with a real query.
+ */
+const DEFAULT_QUERY = `# Welcome to GraphiQL
+#
+# GraphiQL is an in-browser tool for writing, validating, and testing
+# GraphQL queries.
+#
+# Type queries into this side of the screen, and you will see intelligent
+# typeaheads aware of the current GraphQL type schema and live syntax and
+# validation errors highlighted within the text.
+#
+# GraphQL queries typically start with a "{" character. Lines that start
+# with a # are ignored.
+#
+# An example GraphQL query might look like:
+#
+#     {
+#       field(arg: "value") {
+#         subField
+#       }
+#     }
+#
+
+query Schema {
+  __typename
+}
+`;
 
 /**
  * GraphQL Test console, built on the real `graphiql`/`@graphiql/toolkit`
@@ -125,7 +172,18 @@ export function GraphqlTestConsolePage() {
   }, [sdlQuery.data]);
 
   const storage = useMemo(
-    () => createLocalStorage({ namespace: `wso2-graphql-console:${graphqlApiHandler}` }),
+    // The version suffix isn't a real schema version — it's a cache-buster.
+    // GraphiQL restores a previously-persisted tab verbatim once one exists
+    // under a namespace (`getDefaultTabState` in `@graphiql/react`'s tabs.ts
+    // only ever falls back to `defaultQuery` when storage has nothing stored
+    // yet), so a browser that already opened this console under an older
+    // namespace would keep showing that stale tab forever regardless of what
+    // `defaultQuery` is set to now — this is why the suffix was bumped from
+    // v1 to v2 (to stop showing GraphiQL's own default "<untitled>" tab) and
+    // now to v3 (to pick up DEFAULT_QUERY's added welcome/example comment).
+    // Bump it again any time DEFAULT_QUERY's content changes, or affected
+    // browsers keep seeing whatever they had cached before this exact fix.
+    () => createLocalStorage({ namespace: `wso2-graphql-console:v3:${graphqlApiHandler}` }),
     [graphqlApiHandler],
   );
 
@@ -175,21 +233,37 @@ export function GraphqlTestConsolePage() {
                 ))}
               </Select>
             </FormControl>
-            <Typography color="text.secondary" noWrap sx={{ flex: 1, fontFamily: 'monospace' }} variant="body2">
-              {endpointUrl}
-            </Typography>
-            <Tooltip title={intl.formatMessage(messages.copyEndpoint)}>
-              <span>
-                <IconButton
-                  aria-label={intl.formatMessage(messages.copyEndpoint)}
-                  disabled={!endpointUrl}
-                  onClick={copyEndpoint}
-                  size="small"
-                >
-                  <Copy size={16} />
-                </IconButton>
-              </span>
-            </Tooltip>
+            <TextField
+              fullWidth
+              size="small"
+              slotProps={{
+                htmlInput: {
+                  'aria-label': intl.formatMessage(messages.endpointLabel),
+                  sx: { fontFamily: 'monospace' },
+                },
+                input: {
+                  readOnly: true,
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title={intl.formatMessage(messages.copyEndpoint)}>
+                        <span>
+                          <IconButton
+                            aria-label={intl.formatMessage(messages.copyEndpoint)}
+                            disabled={!endpointUrl}
+                            onClick={copyEndpoint}
+                            size="small"
+                          >
+                            <Copy size={16} />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{ flex: 1 }}
+              value={endpointUrl}
+            />
           </Stack>
 
           <Box
@@ -201,7 +275,13 @@ export function GraphqlTestConsolePage() {
               overflow: 'hidden',
             }}
           >
-            <GraphiQL fetcher={fetcher} schema={schema} shouldPersistHeaders storage={storage} />
+            <GraphiQL
+              defaultQuery={DEFAULT_QUERY}
+              fetcher={fetcher}
+              schema={schema}
+              shouldPersistHeaders
+              storage={storage}
+            />
           </Box>
         </>
       )}

@@ -151,7 +151,7 @@ describe('submenu children follow API scope', () => {
  * browsing a GraphQL API.
  */
 describe('submenu children also follow GraphQL API scope, for the submenus that have one', () => {
-  it.each(['develop', 'test'])(
+  it.each(['develop', 'test', 'insights', 'observability'])(
     '%s offers its GraphQL-capable children, linking into the GraphQL API',
     (id) => {
       const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
@@ -178,14 +178,19 @@ describe('submenu children also follow GraphQL API scope, for the submenus that 
     expect(item.children?.map((child) => child.id)).toEqual(['test-console']);
   });
 
-  it.each(['insights', 'observability'])(
-    '%s stays withheld in GraphQL scope — it has no GraphQL-side page at all',
-    (id) => {
-      const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
+  // Pins the fix for a real bug: Insights and Observability had no
+  // `graphqlTo` on any child at all, so `revealsForGraphqlApi` was always
+  // false and both submenus stayed withheld while browsing a GraphQL API —
+  // matching the pre-fix "no GraphQL page exists" state, which is no longer
+  // true now that each child has a GraphQL-side page of its own.
+  it.each([
+    ['insights', ['insights-api', 'insights-compliance']],
+    ['observability', ['observability-metrics', 'observability-logs']],
+  ])('%s offers every child in GraphQL scope, unlike develop/test', (id, childIds) => {
+    const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
 
-      expect(item.children).toBeUndefined();
-    },
-  );
+    expect(item.children?.map((child) => child.id)).toEqual(childIds);
+  });
 
   it('marks develop-policies active on the GraphQL Develop Policies page', () => {
     const route = routes.graphqlApiDevelopPolicies(ORG, PROJECT, GRAPHQL_API);

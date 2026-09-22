@@ -33,12 +33,12 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useValidateGraphQLSchema } from '@/api/resources/graphqlApis';
 import { isValidUrl } from '../../../utils/developEdit';
 import { countNamedTypes, parseGraphQLSdl } from '../../utils/graphqlSchema';
-import type { GraphqlResolvedSchema } from './graphqlSourceTypes';
+import type { GraphqlResolutionFailure, GraphqlResolvedSchema } from './graphqlSourceTypes';
 
 const messages = defineMessages({
   check: {
     id: 'api.create.graphql.introspection.action.check',
-    defaultMessage: 'Check',
+    defaultMessage: 'Fetch',
   },
   disabledHint: {
     id: 'api.create.graphql.introspection.disabledHint',
@@ -70,6 +70,13 @@ const messages = defineMessages({
 export type GraphqlIntrospectionFormProps = {
   /** Called with the resolved schema, or `null` once the inputs move on from it. */
   onResolved: (resolved: GraphqlResolvedSchema | null) => void;
+  /**
+   * Called with the last validation failure's detail, or `null` once cleared —
+   * lets `GraphqlSchemaExplorer` show the actual reason instead of its
+   * generic empty state. Optional so a caller with no explorer to feed
+   * (there is currently only one) isn't forced to wire it.
+   */
+  onValidationFailed?: (failure: GraphqlResolutionFailure | null) => void;
 };
 
 /**
@@ -77,7 +84,10 @@ export type GraphqlIntrospectionFormProps = {
  * gateway introspects to derive its starting schema, checked without leaving
  * the step via the dry-run `/graphql-apis/validate-schema` endpoint.
  */
-export const GraphqlIntrospectionForm = ({ onResolved }: GraphqlIntrospectionFormProps) => {
+export const GraphqlIntrospectionForm = ({
+  onResolved,
+  onValidationFailed,
+}: GraphqlIntrospectionFormProps) => {
   const intl = useIntl();
   const [endpoint, setEndpoint] = useState('');
   const [touched, setTouched] = useState(false);
@@ -90,6 +100,7 @@ export const GraphqlIntrospectionForm = ({ onResolved }: GraphqlIntrospectionFor
     setEndpoint(next);
     validate.reset();
     onResolved(null);
+    onValidationFailed?.(null);
   };
 
   const handleCheck = (event: FormEvent<HTMLFormElement>) => {
@@ -101,13 +112,18 @@ export const GraphqlIntrospectionForm = ({ onResolved }: GraphqlIntrospectionFor
       { metadata: { schemaSource: 'introspection', upstream: { main: { url: trimmed } } } },
       {
         onSuccess: (result) => {
-          onResolved(
-            result.resolved
-              ? { endpointUrl: trimmed, schemaSource: 'introspection', sdl: result.sdl }
-              : null,
-          );
+          if (result.resolved) {
+            onResolved({ endpointUrl: trimmed, schemaSource: 'introspection', sdl: result.sdl });
+            onValidationFailed?.(null);
+          } else {
+            onResolved(null);
+            onValidationFailed?.({ message: result.message, sdlErrors: result.sdlErrors });
+          }
         },
-        onError: () => onResolved(null),
+        onError: () => {
+          onResolved(null);
+          onValidationFailed?.(null);
+        },
       },
     );
   };

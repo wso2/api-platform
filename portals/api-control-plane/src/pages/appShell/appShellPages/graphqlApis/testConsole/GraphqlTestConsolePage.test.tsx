@@ -52,9 +52,9 @@ const gateway = aGateway({
 // replaced with a stub that surfaces the props this page is responsible for
 // wiring correctly (fetcher target, parsed schema), the same way
 // `DefineApiPanel.test.tsx` stubs the wizard's own Monaco-backed editor.
-let lastGraphiQLProps: { fetcher?: unknown; schema?: unknown } | undefined;
+let lastGraphiQLProps: { defaultQuery?: string; fetcher?: unknown; schema?: unknown } | undefined;
 vi.mock('graphiql', () => ({
-  GraphiQL: (props: { fetcher?: unknown; schema?: unknown }) => {
+  GraphiQL: (props: { defaultQuery?: string; fetcher?: unknown; schema?: unknown }) => {
     lastGraphiQLProps = props;
     return <div>{props.schema ? 'GraphiQL ready with schema' : 'GraphiQL ready, no schema'}</div>;
   },
@@ -115,11 +115,37 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     renderPage();
 
     expect(await screen.findByText('Edge Gateway')).toBeInTheDocument();
-    expect(
-      screen.getByText('https://gw.example.com/countries-graphql-api/v1.0.0'),
-    ).toBeInTheDocument();
+    const endpointField = screen.getByDisplayValue(
+      'https://gw.example.com/countries-graphql-api/v1.0.0',
+    );
+    expect(endpointField).toBeInTheDocument();
+    expect(endpointField).toHaveAttribute('readonly');
     expect(await screen.findByText('GraphiQL ready with schema')).toBeInTheDocument();
     expect(lastGraphiQLProps?.schema).toBeDefined();
+  });
+
+  // GraphiQL derives a tab's title from the query's own operation name —
+  // there is no separate "tab title" prop — so the starter query passed here
+  // must contain a named operation, or the first tab reads GraphiQL's own
+  // default "<untitled>" instead of "Schema". GraphiQL's own welcome comment
+  // is kept ahead of it (see DEFAULT_QUERY's comment), so this only asserts
+  // the named operation is present, not that the string starts with it.
+  it('starts the editor with a named "Schema" operation, not an anonymous one', async () => {
+    serveApi([deployment]);
+
+    renderPage();
+
+    await screen.findByText('GraphiQL ready with schema');
+    expect(lastGraphiQLProps?.defaultQuery).toMatch(/query Schema\b/);
+  });
+
+  it('keeps GraphiQL’s own welcome/example comment ahead of the starter query', async () => {
+    serveApi([deployment]);
+
+    renderPage();
+
+    await screen.findByText('GraphiQL ready with schema');
+    expect(lastGraphiQLProps?.defaultQuery).toContain('# Welcome to GraphiQL');
   });
 
   it('points the fetcher at the selected gateway’s invoke URL', async () => {

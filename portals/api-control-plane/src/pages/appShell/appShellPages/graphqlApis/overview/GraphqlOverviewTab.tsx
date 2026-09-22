@@ -60,13 +60,11 @@ export function GraphqlOverviewTab({
     <Grid container spacing={2}>
       <Grid size={{ lg: 8, xs: 12 }}>
         <Stack spacing={2} marginTop={1}>
-          <Card sx={{ display: 'flex', flexDirection: 'column', minHeight: 480, p: 2 }}>
+          <Card sx={{ display: 'flex', flexDirection: 'column', p: 2 }}>
             <Typography sx={{ fontWeight: 600, mb: 1.5 }} variant="h6">
               <FormattedMessage {...messages.schemaTitle} />
             </Typography>
-            <Box sx={{ flex: 1, minHeight: 0 }}>
-              <GraphqlSchemaExplorer sdl={sdl} />
-            </Box>
+            <GraphqlSchemaExplorer sdl={sdl} />
           </Card>
         </Stack>
       </Grid>

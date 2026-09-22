@@ -290,6 +290,28 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
   ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'publish'),
+  // Insights/Observability's GraphQL siblings — same doubled-`api` naming note
+  // as `apiInsightsApi` above applies here too.
+  graphqlApiInsightsApi: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
+  ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'insights/api'),
+  graphqlApiInsightsCompliance: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
+  ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'insights/compliance'),
+  graphqlApiObservabilityMetrics: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
+  ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'observability/metrics'),
+  graphqlApiObservabilityLogs: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
+  ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'observability/logs'),
   organizationPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals`,
   projectPortals: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     projectPath(orgHandle, projectHandler, 'portals'),

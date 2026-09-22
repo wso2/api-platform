@@ -4544,12 +4544,16 @@ export interface components {
             /** @example Public GraphQL API for querying country/region reference data */
             description?: string;
             /**
-             * @description Base path for the single GraphQL endpoint. Suggested (not enforced)
-             *     convention: end the path with `/graphql`, matching how most standalone
-             *     GraphQL servers name their single endpoint — this is not validated.
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
              * @example /countries/graphql
              */
-            context: string;
+            context?: string;
             /** @example v1.0 */
             version: string;
             /** @example john.doe */
@@ -4657,12 +4661,12 @@ export interface components {
             readonly introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
             /**
              * @description List of policies to be applied on the API. Reused unmodified from
-             *     REST APIs. A `cors` policy applies only to the API's single `POST`
-             *     route — a GraphQL API has no per-operation list to add an
-             *     `OPTIONS` entry to, so a browser preflight request is not routed
-             *     at all and a `cors` policy will not run for it; cross-origin
-             *     browser clients that trigger a preflight are not currently
-             *     supported.
+             *     REST APIs. A GraphQL API has no per-operation list to add an
+             *     explicit `OPTIONS` entry to the way a REST API does, so when a
+             *     `cors` policy is attached, the gateway synthesizes an OPTIONS
+             *     route for the same path itself, sharing this same policy chain —
+             *     this is what lets `cors` (and every other policy in this list, in
+             *     declared order) answer a browser's preflight request.
              */
             policies?: components["schemas"]["Policy"][];
             /**
@@ -4689,12 +4693,16 @@ export interface components {
             /** @example Public GraphQL API for querying country/region reference data */
             description?: string;
             /**
-             * @description Base path for the single GraphQL endpoint. Suggested (not enforced)
-             *     convention: end the path with `/graphql`, matching how most standalone
-             *     GraphQL servers name their single endpoint — this is not validated.
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
              * @example /countries/graphql
              */
-            context: string;
+            context?: string;
             /** @example v1.0 */
             version: string;
             /** @example john.doe */
@@ -4741,12 +4749,12 @@ export interface components {
             readonly introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
             /**
              * @description List of policies to be applied on the API. Reused unmodified from
-             *     REST APIs. A `cors` policy applies only to the API's single `POST`
-             *     route — a GraphQL API has no per-operation list to add an
-             *     `OPTIONS` entry to, so a browser preflight request is not routed
-             *     at all and a `cors` policy will not run for it; cross-origin
-             *     browser clients that trigger a preflight are not currently
-             *     supported.
+             *     REST APIs. A GraphQL API has no per-operation list to add an
+             *     explicit `OPTIONS` entry to the way a REST API does, so when a
+             *     `cors` policy is attached, the gateway synthesizes an OPTIONS
+             *     route for the same path itself, sharing this same policy chain —
+             *     this is what lets `cors` (and every other policy in this list, in
+             *     declared order) answer a browser's preflight request.
              */
             policies?: components["schemas"]["Policy"][];
             /**
@@ -4891,6 +4899,35 @@ export interface components {
              * @example The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.
              */
             message?: string;
+            /**
+             * @description Set only when `resolved` is `false` and the failure was a parse
+             *     error on SDL text the caller effectively authored: `schemaSource`
+             *     `inline`/`file` always, and `url` once its fetch itself succeeded.
+             *     Unlike `message`, these are safe to show verbatim — they describe
+             *     the caller's own document, not a network outcome. Never set for a
+             *     `url` fetch failure or an `introspection` failure, since revealing
+             *     those could map internal topology (`error-handling.md`,
+             *     `ssrf-prevention.md`).
+             */
+            sdlErrors?: components["schemas"]["GraphQLSdlValidationIssue"][];
+        };
+        /** GraphQL SDL validation issue */
+        GraphQLSdlValidationIssue: {
+            /**
+             * @description The parser's own error message for this issue.
+             * @example Unexpected Name "this"
+             */
+            message: string;
+            /**
+             * @description 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+             * @example 3
+             */
+            line?: number;
+            /**
+             * @description 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+             * @example 12
+             */
+            column?: number;
         };
         /**
          * @description Time unit for API key expiration duration
