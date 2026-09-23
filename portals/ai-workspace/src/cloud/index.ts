@@ -25,24 +25,9 @@
  */
 
 import type { BrandLogo } from "../branding/BrandLogoProvider";
-import {
-  AI_WORKSPACE_HEADER_ACTIONS_SLOT,
-  type AIWorkspaceCloudEntry,
-} from "../extensions";
-import { TrialStatusFeature } from "../../../cloud-plugins/apip-cloud-ui-trial-status/src";
-import { createElement } from "react";
+import type { AIWorkspaceCloudEntry } from "../extensions";
 
-/** Development registration for the endpoint-backed cloud trial header. */
-export const cloudExtensions: AIWorkspaceCloudEntry[] = import.meta.env.DEV
-  ? [
-      {
-        id: "trial-status-preview",
-        slot: AI_WORKSPACE_HEADER_ACTIONS_SLOT,
-        order: 10,
-        render: () => createElement(TrialStatusFeature),
-      },
-    ]
-  : [];
+export const cloudExtensions: AIWorkspaceCloudEntry[] = [];
 
 /** Cloud logo placeholder; undefined falls back to the on-prem logo. */
 export const cloudBrandLogo: BrandLogo | undefined = undefined;
