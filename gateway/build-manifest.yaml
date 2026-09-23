@@ -162,6 +162,9 @@ policies:
     - name: token-based-ratelimit
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
+    - name: typesafe-jev-guardrail
+      version: v1.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-guardrail@v1
     - name: url-guardrail
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v1
