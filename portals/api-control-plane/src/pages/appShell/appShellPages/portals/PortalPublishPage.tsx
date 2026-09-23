@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react';
 import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   REST_API_TYPE,
@@ -212,6 +212,7 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
 export function PortalPublishPage() {
   const { apiPortalId = '' } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const intl = useIntl();
   // The page fills the visible area and only its middle scrolls, so switching tabs
   // or opening the editor never moves the header or the action buttons.
@@ -436,6 +437,11 @@ export function PortalPublishPage() {
       }
     });
 
+  // Each terminal action leaves this one portal's page behind for the listing,
+  // where the card now reflects the new status — there's nothing left to do
+  // on this page once the action the user came here for has gone through.
+  const backToPortalsList = () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler));
+
   const handlePublish = () =>
     runAction('publishing', async () => {
       if (!(await saveDraft())) return;
@@ -448,6 +454,7 @@ export function PortalPublishPage() {
         throw error;
       }
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
+      backToPortalsList();
     });
 
   const confirmUnpublish = () => {
@@ -455,6 +462,7 @@ export function PortalPublishPage() {
     return runAction('unpublishing', async () => {
       await unpublishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.unpublished, { portalName }), 'success');
+      backToPortalsList();
     });
   };
 
@@ -463,6 +471,7 @@ export function PortalPublishPage() {
     return runAction('deprecating', async () => {
       await deprecateMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.deprecated, { portalName }), 'success');
+      backToPortalsList();
     });
   };
 

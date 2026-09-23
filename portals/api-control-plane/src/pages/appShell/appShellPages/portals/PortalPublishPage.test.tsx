@@ -474,6 +474,8 @@ describe('PortalPublishPage', () => {
     });
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(await screen.findByText('Published to acme-portal.')).toBeInTheDocument();
+    // Nothing left to do here once the action succeeds — back to the listing.
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
   });
 
   it('Unpublish is disabled until the API is actually live, then asks for confirmation', async () => {
@@ -559,7 +561,7 @@ describe('PortalPublishPage', () => {
     );
   });
 
-  it('goes back to Publish once the API has been unpublished', async () => {
+  it('returns to the portals list once the API has been unpublished', async () => {
     servePublicationState({ publication: aPublication() });
     server.use(noContent('post', UNPUBLISH_PATH));
 
@@ -569,13 +571,11 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
     await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
-
-    // The refetch that follows the unpublish now finds no live listing.
-    server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
     await confirmInDialog(user);
 
-    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+    // Nothing left to do here once the action succeeds — back to the listing.
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+    expect(screen.getByText('Unpublished from acme-portal.')).toBeInTheDocument();
   });
 
   it('does not report success when the API was already unpublished elsewhere, and refreshes to Publish', async () => {
@@ -597,7 +597,7 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByText('Unpublished from acme-portal.')).not.toBeInTheDocument();
   });
 
-  it('goes back to Publish once the API has been deprecated', async () => {
+  it('returns to the portals list once the API has been deprecated', async () => {
     servePublicationState({ publication: aPublication() });
     server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' })));
 
@@ -607,41 +607,11 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
     await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
-
-    server.use(resource(PUBLICATION_PATH, aPublication({ status: 'DEPRECATED' })));
     await confirmInDialog(user);
 
-    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Deprecate' })).not.toBeInTheDocument();
-  });
-
-  it('keeps Publish as the button after unpublishing and publishing again', async () => {
-    servePublicationState({ publication: aPublication() });
-    server.use(
-      noContent('post', UNPUBLISH_PATH),
-      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
-      accepts('put', DRAFT_DEFINITION_PATH, undefined),
-      accepts('post', PUBLISH_PATH, aPublication()),
-    );
-
-    const { user } = renderPage();
-
-    await screen.findByDisplayValue('Loan Management Service');
-    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
-    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
-    server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
-    await confirmInDialog(user);
-    await screen.findByText('Unpublished from acme-portal.');
-
-    server.use(resource(PUBLICATION_PATH, aPublication()));
-    await user.click(await screen.findByRole('button', { name: 'Publish' }));
-    await screen.findByText('Published to acme-portal.');
-
-    // Live again — the primary side reads Republish now that the listing is published,
-    // and must not fall back to the old Unpublish.
-    expect(screen.getByRole('button', { name: 'Republish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+    // Nothing left to do here once the action succeeds — back to the listing.
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+    expect(screen.getByText('Deprecated on acme-portal.')).toBeInTheDocument();
   });
 
   it('lists Deprecate before Unpublish in the dropdown', async () => {
