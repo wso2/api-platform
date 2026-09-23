@@ -889,6 +889,15 @@ export interface PublicationDraftDetailsInput extends PublicationDetailsCore {
   docIds?: string[];
 }
 
+/**
+ * A saved draft as returned by the API (schema `PublicationDraftDetails`) —
+ * the input fields plus read-only audit/asset flags.
+ */
+export interface PublicationDraftDetails extends PublicationDraftDetailsInput, PublicationAuditFields {
+  hasThumbnail?: boolean;
+  hasLandingPage?: boolean;
+}
+
 /** The live listing for one (API, portal) pairing (schema `Publication`). */
 export interface Publication extends PublicationDetailsCore, PublicationAuditFields {
   /** The API Portal's handle. */

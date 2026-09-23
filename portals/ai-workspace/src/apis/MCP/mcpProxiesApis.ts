@@ -26,6 +26,7 @@ import type {
   CreateMCPServerRequest,
   UpdateMCPServerRequest,
   Publication,
+  PublicationDraftDetails,
   PublicationDraftDetailsInput,
 } from '../../utils/types';
 
@@ -193,6 +194,20 @@ export async function getMcpProxyApiPortalPublication(
 }
 
 /**
+ * Get the saved publication draft for this MCP proxy on the given API Portal.
+ *
+ * Throws on a 404 (no draft saved yet); callers publishing for the first time
+ * should treat that specifically as "no existing draft to merge with".
+ */
+export async function getMcpProxyApiPortalDraft(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<PublicationDraftDetails> {
+  return get<PublicationDraftDetails>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft'), undefined, baseUrl);
+}
+
+/**
  * Save the publication draft and publish it, in one call.
  *
  * Handled by the BFF, which does the two Platform-API calls the contract needs
@@ -237,6 +252,7 @@ export const mcpProxiesApis = {
   updateMCPServer,
   deleteMCPServer,
   getMcpProxyApiPortalPublication,
+  getMcpProxyApiPortalDraft,
   publishMcpProxyToApiPortal,
   unpublishMcpProxyFromApiPortal,
 };
