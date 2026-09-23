@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { runtimeConfig } from '../config/runtime';
@@ -26,6 +26,7 @@ import {
 } from '../scope/ConsoleScopeProvider';
 import {
   buildScopedExtensionPath,
+  childRoutePath,
   isPageOverride,
   isSidebarExtension,
   useExtensions,
@@ -35,6 +36,7 @@ import { navigationRegistry } from './navigationRegistry';
 import {
   type NavigationDefinition,
   type NavigationItem,
+  type NavigationLevel,
 } from './navigationTypes';
 
 const isFeatureEnabled = (definition: NavigationDefinition) =>
@@ -79,6 +81,59 @@ const isBuiltinInsightsHiddenByCloudPlugin = (
 ) =>
   definition.id === 'insights' && cloudInsightsLoaded && !scope.isApiScope;
 
+/**
+ * Built-in ids that a *visible* sidebar extension has claimed (see
+ * `ApiControlPlaneExtension.claims`).
+ *
+ * Gated on the claimant's own visibility, so an entry that stands down in some
+ * scope hands the built-in back rather than removing both. Applied where the two
+ * registries are merged: by resolution time a claim and its target can share an
+ * id, and the rule could no longer tell them apart.
+ */
+const claimedBuiltinIds = (
+  extensions: readonly ApiControlPlaneExtension[],
+  scope: ConsoleScope
+) =>
+  new Set(
+    extensions
+      .filter(
+        (extension) =>
+          isSidebarExtension(extension) &&
+          extension.claims &&
+          (extension.isVisible?.(scope) ?? true)
+      )
+      .map((extension) => extension.claims as string)
+  );
+
+const warned = new Set<string>();
+const warnOnce = (message: string) => {
+  if (!import.meta.env.DEV || warned.has(message)) return;
+  warned.add(message);
+  console.warn(message);
+};
+
+/**
+ * Dev-only checks on how sidebar extensions relate to the built-in registry: a
+ * `claims` naming no built-in item does nothing (usually a typo), and an
+ * extension sharing a built-in's id without claiming it puts two items with one
+ * id in the sidebar.
+ */
+const warnOnRegistryConflicts = (extensions: readonly ApiControlPlaneExtension[]) => {
+  const builtinIds = new Set(navigationRegistry.map((definition) => definition.id));
+  for (const extension of extensions.filter(isSidebarExtension)) {
+    if (extension.claims && !builtinIds.has(extension.claims)) {
+      warnOnce(
+        `Sidebar extension "${extension.id}" claims "${extension.claims}", which is not a built-in item; the claim has no effect.`
+      );
+    }
+    if (builtinIds.has(extension.id) && extension.claims !== extension.id) {
+      warnOnce(
+        `Sidebar extension "${extension.id}" shares its id with a built-in item without claiming it; both will be shown. Set \`claims: '${extension.id}'\` to replace the built-in.`
+      );
+    }
+  }
+};
+
 export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
   const location = useLocation();
@@ -87,50 +142,79 @@ export const useNavigationItems = (): NavigationItem[] => {
   return useMemo(() => {
     // Host-injected extensions are converted to the same NavigationDefinition
     // shape the built-in registry uses, so they run through one filter/sort
-    // pipeline instead of a parallel "Cloud category" implementation.
+    // pipeline instead of a parallel implementation.
     //
+    // `level` and `group` are arguments rather than fields of `entry`: a child
+    // has neither of its own and must inherit the parent's.
+    const toDefinition = (
+      entry: {
+        icon?: ReactNode;
+        id: string;
+        isVisible?: ApiControlPlaneExtension['isVisible'];
+        label: string;
+        routePath: string;
+      },
+      level: NavigationLevel,
+      group: string | undefined,
+      order: number
+    ): NavigationDefinition => {
+      const isDescendantRoute = entry.routePath.endsWith('/*');
+      const routeSuffix = entry.routePath.replace(/\/\*$/, '');
+      // The one destination this item points at in the current scope, computed
+      // once and used for both `to` and `match`. A raw substring search over the
+      // pathname would also fire on an unrelated route that merely ends with the
+      // same segment name — a `settings/<name>` tab route would light up a
+      // sidebar extension whose own destination is `/<name>` at a different depth.
+      const destination = scope.params.orgHandle
+        ? buildScopedExtensionPath(level, routeSuffix, {
+            apiHandler: scope.params.apiHandler ?? null,
+            orgHandle: scope.params.orgHandle,
+            projectHandler: scope.params.projectHandler ?? null,
+          })
+        : undefined;
+      return {
+        group,
+        icon: entry.icon,
+        id: entry.id,
+        isVisible: entry.isVisible,
+        label: entry.label,
+        level,
+        match: (pathname) =>
+          destination !== undefined &&
+          // Exactly this destination, or (for a `/*` route) a path continuing
+          // below it — never a partial segment match.
+          (pathname === destination ||
+            (isDescendantRoute && pathname.startsWith(`${destination}/`))),
+        order,
+        // A missing project/API no longer makes the item unlinkable: the path
+        // degrades to the extension page's scope-less alias, where its own
+        // `ScopeGate` collects what's missing. Only a route with no organization
+        // has nothing to link to.
+        to: () => destination,
+      };
+    };
+
     // Only `sidebar.*` entries belong here: an extension registered against a
     // nested slot (e.g. `settings.project.tabs`) renders inside that slot's own
     // host and must not also appear as a top-level sidebar item.
     const extensionDefinitions: NavigationDefinition[] = extensions
       .filter(isSidebarExtension)
-      .map((extension) => {
-        const isDescendantRoute = extension.routePath.endsWith('/*');
-        const routeSuffix = extension.routePath.replace(/\/\*$/, '');
-        // The one destination this item points at in the current scope,
-        // computed once and used for both `to` and `match`. A raw substring
-        // search over the pathname would also fire on an unrelated route that
-        // merely ends with the same segment name — a `settings/<name>` tab
-        // route would light up a sidebar extension whose own destination is
-        // `/<name>` at a different depth.
-        const destination = scope.params.orgHandle
-          ? buildScopedExtensionPath(extension.level, routeSuffix, {
-              apiHandler: scope.params.apiHandler ?? null,
-              orgHandle: scope.params.orgHandle,
-              projectHandler: scope.params.projectHandler ?? null,
-            })
-          : undefined;
-        return {
-          group: extension.group,
-          icon: extension.icon,
-          id: extension.id,
-          isVisible: extension.isVisible,
-          label: extension.label,
-          level: extension.level,
-          match: (pathname) =>
-            destination !== undefined &&
-            // Exactly this destination, or (for a `/*` route) a path
-            // continuing below it — never a partial segment match.
-            (pathname === destination ||
-              (isDescendantRoute && pathname.startsWith(`${destination}/`))),
-          order: extension.order,
-          // A missing project/API no longer makes the item unlinkable: the path
-          // degrades to the extension page's scope-less alias, where its own
-          // `ScopeGate` collects what's missing. Only a route with no
-          // organization has nothing to link to.
-          to: () => destination,
-        };
-      });
+      .map((extension) => ({
+        ...toDefinition(extension, extension.level, extension.group, extension.order),
+        // Ordered by declaration: `order` sorts top-level items only.
+        ...(extension.children?.length
+          ? {
+              children: extension.children.map((child, index) =>
+                toDefinition(
+                  { ...child, routePath: childRoutePath(extension.routePath, child.routePath) },
+                  extension.level,
+                  extension.group,
+                  index
+                )
+              ),
+            }
+          : {}),
+      }));
     // A `page.*` override renders in place of a built-in page (see the
     // `gateways/*` route wrapper); it may also carry the nav placement
     // (`group`/`order`) for the built-in item it replaces, keyed by shared `id`.
@@ -150,8 +234,13 @@ export const useNavigationItems = (): NavigationItem[] => {
         ? { ...definition, group: override.group ?? definition.group, order: override.order }
         : definition;
     });
+    warnOnRegistryConflicts(extensions);
     const cloudInsightsLoaded = hasCloudInsightsSidebar(extensions);
-    const combinedRegistry = [...registryWithOverrides, ...extensionDefinitions];
+    const claimed = claimedBuiltinIds(extensions, scope);
+    const combinedRegistry = [
+      ...registryWithOverrides.filter((definition) => !claimed.has(definition.id)),
+      ...extensionDefinitions,
+    ];
 
     // A definition becomes an item unless it has no target at all. Children go
     // through the very same resolution — feature flag, visibility, `to`,
