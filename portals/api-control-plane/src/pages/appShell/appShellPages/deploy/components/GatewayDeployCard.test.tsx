@@ -21,6 +21,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import {
+  useDeleteDeployment,
+  useDeployApi,
+  useRestoreDeployment,
+  useUndeployDeployment,
+} from '@/api/resources/graphqlApis/deployments';
+import {
   aDeployment,
   aGateway,
   accepts,
@@ -31,7 +37,51 @@ import {
 } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
-import { GraphqlGatewayDeployCard } from './GraphqlGatewayDeployCard';
+import { GatewayDeployCard, type UseDeployMutationHook } from './GatewayDeployCard';
+import type { UseDeploymentMutationHook } from './GatewayDeploymentSelector';
+
+/**
+ * Exercises the shared `GatewayDeployCard` (and, transitively,
+ * `GatewayDeployEnvCard`/`GatewayDeploymentHistory`/`GatewayDeploymentSelector`)
+ * through GraphQL's own adapters — the same shape `GraphqlDeployPage` wires up
+ * in production. This is the only test coverage this card subtree has ever
+ * had (REST's own `DeployPage` never had a dedicated test either), so it
+ * doubles as the regression check for both kinds' wiring, not just GraphQL's.
+ */
+const useDeployForCard: UseDeployMutationHook = () => {
+  const mutation = useDeployApi();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, body }, options) => mutation.mutate({ graphqlApiId: apiId, body }, options),
+  };
+};
+
+const useUndeployForCard: UseDeploymentMutationHook = () => {
+  const mutation = useUndeployDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useRestoreForCard: UseDeploymentMutationHook = () => {
+  const mutation = useRestoreDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useDeleteForCard: UseDeploymentMutationHook = () => {
+  const mutation = useDeleteDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+  };
+};
 
 const ORG = 'api-platform-demo';
 const API = 'countries-graphql-api';
@@ -49,19 +99,23 @@ beforeEach(() => {
 const renderCard = (deployments: DeploymentFixture[], onToggleExpand = vi.fn()) =>
   renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
-      <GraphqlGatewayDeployCard
+      <GatewayDeployCard
+        apiId={API}
         deployments={deployments}
         gateway={gateway}
-        graphqlApiId={API}
         isExpanded
         onRefresh={vi.fn()}
         onToggleExpand={onToggleExpand}
         refreshing={false}
+        useDelete={useDeleteForCard}
+        useDeploy={useDeployForCard}
+        useRestore={useRestoreForCard}
+        useUndeploy={useUndeployForCard}
       />
     </ApiScopeProvider>,
   );
 
-describe('GraphqlGatewayDeployCard — a live deployment', () => {
+describe('GatewayDeployCard — a live deployment', () => {
   const live = aDeployment({
     createdAt: '2026-01-03T00:00:00Z',
     deploymentId: 'deployment-live',
@@ -90,7 +144,7 @@ describe('GraphqlGatewayDeployCard — a live deployment', () => {
   });
 });
 
-describe('GraphqlGatewayDeployCard — a failed deployment', () => {
+describe('GatewayDeployCard — a failed deployment', () => {
   const failed = aDeployment({
     createdAt: '2026-01-02T00:00:00Z',
     deploymentId: 'deployment-failed',
@@ -121,7 +175,7 @@ describe('GraphqlGatewayDeployCard — a failed deployment', () => {
   });
 });
 
-describe('GraphqlGatewayDeployCard — deployment history', () => {
+describe('GatewayDeployCard — deployment history', () => {
   const deployments = [
     aDeployment({
       createdAt: '2026-01-04T00:00:00Z',
@@ -195,7 +249,7 @@ describe('GraphqlGatewayDeployCard — deployment history', () => {
   });
 });
 
-describe('GraphqlGatewayDeployCard — restoring an older deployment', () => {
+describe('GatewayDeployCard — restoring an older deployment', () => {
   const deployments = [
     aDeployment({
       createdAt: '2026-01-02T00:00:00Z',

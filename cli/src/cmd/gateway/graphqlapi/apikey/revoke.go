@@ -20,19 +20,12 @@ package apikey
 
 import (
 	"fmt"
-	"net/url"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/apikeycmd"
 	"github.com/wso2/api-platform/cli/internal/gateway"
 	"github.com/wso2/api-platform/cli/utils"
-)
-
-const (
-	RevokeCmdLiteral = "revoke"
-	RevokeCmdExample = `# Revoke an API key
-ap gateway graphql-api api-key revoke --id countries-graphql-api --key-name my-production-key`
 )
 
 var (
@@ -41,12 +34,13 @@ var (
 )
 
 var revokeCmd = &cobra.Command{
-	Use:     RevokeCmdLiteral,
-	Short:   "Revoke an API key for a GraphQL API",
-	Long:    "Invalidates an API key so it can no longer be used for authentication.",
-	Example: RevokeCmdExample,
+	Use:   "revoke",
+	Short: fmt.Sprintf("Revoke an API key for a %s", apiKeyConfig.KindLabel),
+	Long:  "Invalidates an API key so it can no longer be used for authentication.",
+	Example: fmt.Sprintf("# Revoke an API key\nap gateway %s api-key revoke --id %s --key-name my-production-key",
+		apiKeyConfig.KindPathSegment, apiKeyConfig.ExampleAPIID),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runRevokeCommand(cmd); err != nil {
+		if err := apikeycmd.RunRevoke(cmd, apiKeyConfig, revokeAPIID, revokeKeyName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -55,34 +49,8 @@ var revokeCmd = &cobra.Command{
 
 func init() {
 	gateway.AddSelectionFlags(revokeCmd)
-	utils.AddStringFlag(revokeCmd, utils.FlagID, &revokeAPIID, "", "GraphQL API ID (required)")
+	utils.AddStringFlag(revokeCmd, utils.FlagID, &revokeAPIID, "", fmt.Sprintf("%s ID (required)", apiKeyConfig.KindLabel))
 	utils.AddStringFlag(revokeCmd, utils.FlagKeyName, &revokeKeyName, "", "Name of the API key to revoke (required)")
 	revokeCmd.MarkFlagRequired(utils.FlagID)
 	revokeCmd.MarkFlagRequired(utils.FlagKeyName)
-}
-
-func runRevokeCommand(cmd *cobra.Command) error {
-	if strings.TrimSpace(revokeAPIID) == "" {
-		return fmt.Errorf("--%s is required", utils.FlagID)
-	}
-	if strings.TrimSpace(revokeKeyName) == "" {
-		return fmt.Errorf("--%s is required", utils.FlagKeyName)
-	}
-
-	client, err := gateway.NewClientFromCommand(cmd)
-	if err != nil {
-		return err
-	}
-
-	// Client.Delete already treats any non-2xx status as an error and returns a
-	// nil *http.Response in that case, so err == nil here always means success.
-	endpoint := fmt.Sprintf(utils.GatewayGraphQLAPIKeyByNamePath, url.PathEscape(revokeAPIID), url.PathEscape(revokeKeyName))
-	resp, err := client.Delete(endpoint)
-	if err != nil {
-		return fmt.Errorf("failed to revoke API key: %w", err)
-	}
-	resp.Body.Close()
-
-	fmt.Println("API key revoked successfully.")
-	return nil
 }

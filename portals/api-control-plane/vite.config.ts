@@ -69,10 +69,23 @@ export default ({ mode }: { mode: string }) => {
     },
     // Vite's default IIFE worker format can't bundle a worker that itself
     // code-splits into multiple chunks — `monaco-graphql`'s worker (pulled
-    // in transitively by `graphiql`'s Vite worker setup) does. ES module
-    // workers support code-splitting and are supported by every browser this
-    // app already targets, so this covers both that worker and the existing
-    // `monaco-editor` ones in `SpecCodeEditor.tsx` uniformly.
+    // in transitively by `graphiql`'s Vite worker setup, `?worker`-imported
+    // from `@graphiql/react/setup-workers/vite`) does. ES module workers
+    // support code-splitting, so this is required for that worker.
+    //
+    // `worker.format` has no per-import override in Vite, so this also
+    // applies to the pre-existing `monaco-editor` workers in
+    // `SpecCodeEditor.tsx` (the REST/WebSocket OpenAPI editor) — not a
+    // deliberate choice, just a consequence of the setting being global.
+    // Module workers need Firefox 114+/Safari 15+/Chrome 80+/Edge 80+; this
+    // repo has no `.browserslistrc` and no `build.target`, so the *actual*
+    // enforced floor is Vite's own esbuild default (`es2020`/firefox78/
+    // safari14/chrome87/edge88), which predates that — i.e. nothing here
+    // guarantees the browsers this app is built for can load either editor's
+    // workers. Known, accepted gap for now, not a verified support
+    // guarantee: pin `build.target` to a module-worker-safe floor (and
+    // update this comment) if/when this app adopts an explicit
+    // browser-support policy.
     worker: {
       format: 'es',
     },

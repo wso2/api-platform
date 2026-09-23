@@ -221,6 +221,45 @@ describe('ScopeGate', () => {
     ).toBeInTheDocument();
   });
 
+  // Pins the fix for apisPending not being gated on a chosen project: both
+  // API hooks are disabled (no project chosen yet), so React Query v5
+  // reports isPending: true for a disabled query — the same shape a real
+  // render would see, unlike this file's other tests which hardcode
+  // isPending: false. `projectScope()`'s own `project: undefined` override is
+  // not enough on its own — `makeConsoleScope`'s `project ?? aProject()`
+  // falls back to a default project fixture whose id still populates
+  // `params.projectHandler`, so `params.projectHandler` needs its own
+  // explicit override to actually be undefined here.
+  it('does not show "Loading APIs" while no project is chosen', () => {
+    vi.mocked(useAllRestApis).mockReturnValue({
+      data: undefined,
+      error: undefined,
+      isPending: true,
+      isPlaceholderData: false,
+    });
+    vi.mocked(useAllGraphQLApis).mockReturnValue({
+      data: undefined,
+      error: undefined,
+      isPending: true,
+      isPlaceholderData: false,
+    });
+
+    renderGate(
+      routes.apiDeploy(ORG, null, null),
+      <ScopeGate requires="api" to={routes.apiDeploy}>
+        <span>page body</span>
+      </ScopeGate>,
+      makeConsoleScope({
+        isProjectScope: false,
+        project: undefined,
+        projects: [PROJECT_OPTION] as ReturnType<typeof makeConsoleScope>['projects'],
+        params: { orgHandle: ORG, projectHandler: undefined },
+      }),
+    );
+
+    expect(screen.queryByText(/Loading APIs/i)).not.toBeInTheDocument();
+  });
+
   it('asks only for the API when the route already has a project', () => {
     renderGate(
       routes.apiDeploy(ORG, PROJECT, null),
