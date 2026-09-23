@@ -20,15 +20,20 @@ import { queryOptions } from '@tanstack/react-query';
 
 import { staleTimes } from '../../core/queryClient';
 import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
-import { listApiPortals } from './apiPortals.endpoints';
+import { listApiPortals, type ListApiPortalsQuery } from './apiPortals.endpoints';
 
 export const apiPortalKeys = createResourceKeys('apiPortals');
 
+/**
+ * queryOptions factory for `/api-portals`. Accepts the spec's filter shape and
+ * threads it into both the cache key and the request, matching the gateways
+ * pattern so a later filtered list does not collide with the unfiltered one.
+ */
 export const apiPortalQueries = {
-  list: (org: OrgScope) =>
+  list: (org: OrgScope, query: ListApiPortalsQuery = {}) =>
     queryOptions({
-      queryKey: apiPortalKeys.list(org),
-      queryFn: ({ signal }) => listApiPortals({ orgId: org, signal }),
+      queryKey: apiPortalKeys.list(org, query),
+      queryFn: ({ signal }) => listApiPortals({ orgId: org, signal, query }),
       staleTime: staleTimes.standard,
     }),
 };
