@@ -29,7 +29,7 @@ import type { GraphQLApi } from '@/api/resources/graphqlApis';
 
 const messages = defineMessages({
   contextLabel: {
-    id: 'api.create.graphql.confirmation.context.label',
+    id: 'api.create.generalForm.context.label',
     defaultMessage: 'Context',
   },
   copied: {
@@ -59,7 +59,7 @@ const messages = defineMessages({
     description: '{name} is the display name the user gave the API. Never translated.',
   },
   typeChip: {
-    id: 'api.create.graphql.confirmation.typeChip',
+    id: 'api.create.apiType.graphQl.title',
     defaultMessage: 'GraphQL API',
   },
 });

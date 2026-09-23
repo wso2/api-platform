@@ -44,19 +44,19 @@ import { useFormatters } from '@/i18n/useFormatters';
 
 const messages = defineMessages({
   add: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.add',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.add',
     defaultMessage: 'Add',
-    description: 'Commits the new API key in the add dialog.',
+    description: 'Opens the dialog for issuing a new API key.',
   },
   addButton: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addButton',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addButton',
     defaultMessage: 'Add API Key',
     description: 'Opens the dialog for issuing a new API key.',
   },
   addDialogTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addDialogTitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.addButton',
     defaultMessage: 'Add API Key',
-    description: 'Title of the dialog for issuing a new API key.',
+    description: 'Opens the dialog for issuing a new API key.',
   },
   addFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addFailed',
@@ -74,30 +74,30 @@ const messages = defineMessages({
     description: 'Toast confirming a new key; {name} is the name the user typed.',
   },
   cancel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.cancel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.cancel',
     defaultMessage: 'Cancel',
     description: 'Closes a dialog without applying it.',
   },
   description: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.description',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.description',
     defaultMessage: 'Add an API key to authenticate requests through the deployed gateways.',
     description: 'Explains what an API key is for, above the button that adds one.',
   },
   createdMetadata: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.createdMetadata',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.createdMetadata',
     defaultMessage: 'Created {time} by {creator}',
     description: 'Creation time and creator shown beside an API key.',
   },
   closeDrawer: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.closeDrawer',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.closeDrawer',
     defaultMessage: 'Close API keys',
   },
   seeMore: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.seeMore',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.seeMore',
     defaultMessage: 'See more',
   },
   separator: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.separator',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.separator',
     defaultMessage: '·',
   },
   keyNameLabel: {
@@ -121,43 +121,43 @@ const messages = defineMessages({
     description: 'Label of the field holding the secret the gateways will accept.',
   },
   revoke: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revoke',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revoke',
     defaultMessage: 'Revoke',
     description: 'Confirms the irreversible revocation of a key.',
   },
   revokeDialogMessage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeDialogMessage',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeDialogMessage',
     defaultMessage:
       'Are you sure you want to revoke this API key? Requests using it will be rejected by the gateways.',
     description: 'Body of the revoke confirmation dialog.',
   },
   revokeDialogTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeDialogTitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeDialogTitle',
     defaultMessage: 'Revoke API Key',
     description: 'Title of the revoke confirmation dialog.',
   },
   revokeFailed: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeFailed',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeFailed',
     defaultMessage: 'Failed to revoke key',
     description: 'Fallback toast when the server gives no reason for the failure.',
   },
   revoking: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revoking',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revoking',
     defaultMessage: 'Revoking...',
     description: 'Label of the revoke button while the request is in flight.',
   },
   revokeSucceeded: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeSucceeded',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeSucceeded',
     defaultMessage: 'API key "{name}" revoked.',
     description: 'Toast confirming a revocation; {name} is the key that was revoked.',
   },
   revokeTooltip: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeTooltip',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.revokeTooltip',
     defaultMessage: 'Revoke API key',
     description: 'Tooltip on the button that revokes one key from the table.',
   },
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ApiKeysPanel.title',
     defaultMessage: 'API Keys',
     description: 'Heading of the section listing the keys accepted for this API.',
   },

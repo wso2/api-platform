@@ -16,15 +16,15 @@ type Props = { gateways: Gateway[]; deployments: Deployment[] };
 
 const messages = defineMessages({
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlDeployedGatewaysPanel.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.title',
     defaultMessage: 'Deployed gateways',
   },
   seeMore: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlDeployedGatewaysPanel.seeMore',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.seeMore',
     defaultMessage: 'See more',
   },
   status: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlDeployedGatewaysPanel.status',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.status',
     defaultMessage:
       '{status, select, DEPLOYED {Deployed} UNDEPLOYED {Undeployed} DEPLOYING {Deploying} UNDEPLOYING {Undeploying} FAILED {Failed} ARCHIVED {Archived} other {{status}}}',
   },

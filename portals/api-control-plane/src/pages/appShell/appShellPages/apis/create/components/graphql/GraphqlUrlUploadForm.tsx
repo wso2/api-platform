@@ -50,7 +50,7 @@ const messages = defineMessages({
     defaultMessage: 'Try with Sample Schema',
   },
   sourceFile: {
-    id: 'api.create.graphql.urlUpload.source.file',
+    id: 'api.create.fromContract.source.file',
     defaultMessage: 'Upload',
   },
   sourceLabel: {
@@ -58,7 +58,7 @@ const messages = defineMessages({
     defaultMessage: 'Import the schema from',
   },
   sourceUrl: {
-    id: 'api.create.graphql.urlUpload.source.url',
+    id: 'api.create.fromContract.source.url',
     defaultMessage: 'URL',
   },
   unresolved: {
@@ -66,7 +66,7 @@ const messages = defineMessages({
     defaultMessage: 'That schema could not be resolved. Check it is valid GraphQL SDL.',
   },
   urlInvalid: {
-    id: 'api.create.graphql.urlUpload.url.invalid',
+    id: 'api.create.fromContract.url.invalid',
     defaultMessage: 'Enter a valid HTTP or HTTPS URL.',
   },
   urlLabel: {

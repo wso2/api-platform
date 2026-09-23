@@ -36,7 +36,7 @@ import { reorderPolicies, withMajorPolicyVersion } from '../../apis/utils/develo
 
 const messages = defineMessages({
   heading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.heading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.heading',
     defaultMessage: 'Policies',
     description: 'Heading over the panel where policies are attached. Noun.',
   },
@@ -46,22 +46,22 @@ const messages = defineMessages({
       'These policies apply to every request this API receives — a GraphQL API has a single endpoint, so there is no per-resource scope the way a REST API has.',
   },
   empty: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.empty',
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty',
     defaultMessage: 'Drag and drop policies here, or use Add Policy.',
     description: '"Add Policy" is the label of a button in this same list.',
   },
   policyUpdated: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.policyUpdated',
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyUpdated',
     defaultMessage: 'Policy updated. Save to apply.',
     description: 'Toast after editing an attached policy; the change is not persisted until Save.',
   },
   policyAttached: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.policyAttached',
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyAttached',
     defaultMessage: 'Policy attached. Save to apply.',
     description: 'Toast after attaching a policy; the change is not persisted until Save.',
   },
   saved: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.saved',
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved',
     defaultMessage: 'Policies saved.',
   },
   redeployReminder: {
