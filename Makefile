@@ -73,6 +73,8 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Agent Skills:'
 	@echo '  make install-skills                   - Install third-party agent skills pinned in skills-lock.json'
+	@echo '  make install-spec-kit                 - Install the Spec Kit CLI and scaffold its Claude Code skills'
+	@echo '  make setup-spec-workflow              - Install everything the spec-driven workflow needs (both of the above)'
 
 # Version Management Targets
 .PHONY: version
@@ -242,4 +244,19 @@ clean-gateway: ## Clean gateway build artifacts
 # restored into .agents/skills/ (see .gitignore) by the skills CLI.
 .PHONY: install-skills
 install-skills: ## Install third-party agent skills pinned in skills-lock.json
+	@command -v npx >/dev/null 2>&1 || { echo "Error: npx is not installed. Install Node.js (https://nodejs.org), which provides npx, then re-run 'make install-skills'." >&2; exit 1; }
 	npx -y skills experimental_install
+
+# Spec Kit (https://github.github.com/spec-kit/): installs the `specify` CLI with
+# uv, then scaffolds .specify/ and the speckit-* skills into .agents/skills/.
+# Re-running refreshes the templates and skills; .specify/memory/constitution.md is preserved.
+SPEC_KIT_VERSION ?= v1.0.10
+
+.PHONY: install-spec-kit
+install-spec-kit: ## Install the Spec Kit CLI and scaffold its Claude Code skills
+	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Install it (https://docs.astral.sh/uv/getting-started/installation/), then re-run 'make install-spec-kit'." >&2; exit 1; }
+	uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@$(SPEC_KIT_VERSION)
+	specify init --here --force --non-interactive --integration claude --script sh --ignore-agent-tools
+
+.PHONY: setup-spec-workflow
+setup-spec-workflow: install-skills install-spec-kit ## Install everything the spec-driven workflow needs
