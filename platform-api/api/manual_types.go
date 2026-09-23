@@ -30,6 +30,18 @@ type UnpublishFromDevPortalRequest struct {
 	DevPortalUuid openapi_types.UUID `binding:"required" json:"devPortalUuid" yaml:"devPortalUuid"`
 }
 
+// APIPortalIdentity is the minimum row shape a cloud-plugin poller needs to
+// resume tracking a portal across plugin restarts: which org it lives in,
+// which handle addresses it, the URL to probe, and where it currently is in
+// the provisioning lifecycle. Not part of the REST surface; produced only by
+// the plugin-facing service method ListAPIPortalsByStatus.
+type APIPortalIdentity struct {
+	OrgID  string
+	Handle string
+	URL    string
+	Status string
+}
+
 // UnpublishRESTAPIFromDevPortalJSONRequestBody defines body for UnpublishRESTAPIFromDevPortal.
 type UnpublishRESTAPIFromDevPortalJSONRequestBody = UnpublishFromDevPortalRequest
 
