@@ -22,6 +22,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import {
   useGraphQLApi,
+  useGraphQLApiSdl,
   useUpdateGraphQLApi,
   type GraphQLApiDetail,
 } from '@/api/resources/graphqlApis';
@@ -82,20 +83,33 @@ const messages = defineMessages({
  * (upstream, policies, subscriptionPlans) has to survive the round trip
  * untouched, same as `ApiEditPage`'s `toUpdateBody`.
  *
- * `schemaSource` isn't part of `GraphQLAPIDetail` (the GET shape `api` comes
- * from) — there is nothing faithful to resupply here, so it's set to
- * `'introspection'` the same way `GraphqlPolicyPanel`'s save does; see that
- * file's comment for why the service's own Update handler makes this safe
- * (falls back to the already-stored schema on a failed re-resolution, rather
- * than blanking it out).
+ * This is a metadata-only edit — the schema itself is untouched — so
+ * `schemaSource` must be resupplied faithfully rather than forcing
+ * `'introspection'`: the service's structural validation rejects
+ * `schemaSource` values whose required field isn't also present, and
+ * forcing `'introspection'` on an inline/url/file-sourced API would either
+ * hard-fail that check (no reachable `upstream.main.url`) or silently
+ * re-derive the schema from upstream, discarding what was actually
+ * authored. `GraphQLAPIDetail` has no `sdl` field of its own (see
+ * `useGraphQLApiSdl`), so for anything other than `'introspection'` this
+ * resupplies the already-resolved SDL as `'inline'` — resolution
+ * re-validates that same text and is a no-op, without ever touching
+ * upstream. `'introspection'` is the one source `GraphQLAPIDetail` can
+ * always resupply as-is, since `upstream.main.url` is already part of it.
  */
-const toUpdateBody = (api: GraphQLApiDetail, values: GraphqlApiBasicInfoFormValues) => ({
+const toUpdateBody = (
+  api: GraphQLApiDetail,
+  sdl: string,
+  values: GraphqlApiBasicInfoFormValues,
+) => ({
   metadata: {
     ...api,
     context: values.context,
     description: values.description,
     displayName: values.displayName,
-    schemaSource: 'introspection' as const,
+    ...(api.schemaSource === 'introspection' || api.schemaSource === undefined
+      ? { schemaSource: 'introspection' as const }
+      : { schemaSource: 'inline' as const, sdl }),
     version: values.version.trim(),
   },
 });
@@ -112,6 +126,10 @@ export function GraphqlApiEditPage() {
   const { graphqlApiHandler } = useParams();
 
   const apiQuery = useGraphQLApi(graphqlApiHandler);
+  // Needed to faithfully resupply a non-introspection schemaSource on save —
+  // see toUpdateBody. Fetched unconditionally since schemaSource isn't known
+  // until apiQuery resolves.
+  const sdlQuery = useGraphQLApiSdl(graphqlApiHandler);
   const updateApi = useUpdateGraphQLApi();
 
   const detailPath = routes.graphqlApi(
@@ -120,10 +138,10 @@ export function GraphqlApiEditPage() {
     graphqlApiHandler ?? '',
   );
 
-  if (!graphqlApiHandler || apiQuery.error) {
+  if (!graphqlApiHandler || apiQuery.error || sdlQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.notFound)} />;
   }
-  if (apiQuery.isPending) {
+  if (apiQuery.isPending || sdlQuery.isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
   if (!apiQuery.data) {
@@ -131,6 +149,7 @@ export function GraphqlApiEditPage() {
   }
 
   const api = apiQuery.data;
+  const sdl = sdlQuery.data ?? '';
 
   // The detail page hides the edit button for a gateway-managed API; this is
   // the same rule enforced at the page, for anyone arriving by URL.
@@ -145,7 +164,7 @@ export function GraphqlApiEditPage() {
 
   const save = (values: GraphqlApiBasicInfoFormValues) => {
     updateApi.mutate(
-      { graphqlApiId: graphqlApiHandler, body: toUpdateBody(api, values) },
+      { graphqlApiId: graphqlApiHandler, body: toUpdateBody(api, sdl, values) },
       {
         onSuccess: () => {
           notify(intl.formatMessage(messages.saved), 'success');

@@ -493,6 +493,30 @@ func (e GraphQLAPISchemaSource) Valid() bool {
 	}
 }
 
+// Defines values for GraphQLAPIDetailSchemaSource.
+const (
+	GraphQLAPIDetailSchemaSourceFile          GraphQLAPIDetailSchemaSource = "file"
+	GraphQLAPIDetailSchemaSourceInline        GraphQLAPIDetailSchemaSource = "inline"
+	GraphQLAPIDetailSchemaSourceIntrospection GraphQLAPIDetailSchemaSource = "introspection"
+	GraphQLAPIDetailSchemaSourceUrl           GraphQLAPIDetailSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLAPIDetailSchemaSource enum.
+func (e GraphQLAPIDetailSchemaSource) Valid() bool {
+	switch e {
+	case GraphQLAPIDetailSchemaSourceFile:
+		return true
+	case GraphQLAPIDetailSchemaSourceInline:
+		return true
+	case GraphQLAPIDetailSchemaSourceIntrospection:
+		return true
+	case GraphQLAPIDetailSchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GraphQLIntrospectionMode.
 const (
 	ENDPOINT GraphQLIntrospectionMode = "ENDPOINT"
@@ -3580,6 +3604,16 @@ type GraphQLAPIDetail struct {
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
+	// SchemaSource The exact source the current schema was declared with on the create or
+	// last successful update — a finer-grained sibling of `introspectionMode`,
+	// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+	// Resupply this value on a subsequent `PUT` that isn't meant to change the
+	// schema, together with material satisfying that same source (`sdl` for
+	// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+	// since `upstream.main.url` already suffices) — omitting it, or resupplying
+	// a source without its required field, is a structural `400`, not a no-op.
+	SchemaSource *GraphQLAPIDetailSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
 	// SubscriptionPlans List of subscription plan names enabled for this API.
 	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -3592,6 +3626,16 @@ type GraphQLAPIDetail struct {
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 	Version  string   `json:"version" yaml:"version"`
 }
+
+// GraphQLAPIDetailSchemaSource The exact source the current schema was declared with on the create or
+// last successful update — a finer-grained sibling of `introspectionMode`,
+// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+// Resupply this value on a subsequent `PUT` that isn't meant to change the
+// schema, together with material satisfying that same source (`sdl` for
+// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+// since `upstream.main.url` already suffices) — omitting it, or resupplying
+// a source without its required field, is a structural `400`, not a no-op.
+type GraphQLAPIDetailSchemaSource string
 
 // GraphQLAPIListItem defines model for GraphQLAPIListItem.
 type GraphQLAPIListItem struct {
