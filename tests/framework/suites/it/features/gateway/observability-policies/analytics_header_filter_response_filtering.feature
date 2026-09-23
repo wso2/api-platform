@@ -17,209 +17,24 @@
 # --------------------------------------------------------------------
 
 @analytics-header-filter
-Feature: Analytics header filter policy
+Feature: Analytics header filter precedence over backend response headers
   As an API developer
-  I want to control which headers are included in analytics data
-  So that I can prevent sensitive or noisy headers from being collected
+  I want the analytics header filter to decide which backend response headers reach analytics
+  So that response headers I filter out are never collected
 
-  # Request-header filtering in deny and allow modes, case-insensitive matching, empty and
-  # omitted header lists, request and response filters configured together or alone,
-  # unchanged upstream traffic, other policies left working, policy scope and order,
-  # configuration changes, concurrency, and sensitive values. The response-header Examples of
-  # the Scenario Outlines here are in analytics_header_filter_response_filtering.feature.
+  # Filtering of response headers returned by the backend: deny and allow modes, request and
+  # response filters combined, case-insensitive matching, and the client response left
+  # unchanged. The request-header Examples of the Scenario Outlines here are in
+  # analytics_header_filter.feature and analytics_header_filter_unfiltered_side_capture.feature.
 
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
     And I reset the analytics collector
 
-  Scenario: Both request and response header filtering configured
-    Given I generate a unique value from "ahf-both" and store it as "apiName"
-    And I generate a unique API version from "ahf-both" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-both" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"GET","path":"/test","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization","x-api-key"]},"response":{"mode":"allow","headers":["content-type","x-custom-header"]}}}]}] |
-    Then the response should be successful
-
-    When I set header "Authorization" to "Bearer test-token"
-    And I set header "X-API-Key" to "secret-key"
-    And I set header "User-Agent" to "test-client"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain request header "authorization"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain request header "x-api-key"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should contain response header "content-type"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain response header "x-custom-header"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: Only request header filtering configured
-    Given I generate a unique value from "ahf-request" and store it as "apiName"
-    And I generate a unique API version from "ahf-request" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-request" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"GET","path":"/data","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"allow","headers":["x-payload-type","x-client-id"]}}}]}] |
-    Then the response should be successful
-
-    When I set header "X-Payload-Type" to "application/json"
-    And I set header "X-Client-Id" to "test-client"
-    And I set header "Authorization" to "Bearer secret-token"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/data" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/data" should contain request header "x-payload-type"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/data" should contain request header "x-client-id"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/data" should not contain request header "authorization"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/data" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: Only response header filtering configured
-    Given I generate a unique value from "ahf-response" and store it as "apiName"
-    And I generate a unique API version from "ahf-response" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-response" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"GET","path":"/headers","policies":[{"name":"analytics-header-filter","version":"v1","params":{"response":{"mode":"deny","headers":["server","x-powered-by","x-internal-debug"]}}}]}] |
-    Then the response should be successful
-
-    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/headers" until status 200
-    Then the response should be successful
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "server"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "x-powered-by"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "x-internal-debug"
-    And I wait for the analytics collector to settle
-
-    Given I authenticate using basic auth as "admin"
-    When I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/headers" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: An omitted headers field defaults to an empty array
-    Given I generate a unique value from "ahf-no-headers" and store it as "apiName"
-    And I generate a unique API version from "ahf-no-headers" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-no-headers" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/test","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny"},"response":{"mode":"allow"}}}]}] |
-    Then the response should be successful
-
-    When I set header "Authorization" to "Bearer test-token"
-    And I set header "X-Client-Id" to "test-client"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 200
-    Then the response should be successful
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should contain request header "authorization" with value "Bearer test-token"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should contain request header "x-client-id" with value "test-client"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should contain response header "x-allowed-response" with value "allowed"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should contain response header "x-denied-response" with value "denied"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: Header matching is case-insensitive with allow mode
-    Given I generate a unique value from "ahf-case" and store it as "apiName"
-    And I generate a unique API version from "ahf-case" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-case" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"GET","path":"/case-test","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"allow","headers":["X-Payload-Type","X-CLIENT-ID","x-custom-header"]}}}]}] |
-    Then the response should be successful
-
-    When I set header "x-payload-type" to "application/json"
-    And I set header "x-client-id" to "test-client"
-    And I set header "X-Custom-Header" to "test-value"
-    And I set header "Authorization" to "Bearer secret"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/case-test" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-test" should contain request header "x-payload-type"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-test" should contain request header "x-client-id"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-test" should contain request header "x-custom-header"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-test" should not contain request header "authorization"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/case-test" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: An empty headers array with deny mode denies nothing
-    Given I generate a unique value from "ahf-empty" and store it as "apiName"
-    And I generate a unique API version from "ahf-empty" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-empty" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3002              |
-      | spec.operations        | [{"method":"GET","path":"/empty-test","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":[]},"response":{"mode":"allow","headers":[]}}}]}] |
-    Then the response should be successful
-
-    When I set header "X-Payload-Type" to "application/json"
-    And I set header "Authorization" to "Bearer token"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/empty-test" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/empty-test" should contain request header "x-payload-type"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/empty-test" should contain request header "authorization"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/empty-test" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  # The scenarios from here on, and the omitted headers scenario above, use
-  # http://testbench:3000/analytics-headers as their upstream. For every operation path under
-  # that prefix, the testbench backend (testbench/services/backend/backend.go) returns these
-  # fixed response headers:
+  # Every scenario in this feature uses http://testbench:3000/analytics-headers as its
+  # upstream. For every operation path under that prefix, the testbench backend
+  # (testbench/services/backend/backend.go) returns these fixed response headers:
   #
   #   X-Allowed-Response: allowed   -- the header a scenario expects to be kept
   #   X-Denied-Response:  denied    -- the header a scenario expects to be filtered out
@@ -234,10 +49,10 @@ Feature: Analytics header filter policy
   # It also reflects the request it received as JSON, with the request headers under
   # "headers". The "echoed header" steps read that to check what reached the upstream.
 
-  Scenario: Request header deny mode with a single denied header
-    Given I generate a unique value from "ahf-single-deny" and store it as "apiName"
-    And I generate a unique API version from "ahf-single-deny" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-single-deny" and store it as "apiContext"
+  Scenario: Response header deny mode excludes a header actually returned by the backend
+    Given I generate a unique value from "ahf-response-deny-real" and store it as "apiName"
+    And I generate a unique API version from "ahf-response-deny-real" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-response-deny-real" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
@@ -245,28 +60,85 @@ Feature: Analytics header filter policy
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
       | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/single-deny","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization"]}}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/response-deny-real","policies":[{"name":"analytics-header-filter","version":"v1","params":{"response":{"mode":"deny","headers":["x-denied-response"]}}}]}] |
+    Then the response should be successful
+
+    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-deny-real" until status 200
+    Then the response should be successful
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/response-deny-real" should not contain response header "x-denied-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/response-deny-real" should contain response header "x-allowed-response"
+    And I wait for the analytics collector to settle
+
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-deny-real" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
+
+  Scenario: Response header allow mode captures only the selected response headers
+    Given I generate a unique value from "ahf-response-allow" and store it as "apiName"
+    And I generate a unique API version from "ahf-response-allow" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-response-allow" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
+      | name                   | ${CTX:apiName}                    |
+      | spec.displayName       | ${CTX:apiName}                    |
+      | spec.version           | ${CTX:apiVersion}                 |
+      | spec.context           | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
+      | spec.operations        | [{"method":"GET","path":"/response-allow","policies":[{"name":"analytics-header-filter","version":"v1","params":{"response":{"mode":"allow","headers":["x-allowed-response"]}}}]}] |
+    Then the response should be successful
+
+    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-allow" until status 200
+    Then the response should be successful
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/response-allow" should contain response header "x-allowed-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/response-allow" should not contain response header "x-denied-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/response-allow" should not contain response header "x-removed-response"
+    And I wait for the analytics collector to settle
+
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-allow" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
+
+  Scenario: Both request and response filters in deny mode
+    Given I generate a unique value from "ahf-both-deny" and store it as "apiName"
+    And I generate a unique API version from "ahf-both-deny" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-both-deny" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
+      | name                   | ${CTX:apiName}                    |
+      | spec.displayName       | ${CTX:apiName}                    |
+      | spec.version           | ${CTX:apiVersion}                 |
+      | spec.context           | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
+      | spec.operations        | [{"method":"GET","path":"/both-deny","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization"]},"response":{"mode":"deny","headers":["x-denied-response"]}}}]}] |
     Then the response should be successful
 
     When I set header "Authorization" to "Bearer test-token"
     And I set header "X-Client-Id" to "test-client"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/single-deny" until status 200
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/both-deny" until status 200
 
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/single-deny" should not contain request header "authorization"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/single-deny" should contain request header "x-client-id"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-deny" should not contain request header "authorization"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-deny" should contain request header "x-client-id"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-deny" should not contain response header "x-denied-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-deny" should contain response header "x-allowed-response"
     And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/single-deny" until status 404
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/both-deny" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-  Scenario: Request header deny mode with multiple denied headers
-    Given I generate a unique value from "ahf-multi-deny" and store it as "apiName"
-    And I generate a unique API version from "ahf-multi-deny" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-multi-deny" and store it as "apiContext"
+  Scenario: Both request and response filters in allow mode
+    Given I generate a unique value from "ahf-both-allow" and store it as "apiName"
+    And I generate a unique API version from "ahf-both-allow" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-both-allow" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
@@ -274,32 +146,62 @@ Feature: Analytics header filter policy
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
       | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/multi-deny","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization","x-api-key","x-internal-id"]}}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/both-allow","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"allow","headers":["x-client-id"]},"response":{"mode":"allow","headers":["x-allowed-response"]}}}]}] |
+    Then the response should be successful
+
+    When I set header "X-Client-Id" to "test-client"
+    And I set header "Authorization" to "Bearer secret-token"
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/both-allow" until status 200
+
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-allow" should contain request header "x-client-id"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-allow" should not contain request header "authorization"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-allow" should contain response header "x-allowed-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-allow" should not contain response header "x-denied-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/both-allow" should not contain response header "x-removed-response"
+    And I wait for the analytics collector to settle
+
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/both-allow" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
+
+  Scenario: Request deny mode and response allow mode filter independently
+    Given I generate a unique value from "ahf-mixed-modes" and store it as "apiName"
+    And I generate a unique API version from "ahf-mixed-modes" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-mixed-modes" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
+      | name                   | ${CTX:apiName}                    |
+      | spec.displayName       | ${CTX:apiName}                    |
+      | spec.version           | ${CTX:apiVersion}                 |
+      | spec.context           | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
+      | spec.operations        | [{"method":"GET","path":"/mixed-modes","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization"]},"response":{"mode":"allow","headers":["x-allowed-response"]}}}]}] |
     Then the response should be successful
 
     When I set header "Authorization" to "Bearer test-token"
-    And I set header "X-API-Key" to "secret-key"
-    And I set header "X-Internal-ID" to "internal-12345"
     And I set header "X-Client-Id" to "test-client"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/multi-deny" until status 200
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/mixed-modes" until status 200
 
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/multi-deny" should not contain request header "authorization"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/multi-deny" should not contain request header "x-api-key"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/multi-deny" should not contain request header "x-internal-id"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/multi-deny" should contain request header "x-client-id"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/mixed-modes" should not contain request header "authorization"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/mixed-modes" should contain request header "x-client-id"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/mixed-modes" should contain response header "x-allowed-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/mixed-modes" should not contain response header "x-denied-response"
     And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/multi-deny" until status 404
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/mixed-modes" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-  Scenario: Header matching is case-insensitive when the configured header name itself uses different casing
-    Given I generate a unique value from "ahf-case-config" and store it as "apiName"
-    And I generate a unique API version from "ahf-case-config" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-case-config" and store it as "apiContext"
+  Scenario: Header matching is case-insensitive for mixed-case headers configured on both request and response
+    Given I generate a unique value from "ahf-case-both" and store it as "apiName"
+    And I generate a unique API version from "ahf-case-both" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-case-both" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
@@ -307,28 +209,32 @@ Feature: Analytics header filter policy
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
       | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/case-config-test","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["AUTHORIZATION"]}}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/case-both-test","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"allow","headers":["X-Payload-Type","X-CUSTOM-HEADER"]},"response":{"mode":"deny","headers":["X-DENIED-Response"]}}}]}] |
     Then the response should be successful
 
-    When I set header "Authorization" to "Bearer test-token"
-    And I set header "X-Client-Id" to "test-client"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/case-config-test" until status 200
+    When I set header "X-Payload-Type" to "application/json"
+    And I set header "X-Custom-Header" to "test-value"
+    And I set header "Authorization" to "Bearer secret-token"
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/case-both-test" until status 200
 
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-config-test" should not contain request header "authorization"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-config-test" should contain request header "x-client-id"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-both-test" should contain request header "x-payload-type"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-both-test" should contain request header "x-custom-header"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-both-test" should not contain request header "authorization"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-both-test" should not contain response header "x-denied-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-both-test" should contain response header "x-allowed-response"
     And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/case-config-test" until status 404
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/case-both-test" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-  Scenario: An empty headers array with allow mode does not remove analytics headers
-    Given I generate a unique value from "ahf-empty-allow" and store it as "apiName"
-    And I generate a unique API version from "ahf-empty-allow" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-empty-allow" and store it as "apiContext"
+  Scenario: Denied response headers are still returned unchanged in the actual client response
+    Given I generate a unique value from "ahf-client-unaffected" and store it as "apiName"
+    And I generate a unique API version from "ahf-client-unaffected" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-client-unaffected" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
@@ -336,148 +242,22 @@ Feature: Analytics header filter policy
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
       | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/empty-allow-test","policies":[{"name":"analytics-header-filter","version":"v1","params":{"response":{"mode":"allow","headers":[]}}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/client-unaffected","policies":[{"name":"analytics-header-filter","version":"v1","params":{"response":{"mode":"deny","headers":["x-denied-response"]}}}]}] |
     Then the response should be successful
 
-    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/empty-allow-test" until status 200
-    Then the response should be successful
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/empty-allow-test" should contain response header "x-allowed-response"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/empty-allow-test" should contain response header "x-removed-response"
+    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/client-unaffected" until status 200
+
+    Then the response header "X-Denied-Response" should be "denied"
+    And the response header "X-Allowed-Response" should be "allowed"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/client-unaffected" should not contain response header "x-denied-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/client-unaffected" should contain response header "x-allowed-response"
     And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/empty-allow-test" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: Denied request headers are still sent unchanged to the actual upstream request
-    Given I generate a unique value from "ahf-upstream-unaffected" and store it as "apiName"
-    And I generate a unique API version from "ahf-upstream-unaffected" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-upstream-unaffected" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/upstream-unaffected","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["x-internal-trace"]}}}]}] |
-    Then the response should be successful
-
-    When I set header "X-Internal-Trace" to "trace-12345"
-    And I set header "X-Client-Id" to "test-client"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/upstream-unaffected" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/upstream-unaffected" should not contain request header "x-internal-trace"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/upstream-unaffected" should contain request header "x-client-id"
-    And the response should contain echoed header "X-Internal-Trace" with value "trace-12345"
-    And the response should contain echoed header "X-Client-Id" with value "test-client"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/upstream-unaffected" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: Denying a sensitive authentication header keeps it available to upstream processing
-    Given I generate a unique value from "ahf-sensitive-auth" and store it as "apiName"
-    And I generate a unique API version from "ahf-sensitive-auth" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-sensitive-auth" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/sensitive-auth","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization","x-api-key"]}}}]}] |
-    Then the response should be successful
-
-    When I set header "Authorization" to "Bearer sensitive-token"
-    And I set header "X-API-Key" to "sensitive-key-12345"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/sensitive-auth" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/sensitive-auth" should not contain request header "authorization"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/sensitive-auth" should not contain request header "x-api-key"
-    And the response should contain echoed header "Authorization" with value "Bearer sensitive-token"
-    And the response should contain echoed header "X-API-Key" with value "sensitive-key-12345"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/sensitive-auth" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: Allow mode excludes additional unexpected headers while capturing configured ones
-    Given I generate a unique value from "ahf-allow-unexpected" and store it as "apiName"
-    And I generate a unique API version from "ahf-allow-unexpected" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-allow-unexpected" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/allow-unexpected","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"allow","headers":["x-request-id","x-client-version"]}}}]}] |
-    Then the response should be successful
-
-    When I set header "X-Request-ID" to "req-12345"
-    And I set header "X-Client-Version" to "2.0.0"
-    And I set header "X-Custom-Header" to "unexpected-value"
-    And I set header "X-Another-Unexpected" to "also-unexpected"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/allow-unexpected" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/allow-unexpected" should contain request header "x-request-id"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/allow-unexpected" should contain request header "x-client-version"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/allow-unexpected" should not contain request header "x-custom-header"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/allow-unexpected" should not contain request header "x-another-unexpected"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/allow-unexpected" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
-
-  Scenario: Deny mode excludes only the denied headers while capturing newly introduced ones normally
-    Given I generate a unique value from "ahf-deny-unexpected" and store it as "apiName"
-    And I generate a unique API version from "ahf-deny-unexpected" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-deny-unexpected" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/deny-unexpected","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization","x-api-key"]}}}]}] |
-    Then the response should be successful
-
-    When I set header "Authorization" to "Bearer test-token"
-    And I set header "X-API-Key" to "secret-key"
-    And I set header "X-Custom-Header" to "unexpected-value"
-    And I set header "X-Another-Unexpected" to "also-unexpected"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/deny-unexpected" until status 200
-
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/deny-unexpected" should not contain request header "authorization"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/deny-unexpected" should not contain request header "x-api-key"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/deny-unexpected" should contain request header "x-custom-header"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/deny-unexpected" should contain request header "x-another-unexpected"
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/deny-unexpected" until status 404
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/client-unaffected" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
   # The framework sends each request header as a single line, so the request header's
@@ -515,9 +295,9 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/multi-deny" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | side    | multi           | multiValues                | other       |
-      | request | x-multi-request | with value "first, second" | x-client-id |
+    Examples: response headers
+      | side     | multi            | multiValues                | other              |
+      | response | x-multi-response | with values "first,second" | x-allowed-response |
 
   Scenario Outline: An API-level policy filters analytics headers for every operation (<side> headers)
     Given I generate a unique value from "ahf-api-level-<side>" and store it as "apiName"
@@ -551,9 +331,9 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/orders" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | side    | denied        | kept        |
-      | request | authorization | x-client-id |
+    Examples: response headers
+      | side     | denied            | kept               |
+      | response | x-denied-response | x-allowed-response |
 
   # Each operation carries its own filter, so every asserted header comes from a filtered side.
   # This checks operation scoping for response headers, and for request headers on gateway
@@ -590,61 +370,9 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/first" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | side    | firstDenied   | firstDeniedValue  | secondDenied | secondDeniedValue |
-      | request | authorization | Bearer test-token | x-client-id  | test-client       |
-
-  # A request rejected by api-key-auth or basic-ratelimit short-circuits before the filter
-  # runs, so only the successful request's analytics event is asserted. The collector is
-  # reset after the rejected probe so that event cannot be mistaken for the successful one.
-  Scenario: The filter does not change authentication or rate limiting behaviour
-    Given I generate a unique value from "ahf-combined" and store it as "apiName"
-    And I generate a unique API version from "ahf-combined" and store it as "apiVersion"
-    And I generate a unique API context from "/ahf-combined" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}         |
-      | name                   | ${CTX:apiName}                    |
-      | spec.displayName       | ${CTX:apiName}                    |
-      | spec.version           | ${CTX:apiVersion}                 |
-      | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
-      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"GET","path":"/secured","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}},{"name":"basic-ratelimit","version":"v1","params":{"limits":[{"requests":3,"duration":"1h"}]}},{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["api-key"]}}}]}] |
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 200
-
-    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName}/api-keys" with body:
-      """
-      {"name":"ahf-combined-caller"}
-      """
-    Then the response status should be 201
-    And I store the JSON response field "apiKey.apiKey" as "callerKey"
-
-    When I clear all headers
-    And I set header "X-Client-Id" to "test-client"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/secured" until status 401
-    And I wait for the analytics collector to settle
-    And I reset the analytics collector
-
-    When I set header "API-Key" to "${CTX:callerKey}"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/secured"
-    Then the response status code should be 200
-    And the response header "X-RateLimit-Limit" should be "3"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/secured" should have response status 200
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/secured" should not contain request header "api-key"
-    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/secured" should contain request header "x-client-id"
-
-    When I send 2 "GET" requests to "${CTX:apiContext}/${CTX:apiVersion}/secured"
-    Then the response status code should be 200
-    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/secured"
-    Then the response status code should be 429
-    And I wait for the analytics collector to settle
-
-    When I clear all headers
-    And I authenticate using basic auth as "admin"
-    And I delete the API "${CTX:apiName}"
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
-    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
+    Examples: response headers
+      | side     | firstDenied       | firstDeniedValue | secondDenied       | secondDeniedValue |
+      | response | x-denied-response | denied           | x-allowed-response | allowed           |
 
   Scenario Outline: A header added by set-headers before the filter is filtered by the <mode> rule (<side> headers)
     Given I generate a unique value from "ahf-set-headers-<mode>-<side>" and store it as "apiName"
@@ -675,10 +403,10 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/added" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | mode  | side    | added           | other       | addedAssertion | otherAssertion |
-      | deny  | request | x-added-request | x-client-id | not contain    | contain        |
-      | allow | request | x-added-request | x-client-id | contain        | not contain    |
+    Examples: response headers
+      | mode  | side     | added            | other              | addedAssertion | otherAssertion |
+      | deny  | response | x-added-response | x-allowed-response | not contain    | contain        |
+      | allow | response | x-added-response | x-allowed-response | contain        | not contain    |
 
   Scenario Outline: Headers removed by remove-headers before the filter are absent from traffic and analytics (<side> headers)
     Given I generate a unique value from "ahf-remove-headers-<side>" and store it as "apiName"
@@ -716,9 +444,9 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/removed" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | side    | removed           | denied             | kept        | keptValue   |
-      | request | x-removed-request | x-filtered-request | x-client-id | test-client |
+    Examples: response headers
+      | side     | removed            | denied            | kept               | keptValue |
+      | response | x-removed-response | x-denied-response | x-allowed-response | allowed   |
 
   # The filter has no data-plane effect, so propagation of the update is observed through the
   # policy-engine config dump. The API serves traffic before the update and the collector is
@@ -776,9 +504,9 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/added-later" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | side    | denied        | kept        | keptValue   |
-      | request | authorization | x-client-id | test-client |
+    Examples: response headers
+      | side     | denied            | kept               | keptValue |
+      | response | x-denied-response | x-allowed-response | allowed   |
 
   # Each update keeps the policy name, so propagation is observed through a parameter that
   # changes in that update. The collector is reset before each update so every assertion reads
@@ -866,9 +594,9 @@ Feature: Analytics header filter policy
     # Per side, the filter first denies <first>, then allows only <first>, then allows only
     # <second>. <other> is never configured, so it shows whether each mode keeps or drops the
     # headers the configuration does not name.
-    Examples: request headers
-      | side    | first   | firstValue | second   | secondValue | other       | otherValue  |
-      | request | x-first | first      | x-second | second      | x-client-id | test-client |
+    Examples: response headers
+      | side     | first             | firstValue | second             | secondValue | other              | otherValue |
+      | response | x-denied-response | denied     | x-allowed-response | allowed     | x-removed-response | removed    |
 
   # Every request targets one operation, so all events share one URI. Each request carries its
   # own correlation id, which the backend reflects as a response header, so every event can be
@@ -908,9 +636,9 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/concurrent" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | side    | perRequest    | perRequestValue       | denied         |
-      | request | x-tenant-data | ${CTX:requestId}-data | x-secret-token |
+    Examples: response headers
+      | side     | perRequest             | perRequestValue  | denied            |
+      | response | x-correlation-response | ${CTX:requestId} | x-denied-response |
 
   # The raw collector payload is searched, so a sensitive value is caught wherever it appears in
   # an event, not only under its own header name. Each example sends one sensitive value. The
@@ -951,9 +679,75 @@ Feature: Analytics header filter policy
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/sensitive-values" until status 404
     And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
-    Examples: request headers
-      | case       | header        | value                             | sensitiveValue             | delivered                                                                                |
-      | auth-token | Authorization | Bearer sensitive-auth-token-value | sensitive-auth-token-value | should contain echoed header "Authorization" with value "Bearer sensitive-auth-token-value" |
+    Examples: response headers
+      | case        | header           | value                       | sensitiveValue              | delivered                                                         |
+      | correlation | X-Correlation-Id | sensitive-correlation-value | sensitive-correlation-value | header "X-Correlation-Response" should be "sensitive-correlation-value" |
+
+  # The client-visible assertions are the backend's normal response, so the case shows the
+  # filter leaves traffic unchanged. The case that configures only the request side is in
+  # analytics_header_filter_unfiltered_side_capture.feature.
+  Scenario Outline: Filtering many headers leaves the API response unchanged (<case>)
+    Given I generate a unique value from "ahf-many-<case>" and store it as "apiName"
+    And I generate a unique API version from "ahf-many-<case>" and store it as "apiVersion"
+    And I generate a unique API context from "/ahf-many-<case>" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
+      | name                   | ${CTX:apiName}                    |
+      | spec.displayName       | ${CTX:apiName}                    |
+      | spec.version           | ${CTX:apiVersion}                 |
+      | spec.context           | ${CTX:apiContext}/$version        |
+      | spec.upstream.main.url | http://testbench:3000/analytics-headers |
+      | spec.operations        | <operations> |
+    Then the response should be successful
+
+    When I clear all headers
+    And I set header "Authorization" to "Bearer many-token"
+    And I set header "X-API-Key" to "many-key"
+    And I set header "X-Request-ID" to "req-many"
+    And I set header "X-Client-Version" to "3.1.4"
+    And I set header "X-Tenant-ID" to "tenant-many"
+    And I set header "X-Trace-ID" to "trace-many"
+    And I set header "X-Session-ID" to "session-many"
+    And I set header "X-Correlation-Id" to "corr-many"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/many-headers" until status 200 with body:
+      """
+      {"order":"12345","items":[1,2,3]}
+      """
+    Then the response header "Content-Type" should be "application/json"
+    And the JSON response field "method" should be "POST"
+    And the JSON response field "body" should be:
+      """
+      {"order":"12345","items":[1,2,3]}
+      """
+    And the response should contain echoed header "Authorization" with value "Bearer many-token"
+    And the response should contain echoed header "X-API-Key" with value "many-key"
+    And the response should contain echoed header "X-Request-ID" with value "req-many"
+    And the response should contain echoed header "X-Client-Version" with value "3.1.4"
+    And the response should contain echoed header "X-Tenant-ID" with value "tenant-many"
+    And the response should contain echoed header "X-Trace-ID" with value "trace-many"
+    And the response should contain echoed header "X-Session-ID" with value "session-many"
+    And the response should contain echoed header "X-Correlation-Id" with value "corr-many"
+    And the response header "X-Allowed-Response" should be "allowed"
+    And the response header "X-Denied-Response" should be "denied"
+    And the response header "X-Removed-Response" should be "removed"
+    And the response header "X-Correlation-Response" should be "corr-many"
+    And the response header "X-Multi-Response" should exist
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/many-headers" should <requestAnalytics> request header "authorization"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/many-headers" should <requestAnalytics> request header "x-session-id"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/many-headers" should <responseAnalytics> response header "x-removed-response"
+    And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/many-headers" should <responseAnalytics> response header "x-correlation-response"
+    And I wait for the analytics collector to settle
+
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/many-headers" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
+
+    Examples: request and response headers filtered
+      | case     | requestAnalytics | responseAnalytics | operations |
+      | filtered | not contain      | not contain       | [{"method":"POST","path":"/many-headers","policies":[{"name":"analytics-header-filter","version":"v1","params":{"request":{"mode":"deny","headers":["authorization","x-api-key","x-request-id","x-client-version","x-tenant-id","x-trace-id","x-session-id","x-correlation-id"]},"response":{"mode":"allow","headers":["content-type"]}}}]}] |
 
   # The API is recreated with the same name, version, and context, so only the filter
   # configuration distinguishes the two deployments. The collector settles and is reset after
@@ -1020,6 +814,6 @@ Feature: Analytics header filter policy
 
     # Per side, the first deployment denies <first> and the recreated one allows only <first>.
     # <other> is never configured, so the recreated allow rule must drop it.
-    Examples: request headers
-      | side    | first   | firstValue | second   | secondValue | other       |
-      | request | x-first | first      | x-second | second      | x-client-id |
+    Examples: response headers
+      | side     | first             | firstValue | second             | secondValue | other              |
+      | response | x-denied-response | denied     | x-allowed-response | allowed     | x-removed-response |
