@@ -22,14 +22,10 @@ import { PackageOpen, SquarePen } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
-import {
-  useRestoreDeployment,
-  useUndeployDeployment,
-  type Deployment,
-} from '@/api/resources/restApis/deployments';
+import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
-import { GatewayDeploymentSelector } from './GatewayDeploymentSelector';
+import { GatewayDeploymentSelector, type UseDeploymentMutationHook } from './GatewayDeploymentSelector';
 
 /**
  * Explanations for the `statusReason` codes platform-api returns on a failed
@@ -174,25 +170,34 @@ const messages = defineMessages({
 
 type GatewayDeployEnvCardProps = {
   /** Handle of the API these deployments belong to. */
-  restApiId: string;
+  apiId: string;
   gateway: Gateway;
   /** Deployments on this gateway, newest first. */
   deployments: Deployment[];
   currentDeployment?: Deployment;
   isGatewayActive: boolean;
+  /** The caller's own undeploy/restore mutations, adapted to a uniform shape —
+   * REST's and GraphQL's hooks each expect a differently keyed variables
+   * object (`restApiId`/`graphqlApiId`). `useRestore` is also passed straight
+   * through to `GatewayDeploymentSelector`'s own restore drawer. */
+  useUndeploy: UseDeploymentMutationHook;
+  useRestore: UseDeploymentMutationHook;
 };
 
 /**
  * Left panel of an expanded gateway card: deployment status bar, failure
  * reason, deployment info box, and Stop / Redeploy actions (ai-workspace
- * GatewayDeployEnvCard).
+ * GatewayDeployEnvCard). Shared between REST and GraphQL APIs — see
+ * `DeployPage`/`GraphqlDeployPage` for the `useUndeploy`/`useRestore` adapters.
  */
 export function GatewayDeployEnvCard({
-  restApiId,
+  apiId,
   gateway,
   deployments,
   currentDeployment,
   isGatewayActive,
+  useUndeploy,
+  useRestore,
 }: GatewayDeployEnvCardProps) {
   const theme = useTheme();
   const intl = useIntl();
@@ -200,8 +205,8 @@ export function GatewayDeployEnvCard({
   // that one freezes its locale at import, so it never follows a locale switch.
   const { relativeTime } = useFormatters();
   const { notify } = useNotifications();
-  const undeployMutation = useUndeployDeployment();
-  const restoreMutation = useRestoreDeployment();
+  const undeployMutation = useUndeploy();
+  const restoreMutation = useRestore();
   const [selectorOpen, setSelectorOpen] = useState(false);
 
   const status = currentDeployment?.status;
@@ -241,7 +246,7 @@ export function GatewayDeployEnvCard({
   // already notifies, so a local handler would only duplicate the toast.
   const handleUndeploy = () => {
     undeployMutation.mutate(
-      { restApiId, deploymentId: currentDeployment.deploymentId },
+      { apiId, deploymentId: currentDeployment.deploymentId },
       {
         onSuccess: () =>
           notify(
@@ -256,7 +261,7 @@ export function GatewayDeployEnvCard({
 
   const handleRedeploy = () => {
     restoreMutation.mutate(
-      { restApiId, deploymentId: currentDeployment.deploymentId },
+      { apiId, deploymentId: currentDeployment.deploymentId },
       {
         onSuccess: () =>
           notify(
@@ -429,10 +434,11 @@ export function GatewayDeployEnvCard({
       </Box>
 
       <GatewayDeploymentSelector
+        apiId={apiId}
         deployments={deployments}
-        restApiId={restApiId}
         onClose={() => setSelectorOpen(false)}
         open={selectorOpen}
+        useRestore={useRestore}
       />
     </Box>
   );

@@ -23,10 +23,11 @@ import { defineMessages, FormattedMessage } from 'react-intl';
 import type { Gateway } from '@/api/resources/gateways';
 import type { GraphQLApiDetail } from '@/api/resources/graphqlApis';
 import type { Deployment } from '@/api/resources/graphqlApis/deployments';
+import { routes } from '@/routes/paths';
 import { GraphqlSchemaExplorer } from '../../apis/create/components/graphql/GraphqlSchemaExplorer';
+import { DeployedGatewaysPanel } from '../../apis/overview/DeployedGatewaysPanel';
 import { InvokeUrlPanel } from '../../apis/overview/InvokeUrlPanel';
 import { GraphqlApiKeysPanel } from './GraphqlApiKeysPanel';
-import { GraphqlDeployedGatewaysPanel } from './GraphqlDeployedGatewaysPanel';
 
 const messages = defineMessages({
   schemaTitle: {
@@ -73,9 +74,10 @@ const EndpointPanel = ({ url }: { url?: string }) => (
  * Overview tab for a GraphQL API: schema explorer on the left, connectivity
  * details on the right — mirrors `apis/overview/OverviewTab.tsx`'s layout,
  * swapping the REST-only resources panel for the schema explorer already
- * built for the creation wizard, and API keys/deployed gateways for their
- * GraphQL-scoped forks. `InvokeUrlPanel` is reused unmodified — it's still
- * generic over `{gateways, context}`.
+ * built for the creation wizard, and API keys for `GraphqlApiKeysPanel` (its
+ * create-key flow is genuinely different from REST's, see that file).
+ * `InvokeUrlPanel` and `DeployedGatewaysPanel` are reused unmodified — both
+ * are generic over their own props/a route builder, not REST-specific.
  */
 export function GraphqlOverviewTab({
   api,
@@ -114,7 +116,12 @@ export function GraphqlOverviewTab({
                   </Box>
                 </Stack>
               </Card>
-              <GraphqlDeployedGatewaysPanel deployments={deployments} gateways={deployedGateways} />
+              <DeployedGatewaysPanel
+                apiId={api.id ?? ''}
+                deployTo={routes.graphqlApiDeploy}
+                deployments={deployments}
+                gateways={deployedGateways}
+              />
             </>
           )}
           <EndpointPanel url={api.upstream?.main?.url} />

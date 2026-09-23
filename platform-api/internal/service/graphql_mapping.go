@@ -28,7 +28,7 @@ import (
 // including the full SDL (used for Get/Create/Update responses, never for
 // list responses — see mapGraphQLAPIModelToListItem). Upstream/policy
 // conversion reuses the same generic helpers LLM/MCP already share
-// (mapUpstreamAPIToModel/mapUpstreamModelToAPI in llm.go,
+// (mapUpstreamAPIToModel/mapUpstreamConfigToDTO in llm.go,
 // mapMCPPoliciesAPIToModel/mapMCPPoliciesModelToAPI in mcp.go) since
 // GraphQL reuses model.UpstreamConfig/model.Policy unmodified.
 func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {

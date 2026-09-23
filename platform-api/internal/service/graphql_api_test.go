@@ -327,6 +327,71 @@ func TestGraphQLCreate_WithIntrospection_Success(t *testing.T) {
 	}
 }
 
+// TestGraphQLCreate_InlineIntrospectionJSON_ConvertsToSDL pins the fix for
+// ".json is an accepted SDL upload type, but nothing converts a JSON
+// introspection result to SDL" — schemaSource inline/file previously handed
+// the raw JSON straight to gqlparser.LoadSchema, which always failed on it,
+// even though ".json" is on both upload allowlists specifically for this
+// shape. The same introspection JSON fixture that already works via live
+// introspection (TestGraphQLCreate_WithIntrospection_Success) must now also
+// resolve when supplied directly as inline/file content.
+func TestGraphQLCreate_InlineIntrospectionJSON_ConvertsToSDL(t *testing.T) {
+	introspectionJSON := `{
+		"data": {
+			"__schema": {
+				"queryType": {"name": "Query"},
+				"mutationType": null,
+				"subscriptionType": null,
+				"types": [
+					{
+						"kind": "OBJECT",
+						"name": "Query",
+						"description": "",
+						"fields": [
+							{
+								"name": "hello",
+								"description": "",
+								"args": [],
+								"type": {"kind": "SCALAR", "name": "String", "ofType": null}
+							}
+						]
+					}
+				]
+			}
+		}
+	}`
+
+	repo := &mockGraphQLAPIRepo{}
+	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
+	svc := newGraphQLTestService(repo, project)
+
+	req := &api.CreateGraphQLAPIRequest{
+		DisplayName: "Uploaded Introspection JSON API",
+		Context:     graphQLStrPtr("/uploaded-introspection"),
+		Version:     "v1.0",
+		ProjectId:   "project-uuid",
+		Sdl:         graphQLStrPtr(introspectionJSON),
+		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
+	}
+
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
+	}
+	if repo.created.Configuration.IntrospectionMode != "SDL" {
+		t.Errorf("expected introspectionMode SDL (supplied directly, just JSON-shaped), got %q", repo.created.Configuration.IntrospectionMode)
+	}
+	if !strings.Contains(repo.created.Configuration.SDL, "type Query") {
+		t.Errorf("expected the converted SDL to contain a Query type, got: %s", repo.created.Configuration.SDL)
+	}
+	if !strings.Contains(repo.created.Configuration.SDL, "hello") {
+		t.Errorf("expected the converted SDL to contain the introspected field, got: %s", repo.created.Configuration.SDL)
+	}
+}
+
 // TestGraphQLCreate_IntrospectionFailure_UnprocessableEntity covers
 // "introspection endpoint unreachable/malformed" — the counterpart to
 // TestGraphQLCreate_MalformedSDL_UnprocessableEntity's "SDL fails to parse."
@@ -380,7 +445,15 @@ func TestGraphQLCreate_IntrospectionFailure_SucceedsWithEmptySchema(t *testing.T
 // introspection must both succeed with an empty schema — neither is a
 // structural problem, so neither may block the request, and the outcome
 // shouldn't depend on which cause produced it.
-func TestGraphQLCreate_SchemaResolveFailure_IdenticalShapeRegardlessOfCause(t *testing.T) {
+// TestGraphQLCreate_SchemaResolveFailure_DivergesByWhetherTextWasCallerAuthored
+// pins the intentional split Create now makes between the two resolution-quality
+// failure causes, replacing what used to be an "identical shape regardless of
+// cause" guarantee. Malformed inline SDL is text the caller directly supplied —
+// SDLErrors is populated, and that is now a 400 rather than a silently
+// schema-less API. An introspection failure is a network-layer problem with no
+// caller text to blame — SDLErrors is never populated for it (see SDLErrors'
+// doc comment), so it still succeeds with an empty schema, unchanged.
+func TestGraphQLCreate_SchemaResolveFailure_DivergesByWhetherTextWasCallerAuthored(t *testing.T) {
 	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -398,18 +471,23 @@ func TestGraphQLCreate_SchemaResolveFailure_IdenticalShapeRegardlessOfCause(t *t
 
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	sdlRepo, introspectRepo := &mockGraphQLAPIRepo{}, &mockGraphQLAPIRepo{}
-	sdlResp, sdlErr := newGraphQLTestService(sdlRepo, project).Create("org-1", "creator-uuid", malformedSDLReq)
+	_, sdlErr := newGraphQLTestService(sdlRepo, project).Create("org-1", "creator-uuid", malformedSDLReq)
 	introspectResp, introspectErr := newGraphQLTestService(introspectRepo, project).Create("org-1", "creator-uuid", introspectionFailureReq)
 
-	if sdlErr != nil || introspectErr != nil {
-		t.Fatalf("expected both to succeed, got sdlErr=%v introspectErr=%v", sdlErr, introspectErr)
+	if sdlErr == nil {
+		t.Error("expected malformed caller-authored SDL to fail creation")
 	}
-	if sdlResp == nil || introspectResp == nil {
-		t.Fatal("expected both responses to be non-nil")
+	if sdlRepo.created != nil {
+		t.Error("expected no repository write for the malformed-SDL create")
 	}
-	if sdlRepo.created.Configuration.SDL != "" || introspectRepo.created.Configuration.SDL != "" {
-		t.Errorf("expected empty SDL for both causes, got %q and %q",
-			sdlRepo.created.Configuration.SDL, introspectRepo.created.Configuration.SDL)
+	if introspectErr != nil {
+		t.Fatalf("expected the introspection-failure create to still succeed, got: %v", introspectErr)
+	}
+	if introspectResp == nil {
+		t.Fatal("expected a response for the introspection-failure create")
+	}
+	if introspectRepo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL for an introspection failure, got %q", introspectRepo.created.Configuration.SDL)
 	}
 }
 
@@ -772,7 +850,14 @@ func TestGraphQLList_UnknownProjectHandle_NotFound(t *testing.T) {
 // best-effort posture for the "inline" source: invalid SDL text is a
 // resolution-quality problem (like a failed introspection or sdlUrl fetch),
 // not a structural one, so it must not block creation.
-func TestGraphQLCreate_MalformedSDL_SucceedsWithEmptySchema(t *testing.T) {
+// TestGraphQLCreate_MalformedSDL_ValidationFailed pins the fix for silently
+// discarding caller-authored SDL that fails to parse: unlike a network-layer
+// resolution failure (unreachable sdlUrl, introspection down), SDLErrors is
+// only ever populated for text the caller directly supplied (see SDLErrors'
+// doc comment), so a create that would otherwise persist an empty schema
+// with no signal beyond a server-side WARN now fails loudly instead —
+// nothing is persisted, and the sdlErrors are surfaced in the error details.
+func TestGraphQLCreate_MalformedSDL_ValidationFailed(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
@@ -786,27 +871,33 @@ func TestGraphQLCreate_MalformedSDL_SucceedsWithEmptySchema(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
-	if err != nil {
-		t.Fatalf("expected creation to succeed despite malformed SDL, got: %v", err)
+	_, err := svc.Create("org-1", "creator-uuid", req)
+	if err == nil {
+		t.Fatal("expected creation to fail for unparseable inline SDL")
 	}
-	if resp == nil {
-		t.Fatal("expected a response, got nil")
+	if code := graphQLCatalogCode(t, err); code != apperror.ValidationFailed.Code {
+		t.Errorf("expected VALIDATION_FAILED, got %q", code)
 	}
-	if repo.created == nil {
-		t.Fatal("expected repo.Create to be called")
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected an *apperror.Error, got %T: %v", err, err)
 	}
-	if repo.created.Configuration.SDL != "" {
-		t.Errorf("expected empty SDL for a schema that failed validation, got %q", repo.created.Configuration.SDL)
+	details, ok := appErr.Details.(map[string]any)
+	if !ok || len(details["sdlErrors"].([]api.GraphQLSdlValidationIssue)) == 0 {
+		t.Errorf("expected sdlErrors in the error details, got %+v", appErr.Details)
+	}
+	if repo.created != nil {
+		t.Error("expected no repository write for a create that fails schema validation")
 	}
 }
 
-// TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema covers the
+// TestGraphQLCreate_SDLWithNoQueryRoot_ValidationFailed covers the
 // schema.Query == nil branch in validateGraphQLSDL — syntactically valid SDL
 // that nonetheless never defines a Query root type. Distinct from the
-// malformed-syntax case above, which never reaches that check. Like any other
-// resolution-quality failure, this must not block creation.
-func TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema(t *testing.T) {
+// malformed-syntax case above, which never reaches that check; same
+// caller-authored-text reasoning applies, so this must also fail loudly
+// rather than silently creating a schema-less API.
+func TestGraphQLCreate_SDLWithNoQueryRoot_ValidationFailed(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
@@ -820,18 +911,15 @@ func TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema(t *testing.T) 
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
-	if err != nil {
-		t.Fatalf("expected creation to succeed despite a schema with no Query root type, got: %v", err)
+	_, err := svc.Create("org-1", "creator-uuid", req)
+	if err == nil {
+		t.Fatal("expected creation to fail for a schema with no Query root type")
 	}
-	if resp == nil {
-		t.Fatal("expected a response, got nil")
+	if code := graphQLCatalogCode(t, err); code != apperror.ValidationFailed.Code {
+		t.Errorf("expected VALIDATION_FAILED, got %q", code)
 	}
-	if repo.created == nil {
-		t.Fatal("expected repo.Create to be called")
-	}
-	if repo.created.Configuration.SDL != "" {
-		t.Errorf("expected empty SDL for a schema with no Query root type, got %q", repo.created.Configuration.SDL)
+	if repo.created != nil {
+		t.Error("expected no repository write for a create that fails schema validation")
 	}
 }
 

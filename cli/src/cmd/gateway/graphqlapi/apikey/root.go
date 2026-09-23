@@ -19,35 +19,24 @@
 package apikey
 
 import (
-	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/apikeycmd"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
-const (
-	APIKeyCmdLiteral = "api-key"
-	APIKeyCmdExample = `# List API keys for a GraphQL API
-ap gateway graphql-api api-key list --id countries-graphql-api
-
-# Generate a new API key with an auto-generated name
-ap gateway graphql-api api-key create --id countries-graphql-api`
-)
+// apiKeyConfig parameterizes the shared api-key request logic and root-group
+// builder (see cmd/gateway/apikeycmd) for GraphQL APIs. create.go/update.go
+// are not templated - see apikeycmd's package doc for why.
+var apiKeyConfig = apikeycmd.Config{
+	KindLabel:       "GraphQL API",
+	KindPathSegment: "graphql-api",
+	ExampleAPIID:    "countries-graphql-api",
+	KeysPath:        utils.GatewayGraphQLAPIKeysPath,
+	KeyByNamePath:   utils.GatewayGraphQLAPIKeyByNamePath,
+	RegeneratePath:  utils.GatewayGraphQLAPIKeyRegeneratePath,
+	CreateExample:   "# Generate a new API key with an auto-generated name\nap gateway graphql-api api-key create --id countries-graphql-api",
+}
 
 // APIKeyCmd represents the gateway GraphQL API api-key command group. API keys
 // are scoped to a GraphQL API via the /graphql-apis/{id}/api-keys management
 // endpoints.
-var APIKeyCmd = &cobra.Command{
-	Use:     APIKeyCmdLiteral,
-	Short:   "Manage API keys for a GraphQL API on the gateway",
-	Long:    "This command allows you to create, list, regenerate, update, and revoke API keys for a GraphQL API on the WSO2 API Platform Gateway.",
-	Example: APIKeyCmdExample,
-	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
-	},
-}
-
-func init() {
-	APIKeyCmd.AddCommand(createCmd)
-	APIKeyCmd.AddCommand(listCmd)
-	APIKeyCmd.AddCommand(regenerateCmd)
-	APIKeyCmd.AddCommand(updateCmd)
-	APIKeyCmd.AddCommand(revokeCmd)
-}
+var APIKeyCmd = apikeycmd.NewRootCmd(apiKeyConfig, createCmd, listCmd, regenerateCmd, updateCmd, revokeCmd)

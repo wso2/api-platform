@@ -138,7 +138,13 @@ function ScopeSelection({
   // GraphQL-specific destination.
   const restApisQuery = useAllRestApis({}, { projectId: projectFilter });
   const graphqlApisQuery = useAllGraphQLApis({}, { projectId: projectFilter });
-  const apisPending = restApisQuery.isPending || graphqlApisQuery.isPending;
+  // Both queries stay disabled until a project is chosen (`projectFilter` is
+  // `undefined`), and a disabled React Query v5 query reports `isPending:
+  // true` — not "not yet asked", but indistinguishable from "still loading"
+  // without this guard. Without `chosenProject &&`, the API picker would show
+  // a permanent "Loading APIs..." (in a `<Select>` that's simultaneously
+  // disabled) instead of waiting for a project to actually narrow the list.
+  const apisPending = Boolean(chosenProject) && (restApisQuery.isPending || graphqlApisQuery.isPending);
   const apis: ListableApi[] = [
     ...(restApisQuery.data?.list ?? []).map(toRestListableApi),
     ...(graphqlApisQuery.data?.list ?? []).map(toGraphQLListableApi),

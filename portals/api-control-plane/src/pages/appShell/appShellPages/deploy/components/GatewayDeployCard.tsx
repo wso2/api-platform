@@ -31,15 +31,31 @@ import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
-import { useDeployApi, type Deployment } from '@/api/resources/restApis/deployments';
+import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
 import { GatewayDeployEnvCard } from './GatewayDeployEnvCard';
+import type { UseDeploymentMutationHook } from './GatewayDeploymentSelector';
 import { GatewayDeploymentHistory } from '../GatewayDeploymentHistory';
 import {
   currentDeploymentFor,
   deploymentsForGateway,
   nextDeploymentName,
 } from '../utils/gatewayDeployUtils';
+
+/**
+ * What a "deploy the current working copy" mutation needs to expose — REST's
+ * and GraphQL's own hooks each expect a differently keyed variables object
+ * (`restApiId`/`graphqlApiId`), so a caller adapts its own hook to this
+ * uniform `apiId` shape rather than this shared component knowing about
+ * either kind. See `DeployPage`/`GraphqlDeployPage` for the adapters.
+ */
+export type UseDeployMutationHook = () => {
+  isPending: boolean;
+  mutate: (
+    variables: { apiId: string; body: { name: string; gatewayId: string; base: 'current' } },
+    options?: { onSuccess?: (deployment: Deployment) => void },
+  ) => void;
+};
 
 const messages = defineMessages({
   active: {
@@ -77,7 +93,7 @@ const messages = defineMessages({
 
 type GatewayDeployCardProps = {
   /** Handle of the API being deployed. */
-  restApiId: string;
+  apiId: string;
   gateway: Gateway;
   /** All deployments of the API (across gateways). */
   deployments: Deployment[];
@@ -85,26 +101,39 @@ type GatewayDeployCardProps = {
   onToggleExpand: (expanded: boolean) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  /** The caller's own deploy/undeploy/restore/delete mutations, adapted to a
+   * uniform shape — REST's and GraphQL's hooks each expect a differently
+   * keyed variables object. `useUndeploy`/`useRestore` are forwarded to
+   * `GatewayDeployEnvCard`, `useDelete` to `GatewayDeploymentHistory`. */
+  useDeploy: UseDeployMutationHook;
+  useUndeploy: UseDeploymentMutationHook;
+  useRestore: UseDeploymentMutationHook;
+  useDelete: UseDeploymentMutationHook;
 };
 
 /**
  * Expandable per-gateway card on the Deploy page: header with the gateway
  * name, connection state, current deployment and a one-click Deploy button;
  * expanded body with the status panel and deployment history (ai-workspace
- * GatewayDeployCard).
+ * GatewayDeployCard). Shared between REST and GraphQL APIs — see
+ * `DeployPage`/`GraphqlDeployPage` for the mutation-hook adapters.
  */
 export function GatewayDeployCard({
-  restApiId,
+  apiId,
   gateway,
   deployments,
   isExpanded,
   onToggleExpand,
   onRefresh,
   refreshing,
+  useDeploy,
+  useUndeploy,
+  useRestore,
+  useDelete,
 }: GatewayDeployCardProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
-  const deployMutation = useDeployApi();
+  const deployMutation = useDeploy();
   const isActive = gateway.isActive === true;
   // `id` is the gateway handle. The spec marks it optional (it is server-assigned
   // on create), but a gateway that reached this card came from a list response,
@@ -117,7 +146,7 @@ export function GatewayDeployCard({
   const handleDeploy = () => {
     const name = nextDeploymentName(gateway, deployments);
     deployMutation.mutate(
-      { restApiId, body: { name, gatewayId, base: 'current' } },
+      { apiId, body: { name, gatewayId, base: 'current' } },
       // No `onError`: the query client's `onMutationError` already notifies.
       {
         onSuccess: (deployment) =>
@@ -250,11 +279,13 @@ export function GatewayDeployCard({
         <Grid container spacing={3}>
           <Grid size={{ md: hasDeployments ? 6 : 12, xs: 12 }} sx={{ minWidth: 240 }}>
             <GatewayDeployEnvCard
+              apiId={apiId}
               currentDeployment={currentDeployment}
               deployments={gatewayDeployments}
               gateway={gateway}
               isGatewayActive={isActive}
-              restApiId={restApiId}
+              useRestore={useRestore}
+              useUndeploy={useUndeploy}
             />
           </Grid>
           {hasDeployments && (
@@ -268,10 +299,11 @@ export function GatewayDeployCard({
               }}
             >
               <GatewayDeploymentHistory
+                apiId={apiId}
                 deployments={gatewayDeployments}
                 onRefresh={onRefresh}
                 refreshing={refreshing}
-                restApiId={restApiId}
+                useDelete={useDelete}
               />
             </Grid>
           )}
