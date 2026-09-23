@@ -54,8 +54,9 @@ const messages = defineMessages({
     defaultMessage: 'GraphQL API not found',
   },
   copyEndpoint: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpoint',
+    id: 'apiControlPlane.pages.test.console.GatewaySection.copyEndpoint',
     defaultMessage: 'Copy endpoint URL',
+    description: 'Accessible label for the button copying the gateway invoke URL.',
   },
   copyEndpointFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointFailed',
@@ -66,17 +67,18 @@ const messages = defineMessages({
     defaultMessage: 'Endpoint URL copied to clipboard.',
   },
   endpointLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.endpointLabel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointLabel',
     defaultMessage: 'Endpoint URL',
-    description: 'Accessible name of the read-only field holding the gateway invoke URL under test.',
   },
   gatewayLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.gatewayLabel',
+    id: 'apiControlPlane.pages.test.console.GatewaySection.gatewayLabel',
     defaultMessage: 'Gateway',
+    description: 'Label of the picker choosing which deployed gateway to test against.',
   },
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading',
     defaultMessage: 'Loading test console',
+    description: 'Shown while the API and its definition are being fetched.',
   },
   noDeployment: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.noDeployment',
@@ -275,11 +277,19 @@ export function GraphqlTestConsolePage() {
               overflow: 'hidden',
             }}
           >
+            {/*
+              No `shouldPersistHeaders`: GraphiQL's own default (false) strips
+              the Headers tab out of the tab state it writes to `storage`
+              (@graphiql/react's serializeTabState). `storage` above is real
+              `localStorage` — persisting headers would write whatever
+              Authorization/API-key value the user typed there to disk in
+              cleartext. Do not re-add this prop; the query/variables tabs are
+              still persisted either way, only headers are excluded.
+            */}
             <GraphiQL
               defaultQuery={DEFAULT_QUERY}
               fetcher={fetcher}
               schema={schema}
-              shouldPersistHeaders
               storage={storage}
             />
           </Box>

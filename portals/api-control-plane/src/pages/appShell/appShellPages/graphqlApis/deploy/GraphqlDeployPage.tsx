@@ -30,42 +30,43 @@ import { GraphqlGatewayDeployCard } from './components/GraphqlGatewayDeployCard'
 
 const messages = defineMessages({
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.title',
     defaultMessage: 'Deploy {apiName}',
-    description:
-      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
+    description: 'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
   },
   subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.subtitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.subtitle',
     defaultMessage:
       'Deploy the current working copy to a gateway, and manage existing deployments.',
   },
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading',
     defaultMessage: 'Loading deploy state',
+    description: 'Shown while the API, its gateways and its deployments are being fetched.',
   },
   apiNotFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.apiNotFound',
     defaultMessage: 'GraphQL API not found',
   },
   searchPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.searchPlaceholder',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.searchPlaceholder',
     defaultMessage: 'Search gateways',
   },
   noGatewaysMatchSearch: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.noGatewaysMatchSearch',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.noGatewaysMatchSearch',
     defaultMessage: 'No gateways match your search',
   },
   emptyTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.emptyTitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle',
     defaultMessage: 'No gateway added yet',
+    description: 'Empty state when the organization has no gateways to deploy to.',
   },
   emptyDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.emptyDescription',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyDescription',
     defaultMessage: 'Add a gateway to get started with deployment.',
   },
   addGateway: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.addGateway',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.addGateway',
     defaultMessage: 'Add Gateway',
     description: 'Empty-state action opening the gateway creation page. Verb phrase.',
   },

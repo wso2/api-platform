@@ -63,15 +63,15 @@ export type GraphqlConfigureFormProps = {
 
 const messages = defineMessages({
   back: {
-    id: 'api.create.graphql.configureForm.action.back',
+    id: 'api.create.generalForm.action.back',
     defaultMessage: 'Back',
   },
   basicInformation: {
-    id: 'api.create.graphql.configureForm.section.basicInformation',
+    id: 'api.create.generalForm.section.basicInformation',
     defaultMessage: 'Basic information',
   },
   contextErrorPattern: {
-    id: 'api.create.graphql.configureForm.context.error.pattern',
+    id: 'api.create.generalForm.context.error.pattern',
     defaultMessage: 'Start with / and use only letters, numbers, hyphens, dots and slashes.',
   },
   contextHelper: {
@@ -80,15 +80,15 @@ const messages = defineMessages({
       'Built from the identifier and version. All operations are served from this single path. Optional — leave it as generated, or clear it to let the server pick one.',
   },
   contextLabel: {
-    id: 'api.create.graphql.configureForm.context.label',
+    id: 'api.create.generalForm.context.label',
     defaultMessage: 'Context',
   },
   create: {
-    id: 'api.create.graphql.configureForm.action.create',
+    id: 'api.create.generalForm.action.create',
     defaultMessage: 'Create',
   },
   descriptionLabel: {
-    id: 'api.create.graphql.configureForm.description.label',
+    id: 'api.create.generalForm.description.label',
     defaultMessage: 'Description',
   },
   endpointHelper: {
@@ -100,8 +100,9 @@ const messages = defineMessages({
     defaultMessage: 'Query and Mutation URL',
   },
   endpointSection: {
-    id: 'api.create.graphql.configureForm.section.endpoint',
+    id: 'apiControlPlane.pages.test.console.GatewaySection.endpoint',
     defaultMessage: 'Endpoint',
+    description: 'Label above the URL that requests from this console are sent to. Shown in capitals by the layout, so translate it as ordinary words.',
   },
   endpointErrorInvalid: {
     id: 'api.create.graphql.configureForm.endpoint.error.invalid',
@@ -112,15 +113,15 @@ const messages = defineMessages({
     defaultMessage: 'Enter the GraphQL endpoint URL.',
   },
   identifierErrorPattern: {
-    id: 'api.create.graphql.configureForm.identifier.error.pattern',
+    id: 'api.create.generalForm.identifier.error.pattern',
     defaultMessage: 'Use lowercase letters and numbers, separated by single hyphens.',
   },
   identifierErrorRequired: {
-    id: 'api.create.graphql.configureForm.identifier.error.required',
+    id: 'api.create.generalForm.identifier.error.required',
     defaultMessage: 'Enter an identifier.',
   },
   identifierErrorTooLong: {
-    id: 'api.create.graphql.configureForm.identifier.error.tooLong',
+    id: 'api.create.generalForm.identifier.error.tooLong',
     defaultMessage: 'Use {max} characters or fewer.',
   },
   identifierHelper: {
@@ -128,7 +129,7 @@ const messages = defineMessages({
     defaultMessage: 'URL-friendly. Generated from the name until you change it.',
   },
   identifierLabel: {
-    id: 'api.create.graphql.configureForm.identifier.label',
+    id: 'api.create.generalForm.identifier.label',
     defaultMessage: 'Identifier',
   },
   identifierStatusAvailable: {
@@ -136,12 +137,12 @@ const messages = defineMessages({
     defaultMessage: 'Available.',
   },
   identifierStatusAvailableIcon: {
-    id: 'api.create.graphql.configureForm.identifier.status.availableIcon',
+    id: 'api.create.generalForm.identifier.status.availableIcon',
     defaultMessage: 'Identifier is available',
     description: 'Accessible label for the tick shown beside a free identifier.',
   },
   identifierStatusChecking: {
-    id: 'api.create.graphql.configureForm.identifier.status.checking',
+    id: 'api.create.generalForm.identifier.status.checking',
     defaultMessage: 'Checking whether this identifier is free…',
   },
   identifierStatusUnavailable: {
@@ -154,23 +155,24 @@ const messages = defineMessages({
     description: 'Accessible label for the warning icon shown beside a taken identifier.',
   },
   nameErrorRequired: {
-    id: 'api.create.graphql.configureForm.name.error.required',
+    id: 'api.create.generalForm.name.error.required',
     defaultMessage: 'Enter a name.',
   },
   nameLabel: {
-    id: 'api.create.graphql.configureForm.name.label',
+    id: 'api.create.generalForm.name.label',
     defaultMessage: 'Name',
   },
   rejectedTitle: {
-    id: 'api.create.graphql.configureForm.rejected.title',
+    id: 'api.create.generalForm.rejected.title',
     defaultMessage: 'We could not create this API proxy',
+    description: 'Heading of the summary shown when the server rejected the submitted form.',
   },
   versionErrorPattern: {
-    id: 'api.create.graphql.configureForm.version.error.pattern',
+    id: 'api.create.generalForm.version.error.pattern',
     defaultMessage: 'Use letters, numbers, dots, hyphens and underscores — no spaces or slashes.',
   },
   versionErrorRequired: {
-    id: 'api.create.graphql.configureForm.version.error.required',
+    id: 'api.create.generalForm.version.error.required',
     defaultMessage: 'Enter a version.',
   },
   versionHelper: {
@@ -178,7 +180,7 @@ const messages = defineMessages({
     defaultMessage: 'e.g. 1.0',
   },
   versionLabel: {
-    id: 'api.create.graphql.configureForm.version.label',
+    id: 'api.create.generalForm.version.label',
     defaultMessage: 'Version',
   },
 });

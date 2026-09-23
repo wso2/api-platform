@@ -43,26 +43,24 @@ const messages = defineMessages({
     description: 'The next incomplete lifecycle step shown beside the progress counter.',
   },
   stepCreate: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.create',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create',
     defaultMessage: 'Create',
-    description: 'First step of the GraphQL API progress stepper — the API record exists.',
+    description: 'First step of the API progress stepper — the API record exists. A stage name, not a button command.',
   },
   stepDeploy: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.deploy',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.deploy',
     defaultMessage: 'Deploy',
-    description: 'Second step — the API runs on a gateway. A stage name, not a button command.',
+    description: 'Second step of the API progress stepper — the API runs on a gateway. A stage name, not a button command.',
   },
   stepTest: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.test',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test',
     defaultMessage: 'Test',
-    description:
-      'Third step — try the API from the test console. Not tracked as complete/incomplete: unlike REST, a GraphQL API has no lifecycle status to read that back from.',
+    description: 'Third step of the API progress stepper — the API has been called from the test console. A stage name, not a button command.',
   },
   stepPublish: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.publish',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish',
     defaultMessage: 'Publish to Devportal',
-    description:
-      'Fourth step — list the API in the developer portal. Not tracked as complete/incomplete, same reason as Test.',
+    description: 'Fourth step of the API progress stepper — the API is listed in the developer portal.',
   },
 });
 

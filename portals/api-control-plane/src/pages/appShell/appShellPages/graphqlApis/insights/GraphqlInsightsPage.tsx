@@ -27,36 +27,34 @@ import { runtimeConfig } from '@/config/runtime';
 
 const messages = defineMessages({
   action: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.action',
+    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.action',
     defaultMessage: 'Open Moesif Insights',
-    description:
-      'Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated.',
+    description: 'Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated.',
   },
   apiNotFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.apiNotFound',
     defaultMessage: 'GraphQL API not found',
   },
   cloudFeature: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.cloudFeature',
+    id: 'appShell.insightsPage.feature',
     defaultMessage: 'API insights',
-    description:
-      'Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud.',
+    description: 'Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud.',
   },
   panelDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.panelDescription',
+    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelDescription',
     defaultMessage:
       'Track usage trends, request activity, latency, and customer behavior from your Moesif analytics workspace.',
   },
   panelTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.panelTitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelTitle',
     defaultMessage: 'Your API insights live in Moesif',
   },
   subHeader: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.subHeader',
+    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.subHeader',
     defaultMessage: 'Usage analytics and traffic insights.',
   },
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.title',
     defaultMessage: 'Insights',
   },
 });

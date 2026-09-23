@@ -557,11 +557,7 @@ export const ApiCreationWizard = () => {
                   type="submit"
                   variant="contained"
                 >
-                  {intl.formatMessage(
-                    isGraphql
-                      ? { id: 'api.create.graphql.configureForm.action.create', defaultMessage: 'Create' }
-                      : { id: 'api.create.generalForm.action.create', defaultMessage: 'Create' },
-                  )}
+                  {intl.formatMessage({ id: 'api.create.generalForm.action.create', defaultMessage: 'Create' })}
                 </Button>
               ) : (
                 <Button

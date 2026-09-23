@@ -28,7 +28,7 @@ const messages = defineMessages({
     defaultMessage: 'GraphQL API not found',
   },
   feature: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlCompliancePage.feature',
+    id: 'appShell.compliancePage.feature',
     defaultMessage: 'Compliance reporting for this API',
   },
 });

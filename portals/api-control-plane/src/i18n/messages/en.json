@@ -510,23 +510,8 @@
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
   },
-  "api.create.graphql.configureForm.action.back": {
-    "defaultMessage": "Back"
-  },
-  "api.create.graphql.configureForm.action.create": {
-    "defaultMessage": "Create"
-  },
-  "api.create.graphql.configureForm.context.error.pattern": {
-    "defaultMessage": "Start with / and use only letters, numbers, hyphens, dots and slashes."
-  },
   "api.create.graphql.configureForm.context.helper": {
     "defaultMessage": "Built from the identifier and version. All operations are served from this single path. Optional — leave it as generated, or clear it to let the server pick one."
-  },
-  "api.create.graphql.configureForm.context.label": {
-    "defaultMessage": "Context"
-  },
-  "api.create.graphql.configureForm.description.label": {
-    "defaultMessage": "Description"
   },
   "api.create.graphql.configureForm.endpoint.error.invalid": {
     "defaultMessage": "Enter a full URL, for example https://api.example.com/graphql."
@@ -540,30 +525,11 @@
   "api.create.graphql.configureForm.endpoint.label": {
     "defaultMessage": "Query and Mutation URL"
   },
-  "api.create.graphql.configureForm.identifier.error.pattern": {
-    "defaultMessage": "Use lowercase letters and numbers, separated by single hyphens."
-  },
-  "api.create.graphql.configureForm.identifier.error.required": {
-    "defaultMessage": "Enter an identifier."
-  },
-  "api.create.graphql.configureForm.identifier.error.tooLong": {
-    "defaultMessage": "Use {max} characters or fewer."
-  },
   "api.create.graphql.configureForm.identifier.helper": {
     "defaultMessage": "URL-friendly. Generated from the name until you change it."
   },
-  "api.create.graphql.configureForm.identifier.label": {
-    "defaultMessage": "Identifier"
-  },
   "api.create.graphql.configureForm.identifier.status.available": {
     "defaultMessage": "Available."
-  },
-  "api.create.graphql.configureForm.identifier.status.availableIcon": {
-    "defaultMessage": "Identifier is available",
-    "description": "Accessible label for the tick shown beside a free identifier."
-  },
-  "api.create.graphql.configureForm.identifier.status.checking": {
-    "defaultMessage": "Checking whether this identifier is free…"
   },
   "api.create.graphql.configureForm.identifier.status.unavailable": {
     "defaultMessage": "This identifier is already in use."
@@ -572,38 +538,11 @@
     "defaultMessage": "Identifier is already in use",
     "description": "Accessible label for the warning icon shown beside a taken identifier."
   },
-  "api.create.graphql.configureForm.name.error.required": {
-    "defaultMessage": "Enter a name."
-  },
-  "api.create.graphql.configureForm.name.label": {
-    "defaultMessage": "Name"
-  },
-  "api.create.graphql.configureForm.rejected.title": {
-    "defaultMessage": "We could not create this API proxy"
-  },
-  "api.create.graphql.configureForm.section.basicInformation": {
-    "defaultMessage": "Basic information"
-  },
-  "api.create.graphql.configureForm.section.endpoint": {
-    "defaultMessage": "Endpoint"
-  },
-  "api.create.graphql.configureForm.version.error.pattern": {
-    "defaultMessage": "Use letters, numbers, dots, hyphens and underscores — no spaces or slashes."
-  },
-  "api.create.graphql.configureForm.version.error.required": {
-    "defaultMessage": "Enter a version."
-  },
   "api.create.graphql.configureForm.version.helper": {
     "defaultMessage": "e.g. 1.0"
   },
-  "api.create.graphql.configureForm.version.label": {
-    "defaultMessage": "Version"
-  },
   "api.create.graphql.confirmation.action.goToApi": {
     "defaultMessage": "Go to API"
-  },
-  "api.create.graphql.confirmation.context.label": {
-    "defaultMessage": "Context"
   },
   "api.create.graphql.confirmation.copy.action": {
     "defaultMessage": "Copy {label}",
@@ -621,9 +560,6 @@
   "api.create.graphql.confirmation.title": {
     "defaultMessage": "{name} created",
     "description": "{name} is the display name the user gave the API. Never translated."
-  },
-  "api.create.graphql.confirmation.typeChip": {
-    "defaultMessage": "GraphQL API"
   },
   "api.create.graphql.definePanel.approach.label": {
     "defaultMessage": "How do you want to define this GraphQL API?"
@@ -654,12 +590,6 @@
   },
   "api.create.graphql.introspection.disabledHint": {
     "defaultMessage": "If introspection is disabled on the endpoint, the schema stays empty."
-  },
-  "api.create.graphql.introspection.endpoint.invalid": {
-    "defaultMessage": "Enter a valid HTTP or HTTPS URL."
-  },
-  "api.create.graphql.introspection.endpoint.label": {
-    "defaultMessage": "Backend endpoint"
   },
   "api.create.graphql.introspection.endpoint.required": {
     "defaultMessage": "Enter the GraphQL endpoint to introspect."
@@ -725,14 +655,8 @@
   "api.create.graphql.urlUpload.action.sampleUrl": {
     "defaultMessage": "Try with Sample Schema"
   },
-  "api.create.graphql.urlUpload.source.file": {
-    "defaultMessage": "Upload"
-  },
   "api.create.graphql.urlUpload.source.label": {
     "defaultMessage": "Import the schema from"
-  },
-  "api.create.graphql.urlUpload.source.url": {
-    "defaultMessage": "URL"
   },
   "api.create.graphql.urlUpload.status.validating": {
     "defaultMessage": "Validating schema…",
@@ -740,9 +664,6 @@
   },
   "api.create.graphql.urlUpload.unresolved": {
     "defaultMessage": "That schema could not be resolved. Check it is valid GraphQL SDL."
-  },
-  "api.create.graphql.urlUpload.url.invalid": {
-    "defaultMessage": "Enter a valid HTTP or HTTPS URL."
   },
   "api.create.graphql.urlUpload.url.label": {
     "defaultMessage": "Schema URL"
@@ -2121,315 +2042,34 @@
     "defaultMessage": "Version",
     "description": "Column header over the gateway version."
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.addGateway": {
-    "defaultMessage": "Add Gateway",
-    "description": "Empty-state action opening the gateway creation page. Verb phrase."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.emptyDescription": {
-    "defaultMessage": "Add a gateway to get started with deployment."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.emptyTitle": {
-    "defaultMessage": "No gateway added yet"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.loading": {
-    "defaultMessage": "Loading deploy state"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.noGatewaysMatchSearch": {
-    "defaultMessage": "No gateways match your search"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.searchPlaceholder": {
-    "defaultMessage": "Search gateways"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.subtitle": {
-    "defaultMessage": "Deploy the current working copy to a gateway, and manage existing deployments."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.title": {
-    "defaultMessage": "Deploy {apiName}",
-    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.deleted": {
-    "defaultMessage": "Deleted \"{deploymentName}\".",
-    "description": "Toast confirming a deployment record was removed. {deploymentName} is user-supplied; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.refreshLabel": {
-    "defaultMessage": "Refresh deployment history"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.title": {
-    "defaultMessage": "API Deployment History"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.viewMore": {
-    "defaultMessage": "View More"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.active": {
-    "defaultMessage": "Active",
-    "description": "Gateway connection state: the control plane can reach this gateway."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.currentDeployment": {
-    "defaultMessage": "Current Deployment:"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.deploy": {
-    "defaultMessage": "Deploy",
-    "description": "Button that deploys the API's working copy to this gateway. Verb."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.deployStarted": {
-    "defaultMessage": "Deployment \"{deploymentName}\" started.",
-    "description": "Toast confirming a deploy was requested. {deploymentName} is server-generated; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.deploying": {
-    "defaultMessage": "Deploying..."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.notActive": {
-    "defaultMessage": "Not Active",
-    "description": "Gateway connection state: the control plane cannot reach this gateway."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.changeDeploymentLabel": {
-    "defaultMessage": "Change deployment on {gatewayName}",
-    "description": "Accessible label for the button opening the restore drawer. {gatewayName} is user-supplied; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deployedAt": {
-    "defaultMessage": "Deployed",
-    "description": "Label before the timestamp while the deployment is live. Past tense."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deployedRelative": {
-    "defaultMessage": "Deployed ⏱ {relative}",
-    "description": "Deployment age, e.g. \"Deployed ⏱ 3 hours ago\". {relative} is an already-formatted relative time."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deploymentHeading": {
-    "defaultMessage": "Deployment"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deploymentId": {
-    "defaultMessage": "ID {shortId}",
-    "description": "Shortened deployment identifier. {shortId} is a server-generated id; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deploymentStatus": {
-    "defaultMessage": "Deployment Status"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.lastDeployedAt": {
-    "defaultMessage": "Last deployed"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.notDeployed": {
-    "defaultMessage": "Not yet deployed"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.reasonDeploymentTimeout": {
-    "defaultMessage": "Deployment timed out. Gateway did not respond."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.reasonGatewayProcessingError": {
-    "defaultMessage": "Failed to process deployment. Please check gateway logs."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.redeploy": {
-    "defaultMessage": "Redeploy"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.redeployStarted": {
-    "defaultMessage": "Redeploying \"{deploymentName}\".",
-    "description": "Toast confirming a redeploy was requested. {deploymentName} is user-supplied; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.redeploying": {
-    "defaultMessage": "Redeploying..."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.relative": {
-    "defaultMessage": "⏱ {relative}"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusActive": {
-    "defaultMessage": "Active"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusArchived": {
-    "defaultMessage": "Archived"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusDeploying": {
-    "defaultMessage": "Deploying"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusFailed": {
-    "defaultMessage": "Failed"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusNotActive": {
-    "defaultMessage": "Not Active",
-    "description": "The gateway is offline, so the deployment state cannot be determined."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusSuspended": {
-    "defaultMessage": "Suspended"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusUndeploying": {
-    "defaultMessage": "Undeploying"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.stop": {
-    "defaultMessage": "Stop"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.stopStarted": {
-    "defaultMessage": "Stopping \"{deploymentName}\".",
-    "description": "Toast confirming an undeploy was requested. {deploymentName} is user-supplied; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.stopping": {
-    "defaultMessage": "Stopping..."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.cancel": {
-    "defaultMessage": "Cancel"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.closeLabel": {
-    "defaultMessage": "Close"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.empty": {
-    "defaultMessage": "No deployments available"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.restore": {
-    "defaultMessage": "Restore"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.restoreStarted": {
-    "defaultMessage": "Restoring \"{deploymentName}\".",
-    "description": "Toast confirming a restore was requested. {deploymentName} is user-supplied; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.restoring": {
-    "defaultMessage": "Restoring..."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.title": {
-    "defaultMessage": "Select Deployment to Restore",
-    "description": "Heading of the drawer for picking an earlier deployment to put back in service."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.detail": {
-    "defaultMessage": "You will be able to publish guides, references, and release notes alongside the API so consumers can read them in the Developer Portal."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.feature": {
-    "defaultMessage": "Documents for this API"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.loading": {
-    "defaultMessage": "Loading API"
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopPoliciesPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopPoliciesPage.loading": {
-    "defaultMessage": "Loading policies"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.empty": {
-    "defaultMessage": "Drag and drop policies here, or use Add Policy.",
-    "description": "\"Add Policy\" is the label of a button in this same list."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.globalDescription": {
     "defaultMessage": "These policies apply to every request this API receives — a GraphQL API has a single endpoint, so there is no per-resource scope the way a REST API has."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.heading": {
-    "defaultMessage": "Policies",
-    "description": "Heading over the panel where policies are attached. Noun."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.policyAttached": {
-    "defaultMessage": "Policy attached. Save to apply.",
-    "description": "Toast after attaching a policy; the change is not persisted until Save."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.policyUpdated": {
-    "defaultMessage": "Policy updated. Save to apply.",
-    "description": "Toast after editing an attached policy; the change is not persisted until Save."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.redeployReminder": {
     "defaultMessage": "Redeploy this API for the change to reach its gateways.",
     "description": "Toast shown alongside \"Policies saved.\" — saving updates the definition only."
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.saved": {
-    "defaultMessage": "Policies saved."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.action.cancel": {
-    "defaultMessage": "Cancel",
-    "description": "Discards the unsaved edits and returns to the API overview."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.action.save": {
-    "defaultMessage": "Save changes",
-    "description": "Commits the edits to the API."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.context.error.pattern": {
-    "defaultMessage": "Start with / and use only letters, numbers, hyphens, dots and slashes."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.context.error.required": {
-    "defaultMessage": "Enter a context."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.context.label": {
-    "defaultMessage": "Context"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.description.label": {
-    "defaultMessage": "Description"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.name.error.required": {
-    "defaultMessage": "Enter a name."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.name.label": {
-    "defaultMessage": "Name"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.version.error.pattern": {
-    "defaultMessage": "Use letters, numbers, dots, hyphens and underscores — no spaces or slashes."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.version.error.required": {
-    "defaultMessage": "Enter a version."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.version.label": {
-    "defaultMessage": "Version"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.back": {
-    "defaultMessage": "Back to API",
-    "description": "Back button above the edit form, returning to the API overview."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.loading": {
-    "defaultMessage": "Loading API",
-    "description": "Shown while the API being edited is fetched."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.notFound": {
     "defaultMessage": "GraphQL API not found",
     "description": "Shown when the API to edit could not be loaded."
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.readOnly": {
-    "defaultMessage": "This API cannot be edited here",
-    "description": "Title shown when the edit page is opened for a gateway-managed API."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.readOnlyDetail": {
-    "defaultMessage": "It was discovered from a data-plane gateway, so it is read-only in this console.",
-    "description": "Explains why a gateway-managed API cannot be edited."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.saved": {
-    "defaultMessage": "API updated.",
-    "description": "Confirmation shown after the API details are saved."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.subtitle": {
-    "defaultMessage": "Change the name, description, context and version of this API."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.title": {
-    "defaultMessage": "Edit API"
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlCompliancePage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlCompliancePage.feature": {
-    "defaultMessage": "Compliance reporting for this API"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.action": {
-    "defaultMessage": "Open Moesif Insights",
-    "description": "Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.cloudFeature": {
-    "defaultMessage": "API insights",
-    "description": "Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.panelDescription": {
-    "defaultMessage": "Track usage trends, request activity, latency, and customer behavior from your Moesif analytics workspace."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.panelTitle": {
-    "defaultMessage": "Your API insights live in Moesif"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.subHeader": {
-    "defaultMessage": "Usage analytics and traffic insights."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.title": {
-    "defaultMessage": "Insights"
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.header": {
-    "defaultMessage": "Observability"
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.subHeader": {
     "defaultMessage": "Runtime logs for {graphqlApiHandler}.",
@@ -2438,66 +2078,8 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityMetricsPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityMetricsPage.feature": {
-    "defaultMessage": "Observability metrics for this API"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.breadcrumb.apis": {
-    "defaultMessage": "APIs"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.by.label": {
-    "defaultMessage": "by"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.context.label": {
-    "defaultMessage": "Context:",
-    "description": "Label for the API base path shown in the header, e.g. \"/countries/graphql\"."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.copyContext": {
-    "defaultMessage": "Copy API context"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.created.label": {
-    "defaultMessage": "Created"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.deployToGateway": {
-    "defaultMessage": "Deploy to Gateway"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.description.placeholder": {
-    "defaultMessage": "No description"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.editApi": {
-    "defaultMessage": "Edit API details",
-    "description": "Accessible label and tooltip for the button beside the API name, which opens the edit page."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.gatewayManaged": {
-    "defaultMessage": "Gateway-managed",
-    "description": "Chip marking an API that was discovered from a gateway and cannot be edited here."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.gatewayManagedHint": {
-    "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
-    "description": "Tooltip explaining the gateway-managed chip."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.loading": {
-    "defaultMessage": "Loading API"
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
     "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.typeChip": {
-    "defaultMessage": "GraphQL API"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.unknownCreator": {
-    "defaultMessage": "—"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.add": {
-    "defaultMessage": "Add",
-    "description": "Commits the new API key in the add dialog."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addButton": {
-    "defaultMessage": "Add API Key",
-    "description": "Opens the dialog for issuing a new API key."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addDialogTitle": {
-    "defaultMessage": "Add API Key",
-    "description": "Title of the dialog for issuing a new API key."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addFailed": {
     "defaultMessage": "Failed to add API key",
@@ -2510,21 +2092,6 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.adding": {
     "defaultMessage": "Adding...",
     "description": "Label of the add button while the key is being issued."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.cancel": {
-    "defaultMessage": "Cancel",
-    "description": "Closes a dialog without applying it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.closeDrawer": {
-    "defaultMessage": "Close API keys"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.createdMetadata": {
-    "defaultMessage": "Created {time} by {creator}",
-    "description": "Creation time and creator shown beside an API key."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.description": {
-    "defaultMessage": "Add an API key to authenticate requests through the deployed gateways.",
-    "description": "Explains what an API key is for, above the button that adds one."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.keyNameLabel": {
     "defaultMessage": "Key Name",
@@ -2542,59 +2109,6 @@
     "defaultMessage": "API Key Value",
     "description": "Label of the field holding the secret the gateways will accept."
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revoke": {
-    "defaultMessage": "Revoke",
-    "description": "Confirms the irreversible revocation of a key."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeDialogMessage": {
-    "defaultMessage": "Are you sure you want to revoke this API key? Requests using it will be rejected by the gateways.",
-    "description": "Body of the revoke confirmation dialog."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeDialogTitle": {
-    "defaultMessage": "Revoke API Key",
-    "description": "Title of the revoke confirmation dialog."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeFailed": {
-    "defaultMessage": "Failed to revoke key",
-    "description": "Fallback toast when the server gives no reason for the failure."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeSucceeded": {
-    "defaultMessage": "API key \"{name}\" revoked.",
-    "description": "Toast confirming a revocation; {name} is the key that was revoked."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revokeTooltip": {
-    "defaultMessage": "Revoke API key",
-    "description": "Tooltip on the button that revokes one key from the table."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.revoking": {
-    "defaultMessage": "Revoking...",
-    "description": "Label of the revoke button while the request is in flight."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.seeMore": {
-    "defaultMessage": "See more"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.separator": {
-    "defaultMessage": "·"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.title": {
-    "defaultMessage": "API Keys",
-    "description": "Heading of the section listing the keys accepted for this API."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlDeployedGatewaysPanel.seeMore": {
-    "defaultMessage": "See more"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlDeployedGatewaysPanel.status": {
-    "defaultMessage": "{status, select, DEPLOYED {Deployed} UNDEPLOYED {Undeployed} DEPLOYING {Deploying} UNDEPLOYING {Undeploying} FAILED {Failed} ARCHIVED {Archived} other {{status}}}"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlDeployedGatewaysPanel.title": {
-    "defaultMessage": "Deployed gateways"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointNotConfigured": {
-    "defaultMessage": "No endpoint configured"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointTitle": {
-    "defaultMessage": "Endpoint"
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.schemaTitle": {
     "defaultMessage": "Schema"
   },
@@ -2606,59 +2120,23 @@
     "defaultMessage": "{completed} of {total} completed",
     "description": "Counter beside the lifecycle steps, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.create": {
-    "defaultMessage": "Create",
-    "description": "First step of the GraphQL API progress stepper — the API record exists."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.deploy": {
-    "defaultMessage": "Deploy",
-    "description": "Second step — the API runs on a gateway. A stage name, not a button command."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.publish": {
-    "defaultMessage": "Publish to Devportal",
-    "description": "Fourth step — list the API in the developer portal. Not tracked as complete/incomplete, same reason as Test."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.step.test": {
-    "defaultMessage": "Test",
-    "description": "Third step — try the API from the test console. Not tracked as complete/incomplete: unlike REST, a GraphQL API has no lifecycle status to read that back from."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.feature": {
     "defaultMessage": "Publishing this API to the Developer Portal"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.loading": {
-    "defaultMessage": "Loading API"
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.subtitle": {
     "defaultMessage": "List this API in the Developer Portal for consumers to discover and subscribe to."
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.title": {
-    "defaultMessage": "Publish {apiName}",
-    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpoint": {
-    "defaultMessage": "Copy endpoint URL"
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointFailed": {
     "defaultMessage": "Failed to copy the endpoint URL."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointSucceeded": {
     "defaultMessage": "Endpoint URL copied to clipboard."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.endpointLabel": {
-    "defaultMessage": "Endpoint URL",
-    "description": "Accessible name of the read-only field holding the gateway invoke URL under test."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.gatewayLabel": {
-    "defaultMessage": "Gateway"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.loading": {
-    "defaultMessage": "Loading test console"
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.noDeployment": {
     "defaultMessage": "Deploy this API to a gateway before testing it here."
@@ -2962,6 +2440,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
     "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
+    "defaultMessage": "API definition ({format})",
+    "description": "Accessible name for the editor holding the definition’s own text. {format} is JSON or YAML."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
     "defaultMessage": "Loading editor"
@@ -3549,20 +3031,6 @@
     "defaultMessage": "Test key",
     "description": "Accessible label for the field showing the test key."
   },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.allMethods": {
-    "defaultMessage": "All methods",
-    "description": "Option that leaves the resource list unfiltered by HTTP method."
-  },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.methodLabel": {
-    "defaultMessage": "Filter by method",
-    "description": "Accessible label for the HTTP method filter above the resource list."
-  },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.noResources": {
-    "defaultMessage": "No resources match your search."
-  },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.searchPlaceholder": {
-    "defaultMessage": "Search resources by path or description"
-  },
   "apiControlPlane.pages.test.console.TestKeySection.expired": {
     "defaultMessage": "The key has expired.",
     "description": "Replaces the countdown once the test key is no longer valid. A whole sentence, because it follows another one in the same line."
@@ -3594,36 +3062,6 @@
   "apiControlPlane.pages.test.console.TestKeySection.title": {
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.busy": {
-    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
-    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
-    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
-    "description": "Shown when the portal refused to send the request the form describes."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.noTarget": {
-    "defaultMessage": "Select a deployed gateway before sending a request."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.sessionExpired": {
-    "defaultMessage": "Your session has expired. Sign in again to continue testing."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
-    "defaultMessage": "This API cannot be tested on the selected gateway. Check that it is still deployed there."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
-    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.unexpected": {
-    "defaultMessage": "The request could not be sent. Try again."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.unreachable": {
-    "defaultMessage": "The portal could not reach this gateway.",
-    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
-    "defaultMessage": "The gateway did not respond in time."
   },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"

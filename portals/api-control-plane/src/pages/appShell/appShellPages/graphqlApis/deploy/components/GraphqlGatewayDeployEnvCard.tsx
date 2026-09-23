@@ -38,118 +38,125 @@ import { GraphqlGatewayDeploymentSelector } from './GraphqlGatewayDeploymentSele
  */
 const statusReasonMessages = defineMessages({
   GATEWAY_PROCESSING_ERROR: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.reasonGatewayProcessingError',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.reasonGatewayProcessingError',
     defaultMessage: 'Failed to process deployment. Please check gateway logs.',
   },
   DEPLOYMENT_TIMEOUT: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.reasonDeploymentTimeout',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.reasonDeploymentTimeout',
     defaultMessage: 'Deployment timed out. Gateway did not respond.',
   },
 });
 
 const statusLabels = defineMessages({
   NOT_ACTIVE: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusNotActive',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusNotActive',
     defaultMessage: 'Not Active',
     description: 'The gateway is offline, so the deployment state cannot be determined.',
   },
   DEPLOYED: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusActive',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusActive',
     defaultMessage: 'Active',
+    description: 'The deployment is live on the gateway and serving traffic.',
   },
   UNDEPLOYED: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusSuspended',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusSuspended',
     defaultMessage: 'Suspended',
+    description: 'The deployment was stopped, but can be redeployed.',
   },
   DEPLOYING: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusDeploying',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusDeploying',
     defaultMessage: 'Deploying',
   },
   UNDEPLOYING: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusUndeploying',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusUndeploying',
     defaultMessage: 'Undeploying',
   },
   FAILED: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusFailed',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusFailed',
     defaultMessage: 'Failed',
   },
   ARCHIVED: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.statusArchived',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.statusArchived',
     defaultMessage: 'Archived',
+    description: 'The deployment was superseded by a newer one.',
   },
 });
 
 const messages = defineMessages({
   notDeployed: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.notDeployed',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.notDeployed',
     defaultMessage: 'Not yet deployed',
+    description: 'Placeholder shown when this API has never been deployed to this gateway.',
   },
   deployedAt: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deployedAt',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deployedAt',
     defaultMessage: 'Deployed',
     description: 'Label before the timestamp while the deployment is live. Past tense.',
   },
   lastDeployedAt: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.lastDeployedAt',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.lastDeployedAt',
     defaultMessage: 'Last deployed',
+    description: 'Label before the timestamp once the deployment is no longer live.',
   },
   stop: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.stop',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stop',
     defaultMessage: 'Stop',
+    description: 'Button that takes the live deployment out of service. Verb.',
   },
   stopping: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.stopping',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stopping',
     defaultMessage: 'Stopping...',
+    description: 'Label on the Stop button while the request is in flight.',
   },
   redeploy: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.redeploy',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeploy',
     defaultMessage: 'Redeploy',
+    description: 'Button that returns a stopped or failed deployment to service. Verb.',
   },
   redeploying: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.redeploying',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeploying',
     defaultMessage: 'Redeploying...',
+    description: 'Label on the Redeploy button while the request is in flight.',
   },
   deploymentStatus: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deploymentStatus',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentStatus',
     defaultMessage: 'Deployment Status',
+    description: 'Label on the bar summarising the current deployment state.',
   },
   deploymentHeading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deploymentHeading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentHeading',
     defaultMessage: 'Deployment',
+    description: 'Heading over the box naming which deployment is on the gateway. Noun.',
   },
   deploymentId: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deploymentId',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deploymentId',
     defaultMessage: 'ID {shortId}',
-    description:
-      'Shortened deployment identifier. {shortId} is a server-generated id; do not translate it.',
+    description: 'Shortened deployment identifier. {shortId} is a server-generated id; do not translate it.',
   },
   deployedRelative: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.deployedRelative',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.deployedRelative',
     defaultMessage: 'Deployed ⏱ {relative}',
-    description:
-      'Deployment age, e.g. "Deployed ⏱ 3 hours ago". {relative} is an already-formatted relative time.',
+    description: 'Deployment age, e.g. "Deployed ⏱ 3 hours ago". {relative} is an already-formatted relative time.',
   },
   relative: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.relative',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.relative',
     defaultMessage: '⏱ {relative}',
+    description: 'Timestamp next to the Deployed/Last deployed label. {relative} is an already-formatted relative time.',
   },
   changeDeploymentLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.changeDeploymentLabel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.changeDeploymentLabel',
     defaultMessage: 'Change deployment on {gatewayName}',
-    description:
-      'Accessible label for the button opening the restore drawer. {gatewayName} is user-supplied; do not translate it.',
+    description: 'Accessible label for the button opening the restore drawer. {gatewayName} is user-supplied; do not translate it.',
   },
   stopStarted: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.stopStarted',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.stopStarted',
     defaultMessage: 'Stopping "{deploymentName}".',
-    description:
-      'Toast confirming an undeploy was requested. {deploymentName} is user-supplied; do not translate it.',
+    description: 'Toast confirming an undeploy was requested. {deploymentName} is user-supplied; do not translate it.',
   },
   redeployStarted: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployEnvCard.redeployStarted',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployEnvCard.redeployStarted',
     defaultMessage: 'Redeploying "{deploymentName}".',
-    description:
-      'Toast confirming a redeploy was requested. {deploymentName} is user-supplied; do not translate it.',
+    description: 'Toast confirming a redeploy was requested. {deploymentName} is user-supplied; do not translate it.',
   },
 });
 

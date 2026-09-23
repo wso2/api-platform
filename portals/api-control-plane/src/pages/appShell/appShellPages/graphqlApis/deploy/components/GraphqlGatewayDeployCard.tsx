@@ -43,33 +43,34 @@ import { GraphqlGatewayDeploymentHistory } from '../GraphqlGatewayDeploymentHist
 
 const messages = defineMessages({
   active: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.active',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.active',
     defaultMessage: 'Active',
     description: 'Gateway connection state: the control plane can reach this gateway.',
   },
   notActive: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.notActive',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.notActive',
     defaultMessage: 'Not Active',
     description: 'Gateway connection state: the control plane cannot reach this gateway.',
   },
   currentDeployment: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.currentDeployment',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.currentDeployment',
     defaultMessage: 'Current Deployment:',
+    description: 'Label before the name of the deployment currently on this gateway.',
   },
   deploy: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.deploy',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploy',
     defaultMessage: 'Deploy',
-    description: "Button that deploys the API's working copy to this gateway. Verb.",
+    description: 'Button that deploys the API\'s working copy to this gateway. Verb.',
   },
   deploying: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.deploying',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploying',
     defaultMessage: 'Deploying...',
+    description: 'Label on the Deploy button while the request is in flight.',
   },
   deployStarted: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeployCard.deployStarted',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployStarted',
     defaultMessage: 'Deployment "{deploymentName}" started.',
-    description:
-      'Toast confirming a deploy was requested. {deploymentName} is server-generated; do not translate it.',
+    description: 'Toast confirming a deploy was requested. {deploymentName} is server-generated; do not translate it.',
   },
 });
 

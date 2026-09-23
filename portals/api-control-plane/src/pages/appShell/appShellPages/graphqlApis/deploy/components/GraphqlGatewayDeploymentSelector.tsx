@@ -38,35 +38,38 @@ import { DeploymentStatusChip } from '../../../deploy/components/GatewayDeployme
 
 const messages = defineMessages({
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.title',
     defaultMessage: 'Select Deployment to Restore',
     description: 'Heading of the drawer for picking an earlier deployment to put back in service.',
   },
   closeLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.closeLabel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.closeLabel',
     defaultMessage: 'Close',
+    description: 'Accessible label for the icon button that dismisses the drawer.',
   },
   empty: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.empty',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.empty',
     defaultMessage: 'No deployments available',
+    description: 'Shown when the gateway has no deployment history to restore from.',
   },
   cancel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.cancel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.cancel',
     defaultMessage: 'Cancel',
   },
   restore: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.restore',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restore',
     defaultMessage: 'Restore',
+    description: 'Button that puts the selected earlier deployment back in service. Verb.',
   },
   restoring: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.restoring',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restoring',
     defaultMessage: 'Restoring...',
+    description: 'Label on the Restore button while the request is in flight.',
   },
   restoreStarted: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.components.GraphqlGatewayDeploymentSelector.restoreStarted',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeploymentSelector.restoreStarted',
     defaultMessage: 'Restoring "{deploymentName}".',
-    description:
-      'Toast confirming a restore was requested. {deploymentName} is user-supplied; do not translate it.',
+    description: 'Toast confirming a restore was requested. {deploymentName} is user-supplied; do not translate it.',
   },
 });
 

@@ -26,18 +26,18 @@ import { ErrorState, LoadingState } from '@/components/StateViews';
 
 const messages = defineMessages({
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title',
     defaultMessage: 'Publish {apiName}',
-    description:
-      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
+    description: 'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.subtitle',
     defaultMessage: 'List this API in the Developer Portal for consumers to discover and subscribe to.',
   },
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading',
     defaultMessage: 'Loading API',
+    description: 'Shown while the API being edited is fetched.',
   },
   apiNotFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.apiNotFound',
