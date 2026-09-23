@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -258,23 +259,81 @@ type policyChain struct {
 }
 
 type policySpec struct {
-	Name string `json:"name"`
+	Name       string         `json:"name"`
+	Parameters map[string]any `json:"parameters"`
 }
 
-func (c policyChain) containsPolicy(name string) bool {
+// policyMatcher reports whether a policy instance in a chain satisfies an assertion.
+type policyMatcher func(policySpec) bool
+
+// policyNamed matches a policy instance by name.
+func policyNamed(name string) policyMatcher {
+	return func(policy policySpec) bool { return policy.Name == name }
+}
+
+// policyNamedWithParameter matches a policy instance by name whose parameter at the dotted
+// path has the scalar value want. An empty path matches by name alone.
+func policyNamedWithParameter(name, path, want string) policyMatcher {
+	return func(policy policySpec) bool {
+		if policy.Name != name {
+			return false
+		}
+		if path == "" {
+			return true
+		}
+		actual, found := policyParameterValue(policy.Parameters, path)
+		return found && actual == want
+	}
+}
+
+// policyParameterValue resolves a dotted path, such as "request.mode" or
+// "request.headers.0", against policy parameters. Numeric segments index arrays. It reports
+// false when the path is absent or does not end at a scalar value.
+func policyParameterValue(parameters map[string]any, path string) (string, bool) {
+	var current any = parameters
+	for _, segment := range strings.Split(path, ".") {
+		if segment == "" {
+			return "", false
+		}
+		switch node := current.(type) {
+		case map[string]any:
+			value, ok := node[segment]
+			if !ok {
+				return "", false
+			}
+			current = value
+		case []any:
+			index, err := strconv.Atoi(segment)
+			if err != nil || index < 0 || index >= len(node) {
+				return "", false
+			}
+			current = node[index]
+		default:
+			return "", false
+		}
+	}
+	switch current.(type) {
+	case nil, map[string]any, []any:
+		return "", false
+	default:
+		return fmt.Sprint(current), true
+	}
+}
+
+func (c policyChain) containsPolicy(match policyMatcher) bool {
 	for _, policy := range c.Policies {
-		if policy.Name == name {
+		if match(policy) {
 			return true
 		}
 	}
 	return false
 }
 
-func (d configDump) containsPolicy(schema configDumpSchema, routePath, policyName string) bool {
+func (d configDump) containsPolicy(schema configDumpSchema, routePath string, match policyMatcher) bool {
 	switch schema {
 	case configDumpLegacyRouteKey:
 		for _, chain := range d.PolicyChains.PolicyChains {
-			if routeKeyPath(chain.RouteKey) == routePath && chain.containsPolicy(policyName) {
+			if routeKeyPath(chain.RouteKey) == routePath && chain.containsPolicy(match) {
 				return true
 			}
 		}
@@ -290,7 +349,7 @@ func (d configDump) containsPolicy(schema configDumpSchema, routePath, policyNam
 			return false
 		}
 		for _, chain := range d.PolicyChains.PolicyChains {
-			if _, found := chainKeys[chain.ChainKey]; found && chain.containsPolicy(policyName) {
+			if _, found := chainKeys[chain.ChainKey]; found && chain.containsPolicy(match) {
 				return true
 			}
 		}
@@ -633,12 +692,26 @@ func (g *Gateway) configDumpRouteBasePath(ctx context.Context, basePath string, 
 }
 
 // configDumpPolicyForRoute waits until the policy engine's config dump shows policyName attached
-// to the operation whose full path is routePath. The route can become visible before its policy
-// chain is populated, so checking one already-published dump is not sufficient.
-func (g *Gateway) configDumpPolicyForRoute(ctx context.Context, policyName, routePath string) error {
+// to the operation whose full path is routePath and, when parameterPath is set, carrying the
+// scalar parameterValue at that dotted parameter path. The route can become visible before its
+// policy chain is populated, and an updated policy keeps its name, so checking one
+// already-published dump is not sufficient.
+func (g *Gateway) configDumpPolicyForRoute(
+	ctx context.Context, policyName, routePath, parameterPath, parameterValue string,
+) error {
 	resolvedPath, err := stepscommon.Expand(ctx, routePath)
 	if err != nil {
 		return err
+	}
+	resolvedValue, err := stepscommon.Expand(ctx, parameterValue)
+	if err != nil {
+		return err
+	}
+	match := policyNamedWithParameter(policyName, parameterPath, resolvedValue)
+	what := fmt.Sprintf("waiting for policy %q on route %q in the config dump", policyName, resolvedPath)
+	if parameterPath != "" {
+		what = fmt.Sprintf("waiting for policy %q on route %q with parameter %q set to %q in the config dump",
+			policyName, resolvedPath, parameterPath, resolvedValue)
 	}
 	version, err := g.topo.ComponentVersion("platform-gateway")
 	if err != nil {
@@ -653,7 +726,7 @@ func (g *Gateway) configDumpPolicyForRoute(ctx context.Context, policyName, rout
 		if err := json.Unmarshal(resp.Body, &dump); err != nil {
 			return false
 		}
-		return dump.containsPolicy(schema, resolvedPath, policyName)
+		return dump.containsPolicy(schema, resolvedPath, match)
 	}
 
 	// Preserve the response from the preceding config-dump request when it already satisfies
@@ -680,8 +753,7 @@ func (g *Gateway) configDumpPolicyForRoute(ctx context.Context, policyName, rout
 		}
 		return resp, nil
 	}, containsPolicy)
-	if err := awaited(last, err, containsPolicy,
-		fmt.Sprintf("waiting for policy %q on route %q in the config dump", policyName, resolvedPath)); err != nil {
+	if err := awaited(last, err, containsPolicy, what); err != nil {
 		return err
 	}
 	return g.funnel.Publish(ctx, last)
@@ -1124,6 +1196,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilLazyResourceAbsent)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (contain|not contain) (request|response) header "([^"]*)"(?: with value "([^"]*)")?$`,
 		g.analyticsHeader)
+	sc.Step(`^the latest analytics event for path "([^"]*)" should contain (request|response) header "([^"]*)" with values "([^"]*)"$`,
+		g.analyticsHeaderValues)
+	sc.Step(`^the analytics events for path "([^"]*)" should record (\d+) requests identified by request header "([^"]*)" with prefix "([^"]*)" and headers:$`,
+		g.analyticsPerRequestHeaders)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
@@ -1151,7 +1227,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		func(ctx context.Context, basePath string) error {
 			return g.configDumpRouteBasePath(ctx, basePath, false)
 		})
-	sc.Step(`^the config dump should contain policy "([^"]*)" for route "([^"]*)"$`,
+	sc.Step(`^the config dump should contain policy "([^"]*)" for route "([^"]*)"(?: with parameter "([^"]*)" set to "([^"]*)")?$`,
 		g.configDumpPolicyForRoute)
 	sc.Step(`^I wait for the config dump to stop containing a route with base path "([^"]*)"$`,
 		g.awaitConfigDumpRouteAbsent)
@@ -2065,11 +2141,74 @@ func (g *Gateway) analyticsHeader(
 	return nil
 }
 
-func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analyticsEvent, error) {
+// analyticsHeaderValues asserts the complete, ordered value list recorded for a header.
+// want is a comma-separated list; each entry is trimmed of surrounding whitespace.
+func (g *Gateway) analyticsHeaderValues(ctx context.Context, path, plane, header, want string) error {
+	path, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	event, err := g.latestAnalyticsEvent(ctx, path)
+	if err != nil {
+		return err
+	}
+	headers := event.Response.Headers
+	if plane == "request" {
+		headers = event.Request.Headers
+	}
+	if err := analyticsHeaderValuesMatch(headers, header, want); err != nil {
+		return fmt.Errorf("analytics event for %q %s header: %w", path, plane, err)
+	}
+	return nil
+}
+
+// analyticsHeaderValuesMatch reports whether the header, matched case-insensitively, carries
+// exactly the comma-separated values in want, in order.
+func analyticsHeaderValuesMatch(headers map[string][]string, header, want string) error {
+	var expected []string
+	for _, value := range strings.Split(want, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			expected = append(expected, value)
+		}
+	}
+	if len(expected) == 0 {
+		return fmt.Errorf("no expected values given for header %q", header)
+	}
+	for name, actual := range headers {
+		if !strings.EqualFold(name, header) {
+			continue
+		}
+		if !slices.Equal(actual, expected) {
+			return fmt.Errorf("header %q has values %q, want %q", header, actual, expected)
+		}
+		return nil
+	}
+	return fmt.Errorf("header %q is absent", header)
+}
+
+// fetchAnalyticsEvents reads every event the collector has buffered for this block.
+func (g *Gateway) fetchAnalyticsEvents(ctx context.Context) ([]analyticsEvent, error) {
 	url, err := g.serviceURL(ctx, "analytics", "/test/events")
 	if err != nil {
 		return nil, err
 	}
+	response, err := g.funnel.Client().Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+	}, 0, 0)
+	if err != nil {
+		return nil, retry.Transient(err)
+	}
+	if !response.Succeeded() {
+		return nil, retry.Transient(fmt.Errorf("analytics events returned %s", response.Describe()))
+	}
+	var events []analyticsEvent
+	if err := json.Unmarshal(response.Body, &events); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analyticsEvent, error) {
 	var observed []string
 	accept := func(event *analyticsEvent) bool {
 		return event != nil && analyticsEventMatchesPath(event.Request.URI, path)
@@ -2078,18 +2217,9 @@ func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analy
 	defer cancel()
 	last, err := retry.Until(pollCtx, retry.Options{Interval: time.Second},
 		func(ctx context.Context) (*analyticsEvent, error) {
-			response, getErr := g.funnel.Client().Do(ctx, httpx.Request{
-				Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
-			}, 0, 0)
-			if getErr != nil {
-				return nil, retry.Transient(getErr)
-			}
-			if !response.Succeeded() {
-				return nil, retry.Transient(fmt.Errorf("analytics events returned %s", response.Describe()))
-			}
-			var events []analyticsEvent
-			if decodeErr := json.Unmarshal(response.Body, &events); decodeErr != nil {
-				return nil, decodeErr
+			events, err := g.fetchAnalyticsEvents(ctx)
+			if err != nil {
+				return nil, err
 			}
 			for i := len(events) - 1; i >= 0; i-- {
 				if events[i].Request.URI != "" {
@@ -2109,6 +2239,138 @@ func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analy
 		return nil, fmt.Errorf("no analytics event found for request path %q (observed URIs: %v)", path, observed)
 	}
 	return last, nil
+}
+
+type perRequestAnalyticsHeader struct {
+	plane   string
+	header  string
+	present bool
+	prefix  string
+}
+
+// analyticsPerRequestHeaders asserts that the path has exactly n events, one for each
+// request "<keyPrefix>-<i>" identified by keyHeader, and that each event carries the table's
+// headers for its own request i: "contain" rows must equal "<prefix>-<i>".
+func (g *Gateway) analyticsPerRequestHeaders(
+	ctx context.Context, path string, n int, keyHeader, keyPrefix string, table *godog.Table,
+) error {
+	path, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	keyPrefix, err = stepscommon.Expand(ctx, keyPrefix)
+	if err != nil {
+		return err
+	}
+	expectations, err := perRequestAnalyticsHeaders(ctx, table)
+	if err != nil {
+		return err
+	}
+	accept := func(events []analyticsEvent) bool { return len(analyticsEventsForPath(events, path)) >= n }
+	events, err := retry.Until(ctx, retry.Options{Timeout: 30 * time.Second, Interval: time.Second},
+		g.fetchAnalyticsEvents, accept)
+	if err != nil {
+		return fmt.Errorf("reading analytics events for path %q: %w", path, err)
+	}
+	return verifyPerRequestAnalyticsEvents(analyticsEventsForPath(events, path), n, keyHeader, keyPrefix, expectations)
+}
+
+func perRequestAnalyticsHeaders(ctx context.Context, table *godog.Table) ([]perRequestAnalyticsHeader, error) {
+	if table == nil || len(table.Rows) == 0 {
+		return nil, fmt.Errorf("a per-request analytics headers table is required")
+	}
+	expectations := make([]perRequestAnalyticsHeader, 0, len(table.Rows))
+	for i, row := range table.Rows {
+		if row == nil || len(row.Cells) != 4 {
+			return nil, fmt.Errorf("per-request analytics headers row %d must contain plane, header, "+
+				"presence and value prefix cells", i+1)
+		}
+		cells := make([]string, 4)
+		for j, cell := range row.Cells {
+			value, err := stepscommon.Expand(ctx, strings.TrimSpace(cell.Value))
+			if err != nil {
+				return nil, err
+			}
+			cells[j] = value
+		}
+		expectation := perRequestAnalyticsHeader{plane: cells[0], header: cells[1], prefix: cells[3]}
+		if expectation.plane != "request" && expectation.plane != "response" {
+			return nil, fmt.Errorf("row %d: plane must be request or response, got %q", i+1, cells[0])
+		}
+		if expectation.header == "" {
+			return nil, fmt.Errorf("row %d: header name is empty", i+1)
+		}
+		switch cells[2] {
+		case "contain":
+			expectation.present = true
+			if expectation.prefix == "" {
+				return nil, fmt.Errorf("row %d: a contained header needs a value prefix", i+1)
+			}
+		case "not contain":
+			if expectation.prefix != "" {
+				return nil, fmt.Errorf("row %d: an absent header takes no value prefix", i+1)
+			}
+		default:
+			return nil, fmt.Errorf("row %d: presence must be contain or not contain, got %q", i+1, cells[2])
+		}
+		expectations = append(expectations, expectation)
+	}
+	return expectations, nil
+}
+
+func analyticsEventsForPath(events []analyticsEvent, path string) []analyticsEvent {
+	var matched []analyticsEvent
+	for _, event := range events {
+		if analyticsEventMatchesPath(event.Request.URI, path) {
+			matched = append(matched, event)
+		}
+	}
+	return matched
+}
+
+func verifyPerRequestAnalyticsEvents(
+	events []analyticsEvent, n int, keyHeader, keyPrefix string, expectations []perRequestAnalyticsHeader,
+) error {
+	if n <= 0 {
+		return fmt.Errorf("the expected request count must be positive, got %d", n)
+	}
+	if len(events) != n {
+		return fmt.Errorf("expected %d analytics events, got %d", n, len(events))
+	}
+	seen := make(map[int]bool, n)
+	for _, event := range events {
+		key, ok := analyticsHeaderValue(event.Request.Headers, keyHeader)
+		if !ok {
+			return fmt.Errorf("an analytics event has no request header %q", keyHeader)
+		}
+		index, err := strconv.Atoi(strings.TrimPrefix(key, keyPrefix+"-"))
+		if !strings.HasPrefix(key, keyPrefix+"-") || err != nil || index < 1 || index > n {
+			return fmt.Errorf("analytics event request header %q has unexpected value %q", keyHeader, key)
+		}
+		if seen[index] {
+			return fmt.Errorf("request %q was recorded in more than one analytics event", key)
+		}
+		seen[index] = true
+		for _, expectation := range expectations {
+			headers := event.Response.Headers
+			if expectation.plane == "request" {
+				headers = event.Request.Headers
+			}
+			actual, present := analyticsHeaderValue(headers, expectation.header)
+			switch {
+			case !expectation.present && present:
+				return fmt.Errorf("analytics event for request %q contains denied %s header %q with value %q",
+					key, expectation.plane, expectation.header, actual)
+			case expectation.present && !present:
+				return fmt.Errorf("analytics event for request %q does not contain %s header %q",
+					key, expectation.plane, expectation.header)
+			case expectation.present && actual != fmt.Sprintf("%s-%d", expectation.prefix, index):
+				return fmt.Errorf("analytics event for request %q has %s header %q value %q, want %q",
+					key, expectation.plane, expectation.header, actual, fmt.Sprintf("%s-%d", expectation.prefix, index))
+			}
+		}
+	}
+	return nil
 }
 
 // resetAnalyticsCollector clears every event the testbench analytics collector has buffered
