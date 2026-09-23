@@ -18,8 +18,34 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { completenessNotes, rangeOptionsFor, summarizeLine } from './format';
-import type { LogEntry, LogPage } from './types';
+import {
+  activeFilterCount,
+  completenessNotes,
+  downloadFilename,
+  latencyOf,
+  rangeOptionsFor,
+  sameQuery,
+  summarizeLine,
+} from './format';
+import type { LogEntry, LogPage, LogQuery, LogViewFilters } from './types';
+
+const baseQuery: LogQuery = {
+  rangeMinutes: 60,
+  kinds: [],
+  levels: [],
+  searchPhrase: '',
+  limit: 100,
+  environment: '',
+};
+
+const noView: LogViewFilters = { projects: [] };
+
+const anEntry = (overrides: Partial<LogEntry>): LogEntry => ({
+  timestamp: '2026-09-12T06:00:00.000Z',
+  log: '',
+  kind: 'access',
+  ...overrides,
+});
 
 const page = (overrides: Partial<LogPage> = {}): LogPage => ({
   count: 10,
@@ -111,5 +137,113 @@ describe('completenessNotes', () => {
 
   it('says a narrower range is the only way to see more', () => {
     expect(completenessNotes(page({ truncated: true }), false)[0]).toContain('Narrow the time range');
+  });
+
+  // `limit` is per poll, so a busy organization is always truncated and that one
+  // note would never clear. The other two are about the window and the type
+  // filter, which polling does not undo.
+  it('drops only the truncation note while the tail is running', () => {
+    expect(completenessNotes(page({ truncated: true }), false, true)).toEqual([]);
+    expect(completenessNotes(page({ count: 3, fetched: 200 }), true, true)).toHaveLength(1);
+  });
+});
+
+describe('activeFilterCount', () => {
+  // The time range has a control of its own and is always set to something, so
+  // counting it would mean the Filters button never reads as empty.
+  it('ignores the time range', () => {
+    expect(activeFilterCount({ ...baseQuery, rangeMinutes: 1440 }, noView)).toBe(0);
+  });
+
+  it('counts every box ticked, across both classes', () => {
+    expect(
+      activeFilterCount(
+        {
+          ...baseQuery,
+          kinds: ['access'],
+          levels: ['ERROR', 'WARN'],
+          environment: 'production',
+          searchPhrase: '504',
+        },
+        { projects: ['wc-system'] }
+      )
+    ).toBe(6);
+  });
+
+  // Both kinds ticked asks the same question as neither — but the reader has set
+  // two controls, and Reset is the only thing that clears them. Counting it zero
+  // disabled Reset and printed "No filters" under two ticked boxes.
+  it('counts ticked kinds even when both are ticked', () => {
+    expect(activeFilterCount({ ...baseQuery, kinds: ['access', 'operational'] }, noView)).toBe(1);
+    expect(activeFilterCount({ ...baseQuery, kinds: [] }, noView)).toBe(0);
+  });
+
+  it('counts a search phrase, and ignores one that is only whitespace', () => {
+    expect(activeFilterCount({ ...baseQuery, searchPhrase: ' 504 ' }, noView)).toBe(1);
+    expect(activeFilterCount({ ...baseQuery, searchPhrase: '   ' }, noView)).toBe(0);
+  });
+});
+
+describe('sameQuery', () => {
+  // Setting a filter and undoing it inside the debounce window must not count as
+  // a change, or the console refetches and replaces its buffer for nothing.
+  // None and both send no `kind` at all, so moving between them must not cost a
+  // fetch and a buffer replace.
+  it('sees no kinds and both kinds as the same request', () => {
+    expect(
+      sameQuery(
+        { ...baseQuery, kinds: [] },
+        { ...baseQuery, kinds: ['access', 'operational'] }
+      )
+    ).toBe(true);
+    expect(
+      sameQuery({ ...baseQuery, kinds: [] }, { ...baseQuery, kinds: ['access'] })
+    ).toBe(false);
+  });
+
+  it('sees a round trip back to the same values as no change', () => {
+    expect(sameQuery(baseQuery, { ...baseQuery })).toBe(true);
+    expect(sameQuery(baseQuery, { ...baseQuery, searchPhrase: '  ' })).toBe(true);
+  });
+
+  // The boxes are OR-ed server-side, so re-ticking one in a different order asks
+  // the same question — and a change would wipe the console and refetch.
+  it('ignores the order the boxes were ticked in', () => {
+    expect(
+      sameQuery({ ...baseQuery, levels: ['ERROR', 'WARN'] }, { ...baseQuery, levels: ['WARN', 'ERROR'] })
+    ).toBe(true);
+  });
+
+  it('sees an actual change', () => {
+    expect(sameQuery(baseQuery, { ...baseQuery, kinds: ['access'] })).toBe(false);
+    expect(sameQuery(baseQuery, { ...baseQuery, levels: ['ERROR'] })).toBe(false);
+    expect(sameQuery(baseQuery, { ...baseQuery, environment: 'production' })).toBe(false);
+  });
+});
+
+describe('latencyOf', () => {
+  it('reads the duration out of an access line', () => {
+    expect(
+      latencyOf(anEntry({ log: JSON.stringify({ duration: 67 }) }))
+    ).toBe('67ms');
+  });
+
+  // Only an access log times itself. Anything else reporting 0 would read as
+  // "instant" rather than as "not measured".
+  it('reports nothing for anything else', () => {
+    expect(latencyOf(anEntry({ kind: 'operational', log: 'started' }))).toBeUndefined();
+    expect(latencyOf(anEntry({ log: 'not json' }))).toBeUndefined();
+    expect(latencyOf(anEntry({ log: '{}' }))).toBeUndefined();
+  });
+});
+
+describe('downloadFilename', () => {
+  it('stamps the organization and the moment, with no characters a shell dislikes', () => {
+    const name = downloadFilename('acme', new Date('2026-09-22T06:30:00.000Z'));
+    expect(name).toBe('acme-logs-2026-09-22T06-30-00-000Z.log');
+  });
+
+  it('still names a file when the host port has no organization yet', () => {
+    expect(downloadFilename('')).toContain('organization-logs-');
   });
 });

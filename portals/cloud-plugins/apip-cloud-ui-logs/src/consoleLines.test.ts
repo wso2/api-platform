@@ -22,8 +22,10 @@ import {
   deriveFacets,
   matchesView,
   mergeBufferedLines,
+  orderLines,
   toBufferedLines,
   toConsoleLine,
+  toDetails,
   type BufferedLine,
 } from './consoleLines';
 import type { LogEntry, LogViewFilters } from './types';
@@ -35,7 +37,7 @@ const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
   ...over,
 });
 
-const noView: LogViewFilters = { project: '', pod: '' };
+const noView: LogViewFilters = { projects: [] };
 
 describe('toConsoleLine', () => {
   it('summarizes an access log and keeps the whole line behind raw', () => {
@@ -53,7 +55,7 @@ describe('toConsoleLine', () => {
   });
 
   it('defaults the level, because an access log carries none', () => {
-    expect(toConsoleLine(entry()).level).toBe('INFO');
+    expect(toConsoleLine(entry()).level).toBe('LOG');
     expect(toConsoleLine(entry({ level: 'warn' })).level).toBe('WARN');
   });
 
@@ -94,6 +96,16 @@ describe('mergeBufferedLines', () => {
     expect(second.map((b) => b.line.message)).toEqual(['a', 'b']);
   });
 
+  // How a filter change is applied: the rows on screen answer the old question,
+  // so the first page of the new one is merged into an empty buffer rather than
+  // onto them. A live tick passes the buffer instead and appends.
+  it('replaces the buffer when merged into an empty one', () => {
+    const before = mergeBufferedLines([], [entry({ log: 'old' })], 100);
+    const after = mergeBufferedLines([], [entry({ log: 'new' })], 100);
+    expect(before.map((b) => b.line.message)).toEqual(['old']);
+    expect(after.map((b) => b.line.message)).toEqual(['new']);
+  });
+
   it('returns the same array when a poll brings nothing new', () => {
     // Identity matters: a new array on every idle tick would re-render the
     // console, and with it every row.
@@ -107,20 +119,6 @@ describe('mergeBufferedLines', () => {
     );
     const merged = mergeBufferedLines([], incoming, 2);
     expect(merged.map((b) => b.line.message)).toEqual(['b', 'c']);
-  });
-
-  it('ignores records at or before the clear watermark', () => {
-    const since = Date.parse('2026-09-12T06:00:05.000Z');
-    const merged = mergeBufferedLines(
-      [],
-      [
-        entry({ timestamp: '2026-09-12T06:00:09.000Z', log: 'after' }),
-        entry({ timestamp: '2026-09-12T06:00:01.000Z', log: 'before' }),
-      ],
-      100,
-      since
-    );
-    expect(merged.map((b) => b.line.message)).toEqual(['after']);
   });
 
   // Ingestion lag differs per pod, so a poll can carry a record older than the
@@ -164,8 +162,7 @@ describe('mergeBufferedLines', () => {
   });
 
   it('keeps a record whose timestamp cannot be parsed rather than hiding it', () => {
-    const since = Date.parse('2026-09-12T06:00:05.000Z');
-    const merged = mergeBufferedLines([], [entry({ timestamp: '', log: 'undated' })], 100, since);
+    const merged = mergeBufferedLines([], [entry({ timestamp: '', log: 'undated' })], 100);
     expect(merged.map((b) => b.line.message)).toEqual(['undated']);
   });
 });
@@ -173,49 +170,75 @@ describe('mergeBufferedLines', () => {
 describe('deriveFacets', () => {
   const buffer = (...entries: LogEntry[]): BufferedLine[] => toBufferedLines(entries);
 
-  it('lists only what the loaded lines actually carry, sorted and deduped', () => {
+  // Most common first, so the list reads as "where the noise is". Ties break by
+  // name, or a live tail would reshuffle the panel under the reader.
+  it('counts what the loaded lines carry, commonest first', () => {
     const facets = deriveFacets(
       buffer(
-        entry({ projectName: 'platform', podName: 'gw-b-1', environment: 'production' }),
-        entry({ projectName: 'platform', podName: 'gw-a-1', environment: 'production' }),
-        entry({ projectName: 'apip', podName: 'gw-a-1', environment: 'development' })
+        entry({ projectName: 'platform', environment: 'production' }),
+        entry({ projectName: 'platform', environment: 'production' }),
+        entry({ projectName: 'apip', environment: 'development' })
       )
     );
-    expect(facets.projects).toEqual(['apip', 'platform']);
-    expect(facets.pods).toEqual(['gw-a-1', 'gw-b-1']);
-    expect(facets.environments).toEqual(['development', 'production']);
-  });
-
-  // The two pods of one gateway differ only by their replicaset and pod
-  // suffixes, so the filter has to keep the whole name.
-  it('keeps each pod separate, suffixes and all', () => {
-    const facets = deriveFacets(
-      buffer(
-        entry({ podName: 'gw-34e37ec4-gateway-gateway-runtime-7997466b86-958pf' }),
-        entry({ podName: 'gw-34e37ec4-gateway-controller-8d9fbd895-sxgmf' })
-      )
-    );
-    expect(facets.pods).toEqual([
-      'gw-34e37ec4-gateway-controller-8d9fbd895-sxgmf',
-      'gw-34e37ec4-gateway-gateway-runtime-7997466b86-958pf',
+    expect(facets.projects).toEqual([
+      { value: 'platform', label: 'platform', count: 2 },
+      { value: 'apip', label: 'apip', count: 1 },
+    ]);
+    expect(facets.environments.map((facet) => facet.value)).toEqual([
+      'production',
+      'development',
     ]);
   });
 
-  it('groups pods under their project, so picking one narrows the next list', () => {
+  it('names a kind the way the rest of the page does', () => {
+    const facets = deriveFacets(buffer(entry({ kind: 'access' })));
+    expect(facets.kinds).toEqual([{ value: 'access', label: 'Gateway access', count: 1 }]);
+  });
+
+  /*
+   * The level filter is a substring search of the raw line upstream, not a match
+   * on a field, so an access log — which declares no level and contains no such
+   * word — cannot be returned by ticking any level box. Counting it under a
+   * default would put a number next to a box that does not keep those rows.
+   */
+  it('does not invent a level for a line that declares none', () => {
     const facets = deriveFacets(
-      buffer(
-        entry({ projectName: 'platform', podName: 'gw-a-1' }),
-        entry({ projectName: 'apip', podName: 'gw-z-1' })
-      )
+      buffer(entry({ kind: 'access', level: undefined }), entry({ level: 'ERROR' }))
     );
-    expect(facets.podsByProject).toEqual({ platform: ['gw-a-1'], apip: ['gw-z-1'] });
+    expect(facets.levels).toEqual([{ value: 'ERROR', label: 'ERROR', count: 1 }]);
+  });
+
+  it('still renders that line with a neutral chip rather than a level', () => {
+    expect(toConsoleLine(entry({ kind: 'access', level: undefined })).level).toBe('LOG');
   });
 
   it('offers nothing when the lines carry no attribution', () => {
     const facets = deriveFacets(buffer(entry()));
     expect(facets.projects).toEqual([]);
-    expect(facets.pods).toEqual([]);
     expect(facets.environments).toEqual([]);
+  });
+});
+
+describe('toDetails', () => {
+  // A missing field left in would read as a value of "none" rather than as "the
+  // plane did not say".
+  it('keeps only the fields the record carries', () => {
+    const details = toDetails(entry({ podName: 'gw-1', projectName: 'wc-system' }));
+
+    expect(details.map((detail) => detail.label)).toEqual([
+      'Pod',
+      'Project',
+      'Type',
+      'Timestamp',
+    ]);
+  });
+
+  it('reports latency for an access line, and for nothing else', () => {
+    const access = toDetails(
+      entry({ kind: 'access', log: JSON.stringify({ method: 'GET', duration: 67 }) })
+    );
+    expect(access.find((detail) => detail.label === 'Latency')?.value).toBe('67ms');
+    expect(toDetails(entry()).some((detail) => detail.label === 'Latency')).toBe(false);
   });
 });
 
@@ -224,19 +247,31 @@ describe('matchesView', () => {
     expect(matchesView(entry(), noView)).toBe(true);
   });
 
-  it('ANDs the two filters', () => {
-    const line = entry({ projectName: 'p', podName: 'gw-1' });
-    expect(matchesView(line, { project: 'p', pod: 'gw-1' })).toBe(true);
-    expect(matchesView(line, { ...noView, pod: 'other' })).toBe(false);
+  it('keeps any of the selected projects', () => {
+    expect(matchesView(entry({ projectName: 'p' }), { projects: ['p', 'q'] })).toBe(true);
+    expect(matchesView(entry({ projectName: 'r' }), { projects: ['p', 'q'] })).toBe(false);
   });
 
-  // The environment is a query parameter now, so the browser must not narrow on
-  // it a second time.
+  // The environment is a query parameter, so the browser must not narrow on it a
+  // second time.
   it('ignores the environment', () => {
     expect(matchesView(entry({ environment: 'stage' }), noView)).toBe(true);
   });
 
-  it('excludes a line with no value for a selected filter', () => {
-    expect(matchesView(entry(), { ...noView, project: 'p' })).toBe(false);
+  it('excludes a line with no project when one is selected', () => {
+    expect(matchesView(entry(), { projects: ['p'] })).toBe(false);
+  });
+});
+
+describe('orderLines', () => {
+  it('leaves the buffer order alone when oldest-first', () => {
+    const lines = [1, 2, 3];
+    expect(orderLines(lines, false)).toBe(lines);
+  });
+
+  it('reverses a copy when newest-first, so the caller\u2019s buffer is untouched', () => {
+    const lines = [1, 2, 3];
+    expect(orderLines(lines, true)).toEqual([3, 2, 1]);
+    expect(lines).toEqual([1, 2, 3]);
   });
 });
