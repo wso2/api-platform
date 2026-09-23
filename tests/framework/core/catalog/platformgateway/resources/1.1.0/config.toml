@@ -23,7 +23,7 @@ level = "info"
 level = "info"
 
 [controller.event_hub]
-poll_interval = "1ms"
+poll_interval = "25ms"
 
 [controller.controlplane]
 insecure_skip_verify = true
