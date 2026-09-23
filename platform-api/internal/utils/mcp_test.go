@@ -139,3 +139,39 @@ func TestFetchMCPServerInfoUpstream401IsNotOurUnauthorized(t *testing.T) {
 		t.Errorf("HTTPStatus = %d, want %d", appErr.HTTPStatus, http.StatusBadRequest)
 	}
 }
+
+// The snapshot of what an upstream reported is control-plane-only. Nothing in the deployment
+// spec carries it, which is why adding the field needed no data-version bump: a gateway cannot
+// observe it, so no gateway has to understand it. MCPProxyDeploymentSpec is an allow-list
+// struct, so this breaks the moment someone adds the field to it.
+func TestBuildMCPDeploymentYAMLOmitsUpstreamSpecVersions(t *testing.T) {
+	util := &MCPUtils{}
+	ctx := "/mcp-test"
+	proxy := &model.MCPProxy{
+		Handle:  "test-mcp-proxy",
+		Name:    "Test MCP Proxy",
+		Version: "v1.0",
+		Configuration: model.MCPProxyConfiguration{
+			Context:              &ctx,
+			SpecVersions:         []string{"2025-06-18", "2026-07-28"},
+			UpstreamSpecVersions: []string{"2024-11-05", "2099-01-01"},
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "http://mcp-backend:8080/mcp"},
+			},
+		},
+	}
+
+	yamlString, err := util.GenerateMCPDeploymentYAML(proxy)
+	if err != nil {
+		t.Fatalf("GenerateMCPDeploymentYAML() error = %v", err)
+	}
+
+	if !strings.Contains(yamlString, "2025-06-18") || !strings.Contains(yamlString, "2026-07-28") {
+		t.Errorf("declared versions missing from the deployment YAML:\n%s", yamlString)
+	}
+	for _, reported := range []string{"upstreamSpecVersions", "2024-11-05", "2099-01-01"} {
+		if strings.Contains(yamlString, reported) {
+			t.Errorf("deployment YAML carries %q, which no gateway understands:\n%s", reported, yamlString)
+		}
+	}
+}
