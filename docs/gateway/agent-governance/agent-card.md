@@ -8,7 +8,7 @@ That last point is what makes card serving a gateway concern. An agent's own car
 
 An agent has two cards, and each one is produced in one of two modes.
 
-The **public card** is served without authentication at `/.well-known/agent-card.json`, below the agent's context. The **protected card**, also called the extended card, is served through the `GetExtendedAgentCard` operation and carries whatever the agent only shows authenticated callers.
+The **public card** is served at `/.well-known/agent-card.json`, below the agent's context. It's open by default: operation-level authentication policies don't reach it, and it requires a credential only if you add an authentication policy to its own `agentCard.public.policies` list. The **protected card**, also called the extended card, is served through the `GetExtendedAgentCard` operation and carries whatever the agent only shows authenticated callers.
 
 The two modes decide where the document comes from:
 

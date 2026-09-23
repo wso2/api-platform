@@ -44,7 +44,7 @@ Both values take a duration such as `500ms`, `30s`, `5m`, or `1h`. Setting eithe
 | `timeout` | string | Disabled on the JSON-RPC route and on streaming HTTP+JSON routes; the gateway's global route timeout elsewhere | Maximum time for the whole route, from request to upstream response. |
 | `idleTimeout` | string | The listener's stream idle timeout | Per-route stream idle timeout. Remains the liveness guard for a stream whose route timeout is disabled. |
 
-`resilience` also appears per operation, under `a2a.operationConfigs.operations[]`, where it takes precedence over this agent-level value for that operation's route.
+`resilience` also appears per operation, under `a2a.operationConfigs.operations[]`, where it takes precedence over this agent-level value for that operation's HTTP+JSON route. Each field falls back to the agent-level value on its own. Per-operation `resilience` doesn't apply to the JSON-RPC binding: every JSON-RPC operation shares one route, and that route takes only this agent-level value.
 
 ## `a2a`
 

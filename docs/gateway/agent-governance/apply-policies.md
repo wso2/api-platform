@@ -105,7 +105,7 @@ Public Agent Card policies are a separate list on the card itself:
         content: { ... }
 ```
 
-Card serving is unauthenticated discovery, so this scope suits cross-origin rules and rate limits rather than authentication. Protecting the public card with an authentication policy stops clients discovering the agent at all.
+Card serving is open discovery by default, so this scope usually carries cross-origin rules and rate limits. Authentication is an optional restriction here: an authentication policy in this list makes the card answer only callers with a credential, so clients without one can no longer discover the agent. The card's CORS preflight runs only the list's CORS policies, never its authentication policy.
 
 ## Which policies you can attach
 

@@ -11,7 +11,7 @@ Attaching an authentication policy does two things at once:
 - **It protects the agent's operations.** Requests without a valid credential are rejected before they reach the agent.
 - **It makes the protected Agent Card reachable.** The gateway requires an authenticated request before it returns the extended card, and answers `401` otherwise. An agent with no authentication policy therefore never publishes its extended card. See [Agent Card](agent-card.md).
 
-Public Agent Card serving is separate, and deliberately stays open. A client reads the card to discover the agent before it holds any credential, so protecting the card stops discovery.
+Public Agent Card serving is separate. The authentication policies on operations don't apply to it, so the card stays open by default. A client reads the card to discover the agent before it holds any credential, so leave it open unless you want to restrict discovery. To do that, add an authentication policy to the card's own `agentCard.public.policies` list, and only clients that already hold a credential can discover the agent.
 
 ## Require an API key
 

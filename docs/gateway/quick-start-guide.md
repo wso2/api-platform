@@ -46,12 +46,15 @@ cd wso2apip-ai-gateway-1.2.0/
 export ADMIN_USERNAME=admin
 export ADMIN_PASSWORD='<the password scripts/setup.sh printed>'
 
-# Start the complete stack
-docker compose up
+# Start the complete stack in the background
+docker compose up -d
 
-# Verify gateway controller admin endpoint is running
+# Verify gateway controller admin endpoint is running.
+# The stack takes a few seconds to start; retry if the first call fails.
 curl http://localhost:9094/api/admin/v1/health
 ```
+
+`docker compose up -d` runs the stack detached, so you can run the remaining commands in the same shell. To follow the container logs, run `docker compose logs -f` in another terminal.
 
 > [!TIP]
 > **Port 8080, 8443, 9090, or 9094 already taken?**

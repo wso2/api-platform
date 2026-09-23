@@ -42,7 +42,7 @@ A typical exchange runs through the following steps:
 
 For long-running work, the client can register a push notification configuration instead of waiting, and the agent calls back when the task changes.
 
-Every one of these steps is an A2A operation, and the gateway resolves each request to one before deciding what to do with it. The full list is in [Expose an agent](expose-an-agent.md).
+The client's requests in these steps (sending a message, reading, subscribing to, or cancelling a task, and managing push notification configurations) are A2A operations, and the gateway resolves each such request to one before deciding what to do with it. Agent Card discovery is served separately, and the client's choice of binding and the agent's own tool calls never pass through the gateway as operations. The full list is in [Expose an agent](expose-an-agent.md).
 
 ## What the gateway adds
 
