@@ -125,38 +125,54 @@ export function ProxyProvider({ children, proxyId }: ProxyProviderProps) {
       throw new Error('Proxy ID or Organization ID is missing');
     }
     try {
-      // If the provider auth value is a new plain-text credential (not already a
-      // placeholder), create a new secret and substitute the placeholder before
-      // persisting. Cleanup of the secret being rotated away from happens
-      // server-side (platform-api), since auth.value is writeOnly and never
-      // comes back on a GET — this context's own state can never reliably
-      // hold the true prior value to delete.
+      // A credential typed by a user arrives here in plain text. Each one is
+      // stored as a secret and replaced by a placeholder before the proxy is
+      // persisted, so the proxy itself never carries a credential.
+      //
+      // Every attached provider can hold its own credential, so this runs per
+      // provider rather than for one: minting only the primary's would leave the
+      // others authenticating with nothing.
+      //
+      // Cleanup of a credential rotated away from happens server-side. The value
+      // never comes back on a read, so this context cannot reliably know the
+      // prior one to delete.
       let updatesPayload = updates;
-      const providerAuth = typeof updates.provider === 'object' ? updates.provider?.auth : undefined;
-      const authValue = providerAuth?.value;
-      const isAlreadyPlaceholder =
-        typeof authValue === 'string' && authValue.includes('{{ secret ');
+      const providersNeedingSecrets = (updates.providers ?? []).filter((entry) => {
+        const value = entry.auth?.value;
+        return typeof value === 'string' && value !== '' && !value.includes('{{ secret ');
+      });
 
-      if (authValue && !isAlreadyPlaceholder) {
-        const secretHandle = generateSecretHandle();
-        const secretResponse = await createSecret({
-          id: secretHandle,
-          displayName: `${proxyId} provider API Key`,
-          description: `Auto-generated secret for LLM proxy ${proxyId}`,
-          value: authValue,
-          type: 'GENERIC',
-        });
-        logger.info('Created new secret for LLM proxy update', { secretHandle, proxyId });
+      if (providersNeedingSecrets.length > 0) {
+        const mintedByProviderId = new Map<string, string>();
+        for (const entry of providersNeedingSecrets) {
+          const secretHandle = generateSecretHandle();
+          const secretResponse = await createSecret({
+            id: secretHandle,
+            displayName: `${proxyId} ${entry.id} API Key`,
+            description: `Auto-generated secret for LLM proxy ${proxyId}, provider ${entry.id}`,
+            value: entry.auth?.value ?? '',
+            type: 'GENERIC',
+          });
+          logger.info('Created new secret for LLM proxy provider', {
+            secretHandle,
+            proxyId,
+            providerId: entry.id,
+          });
+          mintedByProviderId.set(entry.id, secretResponse.id);
+        }
 
         updatesPayload = {
           ...updates,
-          provider: {
-            ...(typeof updates.provider === 'object' ? updates.provider : { id: updates.provider ?? '' }),
-            auth: {
-              ...providerAuth,
-              value: buildSecretPlaceholder(secretResponse.id),
-            },
-          },
+          providers: (updates.providers ?? []).map((entry) => {
+            const mintedSecretId = mintedByProviderId.get(entry.id);
+            if (!mintedSecretId || !entry.auth) {
+              return entry;
+            }
+            return {
+              ...entry,
+              auth: { ...entry.auth, value: buildSecretPlaceholder(mintedSecretId) },
+            };
+          }),
         };
       }
 
