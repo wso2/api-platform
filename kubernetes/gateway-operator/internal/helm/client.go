@@ -158,19 +158,167 @@ func (c *Client) InstallOrUpgrade(ctx context.Context, opts InstallOrUpgradeOpti
 	// Set registry client in action configuration
 	actionConfig.RegistryClient = c.registryClient
 
-	// Check if release exists
 	histClient := action.NewHistory(actionConfig)
-	histClient.Max = 1
-	_, err = histClient.Run(opts.ReleaseName)
-	releaseExists := err == nil
+	return planAndExecute(ctx, histClient.Run, &clientExecutor{client: c, actionConfig: actionConfig}, opts)
+}
 
-	if releaseExists {
-		log.Info("Release exists, performing upgrade", "release", opts.ReleaseName)
-		return c.upgrade(ctx, actionConfig, opts)
+// releaseExecutor performs the individual Helm operations a plan is made of. It exists so the
+// dispatch order in planAndExecute can be tested without a cluster; the planner alone cannot
+// catch a plan that is valid but dispatched wrongly.
+type releaseExecutor interface {
+	install(ctx context.Context, opts InstallOrUpgradeOptions) error
+	upgrade(ctx context.Context, opts InstallOrUpgradeOptions) error
+	purge(ctx context.Context, opts InstallOrUpgradeOptions) error
+	rollback(ctx context.Context, opts InstallOrUpgradeOptions, revision int) error
+}
+
+// clientExecutor runs the operations against a real Helm action configuration.
+type clientExecutor struct {
+	client       *Client
+	actionConfig *action.Configuration
+}
+
+func (e *clientExecutor) install(ctx context.Context, opts InstallOrUpgradeOptions) error {
+	return e.client.install(ctx, e.actionConfig, opts)
+}
+
+func (e *clientExecutor) upgrade(ctx context.Context, opts InstallOrUpgradeOptions) error {
+	return e.client.upgrade(ctx, e.actionConfig, opts)
+}
+
+func (e *clientExecutor) purge(ctx context.Context, opts InstallOrUpgradeOptions) error {
+	return e.client.purge(ctx, e.actionConfig, opts)
+}
+
+func (e *clientExecutor) rollback(ctx context.Context, opts InstallOrUpgradeOptions, revision int) error {
+	return e.client.rollback(ctx, e.actionConfig, opts, revision)
+}
+
+// planAndExecute reads the release history, plans the recovery, and dispatches it.
+//
+// historyFn returns every stored revision for the release; the planner compares revisions
+// numerically rather than relying on their order. Only a genuine "not found" means the release
+// is absent — any other error is propagated, because treating a transient storage or
+// unreachable-cluster failure as "absent" would start a fresh install over a live release.
+func planAndExecute(
+	ctx context.Context,
+	historyFn func(string) ([]*release.Release, error),
+	exec releaseExecutor,
+	opts InstallOrUpgradeOptions,
+) error {
+	log := log.FromContext(ctx)
+
+	history, err := historyFn(opts.ReleaseName)
+	switch {
+	case errors.Is(err, driver.ErrReleaseNotFound):
+		log.Info("Release does not exist, performing install", "release", opts.ReleaseName)
+		return exec.install(ctx, opts)
+	case err != nil:
+		return fmt.Errorf("failed to read history for release %q: %w", opts.ReleaseName, err)
 	}
 
-	log.Info("Release does not exist, performing install", "release", opts.ReleaseName)
-	return c.install(ctx, actionConfig, opts)
+	plan, err := planRelease(history)
+	if err != nil {
+		return fmt.Errorf("cannot deploy release %q: %w", opts.ReleaseName, err)
+	}
+
+	log.Info("Planned Helm operation",
+		"release", opts.ReleaseName,
+		"operation", plan.operation.String(),
+		"reason", plan.reason)
+
+	switch plan.operation {
+	case operationInstall:
+		return exec.install(ctx, opts)
+
+	case operationUpgrade:
+		return exec.upgrade(ctx, opts)
+
+	case operationPurgeThenInstall:
+		// Drop the release and its history so the install below is not rejected, either as
+		// an in-progress operation or because a retained name is still in use. planRelease
+		// only plans this where no live resources are discarded.
+		if err := exec.purge(ctx, opts); err != nil {
+			return err
+		}
+		return exec.install(ctx, opts)
+
+	case operationRollbackThenUpgrade:
+		// Roll back first so the release leaves the pending state; the upgrade then starts
+		// from a known-good revision. If the rollback succeeds and the process dies before
+		// the upgrade, the next reconcile sees a deployed release and simply upgrades.
+		if err := exec.rollback(ctx, opts, plan.rollbackRevision); err != nil {
+			return err
+		}
+		return exec.upgrade(ctx, opts)
+
+	default:
+		return fmt.Errorf("unsupported Helm operation %q for release %q", plan.operation, opts.ReleaseName)
+	}
+}
+
+// purge removes a release together with its history so a subsequent install is not rejected
+// — either because an operation is still recorded as in progress, or because retained
+// history from an earlier uninstall still holds the release name. KeepHistory is false, which
+// is also what lets an already-uninstalled release be purged rather than reported as
+// "already deleted".
+func (c *Client) purge(ctx context.Context, actionConfig *action.Configuration, opts InstallOrUpgradeOptions) error {
+	log := log.FromContext(ctx)
+
+	client := newPurgeAction(actionConfig, opts)
+
+	log.Info("Purging unrecoverable release before reinstall", "release", opts.ReleaseName)
+	if _, err := client.Run(opts.ReleaseName); err != nil {
+		// An already-absent release is the desired end state for this step.
+		if errors.Is(err, driver.ErrReleaseNotFound) {
+			log.Info("Release already absent, continuing with install", "release", opts.ReleaseName)
+			return nil
+		}
+		return fmt.Errorf("failed to purge release %q: %w", opts.ReleaseName, err)
+	}
+	return nil
+}
+
+// newPurgeAction configures the uninstall used to drop a release before reinstalling it.
+// KeepHistory must stay false: it is what removes the retained history holding the release
+// name, and what lets an already-uninstalled release be purged instead of being reported as
+// "already deleted". Split out so those settings are assertable without a cluster.
+func newPurgeAction(actionConfig *action.Configuration, opts InstallOrUpgradeOptions) *action.Uninstall {
+	client := action.NewUninstall(actionConfig)
+	client.KeepHistory = false
+	client.Wait = opts.Wait
+	if opts.Timeout > 0 {
+		client.Timeout = time.Duration(opts.Timeout) * time.Second
+	}
+	return client
+}
+
+// newRollbackAction configures the rollback used to leave a pending state, targeting the
+// revision the planner selected. Split out so the target revision is assertable.
+func newRollbackAction(actionConfig *action.Configuration, opts InstallOrUpgradeOptions, revision int) *action.Rollback {
+	client := action.NewRollback(actionConfig)
+	client.Version = revision
+	client.Wait = opts.Wait
+	client.CleanupOnFail = true
+	if opts.Timeout > 0 {
+		client.Timeout = time.Duration(opts.Timeout) * time.Second
+	}
+	return client
+}
+
+// rollback returns a release stuck in a pending state to the given known-good revision.
+func (c *Client) rollback(ctx context.Context, actionConfig *action.Configuration, opts InstallOrUpgradeOptions, revision int) error {
+	log := log.FromContext(ctx)
+
+	client := newRollbackAction(actionConfig, opts, revision)
+
+	log.Info("Rolling back release to recover from pending state",
+		"release", opts.ReleaseName,
+		"revision", revision)
+	if err := client.Run(opts.ReleaseName); err != nil {
+		return fmt.Errorf("failed to roll back release %q to revision %d: %w", opts.ReleaseName, revision, err)
+	}
+	return nil
 }
 
 // install performs a Helm install
@@ -227,8 +375,9 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 		return fmt.Errorf("failed to parse values: %w", err)
 	}
 
-	// Install the chart
-	release, err := client.Run(chart, values)
+	// Install the chart. RunWithContext lets an operator shutdown or a cancelled reconcile
+	// abort the wait instead of blocking for the full timeout.
+	release, err := client.RunWithContext(ctx, chart, values)
 	if err != nil {
 		return fmt.Errorf("failed to install chart: %w", err)
 	}
@@ -249,6 +398,10 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 	client.Namespace = opts.Namespace
 	client.Wait = opts.Wait
 	client.Version = opts.Version
+	// Delete resources the failed upgrade created, so a partway attempt does not leave
+	// orphaned objects behind. This does not roll the release back: it still records a
+	// failed revision, which planRelease upgrades from on the next reconcile.
+	client.CleanupOnFail = true
 
 	if opts.Timeout > 0 {
 		client.Timeout = time.Duration(opts.Timeout) * time.Second
@@ -293,8 +446,9 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 		return fmt.Errorf("failed to parse values: %w", err)
 	}
 
-	// Upgrade the chart
-	release, err := client.Run(opts.ReleaseName, chart, values)
+	// Upgrade the chart. RunWithContext lets an operator shutdown or a cancelled reconcile
+	// abort the wait instead of blocking for the full timeout.
+	release, err := client.RunWithContext(ctx, opts.ReleaseName, chart, values)
 	if err != nil {
 		return fmt.Errorf("failed to upgrade chart: %w", err)
 	}
