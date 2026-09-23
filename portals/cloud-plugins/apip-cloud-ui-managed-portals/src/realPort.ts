@@ -13,6 +13,7 @@
 import type {
   CreateManagedPortalInput,
   ManagedPortal,
+  ManagedPortalStatus,
   OrgEnvironment,
   PortalPort,
   UpdateManagedPortalInput,
@@ -110,9 +111,21 @@ type WirePortal = {
   description?: string | null;
   url?: string;
   loginEnvironment?: string;
+  status?: string;
   updatedAt?: string;
 };
 type WirePortalList = { count?: number; list?: WirePortal[] };
+
+/**
+ * The backend enum is `pending | active | failed`. An unknown value from a
+ * newer backend surfaces as undefined so the UI treats it as "no status
+ * signal" rather than throwing; the row still renders with a working Visit
+ * button (see fallback in ManagedPortalsList).
+ */
+function normalizeStatus(raw?: string): ManagedPortalStatus | undefined {
+  if (raw === 'pending' || raw === 'active' || raw === 'failed') return raw;
+  return undefined;
+}
 
 // `name` is the value loginEnvironment expects; other response fields are ignored.
 type WireEnvironment = { name?: string; displayName?: string };
@@ -130,6 +143,7 @@ function fromWire(w: WirePortal): ManagedPortal {
     description: w.description ?? undefined,
     url: w.url,
     loginEnvironment: w.loginEnvironment,
+    status: normalizeStatus(w.status),
     updatedAt: w.updatedAt,
   };
 }
