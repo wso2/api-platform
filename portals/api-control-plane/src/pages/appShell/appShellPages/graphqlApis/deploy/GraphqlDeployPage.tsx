@@ -23,10 +23,58 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { useGateways } from '@/api/resources/gateways';
 import { useGraphQLApi } from '@/api/resources/graphqlApis';
-import { useDeployments } from '@/api/resources/graphqlApis/deployments';
+import {
+  useDeleteDeployment,
+  useDeployApi,
+  useDeployments,
+  useRestoreDeployment,
+  useUndeployDeployment,
+} from '@/api/resources/graphqlApis/deployments';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
-import { GraphqlGatewayDeployCard } from './components/GraphqlGatewayDeployCard';
+import {
+  GatewayDeployCard,
+  type UseDeployMutationHook,
+} from '../../deploy/components/GatewayDeployCard';
+import type { UseDeploymentMutationHook } from '../../deploy/components/GatewayDeploymentSelector';
+
+/** Adapts GraphQL's `{ graphqlApiId, ... }` mutations to the shared deploy-card
+ * subtree's uniform `{ apiId, ... }` shape — see `GatewayDeployCard` for why
+ * this lives at the caller rather than in the shared component. */
+const useDeployForCard: UseDeployMutationHook = () => {
+  const mutation = useDeployApi();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, body }, options) => mutation.mutate({ graphqlApiId: apiId, body }, options),
+  };
+};
+
+const useUndeployForCard: UseDeploymentMutationHook = () => {
+  const mutation = useUndeployDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useRestoreForCard: UseDeploymentMutationHook = () => {
+  const mutation = useRestoreDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useDeleteForCard: UseDeploymentMutationHook = () => {
+  const mutation = useDeleteDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+  };
+};
 
 const messages = defineMessages({
   title: {
@@ -171,15 +219,19 @@ export function GraphqlDeployPage() {
               </Box>
             ) : (
               filteredGateways.map((gateway) => (
-                <GraphqlGatewayDeployCard
+                <GatewayDeployCard
+                  apiId={graphqlApiHandler}
                   deployments={deployments}
                   gateway={gateway}
-                  graphqlApiId={graphqlApiHandler}
                   isExpanded={expandedIds.has(gateway.id ?? '')}
                   key={gateway.id}
                   onRefresh={() => deploymentsQuery.refetch()}
                   onToggleExpand={(expanded) => toggleExpand(gateway.id ?? '', expanded)}
                   refreshing={deploymentsQuery.isFetching}
+                  useDelete={useDeleteForCard}
+                  useDeploy={useDeployForCard}
+                  useRestore={useRestoreForCard}
+                  useUndeploy={useUndeployForCard}
                 />
               ))
             )}

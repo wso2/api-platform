@@ -280,6 +280,34 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 	return sdl, nil
 }
 
+// tryConvertIntrospectionJSONToSDL detects and converts a raw introspection
+// JSON response (the `{"data":{"__schema":{...}}}` shape a client gets back
+// from POSTing the standard introspection query against a live endpoint)
+// into SDL text, for resolveSchema's inline/file branch. `.json` is on both
+// upload allowlists (graphql_multipart.go's allowedSDLFileExtensions,
+// GraphqlUrlUploadForm.tsx's FILE_EXTENSIONS) precisely so a user can upload
+// this shape instead of hand-writing SDL, but nothing converted it before
+// this — it went straight to gqlparser.LoadSchema and failed. Returns
+// ok=false for anything that isn't recognizably this shape, including plain
+// SDL text (which never starts with `{` — a type-system-definition document
+// has no bare block at its top level), so the caller falls through to its
+// existing SDL validation/error path unchanged.
+func tryConvertIntrospectionJSONToSDL(text string) (sdl string, ok bool) {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, "{") {
+		return "", false
+	}
+	var parsed graphQLIntrospectionResponse
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil || parsed.Data == nil {
+		return "", false
+	}
+	converted, err := convertGraphQLIntrospectionToSDL(parsed.Data.Schema)
+	if err != nil {
+		return "", false
+	}
+	return converted, true
+}
+
 // convertGraphQLIntrospectionToSDL converts a standard introspection
 // __schema result into SDL text via gqlparser's AST + formatter. This is a
 // reasonably complete converter (object/interface/union/enum/input types,
