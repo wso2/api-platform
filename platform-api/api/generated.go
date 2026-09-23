@@ -1863,10 +1863,13 @@ type LLMProxyAPIKeyListResponse struct {
 	Pagination Pagination   `json:"pagination" yaml:"pagination"`
 }
 
-// LLMProxyAdditionalProvider Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`).
+// LLMProxyAdditionalProvider Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). `auth` is the credential the proxy sends when it calls this provider over the internal loopback, so it must be accepted by the provider's own inbound security (for api-key, a key issued for this provider). Its value is write-only and omitted from responses.
 type LLMProxyAdditionalProvider struct {
 	// As Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
 	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `binding:"required" json:"id" yaml:"id"`

@@ -9980,6 +9980,10 @@ components:
       description: >
         Additional LLM provider attached to this proxy as a selectable upstream.
         Policies route to it by referring to the `as` name (defaults to `id`).
+        `auth` is the credential the proxy sends when it calls this provider over
+        the internal loopback, so it must be accepted by the provider's own inbound
+        security (for api-key, a key issued for this provider). Its value is
+        write-only and omitted from responses.
       properties:
         id:
           type: string
@@ -9994,6 +9998,8 @@ components:
           minLength: 1
           maxLength: 100
           example: anthropic-upstream
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
         transformer:
           $ref: '#/components/schemas/LLMProxyTransformer'
 

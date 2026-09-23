@@ -275,7 +275,8 @@ The payload shape is selected by kind.
 | `version` | `metadata.yaml` → `spec.version` |
 | `context` | `runtime.yaml` → `spec.context` |
 | `description` | `runtime.yaml` → `spec.description` (defaults to `"No description provided for this proxy."` when absent) |
-| `provider` (`id`, `auth.{type,header}`) | `runtime.yaml` → `spec.provider` (the auth secret `value` is **not** copied — the provider owns it) |
+| `provider` (`id`, `auth.{type,header,value}`) | `runtime.yaml` → `spec.provider`. `auth` is the credential for the proxy's loopback call into the provider, so it must be accepted by the provider's own inbound security; use an `ENV_CLI_*` or `{{ secret }}` reference for `value` |
+| `additionalProviders[]` (`id`, `as`, `auth.{type,header,value}`, `transformer.{type,version,params}`) | `runtime.yaml` → `spec.additionalProviders` (omitted when absent). Each entry's `auth` is the loopback credential for that provider, as for `provider.auth`. Because `apply` replaces the whole proxy, entries not listed here are removed |
 | `security` (`enabled`, `apiKey.{enabled,in,key}`) | the `api-key-auth` policy in `runtime.yaml` → `spec.globalPolicies` |
 | `globalPolicies[]` (`name`, `version`, `params`) | every other `runtime.yaml` → `spec.globalPolicies` entry; `params` is copied verbatim (policy-specific, no fixed schema) |
 | `operationPolicies[]` (`name`, `version`, `paths[].{path,methods,params}`) | `runtime.yaml` → `spec.operationPolicies`; each path's `params` is copied verbatim |

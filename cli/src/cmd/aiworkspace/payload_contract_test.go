@@ -21,6 +21,8 @@ package aiws
 import (
 	"encoding/json"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Round-trip contract tests: every field the gateway-controller requires must
@@ -210,5 +212,85 @@ func TestProviderPayload_ForwardsTemplateAndAccessControl(t *testing.T) {
 	if len(payload.AccessControl.Exceptions) != 1 ||
 		payload.AccessControl.Exceptions[0].Path != "/v1/chat/completions" {
 		t.Fatalf("accessControl exceptions not forwarded: %+v", payload.AccessControl.Exceptions)
+	}
+}
+
+// Each additional provider carries its own loopback credential into the
+// provider it points at. Dropping it (or the entry) passes `ap ai-workspace
+// build` and only fails at request time as a loopback 401; and since apply
+// sends a full PUT, an omitted list would also wipe entries set through REST.
+func TestProxyPayload_ForwardsAdditionalProviders(t *testing.T) {
+	const runtimeYAML = `
+kind: LlmProxy
+spec:
+  provider:
+    id: wso2-claude-provider
+  additionalProviders:
+    - id: " anthropic-provider "
+      as: anthropic-upstream
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: "{{ secret \"loopback-handle\" }}"
+      transformer:
+        type: openai-to-anthropic
+        version: v1
+        params:
+          model: claude-sonnet-4-5
+    - id: plain-provider
+`
+	var rt aiWorkspaceRuntime
+	if err := yaml.Unmarshal([]byte(runtimeYAML), &rt); err != nil {
+		t.Fatalf("failed to parse runtime.yaml: %v", err)
+	}
+
+	raw, err := json.Marshal(buildLLMProxyPayload("claude-proxy", newProxyMetadata(), rt, ""))
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+	var decoded struct {
+		AdditionalProviders []map[string]interface{} `json:"additionalProviders"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+	if len(decoded.AdditionalProviders) != 2 {
+		t.Fatalf("expected 2 additional providers in the payload, got: %s", raw)
+	}
+
+	first := decoded.AdditionalProviders[0]
+	if first["id"] != "anthropic-provider" || first["as"] != "anthropic-upstream" {
+		t.Fatalf("id/as not forwarded (trimmed): %v", first)
+	}
+	auth, _ := first["auth"].(map[string]interface{})
+	if auth["type"] != "api-key" || auth["header"] != "X-API-Key" || auth["value"] != `{{ secret "loopback-handle" }}` {
+		t.Fatalf("auth not forwarded verbatim: %v", first["auth"])
+	}
+	transformer, _ := first["transformer"].(map[string]interface{})
+	params, _ := transformer["params"].(map[string]interface{})
+	if transformer["type"] != "openai-to-anthropic" || transformer["version"] != "v1" || params["model"] != "claude-sonnet-4-5" {
+		t.Fatalf("transformer not forwarded: %v", first["transformer"])
+	}
+
+	second := decoded.AdditionalProviders[1]
+	if _, present := second["auth"]; present {
+		t.Fatalf("auth key should be absent for an entry without auth: %v", second)
+	}
+	if _, present := second["transformer"]; present {
+		t.Fatalf("transformer key should be absent for an entry without one: %v", second)
+	}
+}
+
+func TestProxyPayload_OmitsAdditionalProvidersWhenRuntimeOmitsThem(t *testing.T) {
+	raw, err := json.Marshal(buildLLMProxyPayload("claude-proxy", newProxyMetadata(), newProxyRuntime(), ""))
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+	if _, present := decoded["additionalProviders"]; present {
+		t.Fatalf("additionalProviders key should be absent when runtime.yaml has none: %s", raw)
 	}
 }

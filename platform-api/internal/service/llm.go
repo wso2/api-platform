@@ -1562,6 +1562,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
 	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
+	normalizeAdditionalProviderAuth(m.Configuration.AdditionalProviders)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -1835,6 +1836,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	// object with an empty value. If the auth object is omitted, treat it as explicit
 	// removal and clear stored auth (defaulted to "none" below).
 	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
+	preserveAdditionalProviderAuthCredentials(existing.Configuration.AdditionalProviders, m.Configuration.AdditionalProviders)
 
 	// The gateway owns the runtime configuration of a DP-originated (gateway_api) proxy,
 	// so preserve it verbatim from the stored copy and let ONLY the control-plane
@@ -1849,6 +1851,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	}
 
 	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
+	normalizeAdditionalProviderAuth(m.Configuration.AdditionalProviders)
 
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
@@ -1884,6 +1887,18 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 			updatedBy,
 			s.slogger,
 		)
+	}
+	if s.secretService != nil {
+		previous := make(map[string]*model.UpstreamAuth, len(existing.Configuration.AdditionalProviders))
+		for _, ap := range existing.Configuration.AdditionalProviders {
+			previous[ap.ID] = ap.Auth
+		}
+		for _, ap := range m.Configuration.AdditionalProviders {
+			if ap.Auth == nil || isCredentialLessUpstreamAuthType(ap.Auth.Type) {
+				continue
+			}
+			s.secretService.cleanupRotatedSecret(orgUUID, upstreamAuthValue(previous[ap.ID]), ap.Auth.Value, updatedBy, s.slogger)
+		}
 	}
 
 	updated, err := s.repo.GetByID(handle, orgUUID)
@@ -2048,6 +2063,68 @@ func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *mode
 		updated.Value = existing.Value
 	}
 	return updated
+}
+
+// preserveAdditionalProviderAuthCredentials carries each additional provider's
+// stored credential into an update that re-sends the entry's auth with an empty
+// value (the value is redacted on read). Entries are matched by provider ID, not
+// list position, so reordering or repointing entries never moves a credential to
+// another provider; a changed auth type starts from a clean slate. An entry that
+// omits auth has it removed, as for the primary provider.
+func preserveAdditionalProviderAuthCredentials(existing, updated []model.LLMProxyAdditionalProvider) {
+	stored := make(map[string]*model.UpstreamAuth, len(existing))
+	for _, e := range existing {
+		if e.Auth != nil {
+			stored[e.ID] = e.Auth
+		}
+	}
+	for i := range updated {
+		auth := updated[i].Auth
+		prev, ok := stored[updated[i].ID]
+		if auth == nil || !ok {
+			continue
+		}
+		if auth.Type == "" {
+			auth.Type = prev.Type
+		}
+		if auth.Type != prev.Type {
+			continue
+		}
+		if auth.Header == "" {
+			auth.Header = prev.Header
+		}
+		if auth.Value == "" {
+			auth.Value = prev.Value
+		}
+	}
+}
+
+// normalizeAdditionalProviderAuth drops header/value from credential-less auth
+// types. Unlike the primary provider, absent auth stays absent rather than being
+// defaulted to "none", so entries without auth keep producing unchanged artifacts.
+func normalizeAdditionalProviderAuth(providers []model.LLMProxyAdditionalProvider) {
+	for i := range providers {
+		if providers[i].Auth != nil {
+			providers[i].Auth = defaultUpstreamAuthToNone(providers[i].Auth)
+		}
+	}
+}
+
+// redactedUpstreamAuthModelToAPI maps stored upstream auth for API responses,
+// omitting the write-only credential value.
+func redactedUpstreamAuthModelToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
+	if auth == nil {
+		return nil
+	}
+	var authType *api.UpstreamAuthType
+	if auth.Type != "" {
+		t := api.UpstreamAuthType(auth.Type)
+		authType = &t
+	}
+	return &api.UpstreamAuth{
+		Type:   authType,
+		Header: utils.StringPtrIfNotEmpty(auth.Header),
+	}
 }
 
 func mapExtractionIdentifierAPI(in *api.ExtractionIdentifier) *model.ExtractionIdentifier {
@@ -2351,8 +2428,9 @@ func mapAdditionalProvidersAPIToModel(in *[]api.LLMProxyAdditionalProvider) []mo
 	out := make([]model.LLMProxyAdditionalProvider, 0, len(*in))
 	for _, p := range *in {
 		entry := model.LLMProxyAdditionalProvider{
-			ID: p.Id,
-			As: utils.ValueOrEmpty(p.As),
+			ID:   p.Id,
+			As:   utils.ValueOrEmpty(p.As),
+			Auth: mapUpstreamAuthAPIToModel(p.Auth),
 		}
 		if p.Transformer != nil {
 			entry.Transformer = &model.LLMProxyTransformer{
@@ -2374,7 +2452,7 @@ func mapAdditionalProvidersModelToAPI(in []model.LLMProxyAdditionalProvider) *[]
 	}
 	out := make([]api.LLMProxyAdditionalProvider, 0, len(in))
 	for _, p := range in {
-		entry := api.LLMProxyAdditionalProvider{Id: p.ID}
+		entry := api.LLMProxyAdditionalProvider{Id: p.ID, Auth: redactedUpstreamAuthModelToAPI(p.Auth)}
 		if p.As != "" {
 			as := p.As
 			entry.As = &as
@@ -3297,18 +3375,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		UpdatedAt: updatedAt,
 		UpdatedBy: utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
-	if m.Configuration.UpstreamAuth != nil {
-		authType := (*api.UpstreamAuthType)(nil)
-		if m.Configuration.UpstreamAuth.Type != "" {
-			t := api.UpstreamAuthType(m.Configuration.UpstreamAuth.Type)
-			authType = &t
-		}
-		out.Provider.Auth = &api.UpstreamAuth{
-			Type:   authType,
-			Header: utils.StringPtrIfNotEmpty(m.Configuration.UpstreamAuth.Header),
-			Value:  nil, // Redact auth credential value
-		}
-	}
+	out.Provider.Auth = redactedUpstreamAuthModelToAPI(m.Configuration.UpstreamAuth)
 	if extra := mapAdditionalProvidersModelToAPI(m.Configuration.AdditionalProviders); extra != nil {
 		out.AdditionalProviders = extra
 	}

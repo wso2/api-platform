@@ -45,6 +45,11 @@ Deploy a new LLM proxy configuration.
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -157,6 +162,10 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -473,6 +482,10 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -628,6 +641,11 @@ Update the configuration of an existing LLM proxy.
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -741,6 +759,10 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
