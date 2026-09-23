@@ -508,6 +508,8 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    // Published, so the primary button reads Republish, not Publish.
+    expect(screen.getByRole('button', { name: 'Republish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     const deprecateItem = await screen.findByRole('menuitem', { name: 'Deprecate' });
     expect(deprecateItem).not.toHaveAttribute('aria-disabled', 'true');
@@ -529,6 +531,8 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    // Never published, so the primary button still reads Publish.
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute(
       'aria-disabled',
@@ -542,6 +546,8 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    // Deprecated, not published, so the primary button reads Publish, not Republish.
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute(
       'aria-disabled',
@@ -632,8 +638,9 @@ describe('PortalPublishPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Publish' }));
     await screen.findByText('Published to acme-portal.');
 
-    // Live again — the primary side must still say Publish, not fall back to the old Unpublish.
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    // Live again — the primary side reads Republish now that the listing is published,
+    // and must not fall back to the old Unpublish.
+    expect(screen.getByRole('button', { name: 'Republish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
   });
 
