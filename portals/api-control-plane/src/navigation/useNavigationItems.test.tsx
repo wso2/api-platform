@@ -104,7 +104,7 @@ describe('submenu children follow API scope', () => {
     },
   );
 
-  it.each(['develop', 'test', 'insights', 'observability'])(
+  it.each(['develop', 'insights', 'observability'])(
     '%s withholds them outside API scope, and links to the first instead',
     (id) => {
       const item = itemFor(atOrg(), routes.organizationHome(ORG), id);
@@ -135,7 +135,7 @@ describe('submenu children follow API scope', () => {
 
   it('leaves items without children untouched', () => {
     const items = itemsAt(atApi(), routes.api(ORG, PROJECT, API));
-    const leaves = ['overview', 'gateways', 'deploy', 'publish'];
+    const leaves = ['overview', 'gateways', 'deploy', 'test', 'publish'];
 
     for (const id of leaves) {
       expect(items.find((item) => item.id === id)?.children).toBeUndefined();
@@ -145,13 +145,14 @@ describe('submenu children follow API scope', () => {
 
 /*
  * GraphQL pages have no sidebar entry of their own (see `graphqlApiPath`), so
- * Develop/Test only reach them by revealing their existing children while a
- * GraphQL API is in scope — this is the fix for "I cannot see API Chat under
- * Test" / "Policies and Documents cannot be seen under Develop" while
- * browsing a GraphQL API.
+ * Develop only reaches them by revealing its existing children while a
+ * GraphQL API is in scope — this is the fix for "Policies and Documents
+ * cannot be seen under Develop" while browsing a GraphQL API. Test is not a
+ * submenu at all (see the `adaptive` item below) — its own page changes
+ * per scope instead.
  */
 describe('submenu children also follow GraphQL API scope, for the submenus that have one', () => {
-  it.each(['develop', 'test', 'insights', 'observability'])(
+  it.each(['develop', 'insights', 'observability'])(
     '%s offers its GraphQL-capable children, linking into the GraphQL API',
     (id) => {
       const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
@@ -170,12 +171,11 @@ describe('submenu children also follow GraphQL API scope, for the submenus that 
     expect(item.children?.map((child) => child.id)).toEqual(['develop-policies', 'develop-documents']);
   });
 
-  it('does not offer test-curl or test-chat, which have no GraphQL equivalent', () => {
+  it('links Test to the GraphQL test console, not a submenu, while a GraphQL API is in scope', () => {
     const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), 'test');
 
-    expect(item.children?.find((child) => child.id === 'test-curl')).toBeUndefined();
-    expect(item.children?.find((child) => child.id === 'test-chat')).toBeUndefined();
-    expect(item.children?.map((child) => child.id)).toEqual(['test-console']);
+    expect(item.children).toBeUndefined();
+    expect(item.to).toContain(`/graphql-apis/${GRAPHQL_API}/`);
   });
 
   // Pins the fix for a real bug: Insights and Observability had no

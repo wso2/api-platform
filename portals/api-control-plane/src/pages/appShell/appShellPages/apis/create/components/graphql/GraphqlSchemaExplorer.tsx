@@ -206,7 +206,23 @@ const OperationSection = ({
 
   return (
     <Stack spacing={0.75}>
-      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+      <Stack
+        direction="row"
+        spacing={1.5}
+        sx={(theme) => {
+          const tone = paletteTone(theme, color);
+
+          return {
+            alignItems: 'center',
+            bgcolor: tone.bg,
+            border: hairline(theme),
+            borderColor: tone.border,
+            borderRadius: 0.75,
+            px: 1.35,
+            py: 0.9,
+          };
+        }}
+      >
         <Chip
           color={color}
           label={title}

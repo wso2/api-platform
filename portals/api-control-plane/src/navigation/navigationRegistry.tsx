@@ -404,7 +404,11 @@ export const navigationRegistry: NavigationDefinition[] = [
     // A leaf, not a parent: the console, the cURL builder and the response all
     // live on one page, so there is nothing to disclose beneath it.
     // `graphqlTo` sends a GraphQL API to its own test console page instead.
-    ...adaptive([{ level: 'api', to: routes.apiTest, graphqlTo: routes.graphqlApiTestConsole }]),
+    to: apiLevelTo(routes.apiTest, routes.graphqlApiTestConsole),
+    match: matchRoutes(
+      ...apiScopedPaths(routes.apiTest),
+      routes.graphqlApiTestConsole(':orgHandle', ':projectHandler', ':graphqlApiHandler'),
+    ),
   },
   {
     id: 'deploy',

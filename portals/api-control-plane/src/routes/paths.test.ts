@@ -232,7 +232,7 @@ describe('GraphQL API routes stay outside REST scope resolution', () => {
     const restPaths = [
       routes.api(ORG, PROJECT, API),
       routes.apiDeploy(ORG, PROJECT, API),
-      routes.apiTestConsole(ORG, PROJECT, API),
+      routes.apiTest(ORG, PROJECT, API),
     ];
 
     expect(new Set([...graphqlPaths, ...restPaths]).size).toBe(
