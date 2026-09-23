@@ -23,7 +23,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useIsPolicyHubConfigured, type PolicySummary } from '@/api/resources/policyHub';
 import type { GraphQLApiDetail } from '@/api/resources/graphqlApis';
-import { useUpdateGraphQLApi } from '@/api/resources/graphqlApis';
+import { useGraphQLApiSdl, useUpdateGraphQLApi } from '@/api/resources/graphqlApis';
 import type { Policy } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { AttachedPolicyList } from '../../develop/policies/AttachedPolicyList';
@@ -91,6 +91,9 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
   const update = useUpdateGraphQLApi();
   const hubEnabled = useIsPolicyHubConfigured();
   const graphqlApiId = api.id;
+  // Needed to faithfully resupply a non-introspection schemaSource on save —
+  // see save() below.
+  const sdlQuery = useGraphQLApiSdl(graphqlApiId);
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   const [picked, setPicked] = useState<PolicySummary | null>(null);
@@ -148,16 +151,19 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
           metadata: {
             ...api,
             policies: apiPolicies.map(withMajorPolicyVersion),
-            // `GraphQLAPIDetail` (the GET shape `api` comes from) doesn't echo
-            // back the `schemaSource`/`sdlUrl`/`sdl` the API was originally
-            // created with, so there's nothing faithful to resupply here. The
-            // service's own Update handler treats an unset schemaSource as
-            // 'introspection' by default and re-resolves against the existing
-            // upstream URL — explicit here only because the request type
-            // requires the field; a failed resolution falls back to the
-            // already-stored schema rather than blanking it (see
-            // GraphQLAPIService.Update), so this is safe either way.
-            schemaSource: 'introspection',
+            // This edit only touches policies — the schema itself must be
+            // resupplied faithfully so the service's structural validation
+            // doesn't reject the request or, worse, silently re-derive the
+            // schema from upstream. `GraphQLAPIDetail` has no `sdl` of its own
+            // (see useGraphQLApiSdl above), so anything other than
+            // 'introspection' is resupplied as 'inline' using the
+            // already-resolved SDL — resolution re-validates that same text
+            // and is a no-op. 'introspection' is the one source
+            // GraphQLAPIDetail can always resupply as-is, since
+            // upstream.main.url is already part of it.
+            ...(api.schemaSource === 'introspection' || api.schemaSource === undefined
+              ? { schemaSource: 'introspection' as const }
+              : { schemaSource: 'inline' as const, sdl: sdlQuery.data ?? '' }),
           },
         },
       },
@@ -263,7 +269,13 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
         )}
       </Stack>
 
-      <SaveBar dirty={dirty} disabled={!graphqlApiId} onCancel={cancel} onSave={save} saving={update.isPending} />
+      <SaveBar
+        dirty={dirty}
+        disabled={!graphqlApiId || sdlQuery.isPending}
+        onCancel={cancel}
+        onSave={save}
+        saving={update.isPending}
+      />
 
       <PolicyConfigDrawer
         initialValues={editing?.policy.params}

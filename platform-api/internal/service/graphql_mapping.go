@@ -47,6 +47,12 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 		introspectionMode = &im
 	}
 
+	var schemaSource *api.GraphQLAPISchemaSource
+	if m.Configuration.SchemaSource != "" {
+		ss := api.GraphQLAPISchemaSource(m.Configuration.SchemaSource)
+		schemaSource = &ss
+	}
+
 	var subscriptionPlans *[]string
 	if len(m.Configuration.SubscriptionPlans) > 0 {
 		subscriptionPlans = &m.Configuration.SubscriptionPlans
@@ -65,6 +71,7 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 		Kind:              &kind,
 		Sdl:               &sdl,
 		IntrospectionMode: introspectionMode,
+		SchemaSource:      schemaSource,
 		Upstream:          upstream,
 		Policies:          mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		SubscriptionPlans: subscriptionPlans,
@@ -95,6 +102,12 @@ func mapGraphQLAPIModelToDetail(m *model.GraphQLAPI) *api.GraphQLAPIDetail {
 		introspectionMode = &im
 	}
 
+	var schemaSource *api.GraphQLAPIDetailSchemaSource
+	if m.Configuration.SchemaSource != "" {
+		ss := api.GraphQLAPIDetailSchemaSource(m.Configuration.SchemaSource)
+		schemaSource = &ss
+	}
+
 	var subscriptionPlans *[]string
 	if len(m.Configuration.SubscriptionPlans) > 0 {
 		subscriptionPlans = &m.Configuration.SubscriptionPlans
@@ -112,6 +125,7 @@ func mapGraphQLAPIModelToDetail(m *model.GraphQLAPI) *api.GraphQLAPIDetail {
 		CreatedBy:         &createdBy,
 		Kind:              &kind,
 		IntrospectionMode: introspectionMode,
+		SchemaSource:      schemaSource,
 		Upstream:          upstream,
 		Policies:          mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		SubscriptionPlans: subscriptionPlans,
