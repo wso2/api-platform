@@ -399,7 +399,10 @@ export function OrganizationHomePage() {
               description={intl.formatMessage(messages.developerPortalDescription)}
               icon={<PanelTop size={22} />}
               metric={
-                portalsQuery.isPending || portalsQuery.error
+                // Switching orgs keeps prior data via `keepPreviousData`, which
+                // flips `isPlaceholderData` but not `isPending`; treat that as
+                // unavailable so the prior org's count does not flash.
+                portalsQuery.isPending || portalsQuery.isPlaceholderData || portalsQuery.error
                   ? '—'
                   : intl.formatNumber(portalsQuery.data?.pagination.total ?? 0)
               }
