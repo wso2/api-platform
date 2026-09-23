@@ -117,8 +117,9 @@ func TestGenerateLLMProxyDeploymentYAML_OtherAndNoneEmitTypeOnly(t *testing.T) {
 				Name:    "Test Proxy",
 				Version: "v1.0",
 				Configuration: model.LLMProxyConfig{
-					Provider:     "test-provider",
-					UpstreamAuth: tc.auth,
+					Providers: []model.LLMProxyAttachment{
+						{ID: "test-provider", IsPrimary: true, Auth: tc.auth},
+					},
 				},
 			}
 
@@ -126,7 +127,12 @@ func TestGenerateLLMProxyDeploymentYAML_OtherAndNoneEmitTypeOnly(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			auth := yamlArtifact.Spec.Provider.Auth
+			// The artifact carries the canonical list; the primary
+			// leads it, so its auth is entry zero's.
+			if len(yamlArtifact.Spec.Providers) == 0 {
+				t.Fatal("expected the artifact to carry a providers list")
+			}
+			auth := yamlArtifact.Spec.Providers[0].Auth
 			if auth == nil || auth.Type == nil || string(*auth.Type) != tc.wantType {
 				t.Fatalf("expected provider auth type %q, got %+v", tc.wantType, auth)
 			}
@@ -900,5 +906,152 @@ func TestGenerateYAML_DuplicateGlobalPoliciesPreserved(t *testing.T) {
 	if got != 2 {
 		yamlBytes, _ := yaml.Marshal(yamlArtifact)
 		t.Errorf("expected both set-headers globalPolicies to survive, got %d:\n%s", got, string(yamlBytes))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// What the deployment artifact carries
+// ---------------------------------------------------------------------------
+
+// TestGenerateLLMProxyDeploymentYAML_EmitsCanonicalProviders: the artifact
+// carries the canonical list, primary first, with each
+// attachment's own credential against its own entry.
+//
+// The field names here are fixed by the frozen gateway — `alias`
+// rather than `as`, and `isPrimary` on every entry — so this test is also the
+// cross-repository contract check.
+func TestGenerateLLMProxyDeploymentYAML_EmitsCanonicalProviders(t *testing.T) {
+	proxy := &model.LLMProxy{
+		ID: "multi-proxy", Name: "Multi Proxy", Version: "v1.0",
+		Configuration: model.LLMProxyConfig{
+			InboundTemplate: "openai",
+			Providers: []model.LLMProxyAttachment{
+				{
+					ID: "openai-provider", IsPrimary: true,
+					Auth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "openai-key"},
+				},
+				{
+					ID: "anthropic-provider", Alias: "claude",
+					Auth:        &model.UpstreamAuth{Type: "api-key", Header: "x-api-key", Value: "anthropic-key"},
+					Transformer: &model.LLMProxyTransformer{Type: "openai-to-anthropic", Version: "v0"},
+				},
+				{ID: "gemini-provider"},
+			},
+		},
+	}
+
+	artifact, err := generateLLMProxyDeploymentYAML(proxy)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if artifact.Spec.InboundTemplate != "openai" {
+		t.Fatalf("expected the inbound interface in the artifact, got %q", artifact.Spec.InboundTemplate)
+	}
+	// The gateway rejects an artifact carrying both shapes at once, so the
+	// legacy pair must not be emitted alongside the canonical list.
+	if artifact.Spec.Provider != nil || len(artifact.Spec.AdditionalProviders) != 0 {
+		t.Fatalf("expected only the canonical shape to be emitted, got provider=%+v additional=%+v",
+			artifact.Spec.Provider, artifact.Spec.AdditionalProviders)
+	}
+	if len(artifact.Spec.Providers) != 3 {
+		t.Fatalf("expected three provider entries, got %d", len(artifact.Spec.Providers))
+	}
+
+	primary := artifact.Spec.Providers[0]
+	if primary.ID != "openai-provider" || !primary.IsPrimary {
+		t.Fatalf("expected the primary to lead the list, got %+v", primary)
+	}
+	if primary.Auth == nil || primary.Auth.Value == nil || *primary.Auth.Value != "openai-key" {
+		t.Fatalf("expected the primary's credential in the artifact, got %+v", primary.Auth)
+	}
+
+	// Each additional provider now carries its own credential — the gap this
+	// change closes. Previously an additional provider could not authenticate.
+	additional := artifact.Spec.Providers[1]
+	if additional.Alias != "claude" || additional.IsPrimary {
+		t.Fatalf("expected an aliased non-primary entry, got %+v", additional)
+	}
+	if additional.Auth == nil || additional.Auth.Value == nil || *additional.Auth.Value != "anthropic-key" {
+		t.Fatalf("expected the additional provider's credential in the artifact, got %+v", additional.Auth)
+	}
+	if additional.Transformer == nil || additional.Transformer.Type != "openai-to-anthropic" {
+		t.Fatalf("expected the transformer to reach the artifact, got %+v", additional.Transformer)
+	}
+
+	// An attachment with no credential stays valid and is emitted without one
+	// rather than being defaulted to "none" the way the primary is.
+	credentialLess := artifact.Spec.Providers[2]
+	if credentialLess.Auth != nil {
+		t.Fatalf("expected no auth block for a credential-less attachment, got %+v", credentialLess.Auth)
+	}
+}
+
+// TestGenerateLLMProxyDeploymentYAML_EmitsIsPrimaryExplicitly: the
+// gateway requires isPrimary on *every* entry, so a non-primary entry must
+// serialise `isPrimary: false` rather than omitting the field.
+func TestGenerateLLMProxyDeploymentYAML_EmitsIsPrimaryExplicitly(t *testing.T) {
+	proxy := &model.LLMProxy{
+		ID: "p", Name: "P", Version: "v1.0",
+		Configuration: model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+			{ID: "openai-provider", IsPrimary: true},
+			{ID: "anthropic-provider"},
+		}},
+	}
+
+	artifact, err := generateLLMProxyDeploymentYAML(proxy)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	encoded, err := yaml.Marshal(artifact)
+	if err != nil {
+		t.Fatalf("marshal artifact: %v", err)
+	}
+	if !strings.Contains(string(encoded), "isPrimary: false") {
+		t.Fatalf("expected a non-primary entry to emit isPrimary explicitly:\n%s", encoded)
+	}
+}
+
+// TestGenerateLLMProxyDeploymentYAML_LegacyRowEmitsCanonically: an older stored
+// proxy is normalised and emitted like any
+// other, so the artifact never varies by how the proxy was created.
+func TestGenerateLLMProxyDeploymentYAML_LegacyRowEmitsCanonically(t *testing.T) {
+	legacy := &model.LLMProxy{
+		ID: "p", Name: "P", Version: "v1.0",
+		Configuration: model.LLMProxyConfig{
+			Provider:     "openai-provider",
+			UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "k"},
+			AdditionalProviders: []model.LLMProxyAdditionalProvider{
+				{ID: "anthropic-provider", As: "claude"},
+			},
+		},
+	}
+	canonical := &model.LLMProxy{
+		ID: "p", Name: "P", Version: "v1.0",
+		Configuration: model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+			{ID: "openai-provider", IsPrimary: true, Auth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "k"}},
+			{ID: "anthropic-provider", Alias: "claude"},
+		}},
+	}
+
+	fromLegacy, err := generateLLMProxyDeploymentYAML(legacy)
+	if err != nil {
+		t.Fatalf("legacy artifact: %v", err)
+	}
+	fromCanonical, err := generateLLMProxyDeploymentYAML(canonical)
+	if err != nil {
+		t.Fatalf("canonical artifact: %v", err)
+	}
+
+	legacyYAML, err := yaml.Marshal(fromLegacy)
+	if err != nil {
+		t.Fatalf("marshal legacy artifact: %v", err)
+	}
+	canonicalYAML, err := yaml.Marshal(fromCanonical)
+	if err != nil {
+		t.Fatalf("marshal canonical artifact: %v", err)
+	}
+	if string(legacyYAML) != string(canonicalYAML) {
+		t.Fatalf("a legacy row produced a different artifact:\nlegacy:\n%s\ncanonical:\n%s", legacyYAML, canonicalYAML)
 	}
 }

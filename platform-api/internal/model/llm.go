@@ -255,10 +255,23 @@ type LLMProxy struct {
 }
 
 type LLMProxyConfig struct {
-	Name                string                       `json:"name,omitempty" db:"-"`
-	Version             string                       `json:"version,omitempty" db:"-"`
-	Context             *string                      `json:"context,omitempty" db:"-"`
-	Vhost               *string                      `json:"vhost,omitempty" db:"-"`
+	Name    string  `json:"name,omitempty" db:"-"`
+	Version string  `json:"version,omitempty" db:"-"`
+	Context *string `json:"context,omitempty" db:"-"`
+	Vhost   *string `json:"vhost,omitempty" db:"-"`
+	// Providers is the canonical attachment list and the only shape written now.
+	// Read it through NormaliseLLMProxyAttachments rather than directly, so an
+	// older row — which carries the three legacy fields below instead — reads
+	// identically.
+	Providers []LLMProxyAttachment `json:"providers,omitempty" db:"-"`
+	// InboundTemplate is the provider template describing the wire format this
+	// proxy accepts from clients. Empty means "derive from the primary
+	// provider's own template", which is how the gateway already behaves, so a
+	// proxy stored without one deploys unchanged.
+	InboundTemplate string `json:"inboundTemplate,omitempty" db:"-"`
+	// Provider, UpstreamAuth and AdditionalProviders are the earlier shape.
+	// They are still deserialised so existing rows keep working, and are never
+	// written again: any write migrates the row to Providers.
 	Provider            string                       `json:"provider,omitempty" db:"-"`
 	UpstreamAuth        *UpstreamAuth                `json:"upstreamAuth,omitempty" db:"-"`
 	AdditionalProviders []LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" db:"-"`

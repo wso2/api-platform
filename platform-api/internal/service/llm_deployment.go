@@ -2149,7 +2149,10 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	if proxy == nil {
 		return dto.LLMProxyDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateLLMProxyDeploymentYAML: proxy is nil")
 	}
-	if proxy.Configuration.Provider == "" {
+	// Normalise once, here: everything below emits from this list, so a proxy
+	// stored in either shape produces the same artifact.
+	attachments, err := model.NormaliseLLMProxyAttachments(proxy.Configuration)
+	if err != nil {
 		return dto.LLMProxyDeploymentYAML{}, apperror.LLMProxyDeploymentValidationFailed.New("The LLM proxy must reference a provider.")
 	}
 
@@ -2253,46 +2256,45 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 			Name: proxy.ID,
 		},
 		Spec: dto.LLMProxyDeploymentSpec{
-			DisplayName: proxy.Name,
-			Version:     proxy.Version,
-			Context:     contextValue,
-			VHost:       vhostValue,
-			Provider: dto.LLMProxyDeploymentProvider{
-				ID: proxy.Configuration.Provider,
-			},
+			DisplayName:       proxy.Name,
+			Version:           proxy.Version,
+			Context:           contextValue,
+			VHost:             vhostValue,
+			InboundTemplate:   proxy.Configuration.InboundTemplate,
 			GlobalPolicies:    proxyGlobalPolicies,
 			OperationPolicies: proxyOperationPolicies,
 			Policies:          proxyPolicies,
 		},
 	}
 
-	// Auth type. "none"/"other" carry only the type (no credentials);
-	// "api-key" carries the header and value. Absent auth => "none".
-	proxyDeployment.Spec.Provider.Auth = mapModelAuthToAPI(proxy.Configuration.UpstreamAuth)
-
-	// Carry additional providers (multi-provider proxies) into the deployment
-	// artifact so the gateway-controller can expose each as a selectable upstream.
-	if len(proxy.Configuration.AdditionalProviders) > 0 {
-		additional := make([]dto.LLMProxyDeploymentAdditionalProvider, 0, len(proxy.Configuration.AdditionalProviders))
-		for _, ap := range proxy.Configuration.AdditionalProviders {
-			entry := dto.LLMProxyDeploymentAdditionalProvider{
-				ID: ap.ID,
-				As: ap.As,
-			}
-			if ap.Transformer != nil {
-				entry.Transformer = &api.LLMProxyTransformer{
-					Type:    ap.Transformer.Type,
-					Version: ap.Transformer.Version,
-				}
-				if len(ap.Transformer.Params) > 0 {
-					params := ap.Transformer.Params
-					entry.Transformer.Params = &params
-				}
-			}
-			additional = append(additional, entry)
+	// Emit the canonical list, which the frozen gateway accepts and normalises
+	// back to the same attachments. The legacy pair is deliberately
+	// not emitted alongside it: the gateway rejects an artifact carrying both.
+	//
+	// Each attachment carries its own credential, so every provider a proxy can
+	// route to can authenticate — the gap this feature closes.
+	providers := make([]dto.LLMProxyDeploymentProviderEntry, 0, len(attachments))
+	for _, attachment := range attachments {
+		entry := dto.LLMProxyDeploymentProviderEntry{
+			ID:          attachment.ID,
+			Alias:       attachment.Alias,
+			IsPrimary:   attachment.IsPrimary,
+			Transformer: mapTransformerModelToAPI(attachment.Transformer),
 		}
-		proxyDeployment.Spec.AdditionalProviders = additional
+		if attachment.IsPrimary {
+			// Auth type. "none"/"other" carry only the type (no credentials);
+			// "api-key" carries the header and value. Absent auth on the primary
+			// => "none", exactly as before.
+			entry.Auth = mapModelAuthToAPI(attachment.Auth)
+		} else if attachment.Auth != nil {
+			// An additional provider without a credential stays credential-less
+			// and is emitted without an auth block, rather than being
+			// defaulted to "none" the way the primary is.
+			entry.Auth = mapModelAuthToAPI(attachment.Auth)
+		}
+		providers = append(providers, entry)
 	}
+	proxyDeployment.Spec.Providers = providers
 
 	// Promote any legacy policies assembled by the generator into operationPolicies.
 	for _, p := range proxyDeployment.Spec.Policies {

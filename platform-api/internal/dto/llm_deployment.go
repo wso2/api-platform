@@ -73,24 +73,46 @@ func (d *LLMProxyDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
 
 // LLMProxyDeploymentSpec represents the spec section for LLM proxy deployments
 type LLMProxyDeploymentSpec struct {
-	DisplayName         string                                 `yaml:"displayName"`
-	Version             string                                 `yaml:"version"`
-	Context             string                                 `yaml:"context,omitempty"`
-	VHost               string                                 `yaml:"vhost,omitempty"`
-	Provider            LLMProxyDeploymentProvider             `yaml:"provider"`
+	DisplayName string `yaml:"displayName"`
+	Version     string `yaml:"version"`
+	Context     string `yaml:"context,omitempty"`
+	VHost       string `yaml:"vhost,omitempty"`
+	// Providers is the canonical attachment list and the only provider shape the
+	// control plane emits. The frozen gateway rejects an artifact
+	// carrying both shapes at once, so Provider and AdditionalProviders below are
+	// now decode-only: they are how a gateway-pushed artifact written against the
+	// older shape still imports.
+	Providers           []LLMProxyDeploymentProviderEntry      `yaml:"providers,omitempty"`
+	InboundTemplate     string                                 `yaml:"inboundTemplate,omitempty"`
+	Provider            *LLMProxyDeploymentProvider            `yaml:"provider,omitempty"`
 	AdditionalProviders []LLMProxyDeploymentAdditionalProvider `yaml:"additionalProviders,omitempty"`
 	GlobalPolicies      []api.Policy                           `yaml:"globalPolicies,omitempty"`
 	OperationPolicies   []api.OperationPolicy                  `yaml:"operationPolicies,omitempty"`
 	Policies            []api.LLMPolicy                        `yaml:"policies,omitempty"`
 }
 
+// LLMProxyDeploymentProviderEntry is one entry of the canonical list. The field
+// names are fixed by the frozen gateway: the alias is `alias`,
+// not `as`, and `isPrimary` is required on every entry, so it carries no
+// omitempty — a non-primary entry emits `isPrimary: false` explicitly.
+type LLMProxyDeploymentProviderEntry struct {
+	ID          string                   `yaml:"id"`
+	Alias       string                   `yaml:"alias,omitempty"`
+	IsPrimary   bool                     `yaml:"isPrimary"`
+	Auth        *api.UpstreamAuth        `yaml:"auth,omitempty"`
+	Transformer *api.LLMProxyTransformer `yaml:"transformer,omitempty"`
+}
+
 type LLMProxyDeploymentProvider struct {
-	ID   string            `yaml:"id"`
-	Auth *api.UpstreamAuth `yaml:"auth,omitempty"`
+	ID          string                   `yaml:"id"`
+	As          string                   `yaml:"as,omitempty"`
+	Auth        *api.UpstreamAuth        `yaml:"auth,omitempty"`
+	Transformer *api.LLMProxyTransformer `yaml:"transformer,omitempty"`
 }
 
 type LLMProxyDeploymentAdditionalProvider struct {
 	ID          string                   `yaml:"id"`
 	As          string                   `yaml:"as,omitempty"`
+	Auth        *api.UpstreamAuth        `yaml:"auth,omitempty"`
 	Transformer *api.LLMProxyTransformer `yaml:"transformer,omitempty"`
 }
