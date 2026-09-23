@@ -11,13 +11,13 @@
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
+ * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
  */
 
 import { http, type RequestOptions } from '../../core/http';
-import type { ResponseOf, Schema } from '../../core/spec';
+import type { QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
  * Transport layer for the `/api-portals` org-level list. Kept as its own package
@@ -27,11 +27,18 @@ import type { ResponseOf, Schema } from '../../core/spec';
  * portal count on the org overview card.
  */
 
-export type ApiPortal = Schema<'ApiPortal'>;
+export type ApiPortal = Schema<'ApiPortalResponse'>;
+export type ApiPortalListItem = Schema<'ApiPortalListItem'>;
 export type ListApiPortalsResponse = ResponseOf<'ListApiPortals'>;
+export type ListApiPortalsQuery = QueryOf<'ListApiPortals'>;
 
 const API_PORTALS_BASE = '/api-portals';
 
+/**
+ * GETs `/api-portals` for the caller's org. Paging, sort and search flow
+ * through `options.query` (typed at the queries layer via `ListApiPortalsQuery`);
+ * without them, the server returns its default first page.
+ */
 export const listApiPortals = async (
   options?: RequestOptions,
 ): Promise<ListApiPortalsResponse> =>

@@ -19,18 +19,32 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { useApiScope } from '../../core/scope';
+import type { ListApiPortalsQuery } from './apiPortals.endpoints';
 import { apiPortalQueries } from './apiPortals.queries';
 
+/** Everything a caller may vary on the list request. */
+export type ApiPortalListFilters = ListApiPortalsQuery;
+
 /**
- * Org-scoped list of every API Portal registered in the caller's organization.
- * Powers the portal-count metric on the org overview card; also fine for any
- * caller that needs the raw list (`data.list`).
+ * Org-scoped list of API Portals for the caller's organization.
+ *
+ * Returns the server's default first page unless `filters` narrows or pages it.
+ * The org-overview count reads `data.pagination.total`, which the server
+ * reports for the full result set and is therefore independent of the page
+ * size chosen here.
+ *
+ * `keepPreviousData` matches the other list hooks; org-switch callers must
+ * treat `isPlaceholderData` as unavailable so the prior org's data does not
+ * leak into the new view.
  */
-export const useApiPortals = (overrides: { orgId?: string } = {}) => {
+export const useApiPortals = (
+  filters: ApiPortalListFilters = {},
+  overrides: { orgId?: string } = {},
+) => {
   const { org } = useApiScope(overrides);
 
   return useQuery({
-    ...apiPortalQueries.list(org!),
+    ...apiPortalQueries.list(org!, filters),
     enabled: Boolean(org),
     placeholderData: keepPreviousData,
   });

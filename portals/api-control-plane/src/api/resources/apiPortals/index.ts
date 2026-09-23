@@ -22,5 +22,9 @@
  * @see ./apiPortals.hooks.ts for the hook contract.
  */
 
-export type { ApiPortal, ListApiPortalsResponse } from './apiPortals.endpoints';
-export { useApiPortals } from './apiPortals.hooks';
+export type {
+  ApiPortal,
+  ListApiPortalsQuery,
+  ListApiPortalsResponse,
+} from './apiPortals.endpoints';
+export { useApiPortals, type ApiPortalListFilters } from './apiPortals.hooks';
