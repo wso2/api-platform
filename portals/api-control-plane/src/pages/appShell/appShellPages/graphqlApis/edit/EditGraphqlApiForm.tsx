@@ -57,49 +57,49 @@ export type EditGraphqlApiFormProps = {
 
 const messages = defineMessages({
   cancel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.action.cancel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.action.cancel',
     defaultMessage: 'Cancel',
     description: 'Discards the unsaved edits and returns to the API overview.',
   },
   contextErrorPattern: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.context.error.pattern',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.context.error.pattern',
     defaultMessage: 'Start with / and use only letters, numbers, hyphens, dots and slashes.',
   },
   contextErrorRequired: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.context.error.required',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.context.error.required',
     defaultMessage: 'Enter a context.',
   },
   contextLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.context.label',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.context.label',
     defaultMessage: 'Context',
   },
   descriptionLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.description.label',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.description.label',
     defaultMessage: 'Description',
   },
   nameErrorRequired: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.name.error.required',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.name.error.required',
     defaultMessage: 'Enter a name.',
   },
   nameLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.name.label',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.name.label',
     defaultMessage: 'Name',
   },
   save: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.action.save',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.action.save',
     defaultMessage: 'Save changes',
     description: 'Commits the edits to the API.',
   },
   versionErrorPattern: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.version.error.pattern',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.version.error.pattern',
     defaultMessage: 'Use letters, numbers, dots, hyphens and underscores — no spaces or slashes.',
   },
   versionErrorRequired: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.version.error.required',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.version.error.required',
     defaultMessage: 'Enter a version.',
   },
   versionLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.version.label',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.version.label',
     defaultMessage: 'Version',
   },
 });

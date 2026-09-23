@@ -27,22 +27,24 @@ import { GatewayDeploymentRow } from '../../deploy/components/GatewayDeploymentR
 
 const messages = defineMessages({
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.title',
     defaultMessage: 'API Deployment History',
+    description: 'Heading over the list of past deployments of this API on one gateway.',
   },
   refreshLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.refreshLabel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.refreshLabel',
     defaultMessage: 'Refresh deployment history',
+    description: 'Accessible label for the icon button that refetches the deployment list.',
   },
   viewMore: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.viewMore',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.viewMore',
     defaultMessage: 'View More',
+    description: 'Opens a drawer listing every deployment, beyond the three shown inline.',
   },
   deleted: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlGatewayDeploymentHistory.deleted',
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.deleted',
     defaultMessage: 'Deleted "{deploymentName}".',
-    description:
-      'Toast confirming a deployment record was removed. {deploymentName} is user-supplied; do not translate it.',
+    description: 'Toast confirming a deployment record was removed. {deploymentName} is user-supplied; do not translate it.',
   },
 });
 

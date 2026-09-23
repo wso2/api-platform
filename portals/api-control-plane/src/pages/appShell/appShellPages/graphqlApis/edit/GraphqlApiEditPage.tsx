@@ -34,12 +34,12 @@ import { EditGraphqlApiForm, type GraphqlApiBasicInfoFormValues } from './EditGr
 
 const messages = defineMessages({
   back: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.back',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.back',
     defaultMessage: 'Back to API',
     description: 'Back button above the edit form, returning to the API overview.',
   },
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading',
     defaultMessage: 'Loading API',
     description: 'Shown while the API being edited is fetched.',
   },
@@ -49,27 +49,27 @@ const messages = defineMessages({
     description: 'Shown when the API to edit could not be loaded.',
   },
   readOnly: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.readOnly',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.readOnly',
     defaultMessage: 'This API cannot be edited here',
     description: 'Title shown when the edit page is opened for a gateway-managed API.',
   },
   readOnlyDetail: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.readOnlyDetail',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.readOnlyDetail',
     defaultMessage:
       'It was discovered from a data-plane gateway, so it is read-only in this console.',
     description: 'Explains why a gateway-managed API cannot be edited.',
   },
   saved: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.saved',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.saved',
     defaultMessage: 'API updated.',
     description: 'Confirmation shown after the API details are saved.',
   },
   subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.subtitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.subtitle',
     defaultMessage: 'Change the name, description, context and version of this API.',
   },
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.title',
     defaultMessage: 'Edit API',
   },
 });

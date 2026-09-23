@@ -259,9 +259,9 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	context := utils.ValueOrEmpty(req.Context)
-	if context == "" {
-		context = defaultGraphQLContext(handle, req.Version)
+	apiContext := utils.ValueOrEmpty(req.Context)
+	if apiContext == "" {
+		apiContext = defaultGraphQLContext(handle, req.Version)
 	}
 	m := &model.GraphQLAPI{
 		Handle:         handle,
@@ -275,7 +275,7 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		Configuration: model.GraphQLAPIConfig{
 			Name:              req.DisplayName,
 			Version:           req.Version,
-			Context:           &context,
+			Context:           &apiContext,
 			SDL:               resolution.SDL,
 			IntrospectionMode: resolution.IntrospectionMode,
 			SchemaSource:      resolution.SchemaSource,
@@ -697,9 +697,9 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	context := utils.ValueOrEmpty(req.Context)
-	if context == "" {
-		context = defaultGraphQLContext(handle, req.Version)
+	apiContext := utils.ValueOrEmpty(req.Context)
+	if apiContext == "" {
+		apiContext = defaultGraphQLContext(handle, req.Version)
 	}
 	existing.Name = req.DisplayName
 	existing.Version = req.Version
@@ -708,7 +708,7 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	existing.Configuration = model.GraphQLAPIConfig{
 		Name:              req.DisplayName,
 		Version:           req.Version,
-		Context:           &context,
+		Context:           &apiContext,
 		SDL:               sdl,
 		IntrospectionMode: introspectionMode,
 		SchemaSource:      storedSchemaSource,

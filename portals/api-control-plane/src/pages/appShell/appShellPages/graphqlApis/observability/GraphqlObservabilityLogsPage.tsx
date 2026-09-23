@@ -28,7 +28,7 @@ const messages = defineMessages({
     defaultMessage: 'GraphQL API not found',
   },
   header: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.header',
+    id: 'appShell.runtimeLogsPage.header',
     defaultMessage: 'Observability',
   },
   subHeader: {

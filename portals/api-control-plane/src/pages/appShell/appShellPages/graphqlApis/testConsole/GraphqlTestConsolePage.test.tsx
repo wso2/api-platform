@@ -52,9 +52,16 @@ const gateway = aGateway({
 // replaced with a stub that surfaces the props this page is responsible for
 // wiring correctly (fetcher target, parsed schema), the same way
 // `DefineApiPanel.test.tsx` stubs the wizard's own Monaco-backed editor.
-let lastGraphiQLProps: { defaultQuery?: string; fetcher?: unknown; schema?: unknown } | undefined;
+let lastGraphiQLProps:
+  | { defaultQuery?: string; fetcher?: unknown; schema?: unknown; shouldPersistHeaders?: boolean }
+  | undefined;
 vi.mock('graphiql', () => ({
-  GraphiQL: (props: { defaultQuery?: string; fetcher?: unknown; schema?: unknown }) => {
+  GraphiQL: (props: {
+    defaultQuery?: string;
+    fetcher?: unknown;
+    schema?: unknown;
+    shouldPersistHeaders?: boolean;
+  }) => {
     lastGraphiQLProps = props;
     return <div>{props.schema ? 'GraphiQL ready with schema' : 'GraphiQL ready, no schema'}</div>;
   },
@@ -158,6 +165,19 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     // the endpoint text next to the selector is this page's own contract —
     // asserted above — and is what the fetcher is built from.
     expect(lastGraphiQLProps?.fetcher).toBeInstanceOf(Function);
+  });
+
+  // GraphiQL only strips the Headers tab from what it writes to `storage`
+  // (real localStorage here) when shouldPersistHeaders is falsy — pins the
+  // fix for headers (including any Authorization value) being persisted to
+  // disk in cleartext.
+  it('does not opt in to persisting the Headers tab to storage', async () => {
+    serveApi([deployment]);
+
+    renderPage();
+
+    await screen.findByText('GraphiQL ready with schema');
+    expect(lastGraphiQLProps?.shouldPersistHeaders).toBeFalsy();
   });
 
   it('copies the endpoint URL to the clipboard', async () => {

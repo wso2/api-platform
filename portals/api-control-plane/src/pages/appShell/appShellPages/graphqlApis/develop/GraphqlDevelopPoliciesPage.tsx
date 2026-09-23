@@ -25,7 +25,7 @@ import { GraphqlPolicyPanel } from './GraphqlPolicyPanel';
 
 const messages = defineMessages({
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopPoliciesPage.loading',
+    id: 'gateways.detail.Policies.loading',
     defaultMessage: 'Loading policies',
   },
   apiNotFound: {
