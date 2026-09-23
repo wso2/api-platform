@@ -70,6 +70,9 @@ help: ## Show this help message
 	@echo '  make validate-versions                - Validate version consistency'
 	@echo '  make go-license-report                - Generate third-party Go license report'
 	@echo '  make clean-gateway                    - Clean gateway build artifacts'
+	@echo ''
+	@echo 'Agent Skills:'
+	@echo '  make install-skills                   - Install third-party agent skills pinned in skills-lock.json'
 
 # Version Management Targets
 .PHONY: version
@@ -233,3 +236,10 @@ go-license-report: ## Generate third-party Go license report
 .PHONY: clean-gateway
 clean-gateway: ## Clean gateway build artifacts
 	$(MAKE) -C gateway clean
+
+# Agent Skills
+# Third-party skills are not committed; they are pinned in skills-lock.json and
+# restored into .agents/skills/ (see .gitignore) by the skills CLI.
+.PHONY: install-skills
+install-skills: ## Install third-party agent skills pinned in skills-lock.json
+	npx -y skills experimental_install

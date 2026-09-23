@@ -10,6 +10,8 @@ Create or update one feature document under `kb/<component>/<feature>.md`. The f
 
 ## Steps
 
+Prerequisite: the `okf-open-knowledge-format` skill is not committed. If it is missing, run `make install-skills` from the repo root first.
+
 1. **Create the initial document with the OKF skill.** Invoke `okf-open-knowledge-format` to produce the concept file, the directory `index.md`, and a `log.md` entry, and to validate the bundle. Bundle root is `kb/`, which already declares `okf_version: "0.2"`. Use `type: Feature`. Set `generated.by` to the requesting user as `human:<github-handle>` and `status: draft` unless told otherwise. Never add `verified` unless a human has actually compared the document against the code.
 
 2. **Apply the rules below and rewrite whatever violates them.** Do this before shaping the body, because the OKF skill's default output does not know these rules.
