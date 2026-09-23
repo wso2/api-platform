@@ -29,13 +29,13 @@ import type { ApiCreationStepKey } from './components/ApiCreationSteps';
 import { useImportOpenApi, useValidateOpenApiSpec } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
+import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
 import {
   ApiCreationProgress,
   type ApiCreationProgressStatus,
 } from './components/ApiCreationProgress';
 import { API_TYPES } from './uiConfig';
 import { ApiDesignerBanner } from './components/ApiDesignerBanner';
-import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
 import type { ApiError } from '@/api/core/errors';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
@@ -110,6 +110,11 @@ export const ApiCreationWizard = () => {
   }, [sourceDraft]);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
+  /**
+   * Why the last attempt was rejected, when the form is where it belongs.
+   * Cleared on the next submission, not on the way back — the form is what
+   * renders it, and it has to survive being returned to.
+   */
   const [serverErrors, setServerErrors] = useState<CreateApiFormErrors | null>(null);
   const [identifierEdited, setIdentifierEdited] = useState(false);
   const [basePathEdited, setBasePathEdited] = useState(false);
@@ -170,7 +175,9 @@ export const ApiCreationWizard = () => {
   };
 
   const navigate = useNavigate();
-  const importOpenApiMutation = useImportOpenApi();
+  // `handlesErrors`: a rejection this screen puts back on the form must not
+  // also arrive as a snackbar that has faded by the time the user looks up.
+  const importOpenApiMutation = useImportOpenApi({ handlesErrors: true });
   // `projectId` on the request body is the project handle from the route, not
   // something the form collects.
   const { activeScope, params } = useConsoleScope();
@@ -186,6 +193,9 @@ export const ApiCreationWizard = () => {
   const [creationStarted, setCreationStarted] = useState(false);
 
   const createApi = (values: GeneralApiCreationFormState) => {
+    // A fresh attempt supersedes the previous rejection, so nothing stale is
+    // left pinned to an input the user has since corrected.
+    setServerErrors(null);
     const projectId = activeScope.projectHandler;
     if (!projectId || !values.contractImport?.specFile) {
       // Nothing to create against — the wizard is mounted outside a project,

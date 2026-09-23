@@ -29,14 +29,12 @@ import {
   Home,
   Layers,
   Megaphone,
-  MessagesSquare,
   Network,
   Rocket,
   ScrollText,
   Settings,
   ShieldCheck,
-  SquareTerminal,
-  Terminal,
+  FlaskConical,
 } from '@wso2/oxygen-ui-icons-react';
 
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
@@ -311,28 +309,12 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Test',
     group: CLUSTER.api,
     order: 40,
-    icon: <Terminal />,
+    icon: <FlaskConical />,
     isVisible: apiCapability(({ canTest }) => canTest),
-    ...submenu([
-      {
-        icon: <SquareTerminal />,
-        id: 'test-console',
-        label: 'API Console',
-        to: routes.apiTestConsole,
-      },
-      {
-        icon: <Terminal />,
-        id: 'test-curl',
-        label: 'Curl',
-        to: routes.apiTestCurl,
-      },
-      {
-        icon: <MessagesSquare />,
-        id: 'test-chat',
-        label: 'API Chat',
-        to: routes.apiTestChat,
-      },
-    ]),
+    // A leaf, not a parent: the console, the cURL builder and the response all
+    // live on one page, so there is nothing to disclose beneath it.
+    to: apiLevelTo(routes.apiTest),
+    match: matchRoutes(...apiScopedPaths(routes.apiTest)),
   },
   {
     id: 'deploy',

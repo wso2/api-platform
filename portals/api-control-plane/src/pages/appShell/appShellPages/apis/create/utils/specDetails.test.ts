@@ -100,7 +100,7 @@ describe('extractApiDetails', () => {
 });
 
 describe('extractOperations', () => {
-  it('flattens the methods the form can hold and skips the ones it cannot', () => {
+  it('flattens every method the wire type accepts, and skips what is not a path', () => {
     expect(
       extractOperations({
         paths: {
@@ -114,6 +114,7 @@ describe('extractOperations', () => {
           'x-internal': { get: {} },
         },
       }),
+      // Grouped by the method order the extractor walks, not document order.
     ).toEqual([
       { name: 'listOrders', request: { method: 'GET', path: '/orders' } },
       { name: 'Place an order', request: { method: 'POST', path: '/orders' } },

@@ -90,7 +90,12 @@ import {
 } from '../utils/swaggerHub';
 import { useValidateOpenApiSpec, type OpenAPIValidationError } from '@/api/resources/restApis';
 import { isValidUrl } from '../../utils/developEdit';
-import { collectSpecWarnings, readDialectFromSpec, type SpecDialect, type SpecIssue } from '../utils/specValidation';
+import {
+  collectSpecWarnings,
+  readDialectFromSpec,
+  type SpecDialect,
+  type SpecIssue,
+} from '../utils/specValidation';
 import { SpecIssueList } from './SpecIssueList';
 import { type ApiType } from '../types';
 import { API_TYPES } from '../uiConfig';
@@ -846,8 +851,7 @@ export type ContractFetchFailure =
   | 'unsupportedSource';
 
 export type ContractFetchResult =
-  | { contract: FetchedContract; status: 'fetched' }
-  | { status: ContractFetchFailure };
+  { contract: FetchedContract; status: 'fetched' } | { status: ContractFetchFailure };
 
 /**
  * The file's text. `Blob.text()` where it exists, `FileReader` otherwise —
@@ -886,7 +890,11 @@ const parseContractText = (text: string): SpecDocument | null => {
  * once that response arrives. Warnings start empty here so the preview renders
  * immediately while the backend call is still in-flight.
  */
-const acceptSpec = (rawText: string, spec: SpecDocument, values: ContractValues): ContractFetchResult => {
+const acceptSpec = (
+  rawText: string,
+  spec: SpecDocument,
+  values: ContractValues,
+): ContractFetchResult => {
   const dialectResult = readDialectFromSpec(spec);
   const dialect: SpecDialect =
     dialectResult === null || dialectResult === 'unsupported' ? 'openapi-3.0' : dialectResult;
@@ -1453,9 +1461,10 @@ export const ContractSourceForm = ({
       try {
         // Extend to other api types by selecting a validator for the
         // detected dialect if required
-        const validation = request.apiTypeKey === 'rest'
-          ? await validateSpec.mutateAsync(result.contract.rawText)
-          : { isValid: true, errors: [], warnings: [] };
+        const validation =
+          request.apiTypeKey === 'rest'
+            ? await validateSpec.mutateAsync(result.contract.rawText)
+            : { isValid: true, errors: [], warnings: [] };
         if (!current) return;
 
         if (!validation.isValid) {
@@ -2016,7 +2025,6 @@ export const ContractSourceForm = ({
           <FormattedMessage {...messages.specInvalidByBackend} />
           <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
             {backendValidationErrors.map((e, i) => (
-              // eslint-disable-next-line react/no-array-index-key
               <Typography component="li" key={i} variant="body2">
                 {e.message}
               </Typography>

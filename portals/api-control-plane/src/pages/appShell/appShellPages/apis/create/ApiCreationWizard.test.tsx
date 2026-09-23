@@ -79,10 +79,10 @@ vi.mock('./components/DefineApiPanel', () => ({
         <button
           onClick={() =>
             onDraftChange({
+              contractImport: { specFile: STUB_SPEC_FILE },
               displayName: 'Untitled API',
               upstream: { main: { url: 'https://example.com' } },
               version: '1.0',
-              contractImport: { specFile: STUB_SPEC_FILE },
             })
           }
           type="button"

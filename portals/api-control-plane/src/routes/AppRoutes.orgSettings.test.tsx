@@ -24,6 +24,11 @@ import { authStatePresets } from '../test/mockAuthState';
 import { server } from '../test/server';
 import { renderWithProviders, screen } from '../test/utils';
 
+/**
+ * Allows time for lazy route imports and rendering under a loaded test suite.
+ */
+const LAZY_ROUTE_TIMEOUT = { timeout: 5000 };
+
 // Covers the org-level Settings page (mirrors ai-workspace, which mounts the
 // same Settings feature at both org and project scope) and the sidebar's
 // pinned-to-bottom Settings link, which must show exactly one link at a
@@ -46,7 +51,7 @@ describe('Org-level Settings', () => {
       resource('/organizations/:organizationId', org),
       collection('/projects', [project]),
       resource('/projects/:projectId', project),
-      collection('/rest-apis', [])
+      collection('/rest-apis', []),
     );
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -58,7 +63,11 @@ describe('Org-level Settings', () => {
     });
 
     expect(
-      await screen.findByText(/Minimal settings overview for API Platform Demo/)
+      await screen.findByText(
+        /Minimal settings overview for API Platform Demo/,
+        undefined,
+        LAZY_ROUTE_TIMEOUT,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -70,10 +79,7 @@ describe('Org-level Settings', () => {
 
     const settingsLinks = await screen.findAllByRole('link', { name: /settings/i });
     expect(settingsLinks).toHaveLength(1);
-    expect(settingsLinks[0]).toHaveAttribute(
-      'href',
-      '/organizations/api-platform-demo/settings'
-    );
+    expect(settingsLinks[0]).toHaveAttribute('href', '/organizations/api-platform-demo/settings');
   });
 
   it('shows one project-scoped pinned Settings link inside a project, not both', async () => {
@@ -87,7 +93,7 @@ describe('Org-level Settings', () => {
     expect(settingsLinks).toHaveLength(1);
     expect(settingsLinks[0]).toHaveAttribute(
       'href',
-      '/organizations/api-platform-demo/projects/retail-apis/settings'
+      '/organizations/api-platform-demo/projects/retail-apis/settings',
     );
   });
 });

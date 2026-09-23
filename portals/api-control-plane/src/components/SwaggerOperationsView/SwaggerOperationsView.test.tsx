@@ -22,7 +22,7 @@ import { renderWithProviders, screen } from '@/test/utils';
 import { SwaggerOperationsView } from './SwaggerOperationsView';
 
 describe('SwaggerOperationsView', () => {
-  it('renders method, path, and available descriptions from API operations', () => {
+  it('renders the method, the path, and the operation’s own name', () => {
     renderWithProviders(
       <SwaggerOperationsView
         operations={[
@@ -39,7 +39,12 @@ describe('SwaggerOperationsView', () => {
     expect(screen.getByText('GET')).toBeInTheDocument();
     expect(screen.getByText('POST')).toBeInTheDocument();
     expect(screen.getAllByText('/books')).toHaveLength(2);
+    // The third column says what the operation is for: its own description
+    // when the document carries one, and its name when it does not. Either way
+    // the row stays one line — the column is `noWrap`.
     expect(screen.getByText('List all the reading list books')).toBeInTheDocument();
+    expect(screen.getByText('addBook')).toBeInTheDocument();
+    expect(screen.queryByText('listBooks')).not.toBeInTheDocument();
   });
 
   it('renders an empty state when the API has no operations', () => {

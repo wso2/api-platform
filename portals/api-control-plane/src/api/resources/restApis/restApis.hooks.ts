@@ -222,13 +222,19 @@ const useInvalidateRestApis = (orgId?: string) => {
  *
  * The caller builds the `FormData` and passes it directly — field names must
  * match what `POST /rest-apis/import-openapi` expects.
+ *
+ * When `handlesErrors` is true, errors are handled locally and won't trigger
+ * the global snackbar. Otherwise, errors reach the snackbar by default.
  */
-export const useImportOpenApi = (overrides: { orgId?: string } = {}) => {
+export const useImportOpenApi = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateRestApis(orgId);
 
   return useMutation<RestApi, ApiError, FormData>({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: (formData) => importOpenApi(formData, { orgId }),
     onSuccess: (created) => {
       if (org && created.id) {

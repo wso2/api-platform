@@ -109,7 +109,6 @@ const PoliciesPage = lazy(() =>
     default: m.PoliciesPage,
   })),
 );
-
 const DocumentsPage = lazy(() =>
   import('../pages/appShell/appShellPages/develop/documents/DocumentsPage').then((m) => ({
     default: m.DocumentsPage,
@@ -118,16 +117,6 @@ const DocumentsPage = lazy(() =>
 const DefinitionPage = lazy(() =>
   import('../pages/appShell/appShellPages/develop/definition/DefinitionPage').then((m) => ({
     default: m.DefinitionPage,
-  })),
-);
-const ApiConsolePage = lazy(() =>
-  import('../pages/appShell/appShellPages/test/ApiConsolePage').then((m) => ({
-    default: m.ApiConsolePage,
-  })),
-);
-const ApiChatPage = lazy(() =>
-  import('../pages/appShell/appShellPages/test/ApiChatPage').then((m) => ({
-    default: m.ApiChatPage,
   })),
 );
 const AlertsPage = lazy(() =>
@@ -352,10 +341,8 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiDevelopPolicies), <PoliciesPage />)}
 
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiTest), <TestPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDefinition), <DefinitionPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiTestCurl), <TestPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiTestChat), <ApiChatPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiDeploy), <ApiDeployRoute />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}

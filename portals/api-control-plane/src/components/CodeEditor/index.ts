@@ -16,23 +16,12 @@
  * under the License.
  */
 
-import { FormattedMessage } from 'react-intl';
-
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
-
-export function ApiChatPage() {
-  return (
-    <ScopeGate prompt="API chat runs against a single API." requires="api" to={routes.apiTestChat}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.apiChatPage.feature"
-            defaultMessage="Testing this API through chat"
-          />
-        }
-      />
-    </ScopeGate>
-  );
-}
+/**
+ * Types only, deliberately.
+ *
+ * `CodeEditor` itself is **not** re-exported here: a barrel export would let a
+ * caller import it statically and pull ~3.9 MB of Monaco into that caller's
+ * chunk. Import the component with `lazy(() => import('@/components/CodeEditor/CodeEditor'))`
+ * and take its prop types from here.
+ */
+export type { CodeEditorLanguage, CodeEditorProps } from './CodeEditor';

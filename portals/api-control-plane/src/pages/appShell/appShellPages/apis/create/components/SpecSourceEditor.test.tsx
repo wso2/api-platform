@@ -26,18 +26,20 @@ import { SpecSourceEditor } from './SpecSourceEditor';
 // accessible name and the same value/onChange contract. What these tests are
 // about; reading text back, checking it, and what Save does with the result —
 // lives entirely on this side of that boundary.
-vi.mock('./SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
+vi.mock('@/components/CodeEditor/CodeEditor', () => ({
+  CodeEditor: ({
+    ariaLabel,
     onChange,
     readOnly,
     value,
   }: {
+    ariaLabel?: string;
     onChange?: (next: string) => void;
     readOnly?: boolean;
     value: string;
   }) => (
     <textarea
-      aria-label="API definition source"
+      aria-label={ariaLabel}
       onChange={(event) => onChange?.(event.target.value)}
       readOnly={readOnly}
       value={value}
@@ -106,7 +108,9 @@ describe('SpecSourceEditor', () => {
   });
 
   it('refuses to save when backend validation fails, naming what is wrong', async () => {
-    const onBeforeSave = vi.fn().mockResolvedValue(['declares no GET, POST, PUT, PATCH or DELETE operation']);
+    const onBeforeSave = vi
+      .fn()
+      .mockResolvedValue(['declares no GET, POST, PUT, PATCH or DELETE operation']);
     const onSave = vi.fn();
     const { user } = renderWithProviders(
       <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSave} spec={VALID_SPEC} />,
@@ -119,6 +123,23 @@ describe('SpecSourceEditor', () => {
       await screen.findByText(/declares no GET, POST, PUT, PATCH or DELETE operation/),
     ).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
+    // The editor stays open over the text that needs fixing.
+    expect(await editor()).toBeInTheDocument();
+  });
+
+  it('commits the save when the backend raises nothing, and never blocks on an outage', async () => {
+    const onSave = vi.fn();
+    const onBeforeSave = vi.fn().mockRejectedValue(new Error('network down'));
+    const { user } = renderWithProviders(
+      <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSave} spec={VALID_SPEC} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+
+    await retype(JSON.stringify({ ...VALID_SPEC, info: { title: 'B', version: '1' } }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByRole('button', { name: 'Edit' });
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a top level that is a list rather than an object', async () => {
