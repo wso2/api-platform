@@ -27,7 +27,7 @@ import { publicationChipMeta } from '../utils/publicationDisplay';
 const messages = defineMessages({
   goToPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish',
-    defaultMessage: 'Manage publication',
+    defaultMessage: 'Go To Publish',
     description: 'Card action opening the publish flow for this API on this portal.',
   },
 });
@@ -62,7 +62,7 @@ const displayUrl = (url: string): string => url.replace(/^https?:\/\//i, '').rep
 
 /**
  * One API Portal, annotated with this API's own publication status. Only the
- * "Manage publication" button opens it; the card itself is not clickable.
+ * "Go To Publish" button opens it; the card itself is not clickable.
  */
 export function PortalPublicationCard({ publication, onOpen }: PortalPublicationCardProps) {
   const intl = useIntl();

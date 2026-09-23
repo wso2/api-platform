@@ -54,7 +54,7 @@ function renderPage() {
     <ApiScopeProvider orgId={ORG}>
       <Routes>
         <Route element={<ApiPortalPublicationsList />} path={routes.apiPortals()} />
-        {/* Stands in for the per-portal publish flow, so "Manage publication" is observable. */}
+        {/* Stands in for the per-portal publish flow, so "Go To Publish" is observable. */}
         <Route element={<div>publish flow</div>} path={routes.apiPortalPublish()} />
       </Routes>
     </ApiScopeProvider>,
@@ -140,7 +140,7 @@ describe('ApiPortalPublicationsList', () => {
     ]);
     const { user } = renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Manage publication' }));
+    await user.click(await screen.findByRole('button', { name: 'Go To Publish' }));
 
     expect(await screen.findByText('publish flow')).toBeInTheDocument();
   });
@@ -154,7 +154,7 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     await screen.findByText('API Portal 1');
-    const buttons = screen.getAllByRole('button', { name: 'Manage publication' });
+    const buttons = screen.getAllByRole('button', { name: 'Go To Publish' });
     expect(buttons.map((button) => button.getAttribute('aria-describedby'))).toHaveLength(2);
     expect(buttons[0]).toHaveAccessibleDescription('API Portal 1');
     expect(buttons[1]).toHaveAccessibleDescription('API Portal 2');

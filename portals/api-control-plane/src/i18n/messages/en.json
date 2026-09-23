@@ -2159,7 +2159,7 @@
     "defaultMessage": "Version"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
-    "defaultMessage": "Manage publication",
+    "defaultMessage": "Go To Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage": {
