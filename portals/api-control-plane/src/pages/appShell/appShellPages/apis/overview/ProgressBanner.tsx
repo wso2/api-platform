@@ -28,8 +28,12 @@ import {
 import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { REST_API_TYPE, useApiPublications } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
 import { routes } from '@/routes/paths';
+
+// Same cap `ApiPortalPublicationsList` uses to read every portal in one page.
+const LIST_LIMIT = 100;
 
 const messages = defineMessages({
   stepCreate: {
@@ -75,12 +79,14 @@ type ProgressStep = {
  * shows the overall percentage.
  *
  * Completion is derived from the API's real lifecycle, which is monotonic —
- * publishing implies the API was deployed and tested, staging implies deploy
- * + test — so earlier steps stay green once a later one is reached:
+ * reaching PUBLISHED/STAGED on the API's own record implies it was deployed
+ * and tested — so earlier steps stay green once a later one is reached:
  *   Create   → always done (the API record exists)
  *   Deploy   → live on a gateway, or STAGED/PUBLISHED
  *   Test     → STAGED or PUBLISHED
- *   Publish  → PUBLISHED to the dev portal
+ *   Publish  → PUBLISHED on at least one API Portal (`/api-publications`,
+ *              not the API's own `lifeCycleStatus` — publishing is per-portal,
+ *              so a single global field on the API can't represent it)
  * The steps double as the navigation the old Deploy/Test/Manage buttons gave.
  */
 export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: boolean }) {
@@ -88,10 +94,15 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   const navigate = useNavigate();
   const intl = useIntl();
 
-  const published = api.lifeCycleStatus === 'PUBLISHED';
+  const publicationsQuery = useApiPublications(REST_API_TYPE, apiHandler, { limit: LIST_LIMIT });
+  // isPlaceholderData excludes the previous API's publish status left over from keepPreviousData.
+  const published =
+    !publicationsQuery.isPlaceholderData &&
+    (publicationsQuery.data?.list.some((publication) => publication.status === 'PUBLISHED') ?? false);
   const staged = api.lifeCycleStatus === 'STAGED';
-  const deployComplete = deployed || staged || published;
-  const testComplete = staged || published;
+  const lifecyclePublished = api.lifeCycleStatus === 'PUBLISHED';
+  const deployComplete = deployed || staged || lifecyclePublished;
+  const testComplete = staged || lifecyclePublished;
 
   // Formatted here rather than held as descriptors: `label` is both the pill's
   // text and its `aria-label`, and the latter is a string-only prop.

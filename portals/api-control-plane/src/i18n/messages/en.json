@@ -2854,9 +2854,6 @@
   "apiControlPlane.projects.ProjectStatistics.selectType": {
     "defaultMessage": "Filter APIs by {type}"
   },
-  "apiControlPlane.projects.ProjectStatistics.statusSummary": {
-    "defaultMessage": "{published} published · {created} created"
-  },
   "apiControlPlane.permissions.useCan.denied": {
     "defaultMessage": "You don't have permission to perform this action.",
     "description": "Shown when the signed-in user's scopes do not allow an action; as a tooltip on the disabled control, and as a toast when the server refuses the request. Deliberately does not name the missing scope: that would tell a probing caller what to look for, and means nothing to the person reading it."
