@@ -2869,9 +2869,6 @@
   "apiControlPlane.projects.ProjectStatistics.selectType": {
     "defaultMessage": "Filter APIs by {type}"
   },
-  "apiControlPlane.projects.ProjectStatistics.statusSummary": {
-    "defaultMessage": "{published} published · {created} created"
-  },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",
     "description": "Button label for creating a new API"
