@@ -25,19 +25,20 @@ import { ErrorState, LoadingState } from '@/components/StateViews';
 
 const messages = defineMessages({
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading',
     defaultMessage: 'Loading API',
+    description: 'Shown while the API being edited is fetched.',
   },
   apiNotFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.apiNotFound',
     defaultMessage: 'GraphQL API not found',
   },
   feature: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.feature',
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.feature',
     defaultMessage: 'Documents for this API',
   },
   detail: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.detail',
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.detail',
     defaultMessage:
       'You will be able to publish guides, references, and release notes alongside the API so consumers can read them in the Developer Portal.',
   },

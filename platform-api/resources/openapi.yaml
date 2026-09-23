@@ -9942,7 +9942,6 @@ components:
           example: Public GraphQL API for querying country/region reference data
         context:
           maxLength: 232
-          minLength: 1
           type: string
           description: |
             Base path for the single GraphQL endpoint. Optional: when omitted
@@ -10124,7 +10123,6 @@ components:
           example: Public GraphQL API for querying country/region reference data
         context:
           maxLength: 232
-          minLength: 1
           type: string
           description: |
             Base path for the single GraphQL endpoint. Optional: when omitted

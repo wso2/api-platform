@@ -45,7 +45,7 @@ const messages = defineMessages({
     defaultMessage: 'If introspection is disabled on the endpoint, the schema stays empty.',
   },
   endpointLabel: {
-    id: 'api.create.graphql.introspection.endpoint.label',
+    id: 'api.create.defineApi.scratch.endpoint.heading',
     defaultMessage: 'Backend endpoint',
   },
   endpointRequired: {
@@ -53,7 +53,7 @@ const messages = defineMessages({
     defaultMessage: 'Enter the GraphQL endpoint to introspect.',
   },
   endpointInvalid: {
-    id: 'api.create.graphql.introspection.endpoint.invalid',
+    id: 'api.create.fromContract.url.invalid',
     defaultMessage: 'Enter a valid HTTP or HTTPS URL.',
   },
   status: {

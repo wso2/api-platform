@@ -47,53 +47,56 @@ import { GraphqlProgressBanner } from './GraphqlProgressBanner';
 
 const messages = defineMessages({
   context: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.context.label',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label',
     defaultMessage: 'Context:',
-    description: 'Label for the API base path shown in the header, e.g. "/countries/graphql".',
+    description: 'Label for the API base path shown in the API detail header, e.g. "/orders".',
   },
   copyContext: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.copyContext',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.copyContext',
     defaultMessage: 'Copy API context',
+    description: 'Accessible label for the button that copies the API context.',
   },
   created: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.created.label',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.created.label',
     defaultMessage: 'Created',
+    description: 'Label before the API creation time in the API detail header.',
   },
   unknownCreator: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.unknownCreator',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator',
     defaultMessage: '—',
   },
   by: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.by.label',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label',
     defaultMessage: 'by',
+    description: 'Label between the API creation time and creator.',
   },
   deployToGateway: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.deployToGateway',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway',
     defaultMessage: 'Deploy to Gateway',
+    description: 'Button on the API overview header that opens the API\'s deployment page.',
   },
   editApi: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.editApi',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.editApi',
     defaultMessage: 'Edit API details',
-    description:
-      'Accessible label and tooltip for the button beside the API name, which opens the edit page.',
+    description: 'Accessible label and tooltip for the button beside the API name, which opens the edit page.',
   },
   gatewayManaged: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.gatewayManaged',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged',
     defaultMessage: 'Gateway-managed',
-    description:
-      'Chip marking an API that was discovered from a gateway and cannot be edited here.',
+    description: 'Chip marking an API that was discovered from a gateway and cannot be edited here.',
   },
   gatewayManagedHint: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.gatewayManagedHint',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint',
     defaultMessage: 'Discovered from a data-plane gateway, so it is read-only in this console.',
     description: 'Tooltip explaining the gateway-managed chip.',
   },
   descriptionPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.description.placeholder',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.placeholder',
     defaultMessage: 'No description',
+    description: 'Shown in place of the API description when the API has none. Rendered in italics as an absence, not as a value.',
   },
   typeChip: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.typeChip',
+    id: 'api.create.apiType.graphQl.title',
     defaultMessage: 'GraphQL API',
   },
   notFound: {
@@ -101,12 +104,14 @@ const messages = defineMessages({
     defaultMessage: 'GraphQL API not found',
   },
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading',
     defaultMessage: 'Loading API',
+    description: 'Shown while the API being edited is fetched.',
   },
   breadcrumbApis: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.breadcrumb.apis',
+    id: 'apiListPage.title',
     defaultMessage: 'APIs',
+    description: 'Page title for the API list page',
   },
 });
 

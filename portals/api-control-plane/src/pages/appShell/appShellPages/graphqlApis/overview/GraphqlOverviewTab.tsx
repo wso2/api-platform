@@ -34,11 +34,12 @@ const messages = defineMessages({
     defaultMessage: 'Schema',
   },
   endpointTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointTitle',
+    id: 'apiControlPlane.pages.test.console.GatewaySection.endpoint',
     defaultMessage: 'Endpoint',
+    description: 'Label above the URL that requests from this console are sent to. Shown in capitals by the layout, so translate it as ordinary words.',
   },
   endpointNotConfigured: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.endpointNotConfigured',
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured',
     defaultMessage: 'No endpoint configured',
   },
 });
